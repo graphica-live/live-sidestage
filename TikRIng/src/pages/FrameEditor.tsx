@@ -82,7 +82,7 @@ export default function FrameEditor() {
     try {
       setDownloading(true);
       const outputImage = await getCroppedAndMergedImg(userImage, croppedAreaPixels, frameUrl);
-      
+
       // ダウンロード処理
       const link = document.createElement('a');
       link.download = 'profile-with-frame.png';
@@ -134,21 +134,36 @@ export default function FrameEditor() {
       </p>
 
       {!userImage ? (
-        // 画像アップロードUI
-        <div 
-          {...getRootProps()} 
-          className={`w-full aspect-square sm:aspect-video rounded-3xl border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative group
-            ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
-          `}
-        >
-          <input {...getInputProps()} />
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-tiktok-gray/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-              <ImageIcon className="w-8 h-8 text-tiktok-lightgray group-hover:text-white transition-colors" />
+        <div className="w-full flex flex-col items-center gap-6">
+          {/* 追加: 装着されるフレームのプレビュー */}
+          {frameUrl && (
+            <div className="w-48 h-48 sm:w-64 sm:h-64 rounded-3xl bg-tiktok-dark border border-tiktok-gray overflow-hidden relative shadow-lg">
+              <div className="absolute inset-0 bg-tiktok-gray/30 flex items-center justify-center">
+                <ImageIcon className="w-12 h-12 text-tiktok-lightgray/50" />
+              </div>
+              <div
+                className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
+                style={{ backgroundImage: `url(${frameUrl})` }}
+              />
             </div>
-            <div>
-              <p className="text-lg font-bold mb-1 group-hover:text-tiktok-cyan transition-colors">あなたの画像を選択</p>
-              <p className="text-sm text-tiktok-lightgray">カメラロールやフォルダから選ぶ</p>
+          )}
+
+          {/* 画像アップロードUI */}
+          <div
+            {...getRootProps()}
+            className={`w-full p-8 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all cursor-pointer relative group
+              ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
+            `}
+          >
+            <input {...getInputProps()} />
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-tiktok-gray/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <ImageIcon className="w-8 h-8 text-tiktok-lightgray group-hover:text-white transition-colors" />
+              </div>
+              <div>
+                <p className="text-lg font-bold mb-1 group-hover:text-tiktok-cyan transition-colors">あなたの画像を選択</p>
+                <p className="text-sm text-tiktok-lightgray">カメラロールやフォルダから選ぶ</p>
+              </div>
             </div>
           </div>
         </div>
@@ -162,22 +177,24 @@ export default function FrameEditor() {
                 image={userImage}
                 crop={crop}
                 zoom={zoom}
+                minZoom={0.3} // 最低倍率を0.3まで下げて、縮小（枠より小さく）できるようにする
                 aspect={1} // 正方形
                 onCropChange={setCrop}
                 onCropComplete={onCropComplete}
                 onZoomChange={setZoom}
                 showGrid={false}
-                classes={{ 
+                objectFit="contain" // 余白（透明）を許容する
+                classes={{
                   containerClassName: 'bg-tiktok-dark',
                   mediaClassName: '',
                   cropAreaClassName: 'border-0 border-white/20' // react-easy-cropのデフォルトボーダーを薄く
                 }}
               />
             </div>
-            
+
             {/* Foreground Frame Overlay (フレームの透過部分から後ろが見える) */}
             {/* pointer-events-none を付与することで、フレーム越しにCropperのドラッグ操作が可能になる */}
-            <div 
+            <div
               className="absolute inset-0 z-10 pointer-events-none bg-contain bg-center bg-no-repeat w-full h-full"
               style={{ backgroundImage: `url(${frameUrl})` }}
             />
@@ -189,7 +206,7 @@ export default function FrameEditor() {
             <input
               type="range"
               value={zoom}
-              min={1}
+              min={0.3} // 1未満の縮小を許可
               max={3}
               step={0.1}
               aria-labelledby="Zoom"
