@@ -33,6 +33,9 @@ export default function FrameEditor() {
           if (response.status === 404) {
             throw new Error('フレームが見つかりません。URLが間違っているか、削除された可能性があります。');
           }
+          if (response.status === 410) {
+            throw new Error('このURLの有効期限（90日間）が切れました。再度新しいURLを発行してもらってください。');
+          }
           throw new Error('フレームの取得に失敗しました。');
         }
 
@@ -178,6 +181,7 @@ export default function FrameEditor() {
                 crop={crop}
                 zoom={zoom}
                 minZoom={0.3} // 最低倍率を0.3まで下げて、縮小（枠より小さく）できるようにする
+                restrictPosition={false} // 縮小時に画像が枠より小さくなっても自由に動かせるようにする
                 aspect={1} // 正方形
                 onCropChange={setCrop}
                 onCropComplete={onCropComplete}

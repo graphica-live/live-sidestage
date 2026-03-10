@@ -19,13 +19,27 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       return new Response('Image Not Found in Bucket', { status: 404 });
     }
 
+    // メタデータから有効期限をチェック
+    const { customMetadata } = object;
+    if (customMetadata && customMetadata.expiresAt) {
+      const expiresAt = parseInt(customMetadata.expiresAt, 10);
+
+      // 現在時刻が有効期限を過ぎている場合
+      if (Date.now() > expiresAt) {
+        // R2から物理削除（非同期で実行させてレスポンスをブロックしない）
+        context.waitUntil(context.env.FRAMES_BUCKET.delete(id));
+
+        return new Response('URL has expired', { status: 410 }); // 410 Gone (消滅した)
+      }
+    }
+
     // キャッシュやCORSヘッダーを設定してレスポンスを返す
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
     // デモ用: 1年間キャッシュ
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-    
+
     // 他のドメインからの利用も許可する場合 (Canvasのtainted対策)
     headers.set('Access-Control-Allow-Origin', '*');
 
