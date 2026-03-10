@@ -8,7 +8,7 @@ export const getCroppedAndMergedImg = async (
 ): Promise<string> => {
   const image = await createImage(imageSrc);
   const frameImage = await createImage(frameSrc);
-  
+
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
@@ -61,7 +61,13 @@ function createImage(url: string): Promise<HTMLImageElement> {
     const image = new Image();
     image.addEventListener('load', () => resolve(image));
     image.addEventListener('error', (error) => reject(error));
-    image.setAttribute('crossOrigin', 'anonymous'); // R2等から読み込む際のCORS対策
+
+    // R2等から読み込む際のCORS対策（ただしblobやdata URLでは不要であり、
+    // Android Chrome等でCanvasが汚染される（tainted）エラーの原因になるため除外）
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) {
+      image.setAttribute('crossOrigin', 'anonymous');
+    }
+
     image.src = url;
   });
 }
