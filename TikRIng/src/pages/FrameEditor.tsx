@@ -206,7 +206,10 @@ export default function FrameEditor() {
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
       <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">TikRing</h1>
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm font-medium">
-        好きな画像を選んで、アイコンフレームを装着しましょう！
+        <span>好きな画像を選んで、アイコンフレームを装着しましょう！</span>
+        <span className="text-xs text-tiktok-lightgray/70 mt-1">
+          ※このページの有効期限は作成から約3ヶ月です
+        </span>
       </p>
 
       {!userImage ? (

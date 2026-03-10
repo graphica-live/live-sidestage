@@ -93,6 +93,9 @@ export default function Home() {
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-10 text-sm sm:text-base">
         <span>配布したい透過フレームをアップロードして、</span>
         <span>リスナー用の着せ替えURLを発行しましょう。</span>
+        <span className="text-xs text-tiktok-red/80 mt-2 bg-tiktok-red/10 px-3 py-1 rounded-full">
+          ※アップロードしたフレームの有効期限は約3ヶ月です
+        </span>
       </p>
 
       {/* ドロップゾーン */}
