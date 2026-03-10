@@ -11,10 +11,14 @@ export default function FrameEditor() {
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
 
-  // Dragging states
+  // Dragging & Pinching states
   const isDragging = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const startPosition = useRef({ x: 0, y: 0 });
+  const activePointers = useRef<Map<number, { x: number, y: number }>>(new Map());
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialPinchZoom = useRef<number>(1);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -80,29 +84,71 @@ export default function FrameEditor() {
     multiple: false
   });
 
-  // Custom Drag Handlers
+  // Custom Drag & Zoom Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    isDragging.current = true;
-    dragStartPos.current = { x: e.clientX, y: e.clientY };
-    startPosition.current = { ...position };
     e.currentTarget.setPointerCapture(e.pointerId);
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 1) {
+      isDragging.current = true;
+      dragStartPos.current = { x: e.clientX, y: e.clientY };
+      startPosition.current = { ...position };
+    } else if (activePointers.current.size === 2) {
+      isDragging.current = false; // Stop dragging to focus on pinch
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      initialPinchDistance.current = dist;
+      initialPinchZoom.current = zoom;
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging.current) return;
-    const dx = e.clientX - dragStartPos.current.x;
-    const dy = e.clientY - dragStartPos.current.y;
-    setPosition({
-      x: startPosition.current.x + dx,
-      y: startPosition.current.y + dy,
-    });
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (activePointers.current.size === 1 && isDragging.current) {
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      setPosition({
+        x: startPosition.current.x + dx,
+        y: startPosition.current.y + dy,
+      });
+    } else if (activePointers.current.size === 2 && initialPinchDistance.current !== null) {
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+      const zoomRatio = dist / initialPinchDistance.current;
+      let newZoom = initialPinchZoom.current * zoomRatio;
+
+      newZoom = Math.max(0.3, Math.min(3, newZoom));
+      setZoom(newZoom);
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDragging.current) {
-      isDragging.current = false;
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    activePointers.current.delete(e.pointerId);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+
+    if (activePointers.current.size < 2) {
+      initialPinchDistance.current = null;
     }
+
+    if (activePointers.current.size === 1) {
+      // Revert to drag mode for the remaining finger
+      const pts = Array.from(activePointers.current.values());
+      isDragging.current = true;
+      dragStartPos.current = { x: pts[0].x, y: pts[0].y };
+      startPosition.current = { ...position };
+    } else if (activePointers.current.size === 0) {
+      isDragging.current = false;
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // Mouse wheel zoom support
+    const zoomFactor = -e.deltaY * 0.002;
+    setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
   };
 
   const handleDownload = async () => {
@@ -160,7 +206,7 @@ export default function FrameEditor() {
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
       <h1 className="text-2xl font-bold mb-2 text-center">プロフィール画像の作成</h1>
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm">
-        好きな背景画像を重ねて、自分だけのアイコンを作りましょう！
+        好きな画像を選んで、アイコンフレームを装着しましょう！
       </p>
 
       {!userImage ? (
@@ -168,9 +214,7 @@ export default function FrameEditor() {
           {/* 追加: 装着されるフレームのプレビュー */}
           {frameUrl && (
             <div className="w-48 h-48 sm:w-64 sm:h-64 rounded-3xl bg-tiktok-dark border border-tiktok-gray overflow-hidden relative shadow-lg">
-              <div className="absolute inset-0 bg-tiktok-gray/30 flex items-center justify-center">
-                <ImageIcon className="w-12 h-12 text-tiktok-lightgray/50" />
-              </div>
+              <div className="absolute inset-0 bg-tiktok-gray/30" />
               <div
                 className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
                 style={{ backgroundImage: `url(${frameUrl})` }}
@@ -206,6 +250,7 @@ export default function FrameEditor() {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onWheel={handleWheel}
           >
             {/* User Image Layer */}
             <div className="absolute inset-0 flex items-center justify-center z-0 overflow-visible">
