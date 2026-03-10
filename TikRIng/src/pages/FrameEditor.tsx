@@ -204,7 +204,7 @@ export default function FrameEditor() {
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
-      <h1 className="text-2xl font-bold mb-2 text-center">プロフィール画像の作成</h1>
+      <h1 className="text-2xl font-bold mb-2 text-center text-tiktok-cyan">TikRing</h1>
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm">
         好きな画像を選んで、アイコンフレームを装着しましょう！
       </p>

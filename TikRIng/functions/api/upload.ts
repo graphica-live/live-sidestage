@@ -23,6 +23,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
+    // ファイルサイズの検証 (5MB = 5 * 1024 * 1024 bytes)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      return new Response(JSON.stringify({ error: 'File size exceeds 5MB limit' }), {
+        status: 413, // 413 Payload Too Large
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // UUID (v4相当) を生成
     const uuid = crypto.randomUUID();
 
