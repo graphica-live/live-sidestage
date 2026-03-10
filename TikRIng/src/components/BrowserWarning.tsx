@@ -45,7 +45,8 @@ export default function BrowserWarning() {
                     </div>
                     <div className="flex-1">
                         <p className="text-sm font-medium text-white mb-2 leading-snug pr-6">
-                            画像のアップロードや保存に失敗する場合は、<strong className="text-tiktok-cyan break-keep">Safari</strong> または <strong className="text-tiktok-cyan break-keep">Chrome</strong> で開き直してください。
+                            LINEやTikTok等の<span className="text-tiktok-red font-bold">アプリ内ブラウザでは画像の保存・アップロードができません</span>。<br />
+                            必ず <strong className="text-tiktok-cyan break-keep">Safari</strong> または <strong className="text-tiktok-cyan break-keep">Chrome</strong> で開き直してください。
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-2">
