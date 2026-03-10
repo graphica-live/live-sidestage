@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import Cropper, { type Area } from 'react-easy-crop';
 import { useDropzone } from 'react-dropzone';
 import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
 import { getCroppedAndMergedImg } from '../utils/canvas';
@@ -9,9 +8,13 @@ export default function FrameEditor() {
   const { id } = useParams<{ id: string }>();
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [userImage, setUserImage] = useState<string | null>(null);
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
+
+  // Dragging states
+  const isDragging = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const startPosition = useRef({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -60,9 +63,7 @@ export default function FrameEditor() {
     };
   }, [id]);
 
-  const onCropComplete = useCallback((_croppedArea: Area, croppedPixels: Area) => {
-    setCroppedAreaPixels(croppedPixels);
-  }, []);
+
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -79,12 +80,38 @@ export default function FrameEditor() {
     multiple: false
   });
 
+  // Custom Drag Handlers
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    isDragging.current = true;
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    startPosition.current = { ...position };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current) return;
+    const dx = e.clientX - dragStartPos.current.x;
+    const dy = e.clientY - dragStartPos.current.y;
+    setPosition({
+      x: startPosition.current.x + dx,
+      y: startPosition.current.y + dy,
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging.current) {
+      isDragging.current = false;
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
   const handleDownload = async () => {
-    if (!userImage || !frameUrl || !croppedAreaPixels) return;
+    if (!userImage || !frameUrl) return;
 
     try {
       setDownloading(true);
-      const outputImage = await getCroppedAndMergedImg(userImage, croppedAreaPixels, frameUrl);
+      // Pass the customized parameters to our new canvas logic
+      const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl);
 
       // ダウンロード処理
       const link = document.createElement('a');
@@ -106,7 +133,7 @@ export default function FrameEditor() {
       URL.revokeObjectURL(userImage);
     }
     setUserImage(null);
-    setCrop({ x: 0, y: 0 });
+    setPosition({ x: 0, y: 0 });
     setZoom(1);
   };
 
@@ -173,31 +200,30 @@ export default function FrameEditor() {
       ) : (
         // 編集・クロップUI
         <div className="w-full flex flex-col items-center gap-6">
-          <div className="relative w-full aspect-square rounded-3xl overflow-hidden bg-tiktok-dark border border-tiktok-gray shadow-2xl">
-            {/* Cropper Container (Background) */}
-            <div className="absolute inset-0 z-0">
-              <Cropper
-                image={userImage}
-                crop={crop}
-                zoom={zoom}
-                minZoom={0.3} // 最低倍率を0.3まで下げて、縮小（枠より小さく）できるようにする
-                restrictPosition={false} // 縮小時に画像が枠より小さくなっても自由に動かせるようにする
-                aspect={1} // 正方形
-                onCropChange={setCrop}
-                onCropComplete={onCropComplete}
-                onZoomChange={setZoom}
-                showGrid={false}
-                objectFit="contain" // 余白（透明）を許容する
-                classes={{
-                  containerClassName: 'bg-tiktok-dark',
-                  mediaClassName: '',
-                  cropAreaClassName: 'border-0 border-white/20' // react-easy-cropのデフォルトボーダーを薄く
+          <div
+            className="relative w-full aspect-square rounded-3xl overflow-hidden bg-tiktok-dark border border-tiktok-gray shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            {/* User Image Layer */}
+            <div className="absolute inset-0 flex items-center justify-center z-0 overflow-visible">
+              <img
+                src={userImage}
+                alt="User content"
+                draggable={false}
+                style={{
+                  transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain'
                 }}
               />
             </div>
 
-            {/* Foreground Frame Overlay (フレームの透過部分から後ろが見える) */}
-            {/* pointer-events-none を付与することで、フレーム越しにCropperのドラッグ操作が可能になる */}
+            {/* Foreground Frame Overlay */}
             <div
               className="absolute inset-0 z-10 pointer-events-none bg-contain bg-center bg-no-repeat w-full h-full"
               style={{ backgroundImage: `url(${frameUrl})` }}
