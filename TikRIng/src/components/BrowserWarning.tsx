@@ -45,15 +45,15 @@ export default function BrowserWarning() {
                     </div>
                     <div className="flex-1">
                         <p className="text-sm font-medium text-white mb-2 leading-snug pr-6">
-                            画像の保存に失敗する場合は、<strong className="text-tiktok-cyan break-keep">Safari</strong> または <strong className="text-tiktok-cyan break-keep">Chrome</strong> で開き直してください。
+                            画像のアップロードや保存に失敗する場合は、<strong className="text-tiktok-cyan break-keep">Safari</strong> または <strong className="text-tiktok-cyan break-keep">Chrome</strong> で開き直してください。
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-2">
                             <button
                                 onClick={handleCopyUrl}
                                 className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border ${copied
-                                        ? 'bg-green-500/20 text-green-400 border-green-500/50'
-                                        : 'bg-black/50 text-white border-tiktok-gray hover:bg-tiktok-gray/50'
+                                    ? 'bg-green-500/20 text-green-400 border-green-500/50'
+                                    : 'bg-black/50 text-white border-tiktok-gray hover:bg-tiktok-gray/50'
                                     }`}
                             >
                                 {copied ? (
