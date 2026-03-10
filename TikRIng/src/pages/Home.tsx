@@ -33,8 +33,8 @@ export default function Home() {
       const data = await response.json();
 
       // 生成されたIDを使って、アプリ内のリスナー用共有URLを作成する
-      // HashRouterを使用しているため /#/f/{id} の形にする
-      const url = `${window.location.origin}${window.location.pathname}#/f/${data.id}`;
+      // クエリパラメータを使用して /?f={id} の形にする (OGP対応のため)
+      const url = `${window.location.origin}${window.location.pathname}?f=${data.id}`;
       setShareUrl(url);
     } catch (err) {
       console.error(err);

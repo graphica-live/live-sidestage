@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
 import { getCroppedAndMergedImg } from '../utils/canvas';
 
-export default function FrameEditor() {
-  const { id } = useParams<{ id: string }>();
+interface FrameEditorProps {
+  id: string;
+}
+
+export default function FrameEditor({ id }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
