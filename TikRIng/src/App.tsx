@@ -1,13 +1,13 @@
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import FrameEditor from './pages/FrameEditor';
-import InAppBrowserPrompt from './components/InAppBrowserPrompt';
+import BrowserWarning from './components/BrowserWarning';
 
 function App() {
   return (
     <Router>
-      <InAppBrowserPrompt />
       <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
+        <BrowserWarning />
         <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col items-center justify-center">
           <Routes>
             <Route path="/" element={<Home />} />
