@@ -86,9 +86,8 @@ export default function Home() {
         ライバー専用アップロード画面
       </div>
 
-      <h1 className="text-4xl font-black mb-4 text-center tracking-tight">
-        <span className="bg-gradient-to-r from-tiktok-cyan via-white to-tiktok-red bg-clip-text text-transparent">Tik</span>
-        <span className="text-white">Ring</span>
+      <h1 className="text-4xl font-black mb-4 text-center tracking-tight glitch-text" data-text="TikRing">
+        <span className="text-white">TikRing</span>
       </h1>
 
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-10 text-sm sm:text-base">
@@ -99,7 +98,7 @@ export default function Home() {
       {/* ドロップゾーン */}
       <div
         {...getRootProps()}
-        className={`w-full aspect-square sm:aspect-video rounded-3xl border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative overflow-hidden group
+        className={`w-full aspect-square sm:aspect-video rounded-md border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative overflow-hidden group
           ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
           ${uploading ? 'pointer-events-none opacity-80' : ''}
         `}
@@ -138,7 +137,7 @@ export default function Home() {
       {shareUrl && (
         <div className="mt-8 w-full animate-in slide-in-from-bottom-4 fade-in duration-500">
           <h3 className="text-sm font-bold text-tiktok-lightgray mb-2 ml-1">リスナーに共有するURL</h3>
-          <div className="flex items-center gap-2 p-1.5 pl-4 bg-tiktok-dark rounded-2xl border border-tiktok-gray focus-within:border-tiktok-cyan transition-colors">
+          <div className="flex items-center gap-2 p-1.5 pl-4 bg-tiktok-dark rounded-md border border-tiktok-gray focus-within:border-tiktok-cyan transition-colors">
             <LinkIcon className="w-5 h-5 text-tiktok-lightgray shrink-0" />
             <input
               type="text"
@@ -148,10 +147,10 @@ export default function Home() {
             />
             <button
               onClick={handleCopy}
-              className={`shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold transition-all
+              className={`shrink-0 flex items-center gap-1.5 px-6 py-2.5 rounded-md text-sm font-bold transition-all
                 ${copied
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-tiktok-cyan text-black hover:bg-white hover:text-black'}
+                  ? 'bg-tiktok-gray text-white'
+                  : 'bg-tiktok-red text-white hover:bg-tiktok-red/80'}
               `}
             >
               {copied ? (

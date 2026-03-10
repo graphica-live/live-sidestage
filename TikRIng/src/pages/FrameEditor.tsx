@@ -204,8 +204,8 @@ export default function FrameEditor() {
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
-      <h1 className="text-2xl font-bold mb-2 text-center text-tiktok-cyan">TikRing</h1>
-      <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm">
+      <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">TikRing</h1>
+      <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm font-medium">
         好きな画像を選んで、アイコンフレームを装着しましょう！
       </p>
 
@@ -213,7 +213,7 @@ export default function FrameEditor() {
         <div className="w-full flex flex-col items-center gap-6">
           {/* 追加: 装着されるフレームのプレビュー */}
           {frameUrl && (
-            <div className="w-48 h-48 sm:w-64 sm:h-64 rounded-3xl bg-tiktok-dark border border-tiktok-gray overflow-hidden relative shadow-lg">
+            <div className="w-48 h-48 sm:w-64 sm:h-64 rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden relative shadow-lg">
               <div className="absolute inset-0 bg-tiktok-gray/30" />
               <div
                 className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
@@ -225,7 +225,7 @@ export default function FrameEditor() {
           {/* 画像アップロードUI */}
           <div
             {...getRootProps()}
-            className={`w-full p-8 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all cursor-pointer relative group
+            className={`w-full p-8 rounded-md border-2 border-dashed flex flex-col items-center justify-center transition-all cursor-pointer relative group
               ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
             `}
           >
@@ -245,7 +245,7 @@ export default function FrameEditor() {
         // 編集・クロップUI
         <div className="w-full flex flex-col items-center gap-6">
           <div
-            className="relative w-full aspect-square rounded-3xl overflow-hidden bg-tiktok-dark border border-tiktok-gray shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+            className="relative w-full aspect-square rounded-md overflow-hidden bg-tiktok-dark shadow-2xl cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -286,22 +286,22 @@ export default function FrameEditor() {
               step={0.1}
               aria-labelledby="Zoom"
               onChange={(e) => setZoom(Number(e.target.value))}
-              className="w-full h-2 bg-tiktok-gray rounded-lg appearance-none cursor-pointer accent-tiktok-cyan"
+              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
             />
-            <span className="text-xs text-tiktok-lightgray shrink-0">拡大</span>
+            <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
           </div>
 
-          <div className="flex w-full gap-4 mt-2">
+          <div className="flex w-full gap-3 mt-4">
             <button
               onClick={resetImage}
-              className="flex-1 py-3 px-4 rounded-xl bg-tiktok-gray hover:bg-tiktok-lightgray/40 font-bold transition-colors text-sm"
+              className="flex-[0.8] py-3.5 px-4 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 font-bold transition-colors text-sm"
             >
-              画像を選び直す
+              選び直す
             </button>
             <button
               onClick={handleDownload}
               disabled={downloading}
-              className="flex-1 py-3 px-4 rounded-xl bg-tiktok-red hover:bg-tiktok-red/80 text-white font-bold transition-colors shadow-lg flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-[1.2] py-3.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {downloading ? (
                 <>
