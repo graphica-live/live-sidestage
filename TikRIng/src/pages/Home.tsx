@@ -34,7 +34,8 @@ export default function Home() {
 
       // 生成されたIDを使って、アプリ内のリスナー用共有URLを作成する
       // クエリパラメータを使用して /?f={id} の形にする (OGP対応のため)
-      const url = `${window.location.origin}${window.location.pathname}?f=${data.id}`;
+      // さらにLINE内ブラウザでのダウンロード不具合を回避するため、外部ブラウザ起動フラグを付与する
+      const url = `${window.location.origin}${window.location.pathname}?f=${data.id}&openExternalBrowser=1`;
       setShareUrl(url);
     } catch (err) {
       console.error(err);
