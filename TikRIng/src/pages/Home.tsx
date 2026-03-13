@@ -15,6 +15,9 @@ export default function Home() {
   const [autoCenteredNotice, setAutoCenteredNotice] = useState(false);
   const [centering, setCentering] = useState(false);
   const [edgeFilledNotice, setEdgeFilledNotice] = useState(false);
+  const [showEdgeTransparencyDialog, setShowEdgeTransparencyDialog] = useState(false);
+  const [pendingUploadBlob, setPendingUploadBlob] = useState<Blob | null>(null);
+  const [edgeChoiceLoading, setEdgeChoiceLoading] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +56,8 @@ export default function Home() {
     setZoom(1);
     setAutoCenteredNotice(false);
     setEdgeFilledNotice(false);
+    setShowEdgeTransparencyDialog(false);
+    setPendingUploadBlob(null);
     setError(null);
     setShareUrl(null);
     setCopied(false);
@@ -138,6 +143,34 @@ export default function Home() {
     setZoom(1);
     setAutoCenteredNotice(false);
     setEdgeFilledNotice(false);
+    setShowEdgeTransparencyDialog(false);
+    setPendingUploadBlob(null);
+  };
+
+  const uploadPreparedFrame = async (preparedBlob: Blob): Promise<boolean> => {
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (preparedBlob.size > MAX_SIZE) {
+      setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
+      return false;
+    }
+
+    const uploadFile = new File([preparedBlob], `${frameFileName}.png`, { type: 'image/png' });
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+
+    const data = await response.json();
+    const url = `${window.location.origin}${window.location.pathname}?f=${data.id}&openExternalBrowser=1`;
+    setShareUrl(url);
+    return true;
   };
 
   const handleAlignTransparentCenter = async () => {
@@ -184,11 +217,19 @@ export default function Home() {
     setShareUrl(null);
     setCopied(false);
     setEdgeFilledNotice(false);
+    setShowEdgeTransparencyDialog(false);
+    setPendingUploadBlob(null);
 
     try {
       const previewSize = editorRef.current?.clientWidth ?? 1024;
-      const { blob: squareBlob, edgeFilled } = await getSquareFrameBlob(frameImage, position, zoom, 1024, previewSize);
-      setEdgeFilledNotice(edgeFilled);
+      const { blob: squareBlob, hasTransparentBorder } = await getSquareFrameBlob(
+        frameImage,
+        position,
+        zoom,
+        1024,
+        previewSize,
+        { fillTransparentEdges: false }
+      );
 
       const squareBlobUrl = URL.createObjectURL(squareBlob);
       try {
@@ -201,34 +242,79 @@ export default function Home() {
         URL.revokeObjectURL(squareBlobUrl);
       }
 
-      const MAX_SIZE = 5 * 1024 * 1024;
-      if (squareBlob.size > MAX_SIZE) {
-        setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
+      if (hasTransparentBorder) {
+        setPendingUploadBlob(squareBlob);
+        setShowEdgeTransparencyDialog(true);
         return;
       }
 
-      const uploadFile = new File([squareBlob], `${frameFileName}.png`, { type: 'image/png' });
-      const formData = new FormData();
-      formData.append('file', uploadFile);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
-      const data = await response.json();
-      const url = `${window.location.origin}${window.location.pathname}?f=${data.id}&openExternalBrowser=1`;
-      setShareUrl(url);
+      await uploadPreparedFrame(squareBlob);
     } catch (err) {
       console.error(err);
       setError('画像のアップロードに失敗しました。もう一度お試しください。');
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleChooseFillEdges = async () => {
+    if (!frameImage || edgeChoiceLoading) return;
+
+    setEdgeChoiceLoading(true);
+    setUploading(true);
+
+    try {
+      const previewSize = editorRef.current?.clientWidth ?? 1024;
+      const { blob: filledBlob, edgeFilled } = await getSquareFrameBlob(
+        frameImage,
+        position,
+        zoom,
+        1024,
+        previewSize,
+        { fillTransparentEdges: true }
+      );
+
+      const ok = await uploadPreparedFrame(filledBlob);
+      if (ok) {
+        setEdgeFilledNotice(edgeFilled);
+        setShowEdgeTransparencyDialog(false);
+        setPendingUploadBlob(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('画像のアップロードに失敗しました。もう一度お試しください。');
+    } finally {
+      setEdgeChoiceLoading(false);
+      setUploading(false);
+    }
+  };
+
+  const handleChooseKeepTransparent = async () => {
+    if (!pendingUploadBlob || edgeChoiceLoading) return;
+
+    setEdgeChoiceLoading(true);
+    setUploading(true);
+
+    try {
+      const ok = await uploadPreparedFrame(pendingUploadBlob);
+      if (ok) {
+        setEdgeFilledNotice(false);
+        setShowEdgeTransparencyDialog(false);
+        setPendingUploadBlob(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('画像のアップロードに失敗しました。もう一度お試しください。');
+    } finally {
+      setEdgeChoiceLoading(false);
+      setUploading(false);
+    }
+  };
+
+  const handleChooseReadjust = () => {
+    if (edgeChoiceLoading) return;
+    setShowEdgeTransparencyDialog(false);
+    setPendingUploadBlob(null);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -471,6 +557,40 @@ export default function Home() {
           >
             別のフレームを新しくアップロードする
           </button>
+        </div>
+      )}
+
+      {showEdgeTransparencyDialog && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl text-center">
+            <h3 className="text-lg font-bold text-white mb-2">フレーム端に透過があります</h3>
+            <p className="text-sm text-tiktok-lightgray mb-5">
+              端の透過部分は、リスナー画像がはみ出して見える原因になります。どうしますか？
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleChooseFillEdges}
+                disabled={edgeChoiceLoading}
+                className="w-full py-3 rounded-md bg-tiktok-cyan/20 border border-tiktok-cyan/40 text-tiktok-cyan font-bold hover:bg-tiktok-cyan/25 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                埋め立てる
+              </button>
+              <button
+                onClick={handleChooseKeepTransparent}
+                disabled={edgeChoiceLoading}
+                className="w-full py-3 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                透過のまま
+              </button>
+              <button
+                onClick={handleChooseReadjust}
+                disabled={edgeChoiceLoading}
+                className="w-full py-3 rounded-md border border-tiktok-lightgray/40 text-tiktok-lightgray hover:text-white hover:border-white/40 font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                位置を調整しなおす
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

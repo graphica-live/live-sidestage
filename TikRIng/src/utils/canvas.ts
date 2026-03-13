@@ -91,8 +91,9 @@ export const getSquareFrameBlob = async (
   position: { x: number; y: number },
   zoom: number,
   outputSize = 1024,
-  previewSize = outputSize
-): Promise<{ blob: Blob; edgeFilled: boolean }> => {
+  previewSize = outputSize,
+  options?: { fillTransparentEdges?: boolean }
+): Promise<{ blob: Blob; edgeFilled: boolean; hasTransparentBorder: boolean }> => {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -129,18 +130,49 @@ export const getSquareFrameBlob = async (
     drawH
   );
 
-  const edgeFilled = fillTransparentEdgesWithAverageOpaqueColor(ctx, outputSize, 10);
+  const fillTransparentEdges = options?.fillTransparentEdges ?? true;
+  const hasTransparentBorder = hasTransparentPixelsOnBorder(ctx, outputSize, 10);
+  const edgeFilled = fillTransparentEdges && hasTransparentBorder
+    ? fillTransparentEdgesWithAverageOpaqueColor(ctx, outputSize, 10)
+    : false;
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((file) => {
       if (file) {
-        resolve({ blob: file, edgeFilled });
+        resolve({ blob: file, edgeFilled, hasTransparentBorder });
       } else {
         reject(new Error('Canvas to blob failed'));
       }
     }, 'image/png');
   });
 };
+
+function hasTransparentPixelsOnBorder(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  alphaThreshold: number
+): boolean {
+  const { data } = ctx.getImageData(0, 0, size, size);
+
+  const isTransparent = (x: number, y: number) => {
+    const idx = (y * size + x) * 4 + 3;
+    return data[idx] <= alphaThreshold;
+  };
+
+  for (let x = 0; x < size; x += 1) {
+    if (isTransparent(x, 0) || isTransparent(x, size - 1)) {
+      return true;
+    }
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    if (isTransparent(0, y) || isTransparent(size - 1, y)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function fillTransparentEdgesWithAverageOpaqueColor(
   ctx: CanvasRenderingContext2D,
