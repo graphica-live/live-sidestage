@@ -349,7 +349,7 @@ export default function Home() {
               />
             </div>
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className="w-[78%] h-[78%] rounded-full border-2 border-white/65 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              <div className="w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-2 border-white/65 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
             </div>
             <div className="absolute inset-0 z-20 pointer-events-none border-2 border-tiktok-cyan/70 rounded-md" />
           </div>
