@@ -172,33 +172,60 @@ function fillTransparentEdgesWithAverageOpaqueColor(
   const avgG = Math.round(g / count);
   const avgB = Math.round(b / count);
 
-  let changed = false;
-  const paintIfTransparent = (x: number, y: number) => {
-    const idx = (y * size + x) * 4;
-    if (data[idx + 3] <= alphaThreshold) {
-      data[idx] = avgR;
-      data[idx + 1] = avgG;
-      data[idx + 2] = avgB;
-      data[idx + 3] = 255;
-      changed = true;
-    }
+  const pixelCount = size * size;
+  const visited = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  let head = 0;
+  let tail = 0;
+  const fillTargets: number[] = [];
+
+  const isTransparentAt = (pixelIndex: number) => data[pixelIndex * 4 + 3] <= alphaThreshold;
+  const pushIfTransparentUnvisited = (pixelIndex: number) => {
+    if (visited[pixelIndex] === 1) return;
+    if (!isTransparentAt(pixelIndex)) return;
+    visited[pixelIndex] = 1;
+    queue[tail] = pixelIndex;
+    tail += 1;
   };
 
+  // まず外周の透過ピクセルを起点にする
   for (let x = 0; x < size; x += 1) {
-    paintIfTransparent(x, 0);
-    paintIfTransparent(x, size - 1);
+    pushIfTransparentUnvisited(x); // top
+    pushIfTransparentUnvisited((size - 1) * size + x); // bottom
   }
-
   for (let y = 0; y < size; y += 1) {
-    paintIfTransparent(0, y);
-    paintIfTransparent(size - 1, y);
+    pushIfTransparentUnvisited(y * size); // left
+    pushIfTransparentUnvisited(y * size + (size - 1)); // right
   }
 
-  if (changed) {
-    ctx.putImageData(imageData, 0, 0);
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
+    fillTargets.push(current);
+
+    const x = current % size;
+    const y = Math.floor(current / size);
+
+    if (x > 0) pushIfTransparentUnvisited(current - 1);
+    if (x < size - 1) pushIfTransparentUnvisited(current + 1);
+    if (y > 0) pushIfTransparentUnvisited(current - size);
+    if (y < size - 1) pushIfTransparentUnvisited(current + size);
   }
 
-  return changed;
+  if (fillTargets.length === 0) {
+    return false;
+  }
+
+  for (let i = 0; i < fillTargets.length; i += 1) {
+    const idx = fillTargets[i] * 4;
+    data[idx] = avgR;
+    data[idx + 1] = avgG;
+    data[idx + 2] = avgB;
+    data[idx + 3] = 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return true;
 }
 
 export const hasTransparentPixelsInCenter = async (
