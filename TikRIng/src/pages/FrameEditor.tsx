@@ -161,9 +161,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       // Pass the customized parameters to our new canvas logic
       const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl);
 
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const randomSuffix = Math.random().toString(36).slice(2, 8);
+
       // ダウンロード処理
       const link = document.createElement('a');
-      link.download = 'profile-with-frame.png';
+      link.download = `profile-with-frame-${timestamp}-${randomSuffix}.png`;
       link.href = outputImage;
       document.body.appendChild(link);
       link.click();
