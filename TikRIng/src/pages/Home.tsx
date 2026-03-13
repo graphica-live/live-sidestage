@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move } from 'lucide-react';
-import { getSquareFrameBlob, hasTransparentPixelsInCenter } from '../utils/canvas';
+import { getSquareFrameBlob, hasTransparentPixelsInCenter, getTransparentCentroidHint } from '../utils/canvas';
 
 export default function Home() {
   const [uploading, setUploading] = useState(false);
@@ -21,6 +21,41 @@ export default function Home() {
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialPinchDistance = useRef<number | null>(null);
   const initialPinchZoom = useRef<number>(1);
+
+  useEffect(() => {
+    if (!frameImage) return;
+
+    let cancelled = false;
+
+    const applyAutoPosition = async () => {
+      try {
+        const hint = await getTransparentCentroidHint(frameImage);
+        if (cancelled || !hint.point) return;
+
+        let previewSize = editorRef.current?.clientWidth ?? 0;
+        for (let i = 0; i < 6 && previewSize <= 0; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          previewSize = editorRef.current?.clientWidth ?? 0;
+        }
+
+        if (cancelled || previewSize <= 0) return;
+
+        const baseScale = Math.min(previewSize / hint.width, previewSize / hint.height);
+        const dx = (hint.point.x - hint.width / 2) * baseScale;
+        const dy = (hint.point.y - hint.height / 2) * baseScale;
+
+        setPosition({ x: -dx, y: -dy });
+      } catch (err) {
+        console.error('Auto-centering failed:', err);
+      }
+    };
+
+    void applyAutoPosition();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [frameImage]);
 
   useEffect(() => {
     return () => {

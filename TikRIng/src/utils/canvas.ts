@@ -154,6 +154,64 @@ export const hasTransparentPixelsInCenter = async (
   return data[3] <= alphaThreshold;
 };
 
+export const getTransparentCentroidHint = async (
+  imageSrc: string,
+  centerRatio = 0.75,
+  alphaThreshold = 10,
+  sampleStep = 2
+): Promise<{ width: number; height: number; point: { x: number; y: number } | null }> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = image.width;
+  canvas.height = image.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, image.width, image.height);
+
+  const ratio = Math.max(0.2, Math.min(1, centerRatio));
+  const regionW = Math.max(1, Math.floor(canvas.width * ratio));
+  const regionH = Math.max(1, Math.floor(canvas.height * ratio));
+  const startX = Math.floor((canvas.width - regionW) / 2);
+  const startY = Math.floor((canvas.height - regionH) / 2);
+  const endX = startX + regionW;
+  const endY = startY + regionH;
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
+
+  const step = Math.max(1, sampleStep);
+  for (let y = startY; y < endY; y += step) {
+    for (let x = startX; x < endX; x += step) {
+      const idx = (y * canvas.width + x) * 4 + 3;
+      if (data[idx] <= alphaThreshold) {
+        sumX += x;
+        sumY += y;
+        count += 1;
+      }
+    }
+  }
+
+  if (count === 0) {
+    return { width: canvas.width, height: canvas.height, point: null };
+  }
+
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    point: {
+      x: sumX / count,
+      y: sumY / count,
+    },
+  };
+};
+
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
