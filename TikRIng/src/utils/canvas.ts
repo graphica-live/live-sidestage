@@ -5,7 +5,8 @@ export const getCroppedAndMergedImg = async (
   imageSrc: string,
   position: { x: number; y: number },
   zoom: number,
-  frameSrc: string
+  frameSrc: string,
+  previewSize = 600
 ): Promise<string> => {
   const image = await createImage(imageSrc);
   const frameImage = await createImage(frameSrc);
@@ -17,15 +18,13 @@ export const getCroppedAndMergedImg = async (
     throw new Error('Canvas 2D context not available');
   }
 
-  // 最終的な出力サイズ（フレーム画像のサイズに合わせる）
-  canvas.width = frameImage.width;
-  canvas.height = frameImage.height;
-
-  // キャンバスの基準スケール（画面上の表示サイズと実際のキャンバスサイズの違いを吸収）
-  // ※ ここではブラウザ上のプレビューUIが正方形前提であると仮定し、フレーム幅を基準にする
-  // これにより、画面上で例えば x=50px 動かしたときのキャンバス上での実ピクセルを計算する
-  const displaySize = Math.min(window.innerWidth, 600); // 簡易的な画面表示サイズ（UI上の最大コンテナ幅程度）
-  const scaleRatio = canvas.width / displaySize;
+  // 保存結果は必ず正方形で出力する
+  const outputSize = Math.min(frameImage.width, frameImage.height);
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const frameCropX = (frameImage.width - outputSize) / 2;
+  const frameCropY = (frameImage.height - outputSize) / 2;
+  const scaleRatio = outputSize / Math.max(previewSize, 1);
 
   // 1. リスナーの画像の描画
   // 画像の元々の幅と高さ
@@ -34,7 +33,7 @@ export const getCroppedAndMergedImg = async (
 
   // 表示上の枠に対して「contain」で表示されていた場合の基礎スケール
   // 画像全体が枠に収まるように表示される際のスケール（CSSのobject-fit: contain相当）
-  const baseScale = Math.min(canvas.width / imgW, canvas.height / imgH);
+  const baseScale = Math.min(outputSize / imgW, outputSize / imgH);
 
   // 最終的な描画スケール（基礎スケール × ユーザーの指定ズーム）
   const finalScale = baseScale * zoom;
@@ -44,8 +43,8 @@ export const getCroppedAndMergedImg = async (
   const drawH = imgH * finalScale;
 
   // 中央揃えを基準とした座標
-  const centerX = (canvas.width - drawW) / 2;
-  const centerY = (canvas.height - drawH) / 2;
+  const centerX = (outputSize - drawW) / 2;
+  const centerY = (outputSize - drawH) / 2;
 
   // ユーザーがドラッグした移動量（UI上の移動をキャンバススケールに変換）
   const offsetX = position.x * scaleRatio;
@@ -58,8 +57,18 @@ export const getCroppedAndMergedImg = async (
     centerX + offsetX, centerY + offsetY, drawW, drawH // キャンバス上の位置とサイズ
   );
 
-  // 2. フレーム画像を上に重ねる
-  ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
+  // 2. フレーム画像を上に重ねる（中央正方形で切り出し）
+  ctx.drawImage(
+    frameImage,
+    frameCropX,
+    frameCropY,
+    outputSize,
+    outputSize,
+    0,
+    0,
+    outputSize,
+    outputSize
+  );
 
   // Base64 (データURL) として出力
   return new Promise((resolve, reject) => {

@@ -27,6 +27,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [downloadStartedNotice, setDownloadStartedNotice] = useState(false);
   const [downloadNoticeText, setDownloadNoticeText] = useState('保存を開始しました');
   const noticeTimerRef = useRef<number | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -171,7 +172,8 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       setDownloading(true);
       setDownloadStartedNotice(false);
       // Pass the customized parameters to our new canvas logic
-      const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl);
+      const previewSize = editorRef.current?.clientWidth ?? 600;
+      const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl, previewSize);
 
       const now = new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
@@ -325,6 +327,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         // 編集・クロップUI
         <div className="w-full flex flex-col items-center gap-6">
           <div
+            ref={editorRef}
             className="relative w-full aspect-square rounded-md overflow-hidden bg-tiktok-dark shadow-2xl cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
