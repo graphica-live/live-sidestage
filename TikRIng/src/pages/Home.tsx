@@ -12,6 +12,7 @@ export default function Home() {
   const [frameFileName, setFrameFileName] = useState('frame');
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [autoCenteredNotice, setAutoCenteredNotice] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -26,6 +27,7 @@ export default function Home() {
     if (!frameImage) return;
 
     let cancelled = false;
+    setAutoCenteredNotice(false);
 
     const applyAutoPosition = async () => {
       try {
@@ -45,6 +47,7 @@ export default function Home() {
         const dy = (hint.point.y - hint.height / 2) * baseScale;
 
         setPosition({ x: -dx, y: -dy });
+        setAutoCenteredNotice(true);
       } catch (err) {
         console.error('Auto-centering failed:', err);
       }
@@ -83,6 +86,7 @@ export default function Home() {
     setFrameFileName(file.name.replace(/\.[^/.]+$/, '') || 'frame');
     setPosition({ x: 0, y: 0 });
     setZoom(1);
+    setAutoCenteredNotice(false);
     setError(null);
     setShareUrl(null);
     setCopied(false);
@@ -166,6 +170,7 @@ export default function Home() {
     setFrameImage(null);
     setPosition({ x: 0, y: 0 });
     setZoom(1);
+    setAutoCenteredNotice(false);
   };
 
   const handleUpload = async () => {
@@ -312,6 +317,11 @@ export default function Home() {
             <p className="text-sm text-tiktok-lightgray">
               画像をドラッグして位置調整、ピンチ/ホイール/スライダーで拡大縮小できます。
             </p>
+            {autoCenteredNotice && (
+              <p className="text-xs text-tiktok-cyan/90 bg-tiktok-cyan/10 border border-tiktok-cyan/25 rounded-full px-3 py-1 inline-block">
+                透過領域の中心が中央に来るよう、初期位置を自動調整しました。
+              </p>
+            )}
           </div>
 
           <div
@@ -338,8 +348,15 @@ export default function Home() {
                 }}
               />
             </div>
+            <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+              <div className="w-[78%] h-[78%] rounded-full border-2 border-white/65 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+            </div>
             <div className="absolute inset-0 z-20 pointer-events-none border-2 border-tiktok-cyan/70 rounded-md" />
           </div>
+
+          <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
+            薄い円の内側が、TikTokでのプロフィール画像表示の目安です。
+          </p>
 
           <div className="w-full flex items-center gap-3 px-2">
             <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
