@@ -25,6 +25,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadStartedNotice, setDownloadStartedNotice] = useState(false);
+  const [downloadNoticeText, setDownloadNoticeText] = useState('保存を開始しました');
   const noticeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -176,15 +177,51 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       const pad = (n: number) => n.toString().padStart(2, '0');
       const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
       const randomSuffix = Math.random().toString(36).slice(2, 8);
+      const filename = `profile-with-frame-${timestamp}-${randomSuffix}.png`;
+      const outputBlob = await (await fetch(outputImage)).blob();
+      const outputFile = new File([outputBlob], filename, { type: 'image/png' });
+
+      const canShareFile =
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [outputFile] });
+
+      if (canShareFile) {
+        try {
+          await navigator.share({
+            files: [outputFile],
+            title: 'プロフィール画像',
+            text: '共有メニューで「画像を保存」を選択してください。',
+          });
+
+          setDownloadNoticeText('共有メニューを開きました。「画像を保存」を選ぶと写真アプリに保存できます');
+          setDownloadStartedNotice(true);
+          if (noticeTimerRef.current !== null) {
+            window.clearTimeout(noticeTimerRef.current);
+          }
+          noticeTimerRef.current = window.setTimeout(() => {
+            setDownloadStartedNotice(false);
+          }, 5000);
+          return;
+        } catch (shareErr) {
+          // ユーザーが共有をキャンセルした場合はエラー扱いにせず通常ダウンロードにフォールバック
+          if (!(shareErr instanceof DOMException && shareErr.name === 'AbortError')) {
+            console.error('Share failed, fallback to download:', shareErr);
+          }
+        }
+      }
 
       // ダウンロード処理
       const link = document.createElement('a');
-      link.download = `profile-with-frame-${timestamp}-${randomSuffix}.png`;
-      link.href = outputImage;
+      const blobUrl = URL.createObjectURL(outputBlob);
+      link.download = filename;
+      link.href = blobUrl;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
 
+      setDownloadNoticeText('保存を開始しました。見つからない場合は「ダウンロード」フォルダをご確認ください');
       setDownloadStartedNotice(true);
       if (noticeTimerRef.current !== null) {
         window.clearTimeout(noticeTimerRef.current);
@@ -311,7 +348,16 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               className="absolute inset-0 z-10 pointer-events-none bg-contain bg-center bg-no-repeat w-full h-full"
               style={{ backgroundImage: `url(${frameUrl})` }}
             />
+
+            {/* TikTok circular crop guide */}
+            <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+              <div className="w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-2 border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]" />
+            </div>
           </div>
+
+          <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
+            薄い円の内側が、TikTokプロフィール画像の表示目安です。
+          </p>
 
           {/* スライダー */}
           <div className="w-full flex items-center gap-4 px-4">
@@ -349,7 +395,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               ) : downloadStartedNotice ? (
                 <>
                   <Download className="w-4 h-4" />
-                  保存を開始しました
+                  保存ガイドを表示中
                 </>
               ) : (
                 <>
@@ -362,8 +408,8 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
           {downloadStartedNotice && !downloading && (
             <div className="w-full rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 p-3 text-center animate-in fade-in duration-300">
-              <p className="text-sm font-bold text-tiktok-cyan">保存を開始しました</p>
-              <p className="text-xs text-tiktok-lightgray mt-1">見つからない場合は「ダウンロード」フォルダをご確認ください</p>
+              <p className="text-sm font-bold text-tiktok-cyan">保存の案内</p>
+              <p className="text-xs text-tiktok-lightgray mt-1">{downloadNoticeText}</p>
             </div>
           )}
 
