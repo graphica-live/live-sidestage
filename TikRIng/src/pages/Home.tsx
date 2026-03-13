@@ -13,6 +13,8 @@ export default function Home() {
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [autoCenteredNotice, setAutoCenteredNotice] = useState(false);
+  const [centering, setCentering] = useState(false);
+  const [edgeFilledNotice, setEdgeFilledNotice] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -22,43 +24,6 @@ export default function Home() {
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialPinchDistance = useRef<number | null>(null);
   const initialPinchZoom = useRef<number>(1);
-
-  useEffect(() => {
-    if (!frameImage) return;
-
-    let cancelled = false;
-    setAutoCenteredNotice(false);
-
-    const applyAutoPosition = async () => {
-      try {
-        const hint = await getTransparentCentroidHint(frameImage);
-        if (cancelled || !hint.point) return;
-
-        let previewSize = editorRef.current?.clientWidth ?? 0;
-        for (let i = 0; i < 6 && previewSize <= 0; i += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 30));
-          previewSize = editorRef.current?.clientWidth ?? 0;
-        }
-
-        if (cancelled || previewSize <= 0) return;
-
-        const baseScale = Math.min(previewSize / hint.width, previewSize / hint.height);
-        const dx = (hint.point.x - hint.width / 2) * baseScale;
-        const dy = (hint.point.y - hint.height / 2) * baseScale;
-
-        setPosition({ x: -dx, y: -dy });
-        setAutoCenteredNotice(true);
-      } catch (err) {
-        console.error('Auto-centering failed:', err);
-      }
-    };
-
-    void applyAutoPosition();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [frameImage]);
 
   useEffect(() => {
     return () => {
@@ -87,6 +52,7 @@ export default function Home() {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setAutoCenteredNotice(false);
+    setEdgeFilledNotice(false);
     setError(null);
     setShareUrl(null);
     setCopied(false);
@@ -171,6 +137,43 @@ export default function Home() {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setAutoCenteredNotice(false);
+    setEdgeFilledNotice(false);
+  };
+
+  const handleAlignTransparentCenter = async () => {
+    if (!frameImage || centering) return;
+
+    setCentering(true);
+    setAutoCenteredNotice(false);
+
+    try {
+      const hint = await getTransparentCentroidHint(frameImage);
+      if (!hint.point) {
+        setError('中央付近に透過領域が見つかりませんでした。手動で位置を調整してください。');
+        return;
+      }
+
+      let previewSize = editorRef.current?.clientWidth ?? 0;
+      for (let i = 0; i < 6 && previewSize <= 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        previewSize = editorRef.current?.clientWidth ?? 0;
+      }
+
+      if (previewSize <= 0) return;
+
+      const baseScale = Math.min(previewSize / hint.width, previewSize / hint.height);
+      const dx = (hint.point.x - hint.width / 2) * baseScale;
+      const dy = (hint.point.y - hint.height / 2) * baseScale;
+
+      setPosition({ x: -dx, y: -dy });
+      setAutoCenteredNotice(true);
+      setError(null);
+    } catch (err) {
+      console.error('Manual centering failed:', err);
+      setError('透過領域の位置合わせに失敗しました。もう一度お試しください。');
+    } finally {
+      setCentering(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -180,10 +183,12 @@ export default function Home() {
     setError(null);
     setShareUrl(null);
     setCopied(false);
+    setEdgeFilledNotice(false);
 
     try {
       const previewSize = editorRef.current?.clientWidth ?? 1024;
-      const squareBlob = await getSquareFrameBlob(frameImage, position, zoom, 1024, previewSize);
+      const { blob: squareBlob, edgeFilled } = await getSquareFrameBlob(frameImage, position, zoom, 1024, previewSize);
+      setEdgeFilledNotice(edgeFilled);
 
       const squareBlobUrl = URL.createObjectURL(squareBlob);
       try {
@@ -319,7 +324,12 @@ export default function Home() {
             </p>
             {autoCenteredNotice && (
               <p className="text-xs text-tiktok-cyan/90 bg-tiktok-cyan/10 border border-tiktok-cyan/25 rounded-full px-3 py-1 inline-block">
-                透過領域の中心が中央に来るよう、初期位置を自動調整しました。
+                透過領域の中心が中央に来るよう、位置を自動調整しました。
+              </p>
+            )}
+            {edgeFilledNotice && (
+              <p className="text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 rounded-full px-3 py-1 inline-block">
+                フレーム端の透過部分を、平均色で自動補正しました。
               </p>
             )}
           </div>
@@ -373,6 +383,14 @@ export default function Home() {
             />
             <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
           </div>
+
+          <button
+            onClick={handleAlignTransparentCenter}
+            disabled={centering}
+            className="w-full py-2.5 px-4 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 hover:bg-tiktok-cyan/15 text-tiktok-cyan font-bold transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {centering ? '透過中心に合わせています...' : '透過領域の中心を中央に合わせる'}
+          </button>
 
           <div className="flex w-full gap-3 mt-1">
             <button

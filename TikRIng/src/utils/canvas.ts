@@ -92,7 +92,7 @@ export const getSquareFrameBlob = async (
   zoom: number,
   outputSize = 1024,
   previewSize = outputSize
-): Promise<Blob> => {
+): Promise<{ blob: Blob; edgeFilled: boolean }> => {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -129,16 +129,77 @@ export const getSquareFrameBlob = async (
     drawH
   );
 
+  const edgeFilled = fillTransparentEdgesWithAverageOpaqueColor(ctx, outputSize, 10);
+
   return new Promise((resolve, reject) => {
     canvas.toBlob((file) => {
       if (file) {
-        resolve(file);
+        resolve({ blob: file, edgeFilled });
       } else {
         reject(new Error('Canvas to blob failed'));
       }
     }, 'image/png');
   });
 };
+
+function fillTransparentEdgesWithAverageOpaqueColor(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  alphaThreshold: number
+): boolean {
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const { data } = imageData;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > alphaThreshold) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      count += 1;
+    }
+  }
+
+  if (count === 0) {
+    return false;
+  }
+
+  const avgR = Math.round(r / count);
+  const avgG = Math.round(g / count);
+  const avgB = Math.round(b / count);
+
+  let changed = false;
+  const paintIfTransparent = (x: number, y: number) => {
+    const idx = (y * size + x) * 4;
+    if (data[idx + 3] <= alphaThreshold) {
+      data[idx] = avgR;
+      data[idx + 1] = avgG;
+      data[idx + 2] = avgB;
+      data[idx + 3] = 255;
+      changed = true;
+    }
+  };
+
+  for (let x = 0; x < size; x += 1) {
+    paintIfTransparent(x, 0);
+    paintIfTransparent(x, size - 1);
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    paintIfTransparent(0, y);
+    paintIfTransparent(size - 1, y);
+  }
+
+  if (changed) {
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  return changed;
+}
 
 export const hasTransparentPixelsInCenter = async (
   imageSrc: string,
