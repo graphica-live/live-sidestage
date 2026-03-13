@@ -24,6 +24,16 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadStartedNotice, setDownloadStartedNotice] = useState(false);
+  const noticeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current !== null) {
+        window.clearTimeout(noticeTimerRef.current);
+      }
+    };
+  }, []);
 
   // 初回マウント時にR2からフレーム画像を取得
   useEffect(() => {
@@ -158,6 +168,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
     try {
       setDownloading(true);
+      setDownloadStartedNotice(false);
       // Pass the customized parameters to our new canvas logic
       const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl);
 
@@ -173,6 +184,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      setDownloadStartedNotice(true);
+      if (noticeTimerRef.current !== null) {
+        window.clearTimeout(noticeTimerRef.current);
+      }
+      noticeTimerRef.current = window.setTimeout(() => {
+        setDownloadStartedNotice(false);
+      }, 4000);
     } catch (err) {
       console.error(err);
       alert('画像の合成に失敗しました。');
@@ -229,7 +248,16 @@ export default function FrameEditor({ id }: FrameEditorProps) {
                 className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
                 style={{ backgroundImage: `url(${frameUrl})` }}
               />
+              <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+                <div className="w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-2 border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]" />
+              </div>
             </div>
+          )}
+
+          {frameUrl && (
+            <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
+              薄い円の内側が、TikTokプロフィール画像の表示目安です。
+            </p>
           )}
 
           {/* 画像アップロードUI */}
@@ -316,7 +344,12 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               {downloading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  合成中...
+                  画像を保存しています...
+                </>
+              ) : downloadStartedNotice ? (
+                <>
+                  <Download className="w-4 h-4" />
+                  保存を開始しました
                 </>
               ) : (
                 <>
@@ -326,6 +359,23 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               )}
             </button>
           </div>
+
+          {downloadStartedNotice && !downloading && (
+            <div className="w-full rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 p-3 text-center animate-in fade-in duration-300">
+              <p className="text-sm font-bold text-tiktok-cyan">保存を開始しました</p>
+              <p className="text-xs text-tiktok-lightgray mt-1">見つからない場合は「ダウンロード」フォルダをご確認ください</p>
+            </div>
+          )}
+
+          {downloading && (
+            <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1px] flex items-center justify-center px-6">
+              <div className="w-full max-w-sm rounded-xl border border-white/15 bg-tiktok-dark p-6 text-center shadow-2xl">
+                <Loader2 className="w-8 h-8 animate-spin text-tiktok-cyan mx-auto mb-3" />
+                <p className="text-base font-bold text-white">画像を保存しています...</p>
+                <p className="text-xs text-tiktok-lightgray mt-2">このまま少しお待ちください</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
