@@ -180,8 +180,13 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       const filename = `profile-with-frame-${timestamp}-${randomSuffix}.png`;
       const outputBlob = await (await fetch(outputImage)).blob();
       const outputFile = new File([outputBlob], filename, { type: 'image/png' });
+      const ua = navigator.userAgent;
+      const isAndroid = /Android/i.test(ua);
+      const isIOSLike = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
       const canShareFile =
+        isIOSLike &&
+        !isAndroid &&
         typeof navigator.share === 'function' &&
         typeof navigator.canShare === 'function' &&
         navigator.canShare({ files: [outputFile] });
