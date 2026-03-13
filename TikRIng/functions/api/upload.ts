@@ -2,6 +2,20 @@ export interface Env {
   FRAMES_BUCKET: R2Bucket;
 }
 
+function isPngSignature(bytes: Uint8Array): boolean {
+  if (bytes.length < 8) return false;
+  return (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  );
+}
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const request = context.request;
@@ -15,9 +29,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
-    // ファイル形式の簡易検証
-    if (!file.type.startsWith('image/')) {
-      return new Response(JSON.stringify({ error: 'Invalid file type' }), {
+    // PNGファイルのみ許可
+    if (file.type !== 'image/png') {
+      return new Response(JSON.stringify({ error: 'Only PNG files are allowed' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -32,6 +46,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
+    const arrayBuffer = await file.arrayBuffer();
+    if (!isPngSignature(new Uint8Array(arrayBuffer))) {
+      return new Response(JSON.stringify({ error: 'Invalid PNG file' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // UUID (v4相当) を生成
     const uuid = crypto.randomUUID();
 
@@ -40,9 +62,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const expiresAt = (Date.now() + ninetyDaysMs).toString();
 
     // R2に保存 (ファイル名をUUIDにする)
-    const arrayBuffer = await file.arrayBuffer();
     await context.env.FRAMES_BUCKET.put(uuid, arrayBuffer, {
-      httpMetadata: { contentType: file.type },
+      httpMetadata: { contentType: 'image/png' },
       customMetadata: { expiresAt }, // 削除チェック用のメタデータを追加
     });
 

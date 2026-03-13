@@ -77,6 +77,83 @@ export const getCroppedAndMergedImg = async (
   });
 };
 
+export const getSquareFrameBlob = async (
+  imageSrc: string,
+  position: { x: number; y: number },
+  zoom: number,
+  outputSize = 1024,
+  previewSize = outputSize
+): Promise<Blob> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  const imgW = image.width;
+  const imgH = image.height;
+  const baseScale = Math.min(outputSize / imgW, outputSize / imgH);
+  const finalScale = baseScale * zoom;
+  const drawW = imgW * finalScale;
+  const drawH = imgH * finalScale;
+  const centerX = (outputSize - drawW) / 2;
+  const centerY = (outputSize - drawH) / 2;
+  const scaleRatio = outputSize / Math.max(previewSize, 1);
+  const offsetX = position.x * scaleRatio;
+  const offsetY = position.y * scaleRatio;
+
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.drawImage(
+    image,
+    0,
+    0,
+    imgW,
+    imgH,
+    centerX + offsetX,
+    centerY + offsetY,
+    drawW,
+    drawH
+  );
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((file) => {
+      if (file) {
+        resolve(file);
+      } else {
+        reject(new Error('Canvas to blob failed'));
+      }
+    }, 'image/png');
+  });
+};
+
+export const hasTransparentPixelsInCenter = async (
+  imageSrc: string,
+  alphaThreshold = 10
+): Promise<boolean> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = image.width;
+  canvas.height = image.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, image.width, image.height);
+
+  const centerX = Math.floor(canvas.width / 2);
+  const centerY = Math.floor(canvas.height / 2);
+  const data = ctx.getImageData(centerX, centerY, 1, 1).data;
+  return data[3] <= alphaThreshold;
+};
+
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();

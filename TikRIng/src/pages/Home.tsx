@@ -1,26 +1,171 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { UploadCloud, Link as LinkIcon, Check, Loader2 } from 'lucide-react';
+import { UploadCloud, Link as LinkIcon, Check, Loader2, Move } from 'lucide-react';
+import { getSquareFrameBlob, hasTransparentPixelsInCenter } from '../utils/canvas';
 
 export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [frameImage, setFrameImage] = useState<string | null>(null);
+  const [frameFileName, setFrameFileName] = useState('frame');
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const isDragging = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const startPosition = useRef({ x: 0, y: 0 });
+  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialPinchZoom = useRef<number>(1);
+
+  useEffect(() => {
+    return () => {
+      if (frameImage) {
+        URL.revokeObjectURL(frameImage);
+      }
+    };
+  }, [frameImage]);
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
+
+    const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+    if (!isPng) {
+      setError('PNGファイルのみアップロードできます。');
+      return;
+    }
+
+    if (frameImage) {
+      URL.revokeObjectURL(frameImage);
+    }
+
+    setFrameImage(URL.createObjectURL(file));
+    setFrameFileName(file.name.replace(/\.[^/.]+$/, '') || 'frame');
+    setPosition({ x: 0, y: 0 });
+    setZoom(1);
+    setError(null);
+    setShareUrl(null);
+    setCopied(false);
+  }, [frameImage]);
+
+  const onDropRejected = useCallback((fileRejections: FileRejection[]) => {
+    const rejection = fileRejections[0];
+    if (rejection.errors[0]?.code === 'file-too-large') {
+      setError('ファイルサイズが大きすぎます。5MB以下の画像を選択してください。');
+    } else if (rejection.errors[0]?.code === 'file-invalid-type') {
+      setError('PNGファイルのみアップロードできます。');
+    } else {
+      setError('無効なファイルです。PNG画像を選択してください。');
+    }
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 1) {
+      isDragging.current = true;
+      dragStartPos.current = { x: e.clientX, y: e.clientY };
+      startPosition.current = { ...position };
+    } else if (activePointers.current.size === 2) {
+      isDragging.current = false;
+      const pts = Array.from(activePointers.current.values());
+      initialPinchDistance.current = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      initialPinchZoom.current = zoom;
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (activePointers.current.size === 1 && isDragging.current) {
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      setPosition({
+        x: startPosition.current.x + dx,
+        y: startPosition.current.y + dy,
+      });
+    } else if (activePointers.current.size === 2 && initialPinchDistance.current !== null) {
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const zoomRatio = dist / initialPinchDistance.current;
+      setZoom(Math.max(0.3, Math.min(3, initialPinchZoom.current * zoomRatio)));
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    activePointers.current.delete(e.pointerId);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+
+    if (activePointers.current.size < 2) {
+      initialPinchDistance.current = null;
+    }
+
+    if (activePointers.current.size === 1) {
+      const pts = Array.from(activePointers.current.values());
+      isDragging.current = true;
+      dragStartPos.current = { x: pts[0].x, y: pts[0].y };
+      startPosition.current = { ...position };
+    } else if (activePointers.current.size === 0) {
+      isDragging.current = false;
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const zoomFactor = -e.deltaY * 0.002;
+    setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
+  };
+
+  const resetFrameEditor = () => {
+    if (frameImage) {
+      URL.revokeObjectURL(frameImage);
+    }
+    setFrameImage(null);
+    setPosition({ x: 0, y: 0 });
+    setZoom(1);
+  };
+
+  const handleUpload = async () => {
+    if (!frameImage) return;
 
     setUploading(true);
     setError(null);
     setShareUrl(null);
     setCopied(false);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
+      const previewSize = editorRef.current?.clientWidth ?? 1024;
+      const squareBlob = await getSquareFrameBlob(frameImage, position, zoom, 1024, previewSize);
+
+      const squareBlobUrl = URL.createObjectURL(squareBlob);
+      try {
+        const hasTransparentCenter = await hasTransparentPixelsInCenter(squareBlobUrl);
+        if (!hasTransparentCenter) {
+          setError('中央に透過領域がありません。中央が透過されるように画像位置を調整してください。');
+          return;
+        }
+      } finally {
+        URL.revokeObjectURL(squareBlobUrl);
+      }
+
+      const MAX_SIZE = 5 * 1024 * 1024;
+      if (squareBlob.size > MAX_SIZE) {
+        setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
+        return;
+      }
+
+      const uploadFile = new File([squareBlob], `${frameFileName}.png`, { type: 'image/png' });
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
@@ -31,10 +176,6 @@ export default function Home() {
       }
 
       const data = await response.json();
-
-      // 生成されたIDを使って、アプリ内のリスナー用共有URLを作成する
-      // クエリパラメータを使用して /?f={id} の形にする (OGP対応のため)
-      // さらにLINE内ブラウザでのダウンロード不具合を回避するため、外部ブラウザ起動フラグを付与する
       const url = `${window.location.origin}${window.location.pathname}?f=${data.id}&openExternalBrowser=1`;
       setShareUrl(url);
     } catch (err) {
@@ -43,22 +184,13 @@ export default function Home() {
     } finally {
       setUploading(false);
     }
-  }, []);
-
-  const onDropRejected = useCallback((fileRejections: FileRejection[]) => {
-    const rejection = fileRejections[0];
-    if (rejection.errors[0]?.code === 'file-too-large') {
-      setError('ファイルサイズが大きすぎます。5MB以下の画像を選択してください。');
-    } else {
-      setError('無効なファイルです。PNG等の画像を選択してください。');
-    }
-  }, []);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     onDropRejected,
     accept: {
-      'image/*': ['.png', '.jpg', '.jpeg', '.webp']
+      'image/png': ['.png']
     },
     maxSize: 5 * 1024 * 1024, // 5MB Limit
     maxFiles: 1,
@@ -107,7 +239,7 @@ export default function Home() {
       )}
 
       {/* アップロード前 or アップロード中 (URL未発行時) */}
-      {!shareUrl ? (
+      {!shareUrl && !frameImage ? (
         <div
           {...getRootProps()}
           className={`w-full aspect-square sm:aspect-video rounded-md border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative overflow-hidden group
@@ -130,12 +262,91 @@ export default function Home() {
               <div>
                 <p className="text-lg font-bold mb-1 group-hover:text-tiktok-cyan transition-colors">フレーム画像をドロップ</p>
                 <p className="text-sm text-tiktok-lightgray text-balance">
-                  またはクリックしてファイルを選択<br />
-                  <span className="text-xs opacity-70 mt-2 block">(PNG形式推奨: 中央が透過されていること)</span>
+                  またはクリックしてファイルを選択
+                  <br />
+                  <span className="text-xs opacity-70 mt-2 block">(PNGのみ / 正方形でなくてもOK: 次の画面で位置と拡大率を調整)</span>
                 </p>
               </div>
             </div>
           )}
+        </div>
+      ) : !shareUrl && frameImage ? (
+        <div className="w-full flex flex-col items-center gap-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-bold">フレーム位置を調整</h2>
+            <p className="text-sm text-tiktok-lightgray">
+              画像をドラッグして位置調整、ピンチ/ホイール/スライダーで拡大縮小できます。
+            </p>
+          </div>
+
+          <div
+            ref={editorRef}
+            className="relative w-full aspect-square rounded-md overflow-hidden bg-tiktok-dark shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onWheel={handleWheel}
+          >
+            <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
+            <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
+              <img
+                src={frameImage}
+                alt="Frame preview"
+                draggable={false}
+                style={{
+                  transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                }}
+              />
+            </div>
+            <div className="absolute inset-0 z-20 pointer-events-none border-2 border-tiktok-cyan/70 rounded-md" />
+          </div>
+
+          <div className="w-full flex items-center gap-3 px-2">
+            <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
+            <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
+            <input
+              type="range"
+              value={zoom}
+              min={0.3}
+              max={3}
+              step={0.1}
+              aria-labelledby="FrameZoom"
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
+            />
+            <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
+          </div>
+
+          <div className="flex w-full gap-3 mt-1">
+            <button
+              onClick={resetFrameEditor}
+              className="flex-1 py-3.5 px-4 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 font-bold transition-colors text-sm"
+            >
+              画像を選び直す
+            </button>
+            <button
+              onClick={handleUpload}
+              disabled={uploading}
+              className="flex-1 py-3.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  アップロード中...
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="w-4 h-4" />
+                  この内容でアップロード
+                </>
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         /* 共有URL表示 (アップロード完了後) */
@@ -156,7 +367,7 @@ export default function Home() {
               <input
                 type="text"
                 readOnly
-                value={shareUrl}
+                value={shareUrl ?? ''}
                 className="flex-1 bg-transparent border-none outline-none text-sm text-white truncate"
               />
               <button
@@ -180,7 +391,12 @@ export default function Home() {
           </div>
 
           <button
-            onClick={() => setShareUrl(null)}
+            onClick={() => {
+              setShareUrl(null);
+              setCopied(false);
+              setError(null);
+              resetFrameEditor();
+            }}
             className="mt-8 text-sm text-tiktok-lightgray hover:text-white underline transition-colors"
           >
             別のフレームを新しくアップロードする
