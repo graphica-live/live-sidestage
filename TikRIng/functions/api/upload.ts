@@ -1,4 +1,4 @@
-import { getSession } from '../../_session';
+import { getSession } from '../_session';
 
 export interface Env {
   FRAMES_BUCKET: R2Bucket;
