@@ -9,8 +9,6 @@ interface FrameEditorProps {
 
 export default function FrameEditor({ id }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<number | null>(null);
-  const [hasExpiresAtHeader, setHasExpiresAtHeader] = useState(false);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
@@ -60,20 +58,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             throw new Error('このURLの有効期限（90日間）が切れました。再度新しいURLを発行してもらってください。');
           }
           throw new Error('フレームの取得に失敗しました。');
-        }
-
-        const expiresHeader = response.headers.get('x-frame-expires-at');
-        if (expiresHeader !== null) {
-          setHasExpiresAtHeader(true);
-          if (expiresHeader === 'none' || expiresHeader.trim() === '') {
-            setExpiresAt(null);
-          } else {
-            const parsed = Number(expiresHeader);
-            setExpiresAt(Number.isFinite(parsed) ? parsed : null);
-          }
-        } else {
-          setHasExpiresAtHeader(false);
-          setExpiresAt(null);
         }
 
         const blob = await response.blob();
