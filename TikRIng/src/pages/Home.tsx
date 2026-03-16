@@ -9,6 +9,7 @@ interface HomeProps {
 
 export default function Home({ user }: HomeProps) {
   const [uploading, setUploading] = useState(false);
+  console.log('Home component rendered with user:', user);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
