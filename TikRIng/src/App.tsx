@@ -11,8 +11,12 @@ function App() {
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then(r => r.json())
-      .then((data: any) => setUser(data.user));
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to fetch user');
+        return r.json();
+      })
+      .then((data: any) => setUser(data.user))
+      .catch(() => setUser(null));
   }, []);
 
   useEffect(() => {
