@@ -49,6 +49,7 @@ export default function Home({ user }: HomeProps) {
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+  const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -493,15 +494,37 @@ export default function Home({ user }: HomeProps) {
           </div>
         </div>
       ) : (
-        <div className="w-full flex flex-col gap-2 mb-6">
-          <p className="text-xs text-tiktok-lightgray text-center">ログインするとフレームを管理できます</p>
+        <div className="w-full flex flex-col gap-3 mb-6">
           <p className="text-xs text-tiktok-lightgray/80 text-center">ログインなしでも使えます</p>
-          <a href="/api/auth/google" className="w-full py-2.5 rounded-md bg-white text-black font-bold text-sm text-center hover:bg-white/90 transition-colors">
-            Googleでログイン
-          </a>
-          <a href="/api/auth/line" className="w-full py-2.5 rounded-md bg-[#06C755] text-white font-bold text-sm text-center hover:bg-[#05B34C] transition-colors">
-            LINEでログイン
-          </a>
+          <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setLoginOptionsOpen((v) => !v)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-tiktok-gray/30 transition-colors"
+            >
+              <span className="text-xs text-tiktok-lightgray">ログインするとフレームを管理できます（任意）</span>
+              <ChevronDown
+                className={`w-5 h-5 text-tiktok-lightgray transition-transform ${loginOptionsOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {loginOptionsOpen ? (
+              <div className="px-4 pb-4 pt-1 flex flex-col gap-2">
+                <a
+                  href="/api/auth/google"
+                  className="w-full py-2.5 rounded-md bg-white text-black font-bold text-sm text-center hover:bg-white/90 transition-colors"
+                >
+                  Googleでログイン
+                </a>
+                <a
+                  href="/api/auth/line"
+                  className="w-full py-2.5 rounded-md bg-[#06C755] text-white font-bold text-sm text-center hover:bg-[#05B34C] transition-colors"
+                >
+                  LINEでログイン
+                </a>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
 
