@@ -52,8 +52,13 @@ function App() {
   useEffect(() => {
     // A案: ログイン後の通常リロードでも pro 状態を自動同期する
     if (!user) return;
-    if (user.plan === 'pro') return;
     if (syncInFlightRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const isCheckoutSuccess = params.get('checkout') === 'success';
+
+    // 通常時は「現在Proの人」だけ同期して、返金/解約後のダウングレードを拾う
+    if (!isCheckoutSuccess && user.plan !== 'pro') return;
 
     const key = `plan_sync_attempted:${user.id}`;
     try {

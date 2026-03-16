@@ -38,11 +38,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     limit: 10,
   });
 
-  const isPro = subs.data.some((s) => {
-    // active/trialing は pro 扱い。past_due は運用次第だが、
-    // ここでは支払い遅延でも即落とさない（サポート対応しやすい）
-    return s.status === 'active' || s.status === 'trialing' || s.status === 'past_due';
-  });
+  const isPro = subs.data.some((s) => s.status === 'active' || s.status === 'trialing');
 
   const plan = isPro ? 'pro' : 'free';
   await ctx.env.DB.prepare('UPDATE users SET plan = ? WHERE id = ?').bind(plan, user.id).run();

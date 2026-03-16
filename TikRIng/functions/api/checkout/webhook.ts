@@ -29,6 +29,23 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     }
   }
 
+  if (event.type === 'customer.subscription.updated') {
+    try {
+      const subscription = event.data.object as Stripe.Subscription;
+      const customerId =
+        typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
+
+      // statusがactive/trialing以外なら無料へ（cancel_at_period_end=trueでもstatusがactiveの間はPro継続）
+      const isPro = subscription.status === 'active' || subscription.status === 'trialing';
+      await ctx.env.DB.prepare(
+        'UPDATE users SET plan = ? WHERE stripe_customer_id = ?'
+      ).bind(isPro ? 'pro' : 'free', customerId).run();
+    } catch (err) {
+      console.error('Webhook handler error (customer.subscription.updated):', err);
+      return new Response('Internal Server Error', { status: 500 });
+    }
+  }
+
   if (event.type === 'customer.subscription.deleted') {
     try {
       const subscription = event.data.object as Stripe.Subscription;
