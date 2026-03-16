@@ -5,8 +5,8 @@ compatibility_date = "2024-03-09"
 [vars]
 # reCAPTCHA v3 secret key (set real value via `wrangler pages secret put` or Pages dashboard)
 RECAPTCHA_SECRET_KEY = ""
-STRIPE_MONTHLY_PRICE_ID = ""
-STRIPE_YEARLY_PRICE_ID = ""
+STRIPE_MONTHLY_PRICE_ID = "price_1TBez637rxadUOsMcY8RIg1j"
+STRIPE_YEARLY_PRICE_ID = "price_1TBf1V37rxadUOsMQWmQ1qr2"
 
 [[r2_buckets]]
 binding = "FRAMES_BUCKET"
