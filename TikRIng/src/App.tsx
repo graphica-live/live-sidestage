@@ -11,8 +11,8 @@ function App() {
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then(r => r.json<{ user: typeof user }>())
-      .then(data => setUser(data.user));
+      .then(r => r.json())
+      .then((data: any) => setUser(data.user));
   }, []);
 
   useEffect(() => {
