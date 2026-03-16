@@ -134,6 +134,18 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  const handleEditNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, frameId: string) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void saveEditName(frameId);
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelEditName();
+    }
+  };
+
   const handleCancelSubscription = async () => {
     if (canceling) return;
     setCanceling(true);
@@ -256,7 +268,7 @@ export default function Dashboard({ user }: DashboardProps) {
             return (
               <div
                 key={frame.id}
-                className="w-full flex items-center gap-3 px-4 py-3 border-b border-tiktok-gray last:border-b-0"
+                className={`w-full px-4 py-3 border-b border-tiktok-gray last:border-b-0 ${editingId === frame.id ? 'flex flex-wrap items-start gap-3' : 'flex items-center gap-3'}`}
               >
                 <img
                   src={`/api/frames/${frame.id}`}
@@ -265,33 +277,37 @@ export default function Dashboard({ user }: DashboardProps) {
                   loading="lazy"
                 />
 
-                <div className="flex-1 min-w-0">
+                <div className={`min-w-0 ${editingId === frame.id ? 'w-full sm:flex-1' : 'flex-1'}`}>
                   {editingId === frame.id ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="flex-1 min-w-0 px-2 py-1 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+                        onKeyDown={(event) => handleEditNameKeyDown(event, frame.id)}
+                        className="w-full min-w-0 px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
                         aria-label="frame name"
                         maxLength={80}
                         disabled={savingName}
+                        autoFocus
                       />
-                      <button
-                        type="button"
-                        onClick={() => saveEditName(frame.id)}
-                        disabled={savingName}
-                        className="shrink-0 px-3 py-1.5 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        保存
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEditName}
-                        disabled={savingName}
-                        className="shrink-0 px-3 py-1.5 rounded-md border border-tiktok-gray text-tiktok-lightgray hover:text-white hover:bg-tiktok-gray/30 font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        キャンセル
-                      </button>
+                      <div className="flex gap-2 sm:shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => saveEditName(frame.id)}
+                          disabled={savingName}
+                          className="flex-1 sm:flex-none px-3 py-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditName}
+                          disabled={savingName}
+                          className="flex-1 sm:flex-none px-3 py-2 rounded-md border border-tiktok-gray text-tiktok-lightgray hover:text-white hover:bg-tiktok-gray/30 font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          キャンセル
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 min-w-0">
@@ -311,13 +327,13 @@ export default function Dashboard({ user }: DashboardProps) {
                   )}
                 </div>
 
-                <div className={`text-xs font-bold shrink-0 ${remainingClass}`}>{remainingText}</div>
+                <div className={`text-xs font-bold shrink-0 ${editingId === frame.id ? 'ml-[3.75rem] sm:ml-0' : ''} ${remainingClass}`}>{remainingText}</div>
 
                 <button
                   type="button"
                   onClick={() => handleCopy(frame)}
                   disabled={!frame.shareUrl}
-                  className="shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${editingId === frame.id ? 'ml-auto' : ''}`}
                   aria-label="copy url"
                 >
                   {copiedId === frame.id ? (
