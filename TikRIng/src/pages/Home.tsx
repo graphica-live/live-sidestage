@@ -520,6 +520,7 @@ export default function Home({ user }: HomeProps) {
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-10 text-sm sm:text-base">
         <span>配布したい透過フレームをアップロードして、</span>
         <span>リスナー用の着せ替えURLを発行しましょう。</span>
+        <span className="text-xs text-tiktok-lightgray/80 mt-2">ログインなしでも使えます</span>
       </p>
 
       {/* エラー表示 */}
