@@ -37,6 +37,22 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
 
       // statusがactive/trialing以外なら無料へ（cancel_at_period_end=trueでもstatusがactiveの間はPro継続）
       const isPro = subscription.status === 'active' || subscription.status === 'trialing';
+
+      // Pro→無料になったら、無期限(expires_at IS NULL)のフレームを「現在+90日」に切り替える
+      if (!isPro) {
+        const userRow = await ctx.env.DB.prepare(
+          'SELECT id FROM users WHERE stripe_customer_id = ?'
+        ).bind(customerId).first<{ id: string }>();
+
+        if (userRow?.id) {
+          const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+          const newExpiresAt = Date.now() + ninetyDaysMs;
+          await ctx.env.DB.prepare(
+            'UPDATE frames SET expires_at = ? WHERE owner_id = ? AND expires_at IS NULL'
+          ).bind(newExpiresAt, userRow.id).run();
+        }
+      }
+
       await ctx.env.DB.prepare(
         'UPDATE users SET plan = ? WHERE stripe_customer_id = ?'
       ).bind(isPro ? 'pro' : 'free', customerId).run();

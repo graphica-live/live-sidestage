@@ -12,8 +12,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   const user = await ctx.env.DB.prepare(
-    'SELECT id, stripe_customer_id FROM users WHERE id = ?'
-  ).bind(session.userId).first<{ id: string; stripe_customer_id: string | null }>();
+    'SELECT id, plan, stripe_customer_id FROM users WHERE id = ?'
+  ).bind(session.userId).first<{ id: string; plan: string; stripe_customer_id: string | null }>();
 
   if (!user) {
     return new Response(JSON.stringify({ error: 'Not Found' }), {
@@ -41,6 +41,16 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const isPro = subs.data.some((s) => s.status === 'active' || s.status === 'trialing');
 
   const plan = isPro ? 'pro' : 'free';
+
+  // Pro→無料になったら、無期限(expires_at IS NULL)のフレームを「現在+90日」に切り替える
+  if (plan === 'free') {
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const newExpiresAt = Date.now() + ninetyDaysMs;
+    await ctx.env.DB.prepare(
+      'UPDATE frames SET expires_at = ? WHERE owner_id = ? AND expires_at IS NULL'
+    ).bind(newExpiresAt, user.id).run();
+  }
+
   await ctx.env.DB.prepare('UPDATE users SET plan = ? WHERE id = ?').bind(plan, user.id).run();
 
   return new Response(JSON.stringify({ plan }), {
