@@ -52,6 +52,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // デモ用: 1年間キャッシュ
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
+    // リスナー画面表示用: 有効期限(Unix ms)をヘッダーで返す（無期限は 'none'）
+    headers.set('X-Frame-Expires-At', customMetadata?.expiresAt ? String(customMetadata.expiresAt) : 'none');
+
     // 他のドメインからの利用も許可する場合 (Canvasのtainted対策)
     headers.set('Access-Control-Allow-Origin', '*');
 
