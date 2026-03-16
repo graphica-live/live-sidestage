@@ -24,6 +24,28 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       id = shareRow.frame_id;
     }
 
+    // DBから有効期限をチェック（expires_at を正とする）
+    const frameRow = await context.env.DB.prepare(
+      'SELECT id, expires_at FROM frames WHERE id = ?'
+    )
+      .bind(id)
+      .first<{ id: string; expires_at: number | null }>();
+
+    const expiresAtMs = frameRow?.expires_at ?? null;
+
+    if (expiresAtMs !== null && Date.now() > expiresAtMs) {
+      // 期限切れ: R2から物理削除 + DBも掃除（非同期で実行）
+      context.waitUntil(
+        Promise.all([
+          context.env.FRAMES_BUCKET.delete(id),
+          context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(id).run(),
+          context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(id).run(),
+        ])
+      );
+
+      return new Response('URL has expired', { status: 410 });
+    }
+
     // R2からオブジェクトを取得
     const object = await context.env.FRAMES_BUCKET.get(id);
 
@@ -31,19 +53,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       return new Response('Image Not Found in Bucket', { status: 404 });
     }
 
-    // メタデータから有効期限をチェック
     const { customMetadata } = object;
-    if (customMetadata && customMetadata.expiresAt) {
-      const expiresAt = parseInt(customMetadata.expiresAt, 10);
-
-      // 現在時刻が有効期限を過ぎている場合
-      if (Date.now() > expiresAt) {
-        // R2から物理削除（非同期で実行させてレスポンスをブロックしない）
-        context.waitUntil(context.env.FRAMES_BUCKET.delete(id));
-
-        return new Response('URL has expired', { status: 410 }); // 410 Gone (消滅した)
-      }
-    }
 
     // キャッシュやCORSヘッダーを設定してレスポンスを返す
     const headers = new Headers();
@@ -53,7 +63,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
     // リスナー画面表示用: 有効期限(Unix ms)をヘッダーで返す（無期限は 'none'）
-    headers.set('X-Frame-Expires-At', customMetadata?.expiresAt ? String(customMetadata.expiresAt) : 'none');
+    headers.set(
+      'X-Frame-Expires-At',
+      expiresAtMs !== null ? String(expiresAtMs) : customMetadata?.expiresAt ? String(customMetadata.expiresAt) : 'none'
+    );
 
     // 他のドメインからの利用も許可する場合 (Canvasのtainted対策)
     headers.set('Access-Control-Allow-Origin', '*');

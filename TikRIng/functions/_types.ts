@@ -10,6 +10,8 @@ export interface Env {
   STRIPE_PRICE_ID?: string;
   // Optional: Stripe Billing Portal configuration id
   STRIPE_BILLING_PORTAL_CONFIGURATION_ID?: string;
+  // Optional: token for admin cleanup endpoint
+  CLEANUP_TOKEN?: string;
   RECAPTCHA_SECRET_KEY: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
