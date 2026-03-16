@@ -311,8 +311,12 @@ export default function Dashboard({ user }: DashboardProps) {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-sm font-bold text-white truncate" title={name}>
-                        {short}
+                      <p
+                        className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
+                        style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
+                        title={name}
+                      >
+                        {name}
                       </p>
                       {user.plan === 'pro' ? (
                         <button
