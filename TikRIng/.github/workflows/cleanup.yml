@@ -11,5 +11,11 @@ jobs:
     steps:
       - name: Call cleanup API
         run: |
-          curl -sf -X POST "${{ secrets.SITE_URL }}/api/admin/cleanup?limit=500" \
-            -H "Authorization: Bearer ${{ secrets.CLEANUP_TOKEN }}"
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "${{ secrets.SITE_URL }}/api/admin/cleanup?limit=500" \
+            -H "Authorization: Bearer ${{ secrets.CLEANUP_TOKEN }}")
+          echo "$RESPONSE"
+          HTTP_STATUS=$(echo "$RESPONSE" | grep -o "HTTP_STATUS:[0-9]*" | cut -d: -f2)
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Error: HTTP $HTTP_STATUS"
+            exit 1
+          fi
