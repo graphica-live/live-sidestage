@@ -1,26 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Copy, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, MoreHorizontal } from 'lucide-react';
 
 export default function BrowserWarning() {
-    const [copied, setCopied] = useState(false);
-    const [currentUrl, setCurrentUrl] = useState('');
-
-    useEffect(() => {
-        setCurrentUrl(window.location.href);
-    }, []);
-
-    const handleCopyUrl = async () => {
-        try {
-            await navigator.clipboard.writeText(currentUrl);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        } catch (err) {
-            console.error('Failed to copy textual URL', err);
-        }
-    };
-
     return (
-        <div className="min-h-screen w-full bg-black text-white flex items-center justify-center px-4">
+        <div className="min-h-screen w-full bg-black text-white flex items-center justify-center px-4 relative overflow-hidden">
+            <div className="absolute top-4 right-4 flex items-center gap-2 text-tiktok-cyan animate-pulse">
+                <ArrowUpRight className="w-5 h-5 animate-bounce" />
+                <span className="text-xs font-bold tracking-wide">ここをタップ</span>
+                <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+                    <MoreHorizontal className="w-4 h-4" />
+                </div>
+            </div>
+
             <div className="w-full max-w-2xl bg-tiktok-dark/90 backdrop-blur-md border border-tiktok-gray rounded-xl p-5 sm:p-6 animate-in fade-in duration-500">
                 <div className="flex items-start gap-3">
                     <div className="mt-0.5 text-tiktok-red shrink-0">
@@ -35,26 +25,11 @@ export default function BrowserWarning() {
                             この画面では機能を利用できないように制限しています。
                         </p>
 
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <button
-                                onClick={handleCopyUrl}
-                                className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border ${copied
-                                    ? 'bg-green-500/20 text-green-400 border-green-500/50'
-                                    : 'bg-black/50 text-white border-tiktok-gray hover:bg-tiktok-gray/50'
-                                    }`}
-                            >
-                                {copied ? (
-                                    <>
-                                        <CheckCircle2 className="w-4 h-4" />
-                                        コピー完了
-                                    </>
-                                ) : (
-                                    <>
-                                        <Copy className="w-4 h-4" />
-                                        URLをコピー
-                                    </>
-                                )}
-                            </button>
+                        <div className="rounded-lg border border-tiktok-gray bg-black/40 p-3 text-xs text-left space-y-1.5">
+                            <p className="text-white font-semibold">開き直し手順</p>
+                            <p className="text-tiktok-lightgray">1. 右上の三点メニュー（…）をタップ</p>
+                            <p className="text-tiktok-lightgray">2. 「ブラウザで開く」を選択</p>
+                            <p className="text-tiktok-lightgray">3. Safari / Chromeでこのページを開く</p>
                         </div>
                     </div>
                 </div>
