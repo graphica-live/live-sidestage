@@ -25,6 +25,30 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Checkout成功後、Webhookが反映されるまでのタイムラグ/失敗を救済する
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') !== 'success') return;
+    if (!user) return;
+
+    (async () => {
+      try {
+        await fetch('/api/checkout/sync', { method: 'POST' });
+      } catch {
+        // ignore
+      }
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data: any = await res.json();
+          setUser(data.user);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [user]);
+
+  useEffect(() => {
     // Basic routing based on the query parameters
     const params = new URLSearchParams(window.location.search);
     const dashboard = params.get('dashboard');
