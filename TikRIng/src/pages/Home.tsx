@@ -495,7 +495,6 @@ export default function Home({ user }: HomeProps) {
         </div>
       ) : (
         <div className="w-full flex flex-col gap-3 mb-6">
-          <p className="text-xs text-tiktok-lightgray/80 text-center">ログインなしでも使えます</p>
           <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
             <button
               type="button"
