@@ -3,7 +3,11 @@ import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move } from 'lucide-react';
 import { getSquareFrameBlob, hasTransparentPixelsInCenter, getTransparentCentroidHint } from '../utils/canvas';
 
-export default function Home() {
+interface HomeProps {
+  user: { id: string; display_name: string; plan: string } | null | undefined;
+}
+
+export default function Home({ user }: HomeProps) {
   const [uploading, setUploading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -164,11 +168,32 @@ export default function Home() {
     });
 
     if (!response.ok) {
+      if (response.status === 403) {
+        const errorData = await response.json();
+        if (errorData.error === 'FREE_PLAN_LIMIT') {
+          throw new Error(errorData.message);
+        }
+      }
       throw new Error('Upload failed');
     }
 
     const data = await response.json();
-    const url = `${window.location.origin}${window.location.pathname}?f=${data.id}&openExternalBrowser=1`;
+
+    // ログイン済みならshare APIでURL発行（回数制限付きURL）
+    let shareToken = data.id;
+    if (user) {
+      const shareRes = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frameId: data.id }),
+      });
+      if (shareRes.ok) {
+        const shareData = await shareRes.json();
+        shareToken = shareData.token;
+      }
+    }
+
+    const url = `${window.location.origin}${window.location.pathname}?f=${shareToken}&openExternalBrowser=1`;
     setShareUrl(url);
     return true;
   };
@@ -249,9 +274,9 @@ export default function Home() {
       }
 
       await uploadPreparedFrame(squareBlob);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('画像のアップロードに失敗しました。もう一度お試しください。');
+      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
     } finally {
       setUploading(false);
     }
@@ -280,9 +305,9 @@ export default function Home() {
         setShowEdgeTransparencyDialog(false);
         setPendingUploadBlob(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('画像のアップロードに失敗しました。もう一度お試しください。');
+      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
     } finally {
       setEdgeChoiceLoading(false);
       setUploading(false);
@@ -302,9 +327,9 @@ export default function Home() {
         setShowEdgeTransparencyDialog(false);
         setPendingUploadBlob(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('画像のアップロードに失敗しました。もう一度お試しください。');
+      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
     } finally {
       setEdgeChoiceLoading(false);
       setUploading(false);
@@ -341,6 +366,31 @@ export default function Home() {
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
+      {/* ログイン情報 */}
+      {user === undefined ? null : user ? (
+        <div className="w-full flex items-center justify-between mb-6 px-1">
+          <span className="text-sm text-tiktok-lightgray">
+            {user.display_name}
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-bold ${user.plan === 'pro' ? 'bg-tiktok-cyan/20 text-tiktok-cyan' : 'bg-tiktok-gray text-tiktok-lightgray'}`}>
+              {user.plan === 'pro' ? 'Pro' : '無料'}
+            </span>
+          </span>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit" className="text-xs text-tiktok-lightgray hover:text-white underline">ログアウト</button>
+          </form>
+        </div>
+      ) : (
+        <div className="w-full flex flex-col gap-2 mb-6">
+          <p className="text-xs text-tiktok-lightgray text-center">ログインするとフレームを管理できます</p>
+          <a href="/api/auth/google" className="w-full py-2.5 rounded-md bg-white text-black font-bold text-sm text-center hover:bg-white/90 transition-colors">
+            Googleでログイン
+          </a>
+          <a href="/api/auth/line" className="w-full py-2.5 rounded-md bg-[#06C755] text-white font-bold text-sm text-center hover:bg-[#05B34C] transition-colors">
+            LINEでログイン
+          </a>
+        </div>
+      )}
+
       {/* ライバー専用バッジ */}
       <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 text-xs font-bold tracking-wider">
         <span className="relative flex h-2 w-2">
@@ -518,6 +568,12 @@ export default function Home() {
 
           <div className="w-full flex flex-col gap-2">
             <h3 className="text-sm font-bold text-tiktok-lightgray text-left ml-1">リスナー用 着せ替えURL</h3>
+            {/* 制限事項の説明を追加 */}
+            {user && user.plan === 'pro' ? null : (
+              <p className="text-xs text-tiktok-red text-left ml-1">
+                ※未ログイン: 30回, 無料プラン: 300回までのアクセス制限があります
+              </p>
+            )}
             <div className="flex items-center gap-2 p-1.5 pl-4 bg-tiktok-black rounded-md border border-tiktok-gray focus-within:border-tiktok-cyan transition-colors w-full">
               <LinkIcon className="w-5 h-5 text-tiktok-lightgray shrink-0" />
               <input

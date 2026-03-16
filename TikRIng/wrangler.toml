@@ -6,3 +6,13 @@ compatibility_date = "2024-03-09"
 binding = "FRAMES_BUCKET"
 bucket_name = "profile-frames"
 preview_bucket_name = "profile-frames-preview"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tikring-db"
+database_id = "172c7690-7ba9-45a2-af92-aee9c6a386e0"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "e557feee14894ae79b0a9ec7eacd4ef7"
+preview_id = "e557feee14894ae79b0a9ec7eacd4ef7"
