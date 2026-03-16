@@ -301,11 +301,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       </h1>
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm font-medium">
         <span>好きな画像を選んで、アイコンフレームを装着しましょう！</span>
-        {hasExpiresAtHeader ? (
-          <span className="text-xs text-tiktok-lightgray/70 mt-1">
-            ※有効期限: {expiresAt ? new Date(expiresAt).toLocaleDateString('ja-JP') : '無期限'}
-          </span>
-        ) : null}
+
       </p>
 
       {!userImage ? (
