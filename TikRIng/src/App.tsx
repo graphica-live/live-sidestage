@@ -15,14 +15,8 @@ function App() {
         if (!r.ok) throw new Error('Failed to fetch user');
         return r.json();
       })
-      .then((data: any) => {
-        console.log('User data:', data);
-        setUser(data.user);
-      })
-      .catch((err) => {
-        console.error('User fetch error:', err);
-        setUser(null);
-      });
+      .then((data: any) => setUser(data.user))
+      .catch(() => setUser(null));
   }, []);
 
   useEffect(() => {

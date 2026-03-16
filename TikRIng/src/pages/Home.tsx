@@ -9,7 +9,6 @@ interface HomeProps {
 
 export default function Home({ user }: HomeProps) {
   const [uploading, setUploading] = useState(false);
-  console.log('Home component rendered with user:', user);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -368,7 +367,7 @@ export default function Home({ user }: HomeProps) {
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
       {/* ログイン情報 */}
-      {user === undefined ? null : user ? (
+      {user ? (
         <div className="w-full flex items-center justify-between mb-6 px-1">
           <span className="text-sm text-tiktok-lightgray">
             {user.display_name}
