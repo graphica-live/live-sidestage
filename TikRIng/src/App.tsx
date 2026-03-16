@@ -26,30 +26,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Checkout成功後、Webhookが反映されるまでのタイムラグ/失敗を救済する
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('checkout') !== 'success') return;
-    if (!user) return;
-
-    (async () => {
-      try {
-        await fetch('/api/checkout/sync', { method: 'POST' });
-      } catch {
-        // ignore
-      }
-      try {
-        const res = await fetch('/api/auth/me');
-        if (res.ok) {
-          const data: any = await res.json();
-          setUser(data.user);
-        }
-      } catch {
-        // ignore
-      }
-    })();
-  }, [user]);
-
-  useEffect(() => {
     // A案: ログイン後の通常リロードでも pro 状態を自動同期する
     if (!user) return;
     if (syncInFlightRef.current) return;
@@ -60,10 +36,13 @@ function App() {
     // 通常時は「現在Proの人」だけ同期して、返金/解約後のダウングレードを拾う
     if (!isCheckoutSuccess && user.plan !== 'pro') return;
 
-    const key = `plan_sync_attempted:${user.id}`;
+    const key = `plan_sync_last:${user.id}`;
     try {
-      if (sessionStorage.getItem(key) === '1') return;
-      sessionStorage.setItem(key, '1');
+      const last = Number(sessionStorage.getItem(key) ?? '0');
+      const now = Date.now();
+      // 過剰なStripe API呼び出しを避けつつ、状態変化は追えるようにする
+      if (Number.isFinite(last) && now - last < 60_000) return;
+      sessionStorage.setItem(key, String(now));
     } catch {
       // sessionStorageが使えなくても最低限は続行
     }
