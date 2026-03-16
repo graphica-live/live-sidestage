@@ -416,9 +416,20 @@ export default function Home({ user }: HomeProps) {
               {user.plan === 'pro' ? 'Pro' : '無料'}
             </span>
           </span>
-          <form action="/api/auth/logout" method="post">
-            <button type="submit" className="text-xs text-tiktok-lightgray hover:text-white underline">ログアウト</button>
-          </form>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = '/?dashboard=1';
+              }}
+              className="text-xs text-tiktok-lightgray hover:text-white underline"
+            >
+              フレーム管理
+            </button>
+            <form action="/api/auth/logout" method="post">
+              <button type="submit" className="text-xs text-tiktok-lightgray hover:text-white underline">ログアウト</button>
+            </form>
+          </div>
         </div>
       ) : (
         <div className="w-full flex flex-col gap-2 mb-6">

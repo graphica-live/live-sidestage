@@ -3,12 +3,14 @@ import { Loader2 } from 'lucide-react';
 import Home from './pages/Home';
 import FrameEditor from './pages/FrameEditor';
 import Expired from './pages/Expired';
+import Dashboard from './pages/Dashboard';
 import BrowserWarning from './components/BrowserWarning';
 import { isTikTokInAppBrowser } from './utils/browser';
 
 function App() {
   const [frameId, setFrameId] = useState<string | null>(null);
   const [frameCheckStatus, setFrameCheckStatus] = useState<'idle' | 'loading' | 'ok' | 'expired'>('idle');
+  const [isDashboard, setIsDashboard] = useState(false);
   const isTikTokInApp = isTikTokInAppBrowser();
   const [user, setUser] = useState<{ id: string; display_name: string; plan: string } | null | undefined>(undefined);
 
@@ -23,16 +25,17 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Basic routing based on the '?f=' query parameter
+    // Basic routing based on the query parameters
     const params = new URLSearchParams(window.location.search);
+    const dashboard = params.get('dashboard');
+    setIsDashboard(dashboard === '1');
     const fId = params.get('f');
-    if (fId) {
-      setFrameId(fId);
-    }
+    setFrameId(fId);
   }, []);
 
   useEffect(() => {
     if (isTikTokInApp) return;
+    if (isDashboard) return;
 
     if (!frameId) {
       setFrameCheckStatus('idle');
@@ -75,6 +78,13 @@ function App() {
     return () => controller.abort();
   }, [frameId, isTikTokInApp]);
 
+  useEffect(() => {
+    if (isTikTokInApp) return;
+    if (!isDashboard) return;
+    if (user !== null) return;
+    window.location.href = '/';
+  }, [isDashboard, user, isTikTokInApp]);
+
   if (isTikTokInApp) {
     return <BrowserWarning />;
   }
@@ -82,7 +92,18 @@ function App() {
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
       <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col items-center justify-center">
-        {frameId ? (
+        {isDashboard ? (
+          user === undefined ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
+              <p className="text-tiktok-lightgray">読み込み中...</p>
+            </div>
+          ) : user ? (
+            <Dashboard user={user} />
+          ) : (
+            <Home user={user} />
+          )
+        ) : frameId ? (
           frameCheckStatus === 'loading' || frameCheckStatus === 'idle' ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
