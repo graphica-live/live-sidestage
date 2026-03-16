@@ -190,4 +190,31 @@ export default {
     const response = await env.ASSETS.fetch(request);
     return maybeRewriteListenerHtml(request, response);
   },
+
+  async scheduled(event, env, ctx) {
+    const token = env.CLEANUP_TOKEN;
+    if (!token) return;
+
+    const nowMs = Date.now();
+    const rows = await env.DB.prepare(
+      'SELECT id, image_key FROM frames WHERE expires_at IS NOT NULL AND expires_at < ? ORDER BY expires_at ASC LIMIT 500'
+    )
+      .bind(nowMs)
+      .all();
+
+    const expired = rows.results ?? [];
+    for (const row of expired) {
+      try {
+        await env.FRAMES_BUCKET.delete(row.image_key);
+      } catch {
+        continue;
+      }
+      try {
+        await env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(row.id).run();
+        await env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(row.id).run();
+      } catch {
+        // best-effort
+      }
+    }
+  },
 };
