@@ -48,6 +48,7 @@ export default function Home({ user }: HomeProps) {
 
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -500,68 +501,6 @@ export default function Home({ user }: HomeProps) {
         </div>
       )}
 
-      {user && user.plan !== 'pro' ? (
-        <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray p-4 mb-6">
-          <p className="text-sm font-bold text-white mb-3">Proプランを選択</p>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label
-              className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'monthly'
-                ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
-                : 'border-tiktok-gray bg-tiktok-black'}
-              `}
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="billingInterval"
-                  value="monthly"
-                  checked={billingInterval === 'monthly'}
-                  onChange={() => setBillingInterval('monthly')}
-                  className="accent-white"
-                />
-                <span className="text-sm font-bold text-white">月払い 380円/月</span>
-              </div>
-            </label>
-
-            <label
-              className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'yearly'
-                ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
-                : 'border-tiktok-gray bg-tiktok-black'}
-              `}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="billingInterval"
-                    value="yearly"
-                    checked={billingInterval === 'yearly'}
-                    onChange={() => setBillingInterval('yearly')}
-                    className="accent-white"
-                  />
-                  <span className="text-sm font-bold text-white">年払い 3,800円/年</span>
-                </div>
-                {billingInterval === 'yearly' ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 shrink-0">
-                    2ヶ月分お得
-                  </span>
-                ) : null}
-              </div>
-            </label>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCheckout}
-            disabled={checkoutLoading}
-            className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
-          </button>
-        </div>
-      ) : null}
-
       {/* ライバー専用バッジ */}
       <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 text-xs font-bold tracking-wider">
         <span className="relative flex h-2 w-2">
@@ -886,6 +825,84 @@ export default function Home({ user }: HomeProps) {
           </div>
         </div>
       )}
+
+      {user && user.plan !== 'pro' ? (
+        <div className="w-full mt-10 rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setProUpgradeOpen((v) => !v)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-tiktok-gray/30 transition-colors"
+          >
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-white">Pro（任意）</span>
+              <span className="text-xs text-tiktok-lightgray">無料のままでOK。必要なら開いてください</span>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {proUpgradeOpen ? (
+            <div className="px-4 pb-4 pt-2">
+              <div className="grid grid-cols-2 gap-2">
+                <label
+                  className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'monthly'
+                    ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                    : 'border-tiktok-gray bg-tiktok-black'}
+                  `}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="billingInterval"
+                      value="monthly"
+                      checked={billingInterval === 'monthly'}
+                      onChange={() => setBillingInterval('monthly')}
+                      className="accent-white"
+                    />
+                    <span className="text-sm font-bold text-white">月払い 380円/月</span>
+                  </div>
+                </label>
+
+                <label
+                  className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'yearly'
+                    ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                    : 'border-tiktok-gray bg-tiktok-black'}
+                  `}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="billingInterval"
+                        value="yearly"
+                        checked={billingInterval === 'yearly'}
+                        onChange={() => setBillingInterval('yearly')}
+                        className="accent-white"
+                      />
+                      <span className="text-sm font-bold text-white">年払い 3,800円/年</span>
+                    </div>
+                    {billingInterval === 'yearly' ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 shrink-0">
+                        2ヶ月分お得
+                      </span>
+                    ) : null}
+                  </div>
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCheckout}
+                disabled={checkoutLoading}
+                className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
