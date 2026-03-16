@@ -26,6 +26,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FrameItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   const canShow = useMemo(() => !!user, [user]);
 
@@ -86,6 +90,72 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  const startEditName = (frame: FrameItem) => {
+    setError(null);
+    setEditingId(frame.id);
+    setEditName(frame.displayName ?? '');
+  };
+
+  const cancelEditName = () => {
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const saveEditName = async (frameId: string) => {
+    if (savingName) return;
+    setSavingName(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/frames', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: frameId, customName: editName }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+      if (res.status === 403) {
+        setError('フレーム名の変更はPro限定です。');
+        return;
+      }
+      if (!res.ok) throw new Error('Rename failed');
+
+      setEditingId(null);
+      setEditName('');
+      await fetchFrames();
+    } catch {
+      setError('フレーム名の変更に失敗しました。');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const openBillingPortal = async () => {
+    if (portalLoading) return;
+    setPortalLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/checkout/portal', { method: 'POST' });
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+      if (!res.ok) throw new Error('Portal failed');
+      const data = (await res.json()) as { url?: string };
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('Missing url');
+      }
+    } catch {
+      setError('解約/請求管理画面を開けませんでした。');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 w-full">
@@ -98,7 +168,19 @@ export default function Dashboard({ user }: DashboardProps) {
   return (
     <div className="w-full flex flex-col max-w-xl animate-in fade-in duration-500">
       <div className="w-full flex items-center justify-between mb-6">
-        <h1 className="text-xl sm:text-2xl font-black">フレーム管理</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-black">フレーム管理</h1>
+          {user.plan === 'pro' ? (
+            <button
+              type="button"
+              onClick={openBillingPortal}
+              disabled={portalLoading}
+              className="py-2 px-3 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/30 text-tiktok-lightgray font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {portalLoading ? '開いています...' : '解約・請求管理'}
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => {
@@ -161,9 +243,49 @@ export default function Dashboard({ user }: DashboardProps) {
                 />
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white truncate" title={name}>
-                    {short}
-                  </p>
+                  {editingId === frame.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+                        aria-label="frame name"
+                        maxLength={80}
+                        disabled={savingName}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveEditName(frame.id)}
+                        disabled={savingName}
+                        className="shrink-0 px-3 py-1.5 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditName}
+                        disabled={savingName}
+                        className="shrink-0 px-3 py-1.5 rounded-md border border-tiktok-gray text-tiktok-lightgray hover:text-white hover:bg-tiktok-gray/30 font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-bold text-white truncate" title={name}>
+                        {short}
+                      </p>
+                      {user.plan === 'pro' ? (
+                        <button
+                          type="button"
+                          onClick={() => startEditName(frame)}
+                          className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors"
+                        >
+                          名前変更
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 <div className={`text-xs font-bold shrink-0 ${remainingClass}`}>{remainingText}</div>

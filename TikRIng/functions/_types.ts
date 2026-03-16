@@ -8,6 +8,8 @@ export interface Env {
   STRIPE_YEARLY_PRICE_ID: string;
   // backward compatibility (older deployments)
   STRIPE_PRICE_ID?: string;
+  // Optional: Stripe Billing Portal configuration id
+  STRIPE_BILLING_PORTAL_CONFIGURATION_ID?: string;
   RECAPTCHA_SECRET_KEY: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

@@ -111,3 +111,69 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     headers: { 'Content-Type': 'application/json' },
   });
 };
+
+export const onRequestPut: PagesFunction<Env> = async (context) => {
+  const session = await getSession(context.env, context.request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const viewer = await context.env.DB.prepare('SELECT id, plan FROM users WHERE id = ?')
+    .bind(session.userId)
+    .first<{ id: string; plan: string }>();
+
+  if (!viewer) {
+    return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (viewer.plan !== 'pro') {
+    return new Response(JSON.stringify({ error: 'FORBIDDEN' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const body = await context.request.json().catch(() => ({} as any));
+  const frameId = typeof body?.id === 'string' ? body.id : '';
+  const rawName = typeof body?.customName === 'string' ? body.customName : '';
+
+  if (!frameId) {
+    return new Response(JSON.stringify({ error: 'MISSING_ID' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const trimmed = rawName.trim();
+  if (trimmed.length > 80) {
+    return new Response(JSON.stringify({ error: 'NAME_TOO_LONG' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const nextName: string | null = trimmed ? trimmed : null;
+  const result = await context.env.DB.prepare(
+    'UPDATE frames SET custom_name = ? WHERE id = ? AND owner_id = ?'
+  )
+    .bind(nextName, frameId, session.userId)
+    .run();
+
+  if (!result.success || (result.meta?.changes ?? 0) === 0) {
+    return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  return new Response(JSON.stringify({ ok: true, customName: nextName }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
