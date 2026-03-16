@@ -1,10 +1,5 @@
 import { getSession } from '../_session';
-
-export interface Env {
-  FRAMES_BUCKET: R2Bucket;
-  DB: D1Database;
-  SESSIONS: KVNamespace;
-}
+import type { Env } from '../_types';
 
 function bytesToHex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes))
@@ -66,6 +61,36 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // reCAPTCHA v3 (tokenがある場合のみ検証。失敗しても続行してアップロードを阻害しない)
+    const recaptchaTokenRaw = formData.get('recaptchaToken');
+    if (typeof recaptchaTokenRaw === 'string' && recaptchaTokenRaw.trim() && context.env.RECAPTCHA_SECRET_KEY) {
+      try {
+        const body = new URLSearchParams({
+          secret: context.env.RECAPTCHA_SECRET_KEY,
+          response: recaptchaTokenRaw.trim(),
+        });
+
+        const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+
+        if (verifyRes.ok) {
+          const verifyData: any = await verifyRes.json();
+          const score = typeof verifyData?.score === 'number' ? verifyData.score : null;
+          if (score !== null && score < 0.5) {
+            return new Response(JSON.stringify({ error: 'BOT_DETECTED', message: '不正なアクセスを検出しました。' }), {
+              status: 403,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('reCAPTCHA verify failed (ignored):', err);
+      }
     }
 
     // ログインユーザーかつ無料プランの場合、フレーム数制限チェック

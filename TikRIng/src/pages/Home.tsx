@@ -3,6 +3,8 @@ import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
 import { getSquareFrameBlob, hasTransparentPixelsInCenter, getTransparentCentroidHint } from '../utils/canvas';
 
+declare const grecaptcha: any;
+
 interface HomeProps {
   user: { id: string; display_name: string; plan: string } | null | undefined;
 }
@@ -42,6 +44,7 @@ export default function Home({ user }: HomeProps) {
   const [isUnlimited, setIsUnlimited] = useState(false);
   const [expiresDate, setExpiresDate] = useState(() => formatLocalDateInputValue(addDays(new Date(), 90)));
   const [password, setPassword] = useState('');
+  const [pendingRecaptchaToken, setPendingRecaptchaToken] = useState<string | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -175,9 +178,10 @@ export default function Home({ user }: HomeProps) {
     setIsUnlimited(false);
     setExpiresDate(formatLocalDateInputValue(addDays(new Date(), 90)));
     setPassword('');
+    setPendingRecaptchaToken(null);
   };
 
-  const uploadPreparedFrame = async (preparedBlob: Blob): Promise<boolean> => {
+  const uploadPreparedFrame = async (preparedBlob: Blob, recaptchaToken?: string | null): Promise<boolean> => {
     const MAX_SIZE = 5 * 1024 * 1024;
     if (preparedBlob.size > MAX_SIZE) {
       setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
@@ -187,6 +191,10 @@ export default function Home({ user }: HomeProps) {
     const uploadFile = new File([preparedBlob], `${frameFileName}.png`, { type: 'image/png' });
     const formData = new FormData();
     formData.append('file', uploadFile);
+
+    if (recaptchaToken) {
+      formData.append('recaptchaToken', recaptchaToken);
+    }
 
     if (user?.plan === 'pro') {
       if (customName.trim()) {
@@ -278,6 +286,29 @@ export default function Home({ user }: HomeProps) {
   const handleUpload = async () => {
     if (!frameImage) return;
 
+    let recaptchaToken: string | null = null;
+    try {
+      const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
+      if (siteKey && typeof grecaptcha !== 'undefined' && grecaptcha?.execute) {
+        recaptchaToken = await new Promise((resolve) => {
+          const exec = () => {
+            Promise.resolve(grecaptcha.execute(siteKey, { action: 'upload' }))
+              .then((t: any) => resolve(typeof t === 'string' ? t : null))
+              .catch(() => resolve(null));
+          };
+          if (typeof grecaptcha.ready === 'function') {
+            grecaptcha.ready(exec);
+          } else {
+            exec();
+          }
+        });
+      }
+    } catch {
+      // reCAPTCHAが原因でアップロードできない事態を避ける
+      recaptchaToken = null;
+    }
+    setPendingRecaptchaToken(recaptchaToken);
+
     setUploading(true);
     setError(null);
     setShareUrl(null);
@@ -314,7 +345,7 @@ export default function Home({ user }: HomeProps) {
         return;
       }
 
-      await uploadPreparedFrame(squareBlob);
+      await uploadPreparedFrame(squareBlob, recaptchaToken);
     } catch (err: any) {
       console.error(err);
       setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
@@ -340,7 +371,7 @@ export default function Home({ user }: HomeProps) {
         { fillTransparentEdges: true }
       );
 
-      const ok = await uploadPreparedFrame(filledBlob);
+      const ok = await uploadPreparedFrame(filledBlob, pendingRecaptchaToken);
       if (ok) {
         setEdgeFilledNotice(edgeFilled);
         setShowEdgeTransparencyDialog(false);
@@ -362,7 +393,7 @@ export default function Home({ user }: HomeProps) {
     setUploading(true);
 
     try {
-      const ok = await uploadPreparedFrame(pendingUploadBlob);
+      const ok = await uploadPreparedFrame(pendingUploadBlob, pendingRecaptchaToken);
       if (ok) {
         setEdgeFilledNotice(false);
         setShowEdgeTransparencyDialog(false);
