@@ -1,10 +1,24 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { UploadCloud, Link as LinkIcon, Check, Loader2, Move } from 'lucide-react';
+import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
 import { getSquareFrameBlob, hasTransparentPixelsInCenter, getTransparentCentroidHint } from '../utils/canvas';
 
 interface HomeProps {
   user: { id: string; display_name: string; plan: string } | null | undefined;
+}
+
+function pad2(n: number) {
+  return n.toString().padStart(2, '0');
+}
+
+function formatLocalDateInputValue(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function addDays(d: Date, days: number) {
+  const nd = new Date(d);
+  nd.setDate(nd.getDate() + days);
+  return nd;
 }
 
 export default function Home({ user }: HomeProps) {
@@ -22,6 +36,12 @@ export default function Home({ user }: HomeProps) {
   const [showEdgeTransparencyDialog, setShowEdgeTransparencyDialog] = useState(false);
   const [pendingUploadBlob, setPendingUploadBlob] = useState<Blob | null>(null);
   const [edgeChoiceLoading, setEdgeChoiceLoading] = useState(false);
+
+  const [proOptionsOpen, setProOptionsOpen] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [isUnlimited, setIsUnlimited] = useState(false);
+  const [expiresDate, setExpiresDate] = useState(() => formatLocalDateInputValue(addDays(new Date(), 90)));
+  const [password, setPassword] = useState('');
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -149,6 +169,12 @@ export default function Home({ user }: HomeProps) {
     setEdgeFilledNotice(false);
     setShowEdgeTransparencyDialog(false);
     setPendingUploadBlob(null);
+
+    setProOptionsOpen(false);
+    setCustomName('');
+    setIsUnlimited(false);
+    setExpiresDate(formatLocalDateInputValue(addDays(new Date(), 90)));
+    setPassword('');
   };
 
   const uploadPreparedFrame = async (preparedBlob: Blob): Promise<boolean> => {
@@ -161,6 +187,21 @@ export default function Home({ user }: HomeProps) {
     const uploadFile = new File([preparedBlob], `${frameFileName}.png`, { type: 'image/png' });
     const formData = new FormData();
     formData.append('file', uploadFile);
+
+    if (user?.plan === 'pro') {
+      if (customName.trim()) {
+        formData.append('customName', customName.trim());
+      }
+      if (!isUnlimited && expiresDate) {
+        const expiresAtMs = new Date(`${expiresDate}T00:00:00`).getTime();
+        if (!Number.isNaN(expiresAtMs)) {
+          formData.append('expiresAt', String(expiresAtMs));
+        }
+      }
+      if (password.trim()) {
+        formData.append('password', password.trim());
+      }
+    }
 
     const response = await fetch('/api/upload', {
       method: 'POST',
@@ -527,6 +568,72 @@ export default function Home({ user }: HomeProps) {
           >
             {centering ? '透過中心に合わせています...' : '透過領域の中心を中央に合わせる'}
           </button>
+
+          {user?.plan === 'pro' ? (
+            <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setProOptionsOpen((v) => !v)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-tiktok-gray/30 transition-colors"
+              >
+                <span className="text-sm font-bold text-white">Proオプション（任意）</span>
+                <ChevronDown
+                  className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proOptionsOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {proOptionsOpen ? (
+                <div className="px-4 pb-4 pt-1 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-white">フレーム名</label>
+                    <input
+                      type="text"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      placeholder="例: 2025年春イベント"
+                      className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+                    />
+                    <p className="text-xs text-tiktok-lightgray">未入力の場合はアップロード時のファイル名を使用します</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-white">有効期限</label>
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex items-center gap-2 text-sm text-tiktok-lightgray shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={isUnlimited}
+                          onChange={(e) => setIsUnlimited(e.target.checked)}
+                          className="accent-white"
+                        />
+                        無期限
+                      </label>
+                      <input
+                        type="date"
+                        value={expiresDate}
+                        onChange={(e) => setExpiresDate(e.target.value)}
+                        min={formatLocalDateInputValue(addDays(new Date(), 1))}
+                        disabled={isUnlimited}
+                        className="flex-1 px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm disabled:opacity-60"
+                      />
+                    </div>
+                    <p className="text-xs text-tiktok-lightgray">デフォルトは90日後です（無期限も選べます）</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-white">パスワード（設定するとリスナーに入力を求めます）</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="半角英数字"
+                      className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="flex w-full gap-3 mt-1">
             <button
