@@ -1,0 +1,15 @@
+name: Cleanup Expired Frames
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # UTC 03:00 = JST 12:00 毎日
+  workflow_dispatch:       # 手動実行も可
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cleanup API
+        run: |
+          curl -sf -X POST "${{ secrets.SITE_URL }}/api/admin/cleanup?limit=500" \
+            -H "Authorization: Bearer ${{ secrets.CLEANUP_TOKEN }}"
