@@ -59,8 +59,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
-    // デモ用: 1年間キャッシュ
-    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    // 期限切れ判定を確実にするため、キャッシュはしない（エッジ/ブラウザの長期キャッシュがあると410にならない）
+    headers.set('Cache-Control', 'no-store');
 
     // リスナー画面表示用: 有効期限(Unix ms)をヘッダーで返す（無期限は 'none'）
     headers.set(
