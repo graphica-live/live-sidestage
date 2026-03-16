@@ -114,9 +114,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       expiresAtMs = nowMs + ninetyDaysMs;
     }
 
-    // custom_name: Proのみ
-    const customName =
+    // custom_name: Proのみ（未入力ならアップロード時のファイル名を使用）
+    let customName =
       isPro && typeof customNameRaw === 'string' && customNameRaw.trim() ? customNameRaw.trim() : null;
+    if (isPro && !customName) {
+      const baseName = file.name?.replace(/\.[^/.]+$/, '').trim();
+      if (baseName) customName = baseName;
+    }
 
     // password_hash: Proのみ（入力があればSHA-256）
     let passwordHash: string | null = null;
