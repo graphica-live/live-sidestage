@@ -221,18 +221,21 @@ export default function Home({ user }: HomeProps) {
     });
 
     if (!response.ok) {
-      if (response.status === 403) {
+      let message: string | null = null;
+      try {
         const errorData = await response.json();
-        if (errorData.error === 'FREE_PLAN_LIMIT') {
-          throw new Error(errorData.message);
+        if (errorData && typeof errorData.message === 'string') {
+          message = errorData.message;
         }
+      } catch {
+        // ignore
       }
-      throw new Error('Upload failed');
+      throw new Error(message ?? 'Upload failed');
     }
 
     const data = await response.json();
 
-    // ログイン済みならshare APIでURL発行（回数制限付きURL）
+    // ログイン済みならshare APIでURL発行（共有トークン）
     let shareToken = data.id;
     if (user) {
       const shareRes = await fetch('/api/share', {
@@ -744,12 +747,6 @@ export default function Home({ user }: HomeProps) {
 
           <div className="w-full flex flex-col gap-2">
             <h3 className="text-sm font-bold text-tiktok-lightgray text-left ml-1">リスナー用 着せ替えURL</h3>
-            {/* 制限事項の説明を追加 */}
-            {user && user.plan === 'pro' ? null : (
-              <p className="text-xs text-tiktok-red text-left ml-1">
-                ※未ログイン: 30回, 無料プラン: 300回までのアクセス制限があります
-              </p>
-            )}
             <div className="flex items-center gap-2 p-1.5 pl-4 bg-tiktok-black rounded-md border border-tiktok-gray focus-within:border-tiktok-cyan transition-colors w-full">
               <LinkIcon className="w-5 h-5 text-tiktok-lightgray shrink-0" />
               <input

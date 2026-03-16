@@ -93,7 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // ログインユーザーかつ無料プランの場合、フレーム数制限チェック
+    // ログインユーザーのプラン取得
     const session = await getSession(context.env, context.request);
     const ownerId = session?.userId ?? null;
 
@@ -103,19 +103,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         'SELECT plan FROM users WHERE id = ?'
       ).bind(session.userId).first<{ plan: string }>();
       plan = user?.plan ?? null;
-
-      if (plan === 'free') {
-        const count = await context.env.DB.prepare(
-          'SELECT COUNT(*) as cnt FROM frames WHERE owner_id = ?'
-        ).bind(session.userId).first<{ cnt: number }>();
-
-        if ((count?.cnt ?? 0) >= 1) {
-          return new Response(JSON.stringify({ error: 'FREE_PLAN_LIMIT', message: 'Proプランにアップグレードするとフレームを複数登録できます。' }), {
-            status: 403,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      }
     }
 
     // UUID (v4相当) を生成

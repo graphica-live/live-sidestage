@@ -25,21 +25,12 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return new Response(JSON.stringify({ error: 'Frame not found' }), { status: 404 });
   }
 
-  // プランによって上限を決定
-  let maxAccess: number | null = 30; // 未ログインデフォルト
-  if (session) {
-    const user = await ctx.env.DB.prepare(
-      'SELECT plan FROM users WHERE id = ?'
-    ).bind(session.userId).first<{ plan: string }>();
-
-    maxAccess = user?.plan === 'pro' ? null : 300;
-  }
-
   const token = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 
+  // アクセス回数制限は撤廃。share_urls は「共有トークン → frame_id」の解決にのみ使う。
   await ctx.env.DB.prepare(
-    'INSERT INTO share_urls (id, frame_id, access_count, max_access, created_at) VALUES (?, ?, 0, ?, ?)'
-  ).bind(token, frameId, maxAccess, Date.now()).run();
+    'INSERT INTO share_urls (id, frame_id, access_count, max_access, created_at) VALUES (?, ?, 0, NULL, ?)'
+  ).bind(token, frameId, Date.now()).run();
 
   const siteUrl = new URL(ctx.request.url).origin;
   const url = `${siteUrl}?f=${token}&openExternalBrowser=1`;
