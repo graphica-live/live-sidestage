@@ -20,6 +20,22 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     });
   }
 
+  // 既に無料(plan!=pro)の状態で、過去にProで作った「無期限フレーム」が残っている場合に備え、
+  // フレーム管理を開いたタイミングで一度だけ「現在+90日」に補正する（expires_at IS NULL のみ対象）
+  const userRow = await context.env.DB.prepare('SELECT plan FROM users WHERE id = ?')
+    .bind(session.userId)
+    .first<{ plan: string }>();
+
+  if (userRow && userRow.plan !== 'pro') {
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const newExpiresAt = Date.now() + ninetyDaysMs;
+    await context.env.DB.prepare(
+      'UPDATE frames SET expires_at = ? WHERE owner_id = ? AND expires_at IS NULL'
+    )
+      .bind(newExpiresAt, session.userId)
+      .run();
+  }
+
   const origin = new URL(context.request.url).origin;
   const nowMs = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
