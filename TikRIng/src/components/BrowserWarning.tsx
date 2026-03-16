@@ -1,40 +1,53 @@
-import { AlertTriangle, ArrowUpRight, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 
 export default function BrowserWarning() {
     return (
-        <div className="min-h-screen w-full bg-gradient-to-b from-black via-gray-900 to-black text-white flex items-center justify-center px-4 relative overflow-hidden">
-            <div className="absolute top-4 right-4 flex items-center gap-2 text-tiktok-cyan animate-pulse">
-                <ArrowUpRight className="w-5 h-5 animate-bounce" />
-                <span className="text-xs font-bold tracking-wide">ここをタップ</span>
-                <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
-                    <MoreHorizontal className="w-4 h-4" />
-                </div>
-            </div>
+        <div className="min-h-screen w-full bg-gradient-to-b from-black via-gray-900 to-black text-white flex items-center justify-center px-6">
+            <div className="w-full max-w-sm text-center animate-in fade-in duration-500 space-y-8">
 
-            <div className="w-full max-w-2xl bg-tiktok-dark/90 backdrop-blur-md border border-tiktok-gray rounded-xl p-5 sm:p-6 animate-in fade-in duration-500 shadow-lg">
-                <div className="flex items-start gap-3">
-                    <div className="mt-0.5 text-tiktok-red shrink-0">
-                        <AlertTriangle className="w-6 h-6" />
+                {/* アイコン */}
+                <div className="flex justify-center">
+                    <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                        <MoreHorizontal className="w-8 h-8 text-white" />
                     </div>
-                    <div className="flex-1">
-                        <p className="text-base font-semibold text-white mb-3 leading-relaxed pr-6">
-                            TikTokアプリ内ブラウザでは<span className="text-tiktok-red font-bold">画像の保存・アップロードができません</span>。<br />
-                            必ず <strong className="text-tiktok-cyan break-keep">Safari</strong> または <strong className="text-tiktok-cyan break-keep">Chrome</strong> で開き直してください。
-                        </p>
-                        <p className="text-sm text-tiktok-lightgray mb-4">
-                            この画面では機能を利用できないように制限しています。
-                        </p>
+                </div>
 
-                        <div className="rounded-lg border border-tiktok-gray bg-black/40 p-4 text-sm text-left space-y-2">
-                            <p className="text-white font-bold">開き直し手順</p>
-                            <ul className="list-disc list-inside text-tiktok-lightgray space-y-1">
-                                <li>右上の三点メニュー（…）をタップ</li>
-                                <li>「ブラウザで開く」を選択</li>
-                                <li>Safari / Chromeでこのページを開く</li>
-                            </ul>
+                {/* メッセージ */}
+                <div className="space-y-3">
+                    <p className="text-xl font-bold text-white leading-snug">
+                        このままでは<br />使用できません
+                    </p>
+                    <p className="text-sm text-tiktok-lightgray leading-relaxed">
+                        TikTokアプリ内では<br />画像のアップロードができません。
+                    </p>
+                </div>
+
+                {/* 手順 */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-5 space-y-4 text-left">
+                    <p className="text-xs text-tiktok-lightgray text-center tracking-widest uppercase">やること</p>
+                    <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 rounded-full bg-tiktok-cyan/20 border border-tiktok-cyan/50 flex items-center justify-center shrink-0">
+                            <span className="text-tiktok-cyan text-sm font-bold">1</span>
                         </div>
+                        <p className="text-white text-sm">
+                            画面右上の
+                            <span className="inline-flex items-center mx-1 px-1.5 py-0.5 rounded bg-white/10 border border-white/20">
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                            </span>
+                            をタップ
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 rounded-full bg-tiktok-cyan/20 border border-tiktok-cyan/50 flex items-center justify-center shrink-0">
+                            <span className="text-tiktok-cyan text-sm font-bold">2</span>
+                        </div>
+                        <p className="text-white text-sm">
+                            「<span className="text-tiktok-cyan font-bold">ブラウザで開く</span>」をタップ
+                        </p>
                     </div>
                 </div>
+
+                <p className="text-xs text-white/30">以上でご利用いただけます</p>
             </div>
         </div>
     );
