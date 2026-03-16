@@ -22,6 +22,3 @@ database_id = "172c7690-7ba9-45a2-af92-aee9c6a386e0"
 binding = "SESSIONS"
 id = "e557feee14894ae79b0a9ec7eacd4ef7"
 preview_id = "e557feee14894ae79b0a9ec7eacd4ef7"
-
-[triggers]
-crons = ["0 3 * * *"]
