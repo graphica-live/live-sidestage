@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import Home from './pages/Home';
 import FrameEditor from './pages/FrameEditor';
@@ -13,6 +13,7 @@ function App() {
   const [isDashboard, setIsDashboard] = useState(false);
   const isTikTokInApp = isTikTokInAppBrowser();
   const [user, setUser] = useState<{ id: string; display_name: string; plan: string } | null | undefined>(undefined);
+  const syncInFlightRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -44,6 +45,41 @@ function App() {
         }
       } catch {
         // ignore
+      }
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    // A案: ログイン後の通常リロードでも pro 状態を自動同期する
+    if (!user) return;
+    if (user.plan === 'pro') return;
+    if (syncInFlightRef.current) return;
+
+    const key = `plan_sync_attempted:${user.id}`;
+    try {
+      if (sessionStorage.getItem(key) === '1') return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // sessionStorageが使えなくても最低限は続行
+    }
+
+    syncInFlightRef.current = true;
+    (async () => {
+      try {
+        await fetch('/api/checkout/sync', { method: 'POST' });
+      } catch {
+        // ignore
+      }
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data: any = await res.json();
+          setUser(data.user);
+        }
+      } catch {
+        // ignore
+      } finally {
+        syncInFlightRef.current = false;
       }
     })();
   }, [user]);
