@@ -274,7 +274,15 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
-      <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">TikRing</h1>
+      <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">
+        <a
+          href="/"
+          aria-label="トップへ戻る"
+          className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
+        >
+          TikRing
+        </a>
+      </h1>
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-8 text-sm font-medium">
         <span>好きな画像を選んで、アイコンフレームを装着しましょう！</span>
         <span className="text-xs text-tiktok-lightgray/70 mt-1">

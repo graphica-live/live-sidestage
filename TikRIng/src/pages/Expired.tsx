@@ -2,7 +2,13 @@ export default function Expired() {
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
       <h1 className="text-4xl font-black mb-6 text-center tracking-tight glitch-text" data-text="TikRing">
-        <span className="text-white">TikRing</span>
+        <a
+          href="/"
+          aria-label="トップへ戻る"
+          className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
+        >
+          <span className="text-white">TikRing</span>
+        </a>
       </h1>
 
       <p className="text-white text-xl sm:text-2xl font-bold text-center mb-3">
