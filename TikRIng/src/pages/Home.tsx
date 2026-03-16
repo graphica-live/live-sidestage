@@ -46,6 +46,9 @@ export default function Home({ user }: HomeProps) {
   const [password, setPassword] = useState('');
   const [pendingRecaptchaToken, setPendingRecaptchaToken] = useState<string | null>(null);
 
+  const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
   const editorRef = useRef<HTMLDivElement>(null);
 
   const isDragging = useRef(false);
@@ -436,6 +439,29 @@ export default function Home({ user }: HomeProps) {
     }
   };
 
+  const handleCheckout = async () => {
+    if (!user) return;
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval: billingInterval }),
+      });
+      if (!res.ok) throw new Error('Checkout failed');
+      const data = await res.json();
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('Missing checkout url');
+      }
+    } catch {
+      setError('チェックアウトの開始に失敗しました。もう一度お試しください。');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
       {/* ログイン情報 */}
@@ -473,6 +499,68 @@ export default function Home({ user }: HomeProps) {
           </a>
         </div>
       )}
+
+      {user && user.plan !== 'pro' ? (
+        <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray p-4 mb-6">
+          <p className="text-sm font-bold text-white mb-3">Proプランを選択</p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label
+              className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'monthly'
+                ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                : 'border-tiktok-gray bg-tiktok-black'}
+              `}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="billingInterval"
+                  value="monthly"
+                  checked={billingInterval === 'monthly'}
+                  onChange={() => setBillingInterval('monthly')}
+                  className="accent-white"
+                />
+                <span className="text-sm font-bold text-white">月払い 380円/月</span>
+              </div>
+            </label>
+
+            <label
+              className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'yearly'
+                ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                : 'border-tiktok-gray bg-tiktok-black'}
+              `}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="billingInterval"
+                    value="yearly"
+                    checked={billingInterval === 'yearly'}
+                    onChange={() => setBillingInterval('yearly')}
+                    className="accent-white"
+                  />
+                  <span className="text-sm font-bold text-white">年払い 3,800円/年</span>
+                </div>
+                {billingInterval === 'yearly' ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 shrink-0">
+                    2ヶ月分お得
+                  </span>
+                ) : null}
+              </div>
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCheckout}
+            disabled={checkoutLoading}
+            className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
+          </button>
+        </div>
+      ) : null}
 
       {/* ライバー専用バッジ */}
       <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 text-xs font-bold tracking-wider">

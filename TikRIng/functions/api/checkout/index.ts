@@ -8,6 +8,9 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
+  const body = await ctx.request.json().catch(() => ({} as any));
+  const interval = body?.interval === 'yearly' ? 'yearly' : 'monthly';
+
   const stripe = new Stripe(ctx.env.STRIPE_SECRET_KEY);
   const user = await ctx.env.DB.prepare(
     'SELECT id, email, stripe_customer_id FROM users WHERE id = ?'
@@ -27,10 +30,20 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
 
   const siteUrl = new URL(ctx.request.url).origin;
 
+  const monthlyPriceId = ctx.env.STRIPE_MONTHLY_PRICE_ID || ctx.env.STRIPE_PRICE_ID;
+  const yearlyPriceId = ctx.env.STRIPE_YEARLY_PRICE_ID;
+  const priceId = interval === 'yearly' ? yearlyPriceId : monthlyPriceId;
+  if (!priceId) {
+    return new Response(JSON.stringify({ error: 'MISSING_PRICE_ID' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
-    line_items: [{ price: ctx.env.STRIPE_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${siteUrl}/?checkout=success`,
     cancel_url: `${siteUrl}/`,
     metadata: { userId: session.userId },

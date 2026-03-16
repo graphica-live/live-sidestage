@@ -4,7 +4,10 @@ export interface Env {
   SESSIONS: KVNamespace;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
-  STRIPE_PRICE_ID: string;
+  STRIPE_MONTHLY_PRICE_ID: string;
+  STRIPE_YEARLY_PRICE_ID: string;
+  // backward compatibility (older deployments)
+  STRIPE_PRICE_ID?: string;
   RECAPTCHA_SECRET_KEY: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
