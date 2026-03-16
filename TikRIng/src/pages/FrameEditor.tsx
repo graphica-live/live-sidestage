@@ -324,12 +324,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             </div>
           )}
 
-          {frameUrl && (
-            <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
-              薄い円の内側が、TikTokプロフィール画像の表示目安です。
-            </p>
-          )}
-
           {/* 画像アップロードUI */}
           <div
             {...getRootProps()}
@@ -388,10 +382,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               <div className="w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-2 border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]" />
             </div>
           </div>
-
-          <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
-            薄い円の内側が、TikTokプロフィール画像の表示目安です。
-          </p>
 
           {/* スライダー */}
           <div className="w-full flex items-center gap-4 px-4">
