@@ -18,7 +18,10 @@ export function isTikTokInAppBrowser(): boolean {
     return true;
   }
 
-  const uaData = navigator.userAgentData as { brands?: Array<{ brand: string }> } | undefined;
+  const navWithUaData = navigator as Navigator & {
+    userAgentData?: { brands?: Array<{ brand: string }> };
+  };
+  const uaData = navWithUaData.userAgentData;
   const brands = uaData?.brands ?? [];
   const hasTikTokBrand = brands.some((entry) => /tiktok|bytedance|ttwebview/i.test(entry.brand));
   if (hasTikTokBrand) {
