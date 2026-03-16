@@ -51,7 +51,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       try {
         setLoading(true);
         // GET /api/frames/[id]
-        const response = await fetch(`/api/frames/${id}`);
+        const response = await fetch(`/api/frames/${id}?_t=${Date.now()}`);
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error('フレームが見つかりません。URLが間違っているか、削除された可能性があります。');

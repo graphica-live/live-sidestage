@@ -91,7 +91,7 @@ function App() {
 
     (async () => {
       try {
-        const res = await fetch(`/api/frames/${encodeURIComponent(frameId)}`, {
+        const res = await fetch(`/api/frames/${encodeURIComponent(frameId)}?_t=${Date.now()}`, {
           method: 'GET',
           signal: controller.signal,
         });

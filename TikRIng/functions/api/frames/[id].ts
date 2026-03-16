@@ -31,16 +31,35 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       .bind(id)
       .first<{ id: string; expires_at: number | null }>();
 
-    const expiresAtMs = frameRow?.expires_at ?? null;
+    // DBに行が無いフレームは配信しない（R2だけ残っている場合でも期限判定をバイパスさせない）
+    if (!frameRow) {
+      return new Response('Not Found', {
+        status: 404,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    const expiresAtMs = frameRow.expires_at ?? null;
 
     if (expiresAtMs !== null && Date.now() > expiresAtMs) {
-      // 期限切れ: R2から物理削除 + DBも掃除（非同期で実行）
+      // 期限切れ: まずR2を消してからDBを消す（部分成功でDBだけ消える不整合を作りにくくする）
       context.waitUntil(
-        Promise.all([
-          context.env.FRAMES_BUCKET.delete(id),
-          context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(id).run(),
-          context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(id).run(),
-        ])
+        (async () => {
+          try {
+            await context.env.FRAMES_BUCKET.delete(id);
+          } catch (err) {
+            console.error('Failed to delete R2 object for expired frame:', err);
+            return;
+          }
+          try {
+            await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(id).run();
+            await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(id).run();
+          } catch (err) {
+            console.error('Failed to delete DB rows for expired frame:', err);
+          }
+        })()
       );
 
       return new Response('URL has expired', { status: 410 });
