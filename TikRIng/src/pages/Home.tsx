@@ -841,6 +841,12 @@ export default function Home({ user }: HomeProps) {
 
           {proUpgradeOpen ? (
             <div className="px-4 pb-4 pt-2">
+              <ul className="mb-3 text-xs text-tiktok-lightgray space-y-1 list-disc pl-5">
+                <li>有効期限を自由に設定（1日〜無期限）</li>
+                <li>フレームにパスワードを設定（入力した人だけ表示）</li>
+                <li>フレームに名前を付けて整理・管理しやすく</li>
+              </ul>
+
               <div className="grid grid-cols-2 gap-2">
                 <label
                   className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'monthly'
