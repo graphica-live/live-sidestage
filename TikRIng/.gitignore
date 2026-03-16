@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.dev.vars
+.dev.vars.*
 .wrangler/
 _worker.bundle
 
