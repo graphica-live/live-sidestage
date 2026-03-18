@@ -8,7 +8,10 @@ import {
   onRequestDelete as framesIndexDelete,
   onRequestPut as framesIndexPut,
 } from '../functions/api/frames/index';
-import { onRequestGet as framesGet } from '../functions/api/frames/[id]';
+import {
+  onRequestGet as framesGet,
+  onRequestPost as framesPost,
+} from '../functions/api/frames/[id]';
 
 import { onRequestPost as checkoutPost } from '../functions/api/checkout/index';
 import { onRequestPost as cancelPost } from '../functions/api/checkout/cancel';
@@ -76,8 +79,9 @@ async function routeApi(request, env, ctx) {
   if (pathname.startsWith('/api/frames/')) {
     const id = pathname.slice('/api/frames/'.length);
     if (!id) return notFound();
-    if (method !== 'GET') return methodNotAllowed();
-    return framesGet(makeContext(request, env, ctx, { id }));
+    if (method === 'GET') return framesGet(makeContext(request, env, ctx, { id }));
+    if (method === 'POST') return framesPost(makeContext(request, env, ctx, { id }));
+    return methodNotAllowed();
   }
 
   // /api/checkout
