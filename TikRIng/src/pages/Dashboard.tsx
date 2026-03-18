@@ -376,7 +376,7 @@ export default function Dashboard({ user }: DashboardProps) {
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl text-center">
             <p className="text-white font-bold mb-1">Stripeの管理画面へ移動しますか？</p>
-            <p className="text-xs text-tiktok-lightgray mb-4">Stripeのサブスクリプション管理ページへ移動します。解約や支払い情報の確認はStripe側で行います。</p>
+            <p className="text-xs text-tiktok-lightgray mb-4">Stripeのサブスクリプション管理ページへ移動します。解約や支払い情報の確認はStripe側で行います。解約が完了すると、Pro機能は使えなくなります。</p>
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
