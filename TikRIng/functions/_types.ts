@@ -2,6 +2,7 @@ export interface Env {
   FRAMES_BUCKET: R2Bucket;
   DB: D1Database;
   SESSIONS: KVNamespace;
+  FRAME_PASSWORD_ENCRYPTION_KEY?: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_MONTHLY_PRICE_ID: string;

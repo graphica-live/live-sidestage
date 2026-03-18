@@ -1,38 +1,129 @@
-export interface Env {
-  FRAMES_BUCKET: R2Bucket;
-  DB: D1Database;
+import type { Env } from '../../_types';
+import { getSession } from '../../_session';
+import { hashFramePassword } from '../../_framePassword';
+
+type ShareRow = {
+  frame_id: string;
+};
+
+type FrameRow = {
+  id: string;
+  owner_id: string | null;
+  image_key: string;
+  expires_at: number | null;
+  password_hash: string | null;
+};
+
+type ResolvedFrame = {
+  frameId: string;
+  ownerId: string | null;
+  imageKey: string;
+  expiresAt: number | null;
+  passwordHash: string | null;
+};
+
+function json(data: unknown, status = 200, headers?: HeadersInit) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      ...headers,
+    },
+  });
+}
+
+function getAccessCookieName(frameId: string) {
+  return `frame_access_${frameId.replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
+function hasFrameAccess(request: Request, frameId: string) {
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const cookieName = getAccessCookieName(frameId);
+  return cookieHeader.split(';').some((entry) => {
+    const [name, value] = entry.trim().split('=');
+    return name === cookieName && value === '1';
+  });
+}
+
+function buildAccessCookie(request: Request, frameId: string) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${getAccessCookieName(frameId)}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function resolveFrame(context: EventContext<Env, string, unknown>): Promise<ResolvedFrame | null> {
+  let id = context.params.id as string;
+
+  if (!id) {
+    return null;
+  }
+
+  const shareRow = await context.env.DB.prepare(
+    'SELECT frame_id FROM share_urls WHERE id = ?'
+  ).bind(id).first<ShareRow>();
+
+  if (shareRow?.frame_id) {
+    id = shareRow.frame_id;
+  }
+
+  const frameRow = await context.env.DB.prepare(
+    'SELECT id, owner_id, image_key, expires_at, password_hash FROM frames WHERE id = ?'
+  )
+    .bind(id)
+    .first<FrameRow>();
+
+  if (!frameRow) {
+    return null;
+  }
+
+  return {
+    frameId: frameRow.id,
+    ownerId: frameRow.owner_id,
+    imageKey: frameRow.image_key,
+    expiresAt: frameRow.expires_at ?? null,
+    passwordHash: frameRow.password_hash ?? null,
+  };
+}
+
+async function canOwnerAccessFrame(context: EventContext<Env, string, unknown>, ownerId: string | null) {
+  if (!ownerId) {
+    return false;
+  }
+
+  const session = await getSession(context.env, context.request);
+  return session?.userId === ownerId;
+}
+
+function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
+  context.waitUntil(
+    (async () => {
+      try {
+        await context.env.FRAMES_BUCKET.delete(frame.imageKey);
+      } catch (err) {
+        console.error('Failed to delete R2 object for expired frame:', err);
+        return;
+      }
+      try {
+        await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frame.frameId).run();
+        await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frame.frameId).run();
+      } catch (err) {
+        console.error('Failed to delete DB rows for expired frame:', err);
+      }
+    })()
+  );
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   try {
-    // パスパラメータからUUIDを取得
-    // 例: /api/frames/1234-abcd -> params.id is "1234-abcd"
-    let id = context.params.id as string;
+    const frame = await resolveFrame(context);
 
-    if (!id) {
-      return new Response('Not Found', { status: 404 });
-    }
-
-    // share_urlsテーブルで共有トークンを解決
-    const shareRow = await context.env.DB.prepare(
-      'SELECT id, frame_id FROM share_urls WHERE id = ?'
-    ).bind(id).first<{ id: string; frame_id: string }>();
-
-    if (shareRow) {
-      // idがshare_urlsのトークンの場合
-      // R2取得のためにframe_idに差し替え
-      id = shareRow.frame_id;
-    }
-
-    // DBから有効期限をチェック（expires_at を正とする）
-    const frameRow = await context.env.DB.prepare(
-      'SELECT id, expires_at FROM frames WHERE id = ?'
-    )
-      .bind(id)
-      .first<{ id: string; expires_at: number | null }>();
-
-    // DBに行が無いフレームは配信しない（R2だけ残っている場合でも期限判定をバイパスさせない）
-    if (!frameRow) {
+    if (!frame) {
       return new Response('Not Found', {
         status: 404,
         headers: {
@@ -41,53 +132,54 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       });
     }
 
-    const expiresAtMs = frameRow.expires_at ?? null;
-
-    if (expiresAtMs !== null && Date.now() > expiresAtMs) {
-      // 期限切れ: まずR2を消してからDBを消す（部分成功でDBだけ消える不整合を作りにくくする）
-      context.waitUntil(
-        (async () => {
-          try {
-            await context.env.FRAMES_BUCKET.delete(id);
-          } catch (err) {
-            console.error('Failed to delete R2 object for expired frame:', err);
-            return;
-          }
-          try {
-            await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(id).run();
-            await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(id).run();
-          } catch (err) {
-            console.error('Failed to delete DB rows for expired frame:', err);
-          }
-        })()
-      );
-
-      return new Response('URL has expired', { status: 410 });
+    if (frame.expiresAt !== null && Date.now() > frame.expiresAt) {
+      scheduleExpiredFrameCleanup(context, frame);
+      return new Response('URL has expired', {
+        status: 410,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
     }
 
-    // R2からオブジェクトを取得
-    const object = await context.env.FRAMES_BUCKET.get(id);
+    const requestUrl = new URL(context.request.url);
+    const requiresPassword = Boolean(frame.passwordHash);
+    const ownerAccess = await canOwnerAccessFrame(context, frame.ownerId);
+    const accessGranted = !requiresPassword || ownerAccess || hasFrameAccess(context.request, frame.frameId);
+
+    if (requestUrl.searchParams.get('meta') === '1') {
+      return json({
+        requiresPassword,
+        accessGranted,
+        expiresAt: frame.expiresAt,
+      });
+    }
+
+    if (requiresPassword && !accessGranted) {
+      return json({ error: 'PASSWORD_REQUIRED' }, 401);
+    }
+
+    const object = await context.env.FRAMES_BUCKET.get(frame.imageKey);
 
     if (object === null) {
-      return new Response('Image Not Found in Bucket', { status: 404 });
+      return new Response('Image Not Found in Bucket', {
+        status: 404,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
     }
 
     const { customMetadata } = object;
-
-    // キャッシュやCORSヘッダーを設定してレスポンスを返す
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
-    // 期限切れ判定を確実にするため、キャッシュはしない（エッジ/ブラウザの長期キャッシュがあると410にならない）
     headers.set('Cache-Control', 'no-store');
-
-    // リスナー画面表示用: 有効期限(Unix ms)をヘッダーで返す（無期限は 'none'）
     headers.set(
       'X-Frame-Expires-At',
-      expiresAtMs !== null ? String(expiresAtMs) : customMetadata?.expiresAt ? String(customMetadata.expiresAt) : 'none'
+      frame.expiresAt !== null ? String(frame.expiresAt) : customMetadata?.expiresAt ? String(customMetadata.expiresAt) : 'none'
     );
-
-    // 他のドメインからの利用も許可する場合 (Canvasのtainted対策)
+    headers.set('X-Frame-Password-Required', requiresPassword ? '1' : '0');
     headers.set('Access-Control-Allow-Origin', '*');
 
     return new Response(object.body, {
@@ -97,5 +189,45 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   } catch (error) {
     console.error('Fetch Error:', error);
     return new Response('Internal Server Error', { status: 500 });
+  }
+};
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  try {
+    const frame = await resolveFrame(context);
+
+    if (!frame) {
+      return json({ error: 'NOT_FOUND' }, 404);
+    }
+
+    if (frame.expiresAt !== null && Date.now() > frame.expiresAt) {
+      scheduleExpiredFrameCleanup(context, frame);
+      return json({ error: 'EXPIRED' }, 410);
+    }
+
+    if (!frame.passwordHash) {
+      return json({ ok: true, requiresPassword: false });
+    }
+
+    const body = await context.request.json().catch(() => ({} as { password?: unknown }));
+    const password = typeof body.password === 'string' ? body.password.trim() : '';
+
+    if (!password) {
+      return json({ error: 'MISSING_PASSWORD' }, 400);
+    }
+
+    const submittedHash = await hashFramePassword(password);
+    if (submittedHash !== frame.passwordHash) {
+      return json({ error: 'INVALID_PASSWORD' }, 401);
+    }
+
+    return json(
+      { ok: true, requiresPassword: true },
+      200,
+      { 'Set-Cookie': buildAccessCookie(context.request, frame.frameId) }
+    );
+  } catch (error) {
+    console.error('Password verification failed:', error);
+    return json({ error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 };

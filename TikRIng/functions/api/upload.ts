@@ -1,11 +1,6 @@
 import { getSession } from '../_session';
+import { encryptFramePassword, hashFramePassword } from '../_framePassword';
 import type { Env } from '../_types';
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 function isPngSignature(bytes: Uint8Array): boolean {
   if (bytes.length < 8) return false;
@@ -136,12 +131,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // password_hash: Proのみ（入力があればSHA-256）
     let passwordHash: string | null = null;
+    let passwordCiphertext: string | null = null;
     if (isPro && typeof passwordRaw === 'string' && passwordRaw.trim()) {
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(passwordRaw.trim())
-      );
-      passwordHash = bytesToHex(digest);
+      const normalizedPassword = passwordRaw.trim();
+      passwordHash = await hashFramePassword(normalizedPassword);
+      passwordCiphertext = await encryptFramePassword(context.env, normalizedPassword);
     }
 
     // R2に保存 (ファイル名をUUIDにする)
@@ -157,8 +151,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // D1のframesテーブルに登録
     await context.env.DB.prepare(
-      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash).run();
+      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext).run();
 
     return new Response(JSON.stringify({ id: uuid }), {
       status: 200,

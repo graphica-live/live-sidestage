@@ -1,0 +1,1 @@
+ALTER TABLE frames ADD COLUMN password_ciphertext TEXT;

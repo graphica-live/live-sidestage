@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Link as LinkIcon, Loader2, Trash2 } from 'lucide-react';
+import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
 
 type User = { id: string; display_name: string; plan: string };
 
@@ -9,6 +9,8 @@ type FrameItem = {
   expiresAt: number | null;
   remainingDays: number | null;
   shareUrl: string | null;
+  passwordProtected: boolean;
+  passwordValue: string | null;
 };
 
 interface DashboardProps {
@@ -27,6 +29,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [savingName, setSavingName] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   const canShow = useMemo(() => !!user, [user]);
 
@@ -139,6 +142,13 @@ export default function Dashboard({ user }: DashboardProps) {
       event.preventDefault();
       cancelEditName();
     }
+  };
+
+  const togglePasswordVisibility = (frameId: string) => {
+    setVisiblePasswords((current) => ({
+      ...current,
+      [frameId]: !current[frameId],
+    }));
   };
 
   const handleCancelSubscription = async () => {
@@ -267,22 +277,50 @@ export default function Dashboard({ user }: DashboardProps) {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p
-                        className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
-                        style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
-                        title={name}
-                      >
-                        {name}
-                      </p>
-                      {user.plan === 'pro' ? (
-                        <button
-                          type="button"
-                          onClick={() => startEditName(frame)}
-                          className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors"
+                    <div className="flex flex-col gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <p
+                          className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
+                          style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
+                          title={name}
                         >
-                          名前変更
-                        </button>
+                          {name}
+                        </p>
+                        {user.plan === 'pro' ? (
+                          <button
+                            type="button"
+                            onClick={() => startEditName(frame)}
+                            className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors"
+                          >
+                            名前変更
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {frame.passwordProtected ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 font-bold text-amber-200">
+                            <Shield className="w-3.5 h-3.5" />
+                            パスワード保護中
+                          </span>
+
+                          {frame.passwordValue ? (
+                            <>
+                              <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
+                                {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordVisibility(frame.id)}
+                                className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
+                                aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
+                              >
+                                {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                {visiblePasswords[frame.id] ? '隠す' : '表示'}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   )}

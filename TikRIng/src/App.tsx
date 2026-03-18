@@ -91,17 +91,10 @@ function App() {
 
     (async () => {
       try {
-        const res = await fetch(`/api/frames/${encodeURIComponent(frameId)}?_t=${Date.now()}`, {
+        const res = await fetch(`/api/frames/${encodeURIComponent(frameId)}?meta=1&_t=${Date.now()}`, {
           method: 'GET',
           signal: controller.signal,
         });
-
-        // 画像を二重にダウンロードしないため、ボディは読まずにキャンセルしておく
-        try {
-          await res.body?.cancel();
-        } catch {
-          // ignore
-        }
 
         if (res.status === 200) {
           setFrameCheckStatus('ok');

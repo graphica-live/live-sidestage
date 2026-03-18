@@ -12,6 +12,11 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   // Dragging & Pinching states
   const isDragging = useRef(false);
@@ -39,6 +44,9 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
   // 初回マウント時にR2からフレーム画像を取得
   useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+
     async function fetchFrame() {
       if (!id) {
         setError('無効なURLです。');
@@ -48,22 +56,79 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
       try {
         setLoading(true);
-        // GET /api/frames/[id]
-        const response = await fetch(`/api/frames/${id}?_t=${Date.now()}`);
+        setError(null);
+        setPasswordError(null);
+
+        const metaResponse = await fetch(`/api/frames/${id}?meta=1&_t=${Date.now()}`, {
+          signal: controller.signal,
+        });
+
+        if (!metaResponse.ok) {
+          if (metaResponse.status === 404) {
+            throw new Error('フレームが見つかりません。URLが間違っているか、削除された可能性があります。');
+          }
+          if (metaResponse.status === 410) {
+            throw new Error('このURLの有効期限が切れました。再度新しいURLを発行してもらってください。');
+          }
+          throw new Error('フレームの取得に失敗しました。');
+        }
+
+        const meta = await metaResponse.json();
+        const nextRequiresPassword = Boolean(meta?.requiresPassword);
+        const nextAccessGranted = Boolean(meta?.accessGranted);
+
+        setRequiresPassword(nextRequiresPassword);
+        setAccessGranted(nextAccessGranted);
+
+        if (nextRequiresPassword && !nextAccessGranted) {
+          setFrameUrl((current) => {
+            if (current) {
+              URL.revokeObjectURL(current);
+            }
+            return null;
+          });
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch(`/api/frames/${id}?_t=${Date.now()}`, {
+          signal: controller.signal,
+        });
+
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error('フレームが見つかりません。URLが間違っているか、削除された可能性があります。');
           }
           if (response.status === 410) {
-            throw new Error('このURLの有効期限（90日間）が切れました。再度新しいURLを発行してもらってください。');
+            throw new Error('このURLの有効期限が切れました。再度新しいURLを発行してもらってください。');
+          }
+          if (response.status === 401) {
+            setRequiresPassword(true);
+            setAccessGranted(false);
+            setFrameUrl((current) => {
+              if (current) {
+                URL.revokeObjectURL(current);
+              }
+              return null;
+            });
+            setLoading(false);
+            return;
           }
           throw new Error('フレームの取得に失敗しました。');
         }
 
         const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        setFrameUrl(url);
+        objectUrl = URL.createObjectURL(blob);
+        setFrameUrl((current) => {
+          if (current) {
+            URL.revokeObjectURL(current);
+          }
+          return objectUrl;
+        });
       } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
         console.error(err);
         setError(err instanceof Error ? err.message : '予期せぬエラーが発生しました。');
       } finally {
@@ -74,12 +139,60 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     fetchFrame();
 
     return () => {
-      // クリーンアップ
+      controller.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [id, accessGranted]);
+
+  useEffect(() => {
+    return () => {
       if (frameUrl) {
         URL.revokeObjectURL(frameUrl);
       }
     };
-  }, [id]);
+  }, [frameUrl]);
+
+  const handleUnlock = async () => {
+    if (!password.trim()) {
+      setPasswordError('パスワードを入力してください。');
+      return;
+    }
+
+    try {
+      setUnlocking(true);
+      setPasswordError(null);
+
+      const response = await fetch(`/api/frames/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: password.trim() }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setPasswordError('パスワードが違います。');
+          return;
+        }
+        if (response.status === 410) {
+          setError('このURLの有効期限が切れました。再度新しいURLを発行してもらってください。');
+          return;
+        }
+        throw new Error('パスワード確認に失敗しました。');
+      }
+
+      setAccessGranted(true);
+      setPassword('');
+    } catch (err) {
+      console.error(err);
+      setPasswordError('パスワード確認に失敗しました。もう一度お試しください。');
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
 
 
@@ -263,6 +376,63 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   }
 
   if (error || !frameUrl) {
+    if (requiresPassword && !accessGranted && !error) {
+      return (
+        <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-md text-center">
+          <div className="w-16 h-16 rounded-full bg-tiktok-cyan/15 flex items-center justify-center mb-5 border border-tiktok-cyan/25">
+            <AlertCircle className="w-8 h-8 text-tiktok-cyan" />
+          </div>
+          <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">
+            <a
+              href="/"
+              aria-label="トップへ戻る"
+              className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
+            >
+              TikRing
+            </a>
+          </h1>
+          <h2 className="text-xl font-bold mb-2">パスワード保護されたフレームです</h2>
+          <p className="text-tiktok-lightgray text-sm mb-6">
+            配信者から共有されたパスワードを入力すると、フレームを表示できます。
+          </p>
+          <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark p-5 text-left">
+            <label className="block text-sm font-bold text-white mb-2">パスワード</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleUnlock();
+                }
+              }}
+              placeholder="パスワードを入力"
+              className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+            />
+            {passwordError ? (
+              <p className="mt-2 text-sm text-tiktok-red">{passwordError}</p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleUnlock()}
+              disabled={unlocking}
+              className="w-full mt-4 py-3 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {unlocking ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  確認中...
+                </>
+              ) : (
+                'フレームを表示する'
+              )}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in">
         <AlertCircle className="w-16 h-16 text-tiktok-red mb-4" />

@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { getSession } from '../../_session';
+import { decryptFramePassword } from '../../_framePassword';
 import type { Env } from '../../_types';
 
 type FrameRow = {
@@ -8,6 +9,8 @@ type FrameRow = {
   custom_name: string | null;
   image_key: string;
   expires_at: number | null;
+  password_hash: string | null;
+  password_ciphertext: string | null;
   created_at: number;
 };
 
@@ -41,7 +44,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const dayMs = 24 * 60 * 60 * 1000;
 
   const rows = await context.env.DB.prepare(
-    'SELECT id, custom_name, image_key, expires_at, created_at FROM frames WHERE owner_id = ? ORDER BY created_at DESC'
+    'SELECT id, custom_name, image_key, expires_at, password_hash, password_ciphertext, created_at FROM frames WHERE owner_id = ? ORDER BY created_at DESC'
   )
     .bind(session.userId)
     .all<FrameRow>();
@@ -52,10 +55,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     expiresAt: number | null;
     remainingDays: number | null;
     shareUrl: string | null;
+    passwordProtected: boolean;
+    passwordValue: string | null;
   }>;
 
   for (const row of rows.results ?? []) {
     const displayName = row.custom_name?.trim() ? row.custom_name.trim() : row.image_key;
+    const passwordProtected = Boolean(row.password_hash);
+    const passwordValue = passwordProtected
+      ? await decryptFramePassword(context.env, row.password_ciphertext)
+      : null;
 
     let remainingDays: number | null = null;
     if (row.expires_at !== null) {
@@ -77,6 +86,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       expiresAt: row.expires_at,
       remainingDays,
       shareUrl,
+      passwordProtected,
+      passwordValue,
     });
   }
 
@@ -155,7 +166,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     });
   }
 
-  const body = await context.request.json().catch(() => ({} as any));
+  const body = await context.request.json<{ id?: unknown; customName?: unknown }>().catch(
+    () => ({ id: undefined, customName: undefined })
+  );
   const frameId = typeof body?.id === 'string' ? body.id : '';
   const rawName = typeof body?.customName === 'string' ? body.customName : '';
 
