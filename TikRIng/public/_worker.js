@@ -11,7 +11,7 @@ import {
 import { onRequestGet as framesGet } from '../functions/api/frames/[id]';
 
 import { onRequestPost as checkoutPost } from '../functions/api/checkout/index';
-import { onRequestPost as portalPost } from '../functions/api/checkout/portal';
+import { onRequestPost as cancelPost } from '../functions/api/checkout/cancel';
 import { onRequestPost as syncPost } from '../functions/api/checkout/sync';
 import { onRequestPost as webhookPost } from '../functions/api/checkout/webhook';
 
@@ -86,10 +86,10 @@ async function routeApi(request, env, ctx) {
     return checkoutPost(makeContext(request, env, ctx));
   }
 
-  // /api/checkout/portal
-  if (pathname === '/api/checkout/portal') {
+  // /api/checkout/cancel
+  if (pathname === '/api/checkout/cancel') {
     if (method !== 'POST') return methodNotAllowed();
-    return portalPost(makeContext(request, env, ctx));
+    return cancelPost(makeContext(request, env, ctx));
   }
 
   // /api/checkout/sync
