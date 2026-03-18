@@ -14,6 +14,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [accessGranted, setAccessGranted] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
@@ -59,7 +60,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         setError(null);
         setPasswordError(null);
 
-        const metaResponse = await fetch(`/api/frames/${id}?meta=1&_t=${Date.now()}`, {
+        const metaUrl = new URL(`/api/frames/${id}`, window.location.origin);
+        metaUrl.searchParams.set('meta', '1');
+        metaUrl.searchParams.set('_t', String(Date.now()));
+        if (accessToken) {
+          metaUrl.searchParams.set('accessToken', accessToken);
+        }
+
+        const metaResponse = await fetch(metaUrl.toString(), {
           signal: controller.signal,
         });
 
@@ -91,7 +99,13 @@ export default function FrameEditor({ id }: FrameEditorProps) {
           return;
         }
 
-        const response = await fetch(`/api/frames/${id}?_t=${Date.now()}`, {
+        const frameUrlRequest = new URL(`/api/frames/${id}`, window.location.origin);
+        frameUrlRequest.searchParams.set('_t', String(Date.now()));
+        if (accessToken) {
+          frameUrlRequest.searchParams.set('accessToken', accessToken);
+        }
+
+        const response = await fetch(frameUrlRequest.toString(), {
           signal: controller.signal,
         });
 
@@ -144,7 +158,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [id, accessGranted]);
+  }, [id, accessGranted, accessToken]);
 
   useEffect(() => {
     return () => {
@@ -184,6 +198,13 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         throw new Error('パスワード確認に失敗しました。');
       }
 
+      const data = await response.json();
+      const nextAccessToken = typeof data?.accessToken === 'string' ? data.accessToken : null;
+      if (!nextAccessToken) {
+        throw new Error('アクセストークンの発行に失敗しました。');
+      }
+
+      setAccessToken(nextAccessToken);
       setAccessGranted(true);
       setPassword('');
     } catch (err) {

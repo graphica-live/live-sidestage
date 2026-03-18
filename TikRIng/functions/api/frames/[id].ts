@@ -1,6 +1,6 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
-import { hashFramePassword } from '../../_framePassword';
+import { createFrameAccessToken, hashFramePassword, verifyFrameAccessToken } from '../../_framePassword';
 
 type ShareRow = {
   frame_id: string;
@@ -33,28 +33,9 @@ function json(data: unknown, status = 200, headers?: HeadersInit) {
   });
 }
 
-function getAccessCookieName(frameId: string) {
-  return `frame_access_${frameId.replace(/[^a-zA-Z0-9]/g, '')}`;
-}
-
-function hasFrameAccess(request: Request, frameId: string) {
-  const cookieHeader = request.headers.get('cookie') ?? '';
-  const cookieName = getAccessCookieName(frameId);
-  return cookieHeader.split(';').some((entry) => {
-    const [name, value] = entry.trim().split('=');
-    return name === cookieName && value === '1';
-  });
-}
-
-function buildAccessCookie(request: Request, frameId: string) {
-  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
-  return `${getAccessCookieName(frameId)}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`;
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+async function hasFrameAccess(context: EventContext<Env, string, unknown>, frameId: string) {
+  const accessToken = new URL(context.request.url).searchParams.get('accessToken');
+  return verifyFrameAccessToken(context.env, accessToken, frameId);
 }
 
 async function resolveFrame(context: EventContext<Env, string, unknown>): Promise<ResolvedFrame | null> {
@@ -147,7 +128,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const ownerAccess = requestUrl.searchParams.get('ownerPreview') === '1'
       ? await canOwnerAccessFrame(context, frame.ownerId)
       : false;
-    const accessGranted = !requiresPassword || ownerAccess || hasFrameAccess(context.request, frame.frameId);
+    const tokenAccess = await hasFrameAccess(context, frame.frameId);
+    const accessGranted = !requiresPassword || ownerAccess || tokenAccess;
 
     if (requestUrl.searchParams.get('meta') === '1') {
       return json({
@@ -223,11 +205,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return json({ error: 'INVALID_PASSWORD' }, 401);
     }
 
-    return json(
-      { ok: true, requiresPassword: true },
-      200,
-      { 'Set-Cookie': buildAccessCookie(context.request, frame.frameId) }
-    );
+    const accessToken = await createFrameAccessToken(context.env, frame.frameId);
+    if (!accessToken) {
+      return json({ error: 'ACCESS_TOKEN_UNAVAILABLE' }, 500);
+    }
+
+    return json({ ok: true, requiresPassword: true, accessToken });
   } catch (error) {
     console.error('Password verification failed:', error);
     return json({ error: 'INTERNAL_SERVER_ERROR' }, 500);

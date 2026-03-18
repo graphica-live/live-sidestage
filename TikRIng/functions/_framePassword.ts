@@ -77,3 +77,35 @@ export async function decryptFramePassword(env: Env, encryptedValue: string | nu
     return null;
   }
 }
+
+type FrameAccessTokenPayload = {
+  frameId: string;
+  exp: number;
+};
+
+export async function createFrameAccessToken(env: Env, frameId: string, ttlMs = 10 * 60 * 1000): Promise<string | null> {
+  const expiresAt = Date.now() + ttlMs;
+  return encryptFramePassword(env, JSON.stringify({ frameId, exp: expiresAt }));
+}
+
+export async function verifyFrameAccessToken(
+  env: Env,
+  token: string | null,
+  expectedFrameId: string
+): Promise<boolean> {
+  if (!token) {
+    return false;
+  }
+
+  const decrypted = await decryptFramePassword(env, token);
+  if (!decrypted) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(decrypted) as Partial<FrameAccessTokenPayload>;
+    return payload.frameId === expectedFrameId && typeof payload.exp === 'number' && payload.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
