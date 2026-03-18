@@ -162,8 +162,12 @@ export default function Dashboard({ user }: DashboardProps) {
         return;
       }
       if (!res.ok) throw new Error('Cancel failed');
-      setCancelConfirm(false);
-      window.location.reload();
+      const data = await res.json();
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      throw new Error('Missing portal url');
     } catch {
       setError('サブスクリプションの解約に失敗しました。');
     } finally {
@@ -371,8 +375,8 @@ export default function Dashboard({ user }: DashboardProps) {
       {cancelConfirm ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl text-center">
-            <p className="text-white font-bold mb-1">サブスクリプションを解約しますか？</p>
-            <p className="text-xs text-tiktok-lightgray mb-4">即時解約されます。無期限フレームの有効期限は本日から90日後に変更されます。</p>
+            <p className="text-white font-bold mb-1">Stripeの管理画面へ移動しますか？</p>
+            <p className="text-xs text-tiktok-lightgray mb-4">Stripeのサブスクリプション管理ページへ移動します。解約や支払い情報の確認はStripe側で行います。</p>
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
@@ -380,7 +384,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 disabled={canceling}
                 className="flex-1 py-3 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {canceling ? '解約中...' : '解約する'}
+                {canceling ? '移動中...' : 'Stripeを開く'}
               </button>
               <button
                 type="button"
