@@ -15,10 +15,6 @@ interface DashboardProps {
   user: User;
 }
 
-function truncateName(name: string) {
-  return name.length > 20 ? `${name.slice(0, 20)}…` : name;
-}
-
 export default function Dashboard({ user }: DashboardProps) {
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
@@ -30,8 +26,6 @@ export default function Dashboard({ user }: DashboardProps) {
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [cancelConfirm, setCancelConfirm] = useState(false);
-  const [canceling, setCanceling] = useState(false);
 
   const canShow = useMemo(() => !!user, [user]);
 
@@ -146,27 +140,6 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (canceling) return;
-    setCanceling(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/checkout/cancel', { method: 'POST' });
-      if (res.status === 401) {
-        window.location.href = '/';
-        return;
-      }
-      if (!res.ok) throw new Error('Cancel failed');
-      setCancelConfirm(false);
-      // ページリロードして plan 状態を反映
-      window.location.reload();
-    } catch {
-      setError('サブスクリプションの解約に失敗しました。');
-    } finally {
-      setCanceling(false);
-    }
-  };
-
   const openBillingPortal = async () => {
     if (portalLoading) return;
     setPortalLoading(true);
@@ -203,19 +176,7 @@ export default function Dashboard({ user }: DashboardProps) {
   return (
     <div className="w-full flex flex-col max-w-xl animate-in fade-in duration-500">
       <div className="w-full flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl sm:text-2xl font-black">フレーム管理</h1>
-          {user.plan === 'pro' ? (
-            <button
-              type="button"
-              onClick={openBillingPortal}
-              disabled={portalLoading}
-              className="py-2 px-3 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/30 text-tiktok-lightgray font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {portalLoading ? '開いています...' : '解約・請求管理'}
-            </button>
-          ) : null}
-        </div>
+        <h1 className="text-xl sm:text-2xl font-black">フレーム管理</h1>
         <button
           type="button"
           onClick={() => {
@@ -250,7 +211,6 @@ export default function Dashboard({ user }: DashboardProps) {
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden">
           {frames.map((frame) => {
             const name = frame.displayName ?? '';
-            const short = truncateName(name);
 
             let remainingText = '';
             let remainingClass = 'text-tiktok-lightgray';
@@ -365,38 +325,12 @@ export default function Dashboard({ user }: DashboardProps) {
         <div className="mt-6 flex justify-center">
           <button
             type="button"
-            onClick={() => setCancelConfirm(true)}
-            className="text-xs text-tiktok-lightgray/50 hover:text-tiktok-red/70 underline transition-colors"
+            onClick={openBillingPortal}
+            disabled={portalLoading}
+            className="text-xs text-tiktok-lightgray/50 hover:text-tiktok-red/70 underline transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            サブスクリプションを解約する
+            {portalLoading ? '開いています...' : 'サブスクリプションを解約する'}
           </button>
-        </div>
-      ) : null}
-
-      {cancelConfirm ? (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl text-center">
-            <p className="text-white font-bold mb-1">サブスクリプションを解約しますか？</p>
-            <p className="text-xs text-tiktok-lightgray mb-4">即時解約されます。無期限フレームの有効期限は本日から90日後に変更されます。</p>
-            <div className="flex gap-2 mt-4">
-              <button
-                type="button"
-                onClick={handleCancelSubscription}
-                disabled={canceling}
-                className="flex-1 py-3 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {canceling ? '解約中...' : '解約する'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCancelConfirm(false)}
-                disabled={canceling}
-                className="flex-1 py-3 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
         </div>
       ) : null}
 
