@@ -238,7 +238,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 className={`w-full px-4 py-3 border-b border-tiktok-gray last:border-b-0 ${editingId === frame.id ? 'flex flex-wrap items-start gap-3' : 'flex items-center gap-3'}`}
               >
                 <img
-                  src={`/api/frames/${frame.id}`}
+                  src={`/api/frames/${frame.id}?ownerPreview=1`}
                   alt="thumb"
                   className="w-12 h-12 rounded-full object-cover border border-tiktok-gray bg-tiktok-black"
                   loading="lazy"

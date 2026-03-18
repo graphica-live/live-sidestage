@@ -375,69 +375,78 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     );
   }
 
-  if (error || !frameUrl) {
-    if (requiresPassword && !accessGranted && !error) {
-      return (
-        <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-md text-center">
-          <div className="w-16 h-16 rounded-full bg-tiktok-cyan/15 flex items-center justify-center mb-5 border border-tiktok-cyan/25">
-            <AlertCircle className="w-8 h-8 text-tiktok-cyan" />
-          </div>
-          <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">
-            <a
-              href="/"
-              aria-label="トップへ戻る"
-              className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
-            >
-              TikRing
-            </a>
-          </h1>
-          <h2 className="text-xl font-bold mb-2">パスワード保護されたフレームです</h2>
-          <p className="text-tiktok-lightgray text-sm mb-6">
-            配信者から共有されたパスワードを入力すると、フレームを表示できます。
-          </p>
-          <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark p-5 text-left">
-            <label className="block text-sm font-bold text-white mb-2">パスワード</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void handleUnlock();
-                }
-              }}
-              placeholder="パスワードを入力"
-              className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
-            />
-            {passwordError ? (
-              <p className="mt-2 text-sm text-tiktok-red">{passwordError}</p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void handleUnlock()}
-              disabled={unlocking}
-              className="w-full mt-4 py-3 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {unlocking ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  確認中...
-                </>
-              ) : (
-                'フレームを表示する'
-              )}
-            </button>
-          </div>
+  if (requiresPassword && !accessGranted) {
+    return (
+      <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-md text-center">
+        <div className="w-16 h-16 rounded-full bg-tiktok-cyan/15 flex items-center justify-center mb-5 border border-tiktok-cyan/25">
+          <AlertCircle className="w-8 h-8 text-tiktok-cyan" />
         </div>
-      );
-    }
+        <h1 className="text-3xl font-black mb-2 text-center text-white tracking-tight glitch-text" data-text="TikRing">
+          <a
+            href="/"
+            aria-label="トップへ戻る"
+            className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
+          >
+            TikRing
+          </a>
+        </h1>
+        <h2 className="text-xl font-bold mb-2">パスワード保護されたフレームです</h2>
+        <p className="text-tiktok-lightgray text-sm mb-6">
+          配信者から共有されたパスワードを入力すると、フレームを表示できます。
+        </p>
+        <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark p-5 text-left">
+          <label className="block text-sm font-bold text-white mb-2">パスワード</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void handleUnlock();
+              }
+            }}
+            placeholder="パスワードを入力"
+            className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
+          />
+          {passwordError ? (
+            <p className="mt-2 text-sm text-tiktok-red">{passwordError}</p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void handleUnlock()}
+            disabled={unlocking}
+            className="w-full mt-4 py-3 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {unlocking ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                確認中...
+              </>
+            ) : (
+              'フレームを表示する'
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
+  if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in">
         <AlertCircle className="w-16 h-16 text-tiktok-red mb-4" />
         <h2 className="text-xl font-bold mb-2">エラー</h2>
         <p className="text-tiktok-lightgray">{error}</p>
+      </div>
+    );
+  }
+
+  if (!frameUrl) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
+        <p className="text-tiktok-lightgray">フレームを読み込み中...</p>
       </div>
     );
   }

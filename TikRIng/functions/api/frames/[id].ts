@@ -144,7 +144,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const requestUrl = new URL(context.request.url);
     const requiresPassword = Boolean(frame.passwordHash);
-    const ownerAccess = await canOwnerAccessFrame(context, frame.ownerId);
+    const ownerAccess = requestUrl.searchParams.get('ownerPreview') === '1'
+      ? await canOwnerAccessFrame(context, frame.ownerId)
+      : false;
     const accessGranted = !requiresPassword || ownerAccess || hasFrameAccess(context.request, frame.frameId);
 
     if (requestUrl.searchParams.get('meta') === '1') {
