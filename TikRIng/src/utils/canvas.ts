@@ -147,6 +147,148 @@ export const getSquareFrameBlob = async (
   });
 };
 
+export type FrameTransparencyAnalysis = {
+  connectedTransparentRatio: number;
+  centralOpaqueRatio: number;
+  hasCentralSeedTransparency: boolean;
+  shouldBlockUpload: boolean;
+};
+
+export const analyzeFrameTransparency = async (
+  imageSrc: string,
+  options?: {
+    alphaThreshold?: number;
+    centerRadiusRatio?: number;
+    seedSearchRadiusRatio?: number;
+    minConnectedTransparentRatio?: number;
+    maxCentralOpaqueRatio?: number;
+  }
+): Promise<FrameTransparencyAnalysis> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = image.width;
+  canvas.height = image.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, image.width, image.height);
+
+  const alphaThreshold = options?.alphaThreshold ?? 10;
+  const centerRadiusRatio = options?.centerRadiusRatio ?? 0.22;
+  const seedSearchRadiusRatio = options?.seedSearchRadiusRatio ?? 0.35;
+  const minConnectedTransparentRatio = options?.minConnectedTransparentRatio ?? 0.12;
+  const maxCentralOpaqueRatio = options?.maxCentralOpaqueRatio ?? 0.7;
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const radius = Math.max(1, Math.floor(Math.min(width, height) * centerRadiusRatio));
+  const radiusSq = radius * radius;
+  const seedRadius = Math.max(1, Math.floor(radius * seedSearchRadiusRatio));
+  const seedRadiusSq = seedRadius * seedRadius;
+
+  let centralAreaCount = 0;
+  let centralOpaqueCount = 0;
+  let seedIndex = -1;
+  let nearestSeedDistance = Number.POSITIVE_INFINITY;
+
+  const startX = Math.max(0, centerX - radius);
+  const endX = Math.min(width - 1, centerX + radius);
+  const startY = Math.max(0, centerY - radius);
+  const endY = Math.min(height - 1, centerY + radius);
+
+  const isTransparentAt = (pixelIndex: number) => data[pixelIndex * 4 + 3] <= alphaThreshold;
+
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) {
+        continue;
+      }
+
+      centralAreaCount += 1;
+
+      const pixelIndex = y * width + x;
+      if (!isTransparentAt(pixelIndex)) {
+        centralOpaqueCount += 1;
+        continue;
+      }
+
+      if (distSq <= seedRadiusSq && distSq < nearestSeedDistance) {
+        nearestSeedDistance = distSq;
+        seedIndex = pixelIndex;
+      }
+    }
+  }
+
+  let connectedTransparentCount = 0;
+  if (seedIndex !== -1) {
+    const visited = new Uint8Array(width * height);
+    const queue = new Int32Array(Math.max(centralAreaCount, 1));
+    let head = 0;
+    let tail = 0;
+    queue[tail] = seedIndex;
+    tail += 1;
+    visited[seedIndex] = 1;
+
+    while (head < tail) {
+      const current = queue[head];
+      head += 1;
+      connectedTransparentCount += 1;
+
+      const x = current % width;
+      const y = Math.floor(current / width);
+
+      const tryPush = (nextX: number, nextY: number) => {
+        if (nextX < startX || nextX > endX || nextY < startY || nextY > endY) {
+          return;
+        }
+
+        const dx = nextX - centerX;
+        const dy = nextY - centerY;
+        if (dx * dx + dy * dy > radiusSq) {
+          return;
+        }
+
+        const nextIndex = nextY * width + nextX;
+        if (visited[nextIndex] === 1 || !isTransparentAt(nextIndex)) {
+          return;
+        }
+
+        visited[nextIndex] = 1;
+        queue[tail] = nextIndex;
+        tail += 1;
+      };
+
+      tryPush(x - 1, y);
+      tryPush(x + 1, y);
+      tryPush(x, y - 1);
+      tryPush(x, y + 1);
+    }
+  }
+
+  const connectedTransparentRatio = centralAreaCount > 0 ? connectedTransparentCount / centralAreaCount : 0;
+  const centralOpaqueRatio = centralAreaCount > 0 ? centralOpaqueCount / centralAreaCount : 1;
+  const hasCentralSeedTransparency = seedIndex !== -1;
+
+  return {
+    connectedTransparentRatio,
+    centralOpaqueRatio,
+    hasCentralSeedTransparency,
+    shouldBlockUpload:
+      connectedTransparentRatio < minConnectedTransparentRatio &&
+      centralOpaqueRatio > maxCentralOpaqueRatio,
+  };
+};
+
 function hasTransparentPixelsOnBorder(
   ctx: CanvasRenderingContext2D,
   size: number,
@@ -264,23 +406,12 @@ export const hasTransparentPixelsInCenter = async (
   imageSrc: string,
   alphaThreshold = 10
 ): Promise<boolean> => {
-  const image = await createImage(imageSrc);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  if (!ctx) {
-    throw new Error('Canvas 2D context not available');
-  }
-
-  canvas.width = image.width;
-  canvas.height = image.height;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(image, 0, 0, image.width, image.height);
-
-  const centerX = Math.floor(canvas.width / 2);
-  const centerY = Math.floor(canvas.height / 2);
-  const data = ctx.getImageData(centerX, centerY, 1, 1).data;
-  return data[3] <= alphaThreshold;
+  const analysis = await analyzeFrameTransparency(imageSrc, {
+    alphaThreshold,
+    minConnectedTransparentRatio: 0.0001,
+    maxCentralOpaqueRatio: 0.9999,
+  });
+  return analysis.hasCentralSeedTransparency;
 };
 
 export const getTransparentCentroidHint = async (

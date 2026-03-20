@@ -126,34 +126,53 @@ function App() {
     return <BrowserWarning />;
   }
 
+  const showContactLink = !isDashboard;
+
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
-      <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col items-center justify-center">
-        {isDashboard ? (
-          user === undefined ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
-              <p className="text-tiktok-lightgray">読み込み中...</p>
-            </div>
-          ) : user ? (
-            <Dashboard user={user} />
+      <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          {isDashboard ? (
+            user === undefined ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
+                <p className="text-tiktok-lightgray">読み込み中...</p>
+              </div>
+            ) : user ? (
+              <Dashboard user={user} />
+            ) : (
+              <Home user={user} />
+            )
           ) : (
-            <Home user={user} />
-          )
-        ) : frameId ? (
-          frameCheckStatus === 'loading' || frameCheckStatus === 'idle' ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
-              <p className="text-tiktok-lightgray">フレームを読み込み中...</p>
-            </div>
-          ) : frameCheckStatus === 'ok' ? (
-            <FrameEditor id={frameId} />
-          ) : (
-            <Expired />
-          )
-        ) : (
-          <Home user={user} />
-        )}
+            frameId ? (
+              frameCheckStatus === 'loading' || frameCheckStatus === 'idle' ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <Loader2 className="w-12 h-12 animate-spin text-tiktok-cyan mb-4" />
+                  <p className="text-tiktok-lightgray">フレームを読み込み中...</p>
+                </div>
+              ) : frameCheckStatus === 'ok' ? (
+                <FrameEditor id={frameId} />
+              ) : (
+                <Expired />
+              )
+            ) : (
+              <Home user={user} />
+            )
+          )}
+        </div>
+
+        {showContactLink ? (
+          <div className="w-full pt-8 pb-2 text-center">
+            <a
+              href="https://www.tiktok.com/@yu_ki_nojo?lang=ja-JP"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-tiktok-lightgray/80 underline underline-offset-4 hover:text-white"
+            >
+              お問い合わせ先
+            </a>
+          </div>
+        ) : null}
       </main>
     </div>
   );

@@ -1,7 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
-import { getSquareFrameBlob, hasTransparentPixelsInCenter, getTransparentCentroidHint } from '../utils/canvas';
+import {
+  analyzeFrameTransparency,
+  getSquareFrameBlob,
+  getTransparentCentroidHint,
+} from '../utils/canvas';
 
 declare const grecaptcha: any;
 
@@ -338,9 +342,11 @@ export default function Home({ user }: HomeProps) {
 
       const squareBlobUrl = URL.createObjectURL(squareBlob);
       try {
-        const hasTransparentCenter = await hasTransparentPixelsInCenter(squareBlobUrl);
-        if (!hasTransparentCenter) {
-          setError('中央に透過領域がありません。中央が透過されるように画像位置を調整してください。');
+        const analysis = await analyzeFrameTransparency(squareBlobUrl);
+        if (analysis.shouldBlockUpload) {
+          setError(
+            'この画像は配布用フレームとして使えないためアップロードできません。中央にリスナー画像を入れるための透過領域を確保し、人物や見本画像が中央に残らない状態にしてください。'
+          );
           return;
         }
       } finally {
