@@ -96,28 +96,32 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     }
   }
 
-  try {
-    const checkoutSession = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer: customerId,
-      line_items: [{
-        price_data: {
-          currency: DONATION_CURRENCY,
-          unit_amount: amount,
-          product_data: {
-            name: 'TikRing Support Donation',
-            description: 'TikRing support payment',
-          },
+  const checkoutParams: Stripe.Checkout.SessionCreateParams = {
+    mode: 'payment',
+    line_items: [{
+      price_data: {
+        currency: DONATION_CURRENCY,
+        unit_amount: amount,
+        product_data: {
+          name: 'TikRing Support Donation',
         },
-        quantity: 1,
-      }],
-      success_url: successUrl.toString(),
-      cancel_url: cancelUrl,
-      submit_type: 'donate',
-      metadata: userId
-        ? { userId, purpose: 'donation', amountYen: String(amount) }
-        : { purpose: 'donation', amountYen: String(amount) },
-    });
+      },
+      quantity: 1,
+    }],
+    success_url: successUrl.toString(),
+    cancel_url: cancelUrl,
+    payment_method_types: ['card'],
+    metadata: userId
+      ? { userId, purpose: 'donation', amountYen: String(amount) }
+      : { purpose: 'donation', amountYen: String(amount) },
+  };
+
+  if (customerId) {
+    checkoutParams.customer = customerId;
+  }
+
+  try {
+    const checkoutSession = await stripe.checkout.sessions.create(checkoutParams);
 
     return new Response(JSON.stringify({ url: checkoutSession.url }), {
       status: 200,
