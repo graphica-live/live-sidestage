@@ -7,6 +7,11 @@ const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
 const DONATION_UNIT_YEN = 100;
 
+function getStripeSecretKey(env: Env): string | null {
+  const secretKey = env.STRIPE_SECRET_KEY?.trim();
+  return secretKey || null;
+}
+
 function getSafeReturnPath(rawValue: unknown): string {
   if (typeof rawValue !== 'string' || !rawValue.startsWith('/')) {
     return '/';
@@ -41,6 +46,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const body = await ctx.request.json().catch(() => ({} as Record<string, unknown>));
   const returnPath = getSafeReturnPath(body.returnPath);
   const amount = normalizeDonationAmount(body.amount);
+
   if (amount === null) {
     return new Response(JSON.stringify({ error: 'INVALID_DONATION_AMOUNT' }), {
       status: 400,
@@ -49,8 +55,16 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   const session = await getSession(ctx.env, ctx.request);
+  const secretKey = getStripeSecretKey(ctx.env);
+  if (!secretKey) {
+    console.error('Donation checkout configuration is missing STRIPE_SECRET_KEY');
+    return new Response(JSON.stringify({ error: 'MISSING_STRIPE_SECRET_KEY' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
-  const stripe = new Stripe(ctx.env.STRIPE_SECRET_KEY);
+  const stripe = new Stripe(secretKey);
   const siteUrl = new URL(ctx.request.url).origin;
   const successUrl = new URL(returnPath, siteUrl);
   successUrl.searchParams.set('support', 'success');
@@ -82,30 +96,44 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     }
   }
 
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    customer: customerId,
-    line_items: [{
-      price_data: {
-        currency: DONATION_CURRENCY,
-        unit_amount: amount,
-        product_data: {
-          name: 'TikRing Support Donation',
-          description: 'TikRing support payment',
+  try {
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer: customerId,
+      line_items: [{
+        price_data: {
+          currency: DONATION_CURRENCY,
+          unit_amount: amount,
+          product_data: {
+            name: 'TikRing Support Donation',
+            description: 'TikRing support payment',
+          },
         },
-      },
-      quantity: 1,
-    }],
-    success_url: successUrl.toString(),
-    cancel_url: cancelUrl,
-    submit_type: 'donate',
-    metadata: userId
-      ? { userId, purpose: 'donation', amountYen: String(amount) }
-      : { purpose: 'donation', amountYen: String(amount) },
-  });
+        quantity: 1,
+      }],
+      success_url: successUrl.toString(),
+      cancel_url: cancelUrl,
+      submit_type: 'donate',
+      metadata: userId
+        ? { userId, purpose: 'donation', amountYen: String(amount) }
+        : { purpose: 'donation', amountYen: String(amount) },
+    });
 
-  return new Response(JSON.stringify({ url: checkoutSession.url }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+    return new Response(JSON.stringify({ url: checkoutSession.url }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('Donation checkout creation failed', {
+      error,
+      amount,
+      hasCustomerId: Boolean(customerId),
+      userId,
+    });
+
+    return new Response(JSON.stringify({ error: 'DONATION_CHECKOUT_FAILED' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 };

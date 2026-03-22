@@ -14,6 +14,19 @@ interface DonationCardProps {
   compact?: boolean;
 }
 
+function getSupportErrorMessage(errorCode: string | null): string {
+  switch (errorCode) {
+    case 'INVALID_DONATION_AMOUNT':
+      return `応援額は${formatYen(MIN_DONATION_YEN)}円から${formatYen(MAX_DONATION_YEN)}円までの${formatYen(DONATION_STEP_YEN)}円単位で入力してください。`;
+    case 'MISSING_STRIPE_SECRET_KEY':
+      return '本番環境の STRIPE_SECRET_KEY が未設定です。Cloudflare Pages の Secrets を確認してください。';
+    case 'DONATION_CHECKOUT_FAILED':
+      return 'Stripe 側で応援ページを作成できませんでした。設定内容と Stripe ダッシュボードを確認してください。';
+    default:
+      return '応援ページの起動に失敗しました。時間をおいて再度お試しください。';
+  }
+}
+
 export default function DonationCard({ returnPath, compact = false }: DonationCardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +44,7 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
   const handleDonate = async () => {
     if (loading) return;
     if (!isAmountValid) {
-      setError(`応援額は${formatYen(MIN_DONATION_YEN)}円から${formatYen(MAX_DONATION_YEN)}円までの${formatYen(DONATION_STEP_YEN)}円単位で入力してください。`);
+      setError(getSupportErrorMessage('INVALID_DONATION_AMOUNT'));
       return;
     }
 
@@ -46,17 +59,19 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
       });
 
       if (!res.ok) {
-        throw new Error('Donation checkout failed');
+        const errorData = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(errorData?.error ?? 'DONATION_CHECKOUT_FAILED');
       }
 
       const data = await res.json();
       if (!data?.url) {
-        throw new Error('Missing donation checkout url');
+        throw new Error('DONATION_CHECKOUT_FAILED');
       }
 
       window.location.href = data.url;
-    } catch {
-      setError('応援ページの起動に失敗しました。時間をおいて再度お試しください。');
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.message : null;
+      setError(getSupportErrorMessage(errorCode));
       setLoading(false);
     }
   };

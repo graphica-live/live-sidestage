@@ -477,7 +477,11 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handleCheckout = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoginOptionsOpen(true);
+      setError('Proのアップグレードにはログインが必要です。');
+      return;
+    }
     setCheckoutLoading(true);
     try {
       const res = await fetch('/api/checkout', {
@@ -909,7 +913,7 @@ export default function Home({ user }: HomeProps) {
         </div>
       )}
 
-      {user && user.plan !== 'pro' ? (
+      {user !== undefined && user?.plan !== 'pro' ? (
         <div className="w-full mt-10 rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
           <button
             type="button"
@@ -932,6 +936,26 @@ export default function Home({ user }: HomeProps) {
                 <li>フレームにパスワードを設定</li>
                 <li>フレームに名前を付けて整理・管理しやすく</li>
               </ul>
+
+              {!user ? (
+                <div className="mb-3 rounded-md border border-tiktok-cyan/20 bg-tiktok-black px-3 py-3">
+                  <p className="text-xs text-tiktok-lightgray mb-3">Proのアップグレードにはログインが必要です。ログイン後、そのまま決済へ進めます。</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <a
+                      href="/api/auth/google"
+                      className="w-full py-2.5 rounded-md bg-white text-black font-bold text-sm text-center hover:bg-white/90 transition-colors"
+                    >
+                      Googleでログイン
+                    </a>
+                    <a
+                      href="/api/auth/line"
+                      className="w-full py-2.5 rounded-md bg-[#06C755] text-white font-bold text-sm text-center hover:bg-[#05B34C] transition-colors"
+                    >
+                      LINEでログイン
+                    </a>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-2 gap-2">
                 <label
@@ -980,14 +1004,16 @@ export default function Home({ user }: HomeProps) {
                 </label>
               </div>
 
-              <button
-                type="button"
-                onClick={handleCheckout}
-                disabled={checkoutLoading}
-                className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
-              </button>
+              {user ? (
+                <button
+                  type="button"
+                  onClick={handleCheckout}
+                  disabled={checkoutLoading}
+                  className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
