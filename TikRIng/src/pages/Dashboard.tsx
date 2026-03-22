@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
-import DonationCard from '../components/DonationCard';
 
 type User = { id: string; display_name: string; plan: string };
 
@@ -371,10 +370,6 @@ export default function Dashboard({ user }: DashboardProps) {
           </button>
         </div>
       ) : null}
-
-      <div className="mt-10 w-full">
-        <DonationCard returnPath="/?dashboard=1" compact />
-      </div>
 
       {cancelConfirm ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
