@@ -68,73 +68,73 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  const session = await getSession(ctx.env, ctx.request);
-  const secretKey = getStripeSecretKey(ctx.env);
-  if (!secretKey) {
-    console.error('Donation checkout configuration is missing STRIPE_SECRET_KEY');
-    return new Response(JSON.stringify({ error: 'MISSING_STRIPE_SECRET_KEY' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  try {
+    const session = await getSession(ctx.env, ctx.request);
+    const secretKey = getStripeSecretKey(ctx.env);
+    if (!secretKey) {
+      console.error('Donation checkout configuration is missing STRIPE_SECRET_KEY');
+      return new Response(JSON.stringify({ error: 'MISSING_STRIPE_SECRET_KEY' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-  const stripe = new Stripe(secretKey);
-  const siteUrl = new URL(ctx.request.url).origin;
-  const successUrl = new URL(returnPath, siteUrl);
-  successUrl.searchParams.set('support', 'success');
+    const stripe = new Stripe(secretKey);
+    const siteUrl = new URL(ctx.request.url).origin;
+    const successUrl = new URL(returnPath, siteUrl);
+    successUrl.searchParams.set('support', 'success');
 
-  const cancelUrl = new URL(returnPath, siteUrl).toString();
+    const cancelUrl = new URL(returnPath, siteUrl).toString();
 
-  let customerId: string | undefined;
-  const userId = session?.userId ?? null;
+    let customerId: string | undefined;
+    const userId = session?.userId ?? null;
 
-  if (userId) {
-    const user = await ctx.env.DB.prepare(
-      'SELECT id, email, stripe_customer_id FROM users WHERE id = ?'
-    ).bind(userId).first<{ id: string; email: string; stripe_customer_id: string | null }>();
+    if (userId) {
+      const user = await ctx.env.DB.prepare(
+        'SELECT id, email, stripe_customer_id FROM users WHERE id = ?'
+      ).bind(userId).first<{ id: string; email: string; stripe_customer_id: string | null }>();
 
-    if (user) {
-      customerId = user.stripe_customer_id ?? undefined;
+      if (user) {
+        customerId = user.stripe_customer_id ?? undefined;
 
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          metadata: { userId: user.id },
-        });
-        customerId = customer.id;
+        if (!customerId) {
+          const customer = await stripe.customers.create({
+            email: user.email,
+            metadata: { userId: user.id },
+          });
+          customerId = customer.id;
 
-        await ctx.env.DB.prepare(
-          'UPDATE users SET stripe_customer_id = ? WHERE id = ?'
-        ).bind(customerId, user.id).run();
+          await ctx.env.DB.prepare(
+            'UPDATE users SET stripe_customer_id = ? WHERE id = ?'
+          ).bind(customerId, user.id).run();
+        }
       }
     }
-  }
 
-  const checkoutParams: Stripe.Checkout.SessionCreateParams = {
-    mode: 'payment',
-    line_items: [{
-      price_data: {
-        currency: DONATION_CURRENCY,
-        unit_amount: amount,
-        product_data: {
-          name: 'TikRing Support Donation',
+    const checkoutParams: Stripe.Checkout.SessionCreateParams = {
+      mode: 'payment',
+      line_items: [{
+        price_data: {
+          currency: DONATION_CURRENCY,
+          unit_amount: amount,
+          product_data: {
+            name: 'TikRing Support Donation',
+          },
         },
-      },
-      quantity: 1,
-    }],
-    success_url: successUrl.toString(),
-    cancel_url: cancelUrl,
-    payment_method_types: ['card'],
-    metadata: userId
-      ? { userId, purpose: 'donation', amountYen: String(amount) }
-      : { purpose: 'donation', amountYen: String(amount) },
-  };
+        quantity: 1,
+      }],
+      success_url: successUrl.toString(),
+      cancel_url: cancelUrl,
+      payment_method_types: ['card'],
+      metadata: userId
+        ? { userId, purpose: 'donation', amountYen: String(amount) }
+        : { purpose: 'donation', amountYen: String(amount) },
+    };
 
-  if (customerId) {
-    checkoutParams.customer = customerId;
-  }
+    if (customerId) {
+      checkoutParams.customer = customerId;
+    }
 
-  try {
     const checkoutSession = await stripe.checkout.sessions.create(checkoutParams);
 
     return new Response(JSON.stringify({ url: checkoutSession.url }), {
@@ -147,8 +147,6 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     console.error('Donation checkout creation failed', {
       error,
       amount,
-      hasCustomerId: Boolean(customerId),
-      userId,
       stripeError,
     });
 
