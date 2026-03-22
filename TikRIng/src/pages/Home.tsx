@@ -4,7 +4,6 @@ import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from
 import {
   analyzeFrameTransparency,
   getSquareFrameBlob,
-  getTransparentCentroidHint,
 } from '../utils/canvas';
 
 declare const grecaptcha: any;
@@ -36,8 +35,9 @@ export default function Home({ user }: HomeProps) {
   const [frameFileName, setFrameFileName] = useState('frame');
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [autoCenteredNotice, setAutoCenteredNotice] = useState(false);
-  const [centering, setCentering] = useState(false);
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [showMaskIntro, setShowMaskIntro] = useState(false);
+  const [showGestureHint, setShowGestureHint] = useState(false);
   const [edgeFilledNotice, setEdgeFilledNotice] = useState(false);
   const [showEdgeTransparencyDialog, setShowEdgeTransparencyDialog] = useState(false);
   const [pendingUploadBlob, setPendingUploadBlob] = useState<Blob | null>(null);
@@ -54,6 +54,7 @@ export default function Home({ user }: HomeProps) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
+  const [showZoomSlider, setShowZoomSlider] = useState(true);
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -63,14 +64,66 @@ export default function Home({ user }: HomeProps) {
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialPinchDistance = useRef<number | null>(null);
   const initialPinchZoom = useRef<number>(1);
+  const adjustingTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (frameImage) {
         URL.revokeObjectURL(frameImage);
       }
+      if (adjustingTimeoutRef.current !== null) {
+        window.clearTimeout(adjustingTimeoutRef.current);
+      }
     };
   }, [frameImage]);
+
+  useEffect(() => {
+    if (!frameImage || shareUrl) {
+      setShowMaskIntro(false);
+      setShowGestureHint(false);
+      return;
+    }
+
+    setShowMaskIntro(true);
+    setShowGestureHint(true);
+    const timerId = window.setTimeout(() => {
+      setShowMaskIntro(false);
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [frameImage, shareUrl]);
+
+  useEffect(() => {
+    const updateZoomSliderVisibility = () => {
+      const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+      const hasTouchPoints = navigator.maxTouchPoints > 0;
+      setShowZoomSlider(!(coarsePointer || hasTouchPoints));
+    };
+
+    updateZoomSliderVisibility();
+    window.addEventListener('resize', updateZoomSliderVisibility);
+
+    return () => {
+      window.removeEventListener('resize', updateZoomSliderVisibility);
+    };
+  }, []);
+
+  const dismissGestureHint = () => {
+    setShowGestureHint(false);
+  };
+
+  const startTransientAdjusting = () => {
+    setIsAdjusting(true);
+    if (adjustingTimeoutRef.current !== null) {
+      window.clearTimeout(adjustingTimeoutRef.current);
+    }
+    adjustingTimeoutRef.current = window.setTimeout(() => {
+      setIsAdjusting(false);
+      adjustingTimeoutRef.current = null;
+    }, 650);
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -90,7 +143,8 @@ export default function Home({ user }: HomeProps) {
     setFrameFileName(file.name.replace(/\.[^/.]+$/, '') || 'frame');
     setPosition({ x: 0, y: 0 });
     setZoom(1);
-    setAutoCenteredNotice(false);
+    setIsAdjusting(false);
+    setShowMaskIntro(false);
     setEdgeFilledNotice(false);
     setShowEdgeTransparencyDialog(false);
     setPendingUploadBlob(null);
@@ -111,6 +165,8 @@ export default function Home({ user }: HomeProps) {
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    setIsAdjusting(true);
+    dismissGestureHint();
     e.currentTarget.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -161,11 +217,14 @@ export default function Home({ user }: HomeProps) {
       startPosition.current = { ...position };
     } else if (activePointers.current.size === 0) {
       isDragging.current = false;
+      setIsAdjusting(false);
     }
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    dismissGestureHint();
+    startTransientAdjusting();
     const zoomFactor = -e.deltaY * 0.002;
     setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
   };
@@ -177,7 +236,9 @@ export default function Home({ user }: HomeProps) {
     setFrameImage(null);
     setPosition({ x: 0, y: 0 });
     setZoom(1);
-    setAutoCenteredNotice(false);
+    setIsAdjusting(false);
+    setShowMaskIntro(false);
+    setShowGestureHint(false);
     setEdgeFilledNotice(false);
     setShowEdgeTransparencyDialog(false);
     setPendingUploadBlob(null);
@@ -240,7 +301,6 @@ export default function Home({ user }: HomeProps) {
 
     const data = await response.json();
 
-    // ログイン済みならshare APIでURL発行（共有トークン）
     let shareToken = data.id;
     if (user) {
       const shareRes = await fetch('/api/share', {
@@ -257,42 +317,6 @@ export default function Home({ user }: HomeProps) {
     const url = `${window.location.origin}${window.location.pathname}?f=${shareToken}&openExternalBrowser=1`;
     setShareUrl(url);
     return true;
-  };
-
-  const handleAlignTransparentCenter = async () => {
-    if (!frameImage || centering) return;
-
-    setCentering(true);
-    setAutoCenteredNotice(false);
-
-    try {
-      const hint = await getTransparentCentroidHint(frameImage);
-      if (!hint.point) {
-        setError('中央付近に透過領域が見つかりませんでした。手動で位置を調整してください。');
-        return;
-      }
-
-      let previewSize = editorRef.current?.clientWidth ?? 0;
-      for (let i = 0; i < 6 && previewSize <= 0; i += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        previewSize = editorRef.current?.clientWidth ?? 0;
-      }
-
-      if (previewSize <= 0) return;
-
-      const baseScale = Math.min(previewSize / hint.width, previewSize / hint.height);
-      const dx = (hint.point.x - hint.width / 2) * baseScale;
-      const dy = (hint.point.y - hint.height / 2) * baseScale;
-
-      setPosition({ x: -dx, y: -dy });
-      setAutoCenteredNotice(true);
-      setError(null);
-    } catch (err) {
-      console.error('Manual centering failed:', err);
-      setError('透過領域の位置合わせに失敗しました。もう一度お試しください。');
-    } finally {
-      setCentering(false);
-    }
   };
 
   const handleUpload = async () => {
@@ -594,14 +618,6 @@ export default function Home({ user }: HomeProps) {
         <div className="w-full flex flex-col items-center gap-6">
           <div className="text-center space-y-2">
             <h2 className="text-xl font-bold">フレーム位置を調整</h2>
-            <p className="text-sm text-tiktok-lightgray">
-              画像をドラッグして位置調整、ピンチ/ホイール/スライダーで拡大縮小できます。
-            </p>
-            {autoCenteredNotice && (
-              <p className="text-xs text-tiktok-cyan/90 bg-tiktok-cyan/10 border border-tiktok-cyan/25 rounded-full px-3 py-1 inline-block">
-                透過領域の中心が中央に来るよう、位置を自動調整しました。
-              </p>
-            )}
             {edgeFilledNotice && (
               <p className="text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 rounded-full px-3 py-1 inline-block">
                 フレーム端の透過部分を、平均色で自動補正しました。
@@ -634,38 +650,80 @@ export default function Home({ user }: HomeProps) {
               />
             </div>
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className="w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-2 border-white/65 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              <div className={`editor-crop-mask w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-[2.5px] border-tiktok-cyan/95${showMaskIntro ? ' editor-crop-mask-intro' : isAdjusting ? ' editor-crop-mask-active' : ''}`} />
+            </div>
+            <div
+              className={`editor-gesture-hint absolute inset-0 z-30 pointer-events-none flex items-center justify-center px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
+              aria-hidden={!showGestureHint}
+            >
+              <div className="editor-gesture-card w-full max-w-[21rem] rounded-[1.75rem] border border-white/12 px-4 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md">
+                <div className="flex items-center gap-3">
+                  <div className="editor-gesture-figure editor-gesture-figure-drag" aria-hidden="true">
+                    <span className="editor-gesture-drag-base" />
+                    <span className="editor-gesture-drag-layer" />
+                    <span className="editor-gesture-drag-touch" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-up" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-down" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-pan-left" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-pan-right" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">Drag</p>
+                    <p className="mt-1 text-sm font-bold leading-tight">ドラッグして位置調整</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 h-px bg-white/8" />
+
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="editor-gesture-figure editor-gesture-figure-pinch" aria-hidden="true">
+                    <span className="editor-gesture-touch editor-gesture-touch-left" />
+                    <span className="editor-gesture-touch editor-gesture-touch-right" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-left" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-right" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">Pinch</p>
+                    <p className="mt-1 text-sm font-bold leading-tight">ピンチして拡大縮小</p>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-center text-[11px] font-medium tracking-[0.08em] text-white/48">
+                  最初の操作でこのガイドは消えます
+                </p>
+              </div>
             </div>
             <div className="absolute inset-0 z-20 pointer-events-none border-2 border-tiktok-cyan/70 rounded-md" />
           </div>
 
-          <p className="text-xs text-tiktok-lightgray/90 text-center -mt-2">
-            薄い円の内側が、TikTokでのプロフィール画像表示の目安です。
-          </p>
-
-          <div className="w-full flex items-center gap-3 px-2">
-            <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
-            <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
-            <input
-              type="range"
-              value={zoom}
-              min={0.3}
-              max={3}
-              step={0.1}
-              aria-labelledby="FrameZoom"
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
-            />
-            <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
+          <div className="-mt-2 w-full rounded-2xl border border-tiktok-cyan/30 bg-tiktok-cyan/12 px-4 py-3 text-center shadow-[0_12px_40px_rgba(37,244,238,0.12)]">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-tiktok-cyan/80">Crop Guide</p>
+            <p className="mt-1 text-sm font-bold text-white">
+              水色の円が、TikTokでプロフィール画像を登録する際のデフォルトの切り抜き位置の目安です。
+            </p>
           </div>
 
-          <button
-            onClick={handleAlignTransparentCenter}
-            disabled={centering}
-            className="w-full py-2.5 px-4 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 hover:bg-tiktok-cyan/15 text-tiktok-cyan font-bold transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {centering ? '透過中心に合わせています...' : '透過領域の中心を中央に合わせる'}
-          </button>
+          {showZoomSlider ? (
+            <div className="w-full flex items-center gap-3 px-2">
+              <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
+              <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
+              <input
+                type="range"
+                value={zoom}
+                min={0.3}
+                max={3}
+                step={0.001}
+                aria-labelledby="FrameZoom"
+                onChange={(e) => {
+                  dismissGestureHint();
+                  startTransientAdjusting();
+                  setZoom(Number(e.target.value));
+                }}
+                className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
+              />
+              <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
+            </div>
+          ) : null}
 
           {user?.plan === 'pro' ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
