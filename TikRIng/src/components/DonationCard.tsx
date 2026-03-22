@@ -27,6 +27,18 @@ function getSupportErrorMessage(errorCode: string | null): string {
   }
 }
 
+function getSupportErrorDetailMessage(errorCode: string | null, detail: string | null, stripeCode: string | null): string {
+  if (!detail) {
+    return getSupportErrorMessage(errorCode);
+  }
+
+  if (stripeCode) {
+    return `${getSupportErrorMessage(errorCode)} (${stripeCode}: ${detail})`;
+  }
+
+  return `${getSupportErrorMessage(errorCode)} (${detail})`;
+}
+
 export default function DonationCard({ returnPath, compact = false }: DonationCardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +71,16 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => null) as { error?: string } | null;
-        throw new Error(errorData?.error ?? 'DONATION_CHECKOUT_FAILED');
+        const errorData = await res.json().catch(() => null) as {
+          error?: string;
+          details?: string;
+          code?: string;
+        } | null;
+        throw new Error(JSON.stringify({
+          error: errorData?.error ?? 'DONATION_CHECKOUT_FAILED',
+          details: errorData?.details ?? null,
+          code: errorData?.code ?? null,
+        }));
       }
 
       const data = await res.json();
@@ -70,8 +90,22 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
 
       window.location.href = data.url;
     } catch (error) {
-      const errorCode = error instanceof Error ? error.message : null;
-      setError(getSupportErrorMessage(errorCode));
+      let errorCode: string | null = null;
+      let detail: string | null = null;
+      let stripeCode: string | null = null;
+
+      if (error instanceof Error) {
+        try {
+          const parsed = JSON.parse(error.message) as { error?: string; details?: string | null; code?: string | null };
+          errorCode = parsed.error ?? error.message;
+          detail = parsed.details ?? null;
+          stripeCode = parsed.code ?? null;
+        } catch {
+          errorCode = error.message;
+        }
+      }
+
+      setError(getSupportErrorDetailMessage(errorCode, detail, stripeCode));
       setLoading(false);
     }
   };

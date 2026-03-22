@@ -42,6 +42,20 @@ function normalizeDonationAmount(rawValue: unknown): number | null {
   return amount;
 }
 
+function getStripeErrorDetails(error: unknown): { message: string | null; code: string | null; type: string | null } {
+  if (!error || typeof error !== 'object') {
+    return { message: null, code: null, type: null };
+  }
+
+  const candidate = error as { message?: unknown; code?: unknown; type?: unknown };
+
+  return {
+    message: typeof candidate.message === 'string' ? candidate.message : null,
+    code: typeof candidate.code === 'string' ? candidate.code : null,
+    type: typeof candidate.type === 'string' ? candidate.type : null,
+  };
+}
+
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const body = await ctx.request.json().catch(() => ({} as Record<string, unknown>));
   const returnPath = getSafeReturnPath(body.returnPath);
@@ -128,14 +142,22 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    const stripeError = getStripeErrorDetails(error);
+
     console.error('Donation checkout creation failed', {
       error,
       amount,
       hasCustomerId: Boolean(customerId),
       userId,
+      stripeError,
     });
 
-    return new Response(JSON.stringify({ error: 'DONATION_CHECKOUT_FAILED' }), {
+    return new Response(JSON.stringify({
+      error: 'DONATION_CHECKOUT_FAILED',
+      details: stripeError.message,
+      code: stripeError.code,
+      type: stripeError.type,
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
