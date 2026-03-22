@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
+import DonationCard from '../components/DonationCard';
 
 type User = { id: string; display_name: string; plan: string };
 
@@ -45,7 +46,7 @@ export default function Dashboard({ user }: DashboardProps) {
       if (!res.ok) throw new Error('Failed to fetch frames');
       const data = (await res.json()) as { frames: FrameItem[] };
       setFrames(data.frames ?? []);
-    } catch (e) {
+    } catch {
       setError('フレーム一覧の取得に失敗しました。');
     } finally {
       setLoading(false);
@@ -55,7 +56,6 @@ export default function Dashboard({ user }: DashboardProps) {
   useEffect(() => {
     if (!canShow) return;
     fetchFrames();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canShow]);
 
   const handleCopy = async (frame: FrameItem) => {
@@ -371,6 +371,10 @@ export default function Dashboard({ user }: DashboardProps) {
           </button>
         </div>
       ) : null}
+
+      <div className="mt-10 w-full">
+        <DonationCard returnPath="/?dashboard=1" compact />
+      </div>
 
       {cancelConfirm ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">

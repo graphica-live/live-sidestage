@@ -5,6 +5,7 @@ import {
   analyzeFrameTransparency,
   getSquareFrameBlob,
 } from '../utils/canvas';
+import DonationCard from '../components/DonationCard';
 
 declare const grecaptcha: any;
 
@@ -27,6 +28,7 @@ function addDays(d: Date, days: number) {
 }
 
 export default function Home({ user }: HomeProps) {
+  const returnPath = `${window.location.pathname}${window.location.search}`;
   const [uploading, setUploading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -990,6 +992,10 @@ export default function Home({ user }: HomeProps) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="mt-10 w-full">
+        <DonationCard returnPath={returnPath} />
+      </div>
     </div>
   );
 }

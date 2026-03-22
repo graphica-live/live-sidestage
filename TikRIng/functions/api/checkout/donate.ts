@@ -1,0 +1,111 @@
+import Stripe from 'stripe';
+import type { Env } from '../../_types';
+import { getSession } from '../../_session';
+
+const DONATION_CURRENCY = 'jpy';
+const MIN_DONATION_YEN = 100;
+const MAX_DONATION_YEN = 100000;
+const DONATION_UNIT_YEN = 100;
+
+function getSafeReturnPath(rawValue: unknown): string {
+  if (typeof rawValue !== 'string' || !rawValue.startsWith('/')) {
+    return '/';
+  }
+
+  if (rawValue.startsWith('//')) {
+    return '/';
+  }
+
+  return rawValue;
+}
+
+function normalizeDonationAmount(rawValue: unknown): number | null {
+  const amount = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+
+  if (!Number.isFinite(amount) || !Number.isInteger(amount)) {
+    return null;
+  }
+
+  if (amount < MIN_DONATION_YEN || amount > MAX_DONATION_YEN) {
+    return null;
+  }
+
+  if (amount % DONATION_UNIT_YEN !== 0) {
+    return null;
+  }
+
+  return amount;
+}
+
+export const onRequestPost: PagesFunction<Env> = async (ctx) => {
+  const body = await ctx.request.json().catch(() => ({} as Record<string, unknown>));
+  const returnPath = getSafeReturnPath(body.returnPath);
+  const amount = normalizeDonationAmount(body.amount);
+  if (amount === null) {
+    return new Response(JSON.stringify({ error: 'INVALID_DONATION_AMOUNT' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const session = await getSession(ctx.env, ctx.request);
+
+  const stripe = new Stripe(ctx.env.STRIPE_SECRET_KEY);
+  const siteUrl = new URL(ctx.request.url).origin;
+  const successUrl = new URL(returnPath, siteUrl);
+  successUrl.searchParams.set('support', 'success');
+
+  const cancelUrl = new URL(returnPath, siteUrl).toString();
+
+  let customerId: string | undefined;
+  const userId = session?.userId ?? null;
+
+  if (userId) {
+    const user = await ctx.env.DB.prepare(
+      'SELECT id, email, stripe_customer_id FROM users WHERE id = ?'
+    ).bind(userId).first<{ id: string; email: string; stripe_customer_id: string | null }>();
+
+    if (user) {
+      customerId = user.stripe_customer_id ?? undefined;
+
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          metadata: { userId: user.id },
+        });
+        customerId = customer.id;
+
+        await ctx.env.DB.prepare(
+          'UPDATE users SET stripe_customer_id = ? WHERE id = ?'
+        ).bind(customerId, user.id).run();
+      }
+    }
+  }
+
+  const checkoutSession = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    customer: customerId,
+    line_items: [{
+      price_data: {
+        currency: DONATION_CURRENCY,
+        unit_amount: amount,
+        product_data: {
+          name: 'TikRing Support Donation',
+          description: 'TikRing support payment',
+        },
+      },
+      quantity: 1,
+    }],
+    success_url: successUrl.toString(),
+    cancel_url: cancelUrl,
+    submit_type: 'donate',
+    metadata: userId
+      ? { userId, purpose: 'donation', amountYen: String(amount) }
+      : { purpose: 'donation', amountYen: String(amount) },
+  });
+
+  return new Response(JSON.stringify({ url: checkoutSession.url }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
