@@ -39,6 +39,19 @@ function getSupportErrorDetailMessage(errorCode: string | null, detail: string |
   return `${getSupportErrorMessage(errorCode)} (${detail})`;
 }
 
+function sanitizeErrorText(rawText: string | null): string | null {
+  if (!rawText) {
+    return null;
+  }
+
+  const normalized = rawText.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
+
 export default function DonationCard({ returnPath, compact = false }: DonationCardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,22 +83,44 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
         body: JSON.stringify({ returnPath, amount: normalizedAmount }),
       });
 
+      const responseText = await res.text();
+
       if (!res.ok) {
-        const errorData = await res.json().catch(() => null) as {
-          error?: string;
-          details?: string;
-          code?: string;
-        } | null;
+        const errorData = (() => {
+          try {
+            return JSON.parse(responseText) as {
+              error?: string;
+              details?: string;
+              code?: string;
+            };
+          } catch {
+            return null;
+          }
+        })();
+
+        const fallbackDetail = sanitizeErrorText(responseText);
+
         throw new Error(JSON.stringify({
           error: errorData?.error ?? 'DONATION_CHECKOUT_FAILED',
-          details: errorData?.details ?? null,
-          code: errorData?.code ?? null,
+          details: errorData?.details ?? fallbackDetail,
+          code: errorData?.code ?? (res.status ? `HTTP_${res.status}` : null),
         }));
       }
 
-      const data = await res.json();
+      const data = (() => {
+        try {
+          return JSON.parse(responseText) as { url?: string };
+        } catch {
+          return null;
+        }
+      })();
+
       if (!data?.url) {
-        throw new Error('DONATION_CHECKOUT_FAILED');
+        throw new Error(JSON.stringify({
+          error: 'DONATION_CHECKOUT_FAILED',
+          details: sanitizeErrorText(responseText) ?? 'Checkout URL がレスポンスに含まれていません。',
+          code: res.status ? `HTTP_${res.status}` : null,
+        }));
       }
 
       window.location.href = data.url;
