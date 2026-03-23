@@ -829,7 +829,7 @@ export default function Home({ user }: HomeProps) {
               />
             </div>
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className={`editor-crop-mask w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-[2.5px] border-tiktok-cyan/95${showMaskIntro ? ' editor-crop-mask-intro' : isAdjusting ? ' editor-crop-mask-active' : ''}`} />
+              <div className={`editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95${showMaskIntro ? ' editor-crop-mask-intro' : isAdjusting ? ' editor-crop-mask-active' : ''}`} />
             </div>
             <div
               className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}

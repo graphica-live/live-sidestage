@@ -501,7 +501,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
                 style={{ backgroundImage: `url(${frameUrl})` }}
               />
               <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                <div className="editor-crop-mask w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-[2.5px] border-tiktok-cyan/95" />
+                <div className="editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95" />
               </div>
             </div>
           )}
@@ -561,7 +561,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
             {/* TikTok circular crop guide */}
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className="editor-crop-mask w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-[2.5px] border-tiktok-cyan/95" />
+              <div className="editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95" />
             </div>
           </div>
 

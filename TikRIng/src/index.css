@@ -150,6 +150,7 @@ body {
 }
 
 .editor-crop-mask {
+  box-sizing: border-box;
   box-shadow: 0 0 0 9999px rgba(37, 244, 238, 1);
 }
 
