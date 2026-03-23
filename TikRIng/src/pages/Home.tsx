@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
+import DonationCard from '../components/DonationCard';
 import {
   analyzeFrameTransparency,
   getCircleAutoFit,
@@ -1191,6 +1192,10 @@ export default function Home({ user }: HomeProps) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="w-full mt-8">
+        <DonationCard returnPath="/" compact />
+      </div>
 
     </div>
   );
