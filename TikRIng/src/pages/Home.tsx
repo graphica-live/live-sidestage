@@ -3,6 +3,7 @@ import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
 import {
   analyzeFrameTransparency,
+  getCircleAutoFit,
   getSquareFrameBlob,
 } from '../utils/canvas';
 
@@ -11,6 +12,13 @@ declare const grecaptcha: any;
 interface HomeProps {
   user: { id: string; display_name: string; plan: string; isAdmin: boolean } | null | undefined;
 }
+
+type AutoFitNotice = {
+  tone: 'success' | 'warning' | 'info';
+  eyebrow: string;
+  label: string;
+  detail: string;
+};
 
 function pad2(n: number) {
   return n.toString().padStart(2, '0');
@@ -42,6 +50,7 @@ export default function Home({ user }: HomeProps) {
   const [showEdgeTransparencyDialog, setShowEdgeTransparencyDialog] = useState(false);
   const [pendingUploadBlob, setPendingUploadBlob] = useState<Blob | null>(null);
   const [edgeChoiceLoading, setEdgeChoiceLoading] = useState(false);
+  const [autoFitNotice, setAutoFitNotice] = useState<AutoFitNotice | null>(null);
 
   const [proOptionsOpen, setProOptionsOpen] = useState(false);
   const [customName, setCustomName] = useState('');
@@ -65,6 +74,8 @@ export default function Home({ user }: HomeProps) {
   const initialPinchDistance = useRef<number | null>(null);
   const initialPinchZoom = useRef<number>(1);
   const adjustingTimeoutRef = useRef<number | null>(null);
+  const autoFitRequestRef = useRef(0);
+  const autoFittingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -76,6 +87,76 @@ export default function Home({ user }: HomeProps) {
       }
     };
   }, [frameImage]);
+
+  const showAutoFitNotice = useCallback((notice: AutoFitNotice | null) => {
+    setAutoFitNotice(notice);
+  }, []);
+
+  const dismissAutoFitNotice = useCallback(() => {
+    setAutoFitNotice(null);
+  }, []);
+
+  const runAutoFit = useCallback(async (imageUrl: string) => {
+    const requestId = autoFitRequestRef.current + 1;
+    autoFitRequestRef.current = requestId;
+    autoFittingRef.current = true;
+
+    try {
+      const previewSize = editorRef.current?.clientWidth ?? 600;
+      const next = await getCircleAutoFit(imageUrl, previewSize);
+
+      if (autoFitRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (next.strategy !== 'unsupported-fill') {
+        setPosition(next.position);
+        setZoom(next.zoom);
+      }
+      showAutoFitNotice(
+        next.strategy === 'fill-mask'
+          ? {
+              tone: 'success',
+              eyebrow: 'Auto Fit',
+              label: 'フレーム範囲を判定して自動調整しました',
+              detail: 'このままドラッグやピンチで、必要なら微調整してください',
+            }
+          : next.strategy === 'unsupported-fill'
+            ? {
+                tone: 'warning',
+                eyebrow: 'Manual Adjust',
+                label: '自動調整は見送りました',
+                detail: 'この画像は判定が難しいため、手動で位置と拡大率を調整してください',
+              }
+            : {
+                tone: 'info',
+                eyebrow: 'Auto Fit',
+                label: '初期配置を自動で調整しました',
+                detail: '必要に応じて、そのまま手動で微調整できます',
+              }
+      );
+    } catch (err) {
+      console.error('Auto fit failed:', err);
+      if (autoFitRequestRef.current === requestId) {
+        showAutoFitNotice(null);
+      }
+    } finally {
+      if (autoFitRequestRef.current === requestId) {
+        autoFittingRef.current = false;
+      }
+    }
+  }, [showAutoFitNotice]);
+
+  useEffect(() => {
+    if (!frameImage) {
+      autoFitRequestRef.current += 1;
+      showAutoFitNotice(null);
+      autoFittingRef.current = false;
+      return;
+    }
+
+    void runAutoFit(frameImage);
+  }, [frameImage, runAutoFit, showAutoFitNotice]);
 
   useEffect(() => {
     if (!frameImage || shareUrl) {
@@ -125,7 +206,7 @@ export default function Home({ user }: HomeProps) {
     }, 650);
   };
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
 
@@ -135,11 +216,29 @@ export default function Home({ user }: HomeProps) {
       return;
     }
 
+    const nextFrameImage = URL.createObjectURL(file);
+
+    try {
+      const analysis = await analyzeFrameTransparency(nextFrameImage);
+      if (analysis.shouldBlockUpload) {
+        URL.revokeObjectURL(nextFrameImage);
+        setError(
+          'この画像は配布用フレームとして使えません。画像選択時点で中央に十分な透過領域が必要です。'
+        );
+        return;
+      }
+    } catch (err) {
+      URL.revokeObjectURL(nextFrameImage);
+      console.error(err);
+      setError('画像の内容を確認できませんでした。別のPNG画像を選択してください。');
+      return;
+    }
+
     if (frameImage) {
       URL.revokeObjectURL(frameImage);
     }
 
-    setFrameImage(URL.createObjectURL(file));
+    setFrameImage(nextFrameImage);
     setFrameFileName(file.name.replace(/\.[^/.]+$/, '') || 'frame');
     setPosition({ x: 0, y: 0 });
     setZoom(1);
@@ -148,10 +247,11 @@ export default function Home({ user }: HomeProps) {
     setEdgeFilledNotice(false);
     setShowEdgeTransparencyDialog(false);
     setPendingUploadBlob(null);
+    showAutoFitNotice(null);
     setError(null);
     setShareUrl(null);
     setCopied(false);
-  }, [frameImage]);
+  }, [frameImage, showAutoFitNotice]);
 
   const onDropRejected = useCallback((fileRejections: FileRejection[]) => {
     const rejection = fileRejections[0];
@@ -167,6 +267,7 @@ export default function Home({ user }: HomeProps) {
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     setIsAdjusting(true);
     dismissGestureHint();
+    dismissAutoFitNotice();
     e.currentTarget.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -224,12 +325,14 @@ export default function Home({ user }: HomeProps) {
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     dismissGestureHint();
+    dismissAutoFitNotice();
     startTransientAdjusting();
     const zoomFactor = -e.deltaY * 0.002;
     setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
   };
 
   const resetFrameEditor = () => {
+    autoFitRequestRef.current += 1;
     if (frameImage) {
       URL.revokeObjectURL(frameImage);
     }
@@ -242,6 +345,7 @@ export default function Home({ user }: HomeProps) {
     setEdgeFilledNotice(false);
     setShowEdgeTransparencyDialog(false);
     setPendingUploadBlob(null);
+    showAutoFitNotice(null);
 
     setProOptionsOpen(false);
     setCustomName('');
@@ -363,19 +467,6 @@ export default function Home({ user }: HomeProps) {
         previewSize,
         { fillTransparentEdges: false }
       );
-
-      const squareBlobUrl = URL.createObjectURL(squareBlob);
-      try {
-        const analysis = await analyzeFrameTransparency(squareBlobUrl);
-        if (analysis.shouldBlockUpload) {
-          setError(
-            'この画像は配布用フレームとして使えないためアップロードできません。中央にリスナー画像を入れるための透過領域を確保し、人物や見本画像が中央に残らない状態にしてください。'
-          );
-          return;
-        }
-      } finally {
-        URL.revokeObjectURL(squareBlobUrl);
-      }
 
       if (hasTransparentBorder) {
         setPendingUploadBlob(squareBlob);
@@ -639,6 +730,35 @@ export default function Home({ user }: HomeProps) {
             onWheel={handleWheel}
           >
             <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
+            {autoFitNotice ? (
+              <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex justify-center px-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div
+                  className={`max-w-[28rem] rounded-2xl border px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.32)] ${
+                    autoFitNotice.tone === 'success'
+                      ? 'border-tiktok-cyan/40 bg-[#041E22]/92 text-white shadow-[0_18px_50px_rgba(0,0,0,0.42)]'
+                      : autoFitNotice.tone === 'warning'
+                        ? 'border-amber-300/45 bg-[#2A1904]/92 text-white shadow-[0_18px_50px_rgba(0,0,0,0.42)]'
+                        : 'border-white/12 bg-black/58 text-white backdrop-blur-md'
+                  }`}
+                >
+                  <p
+                    className={`text-[11px] font-black uppercase tracking-[0.22em] ${
+                      autoFitNotice.tone === 'success'
+                        ? 'text-tiktok-cyan'
+                        : autoFitNotice.tone === 'warning'
+                          ? 'text-amber-200'
+                          : 'text-white/60'
+                    }`}
+                  >
+                    {autoFitNotice.eyebrow}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-white">{autoFitNotice.label}</p>
+                  <p className={`mt-1 text-xs font-medium ${autoFitNotice.tone === 'warning' ? 'text-amber-50/92' : autoFitNotice.tone === 'success' ? 'text-cyan-50/92' : 'text-white/78'}`}>
+                    {autoFitNotice.detail}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
               <img
                 src={frameImage}
@@ -720,6 +840,7 @@ export default function Home({ user }: HomeProps) {
                 aria-labelledby="FrameZoom"
                 onChange={(e) => {
                   dismissGestureHint();
+                  dismissAutoFitNotice();
                   startTransientAdjusting();
                   setZoom(Number(e.target.value));
                 }}

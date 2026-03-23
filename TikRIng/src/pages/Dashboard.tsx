@@ -33,6 +33,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user, initialScope }: DashboardProps) {
+  const isAdminMode = user.isAdmin;
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
   const [meta, setMeta] = useState<FramesMeta>({ totalCount: 0, registeredCount: 0, orphanCount: 0 });
@@ -42,12 +43,14 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [deleting, setDeleting] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<FrameItem | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
-  const [scope, setScope] = useState<'mine' | 'all'>(initialScope);
+  const [scope, setScope] = useState<'mine' | 'all'>(isAdminMode ? 'all' : initialScope);
   const [sortBy, setSortBy] = useState<SortOption>('created_desc');
 
   const canShow = useMemo(() => !!user, [user]);
-  const isAdminScope = scope === 'all';
+  const isAdminScope = isAdminMode || scope === 'all';
 
   const sortedFrames = useMemo(() => {
     const items = [...frames];
@@ -82,19 +85,24 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   }, [frames, sortBy]);
 
   useEffect(() => {
-    setScope(initialScope);
-  }, [initialScope]);
-
-  const navigateScope = (nextScope: 'mine' | 'all') => {
-    setScope(nextScope);
-    const params = new URLSearchParams(window.location.search);
-    params.set('dashboard', '1');
-    if (nextScope === 'all') {
+    if (isAdminMode) {
+      setScope('all');
+      const params = new URLSearchParams(window.location.search);
+      params.set('dashboard', '1');
       params.set('scope', 'all');
-    } else {
-      params.delete('scope');
+      window.history.replaceState({}, '', `/?${params.toString()}`);
+      return;
     }
-    window.history.replaceState({}, '', `/?${params.toString()}`);
+
+    setScope(initialScope);
+  }, [initialScope, isAdminMode]);
+
+  const getPreviewSrc = (frame: FrameItem) => {
+    if (frame.kind === 'orphan') {
+      return `/api/frames?storageKey=${encodeURIComponent(frame.storageKey)}&preview=1`;
+    }
+
+    return `/api/frames/${frame.id}?ownerPreview=1`;
   };
 
   const fetchFrames = async () => {
@@ -109,7 +117,9 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       }
       if (res.status === 403) {
         setError('この画面を開く権限がありません。');
-        setScope('mine');
+        if (!isAdminMode) {
+          setScope('mine');
+        }
         return;
       }
       if (!res.ok) throw new Error('Failed to fetch frames');
@@ -122,6 +132,29 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       setLoading(false);
     }
   };
+
+  const openPreview = (frame: FrameItem) => {
+    setPreviewError(false);
+    setPreviewTarget(frame);
+  };
+
+  const closePreview = () => {
+    setPreviewTarget(null);
+    setPreviewError(false);
+  };
+
+  useEffect(() => {
+    if (!previewTarget) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePreview();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [previewTarget]);
 
   useEffect(() => {
     if (!canShow) return;
@@ -213,15 +246,6 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {user.isAdmin ? (
-            <button
-              type="button"
-              onClick={() => navigateScope(isAdminScope ? 'mine' : 'all')}
-              className="py-2.5 px-4 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/40 text-white font-bold transition-colors text-sm"
-            >
-              {isAdminScope ? '自分のフレームへ戻る' : '全フレーム管理'}
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -319,84 +343,97 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
               remainingClass = 'text-tiktok-lightgray';
             }
 
+            const previewSrc = getPreviewSrc(frame);
+
             return (
               <div
                 key={frame.id}
                 className="w-full px-4 py-3 border-b border-tiktok-gray last:border-b-0 flex items-center gap-3"
               >
-                {frame.kind === 'frame' ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openPreview(frame)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openPreview(frame);
+                    }
+                  }}
+                  className="min-w-0 flex flex-1 items-center gap-3 text-left rounded-lg transition-colors hover:bg-tiktok-gray/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/80"
+                >
                   <img
-                    src={`/api/frames/${frame.id}?ownerPreview=1`}
-                    alt="thumb"
+                    src={previewSrc}
+                    alt={`${name} preview`}
                     className="w-12 h-12 rounded-full object-cover border border-tiktok-gray bg-tiktok-black"
                     loading="lazy"
                   />
-                ) : (
-                  <div className="w-12 h-12 rounded-full border border-dashed border-tiktok-gray bg-tiktok-black flex items-center justify-center text-[10px] font-bold text-tiktok-lightgray text-center leading-tight px-1">
-                    R2
-                    <br />
-                    only
-                  </div>
-                )}
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-col gap-2 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                      <p
-                        className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
-                        style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
-                        title={name}
-                      >
-                        {name}
-                      </p>
-                      {frame.kind === 'orphan' ? (
-                        <span className="shrink-0 text-[11px] px-2 py-1 rounded-md border border-amber-500/35 bg-amber-500/10 text-amber-200 font-bold">
-                          R2孤児データ
+                  <div className="min-w-0 flex-1 py-1">
+                    <div className="flex flex-col gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <p
+                          className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
+                          style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
+                          title={name}
+                        >
+                          {name}
+                        </p>
+                        {frame.kind === 'orphan' ? (
+                          <span className="shrink-0 text-[11px] px-2 py-1 rounded-md border border-amber-500/35 bg-amber-500/10 text-amber-200 font-bold">
+                            R2孤児データ
+                          </span>
+                        ) : null}
+                        <span className="shrink-0 text-[10px] px-2 py-1 rounded-md border border-tiktok-gray text-tiktok-lightgray">
+                          タップで拡大
                         </span>
+                      </div>
+
+                      <p className="text-xs text-tiktok-lightgray break-all">
+                        登録日時: {createdLabel}
+                      </p>
+
+                      {isAdminScope ? (
+                        <p className="text-xs text-tiktok-lightgray break-all">
+                          所有者: {frame.kind === 'orphan' ? 'DB未登録' : ownerLabel}
+                        </p>
+                      ) : null}
+
+                      {frame.kind === 'orphan' ? (
+                        <p className="text-xs text-amber-200 break-all">
+                          ストレージキー: {frame.storageKey}
+                        </p>
+                      ) : null}
+
+                      {frame.passwordProtected ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 font-bold text-amber-200">
+                            <Shield className="w-3.5 h-3.5" />
+                            パスワード保護中
+                          </span>
+
+                          {frame.passwordValue ? (
+                            <>
+                              <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
+                                {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  togglePasswordVisibility(frame.id);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
+                                aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
+                              >
+                                {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                {visiblePasswords[frame.id] ? '隠す' : '表示'}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
-
-                    <p className="text-xs text-tiktok-lightgray break-all">
-                      登録日時: {createdLabel}
-                    </p>
-
-                    {isAdminScope ? (
-                      <p className="text-xs text-tiktok-lightgray break-all">
-                        所有者: {frame.kind === 'orphan' ? 'DB未登録' : ownerLabel}
-                      </p>
-                    ) : null}
-
-                    {frame.kind === 'orphan' ? (
-                      <p className="text-xs text-amber-200 break-all">
-                        ストレージキー: {frame.storageKey}
-                      </p>
-                    ) : null}
-
-                    {frame.passwordProtected ? (
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 font-bold text-amber-200">
-                          <Shield className="w-3.5 h-3.5" />
-                          パスワード保護中
-                        </span>
-
-                        {frame.passwordValue ? (
-                          <>
-                            <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
-                              {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(frame.id)}
-                              className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
-                              aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
-                            >
-                              {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                              {visiblePasswords[frame.id] ? '隠す' : '表示'}
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
 
@@ -464,6 +501,51 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
               >
                 キャンセル
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewTarget ? (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-[1px] flex items-center justify-center px-4 py-6"
+          onClick={closePreview}
+        >
+          <div
+            className="w-full max-w-3xl rounded-2xl border border-white/15 bg-tiktok-dark p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white break-all">{previewTarget.displayName}</p>
+                <p className="mt-1 text-xs text-tiktok-lightgray break-all">
+                  {previewTarget.kind === 'orphan'
+                    ? `R2孤児データ: ${previewTarget.storageKey}`
+                    : `フレームID: ${previewTarget.id}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closePreview}
+                className="shrink-0 rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-tiktok-gray/40"
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-tiktok-gray bg-black">
+              {previewError ? (
+                <div className="flex min-h-[16rem] items-center justify-center px-6 py-12 text-center text-sm text-tiktok-lightgray">
+                  画像を表示できませんでした。
+                </div>
+              ) : (
+                <img
+                  src={getPreviewSrc(previewTarget)}
+                  alt={`${previewTarget.displayName} full preview`}
+                  className="max-h-[75vh] w-full object-contain bg-black"
+                  onError={() => setPreviewError(true)}
+                />
+              )}
             </div>
           </div>
         </div>

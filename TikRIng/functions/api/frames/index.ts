@@ -82,9 +82,44 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   const url = new URL(context.request.url);
+  const previewStorageKey = url.searchParams.get('storageKey');
+  const isPreviewRequest = url.searchParams.get('preview') === '1';
   const scope = url.searchParams.get('scope');
   const isAdmin = isAdminEmail(viewer.email);
   const isAdminScope = scope === 'all';
+
+  if (previewStorageKey && isPreviewRequest) {
+    if (!isAdmin) {
+      return new Response('Forbidden', {
+        status: 403,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    const object = await context.env.FRAMES_BUCKET.get(previewStorageKey);
+
+    if (object === null) {
+      return new Response('Not Found', {
+        status: 404,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set('etag', object.httpEtag);
+    headers.set('Cache-Control', 'no-store');
+    headers.set('Access-Control-Allow-Origin', '*');
+
+    return new Response(object.body, {
+      headers,
+      status: 200,
+    });
+  }
 
   if (isAdminScope && !isAdmin) {
     return new Response(JSON.stringify({ error: 'FORBIDDEN' }), {
