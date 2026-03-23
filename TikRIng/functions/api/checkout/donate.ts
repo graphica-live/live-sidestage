@@ -1,16 +1,12 @@
 import Stripe from 'stripe';
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
+import { ensureStripeCustomer, getStripeSecretKey } from './_stripe';
 
 const DONATION_CURRENCY = 'jpy';
 const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
 const DONATION_UNIT_YEN = 100;
-
-function getStripeSecretKey(env: Env): string | null {
-  const secretKey = env.STRIPE_SECRET_KEY?.trim();
-  return secretKey || null;
-}
 
 function getSafeReturnPath(rawValue: unknown): string {
   if (typeof rawValue !== 'string' || !rawValue.startsWith('/')) {
@@ -95,19 +91,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       ).bind(userId).first<{ id: string; email: string; stripe_customer_id: string | null }>();
 
       if (user) {
-        customerId = user.stripe_customer_id ?? undefined;
-
-        if (!customerId) {
-          const customer = await stripe.customers.create({
-            email: user.email,
-            metadata: { userId: user.id },
-          });
-          customerId = customer.id;
-
-          await ctx.env.DB.prepare(
-            'UPDATE users SET stripe_customer_id = ? WHERE id = ?'
-          ).bind(customerId, user.id).run();
-        }
+        customerId = await ensureStripeCustomer(ctx.env, stripe, user);
       }
     }
 
