@@ -33,7 +33,6 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user, initialScope }: DashboardProps) {
-  const isAdminMode = user.isAdmin;
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
   const [meta, setMeta] = useState<FramesMeta>({ totalCount: 0, registeredCount: 0, orphanCount: 0 });
@@ -46,11 +45,11 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [previewTarget, setPreviewTarget] = useState<FrameItem | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
-  const [scope, setScope] = useState<'mine' | 'all'>(isAdminMode ? 'all' : initialScope);
+  const [scope, setScope] = useState<'mine' | 'all'>(initialScope);
   const [sortBy, setSortBy] = useState<SortOption>('created_desc');
 
   const canShow = useMemo(() => !!user, [user]);
-  const isAdminScope = isAdminMode || scope === 'all';
+  const isAdminScope = user.isAdmin && scope === 'all';
 
   const sortedFrames = useMemo(() => {
     const items = [...frames];
@@ -85,17 +84,20 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   }, [frames, sortBy]);
 
   useEffect(() => {
-    if (isAdminMode) {
-      setScope('all');
-      const params = new URLSearchParams(window.location.search);
-      params.set('dashboard', '1');
-      params.set('scope', 'all');
-      window.history.replaceState({}, '', `/?${params.toString()}`);
-      return;
-    }
-
     setScope(initialScope);
-  }, [initialScope, isAdminMode]);
+  }, [initialScope]);
+
+  const navigateScope = (nextScope: 'mine' | 'all') => {
+    setScope(nextScope);
+    const params = new URLSearchParams(window.location.search);
+    params.set('dashboard', '1');
+    if (nextScope === 'all') {
+      params.set('scope', 'all');
+    } else {
+      params.delete('scope');
+    }
+    window.history.replaceState({}, '', `/?${params.toString()}`);
+  };
 
   const getPreviewSrc = (frame: FrameItem) => {
     if (frame.kind === 'orphan') {
@@ -117,7 +119,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       }
       if (res.status === 403) {
         setError('この画面を開く権限がありません。');
-        if (!isAdminMode) {
+        if (!user.isAdmin) {
           setScope('mine');
         }
         return;
@@ -246,6 +248,15 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          {user.isAdmin ? (
+            <button
+              type="button"
+              onClick={() => navigateScope(isAdminScope ? 'mine' : 'all')}
+              className="py-2.5 px-4 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/40 text-white font-bold transition-colors text-sm"
+            >
+              {isAdminScope ? '自分のフレームへ戻る' : '全フレーム管理'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -258,20 +269,22 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">総件数</p>
-          <p className="mt-1 text-2xl font-black text-white">{meta.totalCount}</p>
+      {isAdminScope ? (
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">総件数</p>
+            <p className="mt-1 text-2xl font-black text-white">{meta.totalCount}</p>
+          </div>
+          <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">登録フレーム</p>
+            <p className="mt-1 text-2xl font-black text-white">{meta.registeredCount}</p>
+          </div>
+          <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">R2孤児データ</p>
+            <p className="mt-1 text-2xl font-black text-white">{meta.orphanCount}</p>
+          </div>
         </div>
-        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">登録フレーム</p>
-          <p className="mt-1 text-2xl font-black text-white">{meta.registeredCount}</p>
-        </div>
-        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">R2孤児データ</p>
-          <p className="mt-1 text-2xl font-black text-white">{meta.orphanCount}</p>
-        </div>
-      </div>
+      ) : null}
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-tiktok-lightgray">

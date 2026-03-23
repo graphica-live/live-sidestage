@@ -81,19 +81,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!isDashboard || !user?.isAdmin) return;
-
-    setDashboardScope('all');
-
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('dashboard') !== '1' || params.get('scope') !== 'all') {
-      params.set('dashboard', '1');
-      params.set('scope', 'all');
-      window.history.replaceState({}, '', `/?${params.toString()}`);
-    }
-  }, [isDashboard, user]);
-
-  useEffect(() => {
     if (isTikTokInApp) return;
     if (isDashboard) return;
 
