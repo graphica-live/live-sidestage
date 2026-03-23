@@ -4,6 +4,11 @@ import { useState } from 'react';
 const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
 const DONATION_STEP_YEN = 100;
+const DONATION_PRESET_OPTIONS = [
+  { amount: 500, label: '気軽に応援' },
+  { amount: 1000, label: 'いちばんおすすめ', featured: true },
+  { amount: 3000, label: 'しっかり支える' },
+] as const;
 
 function formatYen(amount: number): string {
   return new Intl.NumberFormat('ja-JP').format(amount);
@@ -53,34 +58,43 @@ function sanitizeErrorText(rawText: string | null): string | null {
 }
 
 export default function DonationCard({ returnPath, compact = false }: DonationCardProps) {
-  const [loading, setLoading] = useState(false);
+  const [loadingTarget, setLoadingTarget] = useState<number | 'custom' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [amount, setAmount] = useState('500');
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [customAmount, setCustomAmount] = useState('1000');
   const supportSuccess = new URLSearchParams(window.location.search).get('support') === 'success';
 
-  const normalizedAmount = Number(amount);
+  const normalizedCustomAmount = Number(customAmount);
 
-  const isAmountValid =
-    Number.isInteger(normalizedAmount) &&
-    normalizedAmount >= MIN_DONATION_YEN &&
-    normalizedAmount <= MAX_DONATION_YEN &&
-    normalizedAmount % DONATION_STEP_YEN === 0;
+  const isCustomAmountValid =
+    Number.isInteger(normalizedCustomAmount) &&
+    normalizedCustomAmount >= MIN_DONATION_YEN &&
+    normalizedCustomAmount <= MAX_DONATION_YEN &&
+    normalizedCustomAmount % DONATION_STEP_YEN === 0;
 
-  const handleDonate = async () => {
-    if (loading) return;
+  const isLoading = loadingTarget !== null;
+
+  const handleDonate = async (amount: number, target: number | 'custom') => {
+    if (isLoading) return;
+    const isAmountValid =
+      Number.isInteger(amount) &&
+      amount >= MIN_DONATION_YEN &&
+      amount <= MAX_DONATION_YEN &&
+      amount % DONATION_STEP_YEN === 0;
+
     if (!isAmountValid) {
       setError(getSupportErrorMessage('INVALID_DONATION_AMOUNT'));
       return;
     }
 
-    setLoading(true);
+    setLoadingTarget(target);
     setError(null);
 
     try {
       const res = await fetch('/api/checkout/donate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnPath, amount: normalizedAmount }),
+        body: JSON.stringify({ returnPath, amount }),
       });
 
       const responseText = await res.text();
@@ -141,59 +155,98 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
       }
 
       setError(getSupportErrorDetailMessage(errorCode, detail, stripeCode));
-      setLoading(false);
+      setLoadingTarget(null);
     }
   };
 
   return (
     <div className={`w-full rounded-md border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(16,24,16,0.92),rgba(10,48,38,0.94))] ${compact ? 'p-4' : 'p-5'}`}>
-      <div className={`flex ${compact ? 'flex-col gap-3 sm:flex-row sm:items-center sm:justify-between' : 'flex-col gap-4'}`}>
+      <div className="flex flex-col gap-4">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-bold tracking-[0.18em] text-emerald-200 uppercase">
             <HeartHandshake className="h-3.5 w-3.5" />
             Support
           </div>
           <p className={`mt-3 text-white ${compact ? 'text-sm font-bold' : 'text-base font-bold'}`}>
-            TikRingの運営を応援できます
+            TikRingを続ける力になります
           </p>
           <p className={`mt-1 text-emerald-50/75 ${compact ? 'text-xs' : 'text-sm'}`}>
-            Stripeで安全に単発応援できます。金額は自由入力で、支援は保守と改善に使います。
+            サーバー費と改善開発のための単発サポートです。Stripeで安全に決済されます。
           </p>
         </div>
 
-        <div className={`flex ${compact ? 'w-full flex-col gap-2 sm:w-auto' : 'flex-col gap-2'} ${compact ? 'sm:items-end' : ''}`}>
-          <label className="flex flex-col gap-1 text-left">
-            <span className="text-[11px] font-bold tracking-[0.08em] text-emerald-100/80">応援金額</span>
-            <div className="flex items-center rounded-md border border-emerald-200/20 bg-black/20 px-3 py-2">
-              <input
-                type="number"
-                min={MIN_DONATION_YEN}
-                max={MAX_DONATION_YEN}
-                step={DONATION_STEP_YEN}
-                inputMode="numeric"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                disabled={loading}
-                className="w-28 bg-transparent text-right text-sm font-bold text-white outline-none disabled:cursor-not-allowed"
-                aria-label="support amount"
-              />
-              <span className="ml-2 text-sm font-bold text-emerald-100">円</span>
-            </div>
-          </label>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {DONATION_PRESET_OPTIONS.map((option) => (
+              <button
+                key={option.amount}
+                type="button"
+                onClick={() => void handleDonate(option.amount, option.amount)}
+                disabled={isLoading}
+                className={`rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${option.featured ? 'border-emerald-300/60 bg-emerald-300/12 shadow-[0_0_0_1px_rgba(110,231,183,0.15)] hover:bg-emerald-300/18' : 'border-emerald-200/20 bg-black/20 hover:border-emerald-200/40 hover:bg-black/30'}`}
+              >
+                <div className={`text-[11px] font-bold tracking-[0.08em] ${option.featured ? 'text-emerald-200' : 'text-emerald-100/70'}`}>{option.label}</div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-base font-black text-white">{formatYen(option.amount)}円</span>
+                  {loadingTarget === option.amount ? <Loader2 className="h-4 w-4 animate-spin text-emerald-200" /> : <HeartHandshake className="h-4 w-4 text-emerald-200" />}
+                </div>
+                <div className={`mt-2 text-xs ${option.featured ? 'text-emerald-50/90' : 'text-emerald-100/55'}`}>
+                  {option.amount === 500 ? 'まずは気軽に支える' : option.amount === 1000 ? '迷ったらこの金額' : '継続運営をしっかり後押し'}
+                </div>
+              </button>
+            ))}
+          </div>
 
-          <p className="text-[11px] text-emerald-100/65">
-            {formatYen(MIN_DONATION_YEN)}円から{formatYen(MAX_DONATION_YEN)}円まで、{formatYen(DONATION_STEP_YEN)}円単位
+          <div className="flex flex-col items-start gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCustomMode((current) => !current)}
+              disabled={isLoading}
+              className="text-xs font-bold text-emerald-200 underline decoration-emerald-200/35 underline-offset-4 transition-colors hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCustomMode ? '金額指定を閉じる' : '金額を指定して支援する'}
+            </button>
+
+            {isCustomMode ? (
+              <div className="w-full rounded-xl border border-emerald-200/15 bg-black/15 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex items-center rounded-md border border-emerald-200/20 bg-black/20 px-3 py-2 sm:w-[180px]">
+                    <span className="mr-2 text-sm font-bold text-emerald-100">¥</span>
+                    <input
+                      type="number"
+                      min={MIN_DONATION_YEN}
+                      max={MAX_DONATION_YEN}
+                      step={DONATION_STEP_YEN}
+                      inputMode="numeric"
+                      value={customAmount}
+                      onChange={(event) => setCustomAmount(event.target.value)}
+                      disabled={isLoading}
+                      className="w-full bg-transparent text-right text-sm font-bold text-white outline-none disabled:cursor-not-allowed"
+                      aria-label="support amount"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleDonate(normalizedCustomAmount, 'custom')}
+                    disabled={isLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-400 px-4 py-2.5 text-sm font-black text-emerald-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loadingTarget === 'custom' ? <Loader2 className="h-4 w-4 animate-spin" /> : <HeartHandshake className="h-4 w-4" />}
+                    {loadingTarget === 'custom' ? '応援ページを開いています...' : `${isCustomAmountValid ? `${formatYen(normalizedCustomAmount)}円で応援する` : '応援する'}`}
+                  </button>
+                </div>
+
+                <p className="mt-2 text-[11px] text-emerald-100/55">
+                  {formatYen(MIN_DONATION_YEN)}円から{formatYen(MAX_DONATION_YEN)}円まで、{formatYen(DONATION_STEP_YEN)}円単位
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <p className="text-[11px] text-emerald-100/55">
+            単発支援です。継続課金ではありません。
           </p>
-
-          <button
-            type="button"
-            onClick={handleDonate}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-400 px-4 py-2.5 text-sm font-black text-emerald-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <HeartHandshake className="h-4 w-4" />}
-            {loading ? '応援ページを開いています...' : `${isAmountValid ? `${formatYen(normalizedAmount)}円で応援する` : '応援する'}`}
-          </button>
         </div>
       </div>
 

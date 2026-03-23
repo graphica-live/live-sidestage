@@ -102,7 +102,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
           currency: DONATION_CURRENCY,
           unit_amount: amount,
           product_data: {
-            name: 'TikRing Support Donation',
+            name: 'TikRing Support',
           },
         },
         quantity: 1,
