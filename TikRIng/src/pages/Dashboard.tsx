@@ -1,50 +1,121 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
 
-type User = { id: string; display_name: string; plan: string };
+type User = { id: string; display_name: string; plan: string; isAdmin: boolean };
 
 type FrameItem = {
   id: string;
+  kind: 'frame' | 'orphan';
+  storageKey: string;
   displayName: string;
+  createdAt: number | null;
   expiresAt: number | null;
   remainingDays: number | null;
   shareUrl: string | null;
   passwordProtected: boolean;
   passwordValue: string | null;
+  ownerId: string | null;
+  ownerEmail: string | null;
+  ownerDisplayName: string | null;
 };
+
+type FramesMeta = {
+  totalCount: number;
+  registeredCount: number;
+  orphanCount: number;
+};
+
+type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc';
 
 interface DashboardProps {
   user: User;
+  initialScope: 'mine' | 'all';
 }
 
-export default function Dashboard({ user }: DashboardProps) {
+export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
+  const [meta, setMeta] = useState<FramesMeta>({ totalCount: 0, registeredCount: 0, orphanCount: 0 });
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FrameItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [savingName, setSavingName] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [scope, setScope] = useState<'mine' | 'all'>(initialScope);
+  const [sortBy, setSortBy] = useState<SortOption>('created_desc');
 
   const canShow = useMemo(() => !!user, [user]);
+  const isAdminScope = scope === 'all';
+
+  const sortedFrames = useMemo(() => {
+    const items = [...frames];
+    const valueForOwner = (frame: FrameItem) => (frame.ownerDisplayName?.trim() || frame.ownerEmail || '').toLowerCase();
+    const valueForName = (frame: FrameItem) => frame.displayName.toLowerCase();
+    const valueForCreated = (frame: FrameItem) => frame.createdAt ?? 0;
+    const valueForExpires = (frame: FrameItem) => frame.expiresAt ?? Number.MAX_SAFE_INTEGER;
+
+    items.sort((left, right) => {
+      switch (sortBy) {
+        case 'created_asc':
+          return valueForCreated(left) - valueForCreated(right);
+        case 'owner_asc':
+          return valueForOwner(left).localeCompare(valueForOwner(right), 'ja');
+        case 'owner_desc':
+          return valueForOwner(right).localeCompare(valueForOwner(left), 'ja');
+        case 'name_asc':
+          return valueForName(left).localeCompare(valueForName(right), 'ja');
+        case 'name_desc':
+          return valueForName(right).localeCompare(valueForName(left), 'ja');
+        case 'expires_asc':
+          return valueForExpires(left) - valueForExpires(right);
+        case 'expires_desc':
+          return valueForExpires(right) - valueForExpires(left);
+        case 'created_desc':
+        default:
+          return valueForCreated(right) - valueForCreated(left);
+      }
+    });
+
+    return items;
+  }, [frames, sortBy]);
+
+  useEffect(() => {
+    setScope(initialScope);
+  }, [initialScope]);
+
+  const navigateScope = (nextScope: 'mine' | 'all') => {
+    setScope(nextScope);
+    const params = new URLSearchParams(window.location.search);
+    params.set('dashboard', '1');
+    if (nextScope === 'all') {
+      params.set('scope', 'all');
+    } else {
+      params.delete('scope');
+    }
+    window.history.replaceState({}, '', `/?${params.toString()}`);
+  };
 
   const fetchFrames = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/frames');
+      const query = isAdminScope ? '?scope=all' : '';
+      const res = await fetch(`/api/frames${query}`);
       if (res.status === 401) {
         window.location.href = '/';
         return;
       }
+      if (res.status === 403) {
+        setError('この画面を開く権限がありません。');
+        setScope('mine');
+        return;
+      }
       if (!res.ok) throw new Error('Failed to fetch frames');
-      const data = (await res.json()) as { frames: FrameItem[] };
+      const data = (await res.json()) as { frames: FrameItem[]; meta?: FramesMeta };
       setFrames(data.frames ?? []);
+      setMeta(data.meta ?? { totalCount: data.frames?.length ?? 0, registeredCount: data.frames?.length ?? 0, orphanCount: 0 });
     } catch {
       setError('フレーム一覧の取得に失敗しました。');
     } finally {
@@ -55,7 +126,7 @@ export default function Dashboard({ user }: DashboardProps) {
   useEffect(() => {
     if (!canShow) return;
     fetchFrames();
-  }, [canShow]);
+  }, [canShow, scope]);
 
   const handleCopy = async (frame: FrameItem) => {
     if (!frame.shareUrl) return;
@@ -74,7 +145,10 @@ export default function Dashboard({ user }: DashboardProps) {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/frames?id=${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' });
+      const targetQuery = deleteTarget.kind === 'orphan'
+        ? `storageKey=${encodeURIComponent(deleteTarget.storageKey)}`
+        : `id=${encodeURIComponent(deleteTarget.id)}`;
+      const res = await fetch(`/api/frames?${targetQuery}`, { method: 'DELETE' });
       if (res.status === 401) {
         window.location.href = '/';
         return;
@@ -86,60 +160,6 @@ export default function Dashboard({ user }: DashboardProps) {
       setError('削除に失敗しました。');
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const startEditName = (frame: FrameItem) => {
-    setError(null);
-    setEditingId(frame.id);
-    setEditName(frame.displayName ?? '');
-  };
-
-  const cancelEditName = () => {
-    setEditingId(null);
-    setEditName('');
-  };
-
-  const saveEditName = async (frameId: string) => {
-    if (savingName) return;
-    setSavingName(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/frames', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: frameId, customName: editName }),
-      });
-
-      if (res.status === 401) {
-        window.location.href = '/';
-        return;
-      }
-      if (res.status === 403) {
-        setError('フレーム名の変更はPro限定です。');
-        return;
-      }
-      if (!res.ok) throw new Error('Rename failed');
-
-      setEditingId(null);
-      setEditName('');
-      await fetchFrames();
-    } catch {
-      setError('フレーム名の変更に失敗しました。');
-    } finally {
-      setSavingName(false);
-    }
-  };
-
-  const handleEditNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, frameId: string) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void saveEditName(frameId);
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      cancelEditName();
     }
   };
 
@@ -186,16 +206,70 @@ export default function Dashboard({ user }: DashboardProps) {
   return (
     <div className="w-full flex flex-col max-w-xl animate-in fade-in duration-500">
       <div className="w-full flex items-center justify-between mb-6">
-        <h1 className="text-xl sm:text-2xl font-black">フレーム管理</h1>
-        <button
-          type="button"
-          onClick={() => {
-            window.location.href = '/';
-          }}
-          className="py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm"
-        >
-          ＋ 新しいフレームを登録
-        </button>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black">{isAdminScope ? '全フレーム管理' : 'フレーム管理'}</h1>
+          {isAdminScope ? (
+            <p className="mt-1 text-xs text-tiktok-lightgray">全ユーザーの登録フレームと、R2 に残った孤児データを監査・強制削除できます。</p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {user.isAdmin ? (
+            <button
+              type="button"
+              onClick={() => navigateScope(isAdminScope ? 'mine' : 'all')}
+              className="py-2.5 px-4 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/40 text-white font-bold transition-colors text-sm"
+            >
+              {isAdminScope ? '自分のフレームへ戻る' : '全フレーム管理'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = '/';
+            }}
+            className="py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm"
+          >
+            ＋ 新しいフレームを登録
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">総件数</p>
+          <p className="mt-1 text-2xl font-black text-white">{meta.totalCount}</p>
+        </div>
+        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">登録フレーム</p>
+          <p className="mt-1 text-2xl font-black text-white">{meta.registeredCount}</p>
+        </div>
+        <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">R2孤児データ</p>
+          <p className="mt-1 text-2xl font-black text-white">{meta.orphanCount}</p>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-tiktok-lightgray">
+          {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
+        </p>
+        <label className="flex items-center gap-2 text-xs text-tiktok-lightgray">
+          <span>並び替え</span>
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as SortOption)}
+            className="rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-sm text-white focus:outline-none focus:border-tiktok-cyan"
+          >
+            <option value="created_desc">登録日時が新しい順</option>
+            <option value="created_asc">登録日時が古い順</option>
+            <option value="expires_asc">期限が近い順</option>
+            <option value="expires_desc">期限が遠い順</option>
+            <option value="name_asc">フレーム名 A-Z</option>
+            <option value="name_desc">フレーム名 Z-A</option>
+            {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
+            {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
+          </select>
+        </label>
       </div>
 
       {error ? (
@@ -204,7 +278,7 @@ export default function Dashboard({ user }: DashboardProps) {
         </div>
       ) : null}
 
-      {frames.length === 0 ? (
+      {sortedFrames.length === 0 ? (
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray p-6 text-center">
           <p className="text-white font-bold mb-2">登録済みのフレームはありません</p>
           <button
@@ -219,13 +293,23 @@ export default function Dashboard({ user }: DashboardProps) {
         </div>
       ) : (
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden">
-          {frames.map((frame) => {
+          {sortedFrames.map((frame) => {
             const name = frame.displayName ?? '';
+            const ownerLabel = frame.ownerDisplayName?.trim() || frame.ownerEmail || '不明なユーザー';
+            const createdLabel = frame.createdAt
+              ? new Date(frame.createdAt).toLocaleString('ja-JP', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '不明';
 
             let remainingText = '';
             let remainingClass = 'text-tiktok-lightgray';
             if (frame.remainingDays === null) {
-              remainingText = '無期限';
+              remainingText = frame.kind === 'orphan' ? 'DB未登録' : '無期限';
               remainingClass = 'text-tiktok-cyan';
             } else if (frame.remainingDays === 0) {
               remainingText = '期限切れ';
@@ -238,104 +322,91 @@ export default function Dashboard({ user }: DashboardProps) {
             return (
               <div
                 key={frame.id}
-                className={`w-full px-4 py-3 border-b border-tiktok-gray last:border-b-0 ${editingId === frame.id ? 'flex flex-wrap items-start gap-3' : 'flex items-center gap-3'}`}
+                className="w-full px-4 py-3 border-b border-tiktok-gray last:border-b-0 flex items-center gap-3"
               >
-                <img
-                  src={`/api/frames/${frame.id}?ownerPreview=1`}
-                  alt="thumb"
-                  className="w-12 h-12 rounded-full object-cover border border-tiktok-gray bg-tiktok-black"
-                  loading="lazy"
-                />
+                {frame.kind === 'frame' ? (
+                  <img
+                    src={`/api/frames/${frame.id}?ownerPreview=1`}
+                    alt="thumb"
+                    className="w-12 h-12 rounded-full object-cover border border-tiktok-gray bg-tiktok-black"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full border border-dashed border-tiktok-gray bg-tiktok-black flex items-center justify-center text-[10px] font-bold text-tiktok-lightgray text-center leading-tight px-1">
+                    R2
+                    <br />
+                    only
+                  </div>
+                )}
 
-                <div className={`min-w-0 ${editingId === frame.id ? 'w-full sm:flex-1' : 'flex-1'}`}>
-                  {editingId === frame.id ? (
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(event) => handleEditNameKeyDown(event, frame.id)}
-                        className="w-full min-w-0 px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
-                        aria-label="frame name"
-                        maxLength={80}
-                        disabled={savingName}
-                        autoFocus
-                      />
-                      <div className="flex gap-2 sm:shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => saveEditName(frame.id)}
-                          disabled={savingName}
-                          className="flex-1 sm:flex-none px-3 py-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          保存
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEditName}
-                          disabled={savingName}
-                          className="flex-1 sm:flex-none px-3 py-2 rounded-md border border-tiktok-gray text-tiktok-lightgray hover:text-white hover:bg-tiktok-gray/30 font-bold transition-colors text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          キャンセル
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2 min-w-0">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <p
-                          className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
-                          style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
-                          title={name}
-                        >
-                          {name}
-                        </p>
-                        {user.plan === 'pro' ? (
-                          <button
-                            type="button"
-                            onClick={() => startEditName(frame)}
-                            className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 text-white font-bold transition-colors"
-                          >
-                            名前変更
-                          </button>
-                        ) : null}
-                      </div>
-
-                      {frame.passwordProtected ? (
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 font-bold text-amber-200">
-                            <Shield className="w-3.5 h-3.5" />
-                            パスワード保護中
-                          </span>
-
-                          {frame.passwordValue ? (
-                            <>
-                              <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
-                                {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordVisibility(frame.id)}
-                                className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
-                                aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
-                              >
-                                {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                {visiblePasswords[frame.id] ? '隠す' : '表示'}
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <p
+                        className="text-sm font-bold text-white break-all max-w-[18rem] sm:max-w-[28rem]"
+                        style={{ wordBreak: 'break-all', whiteSpace: 'pre-line' }}
+                        title={name}
+                      >
+                        {name}
+                      </p>
+                      {frame.kind === 'orphan' ? (
+                        <span className="shrink-0 text-[11px] px-2 py-1 rounded-md border border-amber-500/35 bg-amber-500/10 text-amber-200 font-bold">
+                          R2孤児データ
+                        </span>
                       ) : null}
                     </div>
-                  )}
+
+                    <p className="text-xs text-tiktok-lightgray break-all">
+                      登録日時: {createdLabel}
+                    </p>
+
+                    {isAdminScope ? (
+                      <p className="text-xs text-tiktok-lightgray break-all">
+                        所有者: {frame.kind === 'orphan' ? 'DB未登録' : ownerLabel}
+                      </p>
+                    ) : null}
+
+                    {frame.kind === 'orphan' ? (
+                      <p className="text-xs text-amber-200 break-all">
+                        ストレージキー: {frame.storageKey}
+                      </p>
+                    ) : null}
+
+                    {frame.passwordProtected ? (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 font-bold text-amber-200">
+                          <Shield className="w-3.5 h-3.5" />
+                          パスワード保護中
+                        </span>
+
+                        {frame.passwordValue ? (
+                          <>
+                            <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
+                              {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => togglePasswordVisibility(frame.id)}
+                              className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
+                              aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
+                            >
+                              {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              {visiblePasswords[frame.id] ? '隠す' : '表示'}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className={`text-xs font-bold shrink-0 ${editingId === frame.id ? 'ml-[3.75rem] sm:ml-0' : ''} ${remainingClass}`}>{remainingText}</div>
+                <div className={`text-xs font-bold shrink-0 ${remainingClass}`}>{remainingText}</div>
 
                 <button
                   type="button"
                   onClick={() => handleCopy(frame)}
                   disabled={!frame.shareUrl}
-                  className={`shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${editingId === frame.id ? 'ml-auto' : ''}`}
+                  className="shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="copy url"
                 >
                   {copiedId === frame.id ? (
@@ -359,7 +430,7 @@ export default function Dashboard({ user }: DashboardProps) {
         </div>
       )}
 
-      {user.plan === 'pro' ? (
+      {user.plan === 'pro' && !user.isAdmin ? (
         <div className="mt-6 flex justify-center">
           <button
             type="button"
@@ -401,7 +472,16 @@ export default function Dashboard({ user }: DashboardProps) {
       {deleteTarget ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl text-center">
-            <p className="text-sm text-white font-bold mb-2">削除するとURLが無効になり、リスナーがアクセスできなくなります</p>
+            <p className="text-sm text-white font-bold mb-2">
+              {deleteTarget.kind === 'orphan'
+                ? 'R2 にだけ残っている孤児データを完全削除します'
+                : '削除するとURLが無効になり、リスナーがアクセスできなくなります'}
+            </p>
+            <p className="text-xs text-tiktok-lightgray mb-1 break-all">
+              {deleteTarget.kind === 'orphan'
+                ? `ストレージキー: ${deleteTarget.storageKey}`
+                : `フレーム: ${deleteTarget.displayName}`}
+            </p>
             <div className="flex gap-2 mt-4">
               <button
                 type="button"

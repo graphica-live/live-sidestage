@@ -11,8 +11,9 @@ function App() {
   const [frameId, setFrameId] = useState<string | null>(null);
   const [frameCheckStatus, setFrameCheckStatus] = useState<'idle' | 'loading' | 'ok' | 'expired'>('idle');
   const [isDashboard, setIsDashboard] = useState(false);
+  const [dashboardScope, setDashboardScope] = useState<'mine' | 'all'>('mine');
   const isTikTokInApp = isTikTokInAppBrowser();
-  const [user, setUser] = useState<{ id: string; display_name: string; plan: string } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ id: string; display_name: string; plan: string; isAdmin: boolean } | null | undefined>(undefined);
   const syncInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -34,6 +35,7 @@ function App() {
     const isCheckoutSuccess = params.get('checkout') === 'success';
 
     // 通常時は「現在Proの人」だけ同期して、返金/解約後のダウングレードを拾う
+    if (user.isAdmin) return;
     if (!isCheckoutSuccess && user.plan !== 'pro') return;
 
     const key = `plan_sync_last:${user.id}`;
@@ -73,6 +75,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const dashboard = params.get('dashboard');
     setIsDashboard(dashboard === '1');
+    setDashboardScope(params.get('scope') === 'all' ? 'all' : 'mine');
     const fId = params.get('f');
     setFrameId(fId);
   }, []);
@@ -139,7 +142,7 @@ function App() {
                 <p className="text-tiktok-lightgray">読み込み中...</p>
               </div>
             ) : user ? (
-              <Dashboard user={user} />
+              <Dashboard user={user} initialScope={dashboardScope} />
             ) : (
               <Home user={user} />
             )

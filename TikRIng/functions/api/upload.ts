@@ -1,6 +1,7 @@
 import { getSession } from '../_session';
 import { encryptFramePassword, hashFramePassword } from '../_framePassword';
 import type { Env } from '../_types';
+import { isEffectivePro } from '../_auth';
 
 function isPngSignature(bytes: Uint8Array): boolean {
   if (bytes.length < 8) return false;
@@ -93,11 +94,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const ownerId = session?.userId ?? null;
 
     let plan: string | null = null;
+    let email: string | null = null;
     if (session) {
       const user = await context.env.DB.prepare(
-        'SELECT plan FROM users WHERE id = ?'
-      ).bind(session.userId).first<{ plan: string }>();
+        'SELECT plan, email FROM users WHERE id = ?'
+      ).bind(session.userId).first<{ plan: string; email: string | null }>();
       plan = user?.plan ?? null;
+      email = user?.email ?? null;
     }
 
     // UUID (v4相当) を生成
@@ -106,7 +109,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const nowMs = Date.now();
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
 
-    const isPro = plan === 'pro';
+    const isPro = isEffectivePro(plan, email);
 
     // expires_at: Proは指定があればそれ、なければNULL(無期限)。Pro以外は常に90日固定
     let expiresAtMs: number | null = null;

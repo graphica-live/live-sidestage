@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
+import { getEffectivePlan, isAdminEmail } from '../../_auth';
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const session = await getSession(ctx.env, ctx.request);
@@ -12,12 +13,19 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   const user = await ctx.env.DB.prepare(
-    'SELECT id, plan, stripe_customer_id FROM users WHERE id = ?'
-  ).bind(session.userId).first<{ id: string; plan: string; stripe_customer_id: string | null }>();
+    'SELECT id, email, plan, stripe_customer_id FROM users WHERE id = ?'
+  ).bind(session.userId).first<{ id: string; email: string | null; plan: string; stripe_customer_id: string | null }>();
 
   if (!user) {
     return new Response(JSON.stringify({ error: 'Not Found' }), {
       status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (isAdminEmail(user.email)) {
+    return new Response(JSON.stringify({ plan: getEffectivePlan(user.plan, user.email) }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }

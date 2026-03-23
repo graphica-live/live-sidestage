@@ -3,9 +3,13 @@
 import { getSession } from '../../_session';
 import { decryptFramePassword } from '../../_framePassword';
 import type { Env } from '../../_types';
+import { isAdminEmail, isEffectivePro } from '../../_auth';
 
 type FrameRow = {
   id: string;
+  owner_id: string | null;
+  owner_email: string | null;
+  owner_display_name: string | null;
   custom_name: string | null;
   image_key: string;
   expires_at: number | null;
@@ -13,6 +17,52 @@ type FrameRow = {
   password_ciphertext: string | null;
   created_at: number;
 };
+
+type FrameListItem = {
+  id: string;
+  kind: 'frame' | 'orphan';
+  storageKey: string;
+  displayName: string;
+  createdAt: number | null;
+  expiresAt: number | null;
+  remainingDays: number | null;
+  shareUrl: string | null;
+  passwordProtected: boolean;
+  passwordValue: string | null;
+  ownerId: string | null;
+  ownerEmail: string | null;
+  ownerDisplayName: string | null;
+};
+
+type Viewer = {
+  id: string;
+  email: string | null;
+  plan: string;
+};
+
+async function getViewer(context: EventContext<Env, string, unknown>, userId: string): Promise<Viewer | null> {
+  return context.env.DB.prepare('SELECT id, email, plan FROM users WHERE id = ?')
+    .bind(userId)
+    .first<Viewer>();
+}
+
+async function listAllR2Objects(bucket: R2Bucket): Promise<R2Object[]> {
+  const objects: R2Object[] = [];
+  let cursor: string | undefined;
+
+  while (true) {
+    const listed = await bucket.list({ cursor, limit: 1000 });
+    objects.push(...listed.objects);
+
+    if (!listed.truncated || !listed.cursor) {
+      break;
+    }
+
+    cursor = listed.cursor;
+  }
+
+  return objects;
+}
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const session = await getSession(context.env, context.request);
@@ -23,13 +73,29 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     });
   }
 
+  const viewer = await getViewer(context, session.userId);
+  if (!viewer) {
+    return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const url = new URL(context.request.url);
+  const scope = url.searchParams.get('scope');
+  const isAdmin = isAdminEmail(viewer.email);
+  const isAdminScope = scope === 'all';
+
+  if (isAdminScope && !isAdmin) {
+    return new Response(JSON.stringify({ error: 'FORBIDDEN' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   // 既に無料(plan!=pro)の状態で、過去にProで作った「無期限フレーム」が残っている場合に備え、
   // フレーム管理を開いたタイミングで一度だけ「現在+90日」に補正する（expires_at IS NULL のみ対象）
-  const userRow = await context.env.DB.prepare('SELECT plan FROM users WHERE id = ?')
-    .bind(session.userId)
-    .first<{ plan: string }>();
-
-  if (userRow && userRow.plan !== 'pro') {
+  if (!isAdminScope && !isEffectivePro(viewer.plan, viewer.email)) {
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
     const newExpiresAt = Date.now() + ninetyDaysMs;
     await context.env.DB.prepare(
@@ -43,23 +109,30 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const nowMs = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
-  const rows = await context.env.DB.prepare(
-    'SELECT id, custom_name, image_key, expires_at, password_hash, password_ciphertext, created_at FROM frames WHERE owner_id = ? ORDER BY created_at DESC'
-  )
-    .bind(session.userId)
-    .all<FrameRow>();
+  const rows = isAdminScope
+    ? await context.env.DB.prepare(
+        `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+                f.custom_name, f.image_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+         FROM frames f
+         LEFT JOIN users u ON u.id = f.owner_id
+         ORDER BY f.created_at DESC`
+      ).all<FrameRow>()
+    : await context.env.DB.prepare(
+        `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+                f.custom_name, f.image_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+         FROM frames f
+         LEFT JOIN users u ON u.id = f.owner_id
+         WHERE f.owner_id = ?
+         ORDER BY f.created_at DESC`
+      )
+        .bind(session.userId)
+        .all<FrameRow>();
 
-  const frames = [] as Array<{
-    id: string;
-    displayName: string;
-    expiresAt: number | null;
-    remainingDays: number | null;
-    shareUrl: string | null;
-    passwordProtected: boolean;
-    passwordValue: string | null;
-  }>;
+  const frames: FrameListItem[] = [];
+  const dbStorageKeys = new Set<string>();
 
   for (const row of rows.results ?? []) {
+    dbStorageKeys.add(row.image_key);
     const displayName = row.custom_name?.trim() ? row.custom_name.trim() : row.image_key;
     const passwordProtected = Boolean(row.password_hash);
     const passwordValue = passwordProtected
@@ -82,16 +155,58 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     frames.push({
       id: row.id,
+      kind: 'frame',
+      storageKey: row.image_key,
       displayName,
+      createdAt: row.created_at,
       expiresAt: row.expires_at,
       remainingDays,
       shareUrl,
       passwordProtected,
       passwordValue,
+      ownerId: row.owner_id,
+      ownerEmail: row.owner_email,
+      ownerDisplayName: row.owner_display_name,
     });
   }
 
-  return new Response(JSON.stringify({ frames }), {
+  let orphanCount = 0;
+
+  if (isAdminScope) {
+    const objects = await listAllR2Objects(context.env.FRAMES_BUCKET);
+
+    for (const object of objects) {
+      if (dbStorageKeys.has(object.key)) {
+        continue;
+      }
+
+      orphanCount += 1;
+      frames.push({
+        id: object.key,
+        kind: 'orphan',
+        storageKey: object.key,
+        displayName: object.key,
+        createdAt: object.uploaded.getTime(),
+        expiresAt: null,
+        remainingDays: null,
+        shareUrl: null,
+        passwordProtected: false,
+        passwordValue: null,
+        ownerId: null,
+        ownerEmail: null,
+        ownerDisplayName: null,
+      });
+    }
+  }
+
+  return new Response(JSON.stringify({
+    frames,
+    meta: {
+      totalCount: frames.length,
+      registeredCount: rows.results?.length ?? 0,
+      orphanCount,
+    },
+  }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -106,8 +221,49 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     });
   }
 
+  const viewer = await getViewer(context, session.userId);
+  if (!viewer) {
+    return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const isAdmin = isAdminEmail(viewer.email);
+
   const url = new URL(context.request.url);
   const frameId = url.searchParams.get('id');
+  const storageKey = url.searchParams.get('storageKey');
+
+  if (storageKey) {
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: 'FORBIDDEN' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const linkedFrame = await context.env.DB.prepare(
+      'SELECT id FROM frames WHERE image_key = ? OR id = ? LIMIT 1'
+    )
+      .bind(storageKey, storageKey)
+      .first<{ id: string }>();
+
+    if (linkedFrame) {
+      return new Response(JSON.stringify({ error: 'FRAME_EXISTS_IN_DB' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    await context.env.FRAMES_BUCKET.delete(storageKey);
+
+    return new Response(JSON.stringify({ ok: true, kind: 'orphan' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   if (!frameId) {
     return new Response(JSON.stringify({ error: 'MISSING_ID' }), {
       status: 400,
@@ -116,12 +272,12 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
 
   const frame = await context.env.DB.prepare(
-    'SELECT id, image_key FROM frames WHERE id = ? AND owner_id = ?'
+    'SELECT id, owner_id, image_key FROM frames WHERE id = ?'
   )
-    .bind(frameId, session.userId)
-    .first<{ id: string; image_key: string }>();
+    .bind(frameId)
+    .first<{ id: string; owner_id: string | null; image_key: string }>();
 
-  if (!frame) {
+  if (!frame || (!isAdmin && frame.owner_id !== session.userId)) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
@@ -148,10 +304,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     });
   }
 
-  const viewer = await context.env.DB.prepare('SELECT id, plan FROM users WHERE id = ?')
-    .bind(session.userId)
-    .first<{ id: string; plan: string }>();
-
+  const viewer = await getViewer(context, session.userId);
   if (!viewer) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
       status: 404,
@@ -159,7 +312,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     });
   }
 
-  if (viewer.plan !== 'pro') {
+  const isAdmin = isAdminEmail(viewer.email);
+
+  if (!isAdmin && !isEffectivePro(viewer.plan, viewer.email)) {
     return new Response(JSON.stringify({ error: 'FORBIDDEN' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -188,11 +343,17 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
 
   const nextName: string | null = trimmed ? trimmed : null;
-  const result = await context.env.DB.prepare(
-    'UPDATE frames SET custom_name = ? WHERE id = ? AND owner_id = ?'
-  )
-    .bind(nextName, frameId, session.userId)
-    .run();
+  const result = isAdmin
+    ? await context.env.DB.prepare(
+        'UPDATE frames SET custom_name = ? WHERE id = ?'
+      )
+        .bind(nextName, frameId)
+        .run()
+    : await context.env.DB.prepare(
+        'UPDATE frames SET custom_name = ? WHERE id = ? AND owner_id = ?'
+      )
+        .bind(nextName, frameId, session.userId)
+        .run();
 
   if (!result.success || (result.meta?.changes ?? 0) === 0) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {

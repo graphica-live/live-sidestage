@@ -9,7 +9,7 @@ import {
 declare const grecaptcha: any;
 
 interface HomeProps {
-  user: { id: string; display_name: string; plan: string } | null | undefined;
+  user: { id: string; display_name: string; plan: string; isAdmin: boolean } | null | undefined;
 }
 
 function pad2(n: number) {

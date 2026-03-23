@@ -1,6 +1,7 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
 import { createFrameAccessToken, hashFramePassword, verifyFrameAccessToken } from '../../_framePassword';
+import { isAdminEmail } from '../../_auth';
 
 type ShareRow = {
   frame_id: string;
@@ -78,7 +79,19 @@ async function canOwnerAccessFrame(context: EventContext<Env, string, unknown>, 
   }
 
   const session = await getSession(context.env, context.request);
-  return session?.userId === ownerId;
+  if (!session) {
+    return false;
+  }
+
+  if (session.userId === ownerId) {
+    return true;
+  }
+
+  const viewer = await context.env.DB.prepare('SELECT email FROM users WHERE id = ?')
+    .bind(session.userId)
+    .first<{ email: string | null }>();
+
+  return isAdminEmail(viewer?.email);
 }
 
 function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
