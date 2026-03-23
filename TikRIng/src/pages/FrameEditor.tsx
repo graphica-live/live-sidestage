@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
 import { getCroppedAndMergedImg } from '../utils/canvas';
+import DonationCard from '../components/DonationCard';
 
 interface FrameEditorProps {
   id: string;
@@ -34,6 +35,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [downloadNoticeText, setDownloadNoticeText] = useState('保存を開始しました');
   const noticeTimerRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const returnPath = `/?f=${encodeURIComponent(id)}`;
 
   useEffect(() => {
     return () => {
@@ -628,6 +630,10 @@ export default function FrameEditor({ id }: FrameEditorProps) {
           )}
         </div>
       )}
+
+      <div className="w-full mt-8">
+        <DonationCard returnPath={returnPath} compact />
+      </div>
     </div>
   );
 }

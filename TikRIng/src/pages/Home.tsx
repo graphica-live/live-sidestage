@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
-import DonationCard from '../components/DonationCard';
 import {
   analyzeFrameTransparency,
   getCircleAutoFit,
@@ -113,6 +112,7 @@ export default function Home({ user }: HomeProps) {
     try {
       const previewSize = editorRef.current?.clientWidth ?? 600;
       const next = await getCircleAutoFit(imageUrl, previewSize);
+        const zoomNudge = 2 / Math.max(previewSize, 1);
 
       if (autoFitRequestRef.current !== requestId) {
         return;
@@ -120,7 +120,7 @@ export default function Home({ user }: HomeProps) {
 
       if (next.strategy !== 'unsupported-fill') {
         setPosition(next.position);
-        setZoom(next.zoom);
+          setZoom(Math.min(3, next.zoom + zoomNudge));
       }
       showAutoFitNotice(
         next.strategy === 'fill-mask'
@@ -1192,11 +1192,6 @@ export default function Home({ user }: HomeProps) {
           ) : null}
         </div>
       ) : null}
-
-      <div className="w-full mt-8">
-        <DonationCard returnPath="/" compact />
-      </div>
-
     </div>
   );
 }
