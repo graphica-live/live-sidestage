@@ -4,11 +4,17 @@ import { useState } from 'react';
 const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
 const DONATION_STEP_YEN = 100;
-const DONATION_PRESET_OPTIONS = [
+type DonationPresetOption = {
+  amount: number;
+  label: string;
+  featured?: boolean;
+};
+
+const DONATION_PRESET_OPTIONS: readonly DonationPresetOption[] = [
   { amount: 500, label: '気軽に応援' },
   { amount: 1000, label: 'いちばんおすすめ', featured: true },
   { amount: 3000, label: 'しっかり支える' },
-] as const;
+];
 
 function formatYen(amount: number): string {
   return new Intl.NumberFormat('ja-JP').format(amount);
