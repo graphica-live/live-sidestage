@@ -14,6 +14,7 @@ import {
 } from '../functions/api/frames/[id]';
 
 import { onRequestPost as checkoutPost } from '../functions/api/checkout/index';
+import { onRequestPost as donatePost } from '../functions/api/checkout/donate';
 import { onRequestPost as cancelPost } from '../functions/api/checkout/cancel';
 import { onRequestPost as syncPost } from '../functions/api/checkout/sync';
 import { onRequestPost as webhookPost } from '../functions/api/checkout/webhook';
@@ -115,6 +116,12 @@ async function routeApi(request, env, ctx) {
   if (pathname === '/api/checkout') {
     if (method !== 'POST') return methodNotAllowed();
     return checkoutPost(makeContext(request, env, ctx));
+  }
+
+  // /api/checkout/donate
+  if (pathname === '/api/checkout/donate') {
+    if (method !== 'POST') return methodNotAllowed();
+    return donatePost(makeContext(request, env, ctx));
   }
 
   // /api/checkout/cancel
