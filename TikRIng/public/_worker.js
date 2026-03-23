@@ -35,6 +35,21 @@ function methodNotAllowed() {
   return new Response('Method Not Allowed', { status: 405 });
 }
 
+function applyNoStoreHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  headers.set('Pragma', 'no-cache');
+  headers.set('Expires', '0');
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function makeContext(request, env, ctx, params = {}) {
   return {
     request,
@@ -183,7 +198,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      return routeApi(request, env, ctx);
+      return applyNoStoreHeaders(await routeApi(request, env, ctx));
     }
 
     // Static assets / SPA
@@ -192,7 +207,7 @@ export default {
     }
 
     const response = await env.ASSETS.fetch(request);
-    return maybeRewriteListenerHtml(request, response);
+    return applyNoStoreHeaders(maybeRewriteListenerHtml(request, response));
   },
 
   async scheduled(event, env, ctx) {

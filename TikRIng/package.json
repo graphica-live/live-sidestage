@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run build && node scripts/dev.mjs",
+    "dev:ui": "vite",
+    "dev:api": "wrangler pages dev dist --port 8788",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

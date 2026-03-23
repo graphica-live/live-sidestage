@@ -29,3 +29,15 @@ npm run dev
 npm run build
 npm run lint
 ```
+
+`npm run dev` は以下をまとめて起動します。
+
+- Vite フロントエンド: http://localhost:5174
+- Cloudflare Pages Functions API: http://127.0.0.1:8788
+
+個別に起動したい場合は以下を使います。
+
+```bash
+npm run dev:ui
+npm run dev:api
+```

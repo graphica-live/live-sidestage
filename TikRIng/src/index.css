@@ -321,6 +321,18 @@ body {
   animation: gesture-hint-float 2.8s ease-in-out infinite;
 }
 
+@media (max-width: 480px) {
+  .editor-gesture-card {
+    animation-duration: 3.1s;
+  }
+
+  .editor-gesture-figure {
+    flex-basis: 4.15rem;
+    width: 4.15rem;
+    height: 3.2rem;
+  }
+}
+
 .editor-gesture-figure {
   position: relative;
   flex: 0 0 4.75rem;

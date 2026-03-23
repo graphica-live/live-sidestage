@@ -74,6 +74,8 @@ export default function Home({ user }: HomeProps) {
   const initialPinchDistance = useRef<number | null>(null);
   const initialPinchZoom = useRef<number>(1);
   const adjustingTimeoutRef = useRef<number | null>(null);
+  const gestureHintTimeoutRef = useRef<number | null>(null);
+  const autoFitNoticeTimeoutRef = useRef<number | null>(null);
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
 
@@ -84,6 +86,12 @@ export default function Home({ user }: HomeProps) {
       }
       if (adjustingTimeoutRef.current !== null) {
         window.clearTimeout(adjustingTimeoutRef.current);
+      }
+      if (gestureHintTimeoutRef.current !== null) {
+        window.clearTimeout(gestureHintTimeoutRef.current);
+      }
+      if (autoFitNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(autoFitNoticeTimeoutRef.current);
       }
     };
   }, [frameImage]);
@@ -175,6 +183,52 @@ export default function Home({ user }: HomeProps) {
       window.clearTimeout(timerId);
     };
   }, [frameImage, shareUrl]);
+
+  useEffect(() => {
+    if (gestureHintTimeoutRef.current !== null) {
+      window.clearTimeout(gestureHintTimeoutRef.current);
+      gestureHintTimeoutRef.current = null;
+    }
+
+    if (!showGestureHint) {
+      return;
+    }
+
+    gestureHintTimeoutRef.current = window.setTimeout(() => {
+      setShowGestureHint(false);
+      gestureHintTimeoutRef.current = null;
+    }, 5000);
+
+    return () => {
+      if (gestureHintTimeoutRef.current !== null) {
+        window.clearTimeout(gestureHintTimeoutRef.current);
+        gestureHintTimeoutRef.current = null;
+      }
+    };
+  }, [showGestureHint]);
+
+  useEffect(() => {
+    if (autoFitNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(autoFitNoticeTimeoutRef.current);
+      autoFitNoticeTimeoutRef.current = null;
+    }
+
+    if (!autoFitNotice) {
+      return;
+    }
+
+    autoFitNoticeTimeoutRef.current = window.setTimeout(() => {
+      setAutoFitNotice(null);
+      autoFitNoticeTimeoutRef.current = null;
+    }, 5000);
+
+    return () => {
+      if (autoFitNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(autoFitNoticeTimeoutRef.current);
+        autoFitNoticeTimeoutRef.current = null;
+      }
+    };
+  }, [autoFitNotice]);
 
   useEffect(() => {
     const updateZoomSliderVisibility = () => {
@@ -731,9 +785,9 @@ export default function Home({ user }: HomeProps) {
           >
             <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
             {autoFitNotice ? (
-              <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex justify-center px-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div
-                  className={`max-w-[28rem] rounded-2xl border px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.32)] ${
+                  className={`w-full max-w-[22rem] rounded-2xl border px-3.5 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.32)] sm:max-w-[28rem] sm:px-4 ${
                     autoFitNotice.tone === 'success'
                       ? 'border-tiktok-cyan/40 bg-[#041E22]/92 text-white shadow-[0_18px_50px_rgba(0,0,0,0.42)]'
                       : autoFitNotice.tone === 'warning'
@@ -777,10 +831,10 @@ export default function Home({ user }: HomeProps) {
               <div className={`editor-crop-mask w-[calc(100%-4px)] h-[calc(100%-4px)] rounded-full border-[2.5px] border-tiktok-cyan/95${showMaskIntro ? ' editor-crop-mask-intro' : isAdjusting ? ' editor-crop-mask-active' : ''}`} />
             </div>
             <div
-              className={`editor-gesture-hint absolute inset-0 z-30 pointer-events-none flex items-center justify-center px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
+              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
               aria-hidden={!showGestureHint}
             >
-              <div className="editor-gesture-card w-full max-w-[21rem] rounded-[1.75rem] border border-white/12 px-4 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md">
+              <div className="editor-gesture-card w-full max-w-[18rem] rounded-[1.5rem] border border-white/12 px-3.5 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md sm:max-w-[21rem] sm:rounded-[1.75rem] sm:px-4">
                 <div className="flex items-center gap-3">
                   <div className="editor-gesture-figure editor-gesture-figure-drag" aria-hidden="true">
                     <span className="editor-gesture-drag-base" />
@@ -813,7 +867,7 @@ export default function Home({ user }: HomeProps) {
                 </div>
 
                 <p className="mt-3 text-center text-[11px] font-medium tracking-[0.08em] text-white/48">
-                  最初の操作でこのガイドは消えます
+                  約5秒後、または最初の操作で消えます
                 </p>
               </div>
             </div>

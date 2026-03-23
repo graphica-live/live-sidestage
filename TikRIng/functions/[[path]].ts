@@ -6,6 +6,21 @@ interface Env {
     // For now, we just want to change the text so it doesn't say "ライバー専用" (For Creators).
 }
 
+function applyNoStoreHeaders(response: Response) {
+    const headers = new Headers(response.headers);
+    headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    headers.delete('ETag');
+    headers.delete('Last-Modified');
+
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+    });
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
     // Fetch the original response (e.g., the static index.html)
     const response = await context.next();
@@ -21,7 +36,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const newDescription = "ライバーが作成した専用フレームをあなたのアイコンに重ねて応援しよう！";
         // We don't have a specific thumbnail for each frame yet, but we ensure it doesn't say "For Creators"
 
-        return new HTMLRewriter()
+        return applyNoStoreHeaders(new HTMLRewriter()
             .on('title', {
                 element(element) {
                     element.setInnerContent(newTitle);
@@ -38,9 +53,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     element.append(`<meta name="twitter:description" content="${newDescription}" />`, { html: true });
                 }
             })
-            .transform(response);
+            .transform(response));
     }
 
     // Otherwise, return the normal response (which will be "TikRing - ライバー専用" as defined in index.html)
-    return response;
+    return applyNoStoreHeaders(response);
 };
