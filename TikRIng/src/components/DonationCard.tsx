@@ -79,6 +79,9 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
     normalizedCustomAmount % DONATION_STEP_YEN === 0;
 
   const isLoading = loadingTarget !== null;
+  const supportDescription = compact
+    ? 'サーバー費と改善開発のための単発サポートです。'
+    : 'サーバー費と改善開発のための単発サポートです。Stripeで安全に決済されます。';
 
   const handleDonate = async (amount: number, target: number | 'custom') => {
     if (isLoading) return;
@@ -166,57 +169,54 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
   };
 
   return (
-    <div className={`w-full rounded-md border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(16,24,16,0.92),rgba(10,48,38,0.94))] ${compact ? 'p-4' : 'p-5'}`}>
-      <div className="flex flex-col gap-4">
+    <div className={`w-full rounded-md border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(16,24,16,0.92),rgba(10,48,38,0.94))] ${compact ? 'p-3.5' : 'p-4'}`}>
+      <div className={`flex flex-col ${compact ? 'gap-3' : 'gap-4'}`}>
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-bold tracking-[0.18em] text-emerald-200 uppercase">
-            <HeartHandshake className="h-3.5 w-3.5" />
+          <div className={`inline-flex items-center rounded-full border border-emerald-300/20 bg-emerald-400/10 font-bold uppercase text-emerald-200 ${compact ? 'gap-1.5 px-2.5 py-1 text-[10px] tracking-[0.16em]' : 'gap-2 px-3 py-1 text-[11px] tracking-[0.18em]'}`}>
+            <HeartHandshake className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
             Support
           </div>
-          <p className={`mt-3 text-white ${compact ? 'text-sm font-bold' : 'text-base font-bold'}`}>
+          <p className={`text-white ${compact ? 'mt-2 text-[13px] font-bold' : 'mt-3 text-sm font-bold'}`}>
             TikRingを続ける力になります
           </p>
-          <p className={`mt-1 text-emerald-50/75 ${compact ? 'text-xs' : 'text-sm'}`}>
-            サーバー費と改善開発のための単発サポートです。Stripeで安全に決済されます。
+          <p className={`mt-1 text-emerald-50/75 ${compact ? 'text-[11px] leading-4' : 'text-sm'}`}>
+            {supportDescription}
           </p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className={`flex flex-col ${compact ? 'gap-2.5' : 'gap-3'}`}>
+          <div className={`grid grid-cols-3 ${compact ? 'gap-1.5' : 'gap-2'}`}>
             {DONATION_PRESET_OPTIONS.map((option) => (
               <button
                 key={option.amount}
                 type="button"
                 onClick={() => void handleDonate(option.amount, option.amount)}
                 disabled={isLoading}
-                className={`rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${option.featured ? 'border-emerald-300/60 bg-emerald-300/12 shadow-[0_0_0_1px_rgba(110,231,183,0.15)] hover:bg-emerald-300/18' : 'border-emerald-200/20 bg-black/20 hover:border-emerald-200/40 hover:bg-black/30'}`}
+                className={`border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${compact ? 'rounded-lg px-2.5 py-2' : 'rounded-xl px-3 py-2.5'} ${option.featured ? 'border-emerald-300/60 bg-emerald-300/12 shadow-[0_0_0_1px_rgba(110,231,183,0.15)] hover:bg-emerald-300/18' : 'border-emerald-200/20 bg-black/20 hover:border-emerald-200/40 hover:bg-black/30'}`}
               >
-                <div className={`text-[11px] font-bold tracking-[0.08em] ${option.featured ? 'text-emerald-200' : 'text-emerald-100/70'}`}>{option.label}</div>
-                <div className="mt-1 flex items-center justify-between gap-3">
-                  <span className="text-base font-black text-white">{formatYen(option.amount)}円</span>
-                  {loadingTarget === option.amount ? <Loader2 className="h-4 w-4 animate-spin text-emerald-200" /> : <HeartHandshake className="h-4 w-4 text-emerald-200" />}
-                </div>
-                <div className={`mt-2 text-xs ${option.featured ? 'text-emerald-50/90' : 'text-emerald-100/55'}`}>
-                  {option.amount === 500 ? 'まずは気軽に支える' : option.amount === 1000 ? '迷ったらこの金額' : '継続運営をしっかり後押し'}
+                <div className={`font-bold tracking-[0.04em] ${compact ? 'text-[9px]' : 'text-[10px]'} ${option.featured ? 'text-emerald-200' : 'text-emerald-100/70'}`}>{option.label}</div>
+                <div className={`flex items-center justify-between ${compact ? 'mt-0.5 gap-1.5' : 'mt-1 gap-2'}`}>
+                  <span className={`font-black text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>{formatYen(option.amount)}円</span>
+                  {loadingTarget === option.amount ? <Loader2 className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} animate-spin text-emerald-200`} /> : <HeartHandshake className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-emerald-200`} />}
                 </div>
               </button>
             ))}
           </div>
 
-          <div className="flex flex-col items-start gap-2">
+          <div className={`flex flex-col items-start ${compact ? 'gap-1.5' : 'gap-2'}`}>
             <button
               type="button"
               onClick={() => setIsCustomMode((current) => !current)}
               disabled={isLoading}
-              className="text-xs font-bold text-emerald-200 underline decoration-emerald-200/35 underline-offset-4 transition-colors hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`font-bold text-emerald-200 underline decoration-emerald-200/35 underline-offset-4 transition-colors hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 ${compact ? 'text-[11px]' : 'text-xs'}`}
             >
               {isCustomMode ? '金額指定を閉じる' : '金額を指定して支援する'}
             </button>
 
             {isCustomMode ? (
-              <div className="w-full rounded-xl border border-emerald-200/15 bg-black/15 p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="flex items-center rounded-md border border-emerald-200/20 bg-black/20 px-3 py-2 sm:w-[180px]">
+              <div className={`w-full rounded-xl border border-emerald-200/15 bg-black/15 ${compact ? 'p-2.5' : 'p-3'}`}>
+                <div className={`flex flex-col sm:flex-row sm:items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
+                  <div className={`flex items-center rounded-md border border-emerald-200/20 bg-black/20 px-3 ${compact ? 'py-1.5 sm:w-[160px]' : 'py-2 sm:w-[180px]'}`}>
                     <span className="mr-2 text-sm font-bold text-emerald-100">¥</span>
                     <input
                       type="number"
@@ -227,7 +227,7 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
                       value={customAmount}
                       onChange={(event) => setCustomAmount(event.target.value)}
                       disabled={isLoading}
-                      className="w-full bg-transparent text-right text-sm font-bold text-white outline-none disabled:cursor-not-allowed"
+                      className={`w-full bg-transparent text-right font-bold text-white outline-none disabled:cursor-not-allowed ${compact ? 'text-[13px]' : 'text-sm'}`}
                       aria-label="support amount"
                     />
                   </div>
@@ -236,32 +236,32 @@ export default function DonationCard({ returnPath, compact = false }: DonationCa
                     type="button"
                     onClick={() => void handleDonate(normalizedCustomAmount, 'custom')}
                     disabled={isLoading}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-400 px-4 py-2.5 text-sm font-black text-emerald-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`inline-flex items-center justify-center gap-2 rounded-md bg-emerald-400 font-black text-emerald-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60 ${compact ? 'px-3.5 py-2 text-[13px]' : 'px-4 py-2.5 text-sm'}`}
                   >
-                    {loadingTarget === 'custom' ? <Loader2 className="h-4 w-4 animate-spin" /> : <HeartHandshake className="h-4 w-4" />}
+                    {loadingTarget === 'custom' ? <Loader2 className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} animate-spin`} /> : <HeartHandshake className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />}
                     {loadingTarget === 'custom' ? '応援ページを開いています...' : `${isCustomAmountValid ? `${formatYen(normalizedCustomAmount)}円で応援する` : '応援する'}`}
                   </button>
                 </div>
 
-                <p className="mt-2 text-[11px] text-emerald-100/55">
+                <p className={`text-emerald-100/55 ${compact ? 'mt-1.5 text-[10px]' : 'mt-2 text-[11px]'}`}>
                   {formatYen(MIN_DONATION_YEN)}円から{formatYen(MAX_DONATION_YEN)}円まで、{formatYen(DONATION_STEP_YEN)}円単位
                 </p>
               </div>
             ) : null}
           </div>
 
-          <p className="text-[11px] text-emerald-100/55">
+          <p className={`text-emerald-100/55 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
             単発支援です。継続課金ではありません。
           </p>
         </div>
       </div>
 
       {error ? (
-        <p className="mt-3 text-xs text-tiktok-red">{error}</p>
+        <p className={`text-tiktok-red ${compact ? 'mt-2 text-[11px]' : 'mt-3 text-xs'}`}>{error}</p>
       ) : null}
 
       {supportSuccess ? (
-        <p className="mt-3 text-xs text-emerald-200">応援ありがとうございます。Stripe で受け付けました。</p>
+        <p className={`text-emerald-200 ${compact ? 'mt-2 text-[11px]' : 'mt-3 text-xs'}`}>応援ありがとうございます。Stripe で受け付けました。</p>
       ) : null}
     </div>
   );
