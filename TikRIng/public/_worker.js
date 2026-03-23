@@ -35,13 +35,25 @@ function methodNotAllowed() {
   return new Response('Method Not Allowed', { status: 405 });
 }
 
-function applyNoStoreHeaders(response) {
+function isDashboardRequest(request, response) {
+  const url = new URL(request.url);
+  return url.searchParams.get('dashboard') === '1' && response.headers.get('content-type')?.includes('text/html');
+}
+
+function applyCacheHeaders(request, response) {
   const headers = new Headers(response.headers);
-  headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  headers.set('Pragma', 'no-cache');
-  headers.set('Expires', '0');
-  headers.delete('ETag');
-  headers.delete('Last-Modified');
+
+  if (isDashboardRequest(request, response)) {
+    headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60');
+    headers.delete('Pragma');
+    headers.delete('Expires');
+  } else {
+    headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    headers.delete('ETag');
+    headers.delete('Last-Modified');
+  }
 
   return new Response(response.body, {
     status: response.status,
@@ -198,7 +210,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      return applyNoStoreHeaders(await routeApi(request, env, ctx));
+      return applyCacheHeaders(request, await routeApi(request, env, ctx));
     }
 
     // Static assets / SPA
@@ -207,7 +219,7 @@ export default {
     }
 
     const response = await env.ASSETS.fetch(request);
-    return applyNoStoreHeaders(maybeRewriteListenerHtml(request, response));
+    return applyCacheHeaders(request, maybeRewriteListenerHtml(request, response));
   },
 
   async scheduled(event, env, ctx) {

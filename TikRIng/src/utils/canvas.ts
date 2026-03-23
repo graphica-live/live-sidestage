@@ -19,6 +19,11 @@ export const getCroppedAndMergedImg = async (
   const outputSize = Math.min(frameImage.width, frameImage.height);
   canvas.width = outputSize;
   canvas.height = outputSize;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, outputSize, outputSize);
+
   const frameCropX = (frameImage.width - outputSize) / 2;
   const frameCropY = (frameImage.height - outputSize) / 2;
   const scaleRatio = outputSize / Math.max(previewSize, 1);
@@ -69,7 +74,7 @@ export const getCroppedAndMergedImg = async (
       } else {
         reject(new Error('Canvas to blob failed'));
       }
-    }, 'image/png');
+    }, 'image/jpeg', 1);
   });
 };
 
