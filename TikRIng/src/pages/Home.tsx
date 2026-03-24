@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
+import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
@@ -64,6 +64,7 @@ export default function Home({ user }: HomeProps) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
+  const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const isDragging = useRef(false);
@@ -111,7 +112,7 @@ export default function Home({ user }: HomeProps) {
     try {
       const previewSize = editorRef.current?.clientWidth ?? 600;
       const next = await getCircleAutoFit(imageUrl, previewSize);
-      const zoomNudge = 4 / Math.max(previewSize, 1);
+      const zoomRelax = 6 / Math.max(previewSize, 1);
 
       if (autoFitRequestRef.current !== requestId) {
         return;
@@ -119,7 +120,7 @@ export default function Home({ user }: HomeProps) {
 
       if (next.strategy !== 'unsupported-fill') {
         setPosition(next.position);
-        setZoom(Math.min(3, next.zoom + zoomNudge));
+        setZoom(Math.max(0.3, Math.min(3, next.zoom - zoomRelax)));
       }
       showAutoFitNotice(
         next.strategy === 'fill-mask'
@@ -250,6 +251,22 @@ export default function Home({ user }: HomeProps) {
     dismissAutoFitNotice();
     startTransientAdjusting();
     setPosition({ x: 0, y: 0 });
+  };
+
+  const nudgePosition = (dx: number, dy: number) => {
+    dismissGestureHint();
+    dismissAutoFitNotice();
+    setPosition((current) => ({
+      x: current.x + dx,
+      y: current.y + dy,
+    }));
+  };
+
+  const nudgeZoom = (delta: number) => {
+    dismissGestureHint();
+    dismissAutoFitNotice();
+    startTransientAdjusting();
+    setZoom((current) => Math.max(0.3, Math.min(3, Number((current + delta).toFixed(3)))));
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -865,45 +882,120 @@ export default function Home({ user }: HomeProps) {
                 </p>
               </div>
             </div>
-            <div className="absolute inset-0 z-20 pointer-events-none border-2 border-tiktok-cyan/70 rounded-md" />
           </div>
+
+            <div className="w-full rounded-xl border border-tiktok-cyan/30 bg-tiktok-cyan/12 overflow-hidden shadow-[0_10px_28px_rgba(37,244,238,0.10)]">
+              <button
+                type="button"
+                onClick={() => setMicroAdjustOpen((open) => !open)}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-tiktok-cyan/10 transition-colors"
+              >
+                <div className="min-w-0 flex items-center gap-2 pr-3">
+                  <p className="shrink-0 text-sm font-bold text-white">微調整</p>
+                  <p className="truncate text-[11px] text-tiktok-cyan/75">1px移動と細かい拡大縮小</p>
+                </div>
+                <ChevronDown className={`w-5 h-5 text-tiktok-cyan transition-transform ${microAdjustOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {microAdjustOpen ? (
+                <div className="px-3 pb-3 pt-2 space-y-3 border-t border-tiktok-cyan/20 bg-black/15">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-bold tracking-[0.12em] text-tiktok-cyan/75">1px移動</p>
+                    <button
+                      type="button"
+                      onClick={centerImage}
+                      className="px-2.5 py-1.5 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-[11px] font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
+                    >
+                      中央配置
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 max-w-[11rem] mx-auto">
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => nudgePosition(0, -1)}
+                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                    >
+                      ↑
+                    </button>
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => nudgePosition(-1, 0)}
+                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                    >
+                      ←
+                    </button>
+                    <div className="flex items-center justify-center text-[10px] font-bold tracking-[0.08em] text-tiktok-lightgray">1px</div>
+                    <button
+                      type="button"
+                      onClick={() => nudgePosition(1, 0)}
+                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                    >
+                      →
+                    </button>
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => nudgePosition(0, 1)}
+                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                    >
+                      ↓
+                    </button>
+                    <div />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold tracking-[0.12em] text-tiktok-cyan/75">拡大縮小</p>
+                    <div className="w-full flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => nudgeZoom(-0.001)}
+                        className="h-8 w-8 shrink-0 rounded-md border border-tiktok-cyan/35 bg-black/25 text-base font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                        aria-label="zoom out one step"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="range"
+                        value={zoom}
+                        min={0.3}
+                        max={3}
+                        step={0.001}
+                        aria-labelledby="FrameZoom"
+                        onChange={(e) => {
+                          dismissGestureHint();
+                          dismissAutoFitNotice();
+                          startTransientAdjusting();
+                          setZoom(Number(e.target.value));
+                        }}
+                        className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => nudgeZoom(0.001)}
+                        className="h-8 w-8 shrink-0 rounded-md border border-tiktok-cyan/35 bg-black/25 text-base font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                        aria-label="zoom in one step"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-medium text-tiktok-lightgray">
+                      <span>縮小</span>
+                      <span>{zoom.toFixed(3)}x</span>
+                      <span>拡大</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
           <div className="-mt-2 w-full rounded-2xl border border-tiktok-cyan/30 bg-tiktok-cyan/12 px-4 py-3 text-center shadow-[0_12px_40px_rgba(37,244,238,0.12)]">
             <p className="text-[11px] font-black uppercase tracking-[0.22em] text-tiktok-cyan/80">Crop Guide</p>
             <p className="mt-1 text-sm font-bold text-white">
               水色の円が、TikTokでプロフィール画像を登録する際のデフォルトの切り抜き位置の目安です。
             </p>
-          </div>
-
-          <div className="w-full flex items-center gap-3 px-2">
-            <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
-            <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
-            <input
-              type="range"
-              value={zoom}
-              min={0.3}
-              max={3}
-              step={0.001}
-              aria-labelledby="FrameZoom"
-              onChange={(e) => {
-                dismissGestureHint();
-                dismissAutoFitNotice();
-                startTransientAdjusting();
-                setZoom(Number(e.target.value));
-              }}
-              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
-            />
-            <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
-          </div>
-
-          <div className="w-full flex justify-center">
-            <button
-              type="button"
-              onClick={centerImage}
-              className="px-4 py-2 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-sm font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
-            >
-              画像を中央配置
-            </button>
           </div>
 
           {user?.plan === 'pro' ? (
