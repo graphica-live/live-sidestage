@@ -9,10 +9,10 @@ type CropMaskOverlayProps = {
 export default function CropMaskOverlay({ active = false, intro = false }: CropMaskOverlayProps) {
   const maskInstanceId = useId().replace(/:/g, '-');
   const overlayColor = active
-    ? 'rgba(37, 244, 238, 0.24)'
+    ? 'rgba(37, 244, 238, 0.28)'
     : intro
-      ? 'rgba(37, 244, 238, 0.42)'
-      : 'rgba(37, 244, 238, 0.32)';
+      ? 'rgba(37, 244, 238, 1)'
+      : 'rgba(37, 244, 238, 1)';
   const introClassName = intro ? ' editor-crop-mask-intro' : '';
   const cropRadius = 100 * getEditorCropRadiusRatio(100);
   const maskId = `crop-mask-${maskInstanceId}`;

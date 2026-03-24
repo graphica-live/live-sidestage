@@ -64,8 +64,6 @@ export default function Home({ user }: HomeProps) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
-  const [showZoomSlider, setShowZoomSlider] = useState(true);
-
   const editorRef = useRef<HTMLDivElement>(null);
 
   const isDragging = useRef(false);
@@ -232,21 +230,6 @@ export default function Home({ user }: HomeProps) {
     };
   }, [autoFitNotice]);
 
-  useEffect(() => {
-    const updateZoomSliderVisibility = () => {
-      const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-      const hasTouchPoints = navigator.maxTouchPoints > 0;
-      setShowZoomSlider(!(coarsePointer || hasTouchPoints));
-    };
-
-    updateZoomSliderVisibility();
-    window.addEventListener('resize', updateZoomSliderVisibility);
-
-    return () => {
-      window.removeEventListener('resize', updateZoomSliderVisibility);
-    };
-  }, []);
-
   const dismissGestureHint = () => {
     setShowGestureHint(false);
   };
@@ -260,6 +243,13 @@ export default function Home({ user }: HomeProps) {
       setIsAdjusting(false);
       adjustingTimeoutRef.current = null;
     }, 650);
+  };
+
+  const centerImage = () => {
+    dismissGestureHint();
+    dismissAutoFitNotice();
+    startTransientAdjusting();
+    setPosition({ x: 0, y: 0 });
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -885,28 +875,36 @@ export default function Home({ user }: HomeProps) {
             </p>
           </div>
 
-          {showZoomSlider ? (
-            <div className="w-full flex items-center gap-3 px-2">
-              <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
-              <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
-              <input
-                type="range"
-                value={zoom}
-                min={0.3}
-                max={3}
-                step={0.001}
-                aria-labelledby="FrameZoom"
-                onChange={(e) => {
-                  dismissGestureHint();
-                  dismissAutoFitNotice();
-                  startTransientAdjusting();
-                  setZoom(Number(e.target.value));
-                }}
-                className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
-              />
-              <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
-            </div>
-          ) : null}
+          <div className="w-full flex items-center gap-3 px-2">
+            <Move className="w-4 h-4 text-tiktok-lightgray shrink-0" />
+            <span className="text-xs text-tiktok-lightgray shrink-0">縮小</span>
+            <input
+              type="range"
+              value={zoom}
+              min={0.3}
+              max={3}
+              step={0.001}
+              aria-labelledby="FrameZoom"
+              onChange={(e) => {
+                dismissGestureHint();
+                dismissAutoFitNotice();
+                startTransientAdjusting();
+                setZoom(Number(e.target.value));
+              }}
+              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
+            />
+            <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
+          </div>
+
+          <div className="w-full flex justify-center">
+            <button
+              type="button"
+              onClick={centerImage}
+              className="px-4 py-2 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-sm font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
+            >
+              画像を中央配置
+            </button>
+          </div>
 
           {user?.plan === 'pro' ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">

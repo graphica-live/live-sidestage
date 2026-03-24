@@ -20,6 +20,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  const [isAdjusting, setIsAdjusting] = useState(false);
 
   // Dragging & Pinching states
   const isDragging = useRef(false);
@@ -35,6 +36,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [downloadStartedNotice, setDownloadStartedNotice] = useState(false);
   const [downloadNoticeText, setDownloadNoticeText] = useState('保存を開始しました');
   const noticeTimerRef = useRef<number | null>(null);
+  const adjustingTimerRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const returnPath = `/?f=${encodeURIComponent(id)}`;
 
@@ -43,8 +45,27 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       if (noticeTimerRef.current !== null) {
         window.clearTimeout(noticeTimerRef.current);
       }
+      if (adjustingTimerRef.current !== null) {
+        window.clearTimeout(adjustingTimerRef.current);
+      }
     };
   }, []);
+
+  const startTransientAdjusting = () => {
+    setIsAdjusting(true);
+    if (adjustingTimerRef.current !== null) {
+      window.clearTimeout(adjustingTimerRef.current);
+    }
+    adjustingTimerRef.current = window.setTimeout(() => {
+      setIsAdjusting(false);
+      adjustingTimerRef.current = null;
+    }, 650);
+  };
+
+  const centerImage = () => {
+    startTransientAdjusting();
+    setPosition({ x: 0, y: 0 });
+  };
 
   // 初回マウント時にR2からフレーム画像を取得
   useEffect(() => {
@@ -237,6 +258,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
   // Custom Drag & Zoom Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    startTransientAdjusting();
     e.currentTarget.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -259,6 +281,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     }
 
     if (activePointers.current.size === 1 && isDragging.current) {
+      startTransientAdjusting();
       const dx = e.clientX - dragStartPos.current.x;
       const dy = e.clientY - dragStartPos.current.y;
       setPosition({
@@ -266,6 +289,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         y: startPosition.current.y + dy,
       });
     } else if (activePointers.current.size === 2 && initialPinchDistance.current !== null) {
+      startTransientAdjusting();
       const pts = Array.from(activePointers.current.values());
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
 
@@ -299,6 +323,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Mouse wheel zoom support
     const zoomFactor = -e.deltaY * 0.002;
+    startTransientAdjusting();
     setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
   };
 
@@ -563,7 +588,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             </div>
 
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <CropMaskOverlay />
+              <CropMaskOverlay active={isAdjusting} />
             </div>
           </div>
 
@@ -577,10 +602,23 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               max={3}
               step={0.1}
               aria-labelledby="Zoom"
-              onChange={(e) => setZoom(Number(e.target.value))}
+              onChange={(e) => {
+                startTransientAdjusting();
+                setZoom(Number(e.target.value));
+              }}
               className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
             />
             <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
+          </div>
+
+          <div className="w-full flex justify-center">
+            <button
+              type="button"
+              onClick={centerImage}
+              className="px-4 py-2 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-sm font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
+            >
+              画像を中央配置
+            </button>
           </div>
 
           <div className="flex w-full gap-3 mt-4">
