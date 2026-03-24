@@ -11,7 +11,7 @@ import {
 declare const grecaptcha: any;
 
 interface HomeProps {
-  user: { id: string; display_name: string; plan: string; isAdmin: boolean } | null | undefined;
+  user: { id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null } | null | undefined;
 }
 
 type AutoFitNotice = {
@@ -65,6 +65,7 @@ export default function Home({ user }: HomeProps) {
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
+  const [greenBackMode, setGreenBackMode] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const isDragging = useRef(false);
@@ -78,6 +79,7 @@ export default function Home({ user }: HomeProps) {
   const autoFitNoticeTimeoutRef = useRef<number | null>(null);
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
+  const canUseGreenBackMode = user?.isAdmin === true && user?.email?.toLowerCase() === 'joe.graphica@gmail.com';
 
   useEffect(() => {
     return () => {
@@ -246,11 +248,20 @@ export default function Home({ user }: HomeProps) {
     }, 650);
   };
 
-  const centerImage = () => {
+  const resetAdjustments = () => {
     dismissGestureHint();
     dismissAutoFitNotice();
     startTransientAdjusting();
     setPosition({ x: 0, y: 0 });
+    setZoom(1);
+  };
+
+  const rerunAutoFit = () => {
+    if (!frameImage) {
+      return;
+    }
+    dismissGestureHint();
+    void runAutoFit(frameImage);
   };
 
   const nudgePosition = (dx: number, dy: number) => {
@@ -528,7 +539,10 @@ export default function Home({ user }: HomeProps) {
         zoom,
         1024,
         previewSize,
-        { fillTransparentEdges: false }
+        {
+          fillTransparentEdges: false,
+          outsideCircleFillColor: greenBackMode ? '#00b140' : undefined,
+        }
       );
 
       if (hasTransparentBorder) {
@@ -560,7 +574,10 @@ export default function Home({ user }: HomeProps) {
         zoom,
         1024,
         previewSize,
-        { fillTransparentEdges: true }
+        {
+          fillTransparentEdges: true,
+          outsideCircleFillColor: greenBackMode ? '#00b140' : undefined,
+        }
       );
 
       const ok = await uploadPreparedFrame(filledBlob, pendingRecaptchaToken);
@@ -901,13 +918,22 @@ export default function Home({ user }: HomeProps) {
                 <div className="px-3 pb-3 pt-2 space-y-3 border-t border-tiktok-cyan/20 bg-black/15">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[11px] font-bold tracking-[0.12em] text-tiktok-cyan/75">1px移動</p>
-                    <button
-                      type="button"
-                      onClick={centerImage}
-                      className="px-2.5 py-1.5 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-[11px] font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
-                    >
-                      中央配置
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={rerunAutoFit}
+                        className="px-2.5 py-1.5 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-[11px] font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
+                      >
+                        自動フィット
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetAdjustments}
+                        className="px-2.5 py-1.5 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-[11px] font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
+                      >
+                        リセット
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-1.5 max-w-[11rem] mx-auto">
@@ -1048,6 +1074,28 @@ export default function Home({ user }: HomeProps) {
                     </div>
                     <p className="text-xs text-tiktok-lightgray">デフォルトは90日後です（無期限も選べます）</p>
                   </div>
+
+                  {canUseGreenBackMode ? (
+                    <div className="space-y-1.5 rounded-md border border-emerald-400/25 bg-emerald-500/8 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <label className="text-sm font-bold text-white">グリーンバックモード</label>
+                          <p className="mt-1 text-xs text-tiktok-lightgray">
+                            ON にすると、円形くりぬき部分の外側へグリーンバックを敷いた状態で PNG を登録します。
+                          </p>
+                        </div>
+                        <label className="inline-flex items-center gap-2 text-sm text-tiktok-lightgray shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={greenBackMode}
+                            onChange={(e) => setGreenBackMode(e.target.checked)}
+                            className="accent-[#00b140]"
+                          />
+                          ON
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-white">パスワード（設定するとリスナーに入力を求めます）</label>

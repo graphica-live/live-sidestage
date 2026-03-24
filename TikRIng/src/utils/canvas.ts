@@ -92,7 +92,11 @@ export const getSquareFrameBlob = async (
   zoom: number,
   outputSize = 1024,
   previewSize = outputSize,
-  options?: { fillTransparentEdges?: boolean }
+  options?: {
+    fillTransparentEdges?: boolean;
+    outsideCircleFillColor?: string;
+    outsideCircleRadiusRatio?: number;
+  }
 ): Promise<{ blob: Blob; edgeFilled: boolean; hasTransparentBorder: boolean }> => {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
@@ -118,6 +122,7 @@ export const getSquareFrameBlob = async (
   const offsetY = position.y * scaleRatio;
 
   ctx.clearRect(0, 0, outputSize, outputSize);
+
   ctx.drawImage(
     image,
     0,
@@ -136,6 +141,15 @@ export const getSquareFrameBlob = async (
     ? fillTransparentEdgesWithAverageOpaqueColor(ctx, outputSize, 10)
     : false;
 
+  if (options?.outsideCircleFillColor) {
+    fillOutsideCircle(
+      ctx,
+      outputSize,
+      options.outsideCircleFillColor,
+      options.outsideCircleRadiusRatio ?? EDITOR_CROP_MASK_RADIUS_RATIO
+    );
+  }
+
   return new Promise((resolve, reject) => {
     canvas.toBlob((file) => {
       if (file) {
@@ -146,6 +160,22 @@ export const getSquareFrameBlob = async (
     }, 'image/png');
   });
 };
+
+function fillOutsideCircle(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  color: string,
+  radiusRatio: number
+) {
+  const radius = Math.max(0, Math.min(size / 2, size * radiusRatio));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, size, size);
+  ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2, true);
+  ctx.fillStyle = color;
+  ctx.fill('evenodd');
+  ctx.restore();
+}
 
 export type FrameTransparencyAnalysis = {
   connectedTransparentRatio: number;

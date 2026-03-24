@@ -13,7 +13,7 @@ function App() {
   const [isDashboard, setIsDashboard] = useState(false);
   const [dashboardScope, setDashboardScope] = useState<'mine' | 'all'>('mine');
   const isTikTokInApp = isTikTokInAppBrowser();
-  const [user, setUser] = useState<{ id: string; display_name: string; plan: string; isAdmin: boolean } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null } | null | undefined>(undefined);
   const syncInFlightRef = useRef(false);
 
   useEffect(() => {

@@ -25,6 +25,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     ? {
         id: user.id,
         provider: user.provider,
+        email: user.email,
         display_name: user.display_name,
         plan: getEffectivePlan(user.plan, user.email),
         isAdmin: isAdminEmail(user.email),
