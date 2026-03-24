@@ -1017,13 +1017,6 @@ export default function Home({ user }: HomeProps) {
               ) : null}
             </div>
 
-          <div className="-mt-2 w-full rounded-2xl border border-tiktok-cyan/30 bg-tiktok-cyan/12 px-4 py-3 text-center shadow-[0_12px_40px_rgba(37,244,238,0.12)]">
-            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-tiktok-cyan/80">Crop Guide</p>
-            <p className="mt-1 text-sm font-bold text-white">
-              水色の円が、TikTokでプロフィール画像を登録する際のデフォルトの切り抜き位置の目安です。
-            </p>
-          </div>
-
           {user?.plan === 'pro' ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
               <button
