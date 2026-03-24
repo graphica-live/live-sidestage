@@ -445,6 +445,93 @@ export const hasTransparentPixelsInCenter = async (
   return analysis.hasCentralSeedTransparency;
 };
 
+function getCentralTransparentRegion(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  alphaThreshold: number,
+  centerRadiusRatio = 0.22,
+  seedSearchRadiusRatio = 0.35
+): { mask: Uint8Array; hasSeed: boolean } {
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const radius = Math.max(1, Math.floor(Math.min(width, height) * centerRadiusRatio));
+  const radiusSq = radius * radius;
+  const seedRadius = Math.max(1, Math.floor(radius * seedSearchRadiusRatio));
+  const seedRadiusSq = seedRadius * seedRadius;
+  const startX = Math.max(0, centerX - radius);
+  const endX = Math.min(width - 1, centerX + radius);
+  const startY = Math.max(0, centerY - radius);
+  const endY = Math.min(height - 1, centerY + radius);
+  const isTransparentAt = (pixelIndex: number) => data[pixelIndex * 4 + 3] <= alphaThreshold;
+
+  let seedIndex = -1;
+  let nearestSeedDistance = Number.POSITIVE_INFINITY;
+
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) {
+        continue;
+      }
+
+      const pixelIndex = y * width + x;
+      if (!isTransparentAt(pixelIndex)) {
+        continue;
+      }
+
+      if (distSq <= seedRadiusSq && distSq < nearestSeedDistance) {
+        nearestSeedDistance = distSq;
+        seedIndex = pixelIndex;
+      }
+    }
+  }
+
+  const visited = new Uint8Array(width * height);
+  if (seedIndex === -1) {
+    return { mask: visited, hasSeed: false };
+  }
+
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  queue[tail] = seedIndex;
+  tail += 1;
+  visited[seedIndex] = 1;
+
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
+
+    const x = current % width;
+    const y = Math.floor(current / width);
+
+    const tryPush = (nextX: number, nextY: number) => {
+      if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) {
+        return;
+      }
+
+      const nextIndex = nextY * width + nextX;
+      if (visited[nextIndex] === 1 || !isTransparentAt(nextIndex)) {
+        return;
+      }
+
+      visited[nextIndex] = 1;
+      queue[tail] = nextIndex;
+      tail += 1;
+    };
+
+    tryPush(x - 1, y);
+    tryPush(x + 1, y);
+    tryPush(x, y - 1);
+    tryPush(x, y + 1);
+  }
+
+  return { mask: visited, hasSeed: true };
+}
+
 export const getTransparentCentroidHint = async (
   imageSrc: string,
   centerRatio = 0.75,
@@ -503,6 +590,73 @@ export const getTransparentCentroidHint = async (
   };
 };
 
+export const isTransparentCenterWithinCropMask = async (
+  imageSrc: string,
+  previewSize: number,
+  autoFit: {
+    zoom: number;
+    position: { x: number; y: number };
+  },
+  options?: {
+    alphaThreshold?: number;
+    insetPx?: number;
+  }
+): Promise<boolean> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = image.width;
+  canvas.height = image.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, image.width, image.height);
+
+  const alphaThreshold = options?.alphaThreshold ?? 10;
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const region = getCentralTransparentRegion(data, canvas.width, canvas.height, alphaThreshold);
+
+  if (!region.hasSeed) {
+    return true;
+  }
+
+  const effectivePreviewSize = Math.max(previewSize, 1);
+  const baseScale = effectivePreviewSize / Math.max(canvas.width, canvas.height, 1);
+  const imageCenterX = canvas.width / 2;
+  const imageCenterY = canvas.height / 2;
+  const cropRadius = effectivePreviewSize * getEditorCropRadiusRatio(effectivePreviewSize);
+  const insetPx = Math.max(0, options?.insetPx ?? 2);
+  const allowedRadius = Math.max(0, cropRadius - insetPx);
+
+  for (let index = 0; index < region.mask.length; index += 1) {
+    if (region.mask[index] !== 1) {
+      continue;
+    }
+
+    const x = index % canvas.width;
+    const y = Math.floor(index / canvas.width);
+    const mappedX = effectivePreviewSize / 2
+      + (x + 0.5 - imageCenterX) * baseScale * autoFit.zoom
+      + autoFit.position.x;
+    const mappedY = effectivePreviewSize / 2
+      + (y + 0.5 - imageCenterY) * baseScale * autoFit.zoom
+      + autoFit.position.y;
+    const distanceFromCenter = Math.hypot(
+      mappedX - effectivePreviewSize / 2,
+      mappedY - effectivePreviewSize / 2
+    );
+
+    if (distanceFromCenter > allowedRadius) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export type CircleAutoFitResult = {
   zoom: number;
   position: { x: number; y: number };
@@ -524,6 +678,8 @@ type OpaqueBorderSample = {
   b: number;
   a: number;
 };
+
+const AUTO_FIT_SCORE_EPSILON = 1e-6;
 
 function getPixelOffset(x: number, y: number, width: number): number {
   return (y * width + x) * 4;
@@ -935,6 +1091,7 @@ export const getCircleAutoFit = async (
 
       let bestLocalCenter: SamplePoint | null = null;
       let bestLocalScore = -Infinity;
+      let bestLocalTiedCenters: SamplePoint[] = [];
 
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -957,10 +1114,41 @@ export const getCircleAutoFit = async (
 
           const centerPenalty = Math.hypot(x + 0.5 - imageCenterX, y + 0.5 - imageCenterY);
           const score = availableRadius - centerPenalty * 0.01;
-          if (score > bestLocalScore) {
+          if (score > bestLocalScore + AUTO_FIT_SCORE_EPSILON) {
             bestLocalScore = score;
             bestLocalCenter = candidateCenter;
+            bestLocalTiedCenters = [candidateCenter];
+            continue;
           }
+
+          if (Math.abs(score - bestLocalScore) <= AUTO_FIT_SCORE_EPSILON) {
+            bestLocalTiedCenters.push(candidateCenter);
+          }
+        }
+      }
+
+      if (bestLocalTiedCenters.length > 1) {
+        let minX = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        let sumX = 0;
+        let sumY = 0;
+
+        for (const tiedCenter of bestLocalTiedCenters) {
+          minX = Math.min(minX, tiedCenter.x);
+          maxX = Math.max(maxX, tiedCenter.x);
+          minY = Math.min(minY, tiedCenter.y);
+          maxY = Math.max(maxY, tiedCenter.y);
+          sumX += tiedCenter.x;
+          sumY += tiedCenter.y;
+        }
+
+        if (maxX - minX <= 1 && maxY - minY <= 1) {
+          bestLocalCenter = {
+            x: sumX / bestLocalTiedCenters.length,
+            y: sumY / bestLocalTiedCenters.length,
+          };
         }
       }
 

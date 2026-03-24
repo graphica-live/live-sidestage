@@ -6,6 +6,7 @@ import {
   analyzeFrameTransparency,
   getCircleAutoFit,
   getSquareFrameBlob,
+  isTransparentCenterWithinCropMask,
 } from '../utils/canvas';
 
 declare const grecaptcha: any;
@@ -111,24 +112,34 @@ export default function Home({ user }: HomeProps) {
       const previewSize = editorRef.current?.clientWidth ?? 600;
       const next = await getCircleAutoFit(imageUrl, previewSize);
       const zoomRelax = 6 / Math.max(previewSize, 1);
+      const appliedZoom = Math.max(0.3, Math.min(3, next.zoom - zoomRelax));
+      const shouldRejectAutoFit = next.strategy !== 'unsupported-fill'
+        ? !(await isTransparentCenterWithinCropMask(imageUrl, previewSize, {
+            zoom: appliedZoom,
+            position: next.position,
+          }))
+        : false;
+      const resolvedNext = shouldRejectAutoFit
+        ? { zoom: 1, position: { x: 0, y: 0 }, strategy: 'unsupported-fill' as const }
+        : next;
 
       if (autoFitRequestRef.current !== requestId) {
         return;
       }
 
-      if (next.strategy !== 'unsupported-fill') {
-        setPosition(next.position);
-        setZoom(Math.max(0.3, Math.min(3, next.zoom - zoomRelax)));
+      if (resolvedNext.strategy !== 'unsupported-fill') {
+        setPosition(resolvedNext.position);
+        setZoom(Math.max(0.3, Math.min(3, resolvedNext.zoom - zoomRelax)));
       }
       showAutoFitNotice(
-        next.strategy === 'fill-mask'
+        resolvedNext.strategy === 'fill-mask'
           ? {
               tone: 'success',
               eyebrow: 'Auto Fit',
               label: 'フレーム範囲を判定して自動調整しました',
               detail: 'このままドラッグやピンチで、必要なら微調整してください',
             }
-          : next.strategy === 'unsupported-fill'
+          : resolvedNext.strategy === 'unsupported-fill'
             ? {
                 tone: 'warning',
                 eyebrow: 'Manual Adjust',
