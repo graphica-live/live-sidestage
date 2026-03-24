@@ -1,4 +1,12 @@
 // クロップとフレーム合成を行うユーティリティ関数
+export const EDITOR_CROP_MASK_RADIUS_RATIO = 0.498;
+
+export function getEditorCropRadiusRatio(previewSize: number, strokePx?: number): number {
+  void previewSize;
+  void strokePx;
+  return EDITOR_CROP_MASK_RADIUS_RATIO;
+}
+
 export const getCroppedAndMergedImg = async (
   imageSrc: string,
   position: { x: number; y: number },
@@ -856,8 +864,8 @@ export const getCircleAutoFit = async (
 
   const alphaThreshold = options?.alphaThreshold ?? 10;
   const analysisMaxSize = Math.max(64, Math.floor(options?.analysisMaxSize ?? 256));
-  const targetRadiusRatio = Math.max(0.35, Math.min(0.5, options?.targetRadiusRatio ?? 0.497));
-  const borderInsetPx = Math.max(0, options?.borderInsetPx ?? 2);
+  const targetRadiusRatio = options?.targetRadiusRatio ?? getEditorCropRadiusRatio(previewSize);
+  const borderInsetPx = Math.max(0, options?.borderInsetPx ?? 0);
   const safetyMarginPx = Math.max(0, options?.safetyMarginPx ?? 3);
   const dominantOriginalSize = Math.max(image.width, image.height);
   const analysisScale = dominantOriginalSize > analysisMaxSize

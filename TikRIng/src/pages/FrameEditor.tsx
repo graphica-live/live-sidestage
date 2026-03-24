@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
+import CropMaskOverlay from '../components/CropMaskOverlay';
 import { getCroppedAndMergedImg } from '../utils/canvas';
 import DonationCard from '../components/DonationCard';
 
@@ -494,14 +495,16 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         <div className="w-full flex flex-col items-center gap-6">
           {/* 追加: 装着されるフレームのプレビュー */}
           {frameUrl && (
-            <div className="w-48 h-48 sm:w-64 sm:h-64 rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden relative shadow-lg">
-              <div className="absolute inset-0 bg-tiktok-gray/30" />
-              <div
-                className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
-                style={{ backgroundImage: `url(${frameUrl})` }}
-              />
+            <div className="relative w-48 h-48 sm:w-64 sm:h-64">
+              <div className="absolute inset-0 rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden shadow-lg">
+                <div className="absolute inset-0 bg-tiktok-gray/30" />
+                <div
+                  className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
+                  style={{ backgroundImage: `url(${frameUrl})` }}
+                />
+              </div>
               <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                <div className="editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95" />
+                <CropMaskOverlay />
               </div>
             </div>
           )}
@@ -530,38 +533,37 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         <div className="w-full flex flex-col items-center gap-6">
           <div
             ref={editorRef}
-            className="relative w-full aspect-square rounded-md overflow-hidden bg-tiktok-dark shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+            className="relative w-full aspect-square cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onWheel={handleWheel}
           >
-            {/* User Image Layer */}
-            <div className="absolute inset-0 flex items-center justify-center z-0 overflow-visible">
-              <img
-                src={userImage}
-                alt="User content"
-                draggable={false}
-                style={{
-                  transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain'
-                }}
+            <div className="absolute inset-0 overflow-hidden rounded-md bg-tiktok-dark shadow-2xl">
+              <div className="absolute inset-0 flex items-center justify-center z-0 overflow-visible">
+                <img
+                  src={userImage}
+                  alt="User content"
+                  draggable={false}
+                  style={{
+                    transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain'
+                  }}
+                />
+              </div>
+
+              <div
+                className="absolute inset-0 z-10 pointer-events-none bg-contain bg-center bg-no-repeat w-full h-full"
+                style={{ backgroundImage: `url(${frameUrl})` }}
               />
             </div>
 
-            {/* Foreground Frame Overlay */}
-            <div
-              className="absolute inset-0 z-10 pointer-events-none bg-contain bg-center bg-no-repeat w-full h-full"
-              style={{ backgroundImage: `url(${frameUrl})` }}
-            />
-
-            {/* TikTok circular crop guide */}
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className="editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95" />
+              <CropMaskOverlay />
             </div>
           </div>
 

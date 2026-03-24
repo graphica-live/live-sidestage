@@ -141,21 +141,20 @@ body {
 @keyframes crop-mask-intro-flash {
   0%,
   100% {
-    box-shadow: 0 0 0 9999px rgba(37, 244, 238, 0.68);
+    opacity: 1;
   }
 
   50% {
-    box-shadow: 0 0 0 9999px rgba(37, 244, 238, 0);
+    opacity: 0.45;
   }
 }
 
 .editor-crop-mask {
-  box-sizing: border-box;
-  box-shadow: 0 0 0 9999px rgba(37, 244, 238, 1);
+  display: block;
 }
 
 .editor-crop-mask-active {
-  box-shadow: 0 0 0 9999px rgba(128, 128, 128, 0.34);
+  opacity: 0.85;
 }
 
 .editor-crop-mask-intro {

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, Move, ChevronDown } from 'lucide-react';
+import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
   getCircleAutoFit,
@@ -777,14 +778,30 @@ export default function Home({ user }: HomeProps) {
 
           <div
             ref={editorRef}
-            className="relative w-full aspect-square rounded-md overflow-hidden bg-tiktok-dark shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+            className="relative w-full aspect-square cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onWheel={handleWheel}
           >
-            <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
+            <div className="absolute inset-0 overflow-hidden rounded-md bg-tiktok-dark shadow-2xl">
+              <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
+              <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
+                <img
+                  src={frameImage}
+                  alt="Frame preview"
+                  draggable={false}
+                  style={{
+                    transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              </div>
+            </div>
             {autoFitNotice ? (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div
@@ -814,22 +831,8 @@ export default function Home({ user }: HomeProps) {
                 </div>
               </div>
             ) : null}
-            <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
-              <img
-                src={frameImage}
-                alt="Frame preview"
-                draggable={false}
-                style={{
-                  transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
-                }}
-              />
-            </div>
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className={`editor-crop-mask h-full w-full box-border rounded-full border-[2.5px] border-tiktok-cyan/95${showMaskIntro ? ' editor-crop-mask-intro' : isAdjusting ? ' editor-crop-mask-active' : ''}`} />
+              <CropMaskOverlay intro={showMaskIntro} active={!showMaskIntro && isAdjusting} />
             </div>
             <div
               className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
