@@ -18,7 +18,7 @@ export default function CropMaskOverlay({ active = false, intro = false }: CropM
   const cropRadius = 100 * getEditorCropRadiusRatio(100);
   const maskId = `crop-mask-${maskInstanceId}`;
   const circleClipId = `crop-circle-clip-${maskInstanceId}`;
-  const guideStroke = active ? 'rgba(218, 255, 252, 0.42)' : 'rgba(218, 255, 252, 0.24)';
+  const guideStroke = active ? 'rgba(218, 255, 252, 0.78)' : 'rgba(218, 255, 252, 0.56)';
 
   return (
     <svg
@@ -51,8 +51,9 @@ export default function CropMaskOverlay({ active = false, intro = false }: CropM
           x2="50"
           y2={50 + cropRadius}
           stroke={guideStroke}
-          strokeWidth="0.35"
-          strokeDasharray="2 2"
+          strokeWidth="0.8"
+          strokeDasharray="2.4 2.4"
+          strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
         />
         <line
@@ -61,15 +62,10 @@ export default function CropMaskOverlay({ active = false, intro = false }: CropM
           x2={50 + cropRadius}
           y2="50"
           stroke={guideStroke}
-          strokeWidth="0.35"
-          strokeDasharray="2 2"
+          strokeWidth="0.8"
+          strokeDasharray="2.4 2.4"
+          strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r="0.9"
-          fill={active ? 'rgba(218, 255, 252, 0.5)' : 'rgba(218, 255, 252, 0.3)'}
         />
       </g>
     </svg>
