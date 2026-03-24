@@ -14,6 +14,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
+  const [showGestureHint, setShowGestureHint] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [accessGranted, setAccessGranted] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const [downloadNoticeText, setDownloadNoticeText] = useState('保存を開始しました');
   const noticeTimerRef = useRef<number | null>(null);
   const adjustingTimerRef = useRef<number | null>(null);
+  const gestureHintTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const returnPath = `/?f=${encodeURIComponent(id)}`;
 
@@ -48,8 +50,47 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       if (adjustingTimerRef.current !== null) {
         window.clearTimeout(adjustingTimerRef.current);
       }
+      if (gestureHintTimeoutRef.current !== null) {
+        window.clearTimeout(gestureHintTimeoutRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!userImage) {
+      setShowGestureHint(false);
+      return;
+    }
+
+    setShowGestureHint(true);
+  }, [userImage]);
+
+  useEffect(() => {
+    if (gestureHintTimeoutRef.current !== null) {
+      window.clearTimeout(gestureHintTimeoutRef.current);
+      gestureHintTimeoutRef.current = null;
+    }
+
+    if (!showGestureHint) {
+      return;
+    }
+
+    gestureHintTimeoutRef.current = window.setTimeout(() => {
+      setShowGestureHint(false);
+      gestureHintTimeoutRef.current = null;
+    }, 5000);
+
+    return () => {
+      if (gestureHintTimeoutRef.current !== null) {
+        window.clearTimeout(gestureHintTimeoutRef.current);
+        gestureHintTimeoutRef.current = null;
+      }
+    };
+  }, [showGestureHint]);
+
+  const dismissGestureHint = () => {
+    setShowGestureHint(false);
+  };
 
   const startTransientAdjusting = () => {
     setIsAdjusting(true);
@@ -63,6 +104,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   };
 
   const centerImage = () => {
+    dismissGestureHint();
     startTransientAdjusting();
     setPosition({ x: 0, y: 0 });
   };
@@ -244,10 +286,13 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
+      if (userImage) {
+        URL.revokeObjectURL(userImage);
+      }
       const imageUrl = URL.createObjectURL(file);
       setUserImage(imageUrl);
     }
-  }, []);
+  }, [userImage]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -258,6 +303,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
   // Custom Drag & Zoom Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dismissGestureHint();
     startTransientAdjusting();
     e.currentTarget.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -322,6 +368,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Mouse wheel zoom support
+    dismissGestureHint();
     const zoomFactor = -e.deltaY * 0.002;
     startTransientAdjusting();
     setZoom((prev) => Math.max(0.3, Math.min(3, prev + zoomFactor)));
@@ -410,6 +457,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     if (userImage) {
       URL.revokeObjectURL(userImage);
     }
+    dismissGestureHint();
     setUserImage(null);
     setPosition({ x: 0, y: 0 });
     setZoom(1);
@@ -590,6 +638,48 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
               <CropMaskOverlay active={isAdjusting} />
             </div>
+
+            <div
+              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
+              aria-hidden={!showGestureHint}
+            >
+              <div className="editor-gesture-card w-full max-w-[18rem] rounded-[1.5rem] border border-white/12 px-3.5 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md sm:max-w-[21rem] sm:rounded-[1.75rem] sm:px-4">
+                <div className="flex items-center gap-3">
+                  <div className="editor-gesture-figure editor-gesture-figure-drag" aria-hidden="true">
+                    <span className="editor-gesture-drag-base" />
+                    <span className="editor-gesture-drag-layer" />
+                    <span className="editor-gesture-drag-touch" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-up" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-down" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-pan-left" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-pan-right" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">Drag</p>
+                    <p className="mt-1 text-sm font-bold leading-tight">ドラッグして位置調整</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 h-px bg-white/8" />
+
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="editor-gesture-figure editor-gesture-figure-pinch" aria-hidden="true">
+                    <span className="editor-gesture-touch editor-gesture-touch-left" />
+                    <span className="editor-gesture-touch editor-gesture-touch-right" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-left" />
+                    <span className="editor-gesture-arrow editor-gesture-arrow-right" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">Pinch</p>
+                    <p className="mt-1 text-sm font-bold leading-tight">ピンチして拡大縮小</p>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-center text-[11px] font-medium tracking-[0.08em] text-white/48">
+                  約5秒後、または最初の操作で消えます
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* スライダー */}
@@ -603,6 +693,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               step={0.1}
               aria-labelledby="Zoom"
               onChange={(e) => {
+                dismissGestureHint();
                 startTransientAdjusting();
                 setZoom(Number(e.target.value));
               }}
