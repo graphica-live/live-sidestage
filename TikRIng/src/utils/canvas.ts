@@ -1,10 +1,11 @@
 // クロップとフレーム合成を行うユーティリティ関数
 export const EDITOR_CROP_MASK_RADIUS_RATIO = 0.499;
+const EDITOR_CROP_MASK_EXPAND_PX = 1;
 
 export function getEditorCropRadiusRatio(previewSize: number, strokePx?: number): number {
-  void previewSize;
-  void strokePx;
-  return EDITOR_CROP_MASK_RADIUS_RATIO;
+  const effectivePreviewSize = Math.max(previewSize, 1);
+  const effectiveExpandPx = Math.max(0, strokePx ?? EDITOR_CROP_MASK_EXPAND_PX);
+  return Math.min(0.5, EDITOR_CROP_MASK_RADIUS_RATIO + effectiveExpandPx / effectivePreviewSize);
 }
 
 export const getCroppedAndMergedImg = async (
@@ -146,7 +147,7 @@ export const getSquareFrameBlob = async (
       ctx,
       outputSize,
       options.outsideCircleFillColor,
-      options.outsideCircleRadiusRatio ?? EDITOR_CROP_MASK_RADIUS_RATIO
+      options.outsideCircleRadiusRatio ?? getEditorCropRadiusRatio(outputSize)
     );
   }
 
