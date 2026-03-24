@@ -896,7 +896,7 @@ export const getCircleAutoFit = async (
   const analysisMaxSize = Math.max(64, Math.floor(options?.analysisMaxSize ?? 256));
   const targetRadiusRatio = options?.targetRadiusRatio ?? getEditorCropRadiusRatio(previewSize);
   const borderInsetPx = Math.max(0, options?.borderInsetPx ?? 0);
-  const safetyMarginPx = Math.max(0, options?.safetyMarginPx ?? 4);
+  const safetyMarginPx = Math.max(0, options?.safetyMarginPx ?? 5);
   const dominantOriginalSize = Math.max(image.width, image.height);
   const analysisScale = dominantOriginalSize > analysisMaxSize
     ? analysisMaxSize / dominantOriginalSize
