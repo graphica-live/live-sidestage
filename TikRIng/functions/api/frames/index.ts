@@ -186,7 +186,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       .bind(row.id)
       .first<{ id: string }>();
 
-    const shareUrl = share?.id ? `${origin}?f=${share.id}&openExternalBrowser=1` : null;
+    const shareUrl = share?.id
+      ? `${origin}?f=${share.id}&openExternalBrowser=1`
+      : row.owner_id === null
+        ? `${origin}?f=${row.id}&openExternalBrowser=1`
+        : null;
 
     frames.push({
       id: row.id,
