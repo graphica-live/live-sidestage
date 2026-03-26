@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
-import { getCroppedAndMergedImg } from '../utils/canvas';
+import { getCroppedAndMergedImg, getFrameOpeningMaskDataUrl } from '../utils/canvas';
 import DonationCard from '../components/DonationCard';
 
 interface FrameEditorProps {
@@ -11,6 +11,7 @@ interface FrameEditorProps {
 
 export default function FrameEditor({ id }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [frameOpeningMaskUrl, setFrameOpeningMaskUrl] = useState<string | null>(null);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
@@ -231,6 +232,35 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       if (frameUrl) {
         URL.revokeObjectURL(frameUrl);
       }
+    };
+  }, [frameUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!frameUrl) {
+      setFrameOpeningMaskUrl(null);
+      return;
+    }
+
+    const loadOpeningMask = async () => {
+      try {
+        const nextMaskUrl = await getFrameOpeningMaskDataUrl(frameUrl);
+        if (!cancelled) {
+          setFrameOpeningMaskUrl(nextMaskUrl);
+        }
+      } catch (err) {
+        console.error('Failed to build frame opening mask:', err);
+        if (!cancelled) {
+          setFrameOpeningMaskUrl(null);
+        }
+      }
+    };
+
+    void loadOpeningMask();
+
+    return () => {
+      cancelled = true;
     };
   }, [frameUrl]);
 
@@ -614,7 +644,19 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             onWheel={handleWheel}
           >
             <div className="absolute inset-0 overflow-hidden rounded-md bg-tiktok-dark shadow-2xl">
-              <div className="absolute inset-0 flex items-center justify-center z-0 overflow-visible">
+              <div
+                className="absolute inset-0 flex items-center justify-center z-0 overflow-visible"
+                style={frameOpeningMaskUrl ? {
+                  maskImage: `url(${frameOpeningMaskUrl})`,
+                  maskPosition: 'center',
+                  maskRepeat: 'no-repeat',
+                  maskSize: '100% 100%',
+                  WebkitMaskImage: `url(${frameOpeningMaskUrl})`,
+                  WebkitMaskPosition: 'center',
+                  WebkitMaskRepeat: 'no-repeat',
+                  WebkitMaskSize: '100% 100%',
+                } : undefined}
+              >
                 <img
                   src={userImage}
                   alt="User content"
