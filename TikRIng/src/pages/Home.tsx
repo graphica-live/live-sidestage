@@ -22,6 +22,41 @@ type AutoFitNotice = {
   detail: string;
 };
 
+const updateHistory = [
+  {
+    date: '2026.03.26',
+    title: 'フレーム保存をPNGに変更',
+    detail: '配布フレームの保存形式をPNGへ統一。',
+  },
+  {
+    date: '2026.03.25',
+    title: '操作ヒントを追加',
+    detail: 'ドラッグとピンチ操作のガイドを表示。',
+  },
+  {
+    date: '2026.03.25',
+    title: '切り抜きガイドを見やすく調整',
+    detail: 'クロップガイドと表示バランスを改善。',
+  },
+  {
+    date: '2026.03.25',
+    title: '自動フィット精度を改善',
+    detail: '初期配置が切れにくいよう判定と余白を調整。',
+  },
+  {
+    date: '2026.03.25',
+    title: 'クロップ微調整UIを改善',
+    detail: '位置移動と拡大縮小の細かな調整操作を改善。',
+  },
+  {
+    date: '2026.03.25',
+    title: 'クロップ操作UIを調整',
+    detail: '切り抜き操作まわりの見た目と触り心地を改善。',
+  },
+] as const;
+
+const latestUpdateAt = '2026.03.26 19:38';
+
 function pad2(n: number) {
   return n.toString().padStart(2, '0');
 }
@@ -59,6 +94,7 @@ export default function Home({ user }: HomeProps) {
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+  const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -417,7 +453,6 @@ export default function Home({ user }: HomeProps) {
     setIsAdjusting(false);
     setShowMaskIntro(false);
     setShowGestureHint(false);
-    setEdgeFilledNotice(false);
     showAutoFitNotice(null);
 
     setProOptionsOpen(false);
@@ -680,35 +715,177 @@ export default function Home({ user }: HomeProps) {
 
       {/* アップロード前 or アップロード中 (URL未発行時) */}
       {!shareUrl && !frameImage ? (
-        <div
-          {...getRootProps()}
-          className={`w-full aspect-square sm:aspect-video rounded-md border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative overflow-hidden group
-            ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
-            ${uploading ? 'pointer-events-none opacity-80' : ''}
-          `}
-        >
-          <input {...getInputProps()} />
+        <div className="w-full space-y-4">
+          <div
+            {...getRootProps()}
+            className={`w-full aspect-square sm:aspect-video rounded-md border-2 border-dashed flex flex-col items-center justify-center p-8 transition-all cursor-pointer relative overflow-hidden group
+              ${isDragActive ? 'border-tiktok-cyan bg-tiktok-cyan/10' : 'border-tiktok-gray bg-tiktok-dark hover:border-tiktok-lightgray/50 hover:bg-tiktok-gray/30'}
+              ${uploading ? 'pointer-events-none opacity-80' : ''}
+            `}
+          >
+            <input {...getInputProps()} />
 
-          {uploading ? (
-            <div className="flex flex-col items-center gap-4 text-tiktok-cyan">
-              <Loader2 className="w-12 h-12 animate-spin" />
-              <p className="font-medium animate-pulse">アップロード中...</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-tiktok-gray/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                <UploadCloud className="w-8 h-8 text-tiktok-lightgray group-hover:text-white transition-colors" />
+            {uploading ? (
+              <div className="flex flex-col items-center gap-4 text-tiktok-cyan">
+                <Loader2 className="w-12 h-12 animate-spin" />
+                <p className="font-medium animate-pulse">アップロード中...</p>
               </div>
+            ) : (
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="w-16 h-16 rounded-full bg-tiktok-gray/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <UploadCloud className="w-8 h-8 text-tiktok-lightgray group-hover:text-white transition-colors" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold mb-1 group-hover:text-tiktok-cyan transition-colors">フレーム画像をドロップ</p>
+                  <p className="text-sm text-tiktok-lightgray text-balance">
+                    またはクリックしてファイルを選択
+                    <br />
+                    <span className="text-xs opacity-70 mt-2 block">(PNGのみ / 正方形でなくてもOK: 次の画面で位置と拡大率を調整)</span>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {user !== undefined && user?.plan !== 'pro' ? (
+            <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setProUpgradeOpen((v) => !v)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-tiktok-gray/30 transition-colors"
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-white">Pro（任意）</span>
+                  <span className="text-xs text-tiktok-lightgray">無料のままでOK。必要なら開いてください</span>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {proUpgradeOpen ? (
+                <div className="px-4 pb-4 pt-2">
+                  <ul className="mb-3 text-xs text-tiktok-lightgray space-y-1 list-disc pl-5">
+                    <li>有効期限を自由に設定（1日〜無期限）</li>
+                    <li>フレームにパスワードを設定</li>
+                    <li>フレームに名前を付けて整理・管理しやすく</li>
+                  </ul>
+
+                  {!user ? (
+                    <div className="mb-3 rounded-md border border-tiktok-cyan/20 bg-tiktok-black px-3 py-3">
+                      <p className="text-xs text-tiktok-lightgray mb-3">Proのアップグレードにはログインが必要です。ログイン後、そのまま決済へ進めます。</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <a
+                          href="/api/auth/google"
+                          className="w-full py-2.5 rounded-md bg-white text-black font-bold text-sm text-center hover:bg-white/90 transition-colors"
+                        >
+                          Googleでログイン
+                        </a>
+                        <a
+                          href="/api/auth/line"
+                          className="w-full py-2.5 rounded-md bg-[#06C755] text-white font-bold text-sm text-center hover:bg-[#05B34C] transition-colors"
+                        >
+                          LINEでログイン
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <label
+                      className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'monthly'
+                        ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                        : 'border-tiktok-gray bg-tiktok-black'}
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="billingInterval"
+                          value="monthly"
+                          checked={billingInterval === 'monthly'}
+                          onChange={() => setBillingInterval('monthly')}
+                          className="accent-white"
+                        />
+                        <span className="text-sm font-bold text-white">月払い 380円/月</span>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`rounded-md border px-3 py-2 cursor-pointer transition-colors ${billingInterval === 'yearly'
+                        ? 'border-tiktok-cyan/50 bg-tiktok-cyan/10'
+                        : 'border-tiktok-gray bg-tiktok-black'}
+                      `}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="billingInterval"
+                            value="yearly"
+                            checked={billingInterval === 'yearly'}
+                            onChange={() => setBillingInterval('yearly')}
+                            className="accent-white"
+                          />
+                          <span className="text-sm font-bold text-white">年払い 3,800円/年</span>
+                        </div>
+                        {billingInterval === 'yearly' ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 shrink-0">
+                            2ヶ月分お得
+                          </span>
+                        ) : null}
+                      </div>
+                    </label>
+                  </div>
+
+                  {user ? (
+                    <button
+                      type="button"
+                      onClick={handleCheckout}
+                      disabled={checkoutLoading}
+                      className="w-full mt-3 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {checkoutLoading ? 'チェックアウトを準備中...' : 'Proにアップグレードする'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <section className="w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5">
+            <button
+              type="button"
+              onClick={() => setUpdateHistoryOpen((open) => !open)}
+              className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${updateHistoryOpen ? 'border-b border-white/8 pb-3' : ''}`}
+            >
               <div>
-                <p className="text-lg font-bold mb-1 group-hover:text-tiktok-cyan transition-colors">フレーム画像をドロップ</p>
-                <p className="text-sm text-tiktok-lightgray text-balance">
-                  またはクリックしてファイルを選択
-                  <br />
-                  <span className="text-xs opacity-70 mt-2 block">(PNGのみ / 正方形でなくてもOK: 次の画面で位置と拡大率を調整)</span>
-                </p>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Updates</p>
+                <h2 className="mt-1 text-sm font-bold text-white sm:text-base">アップデート履歴</h2>
               </div>
-            </div>
-          )}
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
+                  {latestUpdateAt}
+                </span>
+                <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${updateHistoryOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {updateHistoryOpen ? (
+              <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-2.5">
+                <ul className="space-y-2">
+                  {updateHistory.map((item) => (
+                    <li key={`${item.date}-${item.title}`} className="text-xs leading-5 text-tiktok-lightgray sm:text-[13px]">
+                      <span className="mr-2 inline-block font-bold tracking-[0.16em] text-white/45">{item.date}</span>
+                      <span className="font-semibold text-white">{item.title}</span>
+                      <span className="mx-1.5 text-white/28">/</span>
+                      <span>{item.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
         </div>
       ) : !shareUrl && frameImage ? (
         <div className="w-full flex flex-col items-center gap-6">
@@ -1081,7 +1258,7 @@ export default function Home({ user }: HomeProps) {
         </div>
       )}
 
-      {user !== undefined && user?.plan !== 'pro' ? (
+      {user !== undefined && user?.plan !== 'pro' && (!!shareUrl || !!frameImage) ? (
         <div className="w-full mt-10 rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
           <button
             type="button"
