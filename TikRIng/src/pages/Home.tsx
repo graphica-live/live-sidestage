@@ -26,6 +26,11 @@ type AutoFitNotice = {
 const updateHistory = [
   {
     date: '2026.03.26',
+    title: '楕円形やフレーム外側に細かい装飾ある透過フレームに対応',
+    detail: '楕円形やフレーム外周に装飾がある透過フレームでも扱えるよう対応。',
+  },
+  {
+    date: '2026.03.26',
     title: 'フレーム保存をPNGに変更',
     detail: '配布フレームの保存形式をPNGへ統一。',
   },
