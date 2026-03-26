@@ -22,6 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const request = context.request;
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const openingMaskFile = formData.get('openingMask') as File | null;
 
     const customNameRaw = formData.get('customName');
     const expiresAtRaw = formData.get('expiresAt');
@@ -57,6 +58,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    let openingMaskArrayBuffer: ArrayBuffer | null = null;
+    if (openingMaskFile) {
+      if (openingMaskFile.type !== 'image/png') {
+        return new Response(JSON.stringify({ error: 'Only PNG mask files are allowed' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const MAX_MASK_SIZE = 1024 * 1024;
+      if (openingMaskFile.size > MAX_MASK_SIZE) {
+        return new Response(JSON.stringify({ error: 'Mask file size exceeds limit' }), {
+          status: 413,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      openingMaskArrayBuffer = await openingMaskFile.arrayBuffer();
+      if (!isPngSignature(new Uint8Array(openingMaskArrayBuffer))) {
+        return new Response(JSON.stringify({ error: 'Invalid PNG mask file' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // reCAPTCHA v3 (tokenがある場合のみ検証。失敗しても続行してアップロードを阻害しない)
@@ -147,15 +174,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       customMetadata.expiresAt = String(expiresAtMs);
     }
 
+    const openingMaskKey = openingMaskArrayBuffer ? `masks/${uuid}.png` : null;
+
     await context.env.FRAMES_BUCKET.put(uuid, arrayBuffer, {
       httpMetadata: { contentType: 'image/png' },
       customMetadata: Object.keys(customMetadata).length ? customMetadata : undefined,
     });
 
+    if (openingMaskArrayBuffer && openingMaskKey) {
+      await context.env.FRAMES_BUCKET.put(openingMaskKey, openingMaskArrayBuffer, {
+        httpMetadata: { contentType: 'image/png' },
+      });
+    }
+
     // D1のframesテーブルに登録
     await context.env.DB.prepare(
-      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext).run();
+      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext, opening_mask_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext, openingMaskKey).run();
 
     return new Response(JSON.stringify({ id: uuid }), {
       status: 200,

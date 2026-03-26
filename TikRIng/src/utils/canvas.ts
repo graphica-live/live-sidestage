@@ -13,12 +13,15 @@ export const getCroppedAndMergedImg = async (
   position: { x: number; y: number },
   zoom: number,
   frameSrc: string,
-  previewSize = 600
+  previewSize = 600,
+  openingMaskSrc?: string | null
 ): Promise<string> => {
   const image = await createImage(imageSrc);
   const frameImage = await createImage(frameSrc);
   const squareFrameCanvas = createSquareFrameCanvas(frameImage);
-  const openingMaskCanvas = buildFrameOpeningMaskCanvas(squareFrameCanvas);
+  const openingMaskCanvas = openingMaskSrc
+    ? await createMaskCanvasFromSource(openingMaskSrc, squareFrameCanvas.width)
+    : buildFrameOpeningMaskCanvas(squareFrameCanvas);
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -101,6 +104,38 @@ export const getFrameOpeningMaskDataUrl = async (frameSrc: string): Promise<stri
   return openingMaskCanvas.toDataURL('image/png');
 };
 
+export const getFrameOpeningGuideDataUrl = async (
+  frameSrc: string,
+  options?: {
+    strokeColor?: { r: number; g: number; b: number; a?: number };
+    haloColor?: { r: number; g: number; b: number; a?: number };
+    strokeWidth?: number;
+  }
+): Promise<string | null> => {
+  const frameImage = await createImage(frameSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = frameImage.width;
+  canvas.height = frameImage.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const maskAlpha = buildFrameOpeningMaskAlpha(imageData.data, canvas.width, canvas.height);
+
+  if (!maskAlpha) {
+    return null;
+  }
+
+  const guideCanvas = createFrameOpeningGuideCanvas(maskAlpha, canvas.width, canvas.height, options);
+  return guideCanvas ? guideCanvas.toDataURL('image/png') : null;
+};
+
 export const getSquareFrameBlob = async (
   imageSrc: string,
   position: { x: number; y: number },
@@ -109,53 +144,50 @@ export const getSquareFrameBlob = async (
   previewSize = outputSize
 ): Promise<{ blob: Blob; hasTransparentBorder: boolean }> => {
   const image = await createImage(imageSrc);
-  const canvas = document.createElement('canvas');
+  const canvas = renderImageToSquareCanvas(image, position, zoom, outputSize, previewSize);
   const ctx = canvas.getContext('2d');
 
   if (!ctx) {
     throw new Error('Canvas 2D context not available');
   }
 
-  canvas.width = outputSize;
-  canvas.height = outputSize;
-
-  const imgW = image.width;
-  const imgH = image.height;
-  const baseScale = Math.min(outputSize / imgW, outputSize / imgH);
-  const finalScale = baseScale * zoom;
-  const drawW = imgW * finalScale;
-  const drawH = imgH * finalScale;
-  const centerX = (outputSize - drawW) / 2;
-  const centerY = (outputSize - drawH) / 2;
-  const scaleRatio = outputSize / Math.max(previewSize, 1);
-  const offsetX = position.x * scaleRatio;
-  const offsetY = position.y * scaleRatio;
-
-  ctx.clearRect(0, 0, outputSize, outputSize);
-
-  ctx.drawImage(
-    image,
-    0,
-    0,
-    imgW,
-    imgH,
-    centerX + offsetX,
-    centerY + offsetY,
-    drawW,
-    drawH
-  );
-
   const hasTransparentBorder = hasTransparentPixelsOnBorder(ctx, outputSize, 10);
 
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((file) => {
-      if (file) {
-        resolve({ blob: file, hasTransparentBorder });
-      } else {
-        reject(new Error('Canvas to blob failed'));
-      }
-    }, 'image/png');
-  });
+  const blob = await canvasToBlob(canvas);
+  return { blob, hasTransparentBorder };
+};
+
+export const getSquareFrameOpeningMaskBlob = async (
+  imageSrc: string,
+  position: { x: number; y: number },
+  zoom: number,
+  outputSize = 512,
+  previewSize = outputSize
+): Promise<Blob | null> => {
+  const image = await createImage(imageSrc);
+  const squareCanvas = renderImageToSquareCanvas(image, position, zoom, outputSize, previewSize);
+  const openingMaskCanvas = buildFrameOpeningMaskCanvas(squareCanvas);
+
+  if (!openingMaskCanvas) {
+    return null;
+  }
+
+  return canvasToBlob(openingMaskCanvas);
+};
+
+export const getSquareFrameOpeningMaskDataUrl = async (
+  imageSrc: string,
+  position: { x: number; y: number },
+  zoom: number,
+  outputSize = 512,
+  previewSize = outputSize
+): Promise<string | null> => {
+  const blob = await getSquareFrameOpeningMaskBlob(imageSrc, position, zoom, outputSize, previewSize);
+  if (!blob) {
+    return null;
+  }
+
+  return blobToDataUrl(blob);
 };
 
 export type FrameTransparencyAnalysis = {
@@ -985,7 +1017,9 @@ export const getCircleAutoFit = async (
       const strictRequiredRadius = requiredRadius + safetyMarginInAnalysis;
 
       let bestLocalCenter: SamplePoint | null = null;
-      let bestLocalScore = -Infinity;
+      let bestLocalVerticalOffset = Number.POSITIVE_INFINITY;
+      let bestLocalCenterPenalty = Number.POSITIVE_INFINITY;
+      let bestLocalAvailableRadius = -Infinity;
       let bestLocalTiedCenters: SamplePoint[] = [];
 
       for (let y = 0; y < height; y += 1) {
@@ -1007,44 +1041,71 @@ export const getCircleAutoFit = async (
             continue;
           }
 
-          const centerPenalty = Math.hypot(x + 0.5 - imageCenterX, y + 0.5 - imageCenterY);
-          const score = availableRadius - centerPenalty * 0.01;
-          if (score > bestLocalScore + AUTO_FIT_SCORE_EPSILON) {
-            bestLocalScore = score;
+          const offsetX = x + 0.5 - imageCenterX;
+          const offsetY = y + 0.5 - imageCenterY;
+          const verticalOffset = Math.abs(offsetY);
+          const centerPenalty = Math.hypot(offsetX, offsetY);
+
+          const isBetterVerticalOffset = verticalOffset < bestLocalVerticalOffset - AUTO_FIT_SCORE_EPSILON;
+          const hasSameVerticalOffset = Math.abs(verticalOffset - bestLocalVerticalOffset) <= AUTO_FIT_SCORE_EPSILON;
+          const isBetterCenterPenalty = hasSameVerticalOffset
+            && centerPenalty < bestLocalCenterPenalty - AUTO_FIT_SCORE_EPSILON;
+          const hasSameCenterPenalty = hasSameVerticalOffset
+            && Math.abs(centerPenalty - bestLocalCenterPenalty) <= AUTO_FIT_SCORE_EPSILON;
+          const isBetterAvailableRadius = hasSameCenterPenalty
+            && availableRadius > bestLocalAvailableRadius + AUTO_FIT_SCORE_EPSILON;
+
+          if (isBetterVerticalOffset || isBetterCenterPenalty || isBetterAvailableRadius) {
+            bestLocalVerticalOffset = verticalOffset;
+            bestLocalCenterPenalty = centerPenalty;
+            bestLocalAvailableRadius = availableRadius;
             bestLocalCenter = candidateCenter;
             bestLocalTiedCenters = [candidateCenter];
             continue;
           }
 
-          if (Math.abs(score - bestLocalScore) <= AUTO_FIT_SCORE_EPSILON) {
+          if (
+            hasSameVerticalOffset
+            && hasSameCenterPenalty
+            && Math.abs(availableRadius - bestLocalAvailableRadius) <= AUTO_FIT_SCORE_EPSILON
+          ) {
             bestLocalTiedCenters.push(candidateCenter);
           }
         }
       }
 
       if (bestLocalTiedCenters.length > 1) {
-        let minX = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
         let sumX = 0;
         let sumY = 0;
 
         for (const tiedCenter of bestLocalTiedCenters) {
-          minX = Math.min(minX, tiedCenter.x);
-          maxX = Math.max(maxX, tiedCenter.x);
-          minY = Math.min(minY, tiedCenter.y);
-          maxY = Math.max(maxY, tiedCenter.y);
           sumX += tiedCenter.x;
           sumY += tiedCenter.y;
         }
 
-        if (maxX - minX <= 1 && maxY - minY <= 1) {
-          bestLocalCenter = {
-            x: sumX / bestLocalTiedCenters.length,
-            y: sumY / bestLocalTiedCenters.length,
-          };
-        }
+        const centroidX = sumX / bestLocalTiedCenters.length;
+        const centroidY = sumY / bestLocalTiedCenters.length;
+
+        bestLocalCenter = bestLocalTiedCenters.reduce<SamplePoint>((closest, candidate) => {
+          const closestDistance = Math.hypot(closest.x - centroidX, closest.y - centroidY);
+          const candidateDistance = Math.hypot(candidate.x - centroidX, candidate.y - centroidY);
+
+          if (candidateDistance < closestDistance - AUTO_FIT_SCORE_EPSILON) {
+            return candidate;
+          }
+
+          if (Math.abs(candidateDistance - closestDistance) <= AUTO_FIT_SCORE_EPSILON) {
+            const closestCenterPenalty = Math.hypot(closest.x - imageCenterX, closest.y - imageCenterY);
+            const candidateCenterPenalty = Math.hypot(candidate.x - imageCenterX, candidate.y - imageCenterY);
+            if (candidateCenterPenalty < closestCenterPenalty) {
+              return candidate;
+            }
+          }
+
+          return closest;
+        }, bestLocalTiedCenters[0]);
+      } else if (bestLocalTiedCenters.length === 1) {
+        bestLocalCenter = bestLocalTiedCenters[0];
       }
 
       if (bestLocalCenter) {
@@ -1115,6 +1176,69 @@ function createSquareFrameCanvas(frameImage: HTMLImageElement): HTMLCanvasElemen
     outputSize
   );
 
+  return canvas;
+}
+
+function renderImageToSquareCanvas(
+  image: HTMLImageElement,
+  position: { x: number; y: number },
+  zoom: number,
+  outputSize: number,
+  previewSize: number
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const imgW = image.width;
+  const imgH = image.height;
+  const baseScale = Math.min(outputSize / imgW, outputSize / imgH);
+  const finalScale = baseScale * zoom;
+  const drawW = imgW * finalScale;
+  const drawH = imgH * finalScale;
+  const centerX = (outputSize - drawW) / 2;
+  const centerY = (outputSize - drawH) / 2;
+  const scaleRatio = outputSize / Math.max(previewSize, 1);
+  const offsetX = position.x * scaleRatio;
+  const offsetY = position.y * scaleRatio;
+
+  ctx.drawImage(
+    image,
+    0,
+    0,
+    imgW,
+    imgH,
+    centerX + offsetX,
+    centerY + offsetY,
+    drawW,
+    drawH
+  );
+
+  return canvas;
+}
+
+async function createMaskCanvasFromSource(maskSrc: string, outputSize: number): Promise<HTMLCanvasElement> {
+  const maskImage = await createImage(maskSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.drawImage(maskImage, 0, 0, outputSize, outputSize);
   return canvas;
 }
 
@@ -1254,6 +1378,145 @@ function buildFrameOpeningMaskAlpha(
   }
 
   return maskAlpha;
+}
+
+function createFrameOpeningGuideCanvas(
+  maskAlpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: {
+    strokeColor?: { r: number; g: number; b: number; a?: number };
+    haloColor?: { r: number; g: number; b: number; a?: number };
+    strokeWidth?: number;
+  }
+): HTMLCanvasElement | null {
+  const baseStrokeWidth = options?.strokeWidth ?? Math.max(2, Math.round(Math.min(width, height) / 360));
+  const strokeWidth = Math.max(2, Math.floor(baseStrokeWidth));
+  const strokeColor = options?.strokeColor ?? { r: 255, g: 84, b: 84, a: 255 };
+  const haloColor = options?.haloColor ?? { r: 255, g: 255, b: 255, a: 210 };
+  const edgeMask = new Uint8Array(width * height);
+  let edgePixelCount = 0;
+
+  const isVisible = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return false;
+    }
+    return maskAlpha[y * width + x] > 0;
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (maskAlpha[index] === 0) {
+        continue;
+      }
+
+      if (
+        !isVisible(x - 1, y)
+        || !isVisible(x + 1, y)
+        || !isVisible(x, y - 1)
+        || !isVisible(x, y + 1)
+      ) {
+        edgeMask[index] = 1;
+        edgePixelCount += 1;
+      }
+    }
+  }
+
+  if (edgePixelCount === 0) {
+    return null;
+  }
+
+  const expandedMask = dilateBinaryMask(edgeMask, width, height, strokeWidth - 1);
+  const haloMask = dilateBinaryMask(edgeMask, width, height, strokeWidth + 1);
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  const imageData = ctx.createImageData(width, height);
+
+  for (let i = 0; i < haloMask.length; i += 1) {
+    const offset = i * 4;
+
+    if (haloMask[i] === 1) {
+      imageData.data[offset] = haloColor.r;
+      imageData.data[offset + 1] = haloColor.g;
+      imageData.data[offset + 2] = haloColor.b;
+      imageData.data[offset + 3] = haloColor.a ?? 210;
+    }
+
+    if (expandedMask[i] === 1) {
+      imageData.data[offset] = strokeColor.r;
+      imageData.data[offset + 1] = strokeColor.g;
+      imageData.data[offset + 2] = strokeColor.b;
+      imageData.data[offset + 3] = strokeColor.a ?? 255;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function dilateBinaryMask(
+  sourceMask: Uint8Array,
+  width: number,
+  height: number,
+  radius: number
+): Uint8Array {
+  if (radius <= 0) {
+    return sourceMask.slice();
+  }
+
+  const expandedMask = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (sourceMask[y * width + x] !== 1) {
+        continue;
+      }
+
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nextX = x + dx;
+          const nextY = y + dy;
+          if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) {
+            continue;
+          }
+
+          expandedMask[nextY * width + nextX] = 1;
+        }
+      }
+    }
+  }
+
+  return expandedMask;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((file) => {
+      if (file) {
+        resolve(file);
+      } else {
+        reject(new Error('Canvas to blob failed'));
+      }
+    }, 'image/png');
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Blob to data URL failed'));
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function createImage(url: string): Promise<HTMLImageElement> {

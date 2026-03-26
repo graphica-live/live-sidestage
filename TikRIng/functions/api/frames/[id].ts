@@ -11,6 +11,7 @@ type FrameRow = {
   id: string;
   owner_id: string | null;
   image_key: string;
+  opening_mask_key: string | null;
   expires_at: number | null;
   password_hash: string | null;
 };
@@ -19,6 +20,7 @@ type ResolvedFrame = {
   frameId: string;
   ownerId: string | null;
   imageKey: string;
+  openingMaskKey: string | null;
   expiresAt: number | null;
   passwordHash: string | null;
 };
@@ -55,7 +57,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
   }
 
   const frameRow = await context.env.DB.prepare(
-    'SELECT id, owner_id, image_key, expires_at, password_hash FROM frames WHERE id = ?'
+    'SELECT id, owner_id, image_key, opening_mask_key, expires_at, password_hash FROM frames WHERE id = ?'
   )
     .bind(id)
     .first<FrameRow>();
@@ -68,6 +70,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
     frameId: frameRow.id,
     ownerId: frameRow.owner_id,
     imageKey: frameRow.image_key,
+    openingMaskKey: frameRow.opening_mask_key ?? null,
     expiresAt: frameRow.expires_at ?? null,
     passwordHash: frameRow.password_hash ?? null,
   };
@@ -99,6 +102,9 @@ function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>
     (async () => {
       try {
         await context.env.FRAMES_BUCKET.delete(frame.imageKey);
+        if (frame.openingMaskKey) {
+          await context.env.FRAMES_BUCKET.delete(frame.openingMaskKey);
+        }
       } catch (err) {
         console.error('Failed to delete R2 object for expired frame:', err);
         return;
@@ -149,11 +155,45 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         requiresPassword,
         accessGranted,
         expiresAt: frame.expiresAt,
+        hasOpeningMask: Boolean(frame.openingMaskKey),
       });
     }
 
     if (requiresPassword && !accessGranted) {
       return json({ error: 'PASSWORD_REQUIRED' }, 401);
+    }
+
+    if (requestUrl.searchParams.get('mask') === '1') {
+      if (!frame.openingMaskKey) {
+        return new Response('Not Found', {
+          status: 404,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
+
+      const object = await context.env.FRAMES_BUCKET.get(frame.openingMaskKey);
+
+      if (object === null) {
+        return new Response('Mask Not Found in Bucket', {
+          status: 404,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
+
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set('etag', object.httpEtag);
+      headers.set('Cache-Control', 'no-store');
+      headers.set('Access-Control-Allow-Origin', '*');
+
+      return new Response(object.body, {
+        headers,
+        status: 200,
+      });
     }
 
     const object = await context.env.FRAMES_BUCKET.get(frame.imageKey);

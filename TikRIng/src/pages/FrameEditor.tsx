@@ -12,6 +12,7 @@ interface FrameEditorProps {
 export default function FrameEditor({ id }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [frameOpeningMaskUrl, setFrameOpeningMaskUrl] = useState<string | null>(null);
+  const [hasSavedOpeningMask, setHasSavedOpeningMask] = useState(false);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Custom Position State
@@ -151,9 +152,11 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         const meta = await metaResponse.json();
         const nextRequiresPassword = Boolean(meta?.requiresPassword);
         const nextAccessGranted = Boolean(meta?.accessGranted);
+        const nextHasSavedOpeningMask = Boolean(meta?.hasOpeningMask);
 
         setRequiresPassword(nextRequiresPassword);
         setAccessGranted(nextAccessGranted);
+        setHasSavedOpeningMask(nextHasSavedOpeningMask);
 
         if (nextRequiresPassword && !nextAccessGranted) {
           setFrameUrl((current) => {
@@ -162,6 +165,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             }
             return null;
           });
+          setFrameOpeningMaskUrl(null);
           setLoading(false);
           return;
         }
@@ -192,6 +196,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               }
               return null;
             });
+            setFrameOpeningMaskUrl(null);
             setLoading(false);
             return;
           }
@@ -243,6 +248,17 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       return;
     }
 
+    if (hasSavedOpeningMask) {
+      const maskUrl = new URL(`/api/frames/${id}`, window.location.origin);
+      maskUrl.searchParams.set('mask', '1');
+      maskUrl.searchParams.set('_t', String(Date.now()));
+      if (accessToken) {
+        maskUrl.searchParams.set('accessToken', accessToken);
+      }
+      setFrameOpeningMaskUrl(maskUrl.toString());
+      return;
+    }
+
     const loadOpeningMask = async () => {
       try {
         const nextMaskUrl = await getFrameOpeningMaskDataUrl(frameUrl);
@@ -262,7 +278,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [frameUrl]);
+  }, [frameUrl, hasSavedOpeningMask, id, accessToken]);
 
   const handleUnlock = async () => {
     if (!password.trim()) {
@@ -412,7 +428,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       setDownloadStartedNotice(false);
       // Pass the customized parameters to our new canvas logic
       const previewSize = editorRef.current?.clientWidth ?? 600;
-      const outputImage = await getCroppedAndMergedImg(userImage, position, zoom, frameUrl, previewSize);
+      const outputImage = await getCroppedAndMergedImg(
+        userImage,
+        position,
+        zoom,
+        frameUrl,
+        previewSize,
+        frameOpeningMaskUrl
+      );
 
       const now = new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');

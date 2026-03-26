@@ -5,6 +5,7 @@ import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
   getCircleAutoFit,
+  getSquareFrameOpeningMaskBlob,
   getSquareFrameBlob,
   isTransparentCenterWithinCropMask,
 } from '../utils/canvas';
@@ -56,6 +57,7 @@ const updateHistory = [
 ] as const;
 
 const latestUpdateAt = '2026.03.26 19:38';
+const OPENING_MASK_OUTPUT_SIZE = 512;
 
 function pad2(n: number) {
   return n.toString().padStart(2, '0');
@@ -81,6 +83,10 @@ export default function Home({ user }: HomeProps) {
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isAdjusting, setIsAdjusting] = useState(false);
+  const [manualOpeningTool, setManualOpeningTool] = useState<'paint' | 'erase' | null>(null);
+  const [manualOpeningBrushSize, setManualOpeningBrushSize] = useState(24);
+  const [hasOpeningMask, setHasOpeningMask] = useState(false);
+  const [hasManualOpeningEdits, setHasManualOpeningEdits] = useState(false);
   const [showMaskIntro, setShowMaskIntro] = useState(false);
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [autoFitNotice, setAutoFitNotice] = useState<AutoFitNotice | null>(null);
@@ -98,8 +104,12 @@ export default function Home({ user }: HomeProps) {
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
+  const openingMaskPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const openingMaskWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const isDragging = useRef(false);
+  const paintingPointerIdRef = useRef<number | null>(null);
+  const lastPaintPointRef = useRef<{ x: number; y: number } | null>(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const startPosition = useRef({ x: 0, y: 0 });
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -110,6 +120,7 @@ export default function Home({ user }: HomeProps) {
   const autoFitNoticeTimeoutRef = useRef<number | null>(null);
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
+  const openingMaskRequestRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -125,8 +136,157 @@ export default function Home({ user }: HomeProps) {
       if (autoFitNoticeTimeoutRef.current !== null) {
         window.clearTimeout(autoFitNoticeTimeoutRef.current);
       }
+      openingMaskWorkingCanvasRef.current = null;
     };
   }, [frameImage]);
+
+  const ensureOpeningMaskWorkingCanvas = useCallback(() => {
+    if (!openingMaskWorkingCanvasRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = OPENING_MASK_OUTPUT_SIZE;
+      canvas.height = OPENING_MASK_OUTPUT_SIZE;
+      openingMaskWorkingCanvasRef.current = canvas;
+    }
+
+    return openingMaskWorkingCanvasRef.current;
+  }, []);
+
+  const renderOpeningMaskPreview = useCallback(() => {
+    const previewCanvas = openingMaskPreviewCanvasRef.current;
+    const editor = editorRef.current;
+    const sourceCanvas = openingMaskWorkingCanvasRef.current;
+
+    if (!previewCanvas || !editor) {
+      return;
+    }
+
+    const ctx = previewCanvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    const width = Math.max(1, Math.round(editor.clientWidth));
+    const height = Math.max(1, Math.round(editor.clientHeight));
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    if (previewCanvas.width !== Math.round(width * dpr) || previewCanvas.height !== Math.round(height * dpr)) {
+      previewCanvas.width = Math.round(width * dpr);
+      previewCanvas.height = Math.round(height * dpr);
+      previewCanvas.style.width = `${width}px`;
+      previewCanvas.style.height = `${height}px`;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    if (!sourceCanvas || !hasOpeningMask) {
+      return;
+    }
+
+    ctx.drawImage(sourceCanvas, 0, 0, width, height);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = microAdjustOpen ? 'rgba(255, 91, 91, 0.42)' : 'rgba(255, 91, 91, 0.26)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = 'source-over';
+  }, [hasOpeningMask, microAdjustOpen]);
+
+  const loadOpeningMaskBlobIntoCanvas = useCallback(async (maskBlob: Blob | null) => {
+    const workingCanvas = ensureOpeningMaskWorkingCanvas();
+    const ctx = workingCanvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Canvas 2D context not available');
+    }
+
+    ctx.clearRect(0, 0, workingCanvas.width, workingCanvas.height);
+
+    if (!maskBlob) {
+      setHasOpeningMask(false);
+      renderOpeningMaskPreview();
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(maskBlob);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const nextImage = new Image();
+        nextImage.addEventListener('load', () => resolve(nextImage));
+        nextImage.addEventListener('error', (event) => reject(event));
+        nextImage.src = objectUrl;
+      });
+
+      ctx.drawImage(image, 0, 0, workingCanvas.width, workingCanvas.height);
+      setHasOpeningMask(true);
+      renderOpeningMaskPreview();
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }, [ensureOpeningMaskWorkingCanvas, renderOpeningMaskPreview]);
+
+  const regenerateOpeningMask = useCallback(async (
+    imageUrl: string,
+    nextPosition: { x: number; y: number },
+    nextZoom: number
+  ) => {
+    const requestId = openingMaskRequestRef.current + 1;
+    openingMaskRequestRef.current = requestId;
+
+    try {
+      const previewSize = editorRef.current?.clientWidth ?? OPENING_MASK_OUTPUT_SIZE;
+      const maskBlob = await getSquareFrameOpeningMaskBlob(
+        imageUrl,
+        nextPosition,
+        nextZoom,
+        OPENING_MASK_OUTPUT_SIZE,
+        previewSize
+      );
+
+      if (openingMaskRequestRef.current !== requestId) {
+        return;
+      }
+
+      setHasManualOpeningEdits(false);
+      await loadOpeningMaskBlobIntoCanvas(maskBlob);
+    } catch (err) {
+      console.error('Failed to regenerate opening mask:', err);
+      if (openingMaskRequestRef.current === requestId) {
+        setHasOpeningMask(false);
+        renderOpeningMaskPreview();
+      }
+    }
+  }, [loadOpeningMaskBlobIntoCanvas, renderOpeningMaskPreview]);
+
+  useEffect(() => {
+    if (!frameImage) {
+      setHasOpeningMask(false);
+      openingMaskRequestRef.current += 1;
+      renderOpeningMaskPreview();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void regenerateOpeningMask(frameImage, position, zoom);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [frameImage, position, zoom, regenerateOpeningMask, renderOpeningMaskPreview]);
+
+  useEffect(() => {
+    renderOpeningMaskPreview();
+  }, [renderOpeningMaskPreview]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      renderOpeningMaskPreview();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [renderOpeningMaskPreview]);
 
   const showAutoFitNotice = useCallback((notice: AutoFitNotice | null) => {
     setAutoFitNotice(notice);
@@ -146,15 +306,21 @@ export default function Home({ user }: HomeProps) {
       const next = await getCircleAutoFit(imageUrl, previewSize);
       const zoomRelax = 6 / Math.max(previewSize, 1);
       const appliedZoom = Math.max(0.3, Math.min(3, next.zoom - zoomRelax));
+      const appliedPosition = next.zoom > 0
+        ? {
+            x: next.position.x * (appliedZoom / next.zoom),
+            y: next.position.y * (appliedZoom / next.zoom),
+          }
+        : next.position;
       const shouldRejectAutoFit = next.strategy !== 'unsupported-fill'
         ? !(await isTransparentCenterWithinCropMask(imageUrl, previewSize, {
             zoom: appliedZoom,
-            position: next.position,
+            position: appliedPosition,
           }))
         : false;
       const resolvedNext = shouldRejectAutoFit
         ? { zoom: 1, position: { x: 0, y: 0 }, strategy: 'unsupported-fill' as const }
-        : next;
+        : { ...next, zoom: appliedZoom, position: appliedPosition };
 
       if (autoFitRequestRef.current !== requestId) {
         return;
@@ -162,7 +328,7 @@ export default function Home({ user }: HomeProps) {
 
       if (resolvedNext.strategy !== 'unsupported-fill') {
         setPosition(resolvedNext.position);
-        setZoom(Math.max(0.3, Math.min(3, resolvedNext.zoom - zoomRelax)));
+        setZoom(resolvedNext.zoom);
       }
       showAutoFitNotice(
         resolvedNext.strategy === 'fill-mask'
@@ -294,6 +460,128 @@ export default function Home({ user }: HomeProps) {
     startTransientAdjusting();
     setPosition({ x: 0, y: 0 });
     setZoom(1);
+    setHasManualOpeningEdits(false);
+    if (frameImage) {
+      void regenerateOpeningMask(frameImage, { x: 0, y: 0 }, 1);
+    }
+  };
+
+  const resetOpeningMaskToAuto = () => {
+    if (!frameImage) {
+      return;
+    }
+
+    setHasManualOpeningEdits(false);
+    void regenerateOpeningMask(frameImage, position, zoom);
+  };
+
+  const getOpeningMaskPoint = (event: React.PointerEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    const workingCanvas = openingMaskWorkingCanvasRef.current;
+    if (!editor || !workingCanvas) {
+      return null;
+    }
+
+    const rect = editor.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * workingCanvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * workingCanvas.height,
+    };
+  };
+
+  const drawOpeningMaskStroke = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const workingCanvas = openingMaskWorkingCanvasRef.current;
+    if (!workingCanvas || !manualOpeningTool) {
+      return;
+    }
+
+    const ctx = workingCanvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = manualOpeningBrushSize;
+
+    if (manualOpeningTool === 'paint') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = 'rgba(255,255,255,1)';
+      ctx.fillStyle = 'rgba(255,255,255,1)';
+    } else {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(to.x, to.y, manualOpeningBrushSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    setHasOpeningMask(true);
+    setHasManualOpeningEdits(true);
+    renderOpeningMaskPreview();
+  };
+
+  const beginOpeningMaskPaint = (event: React.PointerEvent<HTMLDivElement>) => {
+    const point = getOpeningMaskPoint(event);
+    if (!point) {
+      return;
+    }
+
+    paintingPointerIdRef.current = event.pointerId;
+    lastPaintPointRef.current = point;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drawOpeningMaskStroke(point, point);
+  };
+
+  const continueOpeningMaskPaint = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (paintingPointerIdRef.current !== event.pointerId || !lastPaintPointRef.current) {
+      return;
+    }
+
+    const point = getOpeningMaskPoint(event);
+    if (!point) {
+      return;
+    }
+
+    drawOpeningMaskStroke(lastPaintPointRef.current, point);
+    lastPaintPointRef.current = point;
+  };
+
+  const endOpeningMaskPaint = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (paintingPointerIdRef.current === event.pointerId) {
+      paintingPointerIdRef.current = null;
+      lastPaintPointRef.current = null;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const getOpeningMaskBlobForUpload = async (): Promise<Blob | null> => {
+    const workingCanvas = openingMaskWorkingCanvasRef.current;
+    if (!workingCanvas || !hasOpeningMask) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      workingCanvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Opening mask export failed'));
+        }
+      }, 'image/png');
+    });
   };
 
   const rerunAutoFit = () => {
@@ -357,6 +645,7 @@ export default function Home({ user }: HomeProps) {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setIsAdjusting(false);
+    setHasManualOpeningEdits(false);
     setShowMaskIntro(false);
     showAutoFitNotice(null);
     setError(null);
@@ -376,6 +665,11 @@ export default function Home({ user }: HomeProps) {
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (microAdjustOpen && manualOpeningTool) {
+      beginOpeningMaskPaint(e);
+      return;
+    }
+
     setIsAdjusting(true);
     dismissGestureHint();
     dismissAutoFitNotice();
@@ -395,6 +689,11 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (microAdjustOpen && manualOpeningTool) {
+      continueOpeningMaskPaint(e);
+      return;
+    }
+
     if (activePointers.current.has(e.pointerId)) {
       activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
@@ -415,6 +714,11 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (microAdjustOpen && manualOpeningTool) {
+      endOpeningMaskPaint(e);
+      return;
+    }
+
     activePointers.current.delete(e.pointerId);
     e.currentTarget.releasePointerCapture(e.pointerId);
 
@@ -435,6 +739,10 @@ export default function Home({ user }: HomeProps) {
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (microAdjustOpen) {
+      return;
+    }
+
     dismissGestureHint();
     dismissAutoFitNotice();
     startTransientAdjusting();
@@ -451,6 +759,8 @@ export default function Home({ user }: HomeProps) {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setIsAdjusting(false);
+    setHasManualOpeningEdits(false);
+    setHasOpeningMask(false);
     setShowMaskIntro(false);
     setShowGestureHint(false);
     showAutoFitNotice(null);
@@ -462,7 +772,11 @@ export default function Home({ user }: HomeProps) {
     setPassword('');
   };
 
-  const uploadPreparedFrame = async (preparedBlob: Blob, recaptchaToken?: string | null): Promise<boolean> => {
+  const uploadPreparedFrame = async (
+    preparedBlob: Blob,
+    openingMaskBlob: Blob | null,
+    recaptchaToken?: string | null
+  ): Promise<boolean> => {
     const MAX_SIZE = 5 * 1024 * 1024;
     if (preparedBlob.size > MAX_SIZE) {
       setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
@@ -472,6 +786,9 @@ export default function Home({ user }: HomeProps) {
     const uploadFile = new File([preparedBlob], `${frameFileName}.png`, { type: 'image/png' });
     const formData = new FormData();
     formData.append('file', uploadFile);
+    if (openingMaskBlob) {
+      formData.append('openingMask', new File([openingMaskBlob], `${frameFileName}-opening-mask.png`, { type: 'image/png' }));
+    }
 
     if (recaptchaToken) {
       formData.append('recaptchaToken', recaptchaToken);
@@ -569,8 +886,9 @@ export default function Home({ user }: HomeProps) {
         1024,
         previewSize
       );
+      const openingMaskBlob = await getOpeningMaskBlobForUpload();
 
-      await uploadPreparedFrame(squareBlob, recaptchaToken);
+      await uploadPreparedFrame(squareBlob, openingMaskBlob, recaptchaToken);
     } catch (err: any) {
       console.error(err);
       setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
@@ -891,6 +1209,16 @@ export default function Home({ user }: HomeProps) {
         <div className="w-full flex flex-col items-center gap-6">
           <div className="text-center space-y-2">
             <h2 className="text-xl font-bold">フレーム位置を調整</h2>
+            <div className="inline-flex flex-col items-start gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left">
+              <div className="flex items-center gap-2 text-[11px] text-tiktok-lightgray">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-tiktok-cyan/80" />
+                <span>水色の領域は TikTok で表示されない範囲です</span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-tiktok-lightgray">
+                <span className="inline-block h-2.5 w-4 rounded-full bg-[#ff5b5b]/65" />
+                <span>半透明の赤塗りがプロフ画像の表示領域です</span>
+              </div>
+            </div>
           </div>
 
           <div
@@ -918,6 +1246,11 @@ export default function Home({ user }: HomeProps) {
                   }}
                 />
               </div>
+              <canvas
+                ref={openingMaskPreviewCanvasRef}
+                className={`pointer-events-none absolute inset-0 z-30 h-full w-full ${microAdjustOpen ? 'opacity-100' : 'opacity-95'}`}
+                aria-label="Profile opening overlay"
+              />
             </div>
             {autoFitNotice ? (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -951,8 +1284,17 @@ export default function Home({ user }: HomeProps) {
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
               <CropMaskOverlay intro={showMaskIntro} active={!showMaskIntro && isAdjusting} />
             </div>
+            {!hasOpeningMask ? (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4">
+                <div className="w-full max-w-[22rem] rounded-2xl border border-amber-300/35 bg-[#2A1904]/88 px-4 py-3 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">Opening Guide</p>
+                  <p className="mt-1 text-sm font-bold text-white">表示可能領域の塗りを生成できませんでした</p>
+                  <p className="mt-1 text-xs font-medium text-amber-50/90">この画像では自動判定の塗り領域が取れていない可能性があります。</p>
+                </div>
+              </div>
+            ) : null}
             <div
-              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint ? ' editor-gesture-hint-visible' : ''}`}
+              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint && !microAdjustOpen ? ' editor-gesture-hint-visible' : ''}`}
               aria-hidden={!showGestureHint}
             >
               <div className="editor-gesture-card w-full max-w-[18rem] rounded-[1.5rem] border border-white/12 px-3.5 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md sm:max-w-[21rem] sm:rounded-[1.75rem] sm:px-4">
@@ -1105,6 +1447,87 @@ export default function Home({ user }: HomeProps) {
                       <span>{zoom.toFixed(3)}x</span>
                       <span>拡大</span>
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border border-[#ff5b5b]/25 bg-[#2a0c0c]/55 p-3 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white">プロフ画像表示可能領域</p>
+                        <p className="mt-0.5 text-[10px] leading-4 text-white/70 sm:text-[11px]">
+                          半透明の赤塗りをそのまま塗って、表示領域を調整できます。
+                        </p>
+                      </div>
+                      {microAdjustOpen ? (
+                        <span className="shrink-0 rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/14 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-[#ff9d9d]">
+                          ON
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={resetOpeningMaskToAuto}
+                        className="px-3 py-2 rounded-md border border-white/12 bg-black/25 text-[11px] font-bold text-white/80 hover:bg-white/8 transition-colors"
+                      >
+                        手動修正を破棄して自動判定に戻す
+                      </button>
+                    </div>
+                    {microAdjustOpen ? (
+                      <div className="mt-3 space-y-3 rounded-md border border-[#ff5b5b]/20 bg-black/20 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setManualOpeningTool((current) => (current === 'paint' ? null : 'paint'))}
+                            className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'paint' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
+                          >
+                            塗る
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setManualOpeningTool((current) => (current === 'erase' ? null : 'erase'))}
+                            className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'erase' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
+                          >
+                            削る
+                          </button>
+                          {manualOpeningTool ? (
+                            <span className="rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/10 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#ff9d9d]">
+                              {manualOpeningTool === 'paint' ? '塗りモード' : '削りモード'}
+                            </span>
+                          ) : (
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white/55">
+                              ドラッグ/ピンチ
+                            </span>
+                          )}
+                          {hasManualOpeningEdits ? (
+                            <span className="rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/10 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#ff9d9d]">
+                              編集あり
+                            </span>
+                          ) : (
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white/45">
+                              自動判定
+                            </span>
+                          )}
+                        </div>
+
+                        {manualOpeningTool ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-white/75">
+                              <span>ブラシサイズ</span>
+                              <span>{manualOpeningBrushSize}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={8}
+                              max={80}
+                              step={1}
+                              value={manualOpeningBrushSize}
+                              onChange={(e) => setManualOpeningBrushSize(Number(e.target.value))}
+                              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-[#ff8a8a]"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

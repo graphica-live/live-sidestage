@@ -12,6 +12,7 @@ type FrameRow = {
   owner_display_name: string | null;
   custom_name: string | null;
   image_key: string;
+  opening_mask_key: string | null;
   expires_at: number | null;
   password_hash: string | null;
   password_ciphertext: string | null;
@@ -147,14 +148,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const rows = isAdminScope
     ? await context.env.DB.prepare(
         `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-                f.custom_name, f.image_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          ORDER BY f.created_at DESC`
       ).all<FrameRow>()
     : await context.env.DB.prepare(
         `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-                f.custom_name, f.image_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          WHERE f.owner_id = ?
@@ -215,6 +216,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const objects = await listAllR2Objects(context.env.FRAMES_BUCKET);
 
     for (const object of objects) {
+      if (object.key.startsWith('masks/')) {
+        continue;
+      }
+
       if (dbStorageKeys.has(object.key)) {
         continue;
       }
@@ -311,10 +316,10 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
 
   const frame = await context.env.DB.prepare(
-    'SELECT id, owner_id, image_key FROM frames WHERE id = ?'
+    'SELECT id, owner_id, image_key, opening_mask_key FROM frames WHERE id = ?'
   )
     .bind(frameId)
-    .first<{ id: string; owner_id: string | null; image_key: string }>();
+    .first<{ id: string; owner_id: string | null; image_key: string; opening_mask_key: string | null }>();
 
   if (!frame || (!isAdmin && frame.owner_id !== session.userId)) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
@@ -324,6 +329,9 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
 
   await context.env.FRAMES_BUCKET.delete(frame.image_key);
+  if (frame.opening_mask_key) {
+    await context.env.FRAMES_BUCKET.delete(frame.opening_mask_key);
+  }
 
   await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frameId).run();
