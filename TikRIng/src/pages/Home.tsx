@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown } from 'lucide-react';
+import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
@@ -108,6 +108,7 @@ export default function Home({ user }: HomeProps) {
   const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
+  const [profileAreaHelpOpen, setProfileAreaHelpOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const openingMaskPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const openingMaskWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1225,9 +1226,20 @@ export default function Home({ user }: HomeProps) {
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-tiktok-cyan/80" />
                 <span>水色の領域は TikTok で表示されない範囲です</span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-tiktok-lightgray">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-tiktok-lightgray">
                 <span className="inline-block h-2.5 w-4 rounded-full bg-[#ff5b5b]/65" />
                 <span>半透明の赤塗りがプロフ画像の表示領域です</span>
+                <button
+                  type="button"
+                  onClick={() => setProfileAreaHelpOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={profileAreaHelpOpen}
+                  aria-controls="profile-area-help-dialog"
+                  className="inline-flex items-center gap-1 rounded-full border border-[#ff5b5b]/30 bg-[#ff5b5b]/10 px-2 py-0.5 text-[10px] font-semibold text-[#ffb1b1] transition hover:border-[#ff5b5b]/45 hover:bg-[#ff5b5b]/16 hover:text-[#ffd0d0]"
+                >
+                  <CircleHelp className="h-3 w-3" />
+                  <span>ヘルプ</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1543,6 +1555,41 @@ export default function Home({ user }: HomeProps) {
                 </div>
               ) : null}
             </div>
+
+            {profileAreaHelpOpen ? (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-[1px]"
+                onClick={() => setProfileAreaHelpOpen(false)}
+              >
+                <div
+                  id="profile-area-help-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="profile-area-help-title"
+                  className="w-full max-w-sm rounded-2xl border border-[#ff5b5b]/20 bg-[linear-gradient(180deg,rgba(30,12,14,0.98),rgba(18,10,12,0.98))] p-5 text-left shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#ff8e8e]/85">Help</p>
+                      <h3 id="profile-area-help-title" className="mt-1 text-base font-bold text-white">
+                        表示領域について
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProfileAreaHelpOpen(false)}
+                      className="shrink-0 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-[#ffd6d6]">
+                    半透明の赤塗り部分で示された透過部分にのみ、ユーザーのプロフィール画像が表示されます。フレームの外側など赤塗りされていない透過部分にはプロフィール画像は表示されないため、フレーム外にはみ出さず、透過部分を保ったまま調整できます。
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
           {user?.plan === 'pro' ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
