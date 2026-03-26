@@ -623,7 +623,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
           {frameUrl && (
             <div className="relative w-48 h-48 sm:w-64 sm:h-64">
               <div className="absolute inset-0 rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden shadow-lg">
-                <div className="absolute inset-0 bg-tiktok-gray/30" />
+                <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
                 <div
                   className="absolute inset-0 bg-contain bg-center bg-no-repeat w-full h-full"
                   style={{ backgroundImage: `url(${frameUrl})` }}
@@ -667,6 +667,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             onWheel={handleWheel}
           >
             <div className="absolute inset-0 overflow-hidden rounded-md bg-tiktok-dark shadow-2xl">
+              <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
               <div
                 className="absolute inset-0 flex items-center justify-center z-0 overflow-visible"
                 style={frameOpeningMaskUrl ? {
