@@ -1021,7 +1021,13 @@ export default function Home({ user }: HomeProps) {
       </div>
 
       <h1 className="text-4xl font-black mb-4 text-center tracking-tight glitch-text" data-text="TikRing">
-        <span className="text-white">TikRing</span>
+        <a
+          href="/"
+          aria-label="トップへ戻る"
+          className="inline-block rounded-sm hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-tiktok-cyan/50"
+        >
+          <span className="text-white">TikRing</span>
+        </a>
       </h1>
 
       <p className="text-tiktok-lightgray flex flex-col items-center text-center gap-1 mb-10 text-sm sm:text-base">

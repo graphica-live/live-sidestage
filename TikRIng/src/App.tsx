@@ -42,7 +42,6 @@ function App() {
     try {
       const last = Number(sessionStorage.getItem(key) ?? '0');
       const now = Date.now();
-      // 過剰なStripe API呼び出しを避けつつ、状態変化は追えるようにする
       if (Number.isFinite(last) && now - last < 60_000) return;
       sessionStorage.setItem(key, String(now));
     } catch {
@@ -165,7 +164,7 @@ function App() {
         </div>
 
         {showContactLink ? (
-          <div className="w-full pt-8 pb-2 text-center">
+          <div className="flex w-full items-center justify-center gap-3 pt-8 pb-2 text-center">
             <a
               href="https://www.tiktok.com/@yu_ki_nojo?lang=ja-JP"
               target="_blank"
@@ -173,6 +172,13 @@ function App() {
               className="text-xs text-tiktok-lightgray/80 underline underline-offset-4 hover:text-white"
             >
               お問い合わせ先
+            </a>
+            <span className="text-xs text-tiktok-lightgray/40">|</span>
+            <a
+              href="/"
+              className="text-xs text-tiktok-lightgray/80 underline underline-offset-4 hover:text-white"
+            >
+              TikRingトップページ
             </a>
           </div>
         ) : null}
