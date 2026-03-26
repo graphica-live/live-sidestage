@@ -1254,7 +1254,7 @@ export default function Home({ user }: HomeProps) {
             onWheel={handleWheel}
           >
             <div className="absolute inset-0 overflow-hidden rounded-md bg-tiktok-dark shadow-2xl">
-              <div className="absolute inset-0 bg-[linear-gradient(45deg,#202020_25%,transparent_25%),linear-gradient(-45deg,#202020_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#202020_75%),linear-gradient(-45deg,transparent_75%,#202020_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
+              <div className="absolute inset-0 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
               <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
                 <img
                   src={frameImage}
