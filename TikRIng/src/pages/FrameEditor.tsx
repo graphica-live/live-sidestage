@@ -388,9 +388,9 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       const pad = (n: number) => n.toString().padStart(2, '0');
       const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
       const randomSuffix = Math.random().toString(36).slice(2, 8);
-      const filename = `TikRing-${timestamp}-${randomSuffix}.jpg`;
+      const filename = `TikRing-${timestamp}-${randomSuffix}.png`;
       const outputBlob = await (await fetch(outputImage)).blob();
-      const outputFile = new File([outputBlob], filename, { type: 'image/jpeg' });
+      const outputFile = new File([outputBlob], filename, { type: 'image/png' });
       const ua = navigator.userAgent;
       const isAndroid = /Android/i.test(ua);
       const isIOSLike = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

@@ -30,8 +30,7 @@ export const getCroppedAndMergedImg = async (
   canvas.height = outputSize;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, outputSize, outputSize);
+  ctx.clearRect(0, 0, outputSize, outputSize);
 
   const frameCropX = (frameImage.width - outputSize) / 2;
   const frameCropY = (frameImage.height - outputSize) / 2;
@@ -83,7 +82,7 @@ export const getCroppedAndMergedImg = async (
       } else {
         reject(new Error('Canvas to blob failed'));
       }
-    }, 'image/jpeg', 1);
+    }, 'image/png');
   });
 };
 
@@ -92,13 +91,8 @@ export const getSquareFrameBlob = async (
   position: { x: number; y: number },
   zoom: number,
   outputSize = 1024,
-  previewSize = outputSize,
-  options?: {
-    fillTransparentEdges?: boolean;
-    outsideCircleFillColor?: string;
-    outsideCircleRadiusRatio?: number;
-  }
-): Promise<{ blob: Blob; edgeFilled: boolean; hasTransparentBorder: boolean }> => {
+  previewSize = outputSize
+): Promise<{ blob: Blob; hasTransparentBorder: boolean }> => {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -136,47 +130,18 @@ export const getSquareFrameBlob = async (
     drawH
   );
 
-  const fillTransparentEdges = options?.fillTransparentEdges ?? true;
   const hasTransparentBorder = hasTransparentPixelsOnBorder(ctx, outputSize, 10);
-  const edgeFilled = fillTransparentEdges && hasTransparentBorder
-    ? fillTransparentEdgesWithAverageOpaqueColor(ctx, outputSize, 10)
-    : false;
-
-  if (options?.outsideCircleFillColor) {
-    fillOutsideCircle(
-      ctx,
-      outputSize,
-      options.outsideCircleFillColor,
-      options.outsideCircleRadiusRatio ?? getEditorCropRadiusRatio(outputSize)
-    );
-  }
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((file) => {
       if (file) {
-        resolve({ blob: file, edgeFilled, hasTransparentBorder });
+        resolve({ blob: file, hasTransparentBorder });
       } else {
         reject(new Error('Canvas to blob failed'));
       }
     }, 'image/png');
   });
 };
-
-function fillOutsideCircle(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  color: string,
-  radiusRatio: number
-) {
-  const radius = Math.max(0, Math.min(size / 2, size * radiusRatio));
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, size, size);
-  ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2, true);
-  ctx.fillStyle = color;
-  ctx.fill('evenodd');
-  ctx.restore();
-}
 
 export type FrameTransparencyAnalysis = {
   connectedTransparentRatio: number;
@@ -346,91 +311,6 @@ function hasTransparentPixelsOnBorder(
   }
 
   return false;
-}
-
-function fillTransparentEdgesWithAverageOpaqueColor(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  alphaThreshold: number
-): boolean {
-  const imageData = ctx.getImageData(0, 0, size, size);
-  const { data } = imageData;
-
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let count = 0;
-
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] > alphaThreshold) {
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-      count += 1;
-    }
-  }
-
-  if (count === 0) {
-    return false;
-  }
-
-  const avgR = Math.round(r / count);
-  const avgG = Math.round(g / count);
-  const avgB = Math.round(b / count);
-
-  const pixelCount = size * size;
-  const visited = new Uint8Array(pixelCount);
-  const queue = new Int32Array(pixelCount);
-  let head = 0;
-  let tail = 0;
-  const fillTargets: number[] = [];
-
-  const isTransparentAt = (pixelIndex: number) => data[pixelIndex * 4 + 3] <= alphaThreshold;
-  const pushIfTransparentUnvisited = (pixelIndex: number) => {
-    if (visited[pixelIndex] === 1) return;
-    if (!isTransparentAt(pixelIndex)) return;
-    visited[pixelIndex] = 1;
-    queue[tail] = pixelIndex;
-    tail += 1;
-  };
-
-  for (let x = 0; x < size; x += 1) {
-    pushIfTransparentUnvisited(x);
-    pushIfTransparentUnvisited((size - 1) * size + x);
-  }
-  for (let y = 0; y < size; y += 1) {
-    pushIfTransparentUnvisited(y * size);
-    pushIfTransparentUnvisited(y * size + (size - 1));
-  }
-
-  while (head < tail) {
-    const current = queue[head];
-    head += 1;
-    fillTargets.push(current);
-
-    const x = current % size;
-    const y = Math.floor(current / size);
-
-    if (x > 0) pushIfTransparentUnvisited(current - 1);
-    if (x < size - 1) pushIfTransparentUnvisited(current + 1);
-    if (y > 0) pushIfTransparentUnvisited(current - size);
-    if (y < size - 1) pushIfTransparentUnvisited(current + size);
-  }
-
-  if (fillTargets.length === 0) {
-    return false;
-  }
-
-  for (let i = 0; i < fillTargets.length; i += 1) {
-    const idx = fillTargets[i] * 4;
-    data[idx] = avgR;
-    data[idx + 1] = avgG;
-    data[idx + 2] = avgB;
-    data[idx + 3] = 255;
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-  return true;
 }
 
 export const hasTransparentPixelsInCenter = async (

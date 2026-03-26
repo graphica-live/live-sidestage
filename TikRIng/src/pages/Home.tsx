@@ -48,7 +48,6 @@ export default function Home({ user }: HomeProps) {
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [showMaskIntro, setShowMaskIntro] = useState(false);
   const [showGestureHint, setShowGestureHint] = useState(false);
-  const [edgeFilledNotice, setEdgeFilledNotice] = useState(false);
   const [autoFitNotice, setAutoFitNotice] = useState<AutoFitNotice | null>(null);
 
   const [proOptionsOpen, setProOptionsOpen] = useState(false);
@@ -62,7 +61,6 @@ export default function Home({ user }: HomeProps) {
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
-  const [greenBackMode, setGreenBackMode] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const isDragging = useRef(false);
@@ -76,7 +74,6 @@ export default function Home({ user }: HomeProps) {
   const autoFitNoticeTimeoutRef = useRef<number | null>(null);
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
-  const canUseGreenBackMode = user?.isAdmin === true && user?.email?.toLowerCase() === 'joe.graphica@gmail.com';
 
   useEffect(() => {
     return () => {
@@ -325,7 +322,6 @@ export default function Home({ user }: HomeProps) {
     setZoom(1);
     setIsAdjusting(false);
     setShowMaskIntro(false);
-    setEdgeFilledNotice(false);
     showAutoFitNotice(null);
     setError(null);
     setShareUrl(null);
@@ -528,26 +524,18 @@ export default function Home({ user }: HomeProps) {
     setError(null);
     setShareUrl(null);
     setCopied(false);
-    setEdgeFilledNotice(false);
 
     try {
       const previewSize = editorRef.current?.clientWidth ?? 1024;
-      const { blob: squareBlob, edgeFilled } = await getSquareFrameBlob(
+      const { blob: squareBlob } = await getSquareFrameBlob(
         frameImage,
         position,
         zoom,
         1024,
-        previewSize,
-        {
-          fillTransparentEdges: true,
-          outsideCircleFillColor: greenBackMode ? '#00b140' : undefined,
-        }
+        previewSize
       );
 
-      const ok = await uploadPreparedFrame(squareBlob, recaptchaToken);
-      if (ok) {
-        setEdgeFilledNotice(edgeFilled);
-      }
+      await uploadPreparedFrame(squareBlob, recaptchaToken);
     } catch (err: any) {
       console.error(err);
       setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
@@ -726,11 +714,6 @@ export default function Home({ user }: HomeProps) {
         <div className="w-full flex flex-col items-center gap-6">
           <div className="text-center space-y-2">
             <h2 className="text-xl font-bold">フレーム位置を調整</h2>
-            {edgeFilledNotice && (
-              <p className="text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 rounded-full px-3 py-1 inline-block">
-                フレーム端の透過部分を、平均色で自動補正しました。
-              </p>
-            )}
           </div>
 
           <div
@@ -1000,28 +983,6 @@ export default function Home({ user }: HomeProps) {
                     </div>
                     <p className="text-xs text-tiktok-lightgray">デフォルトは90日後です（無期限も選べます）</p>
                   </div>
-
-                  {canUseGreenBackMode ? (
-                    <div className="space-y-1.5 rounded-md border border-emerald-400/25 bg-emerald-500/8 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <label className="text-sm font-bold text-white">グリーンバックモード</label>
-                          <p className="mt-1 text-xs text-tiktok-lightgray">
-                            ON にすると、円形くりぬき部分の外側へグリーンバックを敷いた状態で PNG を登録します。
-                          </p>
-                        </div>
-                        <label className="inline-flex items-center gap-2 text-sm text-tiktok-lightgray shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={greenBackMode}
-                            onChange={(e) => setGreenBackMode(e.target.checked)}
-                            className="accent-[#00b140]"
-                          />
-                          ON
-                        </label>
-                      </div>
-                    </div>
-                  ) : null}
 
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-white">パスワード（設定するとリスナーに入力を求めます）</label>
