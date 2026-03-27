@@ -71,39 +71,53 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     element.setInnerContent(newTitle);
                 }
             })
-            .on('meta[name="description"]', {
+            .on('meta', {
                 element(element) {
-                    element.setAttribute('content', newDescription);
+                    const property = element.getAttribute('property');
+                    const name = element.getAttribute('name');
+
+                    if (name === 'description') {
+                        element.remove();
+                        return;
+                    }
+
+                    if (
+                        property === 'og:title'
+                        || property === 'og:description'
+                        || property === 'og:type'
+                        || property === 'og:url'
+                        || property === 'og:image'
+                        || property === 'og:image:url'
+                        || property === 'og:image:secure_url'
+                        || property === 'og:image:type'
+                        || property === 'og:image:width'
+                        || property === 'og:image:height'
+                        || property === 'og:image:alt'
+                        || property === 'og:site_name'
+                        || name === 'twitter:card'
+                        || name === 'twitter:title'
+                        || name === 'twitter:description'
+                        || name === 'twitter:image'
+                    ) {
+                        element.remove();
+                    }
                 }
             })
-            .on('link[rel="canonical"]', {
+            .on('link', {
                 element(element) {
-                    element.setAttribute('href', listenerMeta.pageUrl);
-                }
-            })
-            .on('meta[property="og:title"]', {
-                element(element) {
-                    element.setAttribute('content', newTitle);
-                }
-            })
-            .on('meta[property="og:description"]', {
-                element(element) {
-                    element.setAttribute('content', newDescription);
-                }
-            })
-            .on('meta[property="og:url"]', {
-                element(element) {
-                    element.setAttribute('content', listenerMeta.pageUrl);
-                }
-            })
-            .on('meta[property="og:type"]', {
-                element(element) {
-                    element.setAttribute('content', 'website');
+                    if (element.getAttribute('rel') === 'canonical') {
+                        element.remove();
+                    }
                 }
             })
             .on('head', {
                 element(element) {
-                    // Add Open Graph Meta Tags
+                    element.append(`<meta name="description" content="${newDescription}" />`, { html: true });
+                    element.append(`<link rel="canonical" href="${listenerMeta.pageUrl}" />`, { html: true });
+                    element.append(`<meta property="og:title" content="${newTitle}" />`, { html: true });
+                    element.append(`<meta property="og:description" content="${newDescription}" />`, { html: true });
+                    element.append(`<meta property="og:type" content="website" />`, { html: true });
+                    element.append(`<meta property="og:url" content="${listenerMeta.pageUrl}" />`, { html: true });
                     element.append(`<meta property="og:image" content="${listenerMeta.imageUrl}" />`, { html: true });
                     element.append(`<meta property="og:image:url" content="${listenerMeta.imageUrl}" />`, { html: true });
                     element.append(`<meta property="og:image:secure_url" content="${listenerMeta.imageUrl}" />`, { html: true });
