@@ -6,6 +6,21 @@ interface Env {
     // For now, we just want to change the text so it doesn't say "ライバー専用" (For Creators).
 }
 
+function buildListenerMeta(request: Request, frameId: string) {
+    const url = new URL(request.url);
+    const pageUrl = new URL(url.pathname, url.origin);
+    pageUrl.searchParams.set('f', frameId);
+
+    const imageUrl = new URL(`/api/frames/${encodeURIComponent(frameId)}`, url.origin);
+
+    return {
+        title: 'TikRing - アイコンを着せ替えよう！',
+        description: 'ライバーが作成した専用フレームをあなたのアイコンに重ねて応援しよう！',
+        pageUrl: pageUrl.toString(),
+        imageUrl: imageUrl.toString(),
+    };
+}
+
 function isDashboardRequest(request: Request, response: Response) {
     const url = new URL(request.url);
     return url.searchParams.get('dashboard') === '1'
@@ -44,10 +59,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // Only rewrite HTML if it's the index page AND it has the '?f=' query parameter (Listener sharing URL)
     if (frameId && response.headers.get('content-type')?.includes('text/html')) {
 
+        const listenerMeta = buildListenerMeta(context.request, frameId);
+
         // The new title and description for listeners
-        const newTitle = "TikRing - アイコンを着せ替えよう！";
-        const newDescription = "ライバーが作成した専用フレームをあなたのアイコンに重ねて応援しよう！";
-        // We don't have a specific thumbnail for each frame yet, but we ensure it doesn't say "For Creators"
+        const newTitle = listenerMeta.title;
+        const newDescription = listenerMeta.description;
 
         return applyCacheHeaders(context.request, new HTMLRewriter()
             .on('title', {
@@ -55,15 +71,40 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     element.setInnerContent(newTitle);
                 }
             })
+            .on('meta[name="description"]', {
+                element(element) {
+                    element.setAttribute('content', newDescription);
+                }
+            })
+            .on('link[rel="canonical"]', {
+                element(element) {
+                    element.setAttribute('href', listenerMeta.pageUrl);
+                }
+            })
+            .on('meta[property="og:title"]', {
+                element(element) {
+                    element.setAttribute('content', newTitle);
+                }
+            })
+            .on('meta[property="og:description"]', {
+                element(element) {
+                    element.setAttribute('content', newDescription);
+                }
+            })
+            .on('meta[property="og:url"]', {
+                element(element) {
+                    element.setAttribute('content', listenerMeta.pageUrl);
+                }
+            })
             .on('head', {
                 element(element) {
                     // Add Open Graph Meta Tags
-                    element.append(`<meta property="og:title" content="${newTitle}" />`, { html: true });
-                    element.append(`<meta property="og:description" content="${newDescription}" />`, { html: true });
-                    element.append(`<meta property="og:type" content="website" />`, { html: true });
-                    element.append(`<meta name="twitter:card" content="summary" />`, { html: true });
+                    element.append(`<meta property="og:image" content="${listenerMeta.imageUrl}" />`, { html: true });
+                    element.append(`<meta property="og:image:secure_url" content="${listenerMeta.imageUrl}" />`, { html: true });
+                    element.append(`<meta name="twitter:card" content="summary_large_image" />`, { html: true });
                     element.append(`<meta name="twitter:title" content="${newTitle}" />`, { html: true });
                     element.append(`<meta name="twitter:description" content="${newDescription}" />`, { html: true });
+                    element.append(`<meta name="twitter:image" content="${listenerMeta.imageUrl}" />`, { html: true });
                 }
             })
             .transform(response));
