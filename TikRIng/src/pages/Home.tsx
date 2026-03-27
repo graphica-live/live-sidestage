@@ -5,6 +5,7 @@ import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
   getCircleAutoFit,
+  getSharePreviewBlob,
   getSquareFrameOpeningMaskBlob,
   getSquareFrameBlob,
   isTransparentCenterWithinCropMask,
@@ -790,8 +791,19 @@ export default function Home({ user }: HomeProps) {
     }
 
     const uploadFile = new File([preparedBlob], `${frameFileName}.png`, { type: 'image/png' });
+    const previewObjectUrl = URL.createObjectURL(preparedBlob);
+    let sharePreviewBlob: Blob | null = null;
+    try {
+      sharePreviewBlob = await getSharePreviewBlob(previewObjectUrl);
+    } finally {
+      URL.revokeObjectURL(previewObjectUrl);
+    }
+
     const formData = new FormData();
     formData.append('file', uploadFile);
+    if (sharePreviewBlob) {
+      formData.append('sharePreview', new File([sharePreviewBlob], `${frameFileName}-share-preview.png`, { type: 'image/png' }));
+    }
     if (openingMaskBlob) {
       formData.append('openingMask', new File([openingMaskBlob], `${frameFileName}-opening-mask.png`, { type: 'image/png' }));
     }

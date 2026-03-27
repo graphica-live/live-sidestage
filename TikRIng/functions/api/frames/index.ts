@@ -216,7 +216,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const objects = await listAllR2Objects(context.env.FRAMES_BUCKET);
 
     for (const object of objects) {
-      if (object.key.startsWith('masks/')) {
+      if (object.key.startsWith('masks/') || object.key.startsWith('previews/')) {
         continue;
       }
 
@@ -332,6 +332,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   if (frame.opening_mask_key) {
     await context.env.FRAMES_BUCKET.delete(frame.opening_mask_key);
   }
+  await context.env.FRAMES_BUCKET.delete(`previews/${frame.id}.png`);
 
   await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frameId).run();

@@ -105,6 +105,7 @@ function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>
         if (frame.openingMaskKey) {
           await context.env.FRAMES_BUCKET.delete(frame.openingMaskKey);
         }
+        await context.env.FRAMES_BUCKET.delete(`previews/${frame.frameId}.png`);
       } catch (err) {
         console.error('Failed to delete R2 object for expired frame:', err);
         return;

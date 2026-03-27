@@ -190,6 +190,77 @@ export const getSquareFrameOpeningMaskDataUrl = async (
   return blobToDataUrl(blob);
 };
 
+export const getSharePreviewBlob = async (
+  frameSrc: string,
+  outputWidth = 1200,
+  outputHeight = 630
+): Promise<Blob> => {
+  const frameImage = await createImage(frameSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const gradient = ctx.createLinearGradient(0, 0, outputWidth, outputHeight);
+  gradient.addColorStop(0, '#0f172a');
+  gradient.addColorStop(0.5, '#111827');
+  gradient.addColorStop(1, '#1d4ed8');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, outputWidth, outputHeight);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.arc(outputWidth * 0.16, outputHeight * 0.22, outputHeight * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.beginPath();
+  ctx.arc(outputWidth * 0.84, outputHeight * 0.78, outputHeight * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+
+  const cardX = outputWidth * 0.5 - 220;
+  const cardY = outputHeight * 0.5 - 220;
+  const cardSize = 440;
+  const avatarRadius = 136;
+  const centerX = cardX + cardSize / 2;
+  const centerY = cardY + cardSize / 2;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.beginPath();
+  ctx.roundRect(cardX - 18, cardY - 18, cardSize + 36, cardSize + 36, 36);
+  ctx.fill();
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardSize, cardSize, 28);
+  ctx.fill();
+
+  ctx.fillStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.arc(centerX, centerY - 26, avatarRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.beginPath();
+  ctx.arc(centerX, centerY - 78, 58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(centerX, centerY + 68, 116, 88, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const frameSize = 440;
+  ctx.drawImage(frameImage, cardX, cardY, frameSize, frameSize);
+
+  return canvasToBlob(canvas);
+};
+
 export type FrameTransparencyAnalysis = {
   connectedTransparentRatio: number;
   centralOpaqueRatio: number;

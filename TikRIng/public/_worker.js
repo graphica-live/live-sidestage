@@ -277,8 +277,8 @@ function maybeRewriteListenerHtml(request, response) {
         element.append(`<meta property="og:image:url" content="${listenerMeta.imageUrl}" />`, { html: true });
         element.append(`<meta property="og:image:secure_url" content="${listenerMeta.imageUrl}" />`, { html: true });
         element.append(`<meta property="og:image:type" content="image/png" />`, { html: true });
-        element.append(`<meta property="og:image:width" content="512" />`, { html: true });
-        element.append(`<meta property="og:image:height" content="512" />`, { html: true });
+        element.append(`<meta property="og:image:width" content="1200" />`, { html: true });
+        element.append(`<meta property="og:image:height" content="630" />`, { html: true });
         element.append(`<meta property="og:image:alt" content="TikRing listener frame preview" />`, { html: true });
         element.append(`<meta property="og:site_name" content="TikRing" />`, { html: true });
         element.append(`<meta name="twitter:card" content="summary_large_image" />`, { html: true });
@@ -322,6 +322,7 @@ export default {
     for (const row of expired) {
       try {
         await env.FRAMES_BUCKET.delete(row.image_key);
+        await env.FRAMES_BUCKET.delete(`previews/${row.id}.png`);
       } catch {
         continue;
       }

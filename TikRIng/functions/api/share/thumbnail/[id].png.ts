@@ -53,7 +53,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       });
     }
 
-    const object = await context.env.FRAMES_BUCKET.get(frameRow.image_key);
+    const previewKey = `previews/${frameRow.id}.png`;
+    const object = await context.env.FRAMES_BUCKET.get(previewKey) ?? await context.env.FRAMES_BUCKET.get(frameRow.image_key);
 
     if (!object) {
       return new Response('Not Found', {

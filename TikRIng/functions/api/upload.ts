@@ -23,6 +23,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const openingMaskFile = formData.get('openingMask') as File | null;
+    const sharePreviewFile = formData.get('sharePreview') as File | null;
 
     const customNameRaw = formData.get('customName');
     const expiresAtRaw = formData.get('expiresAt');
@@ -80,6 +81,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       openingMaskArrayBuffer = await openingMaskFile.arrayBuffer();
       if (!isPngSignature(new Uint8Array(openingMaskArrayBuffer))) {
         return new Response(JSON.stringify({ error: 'Invalid PNG mask file' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    let sharePreviewArrayBuffer: ArrayBuffer | null = null;
+    if (sharePreviewFile) {
+      if (sharePreviewFile.type !== 'image/png') {
+        return new Response(JSON.stringify({ error: 'Only PNG preview files are allowed' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const MAX_PREVIEW_SIZE = 2 * 1024 * 1024;
+      if (sharePreviewFile.size > MAX_PREVIEW_SIZE) {
+        return new Response(JSON.stringify({ error: 'Preview file size exceeds limit' }), {
+          status: 413,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      sharePreviewArrayBuffer = await sharePreviewFile.arrayBuffer();
+      if (!isPngSignature(new Uint8Array(sharePreviewArrayBuffer))) {
+        return new Response(JSON.stringify({ error: 'Invalid PNG preview file' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -175,6 +202,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const openingMaskKey = openingMaskArrayBuffer ? `masks/${uuid}.png` : null;
+    const sharePreviewKey = sharePreviewArrayBuffer ? `previews/${uuid}.png` : null;
 
     await context.env.FRAMES_BUCKET.put(uuid, arrayBuffer, {
       httpMetadata: { contentType: 'image/png' },
@@ -183,6 +211,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (openingMaskArrayBuffer && openingMaskKey) {
       await context.env.FRAMES_BUCKET.put(openingMaskKey, openingMaskArrayBuffer, {
+        httpMetadata: { contentType: 'image/png' },
+      });
+    }
+
+    if (sharePreviewArrayBuffer && sharePreviewKey) {
+      await context.env.FRAMES_BUCKET.put(sharePreviewKey, sharePreviewArrayBuffer, {
         httpMetadata: { contentType: 'image/png' },
       });
     }
