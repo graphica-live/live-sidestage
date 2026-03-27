@@ -2,6 +2,7 @@ import { onRequestGet as healthGet } from '../functions/api/health';
 
 import { onRequestPost as uploadPost } from '../functions/api/upload';
 import { onRequestPost as sharePost } from '../functions/api/share/index';
+import { onRequestGet as shareThumbnailGet } from '../functions/api/share/thumbnail/[id].png';
 
 import {
   onRequestGet as framesIndexGet,
@@ -34,6 +35,21 @@ function notFound() {
 
 function methodNotAllowed() {
   return new Response('Method Not Allowed', { status: 405 });
+}
+
+function buildListenerMeta(request, frameId) {
+  const url = new URL(request.url);
+  const pageUrl = new URL(url.pathname, url.origin);
+  pageUrl.searchParams.set('f', frameId);
+
+  const imageUrl = new URL(`/api/share/thumbnail/${encodeURIComponent(frameId)}.png`, url.origin);
+
+  return {
+    title: 'TikRing - アイコンを着せ替えよう！',
+    description: 'ライバーが作成した専用フレームをあなたのアイコンに重ねて応援しよう！',
+    pageUrl: pageUrl.toString(),
+    imageUrl: imageUrl.toString(),
+  };
 }
 
 function isDashboardRequest(request, response) {
@@ -93,6 +109,16 @@ async function routeApi(request, env, ctx) {
   if (pathname === '/api/share') {
     if (method !== 'POST') return methodNotAllowed();
     return sharePost(makeContext(request, env, ctx));
+  }
+
+  // /api/share/thumbnail/:id.png
+  if (pathname.startsWith('/api/share/thumbnail/')) {
+    const suffix = pathname.slice('/api/share/thumbnail/'.length);
+    if (!suffix.endsWith('.png')) return notFound();
+    const id = suffix.slice(0, -4);
+    if (!id) return notFound();
+    if (method !== 'GET') return methodNotAllowed();
+    return shareThumbnailGet(makeContext(request, env, ctx, { id }));
   }
 
   // /api/frames
@@ -190,8 +216,9 @@ function maybeRewriteListenerHtml(request, response) {
   if (!frameId) return response;
   if (!contentType.includes('text/html')) return response;
 
-  const newTitle = 'TikRing - アイコンを着せ替えよう！';
-  const newDescription = 'ライバーが作成した専用フレームをあなたのアイコンに重ねて応援しよう！';
+  const listenerMeta = buildListenerMeta(request, frameId);
+  const newTitle = listenerMeta.title;
+  const newDescription = listenerMeta.description;
 
   return new HTMLRewriter()
     .on('title', {
@@ -199,14 +226,65 @@ function maybeRewriteListenerHtml(request, response) {
         element.setInnerContent(newTitle);
       },
     })
+    .on('meta', {
+      element(element) {
+        const property = element.getAttribute('property');
+        const name = element.getAttribute('name');
+
+        if (name === 'description') {
+          element.remove();
+          return;
+        }
+
+        if (
+          property === 'og:title'
+          || property === 'og:description'
+          || property === 'og:type'
+          || property === 'og:url'
+          || property === 'og:image'
+          || property === 'og:image:url'
+          || property === 'og:image:secure_url'
+          || property === 'og:image:type'
+          || property === 'og:image:width'
+          || property === 'og:image:height'
+          || property === 'og:image:alt'
+          || property === 'og:site_name'
+          || name === 'twitter:card'
+          || name === 'twitter:title'
+          || name === 'twitter:description'
+          || name === 'twitter:image'
+        ) {
+          element.remove();
+        }
+      },
+    })
+    .on('link', {
+      element(element) {
+        if (element.getAttribute('rel') === 'canonical') {
+          element.remove();
+        }
+      },
+    })
     .on('head', {
       element(element) {
+        element.append(`<meta name="description" content="${newDescription}" />`, { html: true });
+        element.append(`<link rel="canonical" href="${listenerMeta.pageUrl}" />`, { html: true });
         element.append(`<meta property="og:title" content="${newTitle}" />`, { html: true });
         element.append(`<meta property="og:description" content="${newDescription}" />`, { html: true });
         element.append(`<meta property="og:type" content="website" />`, { html: true });
-        element.append(`<meta name="twitter:card" content="summary" />`, { html: true });
+        element.append(`<meta property="og:url" content="${listenerMeta.pageUrl}" />`, { html: true });
+        element.append(`<meta property="og:image" content="${listenerMeta.imageUrl}" />`, { html: true });
+        element.append(`<meta property="og:image:url" content="${listenerMeta.imageUrl}" />`, { html: true });
+        element.append(`<meta property="og:image:secure_url" content="${listenerMeta.imageUrl}" />`, { html: true });
+        element.append(`<meta property="og:image:type" content="image/png" />`, { html: true });
+        element.append(`<meta property="og:image:width" content="512" />`, { html: true });
+        element.append(`<meta property="og:image:height" content="512" />`, { html: true });
+        element.append(`<meta property="og:image:alt" content="TikRing listener frame preview" />`, { html: true });
+        element.append(`<meta property="og:site_name" content="TikRing" />`, { html: true });
+        element.append(`<meta name="twitter:card" content="summary_large_image" />`, { html: true });
         element.append(`<meta name="twitter:title" content="${newTitle}" />`, { html: true });
         element.append(`<meta name="twitter:description" content="${newDescription}" />`, { html: true });
+        element.append(`<meta name="twitter:image" content="${listenerMeta.imageUrl}" />`, { html: true });
       },
     })
     .transform(response);
