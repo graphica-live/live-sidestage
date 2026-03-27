@@ -11,7 +11,7 @@ function buildListenerMeta(request: Request, frameId: string) {
     const pageUrl = new URL(url.pathname, url.origin);
     pageUrl.searchParams.set('f', frameId);
 
-    const imageUrl = new URL(`/api/frames/${encodeURIComponent(frameId)}`, url.origin);
+    const imageUrl = new URL(`/api/share/thumbnail/${encodeURIComponent(frameId)}.png`, url.origin);
 
     return {
         title: 'TikRing - アイコンを着せ替えよう！',
@@ -96,11 +96,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     element.setAttribute('content', listenerMeta.pageUrl);
                 }
             })
+            .on('meta[property="og:type"]', {
+                element(element) {
+                    element.setAttribute('content', 'website');
+                }
+            })
             .on('head', {
                 element(element) {
                     // Add Open Graph Meta Tags
                     element.append(`<meta property="og:image" content="${listenerMeta.imageUrl}" />`, { html: true });
+                    element.append(`<meta property="og:image:url" content="${listenerMeta.imageUrl}" />`, { html: true });
                     element.append(`<meta property="og:image:secure_url" content="${listenerMeta.imageUrl}" />`, { html: true });
+                    element.append(`<meta property="og:image:type" content="image/png" />`, { html: true });
+                    element.append(`<meta property="og:image:width" content="512" />`, { html: true });
+                    element.append(`<meta property="og:image:height" content="512" />`, { html: true });
+                    element.append(`<meta property="og:image:alt" content="TikRing listener frame preview" />`, { html: true });
+                    element.append(`<meta property="og:site_name" content="TikRing" />`, { html: true });
                     element.append(`<meta name="twitter:card" content="summary_large_image" />`, { html: true });
                     element.append(`<meta name="twitter:title" content="${newTitle}" />`, { html: true });
                     element.append(`<meta name="twitter:description" content="${newDescription}" />`, { html: true });
