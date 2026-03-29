@@ -1913,33 +1913,36 @@ export default function Home({ user }: HomeProps) {
 
       {backgroundTransparencyDialog ? (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-[1px]"
-          onClick={handleUseOriginalFrame}
+          className="fixed inset-0 z-[60] overflow-y-auto bg-black/75 px-3 py-3 backdrop-blur-[1px] sm:flex sm:items-center sm:justify-center sm:px-4 sm:py-6"
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="background-transparency-dialog-title"
-            className="w-full max-w-4xl rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.98),rgba(10,10,12,0.98))] p-5 text-left shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:p-6"
+            className="mx-auto w-full max-w-4xl overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.98),rgba(10,10,12,0.98))] p-4 text-left shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:rounded-[1.75rem] sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Suggestion</p>
-                <h3 id="background-transparency-dialog-title" className="mt-1 text-lg font-bold text-white sm:text-xl">
+                <h3 id="background-transparency-dialog-title" className="mt-1 text-base font-bold leading-6 text-white sm:text-xl">
                   背景透過の候補を見つけました
                 </h3>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-tiktok-lightgray">
+                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-tiktok-lightgray sm:text-sm sm:leading-6">
                   中央の透過とは別に、リング外周の大部分を占める単色背景を検出しました。必要なら背景色だけ透過してから編集に進めます。
                 </p>
               </div>
-              <div className="shrink-0 rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-3 py-1.5 text-[11px] font-black tracking-[0.14em] text-tiktok-cyan">
+              <div className="w-fit shrink-0 rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-3 py-1.5 text-[11px] font-black tracking-[0.14em] text-tiktok-cyan">
                 推定占有率 {(backgroundTransparencyDialog.suggestedCoverageRatio * 100).toFixed(0)}%
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+            <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-[12px] leading-5 text-white/68 sm:mt-5 sm:px-4 sm:py-3 sm:text-xs">
+              下の2枚はどちらもこの後に微調整できます。スマホでは画像の見え方を確認して、そのまま各カードのボタンから進んでください。
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
                 <div className="flex items-center justify-between gap-3 px-1 pb-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">Original</p>
@@ -1957,17 +1960,32 @@ export default function Home({ user }: HomeProps) {
                     draggable={false}
                   />
                 </div>
+                <p className="mt-3 px-1 text-[12px] leading-5 text-white/58 sm:text-xs">
+                  元画像のまま編集を続けます。背景色を残したい場合はこちらです。
+                </p>
+                <button
+                  type="button"
+                  onClick={handleUseOriginalFrame}
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-white/10"
+                >
+                  このまま編集へ進む
+                </button>
               </div>
 
-              <div className="rounded-2xl border border-tiktok-cyan/25 bg-tiktok-cyan/[0.06] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+              <div className="rounded-2xl border border-tiktok-cyan/25 bg-tiktok-cyan/[0.06] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
                 <div className="flex items-center justify-between gap-3 px-1 pb-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tiktok-cyan/75">Transparent Background</p>
                     <p className="mt-1 text-sm font-bold text-white">背景色を透過して使う</p>
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border border-tiktok-cyan/25 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-tiktok-cyan">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: backgroundTransparencyDialog.suggestedColorCss }} />
-                    背景候補色
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/14 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-tiktok-cyan">
+                      おすすめ
+                    </span>
+                    <div className="flex items-center gap-2 rounded-full border border-tiktok-cyan/25 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-tiktok-cyan">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: backgroundTransparencyDialog.suggestedColorCss }} />
+                      背景候補色
+                    </div>
                   </div>
                 </div>
                 <div className="relative aspect-square overflow-hidden rounded-[1.25rem] border border-tiktok-cyan/18 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:26px_26px] bg-[position:0_0,0_13px,13px_-13px,-13px_0px]">
@@ -1978,29 +1996,22 @@ export default function Home({ user }: HomeProps) {
                     draggable={false}
                   />
                 </div>
+                <p className="mt-3 px-1 text-[12px] leading-5 text-white/70 sm:text-xs">
+                  検出した単色背景だけを透過した版です。リングだけを残したいときはこちらが見やすいです。
+                </p>
+                <button
+                  type="button"
+                  onClick={handleUseSuggestedFrame}
+                  className="mt-3 w-full rounded-xl border border-tiktok-cyan/35 bg-tiktok-cyan/14 px-4 py-3.5 text-sm font-bold text-tiktok-cyan transition hover:bg-tiktok-cyan/20"
+                >
+                  この背景透過版で進む
+                </button>
               </div>
             </div>
 
-            <p className="mt-4 text-xs leading-5 text-white/62">
+            <p className="mt-4 text-[12px] leading-5 text-white/62 sm:text-xs">
               どちらを選んでも、このあと位置調整と表示領域の微調整ができます。
             </p>
-
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={handleUseOriginalFrame}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
-              >
-                そのまま使う
-              </button>
-              <button
-                type="button"
-                onClick={handleUseSuggestedFrame}
-                className="rounded-xl border border-tiktok-cyan/35 bg-tiktok-cyan/14 px-4 py-3 text-sm font-bold text-tiktok-cyan transition hover:bg-tiktok-cyan/20"
-              >
-                背景色を透過して使う
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
