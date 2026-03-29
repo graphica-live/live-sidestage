@@ -1190,7 +1190,7 @@ export default function Home({ user }: HomeProps) {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-tiktok-cyan opacity-75"></span>
           <span className="relative inline-flex rounded-full h-2 w-2 bg-tiktok-cyan"></span>
         </span>
-        ライバー専用アップロード画面
+          ライバー・モデ用アップロード画面
       </div>
 
       <h1 className="text-4xl font-black mb-4 text-center tracking-tight glitch-text" data-text="TikRing">
