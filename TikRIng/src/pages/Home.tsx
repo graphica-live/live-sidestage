@@ -137,6 +137,7 @@ export default function Home({ user }: HomeProps) {
   const [profileAreaHelpOpen, setProfileAreaHelpOpen] = useState(false);
   const [backgroundTransparencyDialog, setBackgroundTransparencyDialog] = useState<BackgroundTransparencyDialogState | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const framePreviewImageRef = useRef<HTMLImageElement>(null);
   const openingMaskPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const openingMaskWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -196,6 +197,7 @@ export default function Home({ user }: HomeProps) {
     const previewCanvas = openingMaskPreviewCanvasRef.current;
     const editor = editorRef.current;
     const sourceCanvas = openingMaskWorkingCanvasRef.current;
+    const framePreviewImage = framePreviewImageRef.current;
 
     if (!previewCanvas || !editor) {
       return;
@@ -229,7 +231,57 @@ export default function Home({ user }: HomeProps) {
     ctx.fillStyle = microAdjustOpen ? 'rgba(255, 91, 91, 0.42)' : 'rgba(255, 91, 91, 0.26)';
     ctx.fillRect(0, 0, width, height);
     ctx.globalCompositeOperation = 'source-over';
-  }, [hasOpeningMask, microAdjustOpen]);
+
+    if (!framePreviewImage || !framePreviewImage.complete) {
+      return;
+    }
+
+    const frameMaskCanvas = document.createElement('canvas');
+    frameMaskCanvas.width = previewCanvas.width;
+    frameMaskCanvas.height = previewCanvas.height;
+
+    const frameMaskCtx = frameMaskCanvas.getContext('2d', { willReadFrequently: true });
+    if (!frameMaskCtx) {
+      return;
+    }
+
+    frameMaskCtx.clearRect(0, 0, frameMaskCanvas.width, frameMaskCanvas.height);
+    frameMaskCtx.imageSmoothingEnabled = true;
+    frameMaskCtx.imageSmoothingQuality = 'high';
+
+    const naturalWidth = framePreviewImage.naturalWidth || framePreviewImage.width;
+    const naturalHeight = framePreviewImage.naturalHeight || framePreviewImage.height;
+
+    if (naturalWidth <= 0 || naturalHeight <= 0) {
+      return;
+    }
+
+    const baseScale = Math.min(width / naturalWidth, height / naturalHeight);
+    const drawWidth = naturalWidth * baseScale * zoom;
+    const drawHeight = naturalHeight * baseScale * zoom;
+    const drawX = (width - drawWidth) / 2 + position.x;
+    const drawY = (height - drawHeight) / 2 + position.y;
+
+    frameMaskCtx.drawImage(
+      framePreviewImage,
+      drawX * dpr,
+      drawY * dpr,
+      drawWidth * dpr,
+      drawHeight * dpr,
+    );
+
+    const overlayImageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+    const frameImageData = frameMaskCtx.getImageData(0, 0, frameMaskCanvas.width, frameMaskCanvas.height);
+
+    for (let index = 0; index < overlayImageData.data.length; index += 4) {
+      if (frameImageData.data[index + 3] === 255) {
+        overlayImageData.data[index + 3] = 0;
+      }
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(overlayImageData, 0, 0);
+  }, [hasOpeningMask, microAdjustOpen, position, zoom]);
 
   const loadOpeningMaskBlobIntoCanvas = useCallback(async (maskBlob: Blob | null) => {
     const workingCanvas = ensureOpeningMaskWorkingCanvas();
@@ -1429,8 +1481,12 @@ export default function Home({ user }: HomeProps) {
               <div className="absolute inset-0 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:28px_28px] bg-[position:0_0,0_14px,14px_-14px,-14px_0px]" />
               <div className="absolute inset-0 flex items-center justify-center z-10 overflow-visible">
                 <img
+                  ref={framePreviewImageRef}
                   src={frameImage}
                   alt="Frame preview"
+                  onLoad={() => {
+                    renderOpeningMaskPreview();
+                  }}
                   draggable={false}
                   style={{
                     transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
