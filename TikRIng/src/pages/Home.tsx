@@ -45,6 +45,16 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
+    date: '2026.03.29',
+    title: 'フレーム外周の透過機能を追加',
+    detail: 'フレーム外周の透過表現に対応し、外側まで自然に抜ける表示を追加。',
+  },
+  {
+    date: '2026.03.29',
+    title: 'コメント欄プレビュー機能を追加',
+    detail: 'コメント欄に載せたときの見え方を事前に確認できるプレビュー機能を追加。',
+  },
+  {
     date: '2026.03.26',
     title: '楕円形やフレーム外側に細かい装飾ある透過フレームに対応',
     detail: '楕円形やフレーム外周に装飾がある透過フレームでも扱えるよう対応。',
@@ -81,7 +91,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.03.26 23:07';
+const latestUpdateAt = '2026.03.29 12:27';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 
 function pad2(n: number) {
