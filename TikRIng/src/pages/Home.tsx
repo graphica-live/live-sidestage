@@ -1928,17 +1928,7 @@ export default function Home({ user }: HomeProps) {
                 <h3 id="background-transparency-dialog-title" className="mt-1 text-base font-bold leading-6 text-white sm:text-xl">
                   背景透過の候補を見つけました
                 </h3>
-                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-tiktok-lightgray sm:text-sm sm:leading-6">
-                  中央の透過とは別に、リング外周の大部分を占める単色背景を検出しました。必要なら背景色だけ透過してから編集に進めます。
-                </p>
               </div>
-              <div className="w-fit shrink-0 rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-3 py-1.5 text-[11px] font-black tracking-[0.14em] text-tiktok-cyan">
-                推定占有率 {(backgroundTransparencyDialog.suggestedCoverageRatio * 100).toFixed(0)}%
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-[12px] leading-5 text-white/68 sm:mt-5 sm:px-4 sm:py-3 sm:text-xs">
-              下の2枚はどちらもこの後に微調整できます。スマホでは画像の見え方を確認して、そのまま各カードのボタンから進んでください。
             </div>
 
             <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
@@ -1961,7 +1951,7 @@ export default function Home({ user }: HomeProps) {
                   />
                 </div>
                 <p className="mt-3 px-1 text-[12px] leading-5 text-white/58 sm:text-xs">
-                  元画像のまま編集を続けます。背景色を残したい場合はこちらです。
+                  フレーム外側の装飾をプロフィール画像内に入れない場合はこちら
                 </p>
                 <button
                   type="button"
@@ -1979,9 +1969,6 @@ export default function Home({ user }: HomeProps) {
                     <p className="mt-1 text-sm font-bold text-white">背景色を透過して使う</p>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/14 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-tiktok-cyan">
-                      おすすめ
-                    </span>
                     <div className="flex items-center gap-2 rounded-full border border-tiktok-cyan/25 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-tiktok-cyan">
                       <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: backgroundTransparencyDialog.suggestedColorCss }} />
                       背景候補色
@@ -1997,7 +1984,7 @@ export default function Home({ user }: HomeProps) {
                   />
                 </div>
                 <p className="mt-3 px-1 text-[12px] leading-5 text-white/70 sm:text-xs">
-                  検出した単色背景だけを透過した版です。リングだけを残したいときはこちらが見やすいです。
+                  フレーム外側に装飾がある場合はこちら
                 </p>
                 <button
                   type="button"
