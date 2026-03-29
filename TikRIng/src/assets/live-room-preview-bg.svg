@@ -1,0 +1,118 @@
+<svg width="900" height="1400" viewBox="0 0 900 1400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="roomBg" x1="450" y1="0" x2="450" y2="1400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5E8E2"/>
+      <stop offset="0.22" stop-color="#E9DDD8"/>
+      <stop offset="0.23" stop-color="#F0ECEC"/>
+      <stop offset="0.68" stop-color="#DBD5D6"/>
+      <stop offset="0.69" stop-color="#CBBFC2"/>
+      <stop offset="1" stop-color="#B9AEB3"/>
+    </linearGradient>
+    <linearGradient id="floorGrad" x1="450" y1="1040" x2="450" y2="1400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D3C2C5"/>
+      <stop offset="1" stop-color="#B59FA6"/>
+    </linearGradient>
+    <linearGradient id="windowLight" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#FFFDF9"/>
+      <stop offset="1" stop-color="#E6EEF5"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#F7F3F1"/>
+      <stop offset="1" stop-color="#E7DFDD"/>
+    </linearGradient>
+    <linearGradient id="monitorGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F8C7D8"/>
+      <stop offset="1" stop-color="#C7DAF1"/>
+    </linearGradient>
+    <linearGradient id="shelfUnit" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FEFBFA"/>
+      <stop offset="1" stop-color="#E8DEDE"/>
+    </linearGradient>
+    <radialGradient id="ceilingWarmth" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(450 70) rotate(90) scale(180 430)">
+      <stop stop-color="#FFF4E8" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFF4E8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pinkLight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(258 1120) rotate(90) scale(48 210)">
+      <stop stop-color="#FF97C0" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#FF97C0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blueLight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(676 1115) rotate(90) scale(44 180)">
+      <stop stop-color="#8ED4FF" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#8ED4FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="grain" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.035"/>
+      </feComponentTransfer>
+    </filter>
+    <filter id="roomShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#6B5560" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="900" height="1400" fill="url(#roomBg)"/>
+  <rect width="900" height="220" fill="url(#ceilingWarmth)"/>
+
+  <rect x="66" y="162" width="266" height="390" rx="18" fill="#E7DCDD" filter="url(#roomShadow)"/>
+  <rect x="86" y="182" width="226" height="350" rx="12" fill="url(#windowLight)"/>
+  <rect x="193" y="182" width="12" height="350" rx="6" fill="#F3EFEA"/>
+  <rect x="86" y="347" width="226" height="10" rx="5" fill="#ECE7E4"/>
+  <path d="M102 182H185V532C143 512 119 478 102 441V182Z" fill="#FFF7F4" fill-opacity="0.82"/>
+  <path d="M296 182H213V532C255 509 278 476 296 434V182Z" fill="#F8F2EF" fill-opacity="0.88"/>
+
+  <circle cx="483" cy="215" r="92" stroke="#FFF7F0" stroke-width="18" opacity="0.96"/>
+  <circle cx="483" cy="215" r="126" fill="#FFF5ED" fill-opacity="0.18"/>
+  <rect x="477" y="305" width="12" height="184" rx="6" fill="#E4D5CF"/>
+  <rect x="426" y="484" width="114" height="14" rx="7" fill="#E4D5CF"/>
+
+  <rect x="600" y="188" width="212" height="138" rx="18" fill="#FAF6F4" filter="url(#roomShadow)"/>
+  <rect x="618" y="206" width="176" height="102" rx="12" fill="#F3E8EB"/>
+  <rect x="632" y="220" width="148" height="74" rx="8" fill="url(#monitorGlow)"/>
+  <circle cx="725" cy="258" r="18" fill="#FFFFFF" fill-opacity="0.22"/>
+
+  <rect x="92" y="760" width="198" height="310" rx="18" fill="url(#shelfUnit)" filter="url(#roomShadow)"/>
+  <rect x="112" y="812" width="158" height="10" rx="5" fill="#D8CDCF"/>
+  <rect x="112" y="900" width="158" height="10" rx="5" fill="#D8CDCF"/>
+  <rect x="112" y="988" width="158" height="10" rx="5" fill="#D8CDCF"/>
+  <rect x="130" y="770" width="122" height="26" rx="13" fill="#F6CEDA"/>
+  <rect x="131" y="833" width="42" height="52" rx="8" fill="#F9D6A6"/>
+  <rect x="181" y="842" width="69" height="34" rx="8" fill="#D4E3F3"/>
+  <rect x="130" y="921" width="92" height="46" rx="8" fill="#E5CED7"/>
+  <rect x="229" y="920" width="21" height="47" rx="8" fill="#AEE6E8"/>
+  <rect x="130" y="1008" width="54" height="38" rx="8" fill="#FFB1C9"/>
+  <rect x="192" y="1006" width="59" height="42" rx="8" fill="#D8D9E6"/>
+
+  <g filter="url(#roomShadow)">
+    <rect x="322" y="808" width="310" height="220" rx="22" fill="#F6F1F0"/>
+    <rect x="338" y="824" width="278" height="36" rx="18" fill="#EFE7E7"/>
+    <rect x="370" y="748" width="214" height="110" rx="16" fill="#FAF5F4"/>
+    <rect x="388" y="766" width="178" height="74" rx="12" fill="#F0E2E7"/>
+    <rect x="402" y="780" width="150" height="46" rx="10" fill="url(#monitorGlow)"/>
+    <rect x="448" y="858" width="56" height="18" rx="9" fill="#E2D7D8"/>
+    <rect x="420" y="876" width="112" height="16" rx="8" fill="#D9CED0"/>
+    <rect x="362" y="920" width="228" height="16" rx="8" fill="#E3D9DA"/>
+    <rect x="396" y="954" width="160" height="28" rx="14" fill="#ECE3E4"/>
+  </g>
+
+  <g filter="url(#roomShadow)">
+    <rect x="665" y="780" width="141" height="280" rx="18" fill="url(#shelfUnit)"/>
+    <rect x="690" y="744" width="92" height="60" rx="46" fill="#F7E4EA"/>
+    <rect x="683" y="830" width="105" height="64" rx="10" fill="#F3E0C7"/>
+    <rect x="699" y="846" width="73" height="33" rx="8" fill="#FFD67F"/>
+    <rect x="684" y="926" width="103" height="11" rx="5" fill="#D8CDCF"/>
+    <rect x="684" y="958" width="106" height="69" rx="12" fill="#E9DFE2"/>
+    <rect x="701" y="974" width="72" height="38" rx="8" fill="#D3E3F5"/>
+  </g>
+
+  <path d="M610 1032C657 1032 692 1064 692 1102H528C528 1063 563 1032 610 1032Z" fill="#EFE4E5" filter="url(#roomShadow)"/>
+  <path d="M616 1060C651 1060 676 1083 676 1110H556C556 1083 581 1060 616 1060Z" fill="#D8CBD0"/>
+
+  <rect y="1086" width="900" height="314" fill="url(#floorGrad)"/>
+  <ellipse cx="258" cy="1176" rx="196" ry="52" fill="url(#pinkLight)"/>
+  <ellipse cx="675" cy="1178" rx="174" ry="48" fill="url(#blueLight)"/>
+  <ellipse cx="454" cy="1108" rx="220" ry="26" fill="#C9BEC2" fill-opacity="0.45"/>
+
+  <rect width="900" height="1400" filter="url(#grain)" opacity="0.45"/>
+</svg>

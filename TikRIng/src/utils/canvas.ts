@@ -261,11 +261,110 @@ export const getSharePreviewBlob = async (
   return canvasToBlob(canvas);
 };
 
+export const getTikTokLiveCommentAvatarPreviewDataUrl = async (
+  frameSrc: string,
+  openingMaskSrc?: string | null,
+  outputSize = 240
+): Promise<string> => {
+  const frameImage = await createImage(frameSrc);
+  const squareFrameCanvas = createSquareFrameCanvas(frameImage);
+  const openingMaskCanvas = openingMaskSrc
+    ? await createMaskCanvasFromSource(openingMaskSrc, squareFrameCanvas.width)
+    : buildFrameOpeningMaskCanvas(squareFrameCanvas);
+  const previewMaskCanvas = openingMaskCanvas
+    ? createBinaryMaskCanvas(openingMaskCanvas, outputSize, 200)
+    : null;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const center = outputSize / 2;
+
+  const avatarCanvas = document.createElement('canvas');
+  avatarCanvas.width = outputSize;
+  avatarCanvas.height = outputSize;
+  const avatarCtx = avatarCanvas.getContext('2d');
+
+  if (!avatarCtx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  avatarCtx.imageSmoothingEnabled = true;
+  avatarCtx.imageSmoothingQuality = 'high';
+
+  avatarCtx.fillStyle = '#00d84a';
+  avatarCtx.fillRect(0, 0, outputSize, outputSize);
+
+  avatarCtx.fillStyle = '#D6AF93';
+  avatarCtx.beginPath();
+  avatarCtx.arc(center, outputSize * 0.42, outputSize * 0.16, 0, Math.PI * 2);
+  avatarCtx.fill();
+
+  avatarCtx.fillStyle = '#2B3242';
+  avatarCtx.beginPath();
+  avatarCtx.arc(center, outputSize * 0.34, outputSize * 0.18, Math.PI, 0, false);
+  avatarCtx.arc(center, outputSize * 0.45, outputSize * 0.12, 0, Math.PI, true);
+  avatarCtx.closePath();
+  avatarCtx.fill();
+
+  avatarCtx.fillStyle = '#F0E6EA';
+  avatarCtx.beginPath();
+  avatarCtx.roundRect(outputSize * 0.31, outputSize * 0.56, outputSize * 0.38, outputSize * 0.24, outputSize * 0.11);
+  avatarCtx.fill();
+
+  avatarCtx.fillStyle = '#D4C3CA';
+  avatarCtx.beginPath();
+  avatarCtx.roundRect(outputSize * 0.35, outputSize * 0.63, outputSize * 0.3, outputSize * 0.16, outputSize * 0.08);
+  avatarCtx.fill();
+
+  if (previewMaskCanvas) {
+    avatarCtx.save();
+    avatarCtx.globalCompositeOperation = 'destination-in';
+    avatarCtx.drawImage(previewMaskCanvas, 0, 0, outputSize, outputSize);
+    avatarCtx.restore();
+  } else {
+    avatarCtx.save();
+    avatarCtx.globalCompositeOperation = 'destination-in';
+    avatarCtx.beginPath();
+    avatarCtx.arc(center, center, outputSize * 0.5, 0, Math.PI * 2);
+    avatarCtx.fill();
+    avatarCtx.restore();
+  }
+
+  ctx.drawImage(avatarCanvas, 0, 0, outputSize, outputSize);
+
+  ctx.drawImage(squareFrameCanvas, 0, 0, outputSize, outputSize);
+
+  return canvas.toDataURL('image/png');
+};
+
 export type FrameTransparencyAnalysis = {
   connectedTransparentRatio: number;
   centralOpaqueRatio: number;
   hasCentralSeedTransparency: boolean;
   shouldBlockUpload: boolean;
+};
+
+export type FrameBackgroundTransparencySuggestion = {
+  blob: Blob;
+  fillCoverageRatio: number;
+  exteriorPixelRatio: number;
+  fillColor: {
+    r: number;
+    g: number;
+    b: number;
+    a: number;
+  };
 };
 
 export const analyzeFrameTransparency = async (
@@ -402,6 +501,223 @@ export const analyzeFrameTransparency = async (
       connectedTransparentRatio < minConnectedTransparentRatio ||
       centralOpaqueRatio > maxCentralOpaqueRatio,
   };
+};
+
+export const getFrameBackgroundTransparencySuggestion = async (
+  imageSrc: string,
+  options?: {
+    alphaThreshold?: number;
+    minFillCoverageRatio?: number;
+    minExteriorPixelRatio?: number;
+    centerBlockRadiusRatio?: number;
+  }
+): Promise<FrameBackgroundTransparencySuggestion | null> => {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = image.width;
+  canvas.height = image.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const alphaThreshold = options?.alphaThreshold ?? 10;
+  const minFillCoverageRatio = options?.minFillCoverageRatio ?? 0.58;
+  const minExteriorPixelRatio = options?.minExteriorPixelRatio ?? 0.12;
+  const centerBlockRadiusRatio = options?.centerBlockRadiusRatio ?? 0.17;
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const centralTransparentRegion = getCentralTransparentRegion(data, width, height, alphaThreshold);
+
+  if (!centralTransparentRegion.hasSeed) {
+    return null;
+  }
+
+  const cornerFillCandidate = getUniformCornerFillCandidate(data, width, height, alphaThreshold);
+  const borderFillCandidates = getOuterFillCandidates(data, width, height, alphaThreshold)
+    .filter((candidate): candidate is Extract<FillStyle, { kind: 'solid' }> => candidate.kind === 'solid');
+  const solidFillCandidates = [
+    ...(cornerFillCandidate ? [{ fillCandidate: cornerFillCandidate, fromUniformCorners: true }] : []),
+    ...borderFillCandidates.map((fillCandidate) => ({ fillCandidate, fromUniformCorners: false })),
+  ].filter((entry, index, entries) => {
+    return entries.findIndex((candidateEntry) => (
+      Math.hypot(
+        candidateEntry.fillCandidate.r - entry.fillCandidate.r,
+        candidateEntry.fillCandidate.g - entry.fillCandidate.g,
+        candidateEntry.fillCandidate.b - entry.fillCandidate.b,
+      ) <= 10
+      && Math.abs(candidateEntry.fillCandidate.a - entry.fillCandidate.a) <= 12
+    )) === index;
+  });
+
+  const center = { x: width / 2, y: height / 2 };
+  const centerBlockRadius = Math.min(width, height) * centerBlockRadiusRatio;
+  const totalPixels = width * height;
+
+  if (cornerFillCandidate) {
+    let selectedExteriorMask: Uint8Array | null = null;
+    let selectedExteriorPixelCount = 0;
+    const toleranceSteps = [12, 18, 24, 32];
+
+    for (const tolerance of toleranceSteps) {
+      const nextExteriorMask = buildExteriorFillMask(data, width, height, cornerFillCandidate, alphaThreshold, {
+        rgbTolerance: tolerance,
+        alphaTolerance: tolerance,
+      });
+      const nextExteriorPixelCount = countMaskPixels(nextExteriorMask);
+      if (
+        nextExteriorPixelCount <= 0
+        || nextExteriorPixelCount >= totalPixels * 0.97
+      ) {
+        continue;
+      }
+
+      if (nextExteriorPixelCount > selectedExteriorPixelCount) {
+        selectedExteriorMask = nextExteriorMask;
+        selectedExteriorPixelCount = nextExteriorPixelCount;
+      }
+    }
+
+    if (selectedExteriorMask && selectedExteriorPixelCount > 0) {
+      const resultCanvas = document.createElement('canvas');
+      const resultCtx = resultCanvas.getContext('2d');
+      if (!resultCtx) {
+        throw new Error('Canvas 2D context not available');
+      }
+
+      resultCanvas.width = width;
+      resultCanvas.height = height;
+      const nextImageData = resultCtx.createImageData(width, height);
+      nextImageData.data.set(data);
+
+      for (let index = 0; index < selectedExteriorMask.length; index += 1) {
+        if (selectedExteriorMask[index] !== 1) {
+          continue;
+        }
+
+        nextImageData.data[index * 4 + 3] = 0;
+      }
+
+      resultCtx.putImageData(nextImageData, 0, 0);
+
+      return {
+        blob: await canvasToBlob(resultCanvas),
+        fillCoverageRatio: selectedExteriorPixelCount / Math.max(totalPixels, 1),
+        exteriorPixelRatio: selectedExteriorPixelCount / Math.max(totalPixels, 1),
+        fillColor: {
+          r: cornerFillCandidate.r,
+          g: cornerFillCandidate.g,
+          b: cornerFillCandidate.b,
+          a: cornerFillCandidate.a,
+        },
+      };
+    }
+  }
+
+  let bestSuggestion: {
+    blob: Blob;
+    fillCoverageRatio: number;
+    exteriorPixelRatio: number;
+    fillColor: { r: number; g: number; b: number; a: number };
+  } | null = null;
+
+  for (const { fillCandidate, fromUniformCorners } of solidFillCandidates) {
+    const exteriorMask = buildExteriorFillMask(data, width, height, fillCandidate, alphaThreshold);
+    if (!isUsableExteriorMask(exteriorMask, width, height)) {
+      continue;
+    }
+
+    if (hasExteriorFillInsideCircle(exteriorMask, width, height, center, centerBlockRadius, 0)) {
+      continue;
+    }
+
+    let opaqueOutsideCenterCount = 0;
+    let coveredOpaqueCount = 0;
+    for (let index = 0; index < exteriorMask.length; index += 1) {
+      if (centralTransparentRegion.mask[index] === 1) {
+        continue;
+      }
+
+      const alpha = data[index * 4 + 3];
+      if (alpha <= alphaThreshold) {
+        continue;
+      }
+
+      opaqueOutsideCenterCount += 1;
+      if (exteriorMask[index] === 1) {
+        coveredOpaqueCount += 1;
+      }
+    }
+
+    if (opaqueOutsideCenterCount === 0) {
+      continue;
+    }
+
+    const fillCoverageRatio = coveredOpaqueCount / opaqueOutsideCenterCount;
+    const exteriorPixelRatio = countMaskPixels(exteriorMask) / Math.max(totalPixels, 1);
+    const requiredFillCoverageRatio = fromUniformCorners ? 0.005 : minFillCoverageRatio;
+    const requiredExteriorPixelRatio = fromUniformCorners ? 0.005 : minExteriorPixelRatio;
+    if (fillCoverageRatio < requiredFillCoverageRatio || exteriorPixelRatio < requiredExteriorPixelRatio) {
+      continue;
+    }
+
+    const resultCanvas = document.createElement('canvas');
+    const resultCtx = resultCanvas.getContext('2d');
+    if (!resultCtx) {
+      throw new Error('Canvas 2D context not available');
+    }
+
+    resultCanvas.width = width;
+    resultCanvas.height = height;
+    const nextImageData = resultCtx.createImageData(width, height);
+    nextImageData.data.set(data);
+
+    for (let index = 0; index < exteriorMask.length; index += 1) {
+      if (exteriorMask[index] !== 1) {
+        continue;
+      }
+
+      nextImageData.data[index * 4 + 3] = 0;
+    }
+
+    resultCtx.putImageData(nextImageData, 0, 0);
+    const blob = await canvasToBlob(resultCanvas);
+
+    if (fromUniformCorners) {
+      return {
+        blob,
+        fillCoverageRatio,
+        exteriorPixelRatio,
+        fillColor: {
+          r: fillCandidate.r,
+          g: fillCandidate.g,
+          b: fillCandidate.b,
+          a: fillCandidate.a,
+        },
+      };
+    }
+
+    if (!bestSuggestion || fillCoverageRatio > bestSuggestion.fillCoverageRatio) {
+      bestSuggestion = {
+        blob,
+        fillCoverageRatio,
+        exteriorPixelRatio,
+        fillColor: {
+          r: fillCandidate.r,
+          g: fillCandidate.g,
+          b: fillCandidate.b,
+          a: fillCandidate.a,
+        },
+      };
+    }
+  }
+
+  return bestSuggestion;
 };
 
 function hasTransparentPixelsOnBorder(
@@ -714,6 +1030,92 @@ function getSolidFillKey(r: number, g: number, b: number, a: number): string {
   ].join(':');
 }
 
+function getUniformCornerFillCandidate(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  alphaThreshold: number
+): Extract<FillStyle, { kind: 'solid' }> | null {
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const cornerPoints = [
+    { x: 0, y: 0 },
+    { x: width - 1, y: 0 },
+    { x: 0, y: height - 1 },
+    { x: width - 1, y: height - 1 },
+  ];
+  const sampleRadius = Math.min(1, Math.floor((Math.min(width, height) - 1) / 2));
+  const rgbTolerance = 18;
+  const alphaTolerance = 18;
+
+  const sampleCorner = (corner: { x: number; y: number }) => {
+    let sampleCount = 0;
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let sumA = 0;
+
+    for (let dy = 0; dy <= sampleRadius; dy += 1) {
+      for (let dx = 0; dx <= sampleRadius; dx += 1) {
+        const sampleX = corner.x === 0 ? dx : corner.x - dx;
+        const sampleY = corner.y === 0 ? dy : corner.y - dy;
+        const offset = getPixelOffset(sampleX, sampleY, width);
+        const alpha = data[offset + 3];
+        if (alpha <= alphaThreshold) {
+          return null;
+        }
+
+        sumR += data[offset];
+        sumG += data[offset + 1];
+        sumB += data[offset + 2];
+        sumA += alpha;
+        sampleCount += 1;
+      }
+    }
+
+    if (sampleCount === 0) {
+      return null;
+    }
+
+    return {
+      r: Math.round(sumR / sampleCount),
+      g: Math.round(sumG / sampleCount),
+      b: Math.round(sumB / sampleCount),
+      a: Math.round(sumA / sampleCount),
+    };
+  };
+
+  const cornerSamples = cornerPoints.map(sampleCorner);
+  if (cornerSamples.some((sample) => sample === null)) {
+    return null;
+  }
+
+  const reference = cornerSamples[0];
+  if (!reference) {
+    return null;
+  }
+
+  for (let index = 1; index < cornerSamples.length; index += 1) {
+    const sample = cornerSamples[index];
+    if (!sample) {
+      return null;
+    }
+
+    if (
+      Math.abs(sample.r - reference.r) > rgbTolerance
+      || Math.abs(sample.g - reference.g) > rgbTolerance
+      || Math.abs(sample.b - reference.b) > rgbTolerance
+      || Math.abs(sample.a - reference.a) > alphaTolerance
+    ) {
+      return null;
+    }
+  }
+
+  return { kind: 'solid', ...reference };
+}
+
 function getOuterFillCandidates(
   data: Uint8ClampedArray,
   width: number,
@@ -848,10 +1250,16 @@ function matchesFillStyle(
   x: number,
   y: number,
   fillStyle: FillStyle,
-  alphaThreshold: number
+  alphaThreshold: number,
+  options?: {
+    rgbTolerance?: number;
+    alphaTolerance?: number;
+  }
 ): boolean {
   const offset = getPixelOffset(x, y, width);
   const alpha = data[offset + 3];
+  const rgbTolerance = Math.max(0, options?.rgbTolerance ?? 28);
+  const alphaTolerance = Math.max(0, options?.alphaTolerance ?? 28);
 
   if (fillStyle.kind === 'transparent') {
     return alpha <= alphaThreshold;
@@ -865,7 +1273,7 @@ function matchesFillStyle(
   const dg = data[offset + 1] - fillStyle.g;
   const db = data[offset + 2] - fillStyle.b;
   const da = alpha - fillStyle.a;
-  return Math.hypot(dr, dg, db) <= 28 && Math.abs(da) <= 28;
+  return Math.hypot(dr, dg, db) <= rgbTolerance && Math.abs(da) <= alphaTolerance;
 }
 
 function buildExteriorFillMask(
@@ -873,7 +1281,11 @@ function buildExteriorFillMask(
   width: number,
   height: number,
   fillStyle: FillStyle,
-  alphaThreshold: number
+  alphaThreshold: number,
+  options?: {
+    rgbTolerance?: number;
+    alphaTolerance?: number;
+  }
 ): Uint8Array {
   const visited = new Uint8Array(width * height);
   const queue = new Int32Array(width * height);
@@ -881,7 +1293,7 @@ function buildExteriorFillMask(
   let tail = 0;
 
   for (const point of getBorderPixels(width, height)) {
-    if (!matchesFillStyle(data, width, point.x, point.y, fillStyle, alphaThreshold)) {
+    if (!matchesFillStyle(data, width, point.x, point.y, fillStyle, alphaThreshold, options)) {
       continue;
     }
 
@@ -911,7 +1323,7 @@ function buildExteriorFillMask(
         return;
       }
 
-      if (!matchesFillStyle(data, width, nextX, nextY, fillStyle, alphaThreshold)) {
+      if (!matchesFillStyle(data, width, nextX, nextY, fillStyle, alphaThreshold, options)) {
         return;
       }
 
@@ -1310,6 +1722,32 @@ async function createMaskCanvasFromSource(maskSrc: string, outputSize: number): 
   canvas.height = outputSize;
   ctx.clearRect(0, 0, outputSize, outputSize);
   ctx.drawImage(maskImage, 0, 0, outputSize, outputSize);
+  return canvas;
+}
+
+function createBinaryMaskCanvas(sourceCanvas: HTMLCanvasElement, outputSize: number, alphaThreshold = 1): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.drawImage(sourceCanvas, 0, 0, outputSize, outputSize);
+
+  const imageData = ctx.getImageData(0, 0, outputSize, outputSize);
+  const data = imageData.data;
+  for (let offset = 3; offset < data.length; offset += 4) {
+    data[offset] = data[offset] >= alphaThreshold ? 255 : 0;
+    data[offset - 3] = 255;
+    data[offset - 2] = 255;
+    data[offset - 1] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+
   return canvas;
 }
 

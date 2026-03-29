@@ -4,10 +4,13 @@ import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp 
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import {
   analyzeFrameTransparency,
+  getEditorCropRadiusRatio,
+  getFrameBackgroundTransparencySuggestion,
   getCircleAutoFit,
   getSharePreviewBlob,
   getSquareFrameOpeningMaskBlob,
   getSquareFrameBlob,
+  getTikTokLiveCommentAvatarPreviewDataUrl,
   isTransparentCenterWithinCropMask,
 } from '../utils/canvas';
 
@@ -22,6 +25,22 @@ type AutoFitNotice = {
   eyebrow: string;
   label: string;
   detail: string;
+};
+
+type BackgroundTransparencyDialogState = {
+  fileName: string;
+  originalUrl: string;
+  suggestedUrl: string;
+  suggestedCoverageRatio: number;
+  suggestedColorCss: string;
+};
+
+type UploadConfirmationState = {
+  preparedBlob: Blob;
+  openingMaskBlob: Blob | null;
+  preparedFrameUrl: string;
+  openingMaskUrl: string | null;
+  avatarPreviewUrl: string;
 };
 
 const updateHistory = [
@@ -79,6 +98,10 @@ function addDays(d: Date, days: number) {
   return nd;
 }
 
+const COMMENT_PREVIEW_CROP_STYLE = {
+  clipPath: `circle(${(getEditorCropRadiusRatio(100) * 100).toFixed(3)}% at 50% 50%)`,
+};
+
 export default function Home({ user }: HomeProps) {
   const [uploading, setUploading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -105,11 +128,14 @@ export default function Home({ user }: HomeProps) {
 
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [preparingUploadConfirmation, setPreparingUploadConfirmation] = useState(false);
+  const [uploadConfirmation, setUploadConfirmation] = useState<UploadConfirmationState | null>(null);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
   const [profileAreaHelpOpen, setProfileAreaHelpOpen] = useState(false);
+  const [backgroundTransparencyDialog, setBackgroundTransparencyDialog] = useState<BackgroundTransparencyDialogState | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const openingMaskPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const openingMaskWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -128,6 +154,7 @@ export default function Home({ user }: HomeProps) {
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
   const openingMaskRequestRef = useRef(0);
+  const uploadConfirmationRef = useRef<UploadConfirmationState | null>(null);
 
   useEffect(() => {
     return () => {
@@ -144,6 +171,13 @@ export default function Home({ user }: HomeProps) {
         window.clearTimeout(autoFitNoticeTimeoutRef.current);
       }
       openingMaskWorkingCanvasRef.current = null;
+      if (uploadConfirmationRef.current) {
+        URL.revokeObjectURL(uploadConfirmationRef.current.preparedFrameUrl);
+        if (uploadConfirmationRef.current.openingMaskUrl) {
+          URL.revokeObjectURL(uploadConfirmationRef.current.openingMaskUrl);
+        }
+        uploadConfirmationRef.current = null;
+      }
     };
   }, [frameImage]);
 
@@ -298,6 +332,82 @@ export default function Home({ user }: HomeProps) {
   const showAutoFitNotice = useCallback((notice: AutoFitNotice | null) => {
     setAutoFitNotice(notice);
   }, []);
+
+  const releaseBackgroundTransparencyDialogUrls = useCallback((
+    dialog: BackgroundTransparencyDialogState | null,
+    preservedUrl?: string | null
+  ) => {
+    if (!dialog) {
+      return;
+    }
+
+    if (dialog.originalUrl !== preservedUrl) {
+      URL.revokeObjectURL(dialog.originalUrl);
+    }
+
+    if (dialog.suggestedUrl !== preservedUrl) {
+      URL.revokeObjectURL(dialog.suggestedUrl);
+    }
+  }, []);
+
+  const releaseUploadConfirmationAssets = useCallback((confirmation: UploadConfirmationState | null) => {
+    if (!confirmation) {
+      return;
+    }
+
+    URL.revokeObjectURL(confirmation.preparedFrameUrl);
+    if (confirmation.openingMaskUrl) {
+      URL.revokeObjectURL(confirmation.openingMaskUrl);
+    }
+  }, []);
+
+  const replaceUploadConfirmation = useCallback((nextConfirmation: UploadConfirmationState | null) => {
+    if (uploadConfirmationRef.current) {
+      releaseUploadConfirmationAssets(uploadConfirmationRef.current);
+    }
+
+    uploadConfirmationRef.current = nextConfirmation;
+    setUploadConfirmation(nextConfirmation);
+  }, [releaseUploadConfirmationAssets]);
+
+  const applyAcceptedFrame = useCallback((nextFrameImage: string, nextFileName: string) => {
+    if (frameImage && frameImage !== nextFrameImage) {
+      URL.revokeObjectURL(frameImage);
+    }
+
+    replaceUploadConfirmation(null);
+    setFrameImage(nextFrameImage);
+    setFrameFileName(nextFileName.replace(/\.[^/.]+$/, '') || 'frame');
+    setPosition({ x: 0, y: 0 });
+    setZoom(1);
+    setIsAdjusting(false);
+    setHasManualOpeningEdits(false);
+    setShowMaskIntro(false);
+    showAutoFitNotice(null);
+    setError(null);
+    setShareUrl(null);
+    setCopied(false);
+  }, [frameImage, replaceUploadConfirmation, showAutoFitNotice]);
+
+  const handleUseSuggestedFrame = useCallback(() => {
+    if (!backgroundTransparencyDialog) {
+      return;
+    }
+
+    applyAcceptedFrame(backgroundTransparencyDialog.suggestedUrl, backgroundTransparencyDialog.fileName);
+    releaseBackgroundTransparencyDialogUrls(backgroundTransparencyDialog, backgroundTransparencyDialog.suggestedUrl);
+    setBackgroundTransparencyDialog(null);
+  }, [applyAcceptedFrame, backgroundTransparencyDialog, releaseBackgroundTransparencyDialogUrls]);
+
+  const handleUseOriginalFrame = useCallback(() => {
+    if (!backgroundTransparencyDialog) {
+      return;
+    }
+
+    applyAcceptedFrame(backgroundTransparencyDialog.originalUrl, backgroundTransparencyDialog.fileName);
+    releaseBackgroundTransparencyDialogUrls(backgroundTransparencyDialog, backgroundTransparencyDialog.originalUrl);
+    setBackgroundTransparencyDialog(null);
+  }, [applyAcceptedFrame, backgroundTransparencyDialog, releaseBackgroundTransparencyDialogUrls]);
 
   const dismissAutoFitNotice = useCallback(() => {
     setAutoFitNotice(null);
@@ -625,6 +735,9 @@ export default function Home({ user }: HomeProps) {
       return;
     }
 
+    releaseBackgroundTransparencyDialogUrls(backgroundTransparencyDialog);
+    setBackgroundTransparencyDialog(null);
+
     const nextFrameImage = URL.createObjectURL(file);
 
     try {
@@ -643,22 +756,28 @@ export default function Home({ user }: HomeProps) {
       return;
     }
 
-    if (frameImage) {
-      URL.revokeObjectURL(frameImage);
+    try {
+      const suggestion = await getFrameBackgroundTransparencySuggestion(nextFrameImage);
+      if (suggestion) {
+        const suggestedUrl = URL.createObjectURL(suggestion.blob);
+        setBackgroundTransparencyDialog({
+          fileName: file.name,
+          originalUrl: nextFrameImage,
+          suggestedUrl,
+          suggestedCoverageRatio: suggestion.fillCoverageRatio,
+          suggestedColorCss: `rgba(${suggestion.fillColor.r}, ${suggestion.fillColor.g}, ${suggestion.fillColor.b}, ${Math.max(0.2, suggestion.fillColor.a / 255)})`,
+        });
+        setError(null);
+        setShareUrl(null);
+        setCopied(false);
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to prepare background transparency suggestion:', err);
     }
 
-    setFrameImage(nextFrameImage);
-    setFrameFileName(file.name.replace(/\.[^/.]+$/, '') || 'frame');
-    setPosition({ x: 0, y: 0 });
-    setZoom(1);
-    setIsAdjusting(false);
-    setHasManualOpeningEdits(false);
-    setShowMaskIntro(false);
-    showAutoFitNotice(null);
-    setError(null);
-    setShareUrl(null);
-    setCopied(false);
-  }, [frameImage, showAutoFitNotice]);
+    applyAcceptedFrame(nextFrameImage, file.name);
+  }, [applyAcceptedFrame, backgroundTransparencyDialog, releaseBackgroundTransparencyDialogUrls]);
 
   const onDropRejected = useCallback((fileRejections: FileRejection[]) => {
     const rejection = fileRejections[0];
@@ -762,7 +881,10 @@ export default function Home({ user }: HomeProps) {
     if (frameImage) {
       URL.revokeObjectURL(frameImage);
     }
+    releaseBackgroundTransparencyDialogUrls(backgroundTransparencyDialog);
+    replaceUploadConfirmation(null);
     setFrameImage(null);
+    setBackgroundTransparencyDialog(null);
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setIsAdjusting(false);
@@ -865,8 +987,56 @@ export default function Home({ user }: HomeProps) {
     return true;
   };
 
-  const handleUpload = async () => {
+  const prepareUploadConfirmation = async () => {
     if (!frameImage) return;
+
+    setPreparingUploadConfirmation(true);
+    setError(null);
+
+    try {
+      const previewSize = editorRef.current?.clientWidth ?? 1024;
+      const { blob: squareBlob } = await getSquareFrameBlob(
+        frameImage,
+        position,
+        zoom,
+        1024,
+        previewSize
+      );
+      const openingMaskBlob = await getOpeningMaskBlobForUpload();
+
+      const preparedFrameUrl = URL.createObjectURL(squareBlob);
+      const openingMaskUrl = openingMaskBlob ? URL.createObjectURL(openingMaskBlob) : null;
+      try {
+        const avatarPreviewUrl = await getTikTokLiveCommentAvatarPreviewDataUrl(
+          preparedFrameUrl,
+          openingMaskUrl,
+          240
+        );
+
+        replaceUploadConfirmation({
+          preparedBlob: squareBlob,
+          openingMaskBlob,
+          preparedFrameUrl,
+          openingMaskUrl,
+          avatarPreviewUrl,
+        });
+      } catch (previewError) {
+        URL.revokeObjectURL(preparedFrameUrl);
+        if (openingMaskUrl) {
+          URL.revokeObjectURL(openingMaskUrl);
+        }
+        throw previewError;
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
+    } finally {
+      setPreparingUploadConfirmation(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!uploadConfirmation) return;
 
     let recaptchaToken: string | null = null;
     try {
@@ -886,7 +1056,6 @@ export default function Home({ user }: HomeProps) {
         });
       }
     } catch {
-      // reCAPTCHAが原因でアップロードできない事態を避ける
       recaptchaToken = null;
     }
 
@@ -896,17 +1065,8 @@ export default function Home({ user }: HomeProps) {
     setCopied(false);
 
     try {
-      const previewSize = editorRef.current?.clientWidth ?? 1024;
-      const { blob: squareBlob } = await getSquareFrameBlob(
-        frameImage,
-        position,
-        zoom,
-        1024,
-        previewSize
-      );
-      const openingMaskBlob = await getOpeningMaskBlobForUpload();
-
-      await uploadPreparedFrame(squareBlob, openingMaskBlob, recaptchaToken);
+      await uploadPreparedFrame(uploadConfirmation.preparedBlob, uploadConfirmation.openingMaskBlob, recaptchaToken);
+      replaceUploadConfirmation(null);
     } catch (err: any) {
       console.error(err);
       setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
@@ -1677,14 +1837,14 @@ export default function Home({ user }: HomeProps) {
               画像を選び直す
             </button>
             <button
-              onClick={handleUpload}
-              disabled={uploading}
+              onClick={prepareUploadConfirmation}
+              disabled={uploading || preparingUploadConfirmation}
               className="flex-1 py-3.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {uploading ? (
+              {uploading || preparingUploadConfirmation ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  アップロード中...
+                  {uploading ? 'アップロード中...' : '確認プレビューを準備中...'}
                 </>
               ) : (
                 <>
@@ -1750,6 +1910,200 @@ export default function Home({ user }: HomeProps) {
           </button>
         </div>
       )}
+
+      {backgroundTransparencyDialog ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-[1px]"
+          onClick={handleUseOriginalFrame}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="background-transparency-dialog-title"
+            className="w-full max-w-4xl rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.98),rgba(10,10,12,0.98))] p-5 text-left shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Suggestion</p>
+                <h3 id="background-transparency-dialog-title" className="mt-1 text-lg font-bold text-white sm:text-xl">
+                  背景透過の候補を見つけました
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-tiktok-lightgray">
+                  中央の透過とは別に、リング外周の大部分を占める単色背景を検出しました。必要なら背景色だけ透過してから編集に進めます。
+                </p>
+              </div>
+              <div className="shrink-0 rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-3 py-1.5 text-[11px] font-black tracking-[0.14em] text-tiktok-cyan">
+                推定占有率 {(backgroundTransparencyDialog.suggestedCoverageRatio * 100).toFixed(0)}%
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+                <div className="flex items-center justify-between gap-3 px-1 pb-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">Original</p>
+                    <p className="mt-1 text-sm font-bold text-white">そのまま使う</p>
+                  </div>
+                  <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-white/55">
+                    現在の画像
+                  </span>
+                </div>
+                <div className="relative aspect-square overflow-hidden rounded-[1.25rem] border border-white/8 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:26px_26px] bg-[position:0_0,0_13px,13px_-13px,-13px_0px]">
+                  <img
+                    src={backgroundTransparencyDialog.originalUrl}
+                    alt="Original frame preview"
+                    className="absolute inset-0 h-full w-full object-contain"
+                    draggable={false}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-tiktok-cyan/25 bg-tiktok-cyan/[0.06] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+                <div className="flex items-center justify-between gap-3 px-1 pb-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tiktok-cyan/75">Transparent Background</p>
+                    <p className="mt-1 text-sm font-bold text-white">背景色を透過して使う</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-tiktok-cyan/25 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-tiktok-cyan">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: backgroundTransparencyDialog.suggestedColorCss }} />
+                    背景候補色
+                  </div>
+                </div>
+                <div className="relative aspect-square overflow-hidden rounded-[1.25rem] border border-tiktok-cyan/18 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:26px_26px] bg-[position:0_0,0_13px,13px_-13px,-13px_0px]">
+                  <img
+                    src={backgroundTransparencyDialog.suggestedUrl}
+                    alt="Background transparent frame preview"
+                    className="absolute inset-0 h-full w-full object-contain"
+                    draggable={false}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-white/62">
+              どちらを選んでも、このあと位置調整と表示領域の微調整ができます。
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleUseOriginalFrame}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
+              >
+                そのまま使う
+              </button>
+              <button
+                type="button"
+                onClick={handleUseSuggestedFrame}
+                className="rounded-xl border border-tiktok-cyan/35 bg-tiktok-cyan/14 px-4 py-3 text-sm font-bold text-tiktok-cyan transition hover:bg-tiktok-cyan/20"
+              >
+                背景色を透過して使う
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {uploadConfirmation ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-[2px]"
+          onClick={() => {
+            if (!uploading) {
+              replaceUploadConfirmation(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-confirmation-dialog-title"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.98),rgba(10,10,12,0.98))] p-4 text-left shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-3rem)] sm:rounded-[1.75rem] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Final Check</p>
+                <h3 id="upload-confirmation-dialog-title" className="mt-1 text-lg font-bold text-white sm:text-xl">
+                  コメント欄での見え方を確認してください
+                </h3>
+                <div className="mt-2 space-y-2 max-w-2xl text-sm leading-6 text-tiktok-lightgray">
+                  <p className="text-[13px] leading-5 text-white/68 sm:text-sm sm:leading-6">
+                    フレーム外側の透過をプロフィール円内に入れた場合は、このプレビューで透過の見え方が意図通りか確認してからアップロードしてください。
+                  </p>
+                </div>
+              </div>
+              <span className="shrink-0 self-start rounded-full border border-[#ff5b5b]/25 bg-[#ff5b5b]/10 px-3 py-1.5 text-[11px] font-black tracking-[0.14em] text-[#ffb1b1]">
+                最終確認
+              </span>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-[1.1rem] border border-white/10 bg-[#101217] shadow-[0_18px_40px_rgba(0,0,0,0.22)] sm:rounded-[1.4rem]">
+              <div className="relative px-3 py-3 sm:px-4 sm:py-4">
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: 'url(/0cd3e57f42bea2993917af7b221b3330.jpg)' }}
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(0,0,0,0.08)_40%,rgba(0,0,0,0.24)_100%)]" />
+
+                <div className="relative flex items-start gap-2.5 sm:gap-3">
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md sm:h-14 sm:w-14">
+                    <div className="absolute inset-0" style={COMMENT_PREVIEW_CROP_STYLE}>
+                      <img
+                        src={uploadConfirmation.avatarPreviewUrl}
+                        alt="TikTok LIVE comment avatar preview"
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[13px] font-black text-white sm:text-sm">@sample_listener</span>
+                      <span className="text-[10px] font-black tracking-[0.1em] text-tiktok-cyan">コメント</span>
+                    </div>
+                    <p className="mt-1 text-[13px] leading-5 text-white/86 sm:text-sm sm:leading-6">
+                      こんな感じでプロフィール画像にフレームが乗って見えます
+                    </p>
+                    <p className="mt-2 text-[10px] tracking-[0.08em] text-white/38 sm:text-[11px]">
+                      プレビューの人物画像と文言はサンプルです
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 border-t border-white/8 pt-4 sm:flex-row sm:justify-end sm:pt-5">
+              <button
+                type="button"
+                onClick={() => replaceUploadConfirmation(null)}
+                disabled={uploading}
+                className="rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                調整に戻る
+              </button>
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={uploading}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-tiktok-red px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-[#D92648] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    アップロード中...
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="h-4 w-4" />
+                    この内容でアップロード
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {user !== undefined && user?.plan !== 'pro' && (!!shareUrl || !!frameImage) ? (
         <div className="w-full mt-10 rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
