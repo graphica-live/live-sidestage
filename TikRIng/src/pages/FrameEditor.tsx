@@ -105,12 +105,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
     }, 650);
   };
 
-  const centerImage = () => {
-    dismissGestureHint();
-    startTransientAdjusting();
-    setPosition({ x: 0, y: 0 });
-  };
-
   // 初回マウント時にR2からフレーム画像を取得
   useEffect(() => {
     const controller = new AbortController();
@@ -766,16 +760,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-white"
             />
             <span className="text-xs text-tiktok-lightgray shrink-0 font-medium">拡大</span>
-          </div>
-
-          <div className="w-full flex justify-center">
-            <button
-              type="button"
-              onClick={centerImage}
-              className="px-4 py-2 rounded-md border border-tiktok-cyan/35 bg-tiktok-cyan/10 text-sm font-bold text-tiktok-cyan hover:bg-tiktok-cyan/18 transition-colors"
-            >
-              画像を中央配置
-            </button>
           </div>
 
           <div className="flex w-full gap-3 mt-4">
