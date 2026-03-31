@@ -98,7 +98,7 @@ const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 function drawOpeningMaskWatermark(ctx: CanvasRenderingContext2D, width: number, height: number) {
   const centerX = width / 2;
   const centerY = height / 2;
-  const fontSize = Math.max(48, Math.min(width, height) * 0.17);
+  const fontSize = Math.max(38, Math.min(width, height) * 0.138);
 
   ctx.save();
   ctx.translate(centerX, centerY);
@@ -107,8 +107,8 @@ function drawOpeningMaskWatermark(ctx: CanvasRenderingContext2D, width: number, 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const textWidth = ctx.measureText(OPENING_MASK_WATERMARK_TEXT).width;
-  const rowSpacing = Math.max(fontSize * 1.6, textWidth * 0.16);
-  const columnSpacing = Math.max(textWidth * 0.76, fontSize * 5.3);
+  const rowSpacing = Math.max(fontSize * 1.24, textWidth * 0.11);
+  const columnSpacing = Math.max(textWidth * 0.84, fontSize * 5.4);
 
   for (let y = -height; y <= height; y += rowSpacing) {
     const rowOffset = Math.round(y / rowSpacing) % 2 === 0 ? 0 : columnSpacing / 2;
