@@ -6,7 +6,10 @@ type CropMaskOverlayProps = {
   intro?: boolean;
 };
 
-export default function CropMaskOverlay({ active = false, intro = false }: CropMaskOverlayProps) {
+export default function CropMaskOverlay({
+  active = false,
+  intro = false,
+}: CropMaskOverlayProps) {
   const maskInstanceId = useId().replace(/:/g, '-');
   const overlayBleed = 1;
   const overlayColor = active
@@ -36,14 +39,16 @@ export default function CropMaskOverlay({ active = false, intro = false }: CropM
         </clipPath>
       </defs>
 
-      <rect
-        x={-overlayBleed}
-        y={-overlayBleed}
-        width={100 + overlayBleed * 2}
-        height={100 + overlayBleed * 2}
-        fill={overlayColor}
-        mask={`url(#${maskId})`}
-      />
+      <g>
+        <rect
+          x={-overlayBleed}
+          y={-overlayBleed}
+          width={100 + overlayBleed * 2}
+          height={100 + overlayBleed * 2}
+          fill={overlayColor}
+          mask={`url(#${maskId})`}
+        />
+      </g>
       <g clipPath={`url(#${circleClipId})`}>
         <line
           x1="50"

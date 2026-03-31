@@ -93,6 +93,35 @@ const updateHistory = [
 
 const latestUpdateAt = '2026.03.29 12:27';
 const OPENING_MASK_OUTPUT_SIZE = 512;
+const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
+
+function drawOpeningMaskWatermark(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const fontSize = Math.max(48, Math.min(width, height) * 0.17);
+
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate((-22 * Math.PI) / 180);
+  ctx.font = `700 ${fontSize}px "Segoe UI", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const textWidth = ctx.measureText(OPENING_MASK_WATERMARK_TEXT).width;
+  const rowSpacing = Math.max(fontSize * 1.6, textWidth * 0.16);
+  const columnSpacing = Math.max(textWidth * 0.76, fontSize * 5.3);
+
+  for (let y = -height; y <= height; y += rowSpacing) {
+    const rowOffset = Math.round(y / rowSpacing) % 2 === 0 ? 0 : columnSpacing / 2;
+    for (let x = -width * 1.4; x <= width * 1.4; x += columnSpacing) {
+      ctx.fillStyle = (Math.round((x + y) / rowSpacing) % 2 === 0)
+        ? 'rgba(255, 244, 247, 0.76)'
+        : 'rgba(255, 244, 247, 0.62)';
+      ctx.fillText(OPENING_MASK_WATERMARK_TEXT, x + rowOffset, y);
+    }
+  }
+
+  ctx.restore();
+}
 
 function pad2(n: number) {
   return n.toString().padStart(2, '0');
@@ -125,7 +154,6 @@ export default function Home({ user }: HomeProps) {
   const [manualOpeningTool, setManualOpeningTool] = useState<'paint' | 'erase' | null>(null);
   const [manualOpeningBrushSize, setManualOpeningBrushSize] = useState(24);
   const [hasOpeningMask, setHasOpeningMask] = useState(false);
-  const [hasManualOpeningEdits, setHasManualOpeningEdits] = useState(false);
   const [showMaskIntro, setShowMaskIntro] = useState(false);
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [autoFitNotice, setAutoFitNotice] = useState<AutoFitNotice | null>(null);
@@ -165,6 +193,12 @@ export default function Home({ user }: HomeProps) {
   const autoFitRequestRef = useRef(0);
   const autoFittingRef = useRef(false);
   const openingMaskRequestRef = useRef(0);
+  const renderOpeningMaskPreviewRef = useRef<() => void>(() => {});
+  const regenerateOpeningMaskRef = useRef<(
+    imageUrl: string,
+    nextPosition: { x: number; y: number },
+    nextZoom: number
+  ) => Promise<void>>(async () => {});
   const uploadConfirmationRef = useRef<UploadConfirmationState | null>(null);
 
   useEffect(() => {
@@ -240,6 +274,10 @@ export default function Home({ user }: HomeProps) {
     ctx.globalCompositeOperation = 'source-in';
     ctx.fillStyle = microAdjustOpen ? 'rgba(255, 91, 91, 0.42)' : 'rgba(255, 91, 91, 0.26)';
     ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = 'source-atop';
+    if (!manualOpeningTool) {
+      drawOpeningMaskWatermark(ctx, width, height);
+    }
     ctx.globalCompositeOperation = 'source-over';
 
     if (!framePreviewImage || !framePreviewImage.complete) {
@@ -291,7 +329,7 @@ export default function Home({ user }: HomeProps) {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.putImageData(overlayImageData, 0, 0);
-  }, [hasOpeningMask, microAdjustOpen, position, zoom]);
+  }, [hasOpeningMask, manualOpeningTool, microAdjustOpen, position, zoom]);
 
   const loadOpeningMaskBlobIntoCanvas = useCallback(async (maskBlob: Blob | null) => {
     const workingCanvas = ensureOpeningMaskWorkingCanvas();
@@ -348,7 +386,6 @@ export default function Home({ user }: HomeProps) {
         return;
       }
 
-      setHasManualOpeningEdits(false);
       await loadOpeningMaskBlobIntoCanvas(maskBlob);
     } catch (err) {
       console.error('Failed to regenerate opening mask:', err);
@@ -360,21 +397,29 @@ export default function Home({ user }: HomeProps) {
   }, [loadOpeningMaskBlobIntoCanvas, renderOpeningMaskPreview]);
 
   useEffect(() => {
+    renderOpeningMaskPreviewRef.current = renderOpeningMaskPreview;
+  }, [renderOpeningMaskPreview]);
+
+  useEffect(() => {
+    regenerateOpeningMaskRef.current = regenerateOpeningMask;
+  }, [regenerateOpeningMask]);
+
+  useEffect(() => {
     if (!frameImage) {
       setHasOpeningMask(false);
       openingMaskRequestRef.current += 1;
-      renderOpeningMaskPreview();
+      renderOpeningMaskPreviewRef.current();
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      void regenerateOpeningMask(frameImage, position, zoom);
+      void regenerateOpeningMaskRef.current(frameImage, position, zoom);
     }, 120);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [frameImage, position, zoom, regenerateOpeningMask, renderOpeningMaskPreview]);
+  }, [frameImage, position, zoom]);
 
   useEffect(() => {
     renderOpeningMaskPreview();
@@ -443,7 +488,8 @@ export default function Home({ user }: HomeProps) {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setIsAdjusting(false);
-    setHasManualOpeningEdits(false);
+    setManualOpeningTool(null);
+    setMicroAdjustOpen(false);
     setShowMaskIntro(false);
     showAutoFitNotice(null);
     setError(null);
@@ -639,7 +685,6 @@ export default function Home({ user }: HomeProps) {
     startTransientAdjusting();
     setPosition({ x: 0, y: 0 });
     setZoom(1);
-    setHasManualOpeningEdits(false);
     if (frameImage) {
       void regenerateOpeningMask(frameImage, { x: 0, y: 0 }, 1);
     }
@@ -650,7 +695,6 @@ export default function Home({ user }: HomeProps) {
       return;
     }
 
-    setHasManualOpeningEdits(false);
     void regenerateOpeningMask(frameImage, position, zoom);
   };
 
@@ -708,7 +752,6 @@ export default function Home({ user }: HomeProps) {
     ctx.restore();
 
     setHasOpeningMask(true);
-    setHasManualOpeningEdits(true);
     renderOpeningMaskPreview();
   };
 
@@ -950,11 +993,12 @@ export default function Home({ user }: HomeProps) {
     setPosition({ x: 0, y: 0 });
     setZoom(1);
     setIsAdjusting(false);
-    setHasManualOpeningEdits(false);
+    setManualOpeningTool(null);
     setHasOpeningMask(false);
     setShowMaskIntro(false);
     setShowGestureHint(false);
     showAutoFitNotice(null);
+    setMicroAdjustOpen(false);
 
     setProOptionsOpen(false);
     setCustomName('');
@@ -1509,7 +1553,7 @@ export default function Home({ user }: HomeProps) {
               </div>
               <canvas
                 ref={openingMaskPreviewCanvasRef}
-                className={`pointer-events-none absolute inset-0 z-30 h-full w-full ${microAdjustOpen ? 'opacity-100' : 'opacity-95'}`}
+                className={`editor-opening-mask-preview pointer-events-none absolute inset-0 z-30 h-full w-full ${microAdjustOpen ? 'editor-opening-mask-preview-static opacity-100' : 'opacity-95'}`}
                 aria-label="Profile opening overlay"
               />
             </div>
@@ -1718,20 +1762,8 @@ export default function Home({ user }: HomeProps) {
                           半透明の赤塗りをそのまま塗って、表示領域を調整できます。
                         </p>
                       </div>
-                      {microAdjustOpen ? (
-                        <span className="shrink-0 rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/14 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-[#ff9d9d]">
-                          ON
-                        </span>
-                      ) : null}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={resetOpeningMaskToAuto}
-                        className="px-3 py-2 rounded-md border border-white/12 bg-black/25 text-[11px] font-bold text-white/80 hover:bg-white/8 transition-colors"
-                      >
-                        手動修正を破棄して自動判定に戻す
-                      </button>
                     </div>
                     {microAdjustOpen ? (
                       <div className="mt-3 space-y-3 rounded-md border border-[#ff5b5b]/20 bg-black/20 p-3">
@@ -1750,24 +1782,13 @@ export default function Home({ user }: HomeProps) {
                           >
                             削る
                           </button>
-                          {manualOpeningTool ? (
-                            <span className="rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/10 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#ff9d9d]">
-                              {manualOpeningTool === 'paint' ? '塗りモード' : '削りモード'}
-                            </span>
-                          ) : (
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white/55">
-                              ドラッグ/ピンチ
-                            </span>
-                          )}
-                          {hasManualOpeningEdits ? (
-                            <span className="rounded-full border border-[#ff5b5b]/35 bg-[#ff5b5b]/10 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#ff9d9d]">
-                              編集あり
-                            </span>
-                          ) : (
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white/45">
-                              自動判定
-                            </span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={resetOpeningMaskToAuto}
+                            className="px-3 py-1.5 rounded-md border border-white/12 bg-black/20 text-[11px] font-bold text-white/80 hover:bg-white/8 transition-colors"
+                          >
+                            自動判定に戻す
+                          </button>
                         </div>
 
                         {manualOpeningTool ? (

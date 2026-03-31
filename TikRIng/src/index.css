@@ -149,6 +149,17 @@ body {
   }
 }
 
+@keyframes opening-mask-preview-pulse {
+  0%,
+  100% {
+    opacity: 0.96;
+  }
+
+  50% {
+    opacity: 0.78;
+  }
+}
+
 .editor-crop-mask {
   display: block;
 }
@@ -157,8 +168,17 @@ body {
   opacity: 0.85;
 }
 
+.editor-opening-mask-preview {
+  animation: opening-mask-preview-pulse 5.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
 .editor-crop-mask-intro {
   animation: crop-mask-intro-flash 0.7s ease-in-out 4;
+}
+
+.editor-opening-mask-preview-static {
+  animation: none;
 }
 
 @keyframes gesture-hint-enter {
@@ -495,6 +515,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .editor-opening-mask-preview,
   .editor-crop-mask-intro {
     animation: none;
   }
