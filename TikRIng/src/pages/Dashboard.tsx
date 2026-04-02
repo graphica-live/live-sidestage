@@ -28,6 +28,19 @@ type FramesMeta = {
 
 type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
 
+const ADMIN_ITEMS_PER_PAGE = 50;
+
+function getInitialDashboardPage() {
+  const params = new URLSearchParams(window.location.search);
+  const page = Number(params.get('page') || '1');
+
+  if (!Number.isFinite(page) || page < 1) {
+    return 1;
+  }
+
+  return Math.floor(page);
+}
+
 interface DashboardProps {
   user: User;
   initialScope: 'mine' | 'all';
@@ -48,6 +61,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [scope, setScope] = useState<'mine' | 'all'>(initialScope);
   const [sortBy, setSortBy] = useState<SortOption>('created_desc');
+  const [currentPage, setCurrentPage] = useState(() => getInitialDashboardPage());
 
   const canShow = useMemo(() => !!user, [user]);
   const isAdminScope = user.isAdmin && scope === 'all';
@@ -89,21 +103,77 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     return items;
   }, [frames, sortBy]);
 
+  const totalPages = useMemo(() => {
+    if (!isAdminScope) {
+      return 1;
+    }
+
+    return Math.max(1, Math.ceil(sortedFrames.length / ADMIN_ITEMS_PER_PAGE));
+  }, [isAdminScope, sortedFrames.length]);
+
+  const paginatedFrames = useMemo(() => {
+    if (!isAdminScope) {
+      return sortedFrames;
+    }
+
+    const start = (currentPage - 1) * ADMIN_ITEMS_PER_PAGE;
+    return sortedFrames.slice(start, start + ADMIN_ITEMS_PER_PAGE);
+  }, [currentPage, isAdminScope, sortedFrames]);
+
   useEffect(() => {
     setScope(initialScope);
   }, [initialScope]);
 
+  useEffect(() => {
+    setCurrentPage(getInitialDashboardPage());
+  }, [initialScope]);
+
+  useEffect(() => {
+    if (!isAdminScope) {
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      }
+      return;
+    }
+
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, isAdminScope, totalPages]);
+
   const navigateScope = (nextScope: 'mine' | 'all') => {
     setScope(nextScope);
+    setCurrentPage(1);
     const params = new URLSearchParams(window.location.search);
     params.set('dashboard', '1');
     if (nextScope === 'all') {
       params.set('scope', 'all');
+      params.delete('page');
     } else {
       params.delete('scope');
+      params.delete('page');
     }
     window.history.replaceState({}, '', `/?${params.toString()}`);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('dashboard', '1');
+
+    if (isAdminScope) {
+      params.set('scope', 'all');
+      if (currentPage > 1) {
+        params.set('page', String(currentPage));
+      } else {
+        params.delete('page');
+      }
+    } else {
+      params.delete('scope');
+      params.delete('page');
+    }
+
+    window.history.replaceState({}, '', `/?${params.toString()}`);
+  }, [currentPage, isAdminScope]);
 
   const getPreviewSrc = (frame: FrameItem) => {
     if (frame.kind === 'orphan') {
@@ -293,14 +363,24 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       ) : null}
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-tiktok-lightgray">
-          {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-tiktok-lightgray">
+            {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
+          </p>
+          {isAdminScope ? (
+            <p className="text-xs text-tiktok-lightgray">
+              {meta.totalCount}件中 {sortedFrames.length === 0 ? 0 : (currentPage - 1) * ADMIN_ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ADMIN_ITEMS_PER_PAGE, sortedFrames.length)}件を表示
+            </p>
+          ) : null}
+        </div>
         <label className="flex items-center gap-2 text-xs text-tiktok-lightgray">
           <span>並び替え</span>
           <select
             value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as SortOption)}
+            onChange={(event) => {
+              setSortBy(event.target.value as SortOption);
+              setCurrentPage(1);
+            }}
             className="rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-sm text-white focus:outline-none focus:border-tiktok-cyan"
           >
             <option value="created_desc">登録日時が新しい順</option>
@@ -337,7 +417,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       ) : (
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden">
-          {sortedFrames.map((frame) => {
+          {paginatedFrames.map((frame) => {
             const name = frame.displayName ?? '';
             const ownerLabel = frame.ownerDisplayName?.trim() || frame.ownerEmail || '不明なユーザー';
             const createdLabel = frame.createdAt
@@ -492,6 +572,32 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           })}
         </div>
       )}
+
+      {isAdminScope && totalPages > 1 ? (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-tiktok-lightgray">
+            {currentPage} / {totalPages} ページ
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+              className="rounded-md border border-tiktok-gray bg-tiktok-dark px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              前へ
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-md border border-tiktok-gray bg-tiktok-dark px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              次へ
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {user.plan === 'pro' && !user.isAdmin ? (
         <div className="mt-6 flex justify-center">
