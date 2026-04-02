@@ -1,5 +1,6 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
+import { isAdminEmail } from '../../_auth';
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const session = await getSession(ctx.env, ctx.request);
@@ -12,9 +13,18 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   // フレームの存在確認（owner確認はログイン時のみ）
   let frame;
   if (session) {
-    frame = await ctx.env.DB.prepare(
-      'SELECT id, owner_id FROM frames WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)'
-    ).bind(frameId, session.userId).first();
+    const viewer = await ctx.env.DB.prepare(
+      'SELECT email FROM users WHERE id = ?'
+    ).bind(session.userId).first<{ email: string | null }>();
+    const isAdmin = isAdminEmail(viewer?.email);
+
+    frame = isAdmin
+      ? await ctx.env.DB.prepare(
+          'SELECT id, owner_id FROM frames WHERE id = ?'
+        ).bind(frameId).first()
+      : await ctx.env.DB.prepare(
+          'SELECT id, owner_id FROM frames WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)'
+        ).bind(frameId, session.userId).first();
   } else {
     frame = await ctx.env.DB.prepare(
       'SELECT id, owner_id FROM frames WHERE id = ? AND owner_id IS NULL'

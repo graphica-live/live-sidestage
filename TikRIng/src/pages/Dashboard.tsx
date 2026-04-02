@@ -431,11 +431,69 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     fetchFrames();
   }, [canShow, fetchFrames]);
 
+  const createShareUrl = useCallback(async (frame: FrameItem) => {
+    if (frame.kind !== 'frame') {
+      return null;
+    }
+
+    setDetailLoading((current) => ({ ...current, [frame.id]: true }));
+
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ frameId: frame.id }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/';
+        return null;
+      }
+
+      if (res.status === 403) {
+        setError('このフレームの共有URLを生成する権限がありません。');
+        return null;
+      }
+
+      if (!res.ok) {
+        throw new Error('Failed to create share url');
+      }
+
+      const data = await res.json() as { url?: string };
+      const shareUrl = typeof data.url === 'string' && data.url ? data.url : null;
+
+      if (!shareUrl) {
+        throw new Error('Missing share url');
+      }
+
+      setFrameDetails((current) => ({
+        ...current,
+        [frame.id]: {
+          shareUrl,
+          passwordValue: current[frame.id]?.passwordValue ?? frame.passwordValue ?? null,
+        },
+      }));
+      setFrames((current) => current.map((item) => (
+        item.id === frame.id ? { ...item, shareUrl } : item
+      )));
+
+      return shareUrl;
+    } catch {
+      setError('共有URLの生成に失敗しました。');
+      return null;
+    } finally {
+      setDetailLoading((current) => ({ ...current, [frame.id]: false }));
+    }
+  }, []);
+
   const handleCopy = async (frame: FrameItem) => {
-    const details = await loadFrameDetails(frame);
-    const shareUrl = details?.shareUrl ?? frame.shareUrl;
+    let shareUrl = frameDetails[frame.id]?.shareUrl ?? frame.shareUrl;
     if (!shareUrl) {
-      setError('共有URLが見つかりません。');
+      shareUrl = await createShareUrl(frame);
+    }
+    if (!shareUrl) {
       return;
     }
 

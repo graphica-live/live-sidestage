@@ -200,6 +200,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         remainingDays = diff <= 0 ? 0 : Math.ceil(diff / dayMs);
       }
 
+      const share = await context.env.DB.prepare(
+        'SELECT id FROM share_urls WHERE frame_id = ? ORDER BY created_at DESC LIMIT 1'
+      )
+        .bind(row.id)
+        .first<{ id: string }>();
+
+      const shareUrl = share?.id
+        ? `${origin}?f=${share.id}&openExternalBrowser=1`
+        : row.owner_id === null
+          ? `${origin}?f=${row.id}&openExternalBrowser=1`
+          : null;
+
       frames.push({
         id: row.id,
         kind: 'frame',
@@ -208,7 +220,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         remainingDays,
-        shareUrl: null,
+        shareUrl,
         passwordProtected: Boolean(row.password_hash),
         passwordValue: null,
         ownerId: row.owner_id,
