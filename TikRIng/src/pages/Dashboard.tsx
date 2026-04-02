@@ -17,6 +17,7 @@ type FrameItem = {
   ownerId: string | null;
   ownerEmail: string | null;
   ownerDisplayName: string | null;
+  viewCount?: number;
 };
 
 type FramesMeta = {
@@ -25,7 +26,7 @@ type FramesMeta = {
   orphanCount: number;
 };
 
-type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc';
+type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
 
 interface DashboardProps {
   user: User;
@@ -57,6 +58,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     const valueForName = (frame: FrameItem) => frame.displayName.toLowerCase();
     const valueForCreated = (frame: FrameItem) => frame.createdAt ?? 0;
     const valueForExpires = (frame: FrameItem) => frame.expiresAt ?? Number.MAX_SAFE_INTEGER;
+    const valueForViews = (frame: FrameItem) => frame.viewCount ?? 0;
 
     items.sort((left, right) => {
       switch (sortBy) {
@@ -74,6 +76,10 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           return valueForExpires(left) - valueForExpires(right);
         case 'expires_desc':
           return valueForExpires(right) - valueForExpires(left);
+        case 'views_desc': {
+          const diff = valueForViews(right) - valueForViews(left);
+          return diff !== 0 ? diff : valueForCreated(right) - valueForCreated(left);
+        }
         case 'created_desc':
         default:
           return valueForCreated(right) - valueForCreated(left);
@@ -288,7 +294,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-tiktok-lightgray">
-          {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
+          {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
         </p>
         <label className="flex items-center gap-2 text-xs text-tiktok-lightgray">
           <span>並び替え</span>
@@ -303,6 +309,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
             <option value="expires_desc">期限が遠い順</option>
             <option value="name_asc">フレーム名 A-Z</option>
             <option value="name_desc">フレーム名 Z-A</option>
+            {isAdminScope ? <option value="views_desc">閲覧数が多い順</option> : null}
             {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
             {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
           </select>
@@ -405,6 +412,12 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
                       <p className="text-xs text-tiktok-lightgray break-all">
                         登録日時: {createdLabel}
                       </p>
+
+                      {isAdminScope ? (
+                        <p className="text-xs text-tiktok-lightgray break-all">
+                          閲覧数: {frame.viewCount ?? 0}
+                        </p>
+                      ) : null}
 
                       {isAdminScope ? (
                         <p className="text-xs text-tiktok-lightgray break-all">

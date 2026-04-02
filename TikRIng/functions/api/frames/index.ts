@@ -17,6 +17,7 @@ type FrameRow = {
   password_hash: string | null;
   password_ciphertext: string | null;
   created_at: number;
+  view_count: number | null;
 };
 
 type FrameListItem = {
@@ -33,6 +34,7 @@ type FrameListItem = {
   ownerId: string | null;
   ownerEmail: string | null;
   ownerDisplayName: string | null;
+  viewCount?: number;
 };
 
 type Viewer = {
@@ -148,14 +150,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const rows = isAdminScope
     ? await context.env.DB.prepare(
         `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          ORDER BY f.created_at DESC`
       ).all<FrameRow>()
     : await context.env.DB.prepare(
         `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at
+          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          WHERE f.owner_id = ?
@@ -207,6 +209,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ownerId: row.owner_id,
       ownerEmail: row.owner_email,
       ownerDisplayName: row.owner_display_name,
+      ...(isAdminScope ? { viewCount: row.view_count ?? 0 } : {}),
     });
   }
 
@@ -239,6 +242,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         ownerId: null,
         ownerEmail: null,
         ownerDisplayName: null,
+        viewCount: 0,
       });
     }
   }

@@ -14,6 +14,7 @@ type FrameRow = {
   opening_mask_key: string | null;
   expires_at: number | null;
   password_hash: string | null;
+  view_count: number | null;
 };
 
 type ResolvedFrame = {
@@ -23,6 +24,7 @@ type ResolvedFrame = {
   openingMaskKey: string | null;
   expiresAt: number | null;
   passwordHash: string | null;
+  viewCount: number;
 };
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
@@ -57,7 +59,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
   }
 
   const frameRow = await context.env.DB.prepare(
-    'SELECT id, owner_id, image_key, opening_mask_key, expires_at, password_hash FROM frames WHERE id = ?'
+    'SELECT id, owner_id, image_key, opening_mask_key, expires_at, password_hash, view_count FROM frames WHERE id = ?'
   )
     .bind(id)
     .first<FrameRow>();
@@ -73,6 +75,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
     openingMaskKey: frameRow.opening_mask_key ?? null,
     expiresAt: frameRow.expires_at ?? null,
     passwordHash: frameRow.password_hash ?? null,
+    viewCount: frameRow.view_count ?? 0,
   };
 }
 
@@ -95,6 +98,14 @@ async function canOwnerAccessFrame(context: EventContext<Env, string, unknown>, 
     .first<{ email: string | null }>();
 
   return isAdminEmail(viewer?.email);
+}
+
+async function incrementFrameViewCount(context: EventContext<Env, string, unknown>, frameId: string) {
+  await context.env.DB.prepare(
+    'UPDATE frames SET view_count = view_count + 1 WHERE id = ?'
+  )
+    .bind(frameId)
+    .run();
 }
 
 function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
@@ -144,6 +155,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
 
     const requestUrl = new URL(context.request.url);
+    const isMetaRequest = requestUrl.searchParams.get('meta') === '1';
+    const isMaskRequest = requestUrl.searchParams.get('mask') === '1';
     const requiresPassword = Boolean(frame.passwordHash);
     const ownerAccess = requestUrl.searchParams.get('ownerPreview') === '1'
       ? await canOwnerAccessFrame(context, frame.ownerId)
@@ -151,7 +164,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const tokenAccess = await hasFrameAccess(context, frame.frameId);
     const accessGranted = !requiresPassword || ownerAccess || tokenAccess;
 
-    if (requestUrl.searchParams.get('meta') === '1') {
+    if (isMetaRequest) {
       return json({
         requiresPassword,
         accessGranted,
@@ -164,7 +177,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       return json({ error: 'PASSWORD_REQUIRED' }, 401);
     }
 
-    if (requestUrl.searchParams.get('mask') === '1') {
+    if (isMaskRequest) {
       if (!frame.openingMaskKey) {
         return new Response('Not Found', {
           status: 404,
@@ -219,6 +232,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     );
     headers.set('X-Frame-Password-Required', requiresPassword ? '1' : '0');
     headers.set('Access-Control-Allow-Origin', '*');
+
+    if (!ownerAccess) {
+      await incrementFrameViewCount(context, frame.frameId);
+    }
 
     return new Response(object.body, {
       headers,
