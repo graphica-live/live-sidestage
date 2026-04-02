@@ -3,6 +3,10 @@ import { encryptFramePassword, hashFramePassword } from '../_framePassword';
 import type { Env } from '../_types';
 import { isEffectivePro } from '../_auth';
 
+type RecaptchaVerifyResponse = {
+  score?: number;
+};
+
 function isPngSignature(bytes: Uint8Array): boolean {
   if (bytes.length < 8) return false;
   return (
@@ -129,7 +133,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         });
 
         if (verifyRes.ok) {
-          const verifyData: any = await verifyRes.json();
+          const verifyData = (await verifyRes.json()) as RecaptchaVerifyResponse;
           const score = typeof verifyData?.score === 'number' ? verifyData.score : null;
           if (score !== null && score < 0.5) {
             return new Response(JSON.stringify({ error: 'BOT_DETECTED', message: '不正なアクセスを検出しました。' }), {

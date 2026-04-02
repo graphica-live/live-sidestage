@@ -7,22 +7,34 @@ import Dashboard from './pages/Dashboard';
 import BrowserWarning from './components/BrowserWarning';
 import { isTikTokInAppBrowser } from './utils/browser';
 
+type User = {
+  id: string;
+  display_name: string;
+  plan: string;
+  isAdmin: boolean;
+  email?: string | null;
+};
+
+type AuthMeResponse = {
+  user: User | null;
+};
+
 function App() {
   const [frameId, setFrameId] = useState<string | null>(null);
   const [frameCheckStatus, setFrameCheckStatus] = useState<'idle' | 'loading' | 'ok' | 'expired'>('idle');
   const [isDashboard, setIsDashboard] = useState(false);
   const [dashboardScope, setDashboardScope] = useState<'mine' | 'all'>('mine');
   const isTikTokInApp = isTikTokInAppBrowser();
-  const [user, setUser] = useState<{ id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null } | null | undefined>(undefined);
+  const [user, setUser] = useState<User | null | undefined>(undefined);
   const syncInFlightRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => {
         if (!r.ok) throw new Error('Failed to fetch user');
-        return r.json();
+        return r.json() as Promise<AuthMeResponse>;
       })
-      .then((data: any) => setUser(data.user))
+      .then((data) => setUser(data.user))
       .catch(() => setUser(null));
   }, []);
 
@@ -58,7 +70,7 @@ function App() {
       try {
         const res = await fetch('/api/auth/me');
         if (res.ok) {
-          const data: any = await res.json();
+          const data = (await res.json()) as AuthMeResponse;
           setUser(data.user);
         }
       } catch {
@@ -115,7 +127,7 @@ function App() {
     })();
 
     return () => controller.abort();
-  }, [frameId, isTikTokInApp]);
+  }, [frameId, isDashboard, isTikTokInApp]);
 
   useEffect(() => {
     if (isTikTokInApp) return;

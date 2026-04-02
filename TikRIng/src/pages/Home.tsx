@@ -14,7 +14,12 @@ import {
   isTransparentCenterWithinCropMask,
 } from '../utils/canvas';
 
-declare const grecaptcha: any;
+type Grecaptcha = {
+  execute: (siteKey: string, options: { action: string }) => Promise<string>;
+  ready?: (callback: () => void) => void;
+};
+
+declare const grecaptcha: Grecaptcha | undefined;
 
 interface HomeProps {
   user: { id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null } | null | undefined;
@@ -135,6 +140,10 @@ function addDays(d: Date, days: number) {
   const nd = new Date(d);
   nd.setDate(nd.getDate() + days);
   return nd;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 const COMMENT_PREVIEW_CROP_STYLE = {
@@ -1133,9 +1142,9 @@ export default function Home({ user }: HomeProps) {
         }
         throw previewError;
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
+      setError(getErrorMessage(err, '画像のアップロードに失敗しました。もう一度お試しください。'));
     } finally {
       setPreparingUploadConfirmation(false);
     }
@@ -1148,10 +1157,10 @@ export default function Home({ user }: HomeProps) {
     try {
       const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
       if (siteKey && typeof grecaptcha !== 'undefined' && grecaptcha?.execute) {
-        recaptchaToken = await new Promise((resolve) => {
+        recaptchaToken = await new Promise<string | null>((resolve) => {
           const exec = () => {
             Promise.resolve(grecaptcha.execute(siteKey, { action: 'upload' }))
-              .then((t: any) => resolve(typeof t === 'string' ? t : null))
+              .then((token) => resolve(typeof token === 'string' ? token : null))
               .catch(() => resolve(null));
           };
           if (typeof grecaptcha.ready === 'function') {
@@ -1173,9 +1182,9 @@ export default function Home({ user }: HomeProps) {
     try {
       await uploadPreparedFrame(uploadConfirmation.preparedBlob, uploadConfirmation.openingMaskBlob, recaptchaToken);
       replaceUploadConfirmation(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || '画像のアップロードに失敗しました。もう一度お試しください。');
+      setError(getErrorMessage(err, '画像のアップロードに失敗しました。もう一度お試しください。'));
     } finally {
       setUploading(false);
     }

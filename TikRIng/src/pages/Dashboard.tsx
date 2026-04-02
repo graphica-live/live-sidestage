@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
 
 type User = { id: string; display_name: string; plan: string; isAdmin: boolean };
@@ -113,7 +113,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     return `/api/frames/${frame.id}?ownerPreview=1`;
   };
 
-  const fetchFrames = async () => {
+  const fetchFrames = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -139,7 +139,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdminScope, user.isAdmin]);
 
   const openPreview = (frame: FrameItem) => {
     setPreviewError(false);
@@ -167,7 +167,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   useEffect(() => {
     if (!canShow) return;
     fetchFrames();
-  }, [canShow, scope]);
+  }, [canShow, fetchFrames]);
 
   const handleCopy = async (frame: FrameItem) => {
     if (!frame.shareUrl) return;

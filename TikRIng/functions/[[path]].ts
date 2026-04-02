@@ -1,11 +1,6 @@
 // functions/[[path]].ts
 // This is a catch-all middleware for Cloudflare Pages
 
-interface Env {
-    // If we had a KV namespace or DB to look up the specific frame's info, we would define it here.
-    // For now, we just want to change the text so it doesn't say "ライバー専用" (For Creators).
-}
-
 function buildListenerMeta(request: Request, frameId: string) {
     const url = new URL(request.url);
     const pageUrl = new URL(url.pathname, url.origin);
@@ -49,7 +44,7 @@ function applyCacheHeaders(request: Request, response: Response) {
     });
 }
 
-export const onRequest: PagesFunction<Env> = async (context) => {
+export const onRequest: PagesFunction = async (context) => {
     // Fetch the original response (e.g., the static index.html)
     const response = await context.next();
 

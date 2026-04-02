@@ -224,7 +224,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [id, accessGranted, accessToken]);
+  }, [id, accessToken]);
 
   useEffect(() => {
     return () => {
