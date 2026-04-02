@@ -1,6 +1,6 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
-import { createFrameAccessToken, hashFramePassword, verifyFrameAccessToken } from '../../_framePassword';
+import { createFrameAccessToken, decryptFramePassword, hashFramePassword, verifyFrameAccessToken } from '../../_framePassword';
 import { isAdminEmail } from '../../_auth';
 
 type ShareRow = {
@@ -14,6 +14,7 @@ type FrameRow = {
   opening_mask_key: string | null;
   expires_at: number | null;
   password_hash: string | null;
+  password_ciphertext: string | null;
   view_count: number | null;
 };
 
@@ -24,6 +25,7 @@ type ResolvedFrame = {
   openingMaskKey: string | null;
   expiresAt: number | null;
   passwordHash: string | null;
+  passwordCiphertext: string | null;
   viewCount: number;
 };
 
@@ -59,7 +61,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
   }
 
   const frameRow = await context.env.DB.prepare(
-    'SELECT id, owner_id, image_key, opening_mask_key, expires_at, password_hash, view_count FROM frames WHERE id = ?'
+    'SELECT id, owner_id, image_key, opening_mask_key, expires_at, password_hash, password_ciphertext, view_count FROM frames WHERE id = ?'
   )
     .bind(id)
     .first<FrameRow>();
@@ -75,6 +77,7 @@ async function resolveFrame(context: EventContext<Env, string, unknown>): Promis
     openingMaskKey: frameRow.opening_mask_key ?? null,
     expiresAt: frameRow.expires_at ?? null,
     passwordHash: frameRow.password_hash ?? null,
+    passwordCiphertext: frameRow.password_ciphertext ?? null,
     viewCount: frameRow.view_count ?? 0,
   };
 }
@@ -157,8 +160,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const requestUrl = new URL(context.request.url);
     const isMetaRequest = requestUrl.searchParams.get('meta') === '1';
     const isMaskRequest = requestUrl.searchParams.get('mask') === '1';
+    const isOwnerDetailsRequest = requestUrl.searchParams.get('ownerDetails') === '1';
     const requiresPassword = Boolean(frame.passwordHash);
     const ownerAccess = requestUrl.searchParams.get('ownerPreview') === '1'
+      ? await canOwnerAccessFrame(context, frame.ownerId)
+      : false;
+    const ownerDetailsAccess = isOwnerDetailsRequest
       ? await canOwnerAccessFrame(context, frame.ownerId)
       : false;
     const tokenAccess = await hasFrameAccess(context, frame.frameId);
@@ -170,6 +177,34 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         accessGranted,
         expiresAt: frame.expiresAt,
         hasOpeningMask: Boolean(frame.openingMaskKey),
+      });
+    }
+
+    if (isOwnerDetailsRequest) {
+      if (!ownerDetailsAccess) {
+        return json({ error: 'FORBIDDEN' }, 403);
+      }
+
+      const share = await context.env.DB.prepare(
+        'SELECT id FROM share_urls WHERE frame_id = ? ORDER BY created_at DESC LIMIT 1'
+      )
+        .bind(frame.frameId)
+        .first<{ id: string }>();
+
+      const shareUrl = share?.id
+        ? `${requestUrl.origin}?f=${share.id}&openExternalBrowser=1`
+        : frame.ownerId === null
+          ? `${requestUrl.origin}?f=${frame.frameId}&openExternalBrowser=1`
+          : null;
+
+      const passwordValue = frame.passwordHash
+        ? await decryptFramePassword(context.env, frame.passwordCiphertext)
+        : null;
+
+      return json({
+        shareUrl,
+        passwordProtected: requiresPassword,
+        passwordValue,
       });
     }
 

@@ -5,6 +5,22 @@ import { decryptFramePassword } from '../../_framePassword';
 import type { Env } from '../../_types';
 import { isAdminEmail, isEffectivePro } from '../../_auth';
 
+const ADMIN_PAGE_SIZE = 50;
+
+type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
+
+const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
+  created_desc: 'f.created_at DESC',
+  created_asc: 'f.created_at ASC',
+  owner_asc: "LOWER(COALESCE(u.display_name, u.email, '')) ASC, f.created_at DESC",
+  owner_desc: "LOWER(COALESCE(u.display_name, u.email, '')) DESC, f.created_at DESC",
+  name_asc: 'LOWER(COALESCE(f.custom_name, f.image_key)) ASC, f.created_at DESC',
+  name_desc: 'LOWER(COALESCE(f.custom_name, f.image_key)) DESC, f.created_at DESC',
+  expires_asc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at ASC, f.created_at DESC',
+  expires_desc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at DESC, f.created_at DESC',
+  views_desc: 'COALESCE(f.view_count, 0) DESC, f.created_at DESC',
+};
+
 type FrameRow = {
   id: string;
   owner_id: string | null;
@@ -15,14 +31,14 @@ type FrameRow = {
   opening_mask_key: string | null;
   expires_at: number | null;
   password_hash: string | null;
-  password_ciphertext: string | null;
+  password_ciphertext?: string | null;
   created_at: number;
   view_count: number | null;
 };
 
 type FrameListItem = {
   id: string;
-  kind: 'frame' | 'orphan';
+  kind: 'frame';
   storageKey: string;
   displayName: string;
   createdAt: number | null;
@@ -37,6 +53,14 @@ type FrameListItem = {
   viewCount?: number;
 };
 
+type FramesMeta = {
+  totalCount: number;
+  registeredCount: number;
+  orphanCount: number | null;
+  page: number;
+  pageSize: number;
+};
+
 type Viewer = {
   id: string;
   email: string | null;
@@ -49,22 +73,21 @@ async function getViewer(context: EventContext<Env, string, unknown>, userId: st
     .first<Viewer>();
 }
 
-async function listAllR2Objects(bucket: R2Bucket): Promise<R2Object[]> {
-  const objects: R2Object[] = [];
-  let cursor: string | undefined;
-
-  while (true) {
-    const listed = await bucket.list({ cursor, limit: 1000 });
-    objects.push(...listed.objects);
-
-    if (!listed.truncated || !listed.cursor) {
-      break;
-    }
-
-    cursor = listed.cursor;
+function parsePositiveInteger(raw: string | null, fallback: number, max: number) {
+  const value = Number(raw ?? '');
+  if (!Number.isFinite(value) || value < 1) {
+    return fallback;
   }
 
-  return objects;
+  return Math.min(max, Math.floor(value));
+}
+
+function parseAdminSort(raw: string | null): AdminSortOption {
+  if (raw && raw in ADMIN_SORT_SQL) {
+    return raw as AdminSortOption;
+  }
+
+  return 'created_desc';
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -147,34 +170,86 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const nowMs = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
-  const rows = isAdminScope
-    ? await context.env.DB.prepare(
-        `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
-         FROM frames f
-         LEFT JOIN users u ON u.id = f.owner_id
-         ORDER BY f.created_at DESC`
-      ).all<FrameRow>()
-    : await context.env.DB.prepare(
-        `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-          f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
-         FROM frames f
-         LEFT JOIN users u ON u.id = f.owner_id
-         WHERE f.owner_id = ?
-         ORDER BY f.created_at DESC`
-      )
-        .bind(session.userId)
-        .all<FrameRow>();
+  if (isAdminScope) {
+    const page = parsePositiveInteger(url.searchParams.get('page'), 1, 100000);
+    const pageSize = parsePositiveInteger(url.searchParams.get('pageSize'), ADMIN_PAGE_SIZE, ADMIN_PAGE_SIZE);
+    const offset = (page - 1) * pageSize;
+    const sort = parseAdminSort(url.searchParams.get('sort'));
+    const registeredCountRow = await context.env.DB.prepare('SELECT COUNT(*) AS count FROM frames')
+      .first<{ count: number }>();
+    const registeredCount = registeredCountRow?.count ?? 0;
+    const orderSql = ADMIN_SORT_SQL[sort];
+    const rows = await context.env.DB.prepare(
+      `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+        f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count
+       FROM frames f
+       LEFT JOIN users u ON u.id = f.owner_id
+       ORDER BY ${orderSql}
+       LIMIT ? OFFSET ?`
+    )
+      .bind(pageSize, offset)
+      .all<FrameRow>();
+
+    const frames: FrameListItem[] = [];
+
+    for (const row of rows.results ?? []) {
+      const displayName = row.custom_name?.trim() ? row.custom_name.trim() : row.image_key;
+      let remainingDays: number | null = null;
+      if (row.expires_at !== null) {
+        const diff = row.expires_at - nowMs;
+        remainingDays = diff <= 0 ? 0 : Math.ceil(diff / dayMs);
+      }
+
+      frames.push({
+        id: row.id,
+        kind: 'frame',
+        storageKey: row.image_key,
+        displayName,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        remainingDays,
+        shareUrl: null,
+        passwordProtected: Boolean(row.password_hash),
+        passwordValue: null,
+        ownerId: row.owner_id,
+        ownerEmail: row.owner_email,
+        ownerDisplayName: row.owner_display_name,
+        viewCount: row.view_count ?? 0,
+      });
+    }
+
+    const meta: FramesMeta = {
+      totalCount: registeredCount,
+      registeredCount,
+      orphanCount: null,
+      page,
+      pageSize,
+    };
+
+    return new Response(JSON.stringify({ frames, meta }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const rows = await context.env.DB.prepare(
+    `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+      f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
+     FROM frames f
+     LEFT JOIN users u ON u.id = f.owner_id
+     WHERE f.owner_id = ?
+     ORDER BY f.created_at DESC`
+  )
+    .bind(session.userId)
+    .all<FrameRow>();
 
   const frames: FrameListItem[] = [];
-  const dbStorageKeys = new Set<string>();
 
   for (const row of rows.results ?? []) {
-    dbStorageKeys.add(row.image_key);
     const displayName = row.custom_name?.trim() ? row.custom_name.trim() : row.image_key;
     const passwordProtected = Boolean(row.password_hash);
     const passwordValue = passwordProtected
-      ? await decryptFramePassword(context.env, row.password_ciphertext)
+      ? await decryptFramePassword(context.env, row.password_ciphertext ?? null)
       : null;
 
     let remainingDays: number | null = null;
@@ -209,42 +284,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ownerId: row.owner_id,
       ownerEmail: row.owner_email,
       ownerDisplayName: row.owner_display_name,
-      ...(isAdminScope ? { viewCount: row.view_count ?? 0 } : {}),
+      viewCount: row.view_count ?? 0,
     });
-  }
-
-  let orphanCount = 0;
-
-  if (isAdminScope) {
-    const objects = await listAllR2Objects(context.env.FRAMES_BUCKET);
-
-    for (const object of objects) {
-      if (object.key.startsWith('masks/') || object.key.startsWith('previews/')) {
-        continue;
-      }
-
-      if (dbStorageKeys.has(object.key)) {
-        continue;
-      }
-
-      orphanCount += 1;
-      frames.push({
-        id: object.key,
-        kind: 'orphan',
-        storageKey: object.key,
-        displayName: object.key,
-        createdAt: object.uploaded.getTime(),
-        expiresAt: null,
-        remainingDays: null,
-        shareUrl: null,
-        passwordProtected: false,
-        passwordValue: null,
-        ownerId: null,
-        ownerEmail: null,
-        ownerDisplayName: null,
-        viewCount: 0,
-      });
-    }
   }
 
   return new Response(JSON.stringify({
@@ -252,7 +293,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     meta: {
       totalCount: frames.length,
       registeredCount: rows.results?.length ?? 0,
-      orphanCount,
+      orphanCount: 0,
+      page: 1,
+      pageSize: frames.length,
     },
   }), {
     status: 200,

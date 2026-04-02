@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Shield, Trash2 } from 'lucide-react';
+import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Search, Shield, Trash2 } from 'lucide-react';
+import { getFrameOpeningGuideDataUrl } from '../utils/canvas';
 
 type User = { id: string; display_name: string; plan: string; isAdmin: boolean };
 
@@ -21,14 +22,47 @@ type FrameItem = {
 };
 
 type FramesMeta = {
-  totalCount: number;
-  registeredCount: number;
-  orphanCount: number;
+  totalCount: number | null;
+  registeredCount: number | null;
+  orphanCount: number | null;
+  page: number;
+  pageSize: number;
+  hasNextPage?: boolean;
 };
 
 type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
+type PreviewMode = 'default' | 'opening-guide';
+type PreviewState = {
+  frame: FrameItem;
+  mode: PreviewMode;
+};
+type AdminSection = 'registered' | 'orphans';
+type FrameDetails = {
+  shareUrl: string | null;
+  passwordValue: string | null;
+};
 
 const ADMIN_ITEMS_PER_PAGE = 50;
+
+const DEFAULT_META: FramesMeta = {
+  totalCount: 0,
+  registeredCount: 0,
+  orphanCount: 0,
+  page: 1,
+  pageSize: ADMIN_ITEMS_PER_PAGE,
+};
+
+function isSortOption(value: string | null): value is SortOption {
+  return value === 'created_desc'
+    || value === 'created_asc'
+    || value === 'owner_asc'
+    || value === 'owner_desc'
+    || value === 'name_asc'
+    || value === 'name_desc'
+    || value === 'expires_asc'
+    || value === 'expires_desc'
+    || value === 'views_desc';
+}
 
 function getInitialDashboardPage() {
   const params = new URLSearchParams(window.location.search);
@@ -41,6 +75,17 @@ function getInitialDashboardPage() {
   return Math.floor(page);
 }
 
+function getInitialDashboardSort(): SortOption {
+  const params = new URLSearchParams(window.location.search);
+  const sort = params.get('sort');
+  return isSortOption(sort) ? sort : 'created_desc';
+}
+
+function getInitialAdminSection(): AdminSection {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('view') === 'orphans' ? 'orphans' : 'registered';
+}
+
 interface DashboardProps {
   user: User;
   initialScope: 'mine' | 'all';
@@ -49,24 +94,35 @@ interface DashboardProps {
 export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
-  const [meta, setMeta] = useState<FramesMeta>({ totalCount: 0, registeredCount: 0, orphanCount: 0 });
+  const [meta, setMeta] = useState<FramesMeta>(DEFAULT_META);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FrameItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [canceling, setCanceling] = useState(false);
-  const [previewTarget, setPreviewTarget] = useState<FrameItem | null>(null);
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [previewError, setPreviewError] = useState(false);
+  const [previewGuideUrl, setPreviewGuideUrl] = useState<string | null>(null);
+  const [previewGuideLoading, setPreviewGuideLoading] = useState(false);
+  const [previewGuideError, setPreviewGuideError] = useState<string | null>(null);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [frameDetails, setFrameDetails] = useState<Record<string, FrameDetails>>({});
+  const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
   const [scope, setScope] = useState<'mine' | 'all'>(initialScope);
-  const [sortBy, setSortBy] = useState<SortOption>('created_desc');
+  const [sortBy, setSortBy] = useState<SortOption>(() => getInitialDashboardSort());
+  const [adminSection, setAdminSection] = useState<AdminSection>(() => getInitialAdminSection());
   const [currentPage, setCurrentPage] = useState(() => getInitialDashboardPage());
 
   const canShow = useMemo(() => !!user, [user]);
   const isAdminScope = user.isAdmin && scope === 'all';
+  const isOrphanSection = isAdminScope && adminSection === 'orphans';
 
-  const sortedFrames = useMemo(() => {
+  const displayFrames = useMemo(() => {
+    if (isAdminScope) {
+      return frames;
+    }
+
     const items = [...frames];
     const valueForOwner = (frame: FrameItem) => (frame.ownerDisplayName?.trim() || frame.ownerEmail || '').toLowerCase();
     const valueForName = (frame: FrameItem) => frame.displayName.toLowerCase();
@@ -101,31 +157,28 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     });
 
     return items;
-  }, [frames, sortBy]);
+  }, [frames, isAdminScope, sortBy]);
 
   const totalPages = useMemo(() => {
-    if (!isAdminScope) {
+    if (!isAdminScope || isOrphanSection) {
       return 1;
     }
 
-    return Math.max(1, Math.ceil(sortedFrames.length / ADMIN_ITEMS_PER_PAGE));
-  }, [isAdminScope, sortedFrames.length]);
-
-  const paginatedFrames = useMemo(() => {
-    if (!isAdminScope) {
-      return sortedFrames;
-    }
-
-    const start = (currentPage - 1) * ADMIN_ITEMS_PER_PAGE;
-    return sortedFrames.slice(start, start + ADMIN_ITEMS_PER_PAGE);
-  }, [currentPage, isAdminScope, sortedFrames]);
+    const totalCount = meta.totalCount ?? 0;
+    return Math.max(1, Math.ceil(totalCount / ADMIN_ITEMS_PER_PAGE));
+  }, [isAdminScope, isOrphanSection, meta.totalCount]);
 
   useEffect(() => {
     setScope(initialScope);
-  }, [initialScope]);
+    if (initialScope === 'all') {
+      setAdminSection(getInitialAdminSection());
+      setSortBy(getInitialDashboardSort());
+      setCurrentPage(getInitialDashboardPage());
+      return;
+    }
 
-  useEffect(() => {
-    setCurrentPage(getInitialDashboardPage());
+    setAdminSection('registered');
+    setCurrentPage(1);
   }, [initialScope]);
 
   useEffect(() => {
@@ -139,19 +192,24 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
-  }, [currentPage, isAdminScope, totalPages]);
+  }, [currentPage, isAdminScope, isOrphanSection, totalPages]);
 
   const navigateScope = (nextScope: 'mine' | 'all') => {
     setScope(nextScope);
+    setAdminSection('registered');
     setCurrentPage(1);
     const params = new URLSearchParams(window.location.search);
     params.set('dashboard', '1');
     if (nextScope === 'all') {
       params.set('scope', 'all');
       params.delete('page');
+      params.delete('view');
+      params.delete('sort');
     } else {
       params.delete('scope');
       params.delete('page');
+      params.delete('view');
+      params.delete('sort');
     }
     window.history.replaceState({}, '', `/?${params.toString()}`);
   };
@@ -162,18 +220,27 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
 
     if (isAdminScope) {
       params.set('scope', 'all');
+      params.set('view', adminSection);
       if (currentPage > 1) {
         params.set('page', String(currentPage));
       } else {
         params.delete('page');
       }
+
+      if (adminSection === 'registered' && sortBy !== 'created_desc') {
+        params.set('sort', sortBy);
+      } else {
+        params.delete('sort');
+      }
     } else {
       params.delete('scope');
       params.delete('page');
+      params.delete('view');
+      params.delete('sort');
     }
 
     window.history.replaceState({}, '', `/?${params.toString()}`);
-  }, [currentPage, isAdminScope]);
+  }, [adminSection, currentPage, isAdminScope, sortBy]);
 
   const getPreviewSrc = (frame: FrameItem) => {
     if (frame.kind === 'orphan') {
@@ -187,8 +254,23 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     setLoading(true);
     setError(null);
     try {
-      const query = isAdminScope ? '?scope=all' : '';
-      const res = await fetch(`/api/frames${query}`);
+      const query = new URLSearchParams();
+      let endpoint = '/api/frames';
+
+      if (isAdminScope) {
+        query.set('page', String(currentPage));
+        query.set('pageSize', String(ADMIN_ITEMS_PER_PAGE));
+
+        if (adminSection === 'registered') {
+          query.set('scope', 'all');
+          query.set('sort', sortBy);
+        } else {
+          endpoint = '/api/frames/orphans';
+        }
+      }
+
+      const queryString = query.toString();
+      const res = await fetch(queryString ? `${endpoint}?${queryString}` : endpoint);
       if (res.status === 401) {
         window.location.href = '/';
         return;
@@ -202,27 +284,93 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       }
       if (!res.ok) throw new Error('Failed to fetch frames');
       const data = (await res.json()) as { frames: FrameItem[]; meta?: FramesMeta };
+
+      if (isAdminScope && adminSection === 'orphans' && currentPage > 1 && (data.frames?.length ?? 0) === 0) {
+        setCurrentPage((page) => Math.max(1, page - 1));
+        return;
+      }
+
       setFrames(data.frames ?? []);
-      setMeta(data.meta ?? { totalCount: data.frames?.length ?? 0, registeredCount: data.frames?.length ?? 0, orphanCount: 0 });
+      setMeta(data.meta ?? {
+        totalCount: data.frames?.length ?? 0,
+        registeredCount: data.frames?.length ?? 0,
+        orphanCount: 0,
+        page: 1,
+        pageSize: data.frames?.length ?? ADMIN_ITEMS_PER_PAGE,
+      });
     } catch {
       setError('フレーム一覧の取得に失敗しました。');
     } finally {
       setLoading(false);
     }
-  }, [isAdminScope, user.isAdmin]);
+  }, [adminSection, currentPage, isAdminScope, sortBy, user.isAdmin]);
 
-  const openPreview = (frame: FrameItem) => {
+  const loadFrameDetails = useCallback(async (frame: FrameItem) => {
+    if (frame.kind !== 'frame') {
+      return null;
+    }
+
+    const existing = frameDetails[frame.id];
+    if (existing) {
+      return existing;
+    }
+
+    if (!isAdminScope) {
+      return {
+        shareUrl: frame.shareUrl,
+        passwordValue: frame.passwordValue,
+      };
+    }
+
+    if (detailLoading[frame.id]) {
+      return null;
+    }
+
+    setDetailLoading((current) => ({ ...current, [frame.id]: true }));
+
+    try {
+      const res = await fetch(`/api/frames/${encodeURIComponent(frame.id)}?ownerDetails=1`);
+      if (res.status === 401) {
+        window.location.href = '/';
+        return null;
+      }
+      if (!res.ok) {
+        throw new Error('Failed to fetch frame details');
+      }
+
+      const data = await res.json() as FrameDetails;
+      const details = {
+        shareUrl: data.shareUrl ?? null,
+        passwordValue: data.passwordValue ?? null,
+      };
+      setFrameDetails((current) => ({ ...current, [frame.id]: details }));
+      return details;
+    } catch {
+      setError('フレーム詳細の取得に失敗しました。');
+      return null;
+    } finally {
+      setDetailLoading((current) => ({ ...current, [frame.id]: false }));
+    }
+  }, [detailLoading, frameDetails, isAdminScope]);
+
+  const openPreview = (frame: FrameItem, mode: PreviewMode = 'default') => {
     setPreviewError(false);
-    setPreviewTarget(frame);
+    setPreviewGuideUrl(null);
+    setPreviewGuideError(null);
+    setPreviewGuideLoading(mode === 'opening-guide');
+    setPreviewState({ frame, mode });
   };
 
   const closePreview = () => {
-    setPreviewTarget(null);
+    setPreviewState(null);
     setPreviewError(false);
+    setPreviewGuideUrl(null);
+    setPreviewGuideError(null);
+    setPreviewGuideLoading(false);
   };
 
   useEffect(() => {
-    if (!previewTarget) return;
+    if (!previewState) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -232,7 +380,51 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [previewTarget]);
+  }, [previewState]);
+
+  useEffect(() => {
+    if (!previewState || previewState.mode !== 'opening-guide') {
+      setPreviewGuideUrl(null);
+      setPreviewGuideError(null);
+      setPreviewGuideLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const previewSrc = getPreviewSrc(previewState.frame);
+
+    setPreviewGuideUrl(null);
+    setPreviewGuideError(null);
+    setPreviewGuideLoading(true);
+
+    getFrameOpeningGuideDataUrl(previewSrc)
+      .then((guideUrl) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (guideUrl) {
+          setPreviewGuideUrl(guideUrl);
+          return;
+        }
+
+        setPreviewGuideError('赤塗りの表示範囲を生成できませんでした。');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewGuideError('赤塗りの表示範囲を読み込めませんでした。');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewGuideLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewState]);
 
   useEffect(() => {
     if (!canShow) return;
@@ -240,9 +432,15 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   }, [canShow, fetchFrames]);
 
   const handleCopy = async (frame: FrameItem) => {
-    if (!frame.shareUrl) return;
+    const details = await loadFrameDetails(frame);
+    const shareUrl = details?.shareUrl ?? frame.shareUrl;
+    if (!shareUrl) {
+      setError('共有URLが見つかりません。');
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(frame.shareUrl);
+      await navigator.clipboard.writeText(shareUrl);
       setCopiedId(frame.id);
       window.setTimeout(() => {
         setCopiedId((cur) => (cur === frame.id ? null : cur));
@@ -250,6 +448,24 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     } catch {
       // ignore
     }
+  };
+
+  const handlePasswordVisibility = async (frame: FrameItem) => {
+    if (!frame.passwordProtected) {
+      return;
+    }
+
+    const details = await loadFrameDetails(frame);
+    const passwordValue = details?.passwordValue ?? frame.passwordValue;
+    if (!passwordValue) {
+      setError('パスワードの取得に失敗しました。');
+      return;
+    }
+
+    setVisiblePasswords((current) => ({
+      ...current,
+      [frame.id]: !current[frame.id],
+    }));
   };
 
   const handleDelete = async () => {
@@ -272,13 +488,6 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     } finally {
       setDeleting(false);
     }
-  };
-
-  const togglePasswordVisibility = (frameId: string) => {
-    setVisiblePasswords((current) => ({
-      ...current,
-      [frameId]: !current[frameId],
-    }));
   };
 
   const handleCancelSubscription = async () => {
@@ -348,52 +557,88 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
       {isAdminScope ? (
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">総件数</p>
-            <p className="mt-1 text-2xl font-black text-white">{meta.totalCount}</p>
-          </div>
-          <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
             <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">登録フレーム</p>
-            <p className="mt-1 text-2xl font-black text-white">{meta.registeredCount}</p>
+            <p className="mt-1 text-2xl font-black text-white">{meta.registeredCount ?? '-'}</p>
           </div>
           <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
             <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">R2孤児データ</p>
-            <p className="mt-1 text-2xl font-black text-white">{meta.orphanCount}</p>
+            <p className="mt-1 text-2xl font-black text-white">{meta.orphanCount ?? '-'}</p>
           </div>
+          <div className="rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">現在の表示</p>
+            <p className="mt-1 text-lg font-black text-white">{isOrphanSection ? `孤児 ${currentPage}ページ目` : `${currentPage} / ${totalPages} ページ`}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {isAdminScope ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setAdminSection('registered');
+              setCurrentPage(1);
+              setError(null);
+            }}
+            className={`rounded-md border px-4 py-2 text-sm font-bold transition-colors ${adminSection === 'registered' ? 'border-tiktok-cyan bg-tiktok-cyan/15 text-white' : 'border-tiktok-gray bg-tiktok-dark text-tiktok-lightgray hover:bg-tiktok-gray/40 hover:text-white'}`}
+          >
+            登録フレーム一覧
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAdminSection('orphans');
+              setCurrentPage(1);
+              setError(null);
+            }}
+            className={`rounded-md border px-4 py-2 text-sm font-bold transition-colors ${adminSection === 'orphans' ? 'border-tiktok-cyan bg-tiktok-cyan/15 text-white' : 'border-tiktok-gray bg-tiktok-dark text-tiktok-lightgray hover:bg-tiktok-gray/40 hover:text-white'}`}
+          >
+            R2孤児データ
+          </button>
         </div>
       ) : null}
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <p className="text-xs text-tiktok-lightgray">
-            {isAdminScope ? '登録日時降順が初期表示です。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。' : '登録日時や有効期限で並び替えできます。'}
+            {isOrphanSection
+              ? 'R2孤児データは必要時のみ読み込みます。孤児一覧では共有URLとパスワードは取得しません。'
+              : isAdminScope
+                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。'
+                : '登録日時や有効期限で並び替えできます。'}
           </p>
-          {isAdminScope ? (
+          {isAdminScope && !isOrphanSection ? (
             <p className="text-xs text-tiktok-lightgray">
-              {meta.totalCount}件中 {sortedFrames.length === 0 ? 0 : (currentPage - 1) * ADMIN_ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ADMIN_ITEMS_PER_PAGE, sortedFrames.length)}件を表示
+              {(meta.totalCount ?? 0) === 0 ? 0 : (currentPage - 1) * ADMIN_ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ADMIN_ITEMS_PER_PAGE, meta.totalCount ?? 0)}件 / 全{meta.totalCount ?? 0}件
             </p>
           ) : null}
+          {isOrphanSection ? (
+            <p className="text-xs text-tiktok-lightgray">孤児データの総件数は初回ロードでは計算しません。前へ/次へで50件ずつ確認できます。</p>
+          ) : null}
         </div>
-        <label className="flex items-center gap-2 text-xs text-tiktok-lightgray">
-          <span>並び替え</span>
-          <select
-            value={sortBy}
-            onChange={(event) => {
-              setSortBy(event.target.value as SortOption);
-              setCurrentPage(1);
-            }}
-            className="rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-sm text-white focus:outline-none focus:border-tiktok-cyan"
-          >
-            <option value="created_desc">登録日時が新しい順</option>
-            <option value="created_asc">登録日時が古い順</option>
-            <option value="expires_asc">期限が近い順</option>
-            <option value="expires_desc">期限が遠い順</option>
-            <option value="name_asc">フレーム名 A-Z</option>
-            <option value="name_desc">フレーム名 Z-A</option>
-            {isAdminScope ? <option value="views_desc">閲覧数が多い順</option> : null}
-            {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
-            {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
-          </select>
-        </label>
+        {!isOrphanSection ? (
+          <label className="flex items-center gap-2 text-xs text-tiktok-lightgray">
+            <span>並び替え</span>
+            <select
+              value={sortBy}
+              onChange={(event) => {
+                setSortBy(event.target.value as SortOption);
+                setCurrentPage(1);
+              }}
+              className="rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-sm text-white focus:outline-none focus:border-tiktok-cyan"
+            >
+              <option value="created_desc">登録日時が新しい順</option>
+              <option value="created_asc">登録日時が古い順</option>
+              <option value="expires_asc">期限が近い順</option>
+              <option value="expires_desc">期限が遠い順</option>
+              <option value="name_asc">フレーム名 A-Z</option>
+              <option value="name_desc">フレーム名 Z-A</option>
+              {isAdminScope ? <option value="views_desc">閲覧数が多い順</option> : null}
+              {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
+              {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {error ? (
@@ -402,9 +647,9 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       ) : null}
 
-      {sortedFrames.length === 0 ? (
+      {displayFrames.length === 0 ? (
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray p-6 text-center">
-          <p className="text-white font-bold mb-2">登録済みのフレームはありません</p>
+          <p className="text-white font-bold mb-2">{isOrphanSection ? 'R2孤児データは見つかりませんでした' : '登録済みのフレームはありません'}</p>
           <button
             type="button"
             onClick={() => {
@@ -417,9 +662,11 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       ) : (
         <div className="w-full rounded-md bg-tiktok-dark border border-tiktok-gray overflow-hidden">
-          {paginatedFrames.map((frame) => {
+          {displayFrames.map((frame) => {
             const name = frame.displayName ?? '';
             const ownerLabel = frame.ownerDisplayName?.trim() || frame.ownerEmail || '不明なユーザー';
+            const frameDetail = frameDetails[frame.id];
+            const passwordValue = frame.passwordValue ?? frameDetail?.passwordValue ?? null;
             const createdLabel = frame.createdAt
               ? new Date(frame.createdAt).toLocaleString('ja-JP', {
                   year: 'numeric',
@@ -518,25 +765,39 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
                             パスワード保護中
                           </span>
 
-                          {frame.passwordValue ? (
+                          {passwordValue ? (
                             <>
                               <span className="rounded-md bg-tiktok-black border border-tiktok-gray px-2.5 py-1 text-tiktok-lightgray">
-                                {visiblePasswords[frame.id] ? frame.passwordValue : '••••••••'}
+                                {visiblePasswords[frame.id] ? passwordValue : '••••••••'}
                               </span>
                               <button
                                 type="button"
-                                onClick={(event) => {
+                                onClick={async (event) => {
                                   event.stopPropagation();
-                                  togglePasswordVisibility(frame.id);
+                                  await handlePasswordVisibility(frame);
                                 }}
-                                className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors"
+                                disabled={detailLoading[frame.id]}
+                                className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                 aria-label={visiblePasswords[frame.id] ? 'hide password' : 'show password'}
                               >
                                 {visiblePasswords[frame.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                 {visiblePasswords[frame.id] ? '隠す' : '表示'}
                               </button>
                             </>
-                          ) : null}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={async (event) => {
+                                event.stopPropagation();
+                                await handlePasswordVisibility(frame);
+                              }}
+                              disabled={detailLoading[frame.id]}
+                              className="inline-flex items-center gap-1 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 px-2.5 py-1 font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {detailLoading[frame.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                              {detailLoading[frame.id] ? '読込中...' : '表示'}
+                            </button>
+                          )}
                         </div>
                       ) : null}
                     </div>
@@ -547,12 +808,27 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
 
                 <button
                   type="button"
-                  onClick={() => handleCopy(frame)}
-                  disabled={!frame.shareUrl}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPreview(frame, 'opening-guide');
+                  }}
+                  className="shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-red/20 transition-colors"
+                  aria-label="show opening guide"
+                  title="赤塗りの表示範囲を見る"
+                >
+                  <Search className="w-4 h-4 text-tiktok-red" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => handleCopy(frame)}
+                  disabled={frame.kind === 'orphan' || detailLoading[frame.id]}
                   className="shrink-0 p-2 rounded-md bg-tiktok-gray hover:bg-tiktok-lightgray/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="copy url"
                 >
-                  {copiedId === frame.id ? (
+                  {detailLoading[frame.id] ? (
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                  ) : copiedId === frame.id ? (
                     <Check className="w-4 h-4 text-tiktok-cyan" />
                   ) : (
                     <LinkIcon className="w-4 h-4 text-white" />
@@ -573,7 +849,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       )}
 
-      {isAdminScope && totalPages > 1 ? (
+      {isAdminScope && !isOrphanSection && totalPages > 1 ? (
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-tiktok-lightgray">
             {currentPage} / {totalPages} ページ
@@ -591,6 +867,32 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
               type="button"
               onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
               disabled={currentPage === totalPages}
+              className="rounded-md border border-tiktok-gray bg-tiktok-dark px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              次へ
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isOrphanSection ? (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-tiktok-lightgray">
+            {currentPage} ページ目
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+              className="rounded-md border border-tiktok-gray bg-tiktok-dark px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              前へ
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => page + 1)}
+              disabled={!meta.hasNextPage}
               className="rounded-md border border-tiktok-gray bg-tiktok-dark px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-40"
             >
               次へ
@@ -638,7 +940,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         </div>
       ) : null}
 
-      {previewTarget ? (
+      {previewState ? (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-[1px] flex items-center justify-center px-4 py-6"
           onClick={closePreview}
@@ -649,11 +951,13 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           >
             <div className="mb-3 flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-sm font-bold text-white break-all">{previewTarget.displayName}</p>
+                <p className="text-sm font-bold text-white break-all">{previewState.frame.displayName}</p>
                 <p className="mt-1 text-xs text-tiktok-lightgray break-all">
-                  {previewTarget.kind === 'orphan'
-                    ? `R2孤児データ: ${previewTarget.storageKey}`
-                    : `フレームID: ${previewTarget.id}`}
+                  {previewState.mode === 'opening-guide'
+                    ? '赤塗りのアイコン表示範囲プレビュー'
+                    : previewState.frame.kind === 'orphan'
+                      ? `R2孤児データ: ${previewState.frame.storageKey}`
+                      : `フレームID: ${previewState.frame.id}`}
                 </p>
               </div>
               <button
@@ -671,12 +975,44 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
                   画像を表示できませんでした。
                 </div>
               ) : (
-                <img
-                  src={getPreviewSrc(previewTarget)}
-                  alt={`${previewTarget.displayName} full preview`}
-                  className="max-h-[75vh] w-full object-contain bg-black"
-                  onError={() => setPreviewError(true)}
-                />
+                <div className="relative flex min-h-[16rem] items-center justify-center bg-black">
+                  <img
+                    src={getPreviewSrc(previewState.frame)}
+                    alt={`${previewState.frame.displayName} full preview`}
+                    className="max-h-[75vh] w-full object-contain bg-black"
+                    onError={() => setPreviewError(true)}
+                  />
+
+                  {previewState.mode === 'opening-guide' ? (
+                    <>
+                      {previewGuideUrl ? (
+                        <img
+                          src={previewGuideUrl}
+                          alt="Opening guide overlay"
+                          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-95"
+                        />
+                      ) : null}
+
+                      {previewGuideLoading ? (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/70 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
+                            <Loader2 className="h-4 w-4 animate-spin text-tiktok-red" />
+                            赤塗りの表示範囲を生成中...
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {previewGuideError ? (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+                          <div className="max-w-md rounded-2xl border border-amber-300/35 bg-[#2A1904]/88 px-4 py-3 text-center shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+                            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">Opening Guide</p>
+                            <p className="mt-1 text-sm font-bold text-white">{previewGuideError}</p>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>
