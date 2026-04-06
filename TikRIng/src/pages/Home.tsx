@@ -51,6 +51,11 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
+    date: '2026.04.06',
+    title: '閉じていないフレームのプロフ画像表示範囲を全面開始に変更',
+    detail: '円形に閉じていないなど自動判定が難しいフレームでも、プロフ画像の表示範囲が初期状態で全面になるよう変更。',
+  },
+  {
     date: '2026.03.29',
     title: 'フレーム外周の透過機能を追加',
     detail: 'フレーム外周の透過表現に対応し、外側まで自然に抜ける表示を追加。',
@@ -97,7 +102,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.03.29 12:27';
+const latestUpdateAt = '2026.04.06 20:09';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
