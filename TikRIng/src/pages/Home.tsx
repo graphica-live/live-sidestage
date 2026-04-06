@@ -8,6 +8,7 @@ import {
   getFrameBackgroundTransparencySuggestion,
   getCircleAutoFit,
   getSharePreviewBlob,
+  getSolidOpeningMaskBlob,
   getSquareFrameOpeningMaskBlob,
   getSquareFrameBlob,
   getTikTokLiveCommentAvatarPreviewDataUrl,
@@ -163,6 +164,7 @@ export default function Home({ user }: HomeProps) {
   const [manualOpeningTool, setManualOpeningTool] = useState<'paint' | 'erase' | null>(null);
   const [manualOpeningBrushSize, setManualOpeningBrushSize] = useState(24);
   const [hasOpeningMask, setHasOpeningMask] = useState(false);
+  const [openingMaskNeedsAttention, setOpeningMaskNeedsAttention] = useState(false);
   const [showMaskIntro, setShowMaskIntro] = useState(false);
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [autoFitNotice, setAutoFitNotice] = useState<AutoFitNotice | null>(null);
@@ -244,6 +246,26 @@ export default function Home({ user }: HomeProps) {
     }
 
     return openingMaskWorkingCanvasRef.current;
+  }, []);
+
+  const hasVisibleOpeningMask = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (!canvas) {
+      return false;
+    }
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      return false;
+    }
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < imageData.length; index += 4) {
+      if (imageData[index] > 0) {
+        return true;
+      }
+    }
+
+    return false;
   }, []);
 
   const renderOpeningMaskPreview = useCallback(() => {
@@ -366,12 +388,12 @@ export default function Home({ user }: HomeProps) {
       });
 
       ctx.drawImage(image, 0, 0, workingCanvas.width, workingCanvas.height);
-      setHasOpeningMask(true);
+      setHasOpeningMask(hasVisibleOpeningMask(workingCanvas));
       renderOpeningMaskPreview();
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
-  }, [ensureOpeningMaskWorkingCanvas, renderOpeningMaskPreview]);
+  }, [ensureOpeningMaskWorkingCanvas, hasVisibleOpeningMask, renderOpeningMaskPreview]);
 
   const regenerateOpeningMask = useCallback(async (
     imageUrl: string,
@@ -383,7 +405,7 @@ export default function Home({ user }: HomeProps) {
 
     try {
       const previewSize = editorRef.current?.clientWidth ?? OPENING_MASK_OUTPUT_SIZE;
-      const maskBlob = await getSquareFrameOpeningMaskBlob(
+      const autoMaskBlob = await getSquareFrameOpeningMaskBlob(
         imageUrl,
         nextPosition,
         nextZoom,
@@ -391,15 +413,19 @@ export default function Home({ user }: HomeProps) {
         previewSize
       );
 
+      const maskBlob = autoMaskBlob ?? await getSolidOpeningMaskBlob(OPENING_MASK_OUTPUT_SIZE);
+
       if (openingMaskRequestRef.current !== requestId) {
         return;
       }
 
       await loadOpeningMaskBlobIntoCanvas(maskBlob);
+      setOpeningMaskNeedsAttention(!autoMaskBlob);
     } catch (err) {
       console.error('Failed to regenerate opening mask:', err);
       if (openingMaskRequestRef.current === requestId) {
         setHasOpeningMask(false);
+        setOpeningMaskNeedsAttention(false);
         renderOpeningMaskPreview();
       }
     }
@@ -416,6 +442,7 @@ export default function Home({ user }: HomeProps) {
   useEffect(() => {
     if (!frameImage) {
       setHasOpeningMask(false);
+      setOpeningMaskNeedsAttention(false);
       openingMaskRequestRef.current += 1;
       renderOpeningMaskPreviewRef.current();
       return;
@@ -498,6 +525,7 @@ export default function Home({ user }: HomeProps) {
     setZoom(1);
     setIsAdjusting(false);
     setManualOpeningTool(null);
+    setOpeningMaskNeedsAttention(false);
     setMicroAdjustOpen(false);
     setShowMaskIntro(false);
     showAutoFitNotice(null);
@@ -760,7 +788,11 @@ export default function Home({ user }: HomeProps) {
     ctx.fill();
     ctx.restore();
 
-    setHasOpeningMask(true);
+    if (manualOpeningTool === 'paint') {
+      setHasOpeningMask(true);
+    } else {
+      setHasOpeningMask(hasVisibleOpeningMask(workingCanvas));
+    }
     renderOpeningMaskPreview();
   };
 
@@ -800,7 +832,7 @@ export default function Home({ user }: HomeProps) {
 
   const getOpeningMaskBlobForUpload = async (): Promise<Blob | null> => {
     const workingCanvas = openingMaskWorkingCanvasRef.current;
-    if (!workingCanvas || !hasOpeningMask) {
+    if (!workingCanvas || !hasOpeningMask || !hasVisibleOpeningMask(workingCanvas)) {
       return null;
     }
 
@@ -1004,6 +1036,7 @@ export default function Home({ user }: HomeProps) {
     setIsAdjusting(false);
     setManualOpeningTool(null);
     setHasOpeningMask(false);
+    setOpeningMaskNeedsAttention(false);
     setShowMaskIntro(false);
     setShowGestureHint(false);
     showAutoFitNotice(null);
@@ -1021,6 +1054,10 @@ export default function Home({ user }: HomeProps) {
     openingMaskBlob: Blob | null,
     recaptchaToken?: string | null
   ): Promise<boolean> => {
+    if (!openingMaskBlob) {
+      throw new Error('赤塗り範囲が空のためアップロードできません。表示可能領域を塗ってから再度お試しください。');
+    }
+
     const MAX_SIZE = 5 * 1024 * 1024;
     if (preparedBlob.size > MAX_SIZE) {
       setError('編集後の画像サイズが5MBを超えています。縮小して再度お試しください。');
@@ -1118,9 +1155,12 @@ export default function Home({ user }: HomeProps) {
         previewSize
       );
       const openingMaskBlob = await getOpeningMaskBlobForUpload();
+      if (!openingMaskBlob) {
+        throw new Error('赤塗り範囲が空のためアップロードできません。表示可能領域を塗ってから再度お試しください。');
+      }
 
       const preparedFrameUrl = URL.createObjectURL(squareBlob);
-      const openingMaskUrl = openingMaskBlob ? URL.createObjectURL(openingMaskBlob) : null;
+      const openingMaskUrl = URL.createObjectURL(openingMaskBlob);
       try {
         const avatarPreviewUrl = await getTikTokLiveCommentAvatarPreviewDataUrl(
           preparedFrameUrl,
@@ -1595,18 +1635,26 @@ export default function Home({ user }: HomeProps) {
                 </div>
               </div>
             ) : null}
-            <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <CropMaskOverlay intro={showMaskIntro} active={!showMaskIntro && isAdjusting} />
-            </div>
             {!hasOpeningMask ? (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4">
                 <div className="w-full max-w-[22rem] rounded-2xl border border-amber-300/35 bg-[#2A1904]/88 px-4 py-3 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
                   <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">Opening Guide</p>
-                  <p className="mt-1 text-sm font-bold text-white">表示可能領域の塗りを生成できませんでした</p>
-                  <p className="mt-1 text-xs font-medium text-amber-50/90">この画像では自動判定の塗り領域が取れていない可能性があります。</p>
+                  <p className="mt-1 text-sm font-bold text-white">表示可能領域の赤塗りがありません</p>
+                  <p className="mt-1 text-xs font-medium text-amber-50/90">表示可能領域を塗らないとアップロードできません。手動で塗ってください。</p>
+                </div>
+              </div>
+            ) : openingMaskNeedsAttention ? (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4">
+                <div className="w-full max-w-[22rem] rounded-2xl border border-amber-300/35 bg-[#2A1904]/88 px-4 py-3 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">Opening Guide</p>
+                  <p className="mt-1 text-sm font-bold text-white">自動判定できなかったため全面を赤塗りで開始しています</p>
+                  <p className="mt-1 text-xs font-medium text-amber-50/90">必要な範囲だけ残るように、削るか塗るで調整してください。</p>
                 </div>
               </div>
             ) : null}
+            <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+              <CropMaskOverlay intro={showMaskIntro} active={!showMaskIntro && isAdjusting} />
+            </div>
             <div
               className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint && !microAdjustOpen ? ' editor-gesture-hint-visible' : ''}`}
               aria-hidden={!showGestureHint}

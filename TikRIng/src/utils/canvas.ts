@@ -175,6 +175,23 @@ export const getSquareFrameOpeningMaskBlob = async (
   return canvasToBlob(openingMaskCanvas);
 };
 
+export const getSolidOpeningMaskBlob = async (outputSize = 512): Promise<Blob> => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  ctx.clearRect(0, 0, outputSize, outputSize);
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.fillRect(0, 0, outputSize, outputSize);
+
+  return canvasToBlob(canvas);
+};
+
 export const getSquareFrameOpeningMaskDataUrl = async (
   imageSrc: string,
   position: { x: number; y: number },

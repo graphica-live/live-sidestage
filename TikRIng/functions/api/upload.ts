@@ -40,6 +40,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
+    if (!openingMaskFile) {
+      return new Response(JSON.stringify({ error: 'OPENING_MASK_REQUIRED', message: '赤塗り範囲が空のためアップロードできません。表示可能領域を塗ってから再度お試しください。' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // PNGファイルのみ許可
     if (file.type !== 'image/png') {
       return new Response(JSON.stringify({ error: 'Only PNG files are allowed' }), {
