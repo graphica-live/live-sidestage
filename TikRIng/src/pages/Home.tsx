@@ -1643,7 +1643,7 @@ export default function Home({ user }: HomeProps) {
                   <p className="mt-1 text-xs font-medium text-amber-50/90">表示可能領域を塗らないとアップロードできません。手動で塗ってください。</p>
                 </div>
               </div>
-            ) : openingMaskNeedsAttention ? (
+            ) : openingMaskNeedsAttention && !manualOpeningTool ? (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-3 sm:top-4 sm:px-4">
                 <div className="w-full max-w-[22rem] rounded-2xl border border-amber-300/35 bg-[#2A1904]/88 px-4 py-3 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
                   <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">Opening Guide</p>
