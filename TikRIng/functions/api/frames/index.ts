@@ -26,6 +26,7 @@ type FrameRow = {
   owner_id: string | null;
   owner_email: string | null;
   owner_display_name: string | null;
+  owner_anonymous_display_number: number | null;
   custom_name: string | null;
   image_key: string;
   opening_mask_key: string | null;
@@ -183,12 +184,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       const origin = url.origin;
       const rows = rankingSource === 'pickup'
         ? await context.env.DB.prepare(
-          `SELECT f.id, f.owner_id, u.email AS owner_email, f.custom_name, f.image_key,
+           `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
               f.view_count,
               f.good_count
            FROM frames f
            LEFT JOIN users u ON u.id = f.owner_id
+            LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
            WHERE f.expires_at IS NULL OR f.expires_at > ?
            ORDER BY RANDOM()
            LIMIT 10`
@@ -196,12 +198,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
           .bind(nowMs)
           .all<FrameRow>()
         : await context.env.DB.prepare(
-          `SELECT f.id, f.owner_id, u.email AS owner_email, f.custom_name, f.image_key,
+           `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
               f.view_count,
               f.good_count
            FROM frames f
            LEFT JOIN users u ON u.id = f.owner_id
+            LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
            WHERE f.expires_at IS NULL OR f.expires_at > ?
            ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC'}
            LIMIT 10`
@@ -215,6 +218,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         ownerDisplayName: getResolvedUserDisplayName({
           userId: row.owner_id,
           email: row.owner_email,
+          anonymousDisplayNumber: row.owner_anonymous_display_number,
           customDisplayName: row.owner_display_name,
           fallback: '不明なユーザー',
         }),
@@ -332,10 +336,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const orderSql = ADMIN_SORT_SQL[sort];
     const rows = await context.env.DB.prepare(
       `SELECT f.id, f.owner_id, u.email AS owner_email,
+        anon.id AS owner_anonymous_display_number,
         COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
         f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count, f.wear_count
        FROM frames f
        LEFT JOIN users u ON u.id = f.owner_id
+       LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
        ORDER BY ${orderSql}
        LIMIT ? OFFSET ?`
     )
@@ -380,6 +386,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         ownerDisplayName: getResolvedUserDisplayName({
           userId: row.owner_id,
           email: row.owner_email,
+          anonymousDisplayNumber: row.owner_anonymous_display_number,
           customDisplayName: row.owner_display_name,
           fallback: '不明なユーザー',
         }),
@@ -404,10 +411,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   const rows = await context.env.DB.prepare(
     `SELECT f.id, f.owner_id, u.email AS owner_email,
+      anon.id AS owner_anonymous_display_number,
       COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
       f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count, f.wear_count
      FROM frames f
      LEFT JOIN users u ON u.id = f.owner_id
+     LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
      WHERE f.owner_id = ?
      ORDER BY f.created_at DESC`
   )
@@ -457,6 +466,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ownerDisplayName: getResolvedUserDisplayName({
         userId: row.owner_id,
         email: row.owner_email,
+        anonymousDisplayNumber: row.owner_anonymous_display_number,
         customDisplayName: row.owner_display_name,
         fallback: '不明なユーザー',
       }),

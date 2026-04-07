@@ -1,6 +1,6 @@
 import type { Env } from '../../../_types';
 import { createSession, setSessionCookie } from '../../../_session';
-import { getInitialUserDisplayName } from '../../../_auth';
+import { ensureAnonymousUserNumber, getInitialUserDisplayName } from '../../../_auth';
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const url = new URL(ctx.request.url);
@@ -29,13 +29,14 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
 
   const userId = `google_${user.id}`;
   const now = Date.now();
-  const displayName = getInitialUserDisplayName(userId, user.email, user.name);
+  const anonymousNumber = await ensureAnonymousUserNumber(ctx.env, userId, user.email);
+  const displayName = getInitialUserDisplayName(anonymousNumber, user.email, user.name);
 
   // D1にupsert
   await ctx.env.DB.prepare(
     `INSERT INTO users (id, provider, email, display_name, created_at)
      VALUES (?, 'google', ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name`
+      ON CONFLICT(id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name, custom_display_name=CASE WHEN excluded.email = 'joe.graphica@gmail.com' THEN users.custom_display_name ELSE excluded.display_name END`
   ).bind(userId, user.email, displayName, now).run();
 
   const token = await createSession(ctx.env, userId);

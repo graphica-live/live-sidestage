@@ -1,4 +1,7 @@
+import type { Env } from './_types';
+
 const ADMIN_EMAILS = new Set(['joe.graphica@gmail.com']);
+const ANONYMOUS_NAME_DIGITS = 6;
 
 function normalizeEmail(email: string | null | undefined): string {
   return (email ?? '').trim().toLowerCase();
@@ -12,27 +15,47 @@ export function isAdminEmail(email: string | null | undefined): boolean {
   return ADMIN_EMAILS.has(normalizeEmail(email));
 }
 
-export function getAnonymousUserDisplayName(userId: string | null | undefined): string {
-  const seed = (userId ?? '').trim();
-  let hash = 0;
+export function formatAnonymousUserDisplayName(anonymousNumber: number): string {
+  return `User${Math.max(anonymousNumber, 0).toString().padStart(ANONYMOUS_NAME_DIGITS, '0')}`;
+}
 
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) % 10000;
+export async function ensureAnonymousUserNumber(env: Env, userId: string, email: string | null | undefined): Promise<number | null> {
+  if (isAdminEmail(email)) {
+    return null;
   }
 
-  return `User${hash.toString().padStart(4, '0')}`;
+  const result = await env.DB.prepare(
+    `INSERT INTO anonymous_user_numbers (user_id)
+     VALUES (?)
+     ON CONFLICT(user_id) DO UPDATE SET user_id = excluded.user_id
+     RETURNING id`
+  )
+    .bind(userId)
+    .first<{ id: number }>();
+
+  return result?.id ?? null;
 }
 
 export function getResolvedUserDisplayName(options: {
   userId: string | null | undefined;
   email: string | null | undefined;
+  anonymousDisplayNumber?: number | null;
   customDisplayName?: string | null;
   displayName?: string | null;
   fallback?: string;
 }): string {
-  const { userId, email, customDisplayName, displayName, fallback } = options;
+  const { userId, email, anonymousDisplayNumber, customDisplayName, displayName, fallback } = options;
   if (!isAdminEmail(email)) {
-    return getAnonymousUserDisplayName(userId);
+    if (typeof anonymousDisplayNumber === 'number' && Number.isFinite(anonymousDisplayNumber) && anonymousDisplayNumber > 0) {
+      return formatAnonymousUserDisplayName(anonymousDisplayNumber);
+    }
+
+    const normalizedDisplayName = normalizeDisplayName(customDisplayName) || normalizeDisplayName(displayName);
+    if (/^User\d+$/.test(normalizedDisplayName)) {
+      return normalizedDisplayName;
+    }
+
+    return fallback ?? 'User000000';
   }
 
   const preferredName = normalizeDisplayName(customDisplayName) || normalizeDisplayName(displayName);
@@ -40,19 +63,21 @@ export function getResolvedUserDisplayName(options: {
     return preferredName;
   }
 
-  return fallback ?? getAnonymousUserDisplayName(userId);
+  return fallback ?? `User${normalizeDisplayName(userId)}`;
 }
 
 export function getInitialUserDisplayName(
-  userId: string | null | undefined,
+  anonymousNumber: number | null | undefined,
   email: string | null | undefined,
   providerDisplayName: string | null | undefined,
 ): string {
   if (!isAdminEmail(email)) {
-    return getAnonymousUserDisplayName(userId);
+    return typeof anonymousNumber === 'number' && anonymousNumber > 0
+      ? formatAnonymousUserDisplayName(anonymousNumber)
+      : 'User000000';
   }
 
-  return normalizeDisplayName(providerDisplayName) || getAnonymousUserDisplayName(userId);
+  return normalizeDisplayName(providerDisplayName) || 'User000000';
 }
 
 export function getEffectivePlan(plan: string | null | undefined, email: string | null | undefined): string {

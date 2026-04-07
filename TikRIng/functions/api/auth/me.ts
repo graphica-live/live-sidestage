@@ -1,6 +1,6 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
-import { getAnonymousUserDisplayName, getEffectivePlan, getResolvedUserDisplayName, isAdminEmail } from '../../_auth';
+import { ensureAnonymousUserNumber, formatAnonymousUserDisplayName, getEffectivePlan, getResolvedUserDisplayName, isAdminEmail } from '../../_auth';
 
 type UserRow = {
   id: string;
@@ -8,6 +8,7 @@ type UserRow = {
   email: string | null;
   display_name: string | null;
   custom_display_name: string | null;
+  anonymous_display_number: number | null;
   plan: string;
 };
 
@@ -20,6 +21,7 @@ async function getResponseUser(env: Env, userId: string) {
     `SELECT id, provider, email,
         display_name,
         custom_display_name,
+        (SELECT id FROM anonymous_user_numbers WHERE user_id = users.id) AS anonymous_display_number,
         plan
      FROM users
      WHERE id = ?`
@@ -33,6 +35,7 @@ async function getResponseUser(env: Env, userId: string) {
         display_name: getResolvedUserDisplayName({
           userId: user.id,
           email: user.email,
+          anonymousDisplayNumber: user.anonymous_display_number,
           customDisplayName: user.custom_display_name,
           displayName: user.display_name,
         }),
@@ -93,7 +96,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   if (!isAdminEmail(currentUser.email)) {
-    const anonymousName = getAnonymousUserDisplayName(currentUser.id);
+    const anonymousNumber = await ensureAnonymousUserNumber(ctx.env, currentUser.id, currentUser.email);
+    const anonymousName = formatAnonymousUserDisplayName(anonymousNumber ?? 0);
     await ctx.env.DB.prepare(
       'UPDATE users SET display_name = ?, custom_display_name = ? WHERE id = ?'
     ).bind(anonymousName, anonymousName, currentUser.id).run();
