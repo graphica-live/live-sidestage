@@ -7,7 +7,7 @@ import { getResolvedUserDisplayName, isAdminEmail, isEffectivePro } from '../../
 
 const ADMIN_PAGE_SIZE = 50;
 
-type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
+type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc';
 
 const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
   created_desc: 'f.created_at DESC',
@@ -19,6 +19,7 @@ const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
   expires_asc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at ASC, f.created_at DESC',
   expires_desc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at DESC, f.created_at DESC',
   views_desc: 'COALESCE(f.view_count, 0) DESC, f.created_at DESC',
+  goods_desc: 'COALESCE(f.good_count, 0) DESC, f.created_at DESC',
 };
 
 type FrameRow = {
@@ -54,6 +55,7 @@ type FrameListItem = {
   ownerEmail: string | null;
   ownerDisplayName: string | null;
   viewCount?: number;
+  goodCount?: number;
   wearCount?: number;
 };
 
@@ -365,7 +367,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       `SELECT f.id, f.owner_id, u.email AS owner_email,
         anon.id AS owner_anonymous_display_number,
         COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-        f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count, f.wear_count
+        f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count, f.good_count, f.wear_count
        FROM frames f
        LEFT JOIN users u ON u.id = f.owner_id
        LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
@@ -418,6 +420,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
           fallback: '不明なユーザー',
         }),
         viewCount: row.view_count ?? 0,
+        goodCount: row.good_count ?? 0,
         wearCount: row.wear_count ?? 0,
       });
     }
@@ -440,7 +443,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     `SELECT f.id, f.owner_id, u.email AS owner_email,
       anon.id AS owner_anonymous_display_number,
       COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-      f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count, f.wear_count
+      f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count, f.good_count, f.wear_count
      FROM frames f
      LEFT JOIN users u ON u.id = f.owner_id
      LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
@@ -498,6 +501,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         fallback: '不明なユーザー',
       }),
       viewCount: row.view_count ?? 0,
+      goodCount: row.good_count ?? 0,
       wearCount: row.wear_count ?? 0,
     });
   }

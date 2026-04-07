@@ -19,6 +19,7 @@ type FrameItem = {
   ownerEmail: string | null;
   ownerDisplayName: string | null;
   viewCount?: number;
+  goodCount?: number;
   wearCount?: number;
 };
 
@@ -31,7 +32,7 @@ type FramesMeta = {
   hasNextPage?: boolean;
 };
 
-type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc';
+type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc';
 type PreviewMode = 'default' | 'opening-guide';
 type PreviewState = {
   frame: FrameItem;
@@ -68,7 +69,8 @@ function isSortOption(value: string | null): value is SortOption {
     || value === 'name_desc'
     || value === 'expires_asc'
     || value === 'expires_desc'
-    || value === 'views_desc';
+    || value === 'views_desc'
+    || value === 'goods_desc';
 }
 
 function getInitialDashboardPage() {
@@ -145,6 +147,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
     const valueForCreated = (frame: FrameItem) => frame.createdAt ?? 0;
     const valueForExpires = (frame: FrameItem) => frame.expiresAt ?? Number.MAX_SAFE_INTEGER;
     const valueForViews = (frame: FrameItem) => frame.viewCount ?? 0;
+    const valueForGoods = (frame: FrameItem) => frame.goodCount ?? 0;
 
     items.sort((left, right) => {
       switch (sortBy) {
@@ -164,6 +167,10 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
           return valueForExpires(right) - valueForExpires(left);
         case 'views_desc': {
           const diff = valueForViews(right) - valueForViews(left);
+          return diff !== 0 ? diff : valueForCreated(right) - valueForCreated(left);
+        }
+        case 'goods_desc': {
+          const diff = valueForGoods(right) - valueForGoods(left);
           return diff !== 0 ? diff : valueForCreated(right) - valueForCreated(left);
         }
         case 'created_desc':
@@ -811,9 +818,9 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
             {isOrphanSection
               ? 'R2孤児データは必要時のみ読み込みます。孤児一覧では共有URLとパスワードは取得しません。'
               : isAdminScope
-                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数、装着数を確認できます。'
+                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数、グッド数、装着数を確認できます。'
                 : canShowFrameStats
-                  ? '登録日時や有効期限に加えて、閲覧数と装着数も確認できます。'
+                  ? '登録日時や有効期限に加えて、閲覧数、グッド数、装着数も確認できます。'
                   : '登録日時や有効期限で並び替えできます。'}
           </p>
           {isAdminScope && !isOrphanSection ? (
@@ -843,6 +850,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
               <option value="name_asc">フレーム名 A-Z</option>
               <option value="name_desc">フレーム名 Z-A</option>
               {canShowFrameStats ? <option value="views_desc">閲覧数が多い順</option> : null}
+              {canShowFrameStats ? <option value="goods_desc">グッド数が多い順</option> : null}
               {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
               {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
             </select>
@@ -952,6 +960,12 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
                       {canShowFrameStats ? (
                         <p className="text-xs text-tiktok-lightgray break-all">
                           閲覧数: {frame.viewCount ?? 0}
+                        </p>
+                      ) : null}
+
+                      {canShowFrameStats ? (
+                        <p className="text-xs text-tiktok-lightgray break-all">
+                          グッド数: {frame.goodCount ?? 0}
                         </p>
                       ) : null}
 
