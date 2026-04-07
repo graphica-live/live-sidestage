@@ -39,26 +39,38 @@ function RankingThumbnail({ frame }: { frame: RankingFrame }) {
   const [imageError, setImageError] = useState(false);
 
   return (
-    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/12 bg-[linear-gradient(135deg,rgba(37,244,238,0.12),rgba(254,44,85,0.18))] shadow-[0_14px_30px_rgba(0,0,0,0.28)]">
+    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
       {!imageError ? (
         <img
           src={frame.thumbnailUrl}
           alt={frame.displayName}
           loading="lazy"
           onError={() => setImageError(true)}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-white/[0.04] px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
+        <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
           NO IMAGE
         </div>
       )}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04),rgba(0,0,0,0.4))]" />
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-        <span className="-rotate-[24deg] select-none text-[10px] font-black uppercase tracking-[0.24em] text-white/42 drop-shadow-[0_2px_5px_rgba(0,0,0,0.55)]">
-          {WATERMARK_TEXT}
-        </span>
+    </div>
+  );
+}
+
+function StrongWatermarkOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute inset-[-18%] grid grid-cols-3 gap-y-10 gap-x-6 -rotate-[24deg] sm:gap-y-12 sm:gap-x-8">
+        {Array.from({ length: 15 }).map((_, index) => (
+          <span
+            key={index}
+            className="select-none text-center text-base font-black uppercase tracking-[0.34em] text-white/42 drop-shadow-[0_3px_10px_rgba(0,0,0,0.85)] sm:text-xl"
+          >
+            {WATERMARK_TEXT}
+          </span>
+        ))}
       </div>
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.26))]" />
     </div>
   );
 }
@@ -235,17 +247,13 @@ export default function FrameRankingAccordion({
               </button>
             </div>
 
-            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(37,244,238,0.08),rgba(254,44,85,0.14))]">
+            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-transparent">
               <img
                 src={selectedFrame.thumbnailUrl}
                 alt={selectedFrame.displayName}
-                className="aspect-square w-full object-contain bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.1),rgba(255,255,255,0.02)_48%,rgba(0,0,0,0.12))]"
+                className="aspect-square w-full object-contain"
               />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-                <span className="-rotate-[24deg] select-none text-lg font-black uppercase tracking-[0.36em] text-white/28 drop-shadow-[0_4px_14px_rgba(0,0,0,0.55)] sm:text-xl">
-                  {WATERMARK_TEXT}
-                </span>
-              </div>
+              <StrongWatermarkOverlay />
             </div>
           </div>
         </div>
