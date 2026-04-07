@@ -637,7 +637,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
     setDisplayNameMessage(null);
 
     try {
-      const res = await fetch('/api/auth/display-name', {
+      const res = await fetch('/api/auth/me', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
