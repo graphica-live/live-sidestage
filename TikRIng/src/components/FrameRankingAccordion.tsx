@@ -27,19 +27,29 @@ interface FrameRankingAccordionProps {
   eyebrow?: string;
   closedSummary?: string;
   className?: string;
-  rankingType?: 'views' | 'goods';
+  rankingType?: 'views' | 'goods' | 'recent';
 }
 
 const WATERMARK_TEXT = 'TikRing';
 
-function getRankingEndpoint(rankingType: 'views' | 'goods') {
+function getRankingEndpoint(rankingType: 'views' | 'goods' | 'recent') {
   const params = new URLSearchParams();
   params.set('top', '1');
-  if (rankingType === 'goods') {
+  if (rankingType === 'recent') {
+    params.set('source', 'recent');
+  } else if (rankingType === 'goods') {
     params.set('metric', 'goods');
   }
 
   return `/api/frames?${params.toString()}`;
+}
+
+function getAccordionBadge(rankingType: 'views' | 'goods' | 'recent') {
+  return rankingType === 'recent' ? 'PICK 10' : 'TOP 10';
+}
+
+function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'recent', index: number) {
+  return rankingType === 'recent' ? 'NEW' : `#${index + 1}`;
 }
 
 function getErrorStatus(error: unknown) {
@@ -483,7 +493,7 @@ export default function FrameRankingAccordion({
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
-              TOP 10
+              {getAccordionBadge(rankingType)}
             </span>
             <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
           </div>
@@ -516,7 +526,7 @@ export default function FrameRankingAccordion({
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
                           <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
-                            <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
+                            <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">{getItemBadgeLabel(rankingType, index)}</span>
                           </div>
                           <RankingThumbnail frame={frame} />
                           <div className="min-w-0 flex-1">

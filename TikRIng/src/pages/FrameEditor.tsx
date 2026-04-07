@@ -841,6 +841,12 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
         <div className="w-full mt-6">
           <div className="space-y-4">
             <FrameRankingAccordion
+              title="新着アイコンフレーム"
+              eyebrow="New Frames"
+              closedSummary="新着50件の中からランダムで10件を表示"
+              rankingType="recent"
+            />
+            <FrameRankingAccordion
               title="人気のアイコンフレーム"
               eyebrow="Ranking"
               closedSummary="閲覧数の多いフレームTOP10を見る"

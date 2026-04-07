@@ -110,6 +110,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const isTopRankingRequest = url.searchParams.get('top') === '1';
   const isGoodStateRequest = url.searchParams.get('goodState') === '1';
   const rankingMetric = url.searchParams.get('metric') === 'goods' ? 'goods' : 'views';
+  const rankingSource = url.searchParams.get('source') === 'recent' ? 'recent' : 'top';
 
   if (isGoodStateRequest) {
     try {
@@ -180,22 +181,39 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     try {
       const nowMs = Date.now();
       const origin = url.origin;
-      const rankingOrderBy = rankingMetric === 'goods'
-        ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC'
-        : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC';
-      const rows = await context.env.DB.prepare(
-        `SELECT f.id, f.custom_name, f.image_key,
-            COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-            f.view_count,
-            f.good_count
-         FROM frames f
-         LEFT JOIN users u ON u.id = f.owner_id
-         WHERE f.expires_at IS NULL OR f.expires_at > ?
-         ORDER BY ${rankingOrderBy}
-         LIMIT 10`
-      )
-        .bind(nowMs)
-        .all<FrameRow>();
+      const rows = rankingSource === 'recent'
+        ? await context.env.DB.prepare(
+          `SELECT recent.id, recent.custom_name, recent.image_key, recent.owner_display_name, recent.view_count, recent.good_count
+           FROM (
+             SELECT f.id, f.custom_name, f.image_key,
+                 COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+                 f.view_count,
+                 f.good_count,
+                 f.created_at
+             FROM frames f
+             LEFT JOIN users u ON u.id = f.owner_id
+             WHERE f.expires_at IS NULL OR f.expires_at > ?
+             ORDER BY f.created_at DESC
+             LIMIT 50
+           ) recent
+           ORDER BY RANDOM()
+           LIMIT 10`
+        )
+          .bind(nowMs)
+          .all<FrameRow>()
+        : await context.env.DB.prepare(
+          `SELECT f.id, f.custom_name, f.image_key,
+              COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+              f.view_count,
+              f.good_count
+           FROM frames f
+           LEFT JOIN users u ON u.id = f.owner_id
+           WHERE f.expires_at IS NULL OR f.expires_at > ?
+           ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC'}
+           LIMIT 10`
+        )
+          .bind(nowMs)
+          .all<FrameRow>();
 
       const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({
         id: row.id,
