@@ -23,6 +23,30 @@ interface FrameRankingAccordionProps {
 const WATERMARK_TEXT = 'TikRing';
 const RANKING_ENDPOINT = '/api/frames?top=1';
 
+type WatermarkOptions = {
+  gradientTopAlpha: number;
+  gradientMidAlpha: number;
+  gradientBottomAlpha: number;
+  textAlpha: number;
+  strokeAlpha: number;
+};
+
+const THUMBNAIL_WATERMARK_OPTIONS: WatermarkOptions = {
+  gradientTopAlpha: 0.12,
+  gradientMidAlpha: 0.28,
+  gradientBottomAlpha: 0.4,
+  textAlpha: 0.34,
+  strokeAlpha: 0.28,
+};
+
+const MODAL_WATERMARK_OPTIONS: WatermarkOptions = {
+  gradientTopAlpha: 0.05,
+  gradientMidAlpha: 0.12,
+  gradientBottomAlpha: 0.18,
+  textAlpha: 0.16,
+  strokeAlpha: 0.14,
+};
+
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -33,7 +57,11 @@ function loadImage(src: string) {
   });
 }
 
-async function generateWatermarkedPngDataUrl(thumbnailUrl: string, watermarkText: string): Promise<string> {
+async function generateWatermarkedPngDataUrl(
+  thumbnailUrl: string,
+  watermarkText: string,
+  options: WatermarkOptions,
+): Promise<string> {
   const image = await loadImage(thumbnailUrl);
   const canvas = document.createElement('canvas');
   const size = Math.max(image.width, image.height);
@@ -53,9 +81,9 @@ async function generateWatermarkedPngDataUrl(thumbnailUrl: string, watermarkText
   context.drawImage(image, offsetX, offsetY, image.width, image.height);
 
   const gradient = context.createLinearGradient(0, 0, 0, size);
-  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
-  gradient.addColorStop(0.55, 'rgba(0, 0, 0, 0.28)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+  gradient.addColorStop(0, `rgba(0, 0, 0, ${options.gradientTopAlpha})`);
+  gradient.addColorStop(0.55, `rgba(0, 0, 0, ${options.gradientMidAlpha})`);
+  gradient.addColorStop(1, `rgba(0, 0, 0, ${options.gradientBottomAlpha})`);
   context.fillStyle = gradient;
   context.fillRect(0, 0, size, size);
 
@@ -68,8 +96,8 @@ async function generateWatermarkedPngDataUrl(thumbnailUrl: string, watermarkText
   const watermarkFontSize = Math.max(26, Math.round(size * 0.08));
   const spacing = Math.max(108, Math.round(size * 0.28));
   context.font = `900 ${watermarkFontSize}px Arial, sans-serif`;
-  context.fillStyle = 'rgba(255, 255, 255, 0.34)';
-  context.strokeStyle = 'rgba(0, 0, 0, 0.28)';
+  context.fillStyle = `rgba(255, 255, 255, ${options.textAlpha})`;
+  context.strokeStyle = `rgba(0, 0, 0, ${options.strokeAlpha})`;
   context.lineWidth = Math.max(2, Math.round(size * 0.006));
 
   for (let x = -size * 1.2; x <= size * 1.2; x += spacing) {
@@ -82,6 +110,24 @@ async function generateWatermarkedPngDataUrl(thumbnailUrl: string, watermarkText
   context.restore();
 
   return canvas.toDataURL('image/png');
+}
+
+function StrongWatermarkOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute inset-[-18%] grid grid-cols-3 gap-x-6 gap-y-10 -rotate-[24deg] sm:gap-x-8 sm:gap-y-12">
+        {Array.from({ length: 15 }).map((_, index) => (
+          <span
+            key={index}
+            className="select-none text-center text-base font-black uppercase tracking-[0.34em] text-white/42 drop-shadow-[0_3px_10px_rgba(0,0,0,0.85)] sm:text-xl"
+          >
+            {WATERMARK_TEXT}
+          </span>
+        ))}
+      </div>
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.18))]" />
+    </div>
+  );
 }
 
 async function fetchRanking(endpoint: string, signal: AbortSignal) {
@@ -135,24 +181,6 @@ function RankingThumbnail({
   );
 }
 
-function StrongWatermarkOverlay() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-[-18%] grid grid-cols-3 gap-y-10 gap-x-6 -rotate-[24deg] sm:gap-y-12 sm:gap-x-8">
-        {Array.from({ length: 15 }).map((_, index) => (
-          <span
-            key={index}
-            className="select-none text-center text-base font-black uppercase tracking-[0.34em] text-white/42 drop-shadow-[0_3px_10px_rgba(0,0,0,0.85)] sm:text-xl"
-          >
-            {WATERMARK_TEXT}
-          </span>
-        ))}
-      </div>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.26))]" />
-    </div>
-  );
-}
-
 export default function FrameRankingAccordion({
   title,
   eyebrow = 'Ranking',
@@ -167,6 +195,7 @@ export default function FrameRankingAccordion({
   const [selectedFrame, setSelectedFrame] = useState<RankingFrame | null>(null);
   const [thumbnailImageUrls, setThumbnailImageUrls] = useState<Record<string, string>>({});
   const [thumbnailImageLoadingIds, setThumbnailImageLoadingIds] = useState<Record<string, boolean>>({});
+  const [thumbnailImageFailedIds, setThumbnailImageFailedIds] = useState<Record<string, boolean>>({});
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
   const [modalImageLoading, setModalImageLoading] = useState(false);
   const [modalImageError, setModalImageError] = useState<string | null>(null);
@@ -203,6 +232,9 @@ export default function FrameRankingAccordion({
         }
 
         setFrames(Array.isArray(data.frames) ? data.frames : []);
+        setThumbnailImageUrls({});
+        setThumbnailImageLoadingIds({});
+        setThumbnailImageFailedIds({});
         setLoaded(true);
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
@@ -253,7 +285,7 @@ export default function FrameRankingAccordion({
     setModalImageError(null);
     setModalImageUrl(null);
 
-    void generateWatermarkedPngDataUrl(selectedFrame.thumbnailUrl, WATERMARK_TEXT)
+    void generateWatermarkedPngDataUrl(selectedFrame.thumbnailUrl, WATERMARK_TEXT, MODAL_WATERMARK_OPTIONS)
       .then((dataUrl) => {
         if (cancelled) {
           return;
@@ -287,7 +319,9 @@ export default function FrameRankingAccordion({
       return;
     }
 
-    const pendingFrames = frames.filter((frame) => !thumbnailImageUrls[frame.id] && !thumbnailImageLoadingIds[frame.id]);
+    const pendingFrames = frames.filter(
+      (frame) => !thumbnailImageUrls[frame.id] && !thumbnailImageLoadingIds[frame.id] && !thumbnailImageFailedIds[frame.id],
+    );
     if (pendingFrames.length === 0) {
       return;
     }
@@ -305,7 +339,7 @@ export default function FrameRankingAccordion({
     void Promise.allSettled(
       pendingFrames.map(async (frame) => ({
         id: frame.id,
-        dataUrl: await generateWatermarkedPngDataUrl(frame.thumbnailUrl, WATERMARK_TEXT),
+        dataUrl: await generateWatermarkedPngDataUrl(frame.thumbnailUrl, WATERMARK_TEXT, THUMBNAIL_WATERMARK_OPTIONS),
       })),
     ).then((results) => {
       if (cancelled) {
@@ -314,6 +348,7 @@ export default function FrameRankingAccordion({
 
       const loadedEntries: Record<string, string> = {};
       const finishedIds: string[] = [];
+      const failedIds: string[] = [];
 
       results.forEach((result, index) => {
         const frame = pendingFrames[index];
@@ -324,10 +359,21 @@ export default function FrameRankingAccordion({
         }
 
         console.error(result.reason);
+        failedIds.push(frame.id);
       });
 
       if (Object.keys(loadedEntries).length > 0) {
         setThumbnailImageUrls((current) => ({ ...current, ...loadedEntries }));
+      }
+
+      if (failedIds.length > 0) {
+        setThumbnailImageFailedIds((current) => {
+          const next = { ...current };
+          for (const id of failedIds) {
+            next[id] = true;
+          }
+          return next;
+        });
       }
 
       setThumbnailImageLoadingIds((current) => {
@@ -342,7 +388,7 @@ export default function FrameRankingAccordion({
     return () => {
       cancelled = true;
     };
-  }, [frames, open, thumbnailImageLoadingIds, thumbnailImageUrls]);
+  }, [frames, open, thumbnailImageFailedIds, thumbnailImageLoadingIds, thumbnailImageUrls]);
 
   const closeModal = () => {
     setSelectedFrame(null);
