@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { getSession } from '../../_session';
+import { getSession, resolveGoodActor } from '../../_session';
 import { decryptFramePassword } from '../../_framePassword';
 import type { Env } from '../../_types';
 import { isAdminEmail, isEffectivePro } from '../../_auth';
@@ -71,6 +71,10 @@ type PublicTopFrameItem = {
   thumbnailUrl: string;
 };
 
+type GoodStateRow = {
+  frame_id: string;
+};
+
 type Viewer = {
   id: string;
   email: string | null;
@@ -103,6 +107,72 @@ function parseAdminSort(raw: string | null): AdminSortOption {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
   const isTopRankingRequest = url.searchParams.get('top') === '1';
+  const isGoodStateRequest = url.searchParams.get('goodState') === '1';
+
+  if (isGoodStateRequest) {
+    try {
+      const ids = Array.from(new Set(url.searchParams.getAll('id').map((value) => value.trim()).filter(Boolean))).slice(0, 20);
+      const actor = await resolveGoodActor(context.env, context.request);
+      const requestOrigin = context.request.headers.get('Origin');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        ...(requestOrigin
+          ? {
+              'Access-Control-Allow-Origin': requestOrigin,
+              'Access-Control-Allow-Credentials': 'true',
+              Vary: 'Origin',
+            }
+          : {}),
+      };
+
+      if (actor.setCookie) {
+        headers['Set-Cookie'] = actor.setCookie;
+      }
+
+      if (ids.length === 0) {
+        return new Response(JSON.stringify({ goods: {} }), {
+          status: 200,
+          headers,
+        });
+      }
+
+      const placeholders = ids.map(() => '?').join(', ');
+      const rows = await context.env.DB.prepare(
+        `SELECT frame_id
+         FROM frame_goods
+         WHERE actor_type = ? AND actor_id = ? AND frame_id IN (${placeholders})`
+      )
+        .bind(actor.actorType, actor.actorId, ...ids)
+        .all<GoodStateRow>();
+
+      const goods = Object.fromEntries(ids.map((id) => [id, false]));
+      for (const row of rows.results ?? []) {
+        goods[row.frame_id] = true;
+      }
+
+      return new Response(JSON.stringify({ goods }), {
+        status: 200,
+        headers,
+      });
+    } catch (error) {
+      console.error('Good state fetch failed:', error);
+      return new Response(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR' }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          ...(context.request.headers.get('Origin')
+            ? {
+                'Access-Control-Allow-Origin': context.request.headers.get('Origin') as string,
+                'Access-Control-Allow-Credentials': 'true',
+                Vary: 'Origin',
+              }
+            : {}),
+        },
+      });
+    }
+  }
 
   if (isTopRankingRequest) {
     try {
@@ -455,6 +525,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
   await context.env.FRAMES_BUCKET.delete(`previews/${frame.id}.png`);
 
+  await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frameId).run();
 

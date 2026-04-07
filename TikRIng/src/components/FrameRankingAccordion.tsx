@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, X } from 'lucide-react';
+import { ChevronDown, Heart, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type RankingFrame = {
@@ -13,6 +13,15 @@ type RankingResponse = {
   frames?: RankingFrame[];
 };
 
+type GoodStateResponse = {
+  goods?: Record<string, boolean>;
+};
+
+type GoodSubmitResponse = {
+  ok?: boolean;
+  created?: boolean;
+};
+
 interface FrameRankingAccordionProps {
   title: string;
   eyebrow?: string;
@@ -22,6 +31,23 @@ interface FrameRankingAccordionProps {
 
 const WATERMARK_TEXT = 'TikRing';
 const RANKING_ENDPOINT = '/api/frames?top=1';
+
+function getErrorStatus(error: unknown) {
+  if (error instanceof Error && 'status' in error) {
+    return Number((error as Error & { status?: number }).status);
+  }
+
+  return null;
+}
+
+function getLocalApiOrigin() {
+  const localOrigin = (import.meta.env.VITE_LOCAL_API_ORIGIN as string | undefined)?.trim() || '';
+  if (!localOrigin || localOrigin.startsWith(window.location.origin)) {
+    return null;
+  }
+
+  return localOrigin;
+}
 
 type WatermarkOptions = {
   gradientTopAlpha: number;
@@ -153,16 +179,58 @@ function StrongWatermarkOverlay({ compact = false }: { compact?: boolean }) {
   );
 }
 
-async function fetchRanking(endpoint: string, signal: AbortSignal) {
-  const response = await fetch(endpoint, { signal });
+async function fetchJson<T>(endpoint: string, init: RequestInit, errorMessage: string) {
+  const response = await fetch(endpoint, init);
 
   if (!response.ok) {
-    const error = new Error('ランキングを取得できませんでした。');
+    const error = new Error(errorMessage);
     (error as Error & { status?: number }).status = response.status;
     throw error;
   }
 
-  return response.json() as Promise<RankingResponse>;
+  return response.json() as Promise<T>;
+}
+
+async function fetchJsonWithFallback<T>(endpoint: string, init: RequestInit, errorMessage: string) {
+  try {
+    return await fetchJson<T>(endpoint, init, errorMessage);
+  } catch (primaryError) {
+    const status = getErrorStatus(primaryError);
+    const localOrigin = getLocalApiOrigin();
+    const canFallback = Boolean(localOrigin) && (status === 401 || status === 404);
+
+    if (!canFallback || !localOrigin) {
+      throw primaryError;
+    }
+
+    return fetchJson<T>(`${localOrigin}${endpoint}`, init, errorMessage);
+  }
+}
+
+async function fetchRanking(endpoint: string, signal: AbortSignal) {
+  return fetchJsonWithFallback<RankingResponse>(endpoint, { signal }, 'ランキングを取得できませんでした。');
+}
+
+async function fetchGoodStates(frameIds: string[], signal: AbortSignal) {
+  const params = new URLSearchParams();
+  params.set('goodState', '1');
+  for (const frameId of frameIds) {
+    params.append('id', frameId);
+  }
+
+  return fetchJsonWithFallback<GoodStateResponse>(
+    `/api/frames?${params.toString()}`,
+    { signal, cache: 'no-store', credentials: 'include' },
+    'グッド状態を取得できませんでした。'
+  );
+}
+
+async function submitGood(frameId: string) {
+  return fetchJsonWithFallback<GoodSubmitResponse>(
+    `/api/frames/${encodeURIComponent(frameId)}?good=1`,
+    { method: 'POST', credentials: 'include' },
+    'グッドを保存できませんでした。'
+  );
 }
 
 function RankingThumbnail({
@@ -212,6 +280,9 @@ export default function FrameRankingAccordion({
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
   const [modalImageLoading, setModalImageLoading] = useState(false);
   const [modalImageError, setModalImageError] = useState<string | null>(null);
+  const [goodStates, setGoodStates] = useState<Record<string, boolean>>({});
+  const [goodSubmitting, setGoodSubmitting] = useState<Record<string, boolean>>({});
+  const [goodErrors, setGoodErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     if (!open || loaded) {
@@ -224,27 +295,12 @@ export default function FrameRankingAccordion({
       try {
         setLoading(true);
         setError(null);
-        let data: RankingResponse;
-
-        try {
-          data = await fetchRanking(RANKING_ENDPOINT, controller.signal);
-        } catch (primaryError) {
-          const status = primaryError instanceof Error && 'status' in primaryError
-            ? Number((primaryError as Error & { status?: number }).status)
-            : null;
-          const localOrigin = (import.meta.env.VITE_LOCAL_API_ORIGIN as string | undefined)?.trim() || '';
-          const canFallback = Boolean(localOrigin)
-            && !localOrigin.startsWith(window.location.origin)
-            && (status === 401 || status === 404);
-
-          if (!canFallback) {
-            throw primaryError;
-          }
-
-          data = await fetchRanking(`${localOrigin}${RANKING_ENDPOINT}`, controller.signal);
-        }
+        const data = await fetchRanking(RANKING_ENDPOINT, controller.signal);
 
         setFrames(Array.isArray(data.frames) ? data.frames : []);
+        setGoodStates({});
+        setGoodSubmitting({});
+        setGoodErrors({});
         setLoaded(true);
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
@@ -252,8 +308,8 @@ export default function FrameRankingAccordion({
         }
 
         console.error(fetchError);
-        if (fetchError instanceof Error && 'status' in fetchError) {
-          const status = Number((fetchError as Error & { status?: number }).status);
+        const status = getErrorStatus(fetchError);
+        if (status !== null) {
           if (status === 401) {
             setError('ランキングAPIがまだ反映されていません。デプロイ後に表示されます。');
             return;
@@ -280,6 +336,32 @@ export default function FrameRankingAccordion({
 
     return () => controller.abort();
   }, [loaded, open]);
+
+  useEffect(() => {
+    if (!open || frames.length === 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void fetchGoodStates(frames.map((frame) => frame.id), controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setGoodStates(data.goods ?? {});
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+          return;
+        }
+
+        console.error(fetchError);
+      });
+
+    return () => controller.abort();
+  }, [frames, open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,6 +417,44 @@ export default function FrameRankingAccordion({
     event.preventDefault();
   };
 
+  const handleGood = async (frameId: string) => {
+    if (goodStates[frameId] || goodSubmitting[frameId]) {
+      return;
+    }
+
+    setGoodSubmitting((current) => ({
+      ...current,
+      [frameId]: true,
+    }));
+    setGoodErrors((current) => ({
+      ...current,
+      [frameId]: null,
+    }));
+
+    try {
+      const result = await submitGood(frameId);
+      if (!result.ok) {
+        throw new Error('グッドを保存できませんでした。');
+      }
+
+      setGoodStates((current) => ({
+        ...current,
+        [frameId]: true,
+      }));
+    } catch (submitError) {
+      console.error(submitError);
+      setGoodErrors((current) => ({
+        ...current,
+        [frameId]: '保存に失敗しました',
+      }));
+    } finally {
+      setGoodSubmitting((current) => ({
+        ...current,
+        [frameId]: false,
+      }));
+    }
+  };
+
   return (
     <>
       <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
@@ -377,20 +497,45 @@ export default function FrameRankingAccordion({
               <ol className="space-y-2.5">
                 {frames.map((frame, index) => (
                   <li key={frame.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFrame(frame)}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 text-left transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]"
-                    >
-                      <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
-                        <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
+                    <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFrame(frame)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
+                            <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
+                          </div>
+                          <RankingThumbnail frame={frame} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
+                            <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleGood(frame.id)}
+                          disabled={Boolean(goodStates[frame.id] || goodSubmitting[frame.id])}
+                          aria-pressed={Boolean(goodStates[frame.id])}
+                          className={`inline-flex min-w-[88px] shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-bold tracking-[0.08em] transition ${goodStates[frame.id]
+                            ? 'border-[#ff6b95]/35 bg-[#ff6b95]/15 text-[#ffc2d2]'
+                            : 'border-white/10 bg-white/[0.05] text-white hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-default disabled:border-white/10 disabled:bg-white/[0.05]'} ${goodSubmitting[frame.id] ? 'cursor-wait' : ''}`}
+                        >
+                          {goodSubmitting[frame.id] ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Heart className={`h-3.5 w-3.5 ${goodStates[frame.id] ? 'fill-current' : ''}`} />
+                          )}
+                          <span>{goodStates[frame.id] ? 'グッド済み' : 'グッド'}</span>
+                        </button>
                       </div>
-                      <RankingThumbnail frame={frame} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
-                        <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
-                      </div>
-                    </button>
+
+                      {goodErrors[frame.id] ? (
+                        <p className="mt-2 pl-[8.5rem] text-[11px] text-[#ffb7c5]">{goodErrors[frame.id]}</p>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ol>

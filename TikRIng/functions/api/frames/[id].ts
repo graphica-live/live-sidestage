@@ -1,5 +1,5 @@
 import type { Env } from '../../_types';
-import { getSession } from '../../_session';
+import { getSession, resolveGoodActor } from '../../_session';
 import { createFrameAccessToken, decryptFramePassword, hashFramePassword, verifyFrameAccessToken } from '../../_framePassword';
 import { isAdminEmail } from '../../_auth';
 
@@ -119,6 +119,14 @@ async function incrementFrameWearCount(context: EventContext<Env, string, unknow
     .run();
 }
 
+async function incrementFrameGoodCount(context: EventContext<Env, string, unknown>, frameId: string) {
+  await context.env.DB.prepare(
+    'UPDATE frames SET good_count = good_count + 1 WHERE id = ?'
+  )
+    .bind(frameId)
+    .run();
+}
+
 function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
   context.waitUntil(
     (async () => {
@@ -133,6 +141,7 @@ function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>
         return;
       }
       try {
+        await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(frame.frameId).run();
         await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frame.frameId).run();
         await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frame.frameId).run();
       } catch (err) {
@@ -305,6 +314,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const requestUrl = new URL(context.request.url);
     const isWearRequest = requestUrl.searchParams.get('wear') === '1';
+    const isGoodRequest = requestUrl.searchParams.get('good') === '1';
+    const requestOrigin = context.request.headers.get('Origin');
 
     if (isWearRequest) {
       if (frame.passwordHash) {
@@ -318,6 +329,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       await incrementFrameWearCount(context, frame.frameId);
       return json({ ok: true });
+    }
+
+    if (isGoodRequest) {
+      const actor = await resolveGoodActor(context.env, context.request);
+      const insertedAt = Date.now();
+      const recordResult = await context.env.DB.prepare(
+        `INSERT OR IGNORE INTO frame_goods (frame_id, actor_type, actor_id, created_at)
+         VALUES (?, ?, ?, ?)`
+      )
+        .bind(frame.frameId, actor.actorType, actor.actorId, insertedAt)
+        .run();
+
+      const created = Number(recordResult.meta?.changes ?? 0) > 0;
+      if (created) {
+        await incrementFrameGoodCount(context, frame.frameId);
+      }
+
+      const headers: HeadersInit | undefined = actor.setCookie
+        ? {
+            'Set-Cookie': actor.setCookie,
+            ...(requestOrigin
+              ? {
+                  'Access-Control-Allow-Origin': requestOrigin,
+                  'Access-Control-Allow-Credentials': 'true',
+                  Vary: 'Origin',
+                }
+              : {}),
+          }
+        : requestOrigin
+          ? {
+              'Access-Control-Allow-Origin': requestOrigin,
+              'Access-Control-Allow-Credentials': 'true',
+              Vary: 'Origin',
+            }
+          : undefined;
+
+      return json({ ok: true, created }, 200, headers);
     }
 
     if (!frame.passwordHash) {
