@@ -23,6 +23,67 @@ interface FrameRankingAccordionProps {
 const WATERMARK_TEXT = 'TikRing';
 const RANKING_ENDPOINT = '/api/frames?top=1';
 
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('画像の読み込みに失敗しました。'));
+    image.src = src;
+  });
+}
+
+async function generateWatermarkedPngDataUrl(thumbnailUrl: string, watermarkText: string): Promise<string> {
+  const image = await loadImage(thumbnailUrl);
+  const canvas = document.createElement('canvas');
+  const size = Math.max(image.width, image.height);
+
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('プレビュー生成に失敗しました。');
+  }
+
+  context.clearRect(0, 0, size, size);
+
+  const offsetX = (size - image.width) / 2;
+  const offsetY = (size - image.height) / 2;
+  context.drawImage(image, offsetX, offsetY, image.width, image.height);
+
+  const gradient = context.createLinearGradient(0, 0, 0, size);
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
+  gradient.addColorStop(0.55, 'rgba(0, 0, 0, 0.28)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+
+  context.save();
+  context.translate(size / 2, size / 2);
+  context.rotate(-Math.PI / 4);
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  const watermarkFontSize = Math.max(26, Math.round(size * 0.08));
+  const spacing = Math.max(108, Math.round(size * 0.28));
+  context.font = `900 ${watermarkFontSize}px Arial, sans-serif`;
+  context.fillStyle = 'rgba(255, 255, 255, 0.34)';
+  context.strokeStyle = 'rgba(0, 0, 0, 0.28)';
+  context.lineWidth = Math.max(2, Math.round(size * 0.006));
+
+  for (let x = -size * 1.2; x <= size * 1.2; x += spacing) {
+    for (let y = -size * 1.2; y <= size * 1.2; y += spacing) {
+      context.strokeText(watermarkText, x, y);
+      context.fillText(watermarkText, x, y);
+    }
+  }
+
+  context.restore();
+
+  return canvas.toDataURL('image/png');
+}
+
 async function fetchRanking(endpoint: string, signal: AbortSignal) {
   const response = await fetch(endpoint, { signal });
 
@@ -35,18 +96,35 @@ async function fetchRanking(endpoint: string, signal: AbortSignal) {
   return response.json() as Promise<RankingResponse>;
 }
 
-function RankingThumbnail({ frame }: { frame: RankingFrame }) {
+function RankingThumbnail({
+  frame,
+  imageUrl,
+  loading,
+}: {
+  frame: RankingFrame;
+  imageUrl?: string;
+  loading: boolean;
+}) {
   const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
 
   return (
     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
-      {!imageError ? (
+      {loading ? (
+        <div className="flex h-full w-full items-center justify-center bg-white/[0.03] text-tiktok-lightgray">
+          <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+        </div>
+      ) : imageUrl && !imageError ? (
         <img
-          src={frame.thumbnailUrl}
+          src={imageUrl}
           alt={frame.displayName}
           loading="lazy"
           onError={() => setImageError(true)}
           className="h-full w-full object-contain"
+          draggable={false}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
@@ -87,6 +165,11 @@ export default function FrameRankingAccordion({
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [selectedFrame, setSelectedFrame] = useState<RankingFrame | null>(null);
+  const [thumbnailImageUrls, setThumbnailImageUrls] = useState<Record<string, string>>({});
+  const [thumbnailImageLoadingIds, setThumbnailImageLoadingIds] = useState<Record<string, boolean>>({});
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+  const [modalImageLoading, setModalImageLoading] = useState(false);
+  const [modalImageError, setModalImageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) {
@@ -156,6 +239,122 @@ export default function FrameRankingAccordion({
     return () => controller.abort();
   }, [loaded, open]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedFrame) {
+      setModalImageUrl(null);
+      setModalImageLoading(false);
+      setModalImageError(null);
+      return;
+    }
+
+    setModalImageLoading(true);
+    setModalImageError(null);
+    setModalImageUrl(null);
+
+    void generateWatermarkedPngDataUrl(selectedFrame.thumbnailUrl, WATERMARK_TEXT)
+      .then((dataUrl) => {
+        if (cancelled) {
+          return;
+        }
+
+        setModalImageUrl(dataUrl);
+      })
+      .catch((generationError) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(generationError);
+        setModalImageError('保護プレビューを生成できませんでした。');
+      })
+      .finally(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setModalImageLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFrame]);
+
+  useEffect(() => {
+    if (!open || frames.length === 0) {
+      return;
+    }
+
+    const pendingFrames = frames.filter((frame) => !thumbnailImageUrls[frame.id] && !thumbnailImageLoadingIds[frame.id]);
+    if (pendingFrames.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setThumbnailImageLoadingIds((current) => {
+      const next = { ...current };
+      for (const frame of pendingFrames) {
+        next[frame.id] = true;
+      }
+      return next;
+    });
+
+    void Promise.allSettled(
+      pendingFrames.map(async (frame) => ({
+        id: frame.id,
+        dataUrl: await generateWatermarkedPngDataUrl(frame.thumbnailUrl, WATERMARK_TEXT),
+      })),
+    ).then((results) => {
+      if (cancelled) {
+        return;
+      }
+
+      const loadedEntries: Record<string, string> = {};
+      const finishedIds: string[] = [];
+
+      results.forEach((result, index) => {
+        const frame = pendingFrames[index];
+        finishedIds.push(frame.id);
+        if (result.status === 'fulfilled') {
+          loadedEntries[result.value.id] = result.value.dataUrl;
+          return;
+        }
+
+        console.error(result.reason);
+      });
+
+      if (Object.keys(loadedEntries).length > 0) {
+        setThumbnailImageUrls((current) => ({ ...current, ...loadedEntries }));
+      }
+
+      setThumbnailImageLoadingIds((current) => {
+        const next = { ...current };
+        for (const id of finishedIds) {
+          delete next[id];
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [frames, open, thumbnailImageLoadingIds, thumbnailImageUrls]);
+
+  const closeModal = () => {
+    setSelectedFrame(null);
+    setModalImageUrl(null);
+    setModalImageLoading(false);
+    setModalImageError(null);
+  };
+
+  const blockImageInteraction = (event: React.MouseEvent<HTMLElement> | React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+
   return (
     <>
       <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
@@ -206,7 +405,11 @@ export default function FrameRankingAccordion({
                       <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
                         <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
                       </div>
-                      <RankingThumbnail frame={frame} />
+                      <RankingThumbnail
+                        frame={frame}
+                        imageUrl={thumbnailImageUrls[frame.id]}
+                        loading={Boolean(thumbnailImageLoadingIds[frame.id])}
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
                         <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
@@ -226,11 +429,12 @@ export default function FrameRankingAccordion({
           role="dialog"
           aria-modal="true"
           aria-labelledby="ranking-preview-title"
-          onClick={() => setSelectedFrame(null)}
+          onClick={closeModal}
         >
           <div
             className="w-full max-w-md rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(20,20,24,0.98),rgba(7,7,9,0.98))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.45)] sm:p-5"
             onClick={(event) => event.stopPropagation()}
+            onContextMenu={blockImageInteraction}
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
@@ -240,20 +444,40 @@ export default function FrameRankingAccordion({
               <button
                 type="button"
                 aria-label="閉じる"
-                onClick={() => setSelectedFrame(null)}
+                onClick={closeModal}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-tiktok-lightgray transition hover:border-white/16 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-transparent">
-              <img
-                src={selectedFrame.thumbnailUrl}
-                alt={selectedFrame.displayName}
-                className="aspect-square w-full object-contain"
-              />
-              <StrongWatermarkOverlay />
+            <div
+              className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-transparent"
+              onContextMenu={blockImageInteraction}
+              onDragStart={blockImageInteraction}
+            >
+              {modalImageLoading ? (
+                <div className="flex aspect-square w-full items-center justify-center gap-2 bg-white/[0.03] text-sm text-tiktok-lightgray">
+                  <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+                  <span>保護プレビューを生成中...</span>
+                </div>
+              ) : modalImageUrl ? (
+                <>
+                  <img
+                    src={modalImageUrl}
+                    alt={selectedFrame.displayName}
+                    className="aspect-square w-full object-contain"
+                    draggable={false}
+                    onContextMenu={blockImageInteraction}
+                    onDragStart={blockImageInteraction}
+                  />
+                  <StrongWatermarkOverlay />
+                </>
+              ) : (
+                <div className="flex aspect-square w-full items-center justify-center px-6 text-center text-sm text-[#ffb7c5]">
+                  {modalImageError ?? '保護プレビューを生成できませんでした。'}
+                </div>
+              )}
             </div>
           </div>
         </div>
