@@ -43,6 +43,12 @@ type FrameDetails = {
   passwordValue: string | null;
 };
 
+type DisplayNameUpdateResponse = {
+  error?: string;
+  message?: string;
+  user?: User;
+};
+
 const ADMIN_ITEMS_PER_PAGE = 50;
 
 const DEFAULT_META: FramesMeta = {
@@ -637,30 +643,65 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
     setDisplayNameMessage(null);
 
     try {
-      const res = await fetch('/api/auth/me', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ displayName: nextDisplayName }),
-      });
+      const endpoints = ['/api/auth/me', '/api/auth/display-name'];
+      let responseUser: User | null = null;
+      let lastErrorCode = 'FAILED_TO_UPDATE_DISPLAY_NAME';
 
-      if (res.status === 401) {
-        window.location.href = '/';
-        return;
+      for (const endpoint of endpoints) {
+        let res: Response;
+        try {
+          res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ displayName: nextDisplayName }),
+          });
+        } catch {
+          lastErrorCode = 'NETWORK_ERROR';
+          continue;
+        }
+
+        if (res.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+
+        let data: DisplayNameUpdateResponse | null = null;
+        try {
+          data = await res.json() as DisplayNameUpdateResponse;
+        } catch {
+          data = null;
+        }
+
+        if (res.ok && data?.user) {
+          responseUser = data.user;
+          break;
+        }
+
+        lastErrorCode = data?.message || data?.error || `HTTP_${res.status}`;
+
+        if (res.status !== 404) {
+          break;
+        }
       }
 
-      const data = await res.json() as { error?: string; user?: User };
-
-      if (!res.ok || !data.user) {
-        throw new Error(data.error || 'FAILED_TO_UPDATE_DISPLAY_NAME');
+      if (!responseUser) {
+        throw new Error(lastErrorCode);
       }
 
-      onUserChange(data.user);
-      setDisplayNameInput(data.user.display_name);
+      onUserChange(responseUser);
+      setDisplayNameInput(responseUser.display_name);
       setDisplayNameMessage('ユーザー名を更新しました。ランキング表示にも反映されます。');
-    } catch {
-      setDisplayNameError('ユーザー名の更新に失敗しました。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'FAILED_TO_UPDATE_DISPLAY_NAME';
+      if (message === 'DISPLAY_NAME_REQUIRED') {
+        setDisplayNameError('ユーザー名を入力してください。');
+      } else if (message === 'NETWORK_ERROR') {
+        setDisplayNameError('通信に失敗しました。時間をおいて再度お試しください。');
+      } else {
+        setDisplayNameError(`ユーザー名の更新に失敗しました。(${message})`);
+      }
     } finally {
       setDisplayNameSaving(false);
     }
