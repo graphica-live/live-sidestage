@@ -608,7 +608,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
             }}
             className="py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm"
           >
-            ＋ 新しいフレームを登録
+              TOPへ戻る
           </button>
         </div>
       </div>

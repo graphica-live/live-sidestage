@@ -111,6 +111,14 @@ async function incrementFrameViewCount(context: EventContext<Env, string, unknow
     .run();
 }
 
+async function incrementFrameWearCount(context: EventContext<Env, string, unknown>, frameId: string) {
+  await context.env.DB.prepare(
+    'UPDATE frames SET wear_count = wear_count + 1 WHERE id = ?'
+  )
+    .bind(frameId)
+    .run();
+}
+
 function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
   context.waitUntil(
     (async () => {
@@ -293,6 +301,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (frame.expiresAt !== null && Date.now() > frame.expiresAt) {
       scheduleExpiredFrameCleanup(context, frame);
       return json({ error: 'EXPIRED' }, 410);
+    }
+
+    const requestUrl = new URL(context.request.url);
+    const isWearRequest = requestUrl.searchParams.get('wear') === '1';
+
+    if (isWearRequest) {
+      if (frame.passwordHash) {
+        const ownerAccess = await canOwnerAccessFrame(context, frame.ownerId);
+        const tokenAccess = await hasFrameAccess(context, frame.frameId);
+
+        if (!ownerAccess && !tokenAccess) {
+          return json({ error: 'PASSWORD_REQUIRED' }, 401);
+        }
+      }
+
+      await incrementFrameWearCount(context, frame.frameId);
+      return json({ ok: true });
     }
 
     if (!frame.passwordHash) {

@@ -45,7 +45,8 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const returnPath = `/?f=${encodeURIComponent(id)}`;
 
   const recordWearCount = useCallback(() => {
-    const wearUrl = new URL(`/api/frames/${id}/wear`, window.location.origin);
+    const wearUrl = new URL(`/api/frames/${id}`, window.location.origin);
+    wearUrl.searchParams.set('wear', '1');
     if (accessToken) {
       wearUrl.searchParams.set('accessToken', accessToken);
     }
