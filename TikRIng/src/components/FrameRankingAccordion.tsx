@@ -31,14 +31,6 @@ type WatermarkOptions = {
   strokeAlpha: number;
 };
 
-const THUMBNAIL_WATERMARK_OPTIONS: WatermarkOptions = {
-  gradientTopAlpha: 0.12,
-  gradientMidAlpha: 0.28,
-  gradientBottomAlpha: 0.4,
-  textAlpha: 0.34,
-  strokeAlpha: 0.28,
-};
-
 const MODAL_WATERMARK_OPTIONS: WatermarkOptions = {
   gradientTopAlpha: 0,
   gradientMidAlpha: 0,
@@ -130,20 +122,33 @@ async function generateWatermarkedPngDataUrl(
   return canvas.toDataURL('image/png');
 }
 
-function StrongWatermarkOverlay() {
+function StrongWatermarkOverlay({ compact = false }: { compact?: boolean }) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-[-18%] grid grid-cols-3 gap-x-6 gap-y-10 -rotate-[24deg] sm:gap-x-8 sm:gap-y-12">
-        {Array.from({ length: 15 }).map((_, index) => (
-          <span
-            key={index}
-            className="select-none text-center text-base font-black uppercase tracking-[0.34em] text-white/42 drop-shadow-[0_3px_10px_rgba(0,0,0,0.85)] sm:text-xl"
-          >
-            {WATERMARK_TEXT}
-          </span>
-        ))}
-      </div>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.18))]" />
+      {compact ? (
+        <>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="select-none -rotate-[24deg] text-lg font-black uppercase tracking-[0.24em] text-white/72 drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)] sm:text-xl">
+              {WATERMARK_TEXT}
+            </span>
+          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.3))]" />
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-[-18%] grid grid-cols-3 gap-x-5 gap-y-8 -rotate-[24deg] sm:gap-x-7 sm:gap-y-10">
+            {Array.from({ length: 15 }).map((_, index) => (
+              <span
+                key={index}
+                className="select-none text-center text-lg font-black uppercase tracking-[0.38em] text-white/58 drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)] sm:text-2xl"
+              >
+                {WATERMARK_TEXT}
+              </span>
+            ))}
+          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.22))]" />
+        </>
+      )}
     </div>
   );
 }
@@ -162,34 +167,27 @@ async function fetchRanking(endpoint: string, signal: AbortSignal) {
 
 function RankingThumbnail({
   frame,
-  imageUrl,
-  loading,
 }: {
   frame: RankingFrame;
-  imageUrl?: string;
-  loading: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
 
-  useEffect(() => {
-    setImageError(false);
-  }, [imageUrl]);
-
   return (
     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
-      {loading ? (
-        <div className="flex h-full w-full items-center justify-center bg-white/[0.03] text-tiktok-lightgray">
-          <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
-        </div>
-      ) : imageUrl && !imageError ? (
-        <img
-          src={imageUrl}
+      {!imageError ? (
+        <>
+          <img
+          src={frame.thumbnailUrl}
           alt={frame.displayName}
           loading="lazy"
           onError={() => setImageError(true)}
           className="h-full w-full object-contain"
           draggable={false}
+          onContextMenu={(event) => event.preventDefault()}
+          onDragStart={(event) => event.preventDefault()}
         />
+          <StrongWatermarkOverlay compact />
+        </>
       ) : (
         <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
           NO IMAGE
@@ -211,9 +209,6 @@ export default function FrameRankingAccordion({
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [selectedFrame, setSelectedFrame] = useState<RankingFrame | null>(null);
-  const [thumbnailImageUrls, setThumbnailImageUrls] = useState<Record<string, string>>({});
-  const [thumbnailImageLoadingIds, setThumbnailImageLoadingIds] = useState<Record<string, boolean>>({});
-  const [thumbnailImageFailedIds, setThumbnailImageFailedIds] = useState<Record<string, boolean>>({});
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
   const [modalImageLoading, setModalImageLoading] = useState(false);
   const [modalImageError, setModalImageError] = useState<string | null>(null);
@@ -250,9 +245,6 @@ export default function FrameRankingAccordion({
         }
 
         setFrames(Array.isArray(data.frames) ? data.frames : []);
-        setThumbnailImageUrls({});
-        setThumbnailImageLoadingIds({});
-        setThumbnailImageFailedIds({});
         setLoaded(true);
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
@@ -332,82 +324,6 @@ export default function FrameRankingAccordion({
     };
   }, [selectedFrame]);
 
-  useEffect(() => {
-    if (!open || frames.length === 0) {
-      return;
-    }
-
-    const pendingFrames = frames.filter(
-      (frame) => !thumbnailImageUrls[frame.id] && !thumbnailImageLoadingIds[frame.id] && !thumbnailImageFailedIds[frame.id],
-    );
-    if (pendingFrames.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-
-    setThumbnailImageLoadingIds((current) => {
-      const next = { ...current };
-      for (const frame of pendingFrames) {
-        next[frame.id] = true;
-      }
-      return next;
-    });
-
-    void Promise.allSettled(
-      pendingFrames.map(async (frame) => ({
-        id: frame.id,
-        dataUrl: await generateWatermarkedPngDataUrl(frame.thumbnailUrl, WATERMARK_TEXT, THUMBNAIL_WATERMARK_OPTIONS),
-      })),
-    ).then((results) => {
-      if (cancelled) {
-        return;
-      }
-
-      const loadedEntries: Record<string, string> = {};
-      const finishedIds: string[] = [];
-      const failedIds: string[] = [];
-
-      results.forEach((result, index) => {
-        const frame = pendingFrames[index];
-        finishedIds.push(frame.id);
-        if (result.status === 'fulfilled') {
-          loadedEntries[result.value.id] = result.value.dataUrl;
-          return;
-        }
-
-        console.error(result.reason);
-        failedIds.push(frame.id);
-      });
-
-      if (Object.keys(loadedEntries).length > 0) {
-        setThumbnailImageUrls((current) => ({ ...current, ...loadedEntries }));
-      }
-
-      if (failedIds.length > 0) {
-        setThumbnailImageFailedIds((current) => {
-          const next = { ...current };
-          for (const id of failedIds) {
-            next[id] = true;
-          }
-          return next;
-        });
-      }
-
-      setThumbnailImageLoadingIds((current) => {
-        const next = { ...current };
-        for (const id of finishedIds) {
-          delete next[id];
-        }
-        return next;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [frames, open, thumbnailImageFailedIds, thumbnailImageLoadingIds, thumbnailImageUrls]);
-
   const closeModal = () => {
     setSelectedFrame(null);
     setModalImageUrl(null);
@@ -469,11 +385,7 @@ export default function FrameRankingAccordion({
                       <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
                         <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
                       </div>
-                      <RankingThumbnail
-                        frame={frame}
-                        imageUrl={thumbnailImageUrls[frame.id]}
-                        loading={Boolean(thumbnailImageLoadingIds[frame.id])}
-                      />
+                      <RankingThumbnail frame={frame} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
                         <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
