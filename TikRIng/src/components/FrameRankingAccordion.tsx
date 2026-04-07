@@ -136,17 +136,17 @@ function StrongWatermarkOverlay({ compact = false }: { compact?: boolean }) {
         </>
       ) : (
         <>
-          <div className="absolute inset-[-18%] grid grid-cols-3 gap-x-5 gap-y-8 -rotate-[24deg] sm:gap-x-7 sm:gap-y-10">
+          <div className="absolute inset-[-22%] grid grid-cols-2 gap-x-4 gap-y-7 -rotate-[24deg] sm:gap-x-6 sm:gap-y-9">
             {Array.from({ length: 15 }).map((_, index) => (
               <span
                 key={index}
-                className="select-none text-center text-lg font-black uppercase tracking-[0.38em] text-white/58 drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)] sm:text-2xl"
+                className="select-none text-center text-2xl font-black uppercase tracking-[0.42em] text-white/68 drop-shadow-[0_3px_14px_rgba(0,0,0,0.98)] sm:text-4xl"
               >
                 {WATERMARK_TEXT}
               </span>
             ))}
           </div>
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.22))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.28))]" />
         </>
       )}
     </div>
