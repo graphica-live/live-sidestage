@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type RankingFrame = {
@@ -74,6 +74,7 @@ export default function FrameRankingAccordion({
   const [frames, setFrames] = useState<RankingFrame[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [selectedFrame, setSelectedFrame] = useState<RankingFrame | null>(null);
 
   useEffect(() => {
     if (!open || loaded) {
@@ -144,67 +145,111 @@ export default function FrameRankingAccordion({
   }, [loaded, open]);
 
   return (
-    <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${open ? 'border-b border-white/8 pb-3' : ''}`}
-      >
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">{eyebrow}</p>
-          <h2 className="mt-1 text-sm font-bold text-white sm:text-base">{title}</h2>
-          {!open ? (
-            <p className="mt-1 text-xs text-tiktok-lightgray">{closedSummary}</p>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
-            TOP 10
-          </span>
-          <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
-        </div>
-      </button>
+    <>
+      <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${open ? 'border-b border-white/8 pb-3' : ''}`}
+        >
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">{eyebrow}</p>
+            <h2 className="mt-1 text-sm font-bold text-white sm:text-base">{title}</h2>
+            {!open ? (
+              <p className="mt-1 text-xs text-tiktok-lightgray">{closedSummary}</p>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
+              TOP 10
+            </span>
+            <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
+          </div>
+        </button>
 
-      {open ? (
-        <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:p-4">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-6 text-sm text-tiktok-lightgray">
-              <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
-              <span>ランキングを読み込み中...</span>
+        {open ? (
+          <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-sm text-tiktok-lightgray">
+                <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+                <span>ランキングを読み込み中...</span>
+              </div>
+            ) : error ? (
+              <div className="rounded-xl border border-tiktok-red/25 bg-tiktok-red/10 px-3 py-4 text-center text-sm text-[#ffb7c5]">
+                {error}
+              </div>
+            ) : frames.length === 0 ? (
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-4 text-center text-sm text-tiktok-lightgray">
+                まだランキング対象のフレームがありません。
+              </div>
+            ) : (
+              <ol className="space-y-2.5">
+                {frames.map((frame, index) => (
+                  <li key={frame.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFrame(frame)}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 text-left transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]"
+                    >
+                      <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
+                        <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
+                      </div>
+                      <RankingThumbnail frame={frame} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
+                        <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      {selectedFrame ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ranking-preview-title"
+          onClick={() => setSelectedFrame(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(20,20,24,0.98),rgba(7,7,9,0.98))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.45)] sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Ranking Preview</p>
+                <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">投稿者: {selectedFrame.ownerDisplayName}</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="閉じる"
+                onClick={() => setSelectedFrame(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-tiktok-lightgray transition hover:border-white/16 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          ) : error ? (
-            <div className="rounded-xl border border-tiktok-red/25 bg-tiktok-red/10 px-3 py-4 text-center text-sm text-[#ffb7c5]">
-              {error}
+
+            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(37,244,238,0.08),rgba(254,44,85,0.14))]">
+              <img
+                src={selectedFrame.thumbnailUrl}
+                alt={selectedFrame.displayName}
+                className="aspect-square w-full object-contain bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.1),rgba(255,255,255,0.02)_48%,rgba(0,0,0,0.12))]"
+              />
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
+                <span className="-rotate-[24deg] select-none text-lg font-black uppercase tracking-[0.36em] text-white/28 drop-shadow-[0_4px_14px_rgba(0,0,0,0.55)] sm:text-xl">
+                  {WATERMARK_TEXT}
+                </span>
+              </div>
             </div>
-          ) : frames.length === 0 ? (
-            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-4 text-center text-sm text-tiktok-lightgray">
-              まだランキング対象のフレームがありません。
-            </div>
-          ) : (
-            <ol className="space-y-2.5">
-              {frames.map((frame, index) => (
-                <li
-                  key={frame.id}
-                  className="flex items-center gap-3 rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5"
-                >
-                  <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
-                    <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
-                  </div>
-                  <RankingThumbnail frame={frame} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-white">{frame.displayName}</p>
-                    <p className="mt-1 truncate text-xs text-tiktok-lightgray">投稿者: {frame.ownerDisplayName}</p>
-                  </div>
-                  <div className="shrink-0 rounded-xl border border-white/8 bg-black/20 px-2.5 py-2 text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/42">Views</p>
-                    <p className="mt-1 text-sm font-black text-white">{frame.viewCount.toLocaleString('ja-JP')}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
+          </div>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }
