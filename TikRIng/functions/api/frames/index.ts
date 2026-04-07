@@ -124,7 +124,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         displayName: row.custom_name?.trim() ? row.custom_name.trim() : row.image_key,
         ownerDisplayName: row.owner_display_name?.trim() || '不明なユーザー',
         viewCount: row.view_count ?? 0,
-        thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png`,
+        thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png?raw=1`,
       }));
 
       return new Response(JSON.stringify({ frames }), {

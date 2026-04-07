@@ -13,6 +13,8 @@ type FrameRow = {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   try {
     const id = context.params.id as string;
+    const requestUrl = new URL(context.request.url);
+    const useOriginalFrame = requestUrl.searchParams.get('raw') === '1';
 
     if (!id) {
       return new Response('Not Found', { status: 404 });
@@ -47,7 +49,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
 
     const previewKey = `previews/${frameRow.id}.png`;
-    const object = await context.env.FRAMES_BUCKET.get(previewKey) ?? await context.env.FRAMES_BUCKET.get(frameRow.image_key);
+    const object = useOriginalFrame
+      ? await context.env.FRAMES_BUCKET.get(frameRow.image_key)
+      : await context.env.FRAMES_BUCKET.get(previewKey) ?? await context.env.FRAMES_BUCKET.get(frameRow.image_key);
 
     if (!object) {
       return new Response('Not Found', {
