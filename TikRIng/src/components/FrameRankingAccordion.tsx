@@ -40,19 +40,37 @@ const THUMBNAIL_WATERMARK_OPTIONS: WatermarkOptions = {
 };
 
 const MODAL_WATERMARK_OPTIONS: WatermarkOptions = {
-  gradientTopAlpha: 0.05,
-  gradientMidAlpha: 0.12,
-  gradientBottomAlpha: 0.18,
-  textAlpha: 0.16,
-  strokeAlpha: 0.14,
+  gradientTopAlpha: 0,
+  gradientMidAlpha: 0,
+  gradientBottomAlpha: 0,
+  textAlpha: 0,
+  strokeAlpha: 0,
 };
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
+    const timeoutId = window.setTimeout(() => {
+      image.onload = null;
+      image.onerror = null;
+      reject(new Error('画像の読み込みがタイムアウトしました。'));
+    }, 12000);
+
+    const clearHandlers = () => {
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+    };
+
     image.crossOrigin = 'anonymous';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像の読み込みに失敗しました。'));
+    image.onload = () => {
+      clearHandlers();
+      resolve(image);
+    };
+    image.onerror = () => {
+      clearHandlers();
+      reject(new Error('画像の読み込みに失敗しました。'));
+    };
     image.src = src;
   });
 }
