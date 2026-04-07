@@ -165,7 +165,7 @@ function App() {
                   <p className="text-tiktok-lightgray">フレームを読み込み中...</p>
                 </div>
               ) : frameCheckStatus === 'ok' ? (
-                <FrameEditor id={frameId} />
+                <FrameEditor id={frameId} user={user} />
               ) : (
                 <Expired />
               )

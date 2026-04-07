@@ -8,9 +8,12 @@ import FrameRankingAccordion from '../components/FrameRankingAccordion';
 
 interface FrameEditorProps {
   id: string;
+  user?: {
+    email?: string | null;
+  } | null;
 }
 
-export default function FrameEditor({ id }: FrameEditorProps) {
+export default function FrameEditor({ id, user }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [frameOpeningMaskUrl, setFrameOpeningMaskUrl] = useState<string | null>(null);
   const [hasSavedOpeningMask, setHasSavedOpeningMask] = useState(false);
@@ -44,6 +47,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const gestureHintTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const returnPath = `/?f=${encodeURIComponent(id)}`;
+  const canShowRanking = (user?.email ?? '').trim().toLowerCase() === 'joe.graphica@gmail.com';
 
   const recordWearCount = useCallback(() => {
     const wearUrl = new URL(`/api/frames/${id}`, window.location.origin);
@@ -833,13 +837,15 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         <DonationCard returnPath={returnPath} compact />
       </div>
 
-      <div className="w-full mt-6">
-        <FrameRankingAccordion
-          title="人気のアイコンフレーム"
-          eyebrow="Ranking"
-          closedSummary="閲覧数の多いフレームTOP10を見る"
-        />
-      </div>
+      {canShowRanking ? (
+        <div className="w-full mt-6">
+          <FrameRankingAccordion
+            title="人気のアイコンフレーム"
+            eyebrow="Ranking"
+            closedSummary="閲覧数の多いフレームTOP10を見る"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

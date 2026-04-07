@@ -163,6 +163,7 @@ const COMMENT_PREVIEW_CROP_STYLE = {
 };
 
 export default function Home({ user }: HomeProps) {
+  const canShowRanking = (user?.email ?? '').trim().toLowerCase() === 'joe.graphica@gmail.com';
   const [uploading, setUploading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -1527,11 +1528,13 @@ export default function Home({ user }: HomeProps) {
             </div>
           ) : null}
 
-          <FrameRankingAccordion
-            title="アイコンフレーム閲覧数ランキング"
-            eyebrow="Ranking"
-            closedSummary="いま見られているフレーム上位10件を表示"
-          />
+          {canShowRanking ? (
+            <FrameRankingAccordion
+              title="アイコンフレーム閲覧数ランキング"
+              eyebrow="Ranking"
+              closedSummary="いま見られているフレーム上位10件を表示"
+            />
+          ) : null}
 
           <section className="w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5">
             <button
