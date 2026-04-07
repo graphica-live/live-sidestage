@@ -184,6 +184,7 @@ export default function Home({ user }: HomeProps) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [preparingUploadConfirmation, setPreparingUploadConfirmation] = useState(false);
   const [uploadConfirmation, setUploadConfirmation] = useState<UploadConfirmationState | null>(null);
+  const [uploadRankingConsentChecked, setUploadRankingConsentChecked] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
@@ -516,6 +517,9 @@ export default function Home({ user }: HomeProps) {
 
     uploadConfirmationRef.current = nextConfirmation;
     setUploadConfirmation(nextConfirmation);
+    if (!nextConfirmation) {
+      setUploadRankingConsentChecked(false);
+    }
   }, [releaseUploadConfirmationAssets]);
 
   const applyAcceptedFrame = useCallback((nextFrameImage: string, nextFileName: string) => {
@@ -1173,6 +1177,7 @@ export default function Home({ user }: HomeProps) {
           240
         );
 
+        setUploadRankingConsentChecked(false);
         replaceUploadConfirmation({
           preparedBlob: squareBlob,
           openingMaskBlob,
@@ -1196,7 +1201,7 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handleUpload = async () => {
-    if (!uploadConfirmation) return;
+    if (!uploadConfirmation || !uploadRankingConsentChecked) return;
 
     let recaptchaToken: string | null = null;
     try {
@@ -2220,6 +2225,23 @@ export default function Home({ user }: HomeProps) {
               </div>
             </div>
 
+            <div className="mt-5 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 py-4 sm:rounded-[1.25rem] sm:px-5">
+              <p className="text-sm leading-6 text-tiktok-lightgray">
+                アップロードされたフレームはアクセスランキングに掲載されます。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。
+              </p>
+              <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-white" htmlFor="upload-ranking-consent">
+                <input
+                  id="upload-ranking-consent"
+                  type="checkbox"
+                  checked={uploadRankingConsentChecked}
+                  onChange={(event) => setUploadRankingConsentChecked(event.target.checked)}
+                  disabled={uploading}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-tiktok-red focus:ring-2 focus:ring-tiktok-red/60"
+                />
+                <span className="leading-6">上記の内容に同意します</span>
+              </label>
+            </div>
+
             <div className="mt-5 flex flex-col-reverse gap-3 border-t border-white/8 pt-4 sm:flex-row sm:justify-end sm:pt-5">
               <button
                 type="button"
@@ -2232,7 +2254,7 @@ export default function Home({ user }: HomeProps) {
               <button
                 type="button"
                 onClick={handleUpload}
-                disabled={uploading}
+                disabled={uploading || !uploadRankingConsentChecked}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-tiktok-red px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-[#D92648] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {uploading ? (

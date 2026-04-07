@@ -34,6 +34,7 @@ type FrameRow = {
   password_ciphertext?: string | null;
   created_at: number;
   view_count: number | null;
+  wear_count: number | null;
 };
 
 type FrameListItem = {
@@ -51,6 +52,7 @@ type FrameListItem = {
   ownerEmail: string | null;
   ownerDisplayName: string | null;
   viewCount?: number;
+  wearCount?: number;
 };
 
 type FramesMeta = {
@@ -181,7 +183,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const orderSql = ADMIN_SORT_SQL[sort];
     const rows = await context.env.DB.prepare(
       `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-        f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count
+        f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count, f.wear_count
        FROM frames f
        LEFT JOIN users u ON u.id = f.owner_id
        ORDER BY ${orderSql}
@@ -227,6 +229,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         ownerEmail: row.owner_email,
         ownerDisplayName: row.owner_display_name,
         viewCount: row.view_count ?? 0,
+        wearCount: row.wear_count ?? 0,
       });
     }
 
@@ -246,7 +249,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   const rows = await context.env.DB.prepare(
     `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
-      f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count
+      f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count, f.wear_count
      FROM frames f
      LEFT JOIN users u ON u.id = f.owner_id
      WHERE f.owner_id = ?
@@ -297,6 +300,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ownerEmail: row.owner_email,
       ownerDisplayName: row.owner_display_name,
       viewCount: row.view_count ?? 0,
+      wearCount: row.wear_count ?? 0,
     });
   }
 

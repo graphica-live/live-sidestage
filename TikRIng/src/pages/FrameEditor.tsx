@@ -44,6 +44,20 @@ export default function FrameEditor({ id }: FrameEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const returnPath = `/?f=${encodeURIComponent(id)}`;
 
+  const recordWearCount = useCallback(() => {
+    const wearUrl = new URL(`/api/frames/${id}/wear`, window.location.origin);
+    if (accessToken) {
+      wearUrl.searchParams.set('accessToken', accessToken);
+    }
+
+    void fetch(wearUrl.toString(), {
+      method: 'POST',
+      keepalive: true,
+    }).catch((err) => {
+      console.error('Failed to record wear count:', err);
+    });
+  }, [accessToken, id]);
+
   useEffect(() => {
     return () => {
       if (noticeTimerRef.current !== null) {
@@ -438,6 +452,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       const filename = `TikRing-${timestamp}-${randomSuffix}.png`;
       const outputBlob = await (await fetch(outputImage)).blob();
       const outputFile = new File([outputBlob], filename, { type: 'image/png' });
+      recordWearCount();
       const ua = navigator.userAgent;
       const isAndroid = /Android/i.test(ua);
       const isIOSLike = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

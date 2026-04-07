@@ -19,6 +19,7 @@ type FrameItem = {
   ownerEmail: string | null;
   ownerDisplayName: string | null;
   viewCount?: number;
+  wearCount?: number;
 };
 
 type FramesMeta = {
@@ -662,7 +663,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
             {isOrphanSection
               ? 'R2孤児データは必要時のみ読み込みます。孤児一覧では共有URLとパスワードは取得しません。'
               : isAdminScope
-                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数でも並び替えできます。'
+                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数を確認できます。'
                 : '登録日時や有効期限で並び替えできます。'}
           </p>
           {isAdminScope && !isOrphanSection ? (
@@ -801,6 +802,12 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
                       {isAdminScope ? (
                         <p className="text-xs text-tiktok-lightgray break-all">
                           閲覧数: {frame.viewCount ?? 0}
+                        </p>
+                      ) : null}
+
+                      {isAdminScope ? (
+                        <p className="text-xs text-tiktok-lightgray break-all">
+                          装着数: {frame.wearCount ?? 0}
                         </p>
                       ) : null}
 
