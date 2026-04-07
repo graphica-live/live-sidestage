@@ -103,12 +103,50 @@ async function canOwnerAccessFrame(context: EventContext<Env, string, unknown>, 
   return isAdminEmail(viewer?.email);
 }
 
-async function incrementFrameViewCount(context: EventContext<Env, string, unknown>, frameId: string) {
+async function recordFrameView(context: EventContext<Env, string, unknown>, frameId: string) {
+  const actor = await resolveGoodActor(context.env, context.request);
+  const insertedAt = Date.now();
+
   await context.env.DB.prepare(
-    'UPDATE frames SET view_count = view_count + 1 WHERE id = ?'
+    `INSERT INTO frame_view_events (id, frame_id, actor_type, actor_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`
   )
-    .bind(frameId)
+    .bind(crypto.randomUUID(), frameId, actor.actorType, actor.actorId, insertedAt)
     .run();
+
+  const recordResult = await context.env.DB.prepare(
+    `INSERT OR IGNORE INTO frame_views (frame_id, actor_type, actor_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  )
+    .bind(frameId, actor.actorType, actor.actorId, insertedAt)
+    .run();
+
+  const created = Number(recordResult.meta?.changes ?? 0) > 0;
+  if (created) {
+    await context.env.DB.prepare(
+      'UPDATE frames SET view_count = view_count + 1 WHERE id = ?'
+    )
+      .bind(frameId)
+      .run();
+  }
+
+  return actor;
+}
+
+async function recordFrameWear(context: EventContext<Env, string, unknown>, frameId: string) {
+  const actor = await resolveGoodActor(context.env, context.request);
+  const recordedAt = Date.now();
+
+  await context.env.DB.prepare(
+    `INSERT INTO frame_wear_events (id, frame_id, actor_type, actor_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  )
+    .bind(crypto.randomUUID(), frameId, actor.actorType, actor.actorId, recordedAt)
+    .run();
+
+  await incrementFrameWearCount(context, frameId);
+
+  return actor;
 }
 
 async function incrementFrameWearCount(context: EventContext<Env, string, unknown>, frameId: string) {
@@ -141,6 +179,9 @@ function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>
         return;
       }
       try {
+        await context.env.DB.prepare('DELETE FROM frame_view_events WHERE frame_id = ?').bind(frame.frameId).run();
+        await context.env.DB.prepare('DELETE FROM frame_wear_events WHERE frame_id = ?').bind(frame.frameId).run();
+        await context.env.DB.prepare('DELETE FROM frame_views WHERE frame_id = ?').bind(frame.frameId).run();
         await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(frame.frameId).run();
         await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frame.frameId).run();
         await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frame.frameId).run();
@@ -286,7 +327,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     headers.set('Access-Control-Allow-Origin', '*');
 
     if (!ownerAccess) {
-      await incrementFrameViewCount(context, frame.frameId);
+      const actor = await recordFrameView(context, frame.frameId);
+      if (actor.setCookie) {
+        headers.set('Set-Cookie', actor.setCookie);
+      }
     }
 
     return new Response(object.body, {
@@ -327,8 +371,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       }
 
-      await incrementFrameWearCount(context, frame.frameId);
-      return json({ ok: true });
+      const actor = await recordFrameWear(context, frame.frameId);
+      const headers: HeadersInit | undefined = actor.setCookie
+        ? { 'Set-Cookie': actor.setCookie }
+        : undefined;
+
+      return json({ ok: true }, 200, headers);
     }
 
     if (isGoodRequest) {

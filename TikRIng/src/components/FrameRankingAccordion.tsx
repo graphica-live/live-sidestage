@@ -39,6 +39,8 @@ function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
     params.set('source', 'pickup');
   } else if (rankingType === 'goods') {
     params.set('metric', 'goods');
+  } else {
+    params.set('timeRange', 'month');
   }
 
   return `/api/frames?${params.toString()}`;
@@ -288,7 +290,7 @@ function RankingThumbnail({
 export default function FrameRankingAccordion({
   title,
   eyebrow = 'Ranking',
-  closedSummary = '閲覧数TOP10を表示',
+  closedSummary = '月間閲覧数TOP10を表示',
   className,
   rankingType = 'views',
 }: FrameRankingAccordionProps) {

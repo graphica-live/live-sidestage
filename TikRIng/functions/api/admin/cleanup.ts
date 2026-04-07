@@ -48,6 +48,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     try {
+      await context.env.DB.prepare('DELETE FROM frame_view_events WHERE frame_id = ?').bind(row.id).run();
+      await context.env.DB.prepare('DELETE FROM frame_wear_events WHERE frame_id = ?').bind(row.id).run();
+      await context.env.DB.prepare('DELETE FROM frame_views WHERE frame_id = ?').bind(row.id).run();
+      await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(row.id).run();
       await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(row.id).run();
       await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(row.id).run();
       deletedDb += 1;

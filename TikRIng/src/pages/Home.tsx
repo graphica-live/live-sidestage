@@ -1539,7 +1539,7 @@ export default function Home({ user }: HomeProps) {
               <FrameRankingAccordion
                 title="アイコンフレーム閲覧数ランキング"
                 eyebrow="Ranking"
-                closedSummary="いま見られているフレーム上位10件を表示"
+                closedSummary="今月見られているフレーム上位10件を表示"
               />
               <FrameRankingAccordion
                 title="アイコンフレームグッド数ランキング"

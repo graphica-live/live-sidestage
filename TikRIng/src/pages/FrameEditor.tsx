@@ -849,7 +849,7 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
             <FrameRankingAccordion
               title="人気のアイコンフレーム"
               eyebrow="Ranking"
-              closedSummary="閲覧数の多いフレームTOP10を見る"
+              closedSummary="今月の閲覧数が多いフレームTOP10を見る"
             />
             <FrameRankingAccordion
               title="グッド数の多いアイコンフレーム"
