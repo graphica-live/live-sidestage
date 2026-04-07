@@ -12,8 +12,8 @@ type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_des
 const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
   created_desc: 'f.created_at DESC',
   created_asc: 'f.created_at ASC',
-  owner_asc: "LOWER(COALESCE(u.display_name, u.email, '')) ASC, f.created_at DESC",
-  owner_desc: "LOWER(COALESCE(u.display_name, u.email, '')) DESC, f.created_at DESC",
+  owner_asc: "LOWER(COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), ''), u.email, '')) ASC, f.created_at DESC",
+  owner_desc: "LOWER(COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), ''), u.email, '')) DESC, f.created_at DESC",
   name_asc: 'LOWER(COALESCE(f.custom_name, f.image_key)) ASC, f.created_at DESC',
   name_desc: 'LOWER(COALESCE(f.custom_name, f.image_key)) DESC, f.created_at DESC',
   expires_asc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at ASC, f.created_at DESC',
@@ -109,7 +109,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       const nowMs = Date.now();
       const origin = url.origin;
       const rows = await context.env.DB.prepare(
-        `SELECT f.id, f.custom_name, f.image_key, u.display_name AS owner_display_name, f.view_count
+        `SELECT f.id, f.custom_name, f.image_key,
+            COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+            f.view_count
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          WHERE f.expires_at IS NULL OR f.expires_at > ?
@@ -236,7 +238,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const registeredCount = registeredCountRow?.count ?? 0;
     const orderSql = ADMIN_SORT_SQL[sort];
     const rows = await context.env.DB.prepare(
-      `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+      `SELECT f.id, f.owner_id, u.email AS owner_email,
+        COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
         f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.created_at, f.view_count, f.wear_count
        FROM frames f
        LEFT JOIN users u ON u.id = f.owner_id
@@ -302,7 +305,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   const rows = await context.env.DB.prepare(
-    `SELECT f.id, f.owner_id, u.email AS owner_email, u.display_name AS owner_display_name,
+    `SELECT f.id, f.owner_id, u.email AS owner_email,
+      COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
       f.custom_name, f.image_key, f.opening_mask_key, f.expires_at, f.password_hash, f.password_ciphertext, f.created_at, f.view_count, f.wear_count
      FROM frames f
      LEFT JOIN users u ON u.id = f.owner_id

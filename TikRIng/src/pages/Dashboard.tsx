@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Search, Shield, Trash2 } from 'lucide-react';
 import { getFrameOpeningGuideDataUrl } from '../utils/canvas';
 
-type User = { id: string; display_name: string; plan: string; isAdmin: boolean };
+type User = { id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null; provider?: string };
 
 type FrameItem = {
   id: string;
@@ -90,9 +90,10 @@ function getInitialAdminSection(): AdminSection {
 interface DashboardProps {
   user: User;
   initialScope: 'mine' | 'all';
+  onUserChange: (user: User) => void;
 }
 
-export default function Dashboard({ user, initialScope }: DashboardProps) {
+export default function Dashboard({ user, initialScope, onUserChange }: DashboardProps) {
   const [loading, setLoading] = useState(true);
   const [frames, setFrames] = useState<FrameItem[]>([]);
   const [meta, setMeta] = useState<FramesMeta>(DEFAULT_META);
@@ -114,6 +115,10 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   const [sortBy, setSortBy] = useState<SortOption>(() => getInitialDashboardSort());
   const [adminSection, setAdminSection] = useState<AdminSection>(() => getInitialAdminSection());
   const [currentPage, setCurrentPage] = useState(() => getInitialDashboardPage());
+  const [displayNameInput, setDisplayNameInput] = useState(user.display_name);
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
+  const [displayNameMessage, setDisplayNameMessage] = useState<string | null>(null);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
 
   const canShow = useMemo(() => !!user, [user]);
   const isAdminScope = user.isAdmin && scope === 'all';
@@ -182,6 +187,10 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     setAdminSection('registered');
     setCurrentPage(1);
   }, [initialScope]);
+
+  useEffect(() => {
+    setDisplayNameInput(user.display_name);
+  }, [user.display_name]);
 
   useEffect(() => {
     if (!isAdminScope) {
@@ -574,6 +583,59 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     }
   };
 
+  const handleDisplayNameSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (displayNameSaving) {
+      return;
+    }
+
+    const nextDisplayName = displayNameInput.trim();
+    if (!nextDisplayName) {
+      setDisplayNameError('ユーザー名を入力してください。');
+      setDisplayNameMessage(null);
+      return;
+    }
+
+    if (nextDisplayName === user.display_name) {
+      setDisplayNameError(null);
+      setDisplayNameMessage('現在のユーザー名と同じです。');
+      return;
+    }
+
+    setDisplayNameSaving(true);
+    setDisplayNameError(null);
+    setDisplayNameMessage(null);
+
+    try {
+      const res = await fetch('/api/auth/display-name', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ displayName: nextDisplayName }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+
+      const data = await res.json() as { error?: string; user?: User };
+
+      if (!res.ok || !data.user) {
+        throw new Error(data.error || 'FAILED_TO_UPDATE_DISPLAY_NAME');
+      }
+
+      onUserChange(data.user);
+      setDisplayNameInput(data.user.display_name);
+      setDisplayNameMessage('ユーザー名を更新しました。ランキング表示にも反映されます。');
+    } catch {
+      setDisplayNameError('ユーザー名の更新に失敗しました。');
+    } finally {
+      setDisplayNameSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 w-full">
@@ -613,6 +675,57 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
           </button>
         </div>
       </div>
+
+      {!isAdminScope ? (
+        <div className="mb-4 rounded-xl border border-tiktok-gray bg-tiktok-dark px-4 py-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">ユーザー名</p>
+              <p className="mt-1 text-lg font-black text-white break-all">{user.display_name}</p>
+              <p className="mt-1 text-xs text-tiktok-lightgray">変更後の名前はランキングと管理画面の表示に使われます。</p>
+            </div>
+          </div>
+          <form onSubmit={handleDisplayNameSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-sm text-tiktok-lightgray">
+              <span className="mb-1 block text-xs">新しいユーザー名</span>
+              <input
+                type="text"
+                value={displayNameInput}
+                onChange={(event) => {
+                  setDisplayNameInput(event.target.value);
+                  if (displayNameError) {
+                    setDisplayNameError(null);
+                  }
+                  if (displayNameMessage) {
+                    setDisplayNameMessage(null);
+                  }
+                }}
+                placeholder="ユーザー名を入力"
+                maxLength={100}
+                className="w-full rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm text-white focus:border-tiktok-cyan focus:outline-none"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={displayNameSaving}
+              className="inline-flex min-w-[140px] items-center justify-center rounded-md bg-tiktok-cyan px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#53f3ff] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {displayNameSaving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  保存中...
+                </span>
+              ) : 'ユーザー名を保存'}
+            </button>
+          </form>
+          {displayNameError ? (
+            <p className="mt-3 text-sm text-tiktok-red">{displayNameError}</p>
+          ) : null}
+          {displayNameMessage ? (
+            <p className="mt-3 text-sm text-tiktok-cyan">{displayNameMessage}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {isAdminScope ? (
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">

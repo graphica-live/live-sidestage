@@ -13,6 +13,7 @@ type User = {
   plan: string;
   isAdmin: boolean;
   email?: string | null;
+  provider?: string;
 };
 
 type AuthMeResponse = {
@@ -37,6 +38,10 @@ function App() {
       .then((data) => setUser(data.user))
       .catch(() => setUser(null));
   }, []);
+
+  const handleUserChange = (nextUser: User) => {
+    setUser(nextUser);
+  };
 
   useEffect(() => {
     // A案: ログイン後の通常リロードでも pro 状態を自動同期する
@@ -153,7 +158,7 @@ function App() {
                 <p className="text-tiktok-lightgray">読み込み中...</p>
               </div>
             ) : user ? (
-              <Dashboard user={user} initialScope={dashboardScope} />
+              <Dashboard user={user} initialScope={dashboardScope} onUserChange={handleUserChange} />
             ) : (
               <Home user={user} />
             )

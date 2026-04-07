@@ -12,7 +12,11 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   }
 
   const user = await ctx.env.DB.prepare(
-    'SELECT id, provider, email, display_name, plan FROM users WHERE id = ?'
+    `SELECT id, provider, email,
+        COALESCE(NULLIF(TRIM(custom_display_name), ''), NULLIF(TRIM(display_name), '')) AS display_name,
+        plan
+     FROM users
+     WHERE id = ?`
   ).bind(session.userId).first<{
     id: string;
     provider: string;
