@@ -681,7 +681,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
 
         lastErrorCode = data?.message || data?.error || `HTTP_${res.status}`;
 
-        if (res.status !== 404) {
+        if (res.status !== 404 && res.status !== 405) {
           break;
         }
       }
