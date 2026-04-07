@@ -1529,11 +1529,19 @@ export default function Home({ user }: HomeProps) {
           ) : null}
 
           {canShowRanking ? (
-            <FrameRankingAccordion
-              title="アイコンフレーム閲覧数ランキング"
-              eyebrow="Ranking"
-              closedSummary="いま見られているフレーム上位10件を表示"
-            />
+            <div className="space-y-4">
+              <FrameRankingAccordion
+                title="アイコンフレーム閲覧数ランキング"
+                eyebrow="Ranking"
+                closedSummary="いま見られているフレーム上位10件を表示"
+              />
+              <FrameRankingAccordion
+                title="アイコンフレームグッド数ランキング"
+                eyebrow="Ranking"
+                closedSummary="いまグッド数の多いフレーム上位10件を表示"
+                rankingType="goods"
+              />
+            </div>
           ) : null}
 
           <section className="w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5">

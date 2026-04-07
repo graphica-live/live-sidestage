@@ -34,6 +34,7 @@ type FrameRow = {
   password_ciphertext?: string | null;
   created_at: number;
   view_count: number | null;
+  good_count: number | null;
   wear_count: number | null;
 };
 
@@ -108,6 +109,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
   const isTopRankingRequest = url.searchParams.get('top') === '1';
   const isGoodStateRequest = url.searchParams.get('goodState') === '1';
+  const rankingMetric = url.searchParams.get('metric') === 'goods' ? 'goods' : 'views';
 
   if (isGoodStateRequest) {
     try {
@@ -178,14 +180,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     try {
       const nowMs = Date.now();
       const origin = url.origin;
+      const rankingOrderBy = rankingMetric === 'goods'
+        ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC'
+        : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC';
       const rows = await context.env.DB.prepare(
         `SELECT f.id, f.custom_name, f.image_key,
             COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-            f.view_count
+            f.view_count,
+            f.good_count
          FROM frames f
          LEFT JOIN users u ON u.id = f.owner_id
          WHERE f.expires_at IS NULL OR f.expires_at > ?
-         ORDER BY COALESCE(f.view_count, 0) DESC, f.created_at DESC
+         ORDER BY ${rankingOrderBy}
          LIMIT 10`
       )
         .bind(nowMs)

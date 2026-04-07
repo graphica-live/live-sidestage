@@ -839,11 +839,19 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
 
       {canShowRanking ? (
         <div className="w-full mt-6">
-          <FrameRankingAccordion
-            title="人気のアイコンフレーム"
-            eyebrow="Ranking"
-            closedSummary="閲覧数の多いフレームTOP10を見る"
-          />
+          <div className="space-y-4">
+            <FrameRankingAccordion
+              title="人気のアイコンフレーム"
+              eyebrow="Ranking"
+              closedSummary="閲覧数の多いフレームTOP10を見る"
+            />
+            <FrameRankingAccordion
+              title="グッド数の多いアイコンフレーム"
+              eyebrow="Ranking"
+              closedSummary="グッド数の多いフレームTOP10を見る"
+              rankingType="goods"
+            />
+          </div>
         </div>
       ) : null}
     </div>

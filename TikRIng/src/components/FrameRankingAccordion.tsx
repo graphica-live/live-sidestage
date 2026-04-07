@@ -27,10 +27,20 @@ interface FrameRankingAccordionProps {
   eyebrow?: string;
   closedSummary?: string;
   className?: string;
+  rankingType?: 'views' | 'goods';
 }
 
 const WATERMARK_TEXT = 'TikRing';
-const RANKING_ENDPOINT = '/api/frames?top=1';
+
+function getRankingEndpoint(rankingType: 'views' | 'goods') {
+  const params = new URLSearchParams();
+  params.set('top', '1');
+  if (rankingType === 'goods') {
+    params.set('metric', 'goods');
+  }
+
+  return `/api/frames?${params.toString()}`;
+}
 
 function getErrorStatus(error: unknown) {
   if (error instanceof Error && 'status' in error) {
@@ -270,6 +280,7 @@ export default function FrameRankingAccordion({
   eyebrow = 'Ranking',
   closedSummary = '閲覧数TOP10を表示',
   className,
+  rankingType = 'views',
 }: FrameRankingAccordionProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -295,7 +306,7 @@ export default function FrameRankingAccordion({
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchRanking(RANKING_ENDPOINT, controller.signal);
+        const data = await fetchRanking(getRankingEndpoint(rankingType), controller.signal);
 
         setFrames(Array.isArray(data.frames) ? data.frames : []);
         setGoodStates({});
@@ -335,7 +346,7 @@ export default function FrameRankingAccordion({
     void load();
 
     return () => controller.abort();
-  }, [loaded, open]);
+  }, [loaded, open, rankingType]);
 
   useEffect(() => {
     if (!open || frames.length === 0) {
