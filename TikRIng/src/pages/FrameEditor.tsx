@@ -847,7 +847,7 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
               rankingType="pickup"
             />
             <FrameRankingAccordion
-              title="人気のアイコンフレーム"
+              title="アイコンフレーム月間閲覧数ランキング"
               eyebrow="Ranking"
               closedSummary="今月の閲覧数が多いフレームTOP10を見る"
             />

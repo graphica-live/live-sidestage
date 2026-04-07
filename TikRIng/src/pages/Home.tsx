@@ -1537,7 +1537,7 @@ export default function Home({ user }: HomeProps) {
                 rankingType="pickup"
               />
               <FrameRankingAccordion
-                title="アイコンフレーム閲覧数ランキング"
+                title="アイコンフレーム月間閲覧数ランキング"
                 eyebrow="Ranking"
                 closedSummary="今月見られているフレーム上位10件を表示"
               />
