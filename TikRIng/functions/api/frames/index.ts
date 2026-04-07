@@ -3,7 +3,7 @@
 import { getSession, resolveGoodActor } from '../../_session';
 import { decryptFramePassword } from '../../_framePassword';
 import type { Env } from '../../_types';
-import { isAdminEmail, isEffectivePro } from '../../_auth';
+import { getResolvedUserDisplayName, isAdminEmail, isEffectivePro } from '../../_auth';
 
 const ADMIN_PAGE_SIZE = 50;
 
@@ -110,7 +110,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const isTopRankingRequest = url.searchParams.get('top') === '1';
   const isGoodStateRequest = url.searchParams.get('goodState') === '1';
   const rankingMetric = url.searchParams.get('metric') === 'goods' ? 'goods' : 'views';
-  const rankingSource = url.searchParams.get('source') === 'recent' ? 'recent' : 'top';
+  const rankingSource = url.searchParams.get('source') === 'pickup' ? 'pickup' : 'top';
 
   if (isGoodStateRequest) {
     try {
@@ -181,28 +181,22 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     try {
       const nowMs = Date.now();
       const origin = url.origin;
-      const rows = rankingSource === 'recent'
+      const rows = rankingSource === 'pickup'
         ? await context.env.DB.prepare(
-          `SELECT recent.id, recent.custom_name, recent.image_key, recent.owner_display_name, recent.view_count, recent.good_count
-           FROM (
-             SELECT f.id, f.custom_name, f.image_key,
-                 COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-                 f.view_count,
-                 f.good_count,
-                 f.created_at
-             FROM frames f
-             LEFT JOIN users u ON u.id = f.owner_id
-             WHERE f.expires_at IS NULL OR f.expires_at > ?
-             ORDER BY f.created_at DESC
-             LIMIT 50
-           ) recent
+          `SELECT f.id, f.owner_id, u.email AS owner_email, f.custom_name, f.image_key,
+              COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+              f.view_count,
+              f.good_count
+           FROM frames f
+           LEFT JOIN users u ON u.id = f.owner_id
+           WHERE f.expires_at IS NULL OR f.expires_at > ?
            ORDER BY RANDOM()
            LIMIT 10`
         )
           .bind(nowMs)
           .all<FrameRow>()
         : await context.env.DB.prepare(
-          `SELECT f.id, f.custom_name, f.image_key,
+          `SELECT f.id, f.owner_id, u.email AS owner_email, f.custom_name, f.image_key,
               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
               f.view_count,
               f.good_count
@@ -218,7 +212,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({
         id: row.id,
         displayName: row.custom_name?.trim() ? row.custom_name.trim() : row.image_key,
-        ownerDisplayName: row.owner_display_name?.trim() || '不明なユーザー',
+        ownerDisplayName: getResolvedUserDisplayName({
+          userId: row.owner_id,
+          email: row.owner_email,
+          customDisplayName: row.owner_display_name,
+          fallback: '不明なユーザー',
+        }),
         viewCount: row.view_count ?? 0,
         thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png?raw=1`,
       }));
@@ -378,7 +377,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         passwordValue: null,
         ownerId: row.owner_id,
         ownerEmail: row.owner_email,
-        ownerDisplayName: row.owner_display_name,
+        ownerDisplayName: getResolvedUserDisplayName({
+          userId: row.owner_id,
+          email: row.owner_email,
+          customDisplayName: row.owner_display_name,
+          fallback: '不明なユーザー',
+        }),
         viewCount: row.view_count ?? 0,
         wearCount: row.wear_count ?? 0,
       });
@@ -450,7 +454,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       passwordValue,
       ownerId: row.owner_id,
       ownerEmail: row.owner_email,
-      ownerDisplayName: row.owner_display_name,
+      ownerDisplayName: getResolvedUserDisplayName({
+        userId: row.owner_id,
+        email: row.owner_email,
+        customDisplayName: row.owner_display_name,
+        fallback: '不明なユーザー',
+      }),
       viewCount: row.view_count ?? 0,
       wearCount: row.wear_count ?? 0,
     });

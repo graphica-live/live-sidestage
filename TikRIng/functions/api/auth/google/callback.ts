@@ -1,5 +1,6 @@
 import type { Env } from '../../../_types';
 import { createSession, setSessionCookie } from '../../../_session';
+import { getInitialUserDisplayName } from '../../../_auth';
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const url = new URL(ctx.request.url);
@@ -28,13 +29,14 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
 
   const userId = `google_${user.id}`;
   const now = Date.now();
+  const displayName = getInitialUserDisplayName(userId, user.email, user.name);
 
   // D1にupsert
   await ctx.env.DB.prepare(
     `INSERT INTO users (id, provider, email, display_name, created_at)
      VALUES (?, 'google', ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name`
-  ).bind(userId, user.email, user.name, now).run();
+  ).bind(userId, user.email, displayName, now).run();
 
   const token = await createSession(ctx.env, userId);
 

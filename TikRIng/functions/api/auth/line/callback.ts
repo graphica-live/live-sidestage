@@ -1,5 +1,6 @@
 import type { Env } from '../../../_types';
 import { createSession, setSessionCookie } from '../../../_session';
+import { getInitialUserDisplayName } from '../../../_auth';
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const url = new URL(ctx.request.url);
@@ -26,12 +27,13 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
 
   const userId = `line_${profile.userId}`;
   const now = Date.now();
+  const displayName = getInitialUserDisplayName(userId, profile.email ?? null, profile.displayName);
 
   await ctx.env.DB.prepare(
     `INSERT INTO users (id, provider, email, display_name, created_at)
      VALUES (?, 'line', ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name`
-  ).bind(userId, profile.email ?? null, profile.displayName, now).run();
+  ).bind(userId, profile.email ?? null, displayName, now).run();
 
   const token = await createSession(ctx.env, userId);
 

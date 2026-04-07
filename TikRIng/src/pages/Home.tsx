@@ -1531,10 +1531,10 @@ export default function Home({ user }: HomeProps) {
           {canShowRanking ? (
             <div className="space-y-4">
               <FrameRankingAccordion
-                title="新着アイコンフレーム"
-                eyebrow="New Frames"
-                closedSummary="新着50件の中からランダムで10件を表示"
-                rankingType="recent"
+                title="ピックアップ"
+                eyebrow="Pickup"
+                closedSummary="全フレームの中からランダムで10件を表示"
+                rankingType="pickup"
               />
               <FrameRankingAccordion
                 title="アイコンフレーム閲覧数ランキング"

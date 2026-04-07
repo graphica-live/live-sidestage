@@ -27,16 +27,16 @@ interface FrameRankingAccordionProps {
   eyebrow?: string;
   closedSummary?: string;
   className?: string;
-  rankingType?: 'views' | 'goods' | 'recent';
+  rankingType?: 'views' | 'goods' | 'pickup';
 }
 
 const WATERMARK_TEXT = 'TikRing';
 
-function getRankingEndpoint(rankingType: 'views' | 'goods' | 'recent') {
+function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
   const params = new URLSearchParams();
   params.set('top', '1');
-  if (rankingType === 'recent') {
-    params.set('source', 'recent');
+  if (rankingType === 'pickup') {
+    params.set('source', 'pickup');
   } else if (rankingType === 'goods') {
     params.set('metric', 'goods');
   }
@@ -44,12 +44,12 @@ function getRankingEndpoint(rankingType: 'views' | 'goods' | 'recent') {
   return `/api/frames?${params.toString()}`;
 }
 
-function getAccordionBadge(rankingType: 'views' | 'goods' | 'recent') {
-  return rankingType === 'recent' ? 'PICK 10' : 'TOP 10';
+function getAccordionBadge(rankingType: 'views' | 'goods' | 'pickup') {
+  return rankingType === 'pickup' ? 'PICK 10' : 'TOP 10';
 }
 
-function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'recent', index: number) {
-  return rankingType === 'recent' ? 'NEW' : `#${index + 1}`;
+function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'pickup', index: number) {
+  return rankingType === 'pickup' ? 'PICK' : `#${index + 1}`;
 }
 
 function getErrorStatus(error: unknown) {
