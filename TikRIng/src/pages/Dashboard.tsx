@@ -118,6 +118,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
   const canShow = useMemo(() => !!user, [user]);
   const isAdminScope = user.isAdmin && scope === 'all';
   const isOrphanSection = isAdminScope && adminSection === 'orphans';
+  const canShowFrameStats = isAdminScope || user.isAdmin || user.plan === 'pro';
 
   const displayFrames = useMemo(() => {
     if (isAdminScope) {
@@ -663,8 +664,10 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
             {isOrphanSection
               ? 'R2孤児データは必要時のみ読み込みます。孤児一覧では共有URLとパスワードは取得しません。'
               : isAdminScope
-                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数を確認できます。'
-                : '登録日時や有効期限で並び替えできます。'}
+                ? '管理者一覧はサーバ側で50件ずつ取得します。所有者名、有効期限、フレーム名、閲覧数、装着数を確認できます。'
+                : canShowFrameStats
+                  ? '登録日時や有効期限に加えて、閲覧数と装着数も確認できます。'
+                  : '登録日時や有効期限で並び替えできます。'}
           </p>
           {isAdminScope && !isOrphanSection ? (
             <p className="text-xs text-tiktok-lightgray">
@@ -692,7 +695,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
               <option value="expires_desc">期限が遠い順</option>
               <option value="name_asc">フレーム名 A-Z</option>
               <option value="name_desc">フレーム名 Z-A</option>
-              {isAdminScope ? <option value="views_desc">閲覧数が多い順</option> : null}
+              {canShowFrameStats ? <option value="views_desc">閲覧数が多い順</option> : null}
               {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
               {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
             </select>
@@ -799,13 +802,13 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
                         登録日時: {createdLabel}
                       </p>
 
-                      {isAdminScope ? (
+                      {canShowFrameStats ? (
                         <p className="text-xs text-tiktok-lightgray break-all">
                           閲覧数: {frame.viewCount ?? 0}
                         </p>
                       ) : null}
 
-                      {isAdminScope ? (
+                      {canShowFrameStats ? (
                         <p className="text-xs text-tiktok-lightgray break-all">
                           装着数: {frame.wearCount ?? 0}
                         </p>

@@ -51,6 +51,11 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
+    date: '2026.04.07',
+    title: 'Proで閲覧数と装着数を確認可能に変更',
+    detail: 'フレーム管理で管理者ページと同じ表示に揃え、Proユーザーも閲覧数・装着数を確認できるようにし、未登録者向けのPro案内文も更新。',
+  },
+  {
     date: '2026.04.06',
     title: '閉じていないフレームのプロフ画像表示範囲を全面開始に変更',
     detail: '円形に閉じていないなど自動判定が難しいフレームでも、プロフ画像の表示範囲が初期状態で全面になるよう変更。',
@@ -102,7 +107,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.04.06 20:09';
+const latestUpdateAt = '2026.04.07 00:00';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -1423,7 +1428,7 @@ export default function Home({ user }: HomeProps) {
               >
                 <div className="flex flex-col">
                   <span className="text-sm font-bold text-white">Pro（任意）</span>
-                  <span className="text-xs text-tiktok-lightgray">無料のままでOK。必要なら開いてください</span>
+                  <span className="text-xs text-tiktok-lightgray">無料のままでOK。追加機能が必要な場合だけ開いてください</span>
                 </div>
                 <ChevronDown
                   className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
@@ -1435,6 +1440,7 @@ export default function Home({ user }: HomeProps) {
                   <ul className="mb-3 text-xs text-tiktok-lightgray space-y-1 list-disc pl-5">
                     <li>有効期限を自由に設定（1日〜無期限）</li>
                     <li>フレームにパスワードを設定</li>
+                    <li>閲覧数・装着数を確認</li>
                     <li>フレームに名前を付けて整理・管理しやすく</li>
                   </ul>
 
@@ -2283,7 +2289,7 @@ export default function Home({ user }: HomeProps) {
           >
             <div className="flex flex-col">
               <span className="text-sm font-bold text-white">Pro（任意）</span>
-              <span className="text-xs text-tiktok-lightgray">無料のままでOK。必要なら開いてください</span>
+              <span className="text-xs text-tiktok-lightgray">無料のままでOK。追加機能が必要な場合だけ開いてください</span>
             </div>
             <ChevronDown
               className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
@@ -2295,6 +2301,7 @@ export default function Home({ user }: HomeProps) {
               <ul className="mb-3 text-xs text-tiktok-lightgray space-y-1 list-disc pl-5">
                 <li>有効期限を自由に設定（1日〜無期限）</li>
                 <li>フレームにパスワードを設定</li>
+                <li>閲覧数・装着数を確認</li>
                 <li>フレームに名前を付けて整理・管理しやすく</li>
               </ul>
 

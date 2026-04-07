@@ -1,0 +1,126 @@
+name: Verify Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-verify
+  cancel-in-progress: false
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate required secrets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}
+          PROD_TEST_FRAME_ID: ${{ secrets.PROD_TEST_FRAME_ID }}
+          PROD_TEST_SESSION_COOKIE: ${{ secrets.PROD_TEST_SESSION_COOKIE }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for key in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_PAGES_PROJECT_NAME SITE_URL PROD_TEST_SESSION_COOKIE PROD_TEST_FRAME_ID; do
+            if [ -z "${!key}" ]; then
+              echo "Missing required secret: ${key}"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Wait for production deployment
+        id: deployment
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PAGES_PROJECT_NAME}/deployments?env=production&per_page=20"
+
+          for attempt in $(seq 1 90); do
+            json=$(curl -fsS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$api")
+
+            current=$(echo "$json" | jq -c --arg sha "$TARGET_SHA" '.result[] | select(.environment == "production" and .deployment_trigger.metadata.commit_hash == $sha)' | head -n 1 || true)
+            previous_id=$(echo "$json" | jq -r --arg sha "$TARGET_SHA" '.result[] | select(.environment == "production" and .latest_stage.status == "success" and .deployment_trigger.metadata.commit_hash != $sha) | .id' | head -n 1 || true)
+
+            if [ -n "$current" ]; then
+              current_id=$(echo "$current" | jq -r '.id')
+              current_status=$(echo "$current" | jq -r '.latest_stage.status')
+              current_url=$(echo "$current" | jq -r '.url')
+
+              echo "deployment_id=${current_id}" >> "$GITHUB_OUTPUT"
+              echo "deployment_url=${current_url}" >> "$GITHUB_OUTPUT"
+              echo "previous_deployment_id=${previous_id}" >> "$GITHUB_OUTPUT"
+
+              if [ "$current_status" = "success" ]; then
+                echo "Production deployment is ready: ${current_id}"
+                exit 0
+              fi
+
+              if [ "$current_status" = "failure" ] || [ "$current_status" = "canceled" ]; then
+                echo "Production deployment failed before verification: ${current_status}"
+                exit 1
+              fi
+            fi
+
+            echo "Waiting for production deployment for ${TARGET_SHA} (attempt ${attempt}/90)"
+            sleep 10
+          done
+
+          echo "Timed out waiting for the production deployment"
+          exit 1
+
+      - name: Run production smoke test
+        env:
+          BASE_URL: ${{ secrets.SITE_URL }}
+          PROD_REQUIRE_AUTH_CHECKS: '1'
+          PROD_REQUIRE_FRAME_DATA: '1'
+          PROD_TEST_FRAME_ID: ${{ secrets.PROD_TEST_FRAME_ID }}
+          PROD_TEST_SESSION_COOKIE: ${{ secrets.PROD_TEST_SESSION_COOKIE }}
+        run: node scripts/prod-smoke-test.mjs
+
+      - name: Roll back to previous production deployment
+        if: failure() && steps.deployment.outputs.previous_deployment_id != ''
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}
+          PREVIOUS_DEPLOYMENT_ID: ${{ steps.deployment.outputs.previous_deployment_id }}
+        run: |
+          set -euo pipefail
+
+          rollback_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PAGES_PROJECT_NAME}/deployments/${PREVIOUS_DEPLOYMENT_ID}/rollback"
+
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "$rollback_url"
+
+          echo "Rolled back to deployment ${PREVIOUS_DEPLOYMENT_ID}"
+
+      - name: Fail when rollback target is unavailable
+        if: failure() && steps.deployment.outputs.previous_deployment_id == ''
+        run: |
+          echo "Verification failed, but no previous production deployment was found for rollback"
+          exit 1
