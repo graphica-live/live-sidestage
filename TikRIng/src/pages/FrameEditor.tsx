@@ -4,6 +4,7 @@ import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import { getCroppedAndMergedImg, getFrameOpeningMaskDataUrl } from '../utils/canvas';
 import DonationCard from '../components/DonationCard';
+import FrameRankingAccordion from '../components/FrameRankingAccordion';
 
 interface FrameEditorProps {
   id: string;
@@ -830,6 +831,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
 
       <div className="w-full mt-8">
         <DonationCard returnPath={returnPath} compact />
+      </div>
+
+      <div className="w-full mt-6">
+        <FrameRankingAccordion
+          title="人気のアイコンフレーム"
+          eyebrow="Ranking"
+          closedSummary="閲覧数の多いフレームTOP10を見る"
+        />
       </div>
     </div>
   );

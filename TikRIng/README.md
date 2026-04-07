@@ -62,3 +62,26 @@ main へ push した後、GitHub Actions で Cloudflare Pages の production dep
 npm run dev:ui
 npm run dev:api
 ```
+
+## 読み取り専用で本番 API を参照するローカル開発
+
+ローカル UI のまま、本番または preview の API を GET/HEAD だけ参照したい場合は、Vite 側で読み取り専用プロキシを有効にします。
+
+.env または .env.local に以下を設定します。
+
+```bash
+VITE_LOCAL_API_ORIGIN=http://127.0.0.1:8788
+VITE_READONLY_API_ORIGIN=https://your-production-domain.example
+```
+
+この状態で npm run dev を起動すると、挙動は以下になります。
+
+- GET / HEAD の /api/* は VITE_READONLY_API_ORIGIN へ転送
+- POST / PUT / DELETE などの書き込み系は VITE_LOCAL_API_ORIGIN のまま
+- /api/auth/* と /api/checkout/* は副作用やリダイレクト都合を避けるためローカルのまま
+
+注意:
+
+- 本番の公開データを読むための用途を想定しています。
+- 認証が必要な読み取り API は、ローカル cookie と本番 cookie の扱い次第で期待通りに動かない場合があります。
+- 本番の書き込みを防ぐため、書き込み系確認はこのモードでは行わないでください。

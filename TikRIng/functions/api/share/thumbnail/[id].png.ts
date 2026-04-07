@@ -22,18 +22,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       'SELECT frame_id FROM share_urls WHERE id = ?'
     ).bind(id).first<ShareRow>();
 
-    if (!shareRow?.frame_id) {
-      return new Response('Not Found', {
-        status: 404,
-        headers: {
-          'Cache-Control': 'no-store',
-        },
-      });
-    }
+    const resolvedFrameId = shareRow?.frame_id ?? id;
 
     const frameRow = await context.env.DB.prepare(
       'SELECT id, image_key, expires_at FROM frames WHERE id = ?'
-    ).bind(shareRow.frame_id).first<FrameRow>();
+    ).bind(resolvedFrameId).first<FrameRow>();
 
     if (!frameRow) {
       return new Response('Not Found', {

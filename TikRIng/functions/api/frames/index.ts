@@ -63,6 +63,14 @@ type FramesMeta = {
   pageSize: number;
 };
 
+type PublicTopFrameItem = {
+  id: string;
+  displayName: string;
+  ownerDisplayName: string;
+  viewCount: number;
+  thumbnailUrl: string;
+};
+
 type Viewer = {
   id: string;
   email: string | null;
@@ -93,6 +101,53 @@ function parseAdminSort(raw: string | null): AdminSortOption {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const url = new URL(context.request.url);
+  const isTopRankingRequest = url.searchParams.get('top') === '1';
+
+  if (isTopRankingRequest) {
+    try {
+      const nowMs = Date.now();
+      const origin = url.origin;
+      const rows = await context.env.DB.prepare(
+        `SELECT f.id, f.custom_name, f.image_key, u.display_name AS owner_display_name, f.view_count
+         FROM frames f
+         LEFT JOIN users u ON u.id = f.owner_id
+         WHERE f.expires_at IS NULL OR f.expires_at > ?
+         ORDER BY COALESCE(f.view_count, 0) DESC, f.created_at DESC
+         LIMIT 10`
+      )
+        .bind(nowMs)
+        .all<FrameRow>();
+
+      const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({
+        id: row.id,
+        displayName: row.custom_name?.trim() ? row.custom_name.trim() : row.image_key,
+        ownerDisplayName: row.owner_display_name?.trim() || '不明なユーザー',
+        viewCount: row.view_count ?? 0,
+        thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png`,
+      }));
+
+      return new Response(JSON.stringify({ frames }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=120',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch (error) {
+      console.error('Public top ranking fetch failed:', error);
+      return new Response(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR' }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+  }
+
   const session = await getSession(context.env, context.request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
@@ -109,7 +164,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     });
   }
 
-  const url = new URL(context.request.url);
   const previewStorageKey = url.searchParams.get('storageKey');
   const isPreviewRequest = url.searchParams.get('preview') === '1';
   const scope = url.searchParams.get('scope');

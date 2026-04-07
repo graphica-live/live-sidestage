@@ -45,10 +45,15 @@ function applyCacheHeaders(request: Request, response: Response) {
 }
 
 export const onRequest: PagesFunction = async (context) => {
+    const url = new URL(context.request.url);
+
+    if (url.pathname.startsWith('/api/')) {
+        return context.next();
+    }
+
     // Fetch the original response (e.g., the static index.html)
     const response = await context.next();
 
-    const url = new URL(context.request.url);
     const frameId = url.searchParams.get('f');
 
     // Only rewrite HTML if it's the index page AND it has the '?f=' query parameter (Listener sharing URL)

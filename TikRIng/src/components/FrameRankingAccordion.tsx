@@ -1,0 +1,210 @@
+import { ChevronDown, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+type RankingFrame = {
+  id: string;
+  displayName: string;
+  ownerDisplayName: string;
+  viewCount: number;
+  thumbnailUrl: string;
+};
+
+type RankingResponse = {
+  frames?: RankingFrame[];
+};
+
+interface FrameRankingAccordionProps {
+  title: string;
+  eyebrow?: string;
+  closedSummary?: string;
+  className?: string;
+}
+
+const WATERMARK_TEXT = 'TikRing';
+const RANKING_ENDPOINT = '/api/frames?top=1';
+
+async function fetchRanking(endpoint: string, signal: AbortSignal) {
+  const response = await fetch(endpoint, { signal });
+
+  if (!response.ok) {
+    const error = new Error('ランキングを取得できませんでした。');
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+
+  return response.json() as Promise<RankingResponse>;
+}
+
+function RankingThumbnail({ frame }: { frame: RankingFrame }) {
+  const [imageError, setImageError] = useState(false);
+
+  return (
+    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/12 bg-[linear-gradient(135deg,rgba(37,244,238,0.12),rgba(254,44,85,0.18))] shadow-[0_14px_30px_rgba(0,0,0,0.28)]">
+      {!imageError ? (
+        <img
+          src={frame.thumbnailUrl}
+          alt={frame.displayName}
+          loading="lazy"
+          onError={() => setImageError(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-white/[0.04] px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
+          NO IMAGE
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04),rgba(0,0,0,0.4))]" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
+        <span className="-rotate-[24deg] select-none text-[10px] font-black uppercase tracking-[0.24em] text-white/42 drop-shadow-[0_2px_5px_rgba(0,0,0,0.55)]">
+          {WATERMARK_TEXT}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function FrameRankingAccordion({
+  title,
+  eyebrow = 'Ranking',
+  closedSummary = '閲覧数TOP10を表示',
+  className,
+}: FrameRankingAccordionProps) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [frames, setFrames] = useState<RankingFrame[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        let data: RankingResponse;
+
+        try {
+          data = await fetchRanking(RANKING_ENDPOINT, controller.signal);
+        } catch (primaryError) {
+          const status = primaryError instanceof Error && 'status' in primaryError
+            ? Number((primaryError as Error & { status?: number }).status)
+            : null;
+          const localOrigin = (import.meta.env.VITE_LOCAL_API_ORIGIN as string | undefined)?.trim() || '';
+          const canFallback = Boolean(localOrigin)
+            && !localOrigin.startsWith(window.location.origin)
+            && (status === 401 || status === 404);
+
+          if (!canFallback) {
+            throw primaryError;
+          }
+
+          data = await fetchRanking(`${localOrigin}${RANKING_ENDPOINT}`, controller.signal);
+        }
+
+        setFrames(Array.isArray(data.frames) ? data.frames : []);
+        setLoaded(true);
+      } catch (fetchError) {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+          return;
+        }
+
+        console.error(fetchError);
+        if (fetchError instanceof Error && 'status' in fetchError) {
+          const status = Number((fetchError as Error & { status?: number }).status);
+          if (status === 401) {
+            setError('ランキングAPIがまだ反映されていません。デプロイ後に表示されます。');
+            return;
+          }
+
+          if (status === 404) {
+            setError('ランキングAPIがまだ反映されていません。デプロイ後に表示されます。');
+            return;
+          }
+
+          if (status >= 500) {
+            setError('ランキングAPIでエラーが発生しました。');
+            return;
+          }
+        }
+
+        setError(fetchError instanceof Error ? fetchError.message : 'ランキングを読み込めませんでした。');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => controller.abort();
+  }, [loaded, open]);
+
+  return (
+    <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${open ? 'border-b border-white/8 pb-3' : ''}`}
+      >
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">{eyebrow}</p>
+          <h2 className="mt-1 text-sm font-bold text-white sm:text-base">{title}</h2>
+          {!open ? (
+            <p className="mt-1 text-xs text-tiktok-lightgray">{closedSummary}</p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
+            TOP 10
+          </span>
+          <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open ? (
+        <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-tiktok-lightgray">
+              <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+              <span>ランキングを読み込み中...</span>
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-tiktok-red/25 bg-tiktok-red/10 px-3 py-4 text-center text-sm text-[#ffb7c5]">
+              {error}
+            </div>
+          ) : frames.length === 0 ? (
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-4 text-center text-sm text-tiktok-lightgray">
+              まだランキング対象のフレームがありません。
+            </div>
+          ) : (
+            <ol className="space-y-2.5">
+              {frames.map((frame, index) => (
+                <li
+                  key={frame.id}
+                  className="flex items-center gap-3 rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5"
+                >
+                  <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
+                    <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">#{index + 1}</span>
+                  </div>
+                  <RankingThumbnail frame={frame} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-white">{frame.displayName}</p>
+                    <p className="mt-1 truncate text-xs text-tiktok-lightgray">投稿者: {frame.ownerDisplayName}</p>
+                  </div>
+                  <div className="shrink-0 rounded-xl border border-white/8 bg-black/20 px-2.5 py-2 text-right">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/42">Views</p>
+                    <p className="mt-1 text-sm font-black text-white">{frame.viewCount.toLocaleString('ja-JP')}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}

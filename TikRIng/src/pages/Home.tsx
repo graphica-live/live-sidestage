@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
+import FrameRankingAccordion from '../components/FrameRankingAccordion';
 import {
   analyzeFrameTransparency,
   getEditorCropRadiusRatio,
@@ -107,7 +108,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.04.07 00:00';
+const latestUpdateAt = '2026.04.07 10:19';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -1525,6 +1526,12 @@ export default function Home({ user }: HomeProps) {
               ) : null}
             </div>
           ) : null}
+
+          <FrameRankingAccordion
+            title="アイコンフレーム閲覧数ランキング"
+            eyebrow="Ranking"
+            closedSummary="いま見られているフレーム上位10件を表示"
+          />
 
           <section className="w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5">
             <button
