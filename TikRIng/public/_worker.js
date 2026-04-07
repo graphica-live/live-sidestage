@@ -22,7 +22,8 @@ import { onRequestPost as webhookPost } from '../functions/api/checkout/webhook'
 
 import { onRequestPost as cleanupPost } from '../functions/api/admin/cleanup';
 
-import { onRequestGet as meGet } from '../functions/api/auth/me';
+import { onRequestGet as meGet, onRequestPost as mePost } from '../functions/api/auth/me';
+import { onRequestPost as displayNamePost } from '../functions/api/auth/display-name';
 import { onRequestPost as logoutPost } from '../functions/api/auth/logout';
 import { onRequestGet as googleAuthGet } from '../functions/api/auth/google';
 import { onRequestGet as googleCallbackGet } from '../functions/api/auth/google/callback';
@@ -176,8 +177,14 @@ async function routeApi(request, env, ctx) {
 
   // /api/auth/*
   if (pathname === '/api/auth/me') {
-    if (method !== 'GET') return methodNotAllowed();
-    return meGet(makeContext(request, env, ctx));
+    if (method === 'GET') return meGet(makeContext(request, env, ctx));
+    if (method === 'POST') return mePost(makeContext(request, env, ctx));
+    return methodNotAllowed();
+  }
+
+  if (pathname === '/api/auth/display-name') {
+    if (method !== 'POST') return methodNotAllowed();
+    return displayNamePost(makeContext(request, env, ctx));
   }
 
   if (pathname === '/api/auth/logout') {
