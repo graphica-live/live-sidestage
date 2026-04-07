@@ -220,7 +220,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
           email: row.owner_email,
           anonymousDisplayNumber: row.owner_anonymous_display_number,
           customDisplayName: row.owner_display_name,
-          fallback: '不明なユーザー',
+          fallback: '未登録ユーザー',
         }),
         viewCount: row.view_count ?? 0,
         thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png?raw=1`,
