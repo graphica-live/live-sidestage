@@ -38,6 +38,7 @@ type FrameRow = {
   view_count: number | null;
   good_count: number | null;
   wear_count: number | null;
+  exclude_from_rankings?: number | null;
 };
 
 type FrameListItem = {
@@ -201,7 +202,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
            FROM frames f
            LEFT JOIN users u ON u.id = f.owner_id
             LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-           WHERE f.expires_at IS NULL OR f.expires_at > ?
+          WHERE (f.expires_at IS NULL OR f.expires_at > ?)
+           AND COALESCE(f.exclude_from_rankings, 0) = 0
            ORDER BY RANDOM()
            LIMIT 10`
         )
@@ -216,7 +218,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
              FROM frames f
              LEFT JOIN users u ON u.id = f.owner_id
               LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-             WHERE f.expires_at IS NULL OR f.expires_at > ?
+             WHERE (f.expires_at IS NULL OR f.expires_at > ?)
+               AND COALESCE(f.exclude_from_rankings, 0) = 0
              ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC'}
              LIMIT 10`
            )
@@ -233,7 +236,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
              LEFT JOIN frame_view_events fve
               ON fve.frame_id = f.id
               AND fve.created_at >= ?
-             WHERE f.expires_at IS NULL OR f.expires_at > ?
+             WHERE (f.expires_at IS NULL OR f.expires_at > ?)
+               AND COALESCE(f.exclude_from_rankings, 0) = 0
              GROUP BY f.id, f.owner_id, u.email, anon.id, f.custom_name, f.image_key, owner_display_name, f.good_count, f.created_at
              ORDER BY COUNT(fve.id) DESC, f.created_at DESC
              LIMIT 10`

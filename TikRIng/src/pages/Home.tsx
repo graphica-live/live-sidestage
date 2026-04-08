@@ -52,6 +52,11 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
+    date: '2026.04.08',
+    title: 'ProでランキングとPickupの対象外設定を追加',
+    detail: 'フレーム登録時に、ProオプションからランキングとPickupの掲載対象外を選べるように変更。',
+  },
+  {
     date: '2026.04.07',
     title: 'Proで閲覧数と装着数を確認可能に変更',
     detail: 'フレーム管理で管理者ページと同じ表示に揃え、Proユーザーも閲覧数・装着数を確認できるようにし、未登録者向けのPro案内文も更新。',
@@ -108,7 +113,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.04.07 10:19';
+const latestUpdateAt = '2026.04.08 13:25';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -185,6 +190,7 @@ export default function Home({ user }: HomeProps) {
   const [isUnlimited, setIsUnlimited] = useState(false);
   const [expiresDate, setExpiresDate] = useState(() => formatLocalDateInputValue(addDays(new Date(), 90)));
   const [password, setPassword] = useState('');
+  const [excludeFromRankings, setExcludeFromRankings] = useState(false);
 
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -1062,6 +1068,7 @@ export default function Home({ user }: HomeProps) {
     setIsUnlimited(false);
     setExpiresDate(formatLocalDateInputValue(addDays(new Date(), 90)));
     setPassword('');
+    setExcludeFromRankings(false);
   };
 
   const uploadPreparedFrame = async (
@@ -1114,6 +1121,7 @@ export default function Home({ user }: HomeProps) {
       if (password.trim()) {
         formData.append('password', password.trim());
       }
+      formData.append('excludeFromRankings', excludeFromRankings ? '1' : '0');
     }
 
     const response = await fetch('/api/upload', {
@@ -1981,6 +1989,20 @@ export default function Home({ user }: HomeProps) {
                       className="w-full px-3 py-2 rounded-md bg-tiktok-black border border-tiktok-gray focus:outline-none focus:border-tiktok-cyan text-sm"
                     />
                   </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-white">公開範囲</label>
+                    <label className="inline-flex items-start gap-2 text-sm text-tiktok-lightgray">
+                      <input
+                        type="checkbox"
+                        checked={excludeFromRankings}
+                        onChange={(e) => setExcludeFromRankings(e.target.checked)}
+                        className="mt-0.5 accent-white"
+                      />
+                      <span className="leading-6">このフレームをランキングとPickupの対象外にする</span>
+                    </label>
+                    <p className="text-xs text-tiktok-lightgray">アクセスランキング、いいねランキング、Pickupのすべてに表示されなくなります</p>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -2230,7 +2252,9 @@ export default function Home({ user }: HomeProps) {
 
             <div className="mt-5 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 py-4 sm:rounded-[1.25rem] sm:px-5">
               <p className="text-sm leading-6 text-tiktok-lightgray">
-                アップロードされたフレームはアクセスランキングに掲載されます。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。
+                {user?.plan === 'pro' && excludeFromRankings
+                  ? 'このフレームはランキングとPickupの対象外として登録されます。なお、フレームを保護する仕様上、共有URLを知らない第三者が直接ダウンロードや装着を行うことはできません。'
+                  : 'アップロードされたフレームはアクセスランキングとPickupの掲載対象になります。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。'}
               </p>
               <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-white" htmlFor="upload-ranking-consent">
                 <input
@@ -2241,7 +2265,7 @@ export default function Home({ user }: HomeProps) {
                   disabled={uploading}
                   className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-tiktok-red focus:ring-2 focus:ring-tiktok-red/60"
                 />
-                <span className="leading-6">上記の内容に同意します</span>
+                <span className="leading-6">上記の内容と公開範囲を確認しました</span>
               </label>
             </div>
 

@@ -32,6 +32,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const customNameRaw = formData.get('customName');
     const expiresAtRaw = formData.get('expiresAt');
     const passwordRaw = formData.get('password');
+    const excludeFromRankingsRaw = formData.get('excludeFromRankings');
 
     if (!file) {
       return new Response(JSON.stringify({ error: 'No file provided' }), {
@@ -206,6 +207,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       passwordCiphertext = await encryptFramePassword(context.env, normalizedPassword);
     }
 
+    const excludeFromRankings = isPro && excludeFromRankingsRaw === '1' ? 1 : 0;
+
     // R2に保存 (ファイル名をUUIDにする)
     const customMetadata: Record<string, string> = {};
     if (expiresAtMs !== null) {
@@ -234,8 +237,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // D1のframesテーブルに登録
     await context.env.DB.prepare(
-      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext, opening_mask_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext, openingMaskKey).run();
+      'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext, opening_mask_key, exclude_from_rankings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext, openingMaskKey, excludeFromRankings).run();
 
     return new Response(JSON.stringify({ id: uuid }), {
       status: 200,

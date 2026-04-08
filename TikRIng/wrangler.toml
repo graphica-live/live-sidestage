@@ -1,6 +1,7 @@
 name = "profileimagefitservice"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-03-09"
+account_id = "d8bc9cb8c3cef5b013eb4427e3c21f07"
 
 [vars]
 # reCAPTCHA v3 secret key (set real value via `wrangler pages secret put` or Pages dashboard)
