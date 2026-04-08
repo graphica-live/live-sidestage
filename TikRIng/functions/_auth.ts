@@ -44,23 +44,14 @@ export function getResolvedUserDisplayName(options: {
   displayName?: string | null;
   fallback?: string;
 }): string {
-  const { userId, email, anonymousDisplayNumber, customDisplayName, displayName, fallback } = options;
-  if (!isAdminEmail(email)) {
-    if (typeof anonymousDisplayNumber === 'number' && Number.isFinite(anonymousDisplayNumber) && anonymousDisplayNumber > 0) {
-      return formatAnonymousUserDisplayName(anonymousDisplayNumber);
-    }
-
-    const normalizedDisplayName = normalizeDisplayName(customDisplayName) || normalizeDisplayName(displayName);
-    if (/^User\d+$/.test(normalizedDisplayName)) {
-      return normalizedDisplayName;
-    }
-
-    return fallback ?? 'User000000';
-  }
-
+  const { userId, anonymousDisplayNumber, customDisplayName, displayName, fallback } = options;
   const preferredName = normalizeDisplayName(customDisplayName) || normalizeDisplayName(displayName);
   if (preferredName) {
     return preferredName;
+  }
+
+  if (typeof anonymousDisplayNumber === 'number' && Number.isFinite(anonymousDisplayNumber) && anonymousDisplayNumber > 0) {
+    return formatAnonymousUserDisplayName(anonymousDisplayNumber);
   }
 
   return fallback ?? `User${normalizeDisplayName(userId)}`;
@@ -68,16 +59,11 @@ export function getResolvedUserDisplayName(options: {
 
 export function getInitialUserDisplayName(
   anonymousNumber: number | null | undefined,
-  email: string | null | undefined,
+  _email: string | null | undefined,
   providerDisplayName: string | null | undefined,
 ): string {
-  if (!isAdminEmail(email)) {
-    return typeof anonymousNumber === 'number' && anonymousNumber > 0
-      ? formatAnonymousUserDisplayName(anonymousNumber)
-      : 'User000000';
-  }
-
-  return normalizeDisplayName(providerDisplayName) || 'User000000';
+  return normalizeDisplayName(providerDisplayName)
+    || (typeof anonymousNumber === 'number' && anonymousNumber > 0 ? formatAnonymousUserDisplayName(anonymousNumber) : 'User000000');
 }
 
 export function getEffectivePlan(plan: string | null | undefined, email: string | null | undefined): string {

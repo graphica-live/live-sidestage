@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Search, Settings, Shield, Trash2 } from 'lucide-react';
+import { Check, Eye, EyeOff, Link as LinkIcon, Loader2, Pencil, Search, Settings, Shield, Trash2, X } from 'lucide-react';
 import { getFrameOpeningGuideDataUrl } from '../utils/canvas';
 
 type User = { id: string; display_name: string; plan: string; isAdmin: boolean; email?: string | null; provider?: string };
@@ -125,6 +125,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
   const [currentPage, setCurrentPage] = useState(() => getInitialDashboardPage());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState(user.display_name);
+  const [displayNameEditing, setDisplayNameEditing] = useState(false);
   const [displayNameSaving, setDisplayNameSaving] = useState(false);
   const [displayNameMessage, setDisplayNameMessage] = useState<string | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
@@ -207,6 +208,15 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
   useEffect(() => {
     setDisplayNameInput(user.display_name);
   }, [user.display_name]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      setDisplayNameEditing(false);
+      setDisplayNameError(null);
+      setDisplayNameMessage(null);
+      setDisplayNameInput(user.display_name);
+    }
+  }, [settingsOpen, user.display_name]);
 
   useEffect(() => {
     if (!isAdminScope) {
@@ -632,12 +642,6 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
       return;
     }
 
-    if (!user.isAdmin) {
-      setDisplayNameError(null);
-      setDisplayNameMessage('ユーザー名は自動で匿名表示されます。');
-      return;
-    }
-
     const nextDisplayName = displayNameInput.trim();
     if (!nextDisplayName) {
       setDisplayNameError('ユーザー名を入力してください。');
@@ -705,6 +709,7 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
 
       onUserChange(responseUser);
       setDisplayNameInput(responseUser.display_name);
+      setDisplayNameEditing(false);
       setDisplayNameMessage('ユーザー名を更新しました。ランキング表示にも反映されます。');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'FAILED_TO_UPDATE_DISPLAY_NAME';
@@ -1162,45 +1167,79 @@ export default function Dashboard({ user, initialScope, onUserChange }: Dashboar
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">ユーザー名</p>
-                    <p className="mt-1 text-lg font-black text-white break-all">{user.display_name}</p>
-                    <p className="mt-1 text-xs text-tiktok-lightgray">{user.isAdmin ? '変更後の名前はランキングと管理画面の表示に使われます。' : 'Joe 以外のユーザー名は自動で匿名化されます。'}</p>
+                    {displayNameEditing ? (
+                      <form onSubmit={handleDisplayNameSubmit} className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          value={displayNameInput}
+                          onChange={(event) => {
+                            setDisplayNameInput(event.target.value);
+                            if (displayNameError) {
+                              setDisplayNameError(null);
+                            }
+                            if (displayNameMessage) {
+                              setDisplayNameMessage(null);
+                            }
+                          }}
+                          placeholder="ユーザー名を入力"
+                          maxLength={100}
+                          autoFocus
+                          className="w-full rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm text-white focus:border-tiktok-cyan focus:outline-none sm:min-w-[18rem]"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={displayNameSaving}
+                            className="inline-flex min-w-[110px] items-center justify-center rounded-md bg-tiktok-cyan px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#53f3ff] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {displayNameSaving ? (
+                              <span className="inline-flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                保存中...
+                              </span>
+                            ) : '保存'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (displayNameSaving) {
+                                return;
+                              }
+                              setDisplayNameEditing(false);
+                              setDisplayNameInput(user.display_name);
+                              setDisplayNameError(null);
+                              setDisplayNameMessage(null);
+                            }}
+                            disabled={displayNameSaving}
+                            className="inline-flex items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="ユーザー名編集をキャンセル"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-lg font-black text-white break-all">{user.display_name}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDisplayNameEditing(true);
+                            setDisplayNameInput(user.display_name);
+                            setDisplayNameError(null);
+                            setDisplayNameMessage(null);
+                          }}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black text-tiktok-lightgray transition-colors hover:border-tiktok-cyan hover:text-white"
+                          aria-label="ユーザー名を編集"
+                          title="ユーザー名を編集"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-tiktok-lightgray">変更後の名前はランキングと管理画面の表示に使われます。</p>
                   </div>
                 </div>
-                {user.isAdmin ? (
-                  <form onSubmit={handleDisplayNameSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <label className="flex-1 text-sm text-tiktok-lightgray">
-                      <span className="mb-1 block text-xs">新しいユーザー名</span>
-                      <input
-                        type="text"
-                        value={displayNameInput}
-                        onChange={(event) => {
-                          setDisplayNameInput(event.target.value);
-                          if (displayNameError) {
-                            setDisplayNameError(null);
-                          }
-                          if (displayNameMessage) {
-                            setDisplayNameMessage(null);
-                          }
-                        }}
-                        placeholder="ユーザー名を入力"
-                        maxLength={100}
-                        className="w-full rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm text-white focus:border-tiktok-cyan focus:outline-none"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={displayNameSaving}
-                      className="inline-flex min-w-[140px] items-center justify-center rounded-md bg-tiktok-cyan px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#53f3ff] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {displayNameSaving ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          保存中...
-                        </span>
-                      ) : 'ユーザー名を保存'}
-                    </button>
-                  </form>
-                ) : null}
                 {displayNameError ? (
                   <p className="mt-3 text-sm text-tiktok-red">{displayNameError}</p>
                 ) : null}

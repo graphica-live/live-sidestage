@@ -1,6 +1,6 @@
 import type { Env } from '../../_types';
 import { getSession } from '../../_session';
-import { ensureAnonymousUserNumber, formatAnonymousUserDisplayName, getEffectivePlan, getResolvedUserDisplayName, isAdminEmail } from '../../_auth';
+import { getEffectivePlan, getResolvedUserDisplayName, isAdminEmail } from '../../_auth';
 
 type UserRow = {
   id: string;
@@ -91,20 +91,6 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   if (!currentUser) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
       status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (!isAdminEmail(currentUser.email)) {
-    const anonymousNumber = await ensureAnonymousUserNumber(ctx.env, currentUser.id, currentUser.email);
-    const anonymousName = formatAnonymousUserDisplayName(anonymousNumber ?? 0);
-    await ctx.env.DB.prepare(
-      'UPDATE users SET display_name = ?, custom_display_name = ? WHERE id = ?'
-    ).bind(anonymousName, anonymousName, currentUser.id).run();
-
-    const responseUser = await getResponseUser(ctx.env, currentUser.id);
-    return new Response(JSON.stringify({ user: responseUser }), {
-      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }

@@ -33,7 +33,12 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   await ctx.env.DB.prepare(
     `INSERT INTO users (id, provider, email, display_name, created_at)
      VALUES (?, 'line', ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, custom_display_name=CASE WHEN COALESCE(excluded.email, '') = 'joe.graphica@gmail.com' THEN users.custom_display_name ELSE excluded.display_name END`
+      ON CONFLICT(id) DO UPDATE SET
+        display_name=excluded.display_name,
+        custom_display_name=CASE
+          WHEN NULLIF(TRIM(users.custom_display_name), '') IS NOT NULL THEN users.custom_display_name
+          ELSE excluded.display_name
+        END`
   ).bind(userId, profile.email ?? null, displayName, now).run();
 
   const token = await createSession(ctx.env, userId);
