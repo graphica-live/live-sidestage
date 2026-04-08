@@ -27,6 +27,7 @@ type FrameRow = {
   owner_id: string | null;
   owner_email: string | null;
   owner_display_name: string | null;
+  owner_tiktok_profile_id: string | null;
   owner_anonymous_display_number: number | null;
   custom_name: string | null;
   image_key: string;
@@ -72,6 +73,7 @@ type PublicTopFrameItem = {
   id: string;
   displayName: string;
   ownerDisplayName: string;
+  ownerTikTokProfileId: string | null;
   viewCount: number;
   thumbnailUrl: string;
 };
@@ -196,6 +198,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       const rows = rankingSource === 'pickup'
         ? await context.env.DB.prepare(
            `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+              u.tiktok_profile_id AS owner_tiktok_profile_id,
               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
               f.view_count,
               f.good_count
@@ -212,6 +215,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
           : rankingMetric === 'goods' || rankingTimeRange !== 'month'
            ? await context.env.DB.prepare(
              `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+               u.tiktok_profile_id AS owner_tiktok_profile_id,
                COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
                f.view_count,
                f.good_count
@@ -227,6 +231,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             .all<FrameRow>()
            : await context.env.DB.prepare(
              `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+               u.tiktok_profile_id AS owner_tiktok_profile_id,
                COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
                COUNT(fve.id) AS view_count,
                f.good_count
@@ -238,7 +243,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
               AND fve.created_at >= ?
              WHERE (f.expires_at IS NULL OR f.expires_at > ?)
                AND COALESCE(f.exclude_from_rankings, 0) = 0
-             GROUP BY f.id, f.owner_id, u.email, anon.id, f.custom_name, f.image_key, owner_display_name, f.good_count, f.created_at
+             GROUP BY f.id, f.owner_id, u.email, anon.id, f.custom_name, f.image_key, u.tiktok_profile_id, owner_display_name, f.good_count, f.created_at
              ORDER BY COUNT(fve.id) DESC, f.created_at DESC
              LIMIT 10`
            )
@@ -255,6 +260,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
           customDisplayName: row.owner_display_name,
           fallback: '未登録ユーザー',
         }),
+        ownerTikTokProfileId: row.owner_tiktok_profile_id,
         viewCount: row.view_count ?? 0,
         thumbnailUrl: `${origin}/api/share/thumbnail/${encodeURIComponent(row.id)}.png?raw=1`,
       }));

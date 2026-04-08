@@ -11,6 +11,7 @@ import { isTikTokInAppBrowser } from './utils/browser';
 type User = {
   id: string;
   display_name: string;
+  tiktok_profile_id?: string | null;
   plan: string;
   isAdmin: boolean;
   email?: string | null;

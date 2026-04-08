@@ -1,10 +1,11 @@
-import { ChevronDown, Heart, Loader2, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, Heart, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type RankingFrame = {
   id: string;
   displayName: string;
   ownerDisplayName: string;
+  ownerTikTokProfileId?: string | null;
   viewCount: number;
   thumbnailUrl: string;
 };
@@ -48,6 +49,10 @@ function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
 
 function getAccordionBadge(rankingType: 'views' | 'goods' | 'pickup') {
   return rankingType === 'pickup' ? 'PICK10' : 'TOP10';
+}
+
+function getTikTokProfileUrl(profileId: string) {
+  return `https://www.tiktok.com/@${encodeURIComponent(profileId)}`;
 }
 
 function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'pickup', index: number) {
@@ -522,20 +527,41 @@ export default function FrameRankingAccordion({
                   <li key={frame.id}>
                     <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]">
                       <div className="flex items-center gap-2 sm:gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFrame(frame)}
-                          className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 text-left"
-                        >
+                        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                           <div className="flex w-8 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1 py-2 text-center sm:w-9 sm:px-1.5">
                             <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">{getItemBadgeLabel(rankingType, index)}</span>
                           </div>
-                          <RankingThumbnail frame={frame} />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFrame(frame)}
+                            className="shrink-0 text-left"
+                            aria-label={`${frame.displayName}を拡大表示`}
+                          >
+                            <RankingThumbnail frame={frame} />
+                          </button>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold text-white">{frame.ownerDisplayName}</p>
-                            <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
+                            {frame.ownerTikTokProfileId ? (
+                              <a
+                                href={getTikTokProfileUrl(frame.ownerTikTokProfileId)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block truncate text-sm font-bold text-tiktok-cyan transition hover:underline hover:underline-offset-2"
+                                title="TikTokプロフィールを開く"
+                              >
+                                {frame.ownerDisplayName}
+                              </a>
+                            ) : (
+                              <p className="truncate text-sm font-bold text-white">{frame.ownerDisplayName}</p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedFrame(frame)}
+                              className="mt-1 text-[11px] text-tiktok-lightgray transition hover:text-white"
+                            >
+                              タップで拡大表示
+                            </button>
                           </div>
-                        </button>
+                        </div>
 
                         <button
                           type="button"
@@ -584,7 +610,31 @@ export default function FrameRankingAccordion({
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Ranking Preview</p>
-                <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">{selectedFrame.ownerDisplayName}</h3>
+                {selectedFrame.ownerTikTokProfileId ? (
+                  <>
+                    <a
+                      id="ranking-preview-title"
+                      href={getTikTokProfileUrl(selectedFrame.ownerTikTokProfileId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-sm font-bold text-tiktok-cyan transition hover:underline hover:underline-offset-2 sm:text-base"
+                    >
+                      <span className="break-all">{selectedFrame.ownerDisplayName}</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={getTikTokProfileUrl(selectedFrame.ownerTikTokProfileId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-xs text-tiktok-lightgray transition hover:text-white hover:underline hover:underline-offset-2"
+                    >
+                      TikTokプロフィールを見る
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </>
+                ) : (
+                  <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">{selectedFrame.ownerDisplayName}</h3>
+                )}
               </div>
               <button
                 type="button"
