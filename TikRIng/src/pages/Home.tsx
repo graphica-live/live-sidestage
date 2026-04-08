@@ -1428,6 +1428,7 @@ export default function Home({ user }: HomeProps) {
                     <li>有効期限を自由に設定（1日〜無期限）</li>
                     <li>フレームにパスワードを設定</li>
                     <li>閲覧数・装着数を確認</li>
+                    <li>ランキングとピックアップから除外</li>
                     <li>フレームに名前を付けて整理・管理しやすく</li>
                   </ul>
 
@@ -2325,6 +2326,7 @@ export default function Home({ user }: HomeProps) {
                 <li>有効期限を自由に設定（1日〜無期限）</li>
                 <li>フレームにパスワードを設定</li>
                 <li>閲覧数・装着数を確認</li>
+                <li>ランキングとピックアップから除外</li>
                 <li>フレームに名前を付けて整理・管理しやすく</li>
               </ul>
 
