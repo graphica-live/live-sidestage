@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { House, LayoutDashboard, Loader2, LogOut, Settings } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import Home from './pages/Home';
 import FrameEditor from './pages/FrameEditor';
 import Expired from './pages/Expired';
@@ -148,19 +148,18 @@ function App() {
   }
 
   const currentView = isDashboard ? 'dashboard' : frameId ? 'frame' : 'home';
-  const navButtonClass = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-tiktok-gray/40 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm';
-  const logoutButtonClass = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-tiktok-red px-3 py-2 text-xs font-bold text-white transition-colors shadow-lg hover:bg-[#D92648] sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm';
+  const navButtonClass = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-tiktok-gray bg-tiktok-dark px-2 py-1 text-[11px] font-bold leading-none text-white transition-colors hover:bg-tiktok-gray/40 sm:px-3 sm:py-1.5 sm:text-xs';
+  const logoutButtonClass = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-tiktok-red px-2 py-1 text-[11px] font-bold leading-none text-white transition-colors shadow-lg hover:bg-[#D92648] sm:px-3 sm:py-1.5 sm:text-xs';
   const showContactLink = !isDashboard;
 
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
       <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col">
         {user ? (
-          <div className="mb-6 w-full overflow-x-auto rounded-2xl border border-white/10 bg-tiktok-dark/80 px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:px-4 sm:py-4">
-            <div className="flex min-w-max flex-nowrap items-center gap-2">
-              <p className="shrink-0 text-[11px] font-black uppercase tracking-[0.22em] text-tiktok-lightgray">Signed In</p>
-              <p className="shrink-0 text-sm font-black text-white sm:text-base">{user.display_name}</p>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${user.plan === 'pro' || user.isAdmin ? 'border border-tiktok-cyan/30 bg-tiktok-cyan/20 text-tiktok-cyan' : 'border border-tiktok-gray bg-tiktok-gray text-tiktok-lightgray'}`}>
+          <div className="mb-6 w-full rounded-2xl border border-white/10 bg-tiktok-dark/80 px-2 py-2 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:px-3 sm:py-3">
+            <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+              <p className="min-w-0 flex-1 truncate text-[11px] font-black text-white sm:text-xs">{user.display_name}</p>
+              <span className={`shrink-0 rounded-full px-1.5 py-1 text-[10px] font-bold leading-none ${user.plan === 'pro' || user.isAdmin ? 'border border-tiktok-cyan/30 bg-tiktok-cyan/20 text-tiktok-cyan' : 'border border-tiktok-gray bg-tiktok-gray text-tiktok-lightgray'}`}>
                 {user.plan === 'pro' || user.isAdmin ? 'Pro' : '無料'}
               </span>
               {currentView !== 'home' ? (
@@ -171,8 +170,7 @@ function App() {
                   }}
                   className={navButtonClass}
                 >
-                  <House className="h-4 w-4" />
-                  TOPへ戻る
+                  TOP
                 </button>
               ) : null}
               {currentView !== 'dashboard' ? (
@@ -183,8 +181,7 @@ function App() {
                   }}
                   className={navButtonClass}
                 >
-                  <LayoutDashboard className="h-4 w-4" />
-                  フレーム管理
+                  管理
                 </button>
               ) : null}
               <button
@@ -192,12 +189,10 @@ function App() {
                 onClick={() => setSettingsOpen(true)}
                 className={navButtonClass}
               >
-                <Settings className="h-4 w-4" />
                 設定
               </button>
               <form action="/api/auth/logout" method="post" className="shrink-0">
                 <button type="submit" className={logoutButtonClass}>
-                  <LogOut className="h-4 w-4" />
                   ログアウト
                 </button>
               </form>
