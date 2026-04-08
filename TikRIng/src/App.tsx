@@ -156,18 +156,13 @@ function App() {
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
       <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col">
         {user ? (
-          <div className="mb-6 flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-tiktok-dark/80 px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4">
-            <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-tiktok-lightgray">Signed In</p>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <p className="truncate text-base font-black text-white sm:text-lg">{user.display_name}</p>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${user.plan === 'pro' || user.isAdmin ? 'border border-tiktok-cyan/30 bg-tiktok-cyan/20 text-tiktok-cyan' : 'border border-tiktok-gray bg-tiktok-gray text-tiktok-lightgray'}`}>
-                  {user.plan === 'pro' || user.isAdmin ? 'Pro' : '無料'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2 sm:overflow-visible sm:pb-0">
+          <div className="mb-6 w-full overflow-x-auto rounded-2xl border border-white/10 bg-tiktok-dark/80 px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:px-4 sm:py-4">
+            <div className="flex min-w-max flex-nowrap items-center gap-2">
+              <p className="shrink-0 text-[11px] font-black uppercase tracking-[0.22em] text-tiktok-lightgray">Signed In</p>
+              <p className="shrink-0 text-sm font-black text-white sm:text-base">{user.display_name}</p>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${user.plan === 'pro' || user.isAdmin ? 'border border-tiktok-cyan/30 bg-tiktok-cyan/20 text-tiktok-cyan' : 'border border-tiktok-gray bg-tiktok-gray text-tiktok-lightgray'}`}>
+                {user.plan === 'pro' || user.isAdmin ? 'Pro' : '無料'}
+              </span>
               {currentView !== 'home' ? (
                 <button
                   type="button"
