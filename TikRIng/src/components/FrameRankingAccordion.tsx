@@ -263,7 +263,7 @@ function RankingThumbnail({
   const [imageError, setImageError] = useState(false);
 
   return (
-    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
+    <div className="relative h-[4.25rem] w-[4.25rem] shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
       {!imageError ? (
         <>
           <img
@@ -521,18 +521,18 @@ export default function FrameRankingAccordion({
                 {frames.map((frame, index) => (
                   <li key={frame.id}>
                     <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 sm:gap-3">
                         <button
                           type="button"
                           onClick={() => setSelectedFrame(frame)}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 text-left"
                         >
-                          <div className="flex w-9 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1.5 py-2 text-center">
+                          <div className="flex w-8 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1 py-2 text-center sm:w-9 sm:px-1.5">
                             <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">{getItemBadgeLabel(rankingType, index)}</span>
                           </div>
                           <RankingThumbnail frame={frame} />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold text-white">投稿者: {frame.ownerDisplayName}</p>
+                            <p className="truncate text-sm font-bold text-white">{frame.ownerDisplayName}</p>
                             <p className="mt-1 text-[11px] text-tiktok-lightgray">タップで拡大表示</p>
                           </div>
                         </button>
@@ -542,21 +542,22 @@ export default function FrameRankingAccordion({
                           onClick={() => void handleGood(frame.id)}
                           disabled={Boolean(goodStates[frame.id] || goodSubmitting[frame.id])}
                           aria-pressed={Boolean(goodStates[frame.id])}
-                          className={`inline-flex min-w-[88px] shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-bold tracking-[0.08em] transition ${goodStates[frame.id]
-                            ? 'border-[#ff6b95]/35 bg-[#ff6b95]/15 text-[#ffc2d2]'
+                          aria-label={goodStates[frame.id] ? 'グッド済み' : 'グッドする'}
+                          title={goodStates[frame.id] ? 'グッド済み' : 'グッドする'}
+                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition sm:h-10 sm:w-10 ${goodStates[frame.id]
+                            ? 'border-[#ff6b95]/40 bg-[#ff6b95]/18 text-[#ff8cab]'
                             : 'border-white/10 bg-white/[0.05] text-white hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-default disabled:border-white/10 disabled:bg-white/[0.05]'} ${goodSubmitting[frame.id] ? 'cursor-wait' : ''}`}
                         >
                           {goodSubmitting[frame.id] ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <Heart className={`h-3.5 w-3.5 ${goodStates[frame.id] ? 'fill-current' : ''}`} />
+                            <Heart className={`h-4 w-4 ${goodStates[frame.id] ? 'fill-current' : ''}`} />
                           )}
-                          <span>{goodStates[frame.id] ? 'グッド済み' : 'グッド'}</span>
                         </button>
                       </div>
 
                       {goodErrors[frame.id] ? (
-                        <p className="mt-2 pl-[8.5rem] text-[11px] text-[#ffb7c5]">{goodErrors[frame.id]}</p>
+                        <p className="mt-2 pl-[6rem] text-[11px] text-[#ffb7c5] sm:pl-[8.5rem]">{goodErrors[frame.id]}</p>
                       ) : null}
                     </div>
                   </li>
@@ -583,7 +584,7 @@ export default function FrameRankingAccordion({
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Ranking Preview</p>
-                <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">投稿者: {selectedFrame.ownerDisplayName}</h3>
+                <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">{selectedFrame.ownerDisplayName}</h3>
               </div>
               <button
                 type="button"
