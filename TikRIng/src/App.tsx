@@ -148,15 +148,15 @@ function App() {
   }
 
   const currentView = isDashboard ? 'dashboard' : frameId ? 'frame' : 'home';
-  const navButtonClass = 'inline-flex items-center gap-2 py-2.5 px-4 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/40 text-white font-bold transition-colors text-sm';
-  const logoutButtonClass = 'inline-flex items-center gap-2 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm';
+  const navButtonClass = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-tiktok-gray bg-tiktok-dark px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-tiktok-gray/40 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm';
+  const logoutButtonClass = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-tiktok-red px-3 py-2 text-xs font-bold text-white transition-colors shadow-lg hover:bg-[#D92648] sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm';
   const showContactLink = !isDashboard;
 
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
       <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col">
         {user ? (
-          <div className="mb-6 flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-tiktok-dark/80 px-4 py-4 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-tiktok-dark/80 px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4">
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-[0.22em] text-tiktok-lightgray">Signed In</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -167,7 +167,7 @@ function App() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2 sm:overflow-visible sm:pb-0">
               {currentView !== 'home' ? (
                 <button
                   type="button"
@@ -200,7 +200,7 @@ function App() {
                 <Settings className="h-4 w-4" />
                 設定
               </button>
-              <form action="/api/auth/logout" method="post">
+              <form action="/api/auth/logout" method="post" className="shrink-0">
                 <button type="submit" className={logoutButtonClass}>
                   <LogOut className="h-4 w-4" />
                   ログアウト
