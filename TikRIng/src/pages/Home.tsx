@@ -1405,6 +1405,7 @@ export default function Home({ user }: HomeProps) {
               >
                 <div className="flex flex-col">
                   <span className="text-sm font-bold text-white">Pro（任意）</span>
+                  <span className="text-xs text-tiktok-lightgray">追加機能が必要な場合だけ開いてください</span>
                 </div>
                 <ChevronDown
                   className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
@@ -2285,6 +2286,7 @@ export default function Home({ user }: HomeProps) {
           >
             <div className="flex flex-col">
               <span className="text-sm font-bold text-white">Pro（任意）</span>
+              <span className="text-xs text-tiktok-lightgray">追加機能が必要な場合だけ開いてください</span>
             </div>
             <ChevronDown
               className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
