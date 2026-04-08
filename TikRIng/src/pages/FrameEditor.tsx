@@ -13,7 +13,7 @@ interface FrameEditorProps {
   } | null;
 }
 
-export default function FrameEditor({ id, user }: FrameEditorProps) {
+export default function FrameEditor({ id }: FrameEditorProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [frameOpeningMaskUrl, setFrameOpeningMaskUrl] = useState<string | null>(null);
   const [hasSavedOpeningMask, setHasSavedOpeningMask] = useState(false);
@@ -47,8 +47,6 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
   const gestureHintTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const returnPath = `/?f=${encodeURIComponent(id)}`;
-  const canShowRanking = (user?.email ?? '').trim().toLowerCase() === 'joe.graphica@gmail.com';
-
   const recordWearCount = useCallback(() => {
     const wearUrl = new URL(`/api/frames/${id}`, window.location.origin);
     wearUrl.searchParams.set('wear', '1');
@@ -837,29 +835,27 @@ export default function FrameEditor({ id, user }: FrameEditorProps) {
         <DonationCard returnPath={returnPath} compact />
       </div>
 
-      {canShowRanking ? (
-        <div className="w-full mt-6">
-          <div className="space-y-4">
-            <FrameRankingAccordion
-              title="ピックアップ"
-              eyebrow="Pickup"
-              closedSummary="全フレームの中からランダムで10件を表示"
-              rankingType="pickup"
-            />
-            <FrameRankingAccordion
-              title="アイコンフレーム月間閲覧数ランキング"
-              eyebrow="Ranking"
-              closedSummary="今月の閲覧数が多いフレームTOP10を見る"
-            />
-            <FrameRankingAccordion
-              title="グッド数の多いアイコンフレーム"
-              eyebrow="Ranking"
-              closedSummary="グッド数の多いフレームTOP10を見る"
-              rankingType="goods"
-            />
-          </div>
+      <div className="w-full mt-6">
+        <div className="space-y-4">
+          <FrameRankingAccordion
+            title="ピックアップ"
+            eyebrow="Pickup"
+            closedSummary="全フレームの中からランダムで10件を表示"
+            rankingType="pickup"
+          />
+          <FrameRankingAccordion
+            title="アイコンフレーム月間閲覧数ランキング"
+            eyebrow="Ranking"
+            closedSummary="今月の閲覧数が多いフレームTOP10を見る"
+          />
+          <FrameRankingAccordion
+            title="グッド数の多いアイコンフレーム"
+            eyebrow="Ranking"
+            closedSummary="グッド数の多いフレームTOP10を見る"
+            rankingType="goods"
+          />
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
