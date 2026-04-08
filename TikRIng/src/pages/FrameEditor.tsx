@@ -840,18 +840,18 @@ export default function FrameEditor({ id }: FrameEditorProps) {
           <FrameRankingAccordion
             title="ピックアップ"
             eyebrow="Pickup"
-            closedSummary="全フレームの中からランダムで10件を表示"
+            closedSummary=""
             rankingType="pickup"
           />
           <FrameRankingAccordion
-            title="アイコンフレーム月間閲覧数ランキング"
+            title="月間閲覧ランキング"
             eyebrow="Ranking"
-            closedSummary="今月の閲覧数が多いフレームTOP10を見る"
+            closedSummary=""
           />
           <FrameRankingAccordion
-            title="グッド数の多いアイコンフレーム"
+            title="月間グッド数ランキング"
             eyebrow="Ranking"
-            closedSummary="グッド数の多いフレームTOP10を見る"
+            closedSummary=""
             rankingType="goods"
           />
         </div>

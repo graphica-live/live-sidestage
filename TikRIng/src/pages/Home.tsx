@@ -52,11 +52,6 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
-    date: '2026.04.08',
-    title: 'ログイン後の上部ボタンを全ページで統一',
-    detail: 'ログイン後の上部導線をフレーム管理ページと同じボタン式に統一し、設定とログアウトを全ページで常時表示するよう変更。',
-  },
-  {
     date: '2026.04.07',
     title: 'Proで閲覧数と装着数を確認可能に変更',
     detail: 'フレーム管理で管理者ページと同じ表示に揃え、Proユーザーも閲覧数・装着数を確認できるようにし、未登録者向けのPro案内文も更新。',
@@ -113,7 +108,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.04.08 12:50';
+const latestUpdateAt = '2026.04.07 10:19';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -1410,7 +1405,6 @@ export default function Home({ user }: HomeProps) {
               >
                 <div className="flex flex-col">
                   <span className="text-sm font-bold text-white">Pro（任意）</span>
-                  <span className="text-xs text-tiktok-lightgray">無料のままでOK。追加機能が必要な場合だけ開いてください</span>
                 </div>
                 <ChevronDown
                   className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}
@@ -1512,18 +1506,18 @@ export default function Home({ user }: HomeProps) {
             <FrameRankingAccordion
               title="ピックアップ"
               eyebrow="Pickup"
-              closedSummary="全フレームの中からランダムで10件を表示"
+                closedSummary=""
               rankingType="pickup"
             />
             <FrameRankingAccordion
-              title="アイコンフレーム月間閲覧数ランキング"
+                title="月間閲覧ランキング"
               eyebrow="Ranking"
-              closedSummary="今月見られているフレーム上位10件を表示"
+                closedSummary=""
             />
             <FrameRankingAccordion
-              title="アイコンフレームグッド数ランキング"
+                title="月間グッド数ランキング"
               eyebrow="Ranking"
-              closedSummary="いまグッド数の多いフレーム上位10件を表示"
+                closedSummary=""
               rankingType="goods"
             />
           </div>
@@ -2291,7 +2285,6 @@ export default function Home({ user }: HomeProps) {
           >
             <div className="flex flex-col">
               <span className="text-sm font-bold text-white">Pro（任意）</span>
-              <span className="text-xs text-tiktok-lightgray">無料のままでOK。追加機能が必要な場合だけ開いてください</span>
             </div>
             <ChevronDown
               className={`w-5 h-5 text-tiktok-lightgray transition-transform ${proUpgradeOpen ? 'rotate-180' : ''}`}

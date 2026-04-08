@@ -47,7 +47,7 @@ function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
 }
 
 function getAccordionBadge(rankingType: 'views' | 'goods' | 'pickup') {
-  return rankingType === 'pickup' ? 'PICK 10' : 'TOP 10';
+  return rankingType === 'pickup' ? 'PICK10' : 'TOP10';
 }
 
 function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'pickup', index: number) {
@@ -480,24 +480,24 @@ export default function FrameRankingAccordion({
 
   return (
     <>
-      <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5 ${className ?? ''}`}>
+      <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-3 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-4 ${className ?? ''}`}>
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${open ? 'border-b border-white/8 pb-3' : ''}`}
+          className={`flex w-full items-center justify-between gap-2 text-left transition-colors ${open ? 'border-b border-white/8 pb-2.5' : ''}`}
         >
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">{eyebrow}</p>
-            <h2 className="mt-1 text-sm font-bold text-white sm:text-base">{title}</h2>
-            {!open ? (
-              <p className="mt-1 text-xs text-tiktok-lightgray">{closedSummary}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tiktok-cyan/80">{eyebrow}</p>
+            <h2 className="mt-0.5 truncate text-[13px] font-bold leading-tight text-white sm:text-sm">{title}</h2>
+            {!open && closedSummary ? (
+              <p className="mt-0.5 truncate text-[10px] leading-tight text-tiktok-lightgray">{closedSummary}</p>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="whitespace-nowrap rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-tiktok-cyan/80">
               {getAccordionBadge(rankingType)}
             </span>
-            <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-4 w-4 shrink-0 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
           </div>
         </button>
 
