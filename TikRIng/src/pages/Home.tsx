@@ -1215,7 +1215,7 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handleUpload = async () => {
-    if (!uploadConfirmation || !uploadRankingConsentChecked) return;
+    if (!uploadConfirmation || (requiresUploadRankingConsent && !uploadRankingConsentChecked)) return;
 
     let recaptchaToken: string | null = null;
     try {
@@ -1302,6 +1302,8 @@ export default function Home({ user }: HomeProps) {
       setCheckoutLoading(false);
     }
   };
+
+  const requiresUploadRankingConsent = !(user?.plan === 'pro' && excludeFromRankings);
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
@@ -2250,24 +2252,24 @@ export default function Home({ user }: HomeProps) {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 py-4 sm:rounded-[1.25rem] sm:px-5">
-              <p className="text-sm leading-6 text-tiktok-lightgray">
-                {user?.plan === 'pro' && excludeFromRankings
-                  ? 'このフレームはランキングとPickupの対象外として登録されます。なお、フレームを保護する仕様上、共有URLを知らない第三者が直接ダウンロードや装着を行うことはできません。'
-                  : 'アップロードされたフレームはアクセスランキングとPickupの掲載対象になります。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。'}
-              </p>
-              <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-white" htmlFor="upload-ranking-consent">
-                <input
-                  id="upload-ranking-consent"
-                  type="checkbox"
-                  checked={uploadRankingConsentChecked}
-                  onChange={(event) => setUploadRankingConsentChecked(event.target.checked)}
-                  disabled={uploading}
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-tiktok-red focus:ring-2 focus:ring-tiktok-red/60"
-                />
-                <span className="leading-6">上記の内容と公開範囲を確認しました</span>
-              </label>
-            </div>
+            {requiresUploadRankingConsent ? (
+              <div className="mt-5 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 py-4 sm:rounded-[1.25rem] sm:px-5">
+                <p className="text-sm leading-6 text-tiktok-lightgray">
+                  アップロードされたフレームはアクセスランキングとPickupの掲載対象になります。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。
+                </p>
+                <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-white" htmlFor="upload-ranking-consent">
+                  <input
+                    id="upload-ranking-consent"
+                    type="checkbox"
+                    checked={uploadRankingConsentChecked}
+                    onChange={(event) => setUploadRankingConsentChecked(event.target.checked)}
+                    disabled={uploading}
+                    className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-tiktok-red focus:ring-2 focus:ring-tiktok-red/60"
+                  />
+                  <span className="leading-6">上記の内容と公開範囲を確認しました</span>
+                </label>
+              </div>
+            ) : null}
 
             <div className="mt-5 flex flex-col-reverse gap-3 border-t border-white/8 pt-4 sm:flex-row sm:justify-end sm:pt-5">
               <button
@@ -2281,7 +2283,7 @@ export default function Home({ user }: HomeProps) {
               <button
                 type="button"
                 onClick={handleUpload}
-                disabled={uploading || !uploadRankingConsentChecked}
+                disabled={uploading || (requiresUploadRankingConsent && !uploadRankingConsentChecked)}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-tiktok-red px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-[#D92648] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {uploading ? (
