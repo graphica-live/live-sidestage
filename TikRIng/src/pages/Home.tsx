@@ -52,6 +52,11 @@ type UploadConfirmationState = {
 
 const updateHistory = [
   {
+    date: '2026.04.08',
+    title: 'ログイン後の上部ボタンを全ページで統一',
+    detail: 'ログイン後の上部導線をフレーム管理ページと同じボタン式に統一し、設定とログアウトを全ページで常時表示するよう変更。',
+  },
+  {
     date: '2026.04.07',
     title: 'Proで閲覧数と装着数を確認可能に変更',
     detail: 'フレーム管理で管理者ページと同じ表示に揃え、Proユーザーも閲覧数・装着数を確認できるようにし、未登録者向けのPro案内文も更新。',
@@ -108,7 +113,7 @@ const updateHistory = [
   },
 ] as const;
 
-const latestUpdateAt = '2026.04.07 10:19';
+const latestUpdateAt = '2026.04.08 12:50';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -1297,31 +1302,7 @@ export default function Home({ user }: HomeProps) {
 
   return (
     <div className="w-full flex flex-col items-center animate-in fade-in duration-500 max-w-xl">
-      {/* ログイン情報 */}
-      {user ? (
-        <div className="w-full flex items-center justify-between mb-6 px-1">
-          <span className="text-sm text-tiktok-lightgray">
-            {user.display_name}
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-bold ${user.plan === 'pro' ? 'bg-tiktok-cyan/20 text-tiktok-cyan' : 'bg-tiktok-gray text-tiktok-lightgray'}`}>
-              {user.plan === 'pro' ? 'Pro' : '無料'}
-            </span>
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = '/?dashboard=1';
-              }}
-              className="text-xs text-tiktok-lightgray hover:text-white underline"
-            >
-              フレーム管理
-            </button>
-            <form action="/api/auth/logout" method="post">
-              <button type="submit" className="text-xs text-tiktok-lightgray hover:text-white underline">ログアウト</button>
-            </form>
-          </div>
-        </div>
-      ) : (
+      {!user ? (
         <div className="w-full flex flex-col gap-3 mb-6">
           <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
             <button
@@ -1353,7 +1334,7 @@ export default function Home({ user }: HomeProps) {
             ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* ライバー専用バッジ */}
       <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-tiktok-cyan/20 text-tiktok-cyan border border-tiktok-cyan/30 text-xs font-bold tracking-wider">

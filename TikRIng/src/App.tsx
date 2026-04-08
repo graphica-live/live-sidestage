@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
+import { House, LayoutDashboard, Loader2, LogOut, Settings } from 'lucide-react';
 import Home from './pages/Home';
 import FrameEditor from './pages/FrameEditor';
 import Expired from './pages/Expired';
 import Dashboard from './pages/Dashboard';
 import BrowserWarning from './components/BrowserWarning';
+import UserSettingsModal from './components/UserSettingsModal';
 import { isTikTokInAppBrowser } from './utils/browser';
 
 type User = {
@@ -27,6 +28,7 @@ function App() {
   const [dashboardScope, setDashboardScope] = useState<'mine' | 'all'>('mine');
   const isTikTokInApp = isTikTokInAppBrowser();
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const syncInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -145,11 +147,69 @@ function App() {
     return <BrowserWarning />;
   }
 
+  const currentView = isDashboard ? 'dashboard' : frameId ? 'frame' : 'home';
+  const navButtonClass = 'inline-flex items-center gap-2 py-2.5 px-4 rounded-md border border-tiktok-gray bg-tiktok-dark hover:bg-tiktok-gray/40 text-white font-bold transition-colors text-sm';
+  const logoutButtonClass = 'inline-flex items-center gap-2 py-2.5 px-4 rounded-md bg-tiktok-red hover:bg-[#D92648] text-white font-bold transition-colors shadow-lg text-sm';
   const showContactLink = !isDashboard;
 
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30">
       <main className="container mx-auto px-4 py-8 max-w-2xl min-h-screen flex flex-col">
+        {user ? (
+          <div className="mb-6 flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-tiktok-dark/80 px-4 py-4 shadow-[0_14px_40px_rgba(0,0,0,0.24)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-tiktok-lightgray">Signed In</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="truncate text-base font-black text-white sm:text-lg">{user.display_name}</p>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${user.plan === 'pro' || user.isAdmin ? 'border border-tiktok-cyan/30 bg-tiktok-cyan/20 text-tiktok-cyan' : 'border border-tiktok-gray bg-tiktok-gray text-tiktok-lightgray'}`}>
+                  {user.plan === 'pro' || user.isAdmin ? 'Pro' : '無料'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {currentView !== 'home' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/';
+                  }}
+                  className={navButtonClass}
+                >
+                  <House className="h-4 w-4" />
+                  TOPへ戻る
+                </button>
+              ) : null}
+              {currentView !== 'dashboard' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/?dashboard=1';
+                  }}
+                  className={navButtonClass}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  フレーム管理
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className={navButtonClass}
+              >
+                <Settings className="h-4 w-4" />
+                設定
+              </button>
+              <form action="/api/auth/logout" method="post">
+                <button type="submit" className={logoutButtonClass}>
+                  <LogOut className="h-4 w-4" />
+                  ログアウト
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex-1 flex flex-col items-center justify-center">
           {isDashboard ? (
             user === undefined ? (
@@ -158,7 +218,7 @@ function App() {
                 <p className="text-tiktok-lightgray">読み込み中...</p>
               </div>
             ) : user ? (
-              <Dashboard user={user} initialScope={dashboardScope} onUserChange={handleUserChange} />
+              <Dashboard user={user} initialScope={dashboardScope} />
             ) : (
               <Home user={user} />
             )
@@ -198,6 +258,15 @@ function App() {
               TikRingトップページ
             </a>
           </div>
+        ) : null}
+
+        {user ? (
+          <UserSettingsModal
+            open={settingsOpen}
+            user={user}
+            onClose={() => setSettingsOpen(false)}
+            onUserChange={handleUserChange}
+          />
         ) : null}
       </main>
     </div>
