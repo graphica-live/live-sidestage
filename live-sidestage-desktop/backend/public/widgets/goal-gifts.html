@@ -82,6 +82,57 @@
             font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
         }
 
+        .goal-row.is-celebrating {
+            animation: goalCelebrate 780ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .goal-row.is-celebrating .gift-visual::before,
+        .goal-row.is-celebrating .gift-visual::after {
+            content: '';
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .goal-row.is-celebrating .gift-visual::after {
+            inset: 14% 18%;
+            border: 3px solid rgba(251, 191, 36, 0.76);
+            border-radius: 999px;
+            box-shadow: 0 0 22px rgba(251, 191, 36, 0.42);
+            animation: goalRipple 780ms ease-out;
+        }
+
+        .goal-row.is-celebrating[data-feedback-effect="magic"] .gift-visual::before {
+            inset: 8% 12%;
+            background:
+                radial-gradient(circle at 18% 36%, rgba(255, 255, 255, 0.9) 0 5px, transparent 6px),
+                radial-gradient(circle at 70% 18%, rgba(196, 181, 253, 0.84) 0 6px, transparent 7px),
+                radial-gradient(circle at 82% 74%, rgba(103, 232, 249, 0.8) 0 5px, transparent 6px),
+                radial-gradient(circle at 26% 76%, rgba(251, 191, 36, 0.72) 0 6px, transparent 7px);
+            filter: drop-shadow(0 0 16px rgba(167, 139, 250, 0.5));
+            animation: goalSparkle 860ms ease-out;
+        }
+
+        .goal-row.is-celebrating[data-feedback-effect="magic"] .gift-visual::after {
+            border-color: rgba(196, 181, 253, 0.74);
+            box-shadow: 0 0 24px rgba(167, 139, 250, 0.34), 0 0 40px rgba(103, 232, 249, 0.18);
+        }
+
+        .goal-row.is-celebrating[data-feedback-effect="luxury"] .gift-visual::before {
+            inset: 4% 8%;
+            border-radius: 999px;
+            background:
+                radial-gradient(circle at center, rgba(255, 246, 214, 0.5) 0%, rgba(255, 246, 214, 0.18) 42%, transparent 68%),
+                linear-gradient(120deg, transparent 20%, rgba(255, 240, 194, 0.56) 48%, transparent 76%);
+            mix-blend-mode: screen;
+            animation: goalLuxe 900ms ease-out;
+        }
+
+        .goal-row.is-celebrating[data-feedback-effect="luxury"] .gift-visual::after {
+            border-width: 2px;
+            border-color: rgba(255, 230, 164, 0.82);
+            box-shadow: 0 0 26px rgba(255, 223, 142, 0.24), inset 0 0 0 1px rgba(255, 247, 221, 0.26);
+        }
+
         .goal-row.is-complete {
             background: transparent;
         }
@@ -90,6 +141,74 @@
             position: relative;
             width: var(--gift-width);
             min-height: var(--gift-height);
+        }
+
+        @keyframes goalCelebrate {
+            0% {
+                transform: scale(0.94);
+                filter: brightness(1);
+            }
+
+            35% {
+                transform: scale(1.04);
+                filter: brightness(1.18);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        @keyframes goalRipple {
+            0% {
+                opacity: 0;
+                transform: scale(0.72);
+            }
+
+            18% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.18);
+            }
+        }
+
+        @keyframes goalSparkle {
+            0% {
+                opacity: 0;
+                transform: scale(0.84) rotate(-8deg);
+            }
+
+            30% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.12) rotate(8deg);
+            }
+        }
+
+        @keyframes goalLuxe {
+            0% {
+                opacity: 0;
+                transform: scale(0.88);
+                filter: brightness(1);
+            }
+
+            28% {
+                opacity: 1;
+                filter: brightness(1.24);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.08);
+                filter: brightness(1);
+            }
         }
 
         .gift-image {
@@ -203,6 +322,40 @@
         const searchParams = new URLSearchParams(window.location.search);
         const requestedSlot = Number.parseInt(searchParams.get('slot') || '', 10);
         const previewMode = searchParams.get('preview') === '1';
+        const GOAL_GIFT_SYSTEM_IDS = {
+            like: '__system__:like'
+        };
+        const FEEDBACK_SOUND_KEYS = [
+            'chime',
+            'magic',
+            'luxury',
+            'crystal',
+            'shimmer',
+            'glint',
+            'business08',
+            'business09',
+            'business10',
+            'business11',
+            'bush-warbler',
+            'cow',
+            'hyoshigi',
+            'xylophone',
+            'glocken01',
+            'glocken02',
+            'glocken03',
+            'electronic-chime02',
+            'electronic-chime03'
+        ];
+        const FEEDBACK_SOUND_CANDIDATE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a'];
+        const FEEDBACK_SOUND_URLS = Object.fromEntries(
+            FEEDBACK_SOUND_KEYS.map((soundKey) => [
+                soundKey,
+                FEEDBACK_SOUND_CANDIDATE_EXTENSIONS.map((extension) => `/audio/feedback/${soundKey}.${extension}`)
+            ])
+        );
+        const feedbackSoundUrlCache = new Map();
+        let hasRenderedSnapshot = false;
+        let previousGoalCounts = new Map();
         const goalGiftFonts = {
             default: '"M PLUS Rounded 1c", sans-serif',
             gothic: '"Noto Sans JP", sans-serif',
@@ -505,6 +658,31 @@
             `;
         }
 
+        function formatGoalGiftCount(value) {
+            const numericValue = Number(value);
+
+            if (!Number.isFinite(numericValue)) {
+                return '0';
+            }
+
+            const absoluteValue = Math.abs(numericValue);
+
+            if (absoluteValue < 1000) {
+                return `${Math.round(numericValue)}`;
+            }
+
+            const units = [
+                { threshold: 1e9, suffix: 'b' },
+                { threshold: 1e6, suffix: 'm' },
+                { threshold: 1e3, suffix: 'k' }
+            ];
+
+            const matchedUnit = units.find((unit) => absoluteValue >= unit.threshold) || units[units.length - 1];
+            const compactValue = (numericValue / matchedUnit.threshold).toFixed(1).replace(/\.0$/, '');
+
+            return `${compactValue}${matchedUnit.suffix}`;
+        }
+
         function layoutOutlinedSvgText(container = document) {
             container.querySelectorAll('[data-outlined-svg-host]').forEach((host) => {
                 const svg = host.querySelector('svg');
@@ -540,7 +718,101 @@
             });
         }
 
-        async function render(snapshot) {
+        function normalizeFeedbackSettings(value) {
+            const soundKey = String(value?.soundKey || '').trim().toLowerCase();
+            const effectKey = String(value?.effectKey || '').trim().toLowerCase();
+
+            return {
+                soundEnabled: value?.soundEnabled !== false,
+                effectEnabled: value?.effectEnabled !== false,
+                soundKey: FEEDBACK_SOUND_KEYS.includes(soundKey) ? soundKey : 'chime',
+                effectKey: ['glow', 'magic', 'luxury'].includes(effectKey) ? effectKey : 'glow'
+            };
+        }
+
+        async function resolveFeedbackSoundUrl(soundKey = 'chime') {
+            const normalizedKey = FEEDBACK_SOUND_URLS[soundKey] ? soundKey : 'chime';
+
+            if (feedbackSoundUrlCache.has(normalizedKey)) {
+                return feedbackSoundUrlCache.get(normalizedKey);
+            }
+
+            const candidates = FEEDBACK_SOUND_URLS[normalizedKey] || [];
+
+            for (const candidateUrl of candidates) {
+                try {
+                    const response = await fetch(candidateUrl, { method: 'HEAD', cache: 'no-store' });
+                    if (response.ok) {
+                        feedbackSoundUrlCache.set(normalizedKey, candidateUrl);
+                        return candidateUrl;
+                    }
+                } catch {
+                    // Try the next candidate extension.
+                }
+            }
+
+            feedbackSoundUrlCache.set(normalizedKey, '');
+            return '';
+        }
+
+        async function playGoalFeedbackTone(soundKey = 'chime') {
+            const soundUrl = await resolveFeedbackSoundUrl(soundKey);
+
+            if (!soundUrl) {
+                console.warn(`Feedback sound file is missing for key: ${soundKey}`);
+                return;
+            }
+
+            const audio = new Audio(soundUrl);
+            audio.preload = 'auto';
+
+            try {
+                await audio.play();
+            } catch (error) {
+                console.warn(`Failed to play feedback sound: ${soundKey}`, error);
+            }
+        }
+
+        function getGoalFeedbackDiff(snapshot) {
+            const goals = Array.isArray(snapshot?.goals) ? snapshot.goals : [];
+            const increasedSlots = new Set();
+            let hasAudibleIncrease = false;
+
+            goals.forEach((goal) => {
+                const slot = Number(goal?.slot) || 0;
+                if (!slot) {
+                    return;
+                }
+
+                const nextCount = Number(goal?.currentCount) || 0;
+                const previousCount = previousGoalCounts.get(slot);
+                if (hasRenderedSnapshot && typeof previousCount === 'number' && nextCount > previousCount) {
+                    if (goal?.giftId === GOAL_GIFT_SYSTEM_IDS.like) {
+                        const previousMilestone = Math.floor(previousCount / 1000);
+                        const nextMilestone = Math.floor(nextCount / 1000);
+
+                        if (nextMilestone > previousMilestone) {
+                            increasedSlots.add(slot);
+                        }
+                    } else {
+                        increasedSlots.add(slot);
+                        hasAudibleIncrease = true;
+                    }
+                }
+            });
+
+            previousGoalCounts = new Map(
+                goals.map((goal) => [Number(goal?.slot) || 0, Number(goal?.currentCount) || 0]).filter(([slot]) => slot > 0)
+            );
+
+            return {
+                feedback: normalizeFeedbackSettings(snapshot?.feedback),
+                increasedSlots,
+                shouldNotify: hasRenderedSnapshot && hasAudibleIncrease
+            };
+        }
+
+        async function render(snapshot, increasedSlots = new Set(), effectKey = 'glow') {
             const sourceGoals = Array.isArray(snapshot?.goals) ? snapshot.goals : [];
             const fontFamily = getGoalGiftFontFamily(snapshot?.fontKey);
             const textStyle = getGoalGiftTextStyle(snapshot?.textStyleKey);
@@ -578,13 +850,13 @@
             overlay.classList.add('is-visible');
             overlay.classList.remove('is-empty');
             overlay.innerHTML = goals.map((goal, index) => `
-                <div class="goal-row ${goal.completed ? 'is-complete' : ''}" style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
+                <div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(Number(goal.slot)) ? 'is-celebrating' : ''}" data-goal-slot="${Number(goal.slot) || 0}" ${increasedSlots.has(Number(goal.slot)) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
                     <div class="gift-visual">
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
                         <div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName || goal.giftName, { fontSize: window.innerWidth <= 640 ? 24 : 46, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: window.innerWidth <= 640 ? 26 : 48, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>
                     </div>
                     <div class="copy">
-                        <div class="count">${buildOutlinedSvgMarkup(`${goal.currentCount}/${goal.targetCount}`, { fontSize: window.innerWidth <= 640 ? 34 : 62, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 36 : 64, fill: textStyle.countColor, idPrefix: `goal-count-${index}` })}</div>
+                        <div class="count">${buildOutlinedSvgMarkup(`${formatGoalGiftCount(goal.currentCount)}/${formatGoalGiftCount(goal.targetCount)}`, { fontSize: window.innerWidth <= 640 ? 34 : 62, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 36 : 64, fill: textStyle.countColor, idPrefix: `goal-count-${index}` })}</div>
                         ${goal.note ? `<div class="note">${buildOutlinedSvgMarkup(goal.note, { fontSize: window.innerWidth <= 640 ? 16 : 28, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 18 : 30, fill: textStyle.noteColor, idPrefix: `goal-note-${index}` })}</div>` : ''}
                     </div>
                 </div>
@@ -592,10 +864,37 @@
             layoutOutlinedSvgText(overlay);
         }
 
+        async function applySnapshot(snapshot) {
+            const diff = getGoalFeedbackDiff(snapshot);
+            await render(snapshot, diff.feedback.effectEnabled ? diff.increasedSlots : new Set(), diff.feedback.effectKey);
+
+            if (diff.shouldNotify && diff.feedback.soundEnabled) {
+                playGoalFeedbackTone(diff.feedback.soundKey).catch(() => {});
+            }
+
+            hasRenderedSnapshot = true;
+        }
+
+        function playTestFeedback(payload) {
+            const targetSlot = Number(payload?.slot) || 0;
+
+            if (!previewMode || targetSlot !== 1 || requestedSlot !== 1) {
+                return;
+            }
+
+            const feedback = normalizeFeedbackSettings(payload?.feedback);
+
+            if (!feedback.soundEnabled) {
+                return;
+            }
+
+            playGoalFeedbackTone(feedback.soundKey).catch(() => {});
+        }
+
         async function refresh() {
             const response = await fetch('/api/widgets/goal-gifts/snapshot');
             const payload = await response.json();
-            await render(payload.snapshot);
+            await applySnapshot(payload.snapshot);
         }
 
         socket.on('admin_day_updated', () => {
@@ -603,7 +902,11 @@
         });
 
         socket.on('widgets:goal-gifts:updated', (payload) => {
-            render(payload?.snapshot).catch(() => {});
+            applySnapshot(payload?.snapshot).catch(() => {});
+        });
+
+        socket.on('widgets:goal-gifts:test-feedback', (payload) => {
+            playTestFeedback(payload);
         });
 
         refresh().catch(() => {});

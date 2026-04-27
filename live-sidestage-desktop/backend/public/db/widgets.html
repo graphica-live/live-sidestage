@@ -76,6 +76,17 @@
             align-items: center;
         }
 
+        .header-feedback-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .header-feedback-grid .full {
+            grid-column: 1 / -1;
+        }
+
         .day-picker-row {
             display: flex;
             flex-wrap: wrap;
@@ -361,9 +372,9 @@
         .goal-table-head,
         .goal-row {
             display: grid;
-            grid-template-columns: minmax(240px, 1.75fr) minmax(180px, 1.1fr) minmax(180px, 1fr) 112px 112px 112px 126px;
+            grid-template-columns: minmax(240px, 1.75fr) minmax(180px, 1.1fr) minmax(180px, 1fr) 112px 112px 112px 112px 126px;
             gap: 8px;
-            min-width: 1140px;
+            min-width: 1260px;
         }
 
         .goal-table-head {
@@ -469,14 +480,15 @@
 
         @media (max-width: 1040px) {
             .grid,
-            .form-grid {
+            .form-grid,
+            .header-feedback-grid {
                 grid-template-columns: 1fr;
             }
 
             .goal-table-head,
             .goal-row {
-                grid-template-columns: minmax(220px, 1.45fr) minmax(170px, 1fr) minmax(160px, 1fr) 104px 104px 104px 118px;
-                min-width: 1040px;
+                grid-template-columns: minmax(220px, 1.45fr) minmax(170px, 1fr) minmax(160px, 1fr) 104px 104px 104px 104px 118px;
+                min-width: 1160px;
             }
         }
 
@@ -514,6 +526,21 @@
                 <div class="field">
                     <label for="contributors-stroke-width">共通縁取り太さ</label>
                     <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="全ウィジェット共通縁取り太さ" />
+                </div>
+            </div>
+
+            <div class="header-feedback-grid">
+                <div class="field">
+                    <label for="shared-sound-key">共通通知音</label>
+                    <select id="shared-sound-key" aria-label="全ウィジェット共通通知音"></select>
+                    <div class="subtext">ローカル音声ファイルを優先再生します。配置先: /audio/feedback/&lt;soundKey&gt;.(mp3|wav|ogg|m4a)</div>
+                    <div class="action-row" style="margin-top: 10px;">
+                        <button type="button" class="ghost-button" id="test-shared-sound-button">目標ギフト1でテスト再生</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="shared-effect-key">共通エフェクト</label>
+                    <select id="shared-effect-key" aria-label="全ウィジェット共通エフェクト"></select>
                 </div>
             </div>
 
@@ -616,7 +643,7 @@
             <div class="card-head">
                 <div>
                     <h2>目標ギフト</h2>
-                    <p class="subtext">文字装飾は上部の共通ヘッダー設定がそのまま反映されます。</p>
+                    <p class="subtext">文字装飾と通知演出は上部の共通ヘッダー設定がそのまま反映されます。</p>
                 </div>
             </div>
 
@@ -641,6 +668,9 @@
         const contributorsFontSelect = document.getElementById('contributors-font');
         const contributorsTextStyleSelect = document.getElementById('contributors-text-style');
         const contributorsStrokeWidthInput = document.getElementById('contributors-stroke-width');
+        const sharedSoundKeySelect = document.getElementById('shared-sound-key');
+        const sharedEffectKeySelect = document.getElementById('shared-effect-key');
+        const testSharedSoundButton = document.getElementById('test-shared-sound-button');
         const topGiftUrl = document.getElementById('top-gift-url');
         const goalGiftList = document.getElementById('goal-gift-list');
         const goalGiftSuggestionPanel = document.getElementById('goal-gift-suggestion-panel');
@@ -670,10 +700,63 @@
             contributorsFontKey: 'default',
             contributorsColorTheme: 'gold-night',
             contributorsStrokeWidth: 4,
+            sharedWidgetFeedback: {
+                soundEnabled: true,
+                effectEnabled: true,
+                soundKey: 'chime',
+                effectKey: 'glow'
+            },
             topGiftSettings: null,
             goalGiftItems: [],
             giftCatalog: [],
             giftCatalogByName: new Map()
+        };
+        const goalGiftSystemImageUrls = {
+            like: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+                    <defs>
+                        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#fb7185"/>
+                            <stop offset="100%" stop-color="#f59e0b"/>
+                        </linearGradient>
+                        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#7c2d12" flood-opacity="0.28"/>
+                        </filter>
+                    </defs>
+                    <rect width="320" height="320" rx="72" fill="url(#bg)"/>
+                    <circle cx="242" cy="82" r="30" fill="rgba(255,255,255,0.18)"/>
+                    <circle cx="254" cy="70" r="10" fill="rgba(255,255,255,0.48)"/>
+                    <g filter="url(#shadow)">
+                        <path d="M160 250c-8 0-16-3-22-9l-50-47c-22-21-24-56-4-78 19-20 50-23 72-7l4 3 4-3c22-16 53-13 72 7 20 22 18 57-4 78l-50 47c-6 6-14 9-22 9z" fill="#fff7ed"/>
+                        <path d="M204 108c14 0 27 6 36 16 14 16 13 41-3 56l-50 47c-7 7-18 7-25 0l-50-47c-16-15-17-40-3-56 15-16 40-18 57-6l14 10 14-10c7-6 16-10 25-10z" fill="#ffffff" opacity="0.3"/>
+                        <circle cx="103" cy="104" r="14" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+                        <path d="M88 74c10-14 21-22 34-26" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.82"/>
+                        <path d="M118 60c8-4 16-6 26-7" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.68"/>
+                    </g>
+                </svg>
+            `)}`,
+            follow: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+                    <defs>
+                        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#38bdf8"/>
+                            <stop offset="100%" stop-color="#14b8a6"/>
+                        </linearGradient>
+                        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#164e63" flood-opacity="0.26"/>
+                        </filter>
+                    </defs>
+                    <rect width="320" height="320" rx="72" fill="url(#bg)"/>
+                    <circle cx="242" cy="94" r="56" fill="rgba(255,255,255,0.16)"/>
+                    <g filter="url(#shadow)">
+                        <circle cx="136" cy="118" r="42" fill="#ecfeff"/>
+                        <path d="M64 244c0-36 29-65 65-65h14c36 0 65 29 65 65v14H64z" fill="#ecfeff"/>
+                        <circle cx="230" cy="186" r="42" fill="#ffffff"/>
+                        <path d="M230 162v48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+                        <path d="M206 186h48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+                    </g>
+                </svg>
+            `)}`
         };
         const goalGiftSystemSuggestions = [
             {
@@ -681,14 +764,14 @@
                 name: 'タップ',
                 describe: 'いいね回数を目標としてカウントします',
                 diamondCount: null,
-                imageUrl: ''
+                imageUrl: goalGiftSystemImageUrls.like
             },
             {
                 id: '__system__:follow',
                 name: 'フォロー',
                 describe: 'フォロー回数を目標としてカウントします',
                 diamondCount: null,
-                imageUrl: ''
+                imageUrl: goalGiftSystemImageUrls.follow
             }
         ];
         const goalGiftNotePlaceholderChoices = [
@@ -851,6 +934,35 @@
         const contributorsTextStyleOptions = sharedTextStyleOptions;
         const contributorsTextStyleOptionMap = new Map(contributorsTextStyleOptions.map((option) => [option.key, option]));
         const MAX_CONTRIBUTORS_STROKE_WIDTH = 12;
+        const sharedFeedbackSoundOptions = [
+            { key: 'chime', label: 'Soft Bell' },
+            { key: 'magic', label: 'Sparkle Arp' },
+            { key: 'luxury', label: 'Victory Fanfare' },
+            { key: 'crystal', label: 'Glass Ping' },
+            { key: 'shimmer', label: 'Shimmer Sweep' },
+            { key: 'glint', label: 'Kiran Flash' },
+            { key: 'business08', label: 'Business 08' },
+            { key: 'business09', label: 'Business 09' },
+            { key: 'business10', label: 'Business 10' },
+            { key: 'business11', label: 'Business 11' },
+            { key: 'bush-warbler', label: 'Bush Warbler' },
+            { key: 'cow', label: 'Cow Synthetic' },
+            { key: 'hyoshigi', label: 'Hyoshigi' },
+            { key: 'xylophone', label: 'Xylophone' },
+            { key: 'glocken01', label: 'Glocken 01' },
+            { key: 'glocken02', label: 'Glocken 02' },
+            { key: 'glocken03', label: 'Glocken 03' },
+            { key: 'electronic-chime02', label: 'Electronic Chime 02' },
+            { key: 'electronic-chime03', label: 'Electronic Chime 03' }
+        ];
+        const sharedFeedbackEffectOptions = [
+            { key: 'glow', label: 'Glow Pulse' },
+            { key: 'magic', label: 'Magic Orbit' },
+            { key: 'luxury', label: 'Luxury Halo' }
+        ];
+        const SHARED_FEEDBACK_DISABLED_VALUE = '__off__';
+        const sharedFeedbackSoundOptionMap = new Map(sharedFeedbackSoundOptions.map((option) => [option.key, option]));
+        const sharedFeedbackEffectOptionMap = new Map(sharedFeedbackEffectOptions.map((option) => [option.key, option]));
 
         function normalizeContributorsDisplayThreshold(value) {
             const normalizedValue = Number.parseInt(String(value ?? ''), 10);
@@ -883,6 +995,52 @@
                 startedAt: typeof value?.startedAt === 'string' && value.startedAt ? value.startedAt : null,
                 endedAt: typeof value?.endedAt === 'string' && value.endedAt ? value.endedAt : null,
                 isActive: Boolean(value?.isActive)
+            };
+        }
+
+        function normalizeFeedbackSettings(value) {
+            const normalizedSoundKey = String(value?.soundKey || '').trim().toLowerCase();
+            const normalizedEffectKey = String(value?.effectKey || '').trim().toLowerCase();
+
+            return {
+                soundEnabled: value?.soundEnabled !== false,
+                effectEnabled: value?.effectEnabled !== false,
+                soundKey: sharedFeedbackSoundOptionMap.has(normalizedSoundKey) ? normalizedSoundKey : 'chime',
+                effectKey: sharedFeedbackEffectOptionMap.has(normalizedEffectKey) ? normalizedEffectKey : 'glow'
+            };
+        }
+
+        function getSharedFeedbackSoundOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeFeedbackSettings({ soundKey: selectedKey }).soundKey;
+            return [`
+                <option value="${SHARED_FEEDBACK_DISABLED_VALUE}">オフ</option>
+            `, ...sharedFeedbackSoundOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `)].join('');
+        }
+
+        function getSharedFeedbackEffectOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeFeedbackSettings({ effectKey: selectedKey }).effectKey;
+            return [`
+                <option value="${SHARED_FEEDBACK_DISABLED_VALUE}">オフ</option>
+            `, ...sharedFeedbackEffectOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `)].join('');
+        }
+
+        function getSharedSoundSelectionState() {
+            const selectedValue = String(sharedSoundKeySelect.value || '').trim().toLowerCase();
+            return {
+                soundEnabled: selectedValue !== SHARED_FEEDBACK_DISABLED_VALUE,
+                soundKey: sharedFeedbackSoundOptionMap.has(selectedValue) ? selectedValue : 'chime'
+            };
+        }
+
+        function getSharedEffectSelectionState() {
+            const selectedValue = String(sharedEffectKeySelect.value || '').trim().toLowerCase();
+            return {
+                effectEnabled: selectedValue !== SHARED_FEEDBACK_DISABLED_VALUE,
+                effectKey: sharedFeedbackEffectOptionMap.has(selectedValue) ? selectedValue : 'glow'
             };
         }
 
@@ -1012,6 +1170,14 @@
             contributorsStrokeWidthInput.value = String(normalizeContributorsStrokeWidth(state.contributorsStrokeWidth));
         }
 
+        function syncSharedFeedbackControls() {
+            const feedback = normalizeFeedbackSettings(state.sharedWidgetFeedback);
+            sharedSoundKeySelect.innerHTML = getSharedFeedbackSoundOptionsMarkup(feedback.soundKey);
+            sharedEffectKeySelect.innerHTML = getSharedFeedbackEffectOptionsMarkup(feedback.effectKey);
+            sharedSoundKeySelect.value = feedback.soundEnabled ? feedback.soundKey : SHARED_FEEDBACK_DISABLED_VALUE;
+            sharedEffectKeySelect.value = feedback.effectEnabled ? feedback.effectKey : SHARED_FEEDBACK_DISABLED_VALUE;
+        }
+
         function openWindow(path, name, size = { width: 1240, height: 900 }) {
             const features = ['popup=yes', `width=${size.width}`, `height=${size.height}`, 'resizable=yes', 'scrollbars=yes'].join(',');
             window.open(path, name, features);
@@ -1094,6 +1260,9 @@
             const params = [`slot=${encodeURIComponent(String(slot))}`];
             if (options.preview) {
                 params.push('preview=1');
+            }
+            if (options.forceReload) {
+                params.push(`v=${encodeURIComponent(String(Date.now()))}`);
             }
             return `${baseUrl}${separator}${params.join('&')}`;
         }
@@ -1349,6 +1518,8 @@
                         ? 'note'
                         : activeElement.matches('[data-goal-current]')
                             ? 'current'
+                            : activeElement.matches('[data-goal-count-unique-users]')
+                                ? 'count-unique-users'
                             : activeElement.matches('[data-goal-reset-at-midnight]')
                                 ? 'reset-at-midnight'
                             : activeElement.matches('[data-goal-target]')
@@ -1385,6 +1556,8 @@
                         ? '[data-goal-note]'
                         : focusState.field === 'current'
                             ? '[data-goal-current]'
+                            : focusState.field === 'count-unique-users'
+                                ? '[data-goal-count-unique-users]'
                             : focusState.field === 'reset-at-midnight'
                                 ? '[data-goal-reset-at-midnight]'
                             : focusState.field === 'target'
@@ -1417,6 +1590,7 @@
                 note: '',
                 giftImage: '',
                 targetCount: 1,
+                countUniqueUsers: false,
                 resetAtMidnight: false,
                 currentCount: 0,
                 observedCount: 0,
@@ -1430,6 +1604,7 @@
                     <div class="goal-table-head-cell">ギフト名(任意)</div>
                     <div class="goal-table-head-cell">備考</div>
                     <div class="goal-table-head-cell">現在個数</div>
+                    <div class="goal-table-head-cell">1人1個</div>
                     <div class="goal-table-head-cell">0時リセット</div>
                     <div class="goal-table-head-cell">目標個数</div>
                     <div class="goal-table-head-cell">URL</div>
@@ -1452,6 +1627,9 @@
                     </div>
                     <div class="goal-cell">
                         <input type="number" data-goal-current min="0" step="1" value="${escapeHtml(item.currentCount || 0)}" aria-label="現在個数">
+                    </div>
+                    <div class="goal-cell goal-inline-toggle">
+                        <div class="toggle"><input type="checkbox" data-goal-count-unique-users ${item.countUniqueUsers ? 'checked' : ''} aria-label="1人1個"></div>
                     </div>
                     <div class="goal-cell goal-inline-toggle">
                         <div class="toggle"><input type="checkbox" data-goal-reset-at-midnight ${item.resetAtMidnight ? 'checked' : ''} aria-label="0時リセット"></div>
@@ -1532,7 +1710,7 @@
                 });
             });
 
-            goalGiftList.querySelectorAll('[data-goal-target], [data-goal-current], [data-goal-display-name], [data-goal-note], [data-goal-reset-at-midnight]').forEach((input) => {
+            goalGiftList.querySelectorAll('[data-goal-target], [data-goal-current], [data-goal-display-name], [data-goal-note], [data-goal-count-unique-users], [data-goal-reset-at-midnight]').forEach((input) => {
                 input.addEventListener('input', scheduleGoalGiftAutosave);
                 input.addEventListener('change', scheduleGoalGiftAutosave);
             });
@@ -1619,6 +1797,7 @@
                     note: row.querySelector('[data-goal-note]').value.trim(),
                     giftImage: row.dataset.goalGiftImage || catalogGift?.imageUrl || '',
                     targetCount: Number.isInteger(targetValue) && targetValue > 0 ? targetValue : 1,
+                    countUniqueUsers: row.querySelector('[data-goal-count-unique-users]').checked,
                     resetAtMidnight: row.querySelector('[data-goal-reset-at-midnight]').checked,
                     currentCount: Number.isInteger(currentValue) && currentValue >= 0 ? currentValue : 0
                 };
@@ -1660,6 +1839,7 @@
             state.contributorsFontKey = normalizeContributorsFontKey(payload.contributorsFontKey);
             state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.contributorsColorTheme);
             state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.contributorsStrokeWidth);
+            state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.sharedWidgetFeedback || payload.contributorsFeedback || payload.goalGiftFeedback);
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -1671,6 +1851,7 @@
             syncContributorsFontControl();
             syncContributorsTextStyleControl();
             syncContributorsStrokeWidthControl();
+            syncSharedFeedbackControls();
             topGiftUrl.textContent = state.widgetUrls.topGiftOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
             todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
@@ -1781,8 +1962,10 @@
         }
 
         async function saveContributorsStyleSettingsImmediately() {
-            setStatus(saveStatus, '設定状態: ウィジェット共通文字設定を保存中...', 'warn');
+            setStatus(saveStatus, '設定状態: ウィジェット共通設定を保存中...', 'warn');
             try {
+                const soundSelection = getSharedSoundSelectionState();
+                const effectSelection = getSharedEffectSelectionState();
                 const response = await fetch('/api/widgets/contributors-style', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -1792,7 +1975,13 @@
                         avatarVisibility: normalizeContributorsAvatarVisibility(contributorsAvatarVisibilitySelect.value),
                         fontFamily: normalizeContributorsFontKey(contributorsFontSelect.value),
                         colorTheme: normalizeContributorsTextStyleKey(contributorsTextStyleSelect.value),
-                        strokeWidth: normalizeContributorsStrokeWidth(contributorsStrokeWidthInput.value)
+                        strokeWidth: normalizeContributorsStrokeWidth(contributorsStrokeWidthInput.value),
+                        feedback: {
+                            soundEnabled: soundSelection.soundEnabled,
+                            effectEnabled: effectSelection.effectEnabled,
+                            soundKey: soundSelection.soundKey,
+                            effectKey: effectSelection.effectKey
+                        }
                     })
                 });
                 const payload = await response.json();
@@ -1807,13 +1996,57 @@
                 state.contributorsFontKey = normalizeContributorsFontKey(payload.fontFamily ?? contributorsFontSelect.value);
                 state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.colorTheme ?? contributorsTextStyleSelect.value);
                 state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.strokeWidth ?? contributorsStrokeWidthInput.value);
+                state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.feedback);
                 syncContributorsThresholdControl();
                 syncContributorsGoalCountControl();
                 syncContributorsAvatarVisibilityControl();
                 syncContributorsFontControl();
                 syncContributorsTextStyleControl();
                 syncContributorsStrokeWidthControl();
-                setStatus(saveStatus, '設定状態: ウィジェット共通文字設定を保存しました。', 'ok');
+                syncSharedFeedbackControls();
+                setStatus(saveStatus, '設定状態: ウィジェット共通設定を保存しました。', 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSharedFeedbackSound() {
+            const soundSelection = getSharedSoundSelectionState();
+
+            if (!soundSelection.soundEnabled) {
+                setStatus(saveStatus, '設定状態: 共通通知音がオフなのでテスト再生できません。', 'warn');
+                return;
+            }
+
+            setStatus(saveStatus, '設定状態: 目標ギフト1オーバーレイを更新してからテスト再生を送信中...', 'warn');
+
+            try {
+                const previewUrl = buildGoalGiftOverlayUrl(1, { preview: true, forceReload: true });
+                openWindow(previewUrl || '/overlays/goal-gifts?slot=1&preview=1', 'goal-gift-overlay-window-1', { width: 1080, height: 900 });
+                await new Promise((resolve) => {
+                    window.setTimeout(resolve, 400);
+                });
+
+                const response = await fetch('/api/widgets/goal-gifts/test-feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        slot: 1,
+                        feedback: {
+                            soundEnabled: soundSelection.soundEnabled,
+                            effectEnabled: false,
+                            soundKey: soundSelection.soundKey,
+                            effectKey: getSharedEffectSelectionState().effectKey
+                        }
+                    })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || '通知音テストの送信に失敗しました。');
+                }
+
+                setStatus(saveStatus, '設定状態: 目標ギフト1オーバーレイを更新し、テスト再生を送信しました。', 'ok');
             } catch (error) {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
             }
@@ -1861,6 +2094,15 @@
         });
         contributorsAvatarVisibilitySelect.addEventListener('change', () => {
             saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        sharedSoundKeySelect.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        sharedEffectKeySelect.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        testSharedSoundButton.addEventListener('click', () => {
+            testSharedFeedbackSound().catch(() => {});
         });
         contributorsFontSelect.addEventListener('input', () => {
             contributorsFontSelect.style.fontFamily = getContributorsFontFamily(contributorsFontSelect.value);

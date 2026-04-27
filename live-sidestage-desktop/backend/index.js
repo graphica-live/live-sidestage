@@ -112,10 +112,15 @@ const EFFECT_EVENTS_STATE_KEY = 'effect_events';
 const EFFECT_TRIGGERS_STATE_KEY = 'effect_triggers';
 const WIDGET_TOP_GIFT_SETTINGS_STATE_KEY = 'widget_top_gift_settings';
 const WIDGET_GOAL_GIFTS_STATE_KEY = 'widget_goal_gifts';
+const WIDGET_GOAL_GIFT_FEEDBACK_SETTINGS_STATE_KEY = 'widget_goal_gift_feedback_settings';
+const CONTRIBUTORS_FEEDBACK_SETTINGS_STATE_KEY = 'contributors_feedback_settings';
+const SHARED_WIDGET_FEEDBACK_SETTINGS_STATE_KEY = 'shared_widget_feedback_settings';
 const WIDGET_GOAL_GIFTS_FONT_STATE_KEY = 'widget_goal_gifts_font';
 const WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY = 'widget_goal_gifts_text_style';
 const WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY = 'widget_goal_gifts_stroke_width';
 const WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY = 'widget_goal_gift_activity_counts';
+const WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY = 'widget_goal_gift_like_totals';
+const WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY = 'widget_goal_gift_follow_state';
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
 const DEFAULT_GOAL_COUNT = 10;
@@ -132,6 +137,12 @@ const DEFAULT_WIDGET_TOP_GIFT_SETTINGS = {
     title: '本日最高ギフト',
     senderDisplayMode: 'latest'
 };
+const DEFAULT_WIDGET_FEEDBACK_SETTINGS = {
+    soundEnabled: true,
+    effectEnabled: true,
+    soundKey: 'chime',
+    effectKey: 'glow'
+};
 const DEFAULT_GOAL_GIFT_WIDGET_ITEM = {
     enabled: false,
     giftId: '',
@@ -140,6 +151,7 @@ const DEFAULT_GOAL_GIFT_WIDGET_ITEM = {
     note: '',
     giftImage: '',
     targetCount: 1,
+    countUniqueUsers: false,
     currentCountOffset: 0,
     resetAtMidnight: false,
     currentCountOffsetDayKey: ''
@@ -155,6 +167,53 @@ const GOAL_GIFT_SYSTEM_IDS = {
 const GOAL_GIFT_SYSTEM_LABELS = {
     [GOAL_GIFT_SYSTEM_IDS.like]: 'タップ',
     [GOAL_GIFT_SYSTEM_IDS.follow]: 'フォロー'
+};
+const GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS = {
+    [GOAL_GIFT_SYSTEM_IDS.like]: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+            <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#fb7185"/>
+                    <stop offset="100%" stop-color="#f59e0b"/>
+                </linearGradient>
+                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#7c2d12" flood-opacity="0.28"/>
+                </filter>
+            </defs>
+            <rect width="320" height="320" rx="72" fill="url(#bg)"/>
+            <circle cx="242" cy="82" r="30" fill="rgba(255,255,255,0.18)"/>
+            <circle cx="254" cy="70" r="10" fill="rgba(255,255,255,0.48)"/>
+            <g filter="url(#shadow)">
+                <path d="M160 250c-8 0-16-3-22-9l-50-47c-22-21-24-56-4-78 19-20 50-23 72-7l4 3 4-3c22-16 53-13 72 7 20 22 18 57-4 78l-50 47c-6 6-14 9-22 9z" fill="#fff7ed"/>
+                <path d="M204 108c14 0 27 6 36 16 14 16 13 41-3 56l-50 47c-7 7-18 7-25 0l-50-47c-16-15-17-40-3-56 15-16 40-18 57-6l14 10 14-10c7-6 16-10 25-10z" fill="#ffffff" opacity="0.3"/>
+                <circle cx="103" cy="104" r="14" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+                <path d="M88 74c10-14 21-22 34-26" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.82"/>
+                <path d="M118 60c8-4 16-6 26-7" fill="none" stroke="#fff7ed" stroke-width="10" stroke-linecap="round" opacity="0.68"/>
+            </g>
+        </svg>
+    `)}`,
+    [GOAL_GIFT_SYSTEM_IDS.follow]: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+            <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#38bdf8"/>
+                    <stop offset="100%" stop-color="#14b8a6"/>
+                </linearGradient>
+                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#164e63" flood-opacity="0.26"/>
+                </filter>
+            </defs>
+            <rect width="320" height="320" rx="72" fill="url(#bg)"/>
+            <circle cx="242" cy="94" r="56" fill="rgba(255,255,255,0.16)"/>
+            <g filter="url(#shadow)">
+                <circle cx="136" cy="118" r="42" fill="#ecfeff"/>
+                <path d="M64 244c0-36 29-65 65-65h14c36 0 65 29 65 65v14H64z" fill="#ecfeff"/>
+                <circle cx="230" cy="186" r="42" fill="#ffffff"/>
+                <path d="M230 162v48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+                <path d="M206 186h48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+            </g>
+        </svg>
+    `)}`
 };
 const TIKTOK_JA_LOCALE_CLIENT_PARAMS = {
     app_language: 'ja',
@@ -1135,6 +1194,7 @@ function startContributorsSession(startedAt = getTimestamp()) {
     const normalizedStartedAt = normalizeStoredTimestamp(startedAt) || getTimestamp();
     setScopedStateValue(CONTRIBUTORS_SESSION_STARTED_AT_STATE_KEY, normalizedStartedAt);
     setScopedStateValue(CONTRIBUTORS_SESSION_ENDED_AT_STATE_KEY, '');
+    setGoalGiftFollowState({ sessionStartedAt: normalizedStartedAt, seenUserKeys: [] });
     return getContributorsSessionState();
 }
 
@@ -1151,6 +1211,7 @@ function finishContributorsSession(endedAt = getTimestamp()) {
 
     const normalizedEndedAt = normalizeStoredTimestamp(endedAt) || getTimestamp();
     setScopedStateValue(CONTRIBUTORS_SESSION_ENDED_AT_STATE_KEY, normalizedEndedAt);
+    setGoalGiftFollowState({ sessionStartedAt: '', seenUserKeys: [] });
     return getContributorsSessionState();
 }
 
@@ -1335,6 +1396,96 @@ function setWidgetTopGiftSettings(settings) {
     return normalizedSettings;
 }
 
+function normalizeWidgetFeedbackSettings(value) {
+    let source = value;
+
+    if (typeof source === 'string') {
+        try {
+            source = JSON.parse(source);
+        } catch {
+            source = null;
+        }
+    }
+
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        source = {};
+    }
+
+    const soundKey = String(source.soundKey || '').trim().toLowerCase();
+    const effectKey = String(source.effectKey || '').trim().toLowerCase();
+    const allowedSoundKeys = new Set([
+        'chime',
+        'magic',
+        'luxury',
+        'crystal',
+        'shimmer',
+        'glint',
+        'business08',
+        'business09',
+        'business10',
+        'business11',
+        'bush-warbler',
+        'cow',
+        'hyoshigi',
+        'xylophone',
+        'glocken01',
+        'glocken02',
+        'glocken03',
+        'electronic-chime02',
+        'electronic-chime03'
+    ]);
+    const allowedEffectKeys = new Set(['glow', 'magic', 'luxury']);
+
+    return {
+        soundEnabled: normalizeBooleanInput(source.soundEnabled, DEFAULT_WIDGET_FEEDBACK_SETTINGS.soundEnabled),
+        effectEnabled: normalizeBooleanInput(source.effectEnabled, DEFAULT_WIDGET_FEEDBACK_SETTINGS.effectEnabled),
+        soundKey: allowedSoundKeys.has(soundKey) ? soundKey : DEFAULT_WIDGET_FEEDBACK_SETTINGS.soundKey,
+        effectKey: allowedEffectKeys.has(effectKey) ? effectKey : DEFAULT_WIDGET_FEEDBACK_SETTINGS.effectKey
+    };
+}
+
+function getSharedWidgetFeedbackSettings() {
+    const sharedValue = getScopedStateValue(SHARED_WIDGET_FEEDBACK_SETTINGS_STATE_KEY);
+
+    if (sharedValue !== null && sharedValue !== undefined) {
+        return normalizeWidgetFeedbackSettings(sharedValue);
+    }
+
+    const legacyContributorsValue = getScopedStateValue(CONTRIBUTORS_FEEDBACK_SETTINGS_STATE_KEY);
+    if (legacyContributorsValue !== null && legacyContributorsValue !== undefined) {
+        return normalizeWidgetFeedbackSettings(legacyContributorsValue);
+    }
+
+    const legacyGoalGiftValue = getScopedStateValue(WIDGET_GOAL_GIFT_FEEDBACK_SETTINGS_STATE_KEY);
+    if (legacyGoalGiftValue !== null && legacyGoalGiftValue !== undefined) {
+        return normalizeWidgetFeedbackSettings(legacyGoalGiftValue);
+    }
+
+    return normalizeWidgetFeedbackSettings(null);
+}
+
+function setSharedWidgetFeedbackSettings(value) {
+    const normalizedValue = normalizeWidgetFeedbackSettings(value);
+    setScopedStateValue(SHARED_WIDGET_FEEDBACK_SETTINGS_STATE_KEY, JSON.stringify(normalizedValue));
+    return normalizedValue;
+}
+
+function getContributorsFeedbackSettings() {
+    return getSharedWidgetFeedbackSettings();
+}
+
+function setContributorsFeedbackSettings(value) {
+    return setSharedWidgetFeedbackSettings(value);
+}
+
+function getGoalGiftFeedbackSettings() {
+    return getSharedWidgetFeedbackSettings();
+}
+
+function setGoalGiftFeedbackSettings(value) {
+    return setSharedWidgetFeedbackSettings(value);
+}
+
 function getSharedWidgetTextAppearance() {
     return {
         fontKey: getDisplayFontFamily(),
@@ -1492,6 +1643,10 @@ function getGoalGiftSystemTypeById(value) {
     return '';
 }
 
+function getGoalGiftSystemImageUrl(value) {
+    return GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS[String(value || '').trim()] || '';
+}
+
 function normalizeGoalGiftActivityCounts(value) {
     let source = value;
 
@@ -1545,6 +1700,93 @@ function getGoalGiftActivityCounts(dayKey = getTodayDayKey()) {
     };
 }
 
+function normalizeGoalGiftLikeTotalsState(value) {
+    let source = value;
+
+    if (typeof source === 'string') {
+        try {
+            source = JSON.parse(source);
+        } catch {
+            source = {};
+        }
+    }
+
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        source = {};
+    }
+
+    const normalized = {};
+
+    Object.entries(source).forEach(([dayKey, totalLikeCount]) => {
+        const normalizedDayKey = normalizeDayKey(dayKey);
+
+        if (!normalizedDayKey) {
+            return;
+        }
+
+        normalized[normalizedDayKey] = normalizeWholeNumber(totalLikeCount) || 0;
+    });
+
+    return normalized;
+}
+
+function getGoalGiftLikeTotalsState() {
+    return normalizeGoalGiftLikeTotalsState(getScopedStateValue(WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY));
+}
+
+function setGoalGiftLikeTotalsState(value) {
+    const normalizedValue = normalizeGoalGiftLikeTotalsState(value);
+    setScopedStateValue(WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY, JSON.stringify(normalizedValue));
+    return normalizedValue;
+}
+
+function normalizeGoalGiftFollowState(value) {
+    let source = value;
+
+    if (typeof source === 'string') {
+        try {
+            source = JSON.parse(source);
+        } catch {
+            source = {};
+        }
+    }
+
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        source = {};
+    }
+
+    const seenUserKeys = Array.isArray(source.seenUserKeys)
+        ? [...new Set(source.seenUserKeys.map((entry) => normalizeEffectText(entry, 120)).filter(Boolean))]
+        : [];
+
+    return {
+        sessionStartedAt: normalizeStoredTimestamp(source.sessionStartedAt) || '',
+        seenUserKeys
+    };
+}
+
+function getGoalGiftFollowState() {
+    return normalizeGoalGiftFollowState(getScopedStateValue(WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY));
+}
+
+function setGoalGiftFollowState(value) {
+    const normalizedValue = normalizeGoalGiftFollowState(value);
+    setScopedStateValue(WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY, JSON.stringify(normalizedValue));
+    return normalizedValue;
+}
+
+function getGoalGiftFollowActorKey(data) {
+    const uniqueId = normalizeBroadcasterId(firstDefinedString([
+        data?.uniqueId,
+        data?.user?.uniqueId,
+        data?.user?.unique_id,
+        data?.fromUser?.uniqueId,
+        data?.fromUser?.unique_id
+    ]));
+
+    return uniqueId ? `id:${uniqueId}` : '';
+}
+
 function incrementGoalGiftActivityCount(type, amount = 1, dayKey = getTodayDayKey()) {
     if (type !== 'like' && type !== 'follow') {
         return getGoalGiftActivityCounts(dayKey);
@@ -1567,6 +1809,67 @@ function incrementGoalGiftActivityCount(type, amount = 1, dayKey = getTodayDayKe
 
     setGoalGiftActivityCountsState(countsState);
     return countsState[normalizedDayKey];
+}
+
+function consumeGoalGiftLikeActivityCount(data, dayKey = getTodayDayKey()) {
+    const normalizedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
+    const likeCount = normalizeWholeNumber(data?.likeCount) || 0;
+    const totalLikeCount = normalizeWholeNumber(data?.totalLikeCount) || 0;
+
+    if (totalLikeCount > 0) {
+        const likeTotalsState = getGoalGiftLikeTotalsState();
+        const previousTotalLikeCount = normalizeWholeNumber(likeTotalsState[normalizedDayKey]) || 0;
+        likeTotalsState[normalizedDayKey] = totalLikeCount;
+        setGoalGiftLikeTotalsState(likeTotalsState);
+
+        if (previousTotalLikeCount > 0 && totalLikeCount > previousTotalLikeCount) {
+            return incrementGoalGiftActivityCount('like', totalLikeCount - previousTotalLikeCount, normalizedDayKey);
+        }
+
+        if (previousTotalLikeCount === 0 || totalLikeCount < previousTotalLikeCount) {
+            if (likeCount > 0) {
+                return incrementGoalGiftActivityCount('like', likeCount, normalizedDayKey);
+            }
+
+            return getGoalGiftActivityCounts(normalizedDayKey);
+        }
+
+        return getGoalGiftActivityCounts(normalizedDayKey);
+    }
+
+    if (likeCount > 0) {
+        return incrementGoalGiftActivityCount('like', likeCount, normalizedDayKey);
+    }
+
+    return getGoalGiftActivityCounts(normalizedDayKey);
+}
+
+function consumeGoalGiftFollowActivityCount(data, dayKey = getTodayDayKey()) {
+    const normalizedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
+    const sessionState = getContributorsSessionState();
+    const sessionStartedAt = normalizeStoredTimestamp(sessionState.startedAt) || '';
+    const actorKey = getGoalGiftFollowActorKey(data);
+
+    if (!sessionStartedAt || !actorKey) {
+        return incrementGoalGiftActivityCount('follow', 1, normalizedDayKey);
+    }
+
+    const followState = getGoalGiftFollowState();
+    const nextState = followState.sessionStartedAt === sessionStartedAt
+        ? followState
+        : { sessionStartedAt, seenUserKeys: [] };
+
+    if (nextState.seenUserKeys.includes(actorKey)) {
+        if (nextState !== followState) {
+            setGoalGiftFollowState(nextState);
+        }
+
+        return getGoalGiftActivityCounts(normalizedDayKey);
+    }
+
+    nextState.seenUserKeys.push(actorKey);
+    setGoalGiftFollowState(nextState);
+    return incrementGoalGiftActivityCount('follow', 1, normalizedDayKey);
 }
 
 function getGoalGiftWidgetStrokeWidth() {
@@ -1600,8 +1903,11 @@ function normalizeGoalGiftWidgetItems(value) {
         const giftName = normalizeEffectText(item?.giftName, 80) || (systemType ? GOAL_GIFT_SYSTEM_LABELS[giftId] : '');
         const displayName = normalizeEffectText(item?.displayName, 80);
         const note = normalizeEffectText(item?.note, 120);
-        const giftImage = systemType ? '' : (typeof item?.giftImage === 'string' ? item?.giftImage.trim() : '');
+        const giftImage = systemType
+            ? getGoalGiftSystemImageUrl(giftId)
+            : (typeof item?.giftImage === 'string' ? item?.giftImage.trim() : '');
         const targetCount = normalizeWholeNumber(item?.targetCount) || DEFAULT_GOAL_GIFT_WIDGET_ITEM.targetCount;
+        const countUniqueUsers = normalizeBooleanInput(item?.countUniqueUsers, DEFAULT_GOAL_GIFT_WIDGET_ITEM.countUniqueUsers);
         const currentCountOffset = normalizeSignedWholeNumber(item?.currentCountOffset, DEFAULT_GOAL_GIFT_WIDGET_ITEM.currentCountOffset);
         const resetAtMidnight = normalizeBooleanInput(item?.resetAtMidnight, DEFAULT_GOAL_GIFT_WIDGET_ITEM.resetAtMidnight);
         const currentCountOffsetDayKey = normalizeDayKey(item?.currentCountOffsetDayKey) || '';
@@ -1614,6 +1920,7 @@ function normalizeGoalGiftWidgetItems(value) {
             note: note || '',
             giftImage,
             targetCount,
+            countUniqueUsers,
             currentCountOffset,
             resetAtMidnight,
             currentCountOffsetDayKey: resetAtMidnight ? currentCountOffsetDayKey : ''
@@ -1627,6 +1934,16 @@ function getGoalGiftWidgetItems() {
 
 function normalizeGoalGiftMatchName(value) {
     return normalizeEffectText(value, 80).toLowerCase();
+}
+
+function getGoalGiftContributorKey(gift) {
+    const uniqueId = normalizeBroadcasterId(gift?.uniqueId);
+    if (uniqueId) {
+        return `id:${uniqueId.toLowerCase()}`;
+    }
+
+    const nickname = normalizeNickname(gift?.nickname);
+    return nickname ? `name:${nickname.toLowerCase()}` : null;
 }
 
 function buildGoalGiftProgressSnapshot(
@@ -1650,6 +1967,7 @@ function buildGoalGiftProgressSnapshot(
             fontKey: normalizedFontKey,
             textStyleKey: normalizedTextStyleKey,
             strokeWidth: normalizedStrokeWidth,
+            feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
                 ...item,
@@ -1670,6 +1988,7 @@ function buildGoalGiftProgressSnapshot(
         fontKey: normalizedFontKey,
         textStyleKey: normalizedTextStyleKey,
         strokeWidth: normalizedStrokeWidth,
+        feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
 
@@ -1683,7 +2002,7 @@ function buildGoalGiftProgressSnapshot(
                 return {
                     slot: index + 1,
                     ...item,
-                    giftImage: '',
+                    giftImage: getGoalGiftSystemImageUrl(item.giftId),
                     currentCount,
                     observedCount,
                     completed: currentCount >= item.targetCount,
@@ -1694,6 +2013,7 @@ function buildGoalGiftProgressSnapshot(
             const normalizedGiftName = normalizeGoalGiftMatchName(item.giftName);
             let observedCount = 0;
             let latestGiftImage = item.giftImage || '';
+            const countedContributorKeys = item.countUniqueUsers ? new Set() : null;
 
             gifts.forEach((gift) => {
                 const idMatched = item.giftId && String(gift.giftId || '') === item.giftId;
@@ -1703,7 +2023,20 @@ function buildGoalGiftProgressSnapshot(
                     return;
                 }
 
-                observedCount += Math.max(0, Number(gift.repeatCount || 0));
+                if (countedContributorKeys) {
+                    const contributorKey = getGoalGiftContributorKey(gift);
+                    if (contributorKey && countedContributorKeys.has(contributorKey)) {
+                        return;
+                    }
+
+                    if (contributorKey) {
+                        countedContributorKeys.add(contributorKey);
+                    }
+
+                    observedCount += 1;
+                } else {
+                    observedCount += Math.max(0, Number(gift.repeatCount || 0));
+                }
 
                 if (!latestGiftImage && gift.giftImage) {
                     latestGiftImage = gift.giftImage;
@@ -2486,6 +2819,7 @@ function buildOverlayContributorsSnapshot(dayKey = getDisplayDayKey()) {
             colorTheme: getDisplayColorTheme(),
             strokeWidth: getDisplayStrokeWidth()
         },
+        feedback: getContributorsFeedbackSettings(),
         session: {
             startedAt: displayContext.session.startedAt,
             endedAt: displayContext.session.endedAt,
@@ -3682,6 +4016,7 @@ app.get('/api/effects/config', (req, res) => {
 
 app.get('/api/widgets/config', (req, res) => {
     const sharedWidgetAppearance = getSharedWidgetTextAppearance();
+    const sharedWidgetFeedback = getSharedWidgetFeedbackSettings();
 
     res.json({
         broadcasterId: getBroadcasterId(),
@@ -3696,12 +4031,15 @@ app.get('/api/widgets/config', (req, res) => {
         contributorsFontKey: getDisplayFontFamily(),
         contributorsColorTheme: getDisplayColorTheme(),
         contributorsStrokeWidth: getDisplayStrokeWidth(),
+        contributorsFeedback: sharedWidgetFeedback,
+        sharedWidgetFeedback,
         sharedWidgetAppearance,
         topGiftSettings: getWidgetTopGiftSettings(),
         topGiftSnapshot: buildTopGiftSnapshot(getTodayDayKey()),
         goalGiftFontKey: sharedWidgetAppearance.fontKey,
         goalGiftTextStyleKey: sharedWidgetAppearance.textStyleKey,
         goalGiftStrokeWidth: sharedWidgetAppearance.strokeWidth,
+        goalGiftFeedback: sharedWidgetFeedback,
         goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals
     });
 });
@@ -3743,6 +4081,27 @@ app.get('/api/widgets/goal-gifts/snapshot', (req, res) => {
     });
 });
 
+app.post('/api/widgets/goal-gifts/test-feedback', (req, res) => {
+    const requestedSlot = normalizeWholeNumber(req.body?.slot) || 1;
+    const feedback = normalizeWidgetFeedbackSettings(req.body?.feedback || getGoalGiftFeedbackSettings());
+
+    if (requestedSlot <= 0) {
+        return res.status(400).json({ ok: false, error: 'slot must be a positive integer' });
+    }
+
+    io.emit('widgets:goal-gifts:test-feedback', {
+        slot: requestedSlot,
+        feedback,
+        requestedAt: getTimestamp()
+    });
+
+    return res.json({
+        ok: true,
+        slot: requestedSlot,
+        feedback
+    });
+});
+
 app.patch('/api/widgets/goal-gifts', (req, res) => {
     if (!Array.isArray(req.body?.items)) {
         return res.status(400).json({ ok: false, error: 'items must be an array' });
@@ -3757,6 +4116,9 @@ app.patch('/api/widgets/goal-gifts', (req, res) => {
     const strokeWidth = req.body?.strokeWidth !== undefined
         ? setDisplayStrokeWidth(req.body.strokeWidth)
         : getDisplayStrokeWidth();
+    const feedback = req.body?.feedback !== undefined
+        ? setGoalGiftFeedbackSettings(req.body.feedback)
+        : getGoalGiftFeedbackSettings();
     const items = setGoalGiftWidgetItems(req.body.items);
     const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth);
 
@@ -3767,6 +4129,7 @@ app.patch('/api/widgets/goal-gifts', (req, res) => {
     res.json({
         ok: true,
         items: snapshot.goals,
+        feedback,
         snapshot
     });
 });
@@ -3792,6 +4155,9 @@ app.patch('/api/widgets/contributors-style', (req, res) => {
     const savedAvatarVisibility = req.body?.avatarVisibility !== undefined ? setDisplayAvatarVisibility(avatarVisibility) : getDisplayAvatarVisibility();
     const colorTheme = setDisplayColorTheme(req.body?.colorTheme);
     const strokeWidth = setDisplayStrokeWidth(req.body?.strokeWidth);
+    const feedback = req.body?.feedback !== undefined
+        ? setContributorsFeedbackSettings(req.body.feedback)
+        : getContributorsFeedbackSettings();
 
     emitDisplayThresholdChanges();
 
@@ -3815,6 +4181,7 @@ app.patch('/api/widgets/contributors-style', (req, res) => {
         avatarVisibility: savedAvatarVisibility,
         colorTheme,
         strokeWidth,
+        feedback,
         liveSession: getContributorsSessionState(),
         snapshot: buildOverlayContributorsSnapshot(getDisplayDayKey())
     });
@@ -4442,11 +4809,12 @@ function ensureTikTokConnection() {
             let goalGiftCountsChanged = false;
 
             if (type === 'like') {
-                incrementGoalGiftActivityCount('like', normalizeWholeNumber(data?.likeCount) || 1);
+                consumeGoalGiftLikeActivityCount(data, getTodayDayKey());
                 goalGiftCountsChanged = true;
             } else if (type === 'follow') {
-                incrementGoalGiftActivityCount('follow', 1);
-                goalGiftCountsChanged = true;
+                const previousCounts = getGoalGiftActivityCounts(getTodayDayKey());
+                const nextCounts = consumeGoalGiftFollowActivityCount(data, getTodayDayKey());
+                goalGiftCountsChanged = nextCounts.follow !== previousCounts.follow;
             }
 
             pushTikTokComment(normalizedComment);

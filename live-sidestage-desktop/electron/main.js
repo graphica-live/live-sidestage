@@ -25,6 +25,8 @@ const TIKTOK_AUTH_ALLOWED_PATH_PREFIXES = [
     '/about/'
 ];
 
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 function buildTikTokLoginPartition() {
     return `tiktok-login-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
