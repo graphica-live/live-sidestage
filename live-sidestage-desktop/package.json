@@ -1,0 +1,78 @@
+{
+  "name": "tikeffect",
+  "version": "1.0.0",
+  "main": "electron/main.js",
+  "scripts": {
+    "predev": "npm rebuild better-sqlite3",
+    "dev": "chcp 65001>nul & nodemon --legacy-watch index.js",
+    "prestart": "npm rebuild better-sqlite3",
+    "start": "chcp 65001>nul & node index.js",
+    "prebackend:dev": "npm rebuild better-sqlite3",
+    "backend:dev": "chcp 65001>nul & nodemon --legacy-watch backend/index.js",
+    "prebackend:start": "npm rebuild better-sqlite3",
+    "backend:start": "chcp 65001>nul & node backend/index.js",
+    "overlay:contributors:dev": "chcp 65001>nul & nodemon --legacy-watch --watch overlays/contributors --exec \"node overlays/contributors/server.js\"",
+    "overlay:contributors:start": "chcp 65001>nul & node overlays/contributors/server.js",
+    "dev:split": "chcp 65001>nul & node scripts/run-split.js dev",
+    "start:split": "chcp 65001>nul & node scripts/run-split.js start",
+    "generate:windows-launchers": "chcp 65001>nul & node scripts/generate-windows-launchers.js",
+    "rebuild:electron": "electron-rebuild -f better-sqlite3",
+    "preelectron": "powershell -ExecutionPolicy Bypass -File .\\scripts\\prepare-electron.ps1",
+    "electron": "chcp 65001>nul & electron .",
+    "preelectron:dev": "powershell -ExecutionPolicy Bypass -File .\\scripts\\prepare-electron.ps1",
+    "electron:dev": "chcp 65001>nul & nodemon --legacy-watch --exec \"electron .\" backend/index.js electron/main.js",
+    "build:windows": "electron-builder --win --x64",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File .\\scripts\\package-windows.ps1",
+    "installer:windows": "powershell -ExecutionPolicy Bypass -File .\\scripts\\package-windows.ps1 -CompileInstaller"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "express": "^4.18.2",
+    "multer": "^2.1.1",
+    "socket.io": "^4.7.2",
+    "tiktok-live-connector": "^2.1.1-beta1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "nodemon": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.tikeffect",
+    "productName": "TikEffect",
+    "copyright": "Copyright © 2025",
+    "directories": {
+      "output": "dist/electron"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "index.js",
+      "overlays/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/windows/TikEffect.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TikEffect"
+    },
+    "extraResources": [
+      {
+        "from": "assets/windows/TikEffect.ico",
+        "to": "TikEffect.ico"
+      }
+    ]
+  }
+}

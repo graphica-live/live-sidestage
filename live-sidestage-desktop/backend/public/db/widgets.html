@@ -1,0 +1,1960 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウィジェット</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
+
+        :root {
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --ok: #166534;
+            --warn: #9a3412;
+            --error: #b42318;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 22px 14px 30px;
+            color: var(--text);
+            font-family: "M PLUS Rounded 1c", sans-serif;
+            background: linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(1260px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, h3, p { margin: 0; }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.08;
+        }
+
+        h2 {
+            font-size: 21px;
+            line-height: 1.2;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .status-row,
+        .action-row,
+        .toggle-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .day-picker-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .day-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            padding: 9px 12px;
+            font-size: 13px;
+            color: var(--text);
+            background: #ffffff;
+            min-width: 180px;
+        }
+
+        .status-row {
+            margin-top: 18px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.74);
+            padding: 18px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .chip,
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--muted);
+            background: #f9fbfd;
+            width: fit-content;
+            max-width: 100%;
+        }
+
+        .chip.ok,
+        .status.ok {
+            color: var(--ok);
+            border-color: rgba(22, 101, 52, 0.2);
+            background: rgba(240, 253, 244, 0.86);
+        }
+
+        .chip.warn,
+        .status.warn {
+            color: var(--warn);
+            border-color: rgba(154, 52, 18, 0.2);
+            background: rgba(255, 247, 237, 0.88);
+        }
+
+        .chip.error,
+        .status.error {
+            color: var(--error);
+            border-color: rgba(180, 35, 24, 0.2);
+            background: rgba(254, 242, 242, 0.9);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="color"],
+        select {
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            font: inherit;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .field {
+            display: grid;
+            gap: 6px;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .overlay-url-field {
+            gap: 3px;
+        }
+
+        .overlay-url-field label {
+            line-height: 1.1;
+        }
+
+        .overlay-url-field .url-box {
+            padding-top: 6px;
+            padding-bottom: 6px;
+            line-height: 1.25;
+        }
+
+        .top-gift-url-field {
+            gap: 2px;
+        }
+
+        .top-gift-url-field .url-box {
+            display: flex;
+            align-items: center;
+            min-height: 0;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            line-height: 1.1;
+        }
+
+        .field label,
+        .toggle label,
+        .goal-label {
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 8px 10px;
+            background: #ffffff;
+            color: var(--text);
+        }
+
+        input[type="number"] {
+            appearance: textfield;
+        }
+
+        input[type="color"] {
+            width: 64px;
+            height: 38px;
+            padding: 3px;
+            background: #ffffff;
+        }
+
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .toggle input { margin: 0; }
+
+        .url-box {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid var(--line);
+            background: #ffffff;
+            color: var(--text);
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .goal-help {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .goal-list {
+            display: grid;
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .gift-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .gift-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .gift-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .gift-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 10px 12px;
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            text-align: left;
+            transform: none;
+        }
+
+        .gift-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .gift-suggestion-item:hover,
+        .gift-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .gift-suggestion-image {
+            width: 42px;
+            height: 42px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #f9fbfd;
+            object-fit: cover;
+        }
+
+        .gift-suggestion-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .gift-suggestion-meta {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .gift-suggestion-name,
+        .gift-suggestion-desc {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .gift-suggestion-name {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .gift-suggestion-desc {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .gift-suggestion-cost {
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .goal-table-head,
+        .goal-row {
+            display: grid;
+            grid-template-columns: minmax(240px, 1.75fr) minmax(180px, 1.1fr) minmax(180px, 1fr) 112px 112px 112px 126px;
+            gap: 8px;
+            min-width: 1140px;
+        }
+
+        .goal-table-head {
+            padding: 0 12px 6px;
+            align-items: end;
+        }
+
+        .goal-table-head-cell {
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .goal-row {
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.76);
+            align-items: center;
+        }
+
+        .goal-row.is-complete {
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.84);
+        }
+
+        .goal-gift-image {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            background: transparent;
+        }
+
+        .goal-name-cell {
+            align-self: stretch;
+        }
+
+        .goal-name-main {
+            display: grid;
+            grid-template-columns: 36px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+        }
+
+        .goal-url-button {
+            width: 100%;
+            align-self: stretch;
+        }
+
+        .goal-action-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0;
+        }
+
+        .icon-button svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .goal-cell {
+            display: grid;
+            min-width: 0;
+            align-items: center;
+        }
+
+        .goal-cell input[type="text"],
+        .goal-cell input[type="number"],
+        .goal-cell select,
+        .goal-inline-toggle .toggle,
+        .goal-action-row {
+            min-height: 42px;
+        }
+
+        .goal-inline-toggle {
+            display: grid;
+            align-items: center;
+            justify-items: center;
+        }
+
+        .goal-inline-toggle .toggle {
+            min-height: 42px;
+            padding: 0;
+            border: none;
+            background: transparent;
+        }
+
+        @media (max-width: 1040px) {
+            .grid,
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .goal-table-head,
+            .goal-row {
+                grid-template-columns: minmax(220px, 1.45fr) minmax(170px, 1fr) minmax(160px, 1fr) 104px 104px 104px 118px;
+                min-width: 1040px;
+            }
+        }
+
+        @media (max-width: 760px) {
+            body {
+                padding: 16px 10px 24px;
+            }
+
+            .panel {
+                padding: 18px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>ウィジェット</h1>
+            <p class="subtext">各ウィジェットの設定とオーバーレイ URL だけを管理します。プレビューは表示しません。</p>
+
+            <div class="form-grid" style="margin-top: 18px; margin-bottom: 16px;">
+                <div class="field">
+                    <label for="contributors-font">共通フォント</label>
+                    <select id="contributors-font" aria-label="全ウィジェット共通フォント"></select>
+                </div>
+                <div class="field">
+                    <label for="contributors-text-style">共通文字色と縁取り</label>
+                    <select id="contributors-text-style" aria-label="全ウィジェット共通文字色と縁取り"></select>
+                </div>
+                <div class="field">
+                    <label for="contributors-stroke-width">共通縁取り太さ</label>
+                    <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="全ウィジェット共通縁取り太さ" />
+                </div>
+            </div>
+
+            <div class="status-row">
+                <div class="status" id="broadcaster-status">配信ユーザーID: 読み込み中</div>
+                <div class="status" id="today-status">本日: 読み込み中</div>
+                <div class="status" id="save-status">設定状態: 読み込み中</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="grid">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>貢献目標リスト</h2>
+                            <p class="subtext">指定した貢献額以上のリスナー一覧を OBS 向け URL として開きます。</p>
+                        </div>
+                    </div>
+
+                    <div class="field full overlay-url-field">
+                        <label>Overlay URL</label>
+                        <div class="url-box" id="contributors-url">読み込み中</div>
+                    </div>
+
+                    <div class="field full">
+                        <label for="contributors-range-mode">集計範囲</label>
+                        <select id="contributors-range-mode" aria-label="集計範囲">
+                            <option value="today">0時～24時</option>
+                            <option value="session">配信ごとにリセット</option>
+                        </select>
+                        <div class="day-picker-row" id="contributors-day-picker-row">
+                            <button type="button" class="ghost-button" id="contributors-prev-day-button">前日</button>
+                            <div class="day-pill" id="contributors-day-label">読み込み中</div>
+                            <button type="button" class="ghost-button" id="contributors-next-day-button">翌日</button>
+                        </div>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom: 16px;">
+                        <div class="field">
+                            <label for="contributors-threshold">何コイン以上で表示</label>
+                            <input id="contributors-threshold" type="number" min="100" step="100" inputmode="numeric" aria-label="何コイン以上で表示" />
+                        </div>
+                        <div class="field">
+                            <label for="contributors-goal-count">目標達成人数</label>
+                            <input id="contributors-goal-count" type="number" min="0" step="1" inputmode="numeric" aria-label="目標達成人数" />
+                        </div>
+                        <div class="field">
+                            <label for="contributors-avatar-visibility">プロフ画表示</label>
+                            <select id="contributors-avatar-visibility" aria-label="プロフ画表示">
+                                <option value="show">表示</option>
+                                <option value="hide">非表示</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="open-contributors-overlay-button">オーバーレイを開く</button>
+                        <button type="button" class="ghost-button" id="copy-contributors-url-button">URLをコピー</button>
+                        <button type="button" class="ghost-button" id="open-admin-button">ユーザーコイン数を開く</button>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>本日最高ギフト</h2>
+                            <p class="subtext">表示設定だけを管理し、確認はオーバーレイ側で行います。</p>
+                        </div>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="url-box" id="top-gift-url">読み込み中</div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="top-gift-title">表示タイトル</label>
+                            <input id="top-gift-title" type="text" maxlength="40" placeholder="本日最高ギフト">
+                        </div>
+                        <div class="field">
+                            <label for="top-gift-sender-display-mode">同点時の送信者表示</label>
+                            <select id="top-gift-sender-display-mode">
+                                <option value="latest">最後に投げた人で上書き</option>
+                                <option value="all">全員の名前を縦に並べる</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="open-top-gift-overlay-button">オーバーレイを開く</button>
+                        <button type="button" class="ghost-button" id="copy-top-gift-url-button">URLをコピー</button>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="card-head">
+                <div>
+                    <h2>目標ギフト</h2>
+                    <p class="subtext">文字装飾は上部の共通ヘッダー設定がそのまま反映されます。</p>
+                </div>
+            </div>
+
+            <div class="goal-list" id="goal-gift-list"></div>
+            <div class="gift-suggestion-panel" id="goal-gift-suggestion-panel" hidden></div>
+        </section>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const broadcasterStatus = document.getElementById('broadcaster-status');
+        const todayStatus = document.getElementById('today-status');
+        const saveStatus = document.getElementById('save-status');
+        const contributorsUrl = document.getElementById('contributors-url');
+        const contributorsDayLabel = document.getElementById('contributors-day-label');
+        const contributorsDayPickerRow = document.getElementById('contributors-day-picker-row');
+        const contributorsRangeModeSelect = document.getElementById('contributors-range-mode');
+        const contributorsThresholdInput = document.getElementById('contributors-threshold');
+        const contributorsGoalCountInput = document.getElementById('contributors-goal-count');
+        const contributorsAvatarVisibilitySelect = document.getElementById('contributors-avatar-visibility');
+        const contributorsFontSelect = document.getElementById('contributors-font');
+        const contributorsTextStyleSelect = document.getElementById('contributors-text-style');
+        const contributorsStrokeWidthInput = document.getElementById('contributors-stroke-width');
+        const topGiftUrl = document.getElementById('top-gift-url');
+        const goalGiftList = document.getElementById('goal-gift-list');
+        const goalGiftSuggestionPanel = document.getElementById('goal-gift-suggestion-panel');
+        const titleInput = document.getElementById('top-gift-title');
+        const senderDisplayModeInput = document.getElementById('top-gift-sender-display-mode');
+        const contributorsPrevDayButton = document.getElementById('contributors-prev-day-button');
+        const contributorsNextDayButton = document.getElementById('contributors-next-day-button');
+
+        const state = {
+            broadcasterId: null,
+            todayDayKey: '',
+            displayDayKey: '',
+            contributorsDisplayRangeMode: 'today',
+            liveSession: {
+                startedAt: null,
+                endedAt: null,
+                isActive: false
+            },
+            widgetUrls: {
+                contributorsOverlayUrl: '',
+                topGiftOverlayUrl: '',
+                goalGiftsOverlayUrl: ''
+            },
+            contributorsDisplayThreshold: 1000,
+            contributorsGoalCount: 10,
+            contributorsAvatarVisibility: 'show',
+            contributorsFontKey: 'default',
+            contributorsColorTheme: 'gold-night',
+            contributorsStrokeWidth: 4,
+            topGiftSettings: null,
+            goalGiftItems: [],
+            giftCatalog: [],
+            giftCatalogByName: new Map()
+        };
+        const goalGiftSystemSuggestions = [
+            {
+                id: '__system__:like',
+                name: 'タップ',
+                describe: 'いいね回数を目標としてカウントします',
+                diamondCount: null,
+                imageUrl: ''
+            },
+            {
+                id: '__system__:follow',
+                name: 'フォロー',
+                describe: 'フォロー回数を目標としてカウントします',
+                diamondCount: null,
+                imageUrl: ''
+            }
+        ];
+        const goalGiftNotePlaceholderChoices = [
+            '30人から1個貰う。',
+            '全員1個ちょうだい！',
+            '〇〇日まで(極)',
+            'イベントミッション'
+        ];
+        let activeGoalGiftInput = null;
+        let visibleGoalGiftSuggestions = [];
+        let activeGoalGiftSuggestionIndex = -1;
+        let topGiftAutosaveTimer = null;
+        let topGiftAutosavePromise = null;
+        let goalGiftAutosaveTimer = null;
+        let goalGiftAutosavePromise = null;
+        let pendingTopGiftSettings = null;
+        let pendingGoalGiftItems = null;
+        const goalGiftNotePlaceholderByRow = new Map();
+        const sharedFontOptions = [
+            {
+                key: 'default',
+                label: 'M PLUS Rounded 1c',
+                family: '"M PLUS Rounded 1c", sans-serif'
+            },
+            {
+                key: 'gothic',
+                label: 'Noto Sans JP',
+                family: '"Noto Sans JP", sans-serif'
+            },
+            {
+                key: 'ui-gothic',
+                label: 'Zen Kaku Gothic New',
+                family: '"Zen Kaku Gothic New", sans-serif'
+            },
+            {
+                key: 'mincho',
+                label: 'Noto Serif JP',
+                family: '"Noto Serif JP", serif'
+            },
+            {
+                key: 'ud-gothic',
+                label: 'Kosugi',
+                family: '"Kosugi", sans-serif'
+            },
+            {
+                key: 'ud-mincho',
+                label: 'Zen Old Mincho',
+                family: '"Zen Old Mincho", serif'
+            },
+            {
+                key: 'meiryo',
+                label: 'Klee One',
+                family: '"Klee One", cursive'
+            },
+            {
+                key: 'rounded',
+                label: 'Zen Maru Gothic',
+                family: '"Zen Maru Gothic", sans-serif'
+            },
+            {
+                key: 'kyokasho',
+                label: '教科書風 Klee One',
+                family: '"Klee One", cursive'
+            },
+            {
+                key: 'gyosho',
+                label: 'Yuji Syuku',
+                family: '"Yuji Syuku", cursive'
+            },
+            {
+                key: 'togarie',
+                label: 'トガリエ',
+                family: '"Dela Gothic One", sans-serif'
+            },
+            {
+                key: 'ln-pop',
+                label: 'ラノベポップ',
+                family: '"Mochiy Pop One", sans-serif'
+            },
+            {
+                key: 'comic-impact',
+                label: 'コミックインパクト',
+                family: '"Rampart One", sans-serif'
+            },
+            {
+                key: 'pop-idol',
+                label: 'Hachi Maru Pop',
+                family: '"Hachi Maru Pop", cursive'
+            },
+            {
+                key: 'entame',
+                label: 'RocknRoll One',
+                family: '"RocknRoll One", sans-serif'
+            },
+            {
+                key: 'marker',
+                label: 'Yusei Magic',
+                family: '"Yusei Magic", cursive'
+            },
+            {
+                key: 'retro-bold',
+                label: 'Kaisei Decol',
+                family: '"Kaisei Decol", serif'
+            },
+            {
+                key: 'luxury-mincho',
+                label: 'Shippori Mincho B1',
+                family: '"Shippori Mincho B1", serif'
+            },
+            {
+                key: 'antique-modern',
+                label: 'Zen Antique',
+                family: '"Zen Antique", serif'
+            },
+            {
+                key: 'atelier-brush',
+                label: 'Yuji Mai',
+                family: '"Yuji Mai", cursive'
+            },
+            {
+                key: 'pixel-code',
+                label: 'PIXEL CODE',
+                family: '"DotGothic16", "Noto Sans JP", sans-serif'
+            }
+        ];
+        const sharedFontOptionMap = new Map(sharedFontOptions.map((option) => [option.key, option]));
+        const goalGiftFontOptions = sharedFontOptions;
+        const goalGiftFontOptionMap = new Map(goalGiftFontOptions.map((option) => [option.key, option]));
+        const contributorsFontOptions = sharedFontOptions;
+        const contributorsFontOptionMap = sharedFontOptionMap;
+        const sharedTextStyleOptions = [
+            { key: 'gold-night', label: 'LIVE Gold', preview: 'color:#fbbf24;-webkit-text-stroke:3px #0f172a;' },
+            { key: 'ice-night', label: 'Ice Blue', preview: 'color:#dbeafe;-webkit-text-stroke:3px #172554;' },
+            { key: 'candy-pop', label: 'Candy Pop', preview: 'color:#f9a8d4;-webkit-text-stroke:3px #831843;' },
+            { key: 'mint-lime', label: 'Mint Shot', preview: 'color:#d9f99d;-webkit-text-stroke:3px #14532d;' },
+            { key: 'sunset-party', label: 'Sunset Glow', preview: 'color:#fdba74;-webkit-text-stroke:3px #7c2d12;' },
+            { key: 'violet-flash', label: 'Violet Beat', preview: 'color:#c4b5fd;-webkit-text-stroke:3px #312e81;' },
+            { key: 'mono-impact', label: 'Mono Impact', preview: 'color:#ffffff;-webkit-text-stroke:3px #111827;' },
+            { key: 'sakura-bloom', label: 'Sakura Glow', preview: 'color:#fbcfe8;-webkit-text-stroke:3px #9d174d;' },
+            { key: 'ocean-glow', label: 'Ocean Beam', preview: 'color:#67e8f9;-webkit-text-stroke:3px #164e63;' },
+            { key: 'emerald-city', label: 'Emerald Neon', preview: 'color:#6ee7b7;-webkit-text-stroke:3px #064e3b;' },
+            { key: 'ruby-flare', label: 'Ruby Flame', preview: 'color:#fb7185;-webkit-text-stroke:3px #3f0d12;' },
+            { key: 'lemon-pop', label: 'Lemon Punch', preview: 'color:#fde047;-webkit-text-stroke:3px #1e3a8a;' },
+            { key: 'midnight-aqua', label: 'Midnight Aqua', preview: 'color:#99f6e4;-webkit-text-stroke:3px #0f172a;' },
+            { key: 'peach-fizz', label: 'Peach Fizz', preview: 'color:#fdba74;-webkit-text-stroke:3px #7f1d1d;' },
+            { key: 'festival-red', label: 'Festival Red', preview: 'color:#fca5a5;-webkit-text-stroke:3px #1f2937;' },
+            { key: 'rose-gold', label: 'Rose Luxe', preview: 'color:#f8b4a6;-webkit-text-stroke:3px #5b342e;' },
+            { key: 'cyber-teal', label: 'Cyber Teal', preview: 'color:#67e8f9;-webkit-text-stroke:3px #0f2740;' },
+            { key: 'aurora-dream', label: 'Aurora Dream', preview: 'color:#e9d5ff;-webkit-text-stroke:3px #4c1d95;' },
+            { key: 'coral-soda', label: 'Coral Soda', preview: 'color:#fb7185;-webkit-text-stroke:3px #7f1d1d;' },
+            { key: 'platinum-pop', label: 'Platinum Pop', preview: 'color:#e2e8f0;-webkit-text-stroke:3px #334155;' },
+            { key: 'champagne-shine', label: 'Champagne Shine', preview: 'color:#f8e7b5;-webkit-text-stroke:3px #6b4f2a;' },
+            { key: 'royal-velvet', label: 'Royal Velvet', preview: 'color:#d8b4fe;-webkit-text-stroke:3px #312e81;' },
+            { key: 'emerald-luxe', label: 'Emerald Luxe', preview: 'color:#a7f3d0;-webkit-text-stroke:3px #14532d;' },
+            { key: 'sunrise-opal', label: 'Sunrise Opal', preview: 'color:#fdba74;-webkit-text-stroke:3px #9a3412;' }
+        ];
+        const goalGiftTextStyleOptions = sharedTextStyleOptions;
+        const goalGiftTextStyleOptionMap = new Map(goalGiftTextStyleOptions.map((option) => [option.key, option]));
+        const MAX_GOAL_GIFT_STROKE_WIDTH = 24;
+        const contributorsTextStyleOptions = sharedTextStyleOptions;
+        const contributorsTextStyleOptionMap = new Map(contributorsTextStyleOptions.map((option) => [option.key, option]));
+        const MAX_CONTRIBUTORS_STROKE_WIDTH = 12;
+
+        function normalizeContributorsDisplayThreshold(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue <= 0 || normalizedValue % 100 !== 0) {
+                return 1000;
+            }
+
+            return normalizedValue;
+        }
+
+        function normalizeContributorsGoalCount(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < 0) {
+                return 10;
+            }
+
+            return normalizedValue;
+        }
+
+        function normalizeContributorsAvatarVisibility(value) {
+            return value === 'hide' ? 'hide' : 'show';
+        }
+
+        function normalizeContributorsDisplayRangeMode(value) {
+            return value === 'session' ? 'session' : 'today';
+        }
+
+        function normalizeLiveSession(value) {
+            return {
+                startedAt: typeof value?.startedAt === 'string' && value.startedAt ? value.startedAt : null,
+                endedAt: typeof value?.endedAt === 'string' && value.endedAt ? value.endedAt : null,
+                isActive: Boolean(value?.isActive)
+            };
+        }
+
+
+        function normalizeGoalGiftFontKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return goalGiftFontOptionMap.has(normalizedValue) ? normalizedValue : 'default';
+        }
+
+        function getGoalGiftFontFamily(value) {
+            return goalGiftFontOptionMap.get(normalizeGoalGiftFontKey(value))?.family || goalGiftFontOptions[0].family;
+        }
+
+        function normalizeContributorsFontKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            const aliases = {
+                notosans: 'gothic',
+                roboto: 'gothic',
+                robot: 'gothic',
+                rounded: 'default',
+                mincho: 'ud-mincho',
+                decol: 'retro-bold',
+                magic: 'marker',
+                gothic_heavy: 'togarie',
+                maru_pop: 'pop-idol',
+                dot: 'default',
+                display: 'comic-impact',
+                klee: 'kyokasho',
+                shippori: 'luxury-mincho',
+                reggae: 'entame',
+                'cyber-core': 'pixel-code',
+                'neon-grid': 'pixel-code',
+                'signal-runner': 'pixel-code'
+            };
+            const resolvedValue = aliases[normalizedValue] || normalizedValue;
+            return contributorsFontOptionMap.has(resolvedValue) ? resolvedValue : 'default';
+        }
+
+        function getContributorsFontFamily(value) {
+            return contributorsFontOptionMap.get(normalizeContributorsFontKey(value))?.family || contributorsFontOptions[0].family;
+        }
+
+        function normalizeGoalGiftTextStyleKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return goalGiftTextStyleOptionMap.has(normalizedValue) ? normalizedValue : 'gold-night';
+        }
+
+        function normalizeGoalGiftStrokeWidth(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < 0) {
+                return 3;
+            }
+
+            return Math.min(normalizedValue, MAX_GOAL_GIFT_STROKE_WIDTH);
+        }
+
+        function normalizeContributorsTextStyleKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            const aliases = {
+                gold_black: 'gold-night',
+                white_black: 'mono-impact',
+                mint_navy: 'mint-lime',
+                pink_burgundy: 'candy-pop',
+                sky_royal: 'ice-night',
+                neon_lime: 'lemon-pop',
+                sakura_plum: 'sakura-bloom',
+                sunset_fire: 'sunset-party',
+                ice_silver: 'ice-night',
+                citrus_forest: 'emerald-city'
+            };
+            const resolvedValue = aliases[normalizedValue] || normalizedValue;
+            return contributorsTextStyleOptionMap.has(resolvedValue) ? resolvedValue : 'gold-night';
+        }
+
+        function normalizeContributorsStrokeWidth(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < 1) {
+                return 4;
+            }
+
+            return Math.min(normalizedValue, MAX_CONTRIBUTORS_STROKE_WIDTH);
+        }
+
+        function getContributorsFontOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeContributorsFontKey(selectedKey);
+            return contributorsFontOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" style="font-family: ${escapeHtml(option.family)};" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `).join('');
+        }
+
+        function getContributorsTextStyleOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeContributorsTextStyleKey(selectedKey);
+            return contributorsTextStyleOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" style="${option.preview}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `).join('');
+        }
+
+        function syncContributorsFontControl() {
+            contributorsFontSelect.innerHTML = getContributorsFontOptionsMarkup(state.contributorsFontKey);
+            contributorsFontSelect.value = normalizeContributorsFontKey(state.contributorsFontKey);
+            contributorsFontSelect.style.fontFamily = getContributorsFontFamily(state.contributorsFontKey);
+        }
+
+        function syncContributorsThresholdControl() {
+            contributorsThresholdInput.value = String(normalizeContributorsDisplayThreshold(state.contributorsDisplayThreshold));
+        }
+
+        function syncContributorsRangeControl() {
+            contributorsRangeModeSelect.value = normalizeContributorsDisplayRangeMode(state.contributorsDisplayRangeMode);
+            contributorsDayPickerRow.hidden = normalizeContributorsDisplayRangeMode(state.contributorsDisplayRangeMode) === 'session';
+        }
+
+        function syncContributorsGoalCountControl() {
+            contributorsGoalCountInput.value = String(normalizeContributorsGoalCount(state.contributorsGoalCount));
+        }
+
+        function syncContributorsAvatarVisibilityControl() {
+            contributorsAvatarVisibilitySelect.value = normalizeContributorsAvatarVisibility(state.contributorsAvatarVisibility);
+        }
+
+        function syncContributorsTextStyleControl() {
+            contributorsTextStyleSelect.innerHTML = getContributorsTextStyleOptionsMarkup(state.contributorsColorTheme);
+            contributorsTextStyleSelect.value = normalizeContributorsTextStyleKey(state.contributorsColorTheme);
+        }
+
+        function syncContributorsStrokeWidthControl() {
+            contributorsStrokeWidthInput.value = String(normalizeContributorsStrokeWidth(state.contributorsStrokeWidth));
+        }
+
+        function openWindow(path, name, size = { width: 1240, height: 900 }) {
+            const features = ['popup=yes', `width=${size.width}`, `height=${size.height}`, 'resizable=yes', 'scrollbars=yes'].join(',');
+            window.open(path, name, features);
+        }
+
+        function setStatus(element, text, tone = '') {
+            element.className = 'status';
+            if (tone) {
+                element.classList.add(tone);
+            }
+            element.textContent = text;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getGoalGiftNotePlaceholder(rowIndex) {
+            if (!goalGiftNotePlaceholderByRow.has(rowIndex)) {
+                const randomIndex = Math.floor(Math.random() * goalGiftNotePlaceholderChoices.length);
+                goalGiftNotePlaceholderByRow.set(rowIndex, goalGiftNotePlaceholderChoices[randomIndex]);
+            }
+
+            return goalGiftNotePlaceholderByRow.get(rowIndex);
+        }
+
+        function formatDisplayDayLabel(dayKey) {
+            const match = String(dayKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!match) {
+                return dayKey || '未設定';
+            }
+
+            return `${match[1]}/${Number(match[2])}/${Number(match[3])}`;
+        }
+
+        function formatSessionLabel(timestamp) {
+            const dateValue = timestamp ? new Date(timestamp) : null;
+
+            if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime())) {
+                return '未取得';
+            }
+
+            return new Intl.DateTimeFormat('ja-JP', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(dateValue);
+        }
+
+        function shiftDayKey(dayKey, offsetDays) {
+            const match = String(dayKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!match) {
+                return dayKey;
+            }
+
+            const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+            value.setUTCDate(value.getUTCDate() + offsetDays);
+            return value.toISOString().slice(0, 10);
+        }
+
+        function getContributorsOverlayUrl() {
+            return state.widgetUrls.contributorsOverlayUrl || '';
+        }
+
+        function buildGoalGiftOverlayUrl(slot, options = {}) {
+            const baseUrl = options.preview
+                ? '/overlays/goal-gifts'
+                : (state.widgetUrls.goalGiftsOverlayUrl || '');
+            if (!baseUrl) {
+                return '';
+            }
+
+            const separator = baseUrl.includes('?') ? '&' : '?';
+            const params = [`slot=${encodeURIComponent(String(slot))}`];
+            if (options.preview) {
+                params.push('preview=1');
+            }
+            return `${baseUrl}${separator}${params.join('&')}`;
+        }
+
+        function refreshContributorsOverlayControls() {
+            if (normalizeContributorsDisplayRangeMode(state.contributorsDisplayRangeMode) === 'session') {
+                if (state.liveSession.startedAt) {
+                    const startedAtLabel = formatSessionLabel(state.liveSession.startedAt);
+                    const endedAtLabel = state.liveSession.isActive
+                        ? '配信中'
+                        : formatSessionLabel(state.liveSession.endedAt);
+                    contributorsDayLabel.textContent = `現在表示: 配信ごとにリセット (${startedAtLabel} - ${endedAtLabel})`;
+                } else {
+                    contributorsDayLabel.textContent = '現在表示: 配信ごとにリセット (配信待機中)';
+                }
+            } else {
+                contributorsDayLabel.textContent = `現在表示: 0時～24時 (${formatDisplayDayLabel(state.displayDayKey || state.todayDayKey)})`;
+            }
+
+            contributorsUrl.textContent = getContributorsOverlayUrl() || '未取得';
+        }
+
+        async function setContributorsDisplayDay(dayKey) {
+            const response = await fetch('/api/display/day', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dayKey })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || '表示日の変更に失敗しました。');
+            }
+
+            state.displayDayKey = payload.displayDayKey || dayKey;
+            refreshContributorsOverlayControls();
+            setStatus(saveStatus, `設定状態: 貢献リストの表示日を ${state.displayDayKey} に変更しました。`, 'ok');
+        }
+
+        async function setContributorsDisplayRangeMode(displayRangeMode) {
+            const response = await fetch('/api/widgets/contributors-range', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ displayRangeMode })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || '集計範囲の変更に失敗しました。');
+            }
+
+            state.contributorsDisplayRangeMode = normalizeContributorsDisplayRangeMode(payload.displayRangeMode || displayRangeMode);
+            state.liveSession = normalizeLiveSession(payload.liveSession);
+            syncContributorsRangeControl();
+            refreshContributorsOverlayControls();
+            setStatus(
+                saveStatus,
+                `設定状態: 貢献リストの集計範囲を${state.contributorsDisplayRangeMode === 'session' ? '配信ごとにリセット' : '0時～24時'}に変更しました。`,
+                'ok'
+            );
+        }
+
+        function applyTopGiftSettingsToForm(settings) {
+            if (!settings) {
+                return;
+            }
+
+            if (titleInput === document.activeElement || senderDisplayModeInput === document.activeElement) {
+                pendingTopGiftSettings = settings;
+                return;
+            }
+
+            titleInput.value = settings.title || '';
+            senderDisplayModeInput.value = settings.senderDisplayMode === 'all' ? 'all' : 'latest';
+            pendingTopGiftSettings = null;
+        }
+
+        function getDraftTopGiftSettings() {
+            return {
+                title: titleInput.value,
+                senderDisplayMode: senderDisplayModeInput.value === 'all' ? 'all' : 'latest'
+            };
+        }
+
+        function resolveGiftFromCatalog(giftName) {
+            const normalizedName = String(giftName || '').trim();
+            return state.giftCatalogByName.get(normalizedName)
+                || goalGiftSystemSuggestions.find((gift) => gift.name === normalizedName)
+                || null;
+        }
+
+        function parseCoinFilter(query) {
+            let match = query.match(/^>=\s*(\d+)$/);
+            if (match) return (coins) => coins >= Number(match[1]);
+            match = query.match(/^<=\s*(\d+)$/);
+            if (match) return (coins) => coins <= Number(match[1]);
+            match = query.match(/^>\s*(\d+)$/);
+            if (match) return (coins) => coins > Number(match[1]);
+            match = query.match(/^<\s*(\d+)$/);
+            if (match) return (coins) => coins < Number(match[1]);
+            match = query.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+            if (match) {
+                const minimum = Number(match[1]);
+                const maximum = Number(match[2]);
+                return (coins) => coins >= minimum && coins <= maximum;
+            }
+            match = query.match(/^\d+$/);
+            if (match) {
+                const exact = Number(match[0]);
+                return (coins) => coins === exact;
+            }
+            return null;
+        }
+
+        function getFilteredGoalGiftSuggestions(query) {
+            const normalizedQuery = String(query || '').trim().toLowerCase();
+            const catalog = [...goalGiftSystemSuggestions, ...state.giftCatalog];
+
+            if (!normalizedQuery) {
+                return catalog;
+            }
+
+            const coinFilter = parseCoinFilter(normalizedQuery);
+            if (coinFilter) {
+                return state.giftCatalog.filter((gift) => Number.isFinite(gift.diamondCount) && coinFilter(gift.diamondCount));
+            }
+
+            return catalog.filter((gift) => {
+                const name = String(gift.name || '').toLowerCase();
+                const description = String(gift.describe || '').toLowerCase();
+                return name.includes(normalizedQuery) || description.includes(normalizedQuery);
+            });
+        }
+
+        function positionGoalGiftSuggestionPanel() {
+            if (!activeGoalGiftInput) {
+                return;
+            }
+
+            const rect = activeGoalGiftInput.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                goalGiftSuggestionPanel.style.top = `${rect.bottom + 6}px`;
+                goalGiftSuggestionPanel.style.bottom = '';
+            } else {
+                goalGiftSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+                goalGiftSuggestionPanel.style.top = '';
+            }
+
+            goalGiftSuggestionPanel.style.left = `${rect.left}px`;
+            goalGiftSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideGoalGiftSuggestionPanel() {
+            goalGiftSuggestionPanel.hidden = true;
+            goalGiftSuggestionPanel.innerHTML = '';
+            visibleGoalGiftSuggestions = [];
+            activeGoalGiftSuggestionIndex = -1;
+            activeGoalGiftInput = null;
+        }
+
+        function applyGoalGiftSuggestion(gift) {
+            if (!gift || !activeGoalGiftInput) {
+                return;
+            }
+
+            activeGoalGiftInput.value = gift.name || '';
+            syncGoalRowCatalogMatch(activeGoalGiftInput.closest('[data-goal-row]'));
+            activeGoalGiftInput.focus();
+            hideGoalGiftSuggestionPanel();
+            scheduleGoalGiftAutosave();
+        }
+
+        function updateActiveGoalGiftSuggestion(nextIndex) {
+            if (!visibleGoalGiftSuggestions.length) {
+                return;
+            }
+
+            activeGoalGiftSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleGoalGiftSuggestions.length - 1));
+            goalGiftSuggestionPanel.querySelectorAll('[data-goal-gift-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeGoalGiftSuggestionIndex);
+                if (index === activeGoalGiftSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+
+        function renderGoalGiftSuggestions(input, query = input?.value || '') {
+            if (!input) {
+                hideGoalGiftSuggestionPanel();
+                return;
+            }
+
+            activeGoalGiftInput = input;
+            visibleGoalGiftSuggestions = getFilteredGoalGiftSuggestions(query);
+
+            if (!visibleGoalGiftSuggestions.length) {
+                hideGoalGiftSuggestionPanel();
+                return;
+            }
+
+            activeGoalGiftSuggestionIndex = 0;
+            goalGiftSuggestionPanel.innerHTML = visibleGoalGiftSuggestions.map((gift, index) => {
+                const imageMarkup = gift.imageUrl
+                    ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(gift.name)}">`
+                    : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
+                const idPart = gift.id ? `ID: ${escapeHtml(String(gift.id))}` : '';
+                const descPart = gift.describe ? escapeHtml(gift.describe) : '';
+                const description = [idPart, descPart].filter(Boolean).join('  ·  ') || '&nbsp;';
+                const costText = Number.isFinite(gift.diamondCount) ? `${gift.diamondCount} coins` : '-';
+
+                return `
+                    <button type="button" class="gift-suggestion-item${index === activeGoalGiftSuggestionIndex ? ' is-active' : ''}" data-goal-gift-index="${index}">
+                        ${imageMarkup}
+                        <div class="gift-suggestion-meta">
+                            <div class="gift-suggestion-name">${escapeHtml(gift.name)}</div>
+                            <div class="gift-suggestion-desc">${description}</div>
+                        </div>
+                        <div class="gift-suggestion-cost">${escapeHtml(costText)}</div>
+                    </button>
+                `;
+            }).join('');
+
+            goalGiftSuggestionPanel.hidden = false;
+            positionGoalGiftSuggestionPanel();
+
+            goalGiftSuggestionPanel.querySelectorAll('[data-goal-gift-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    const selectedGift = visibleGoalGiftSuggestions[Number(button.dataset.goalGiftIndex)];
+                    applyGoalGiftSuggestion(selectedGift);
+                });
+            });
+        }
+
+        function captureGoalGiftFocusState() {
+            const activeElement = document.activeElement;
+            if (!activeElement || !goalGiftList.contains(activeElement)) {
+                return null;
+            }
+
+            const row = activeElement.closest('[data-goal-row]');
+            if (!row) {
+                return null;
+            }
+
+            const field = activeElement.matches('[data-goal-name]')
+                ? 'name'
+                : activeElement.matches('[data-goal-display-name]')
+                    ? 'display-name'
+                    : activeElement.matches('[data-goal-note]')
+                        ? 'note'
+                        : activeElement.matches('[data-goal-current]')
+                            ? 'current'
+                            : activeElement.matches('[data-goal-reset-at-midnight]')
+                                ? 'reset-at-midnight'
+                            : activeElement.matches('[data-goal-target]')
+                                ? 'target'
+                                    : '';
+
+            if (!field) {
+                return null;
+            }
+
+            return {
+                rowIndex: row.dataset.goalRow,
+                field,
+                selectionStart: typeof activeElement.selectionStart === 'number' ? activeElement.selectionStart : null,
+                selectionEnd: typeof activeElement.selectionEnd === 'number' ? activeElement.selectionEnd : null
+            };
+        }
+
+        function restoreGoalGiftFocusState(focusState) {
+            if (!focusState) {
+                return;
+            }
+
+            const row = goalGiftList.querySelector(`[data-goal-row="${focusState.rowIndex}"]`);
+            if (!row) {
+                return;
+            }
+
+            const fieldSelector = focusState.field === 'name'
+                ? '[data-goal-name]'
+                : focusState.field === 'display-name'
+                    ? '[data-goal-display-name]'
+                    : focusState.field === 'note'
+                        ? '[data-goal-note]'
+                        : focusState.field === 'current'
+                            ? '[data-goal-current]'
+                            : focusState.field === 'reset-at-midnight'
+                                ? '[data-goal-reset-at-midnight]'
+                            : focusState.field === 'target'
+                                    ? '[data-goal-target]'
+                                    : '';
+
+            const field = row.querySelector(fieldSelector);
+            if (!field) {
+                return;
+            }
+
+            field.focus({ preventScroll: true });
+            if (typeof focusState.selectionStart === 'number' && typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(focusState.selectionStart, focusState.selectionEnd ?? focusState.selectionStart);
+            }
+        }
+
+        function renderGoalGiftRows() {
+            if (goalGiftList.contains(document.activeElement)) {
+                pendingGoalGiftItems = Array.isArray(state.goalGiftItems) ? state.goalGiftItems : [];
+                return;
+            }
+
+            const focusState = captureGoalGiftFocusState();
+            const items = Array.from({ length: 10 }, (_, index) => state.goalGiftItems[index] || {
+                slot: index + 1,
+                giftId: '',
+                giftName: '',
+                displayName: '',
+                note: '',
+                giftImage: '',
+                targetCount: 1,
+                resetAtMidnight: false,
+                currentCount: 0,
+                observedCount: 0,
+                completed: false,
+                progressRatio: 0
+            });
+
+            goalGiftList.innerHTML = `
+                <div class="goal-table-head" aria-hidden="true">
+                    <div class="goal-table-head-cell">対象ギフト</div>
+                    <div class="goal-table-head-cell">ギフト名(任意)</div>
+                    <div class="goal-table-head-cell">備考</div>
+                    <div class="goal-table-head-cell">現在個数</div>
+                    <div class="goal-table-head-cell">0時リセット</div>
+                    <div class="goal-table-head-cell">目標個数</div>
+                    <div class="goal-table-head-cell">URL</div>
+                </div>
+            ` + items.map((item, index) => `
+                <div class="goal-row ${item.completed ? 'is-complete' : ''}" data-goal-row="${index}" data-goal-gift-id="${escapeHtml(item.giftId || '')}" data-goal-gift-image="${escapeHtml(item.giftImage || '')}">
+                    <div class="goal-cell goal-name-cell">
+                        <div class="goal-name-main">
+                            <img class="goal-gift-image" data-goal-image-preview src="${escapeHtml(item.giftImage || '')}" alt="gift" ${item.giftImage ? '' : 'style="visibility:hidden"'}>
+                            <div class="gift-suggest-shell">
+                                <input type="text" data-goal-name maxlength="80" autocomplete="off" value="${escapeHtml(item.giftName || '')}" placeholder="例: Rose / 5 / 100-500 / >=100" aria-label="対象ギフト">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="goal-cell">
+                        <input type="text" data-goal-display-name maxlength="80" value="${escapeHtml(item.displayName || '')}" placeholder="表示名を上書きするときだけ入力" aria-label="ギフト名(任意)">
+                    </div>
+                    <div class="goal-cell">
+                        <input type="text" data-goal-note maxlength="120" value="${escapeHtml(item.note || '')}" placeholder="${escapeHtml(getGoalGiftNotePlaceholder(index))}" aria-label="備考">
+                    </div>
+                    <div class="goal-cell">
+                        <input type="number" data-goal-current min="0" step="1" value="${escapeHtml(item.currentCount || 0)}" aria-label="現在個数">
+                    </div>
+                    <div class="goal-cell goal-inline-toggle">
+                        <div class="toggle"><input type="checkbox" data-goal-reset-at-midnight ${item.resetAtMidnight ? 'checked' : ''} aria-label="0時リセット"></div>
+                    </div>
+                    <div class="goal-cell">
+                        <input type="number" data-goal-target min="1" step="1" value="${escapeHtml(item.targetCount || 1)}" aria-label="目標個数">
+                    </div>
+                    <div class="goal-cell">
+                        <div class="goal-action-row">
+                            <button type="button" class="ghost-button icon-button goal-url-button" data-goal-open-overlay aria-label="オーバーレイを開く" title="オーバーレイを開く">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path>
+                                    <circle cx="12" cy="12" r="3.2"></circle>
+                                </svg>
+                            </button>
+                            <button type="button" class="ghost-button icon-button goal-url-button" data-goal-copy-url aria-label="URLをコピー" title="URLをコピー">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                                    <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            goalGiftList.querySelectorAll('[data-goal-name]').forEach((input) => {
+                input.addEventListener('focus', (event) => {
+                    if (state.giftCatalog.length) {
+                        renderGoalGiftSuggestions(event.target);
+                    }
+                });
+                input.addEventListener('input', (event) => {
+                    renderGoalGiftSuggestions(event.target, event.target.value);
+                    syncGoalRowCatalogMatch(event.target.closest('[data-goal-row]'));
+                });
+                input.addEventListener('keydown', (event) => {
+                    if (goalGiftSuggestionPanel.hidden || activeGoalGiftInput !== event.target) {
+                        if (event.key === 'ArrowDown' && state.giftCatalog.length) {
+                            event.preventDefault();
+                            renderGoalGiftSuggestions(event.target, event.target.value);
+                        }
+                        return;
+                    }
+
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        updateActiveGoalGiftSuggestion(activeGoalGiftSuggestionIndex + 1);
+                        return;
+                    }
+
+                    if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        updateActiveGoalGiftSuggestion(activeGoalGiftSuggestionIndex - 1);
+                        return;
+                    }
+
+                    if (event.key === 'Enter') {
+                        const selectedGift = visibleGoalGiftSuggestions[activeGoalGiftSuggestionIndex];
+                        if (selectedGift) {
+                            event.preventDefault();
+                            applyGoalGiftSuggestion(selectedGift);
+                        }
+                        return;
+                    }
+
+                    if (event.key === 'Escape') {
+                        hideGoalGiftSuggestionPanel();
+                    }
+                });
+                input.addEventListener('change', (event) => {
+                    syncGoalRowCatalogMatch(event.target.closest('[data-goal-row]'));
+                    scheduleGoalGiftAutosave();
+                });
+                input.addEventListener('blur', (event) => {
+                    syncGoalRowCatalogMatch(event.target.closest('[data-goal-row]'));
+                    scheduleGoalGiftAutosave();
+                });
+            });
+
+            goalGiftList.querySelectorAll('[data-goal-target], [data-goal-current], [data-goal-display-name], [data-goal-note], [data-goal-reset-at-midnight]').forEach((input) => {
+                input.addEventListener('input', scheduleGoalGiftAutosave);
+                input.addEventListener('change', scheduleGoalGiftAutosave);
+            });
+
+            goalGiftList.querySelectorAll('[data-goal-open-overlay]').forEach((button) => {
+                button.addEventListener('click', async (event) => {
+                    const row = event.target.closest('[data-goal-row]');
+                    const slot = Number(row?.dataset.goalRow || '0') + 1;
+                    await flushGoalGiftAutosave();
+                    const url = buildGoalGiftOverlayUrl(slot, { preview: true });
+                    openWindow(url || '/overlays/goal-gifts', `goal-gift-overlay-window-${slot}`, { width: 1080, height: 900 });
+                });
+            });
+
+            goalGiftList.querySelectorAll('[data-goal-copy-url]').forEach((button) => {
+                button.addEventListener('click', async (event) => {
+                    const row = event.target.closest('[data-goal-row]');
+                    const slot = Number(row?.dataset.goalRow || '0') + 1;
+                    await flushGoalGiftAutosave();
+                    await copyText(buildGoalGiftOverlayUrl(slot));
+                });
+            });
+
+            restoreGoalGiftFocusState(focusState);
+            pendingGoalGiftItems = null;
+        }
+
+        function flushDeferredWidgetFormUpdates() {
+            if (pendingTopGiftSettings && titleInput !== document.activeElement && senderDisplayModeInput !== document.activeElement) {
+                const nextTopGiftSettings = pendingTopGiftSettings;
+                pendingTopGiftSettings = null;
+                applyTopGiftSettingsToForm(nextTopGiftSettings);
+            }
+
+            if (pendingGoalGiftItems && !goalGiftList.contains(document.activeElement)) {
+                const nextGoalGiftItems = pendingGoalGiftItems;
+                pendingGoalGiftItems = null;
+                state.goalGiftItems = Array.isArray(nextGoalGiftItems) ? nextGoalGiftItems : [];
+                renderGoalGiftRows();
+            }
+        }
+
+        function syncGoalRowCatalogMatch(row) {
+            if (!row) {
+                return;
+            }
+            const nameInput = row.querySelector('[data-goal-name]');
+            const catalogGift = resolveGiftFromCatalog(nameInput.value);
+            const imagePreview = row.querySelector('[data-goal-image-preview]');
+
+            if (!catalogGift) {
+                row.dataset.goalGiftId = '';
+                row.dataset.goalGiftImage = '';
+                imagePreview.removeAttribute('src');
+                imagePreview.style.visibility = 'hidden';
+                if (!imagePreview.getAttribute('src')) {
+                    imagePreview.style.visibility = 'hidden';
+                }
+                return;
+            }
+
+            row.dataset.goalGiftId = String(catalogGift.id || '');
+            row.dataset.goalGiftImage = catalogGift.imageUrl || '';
+            if (catalogGift.imageUrl) {
+                imagePreview.src = catalogGift.imageUrl;
+                imagePreview.style.visibility = 'visible';
+            }
+        }
+
+        function getDraftGoalGiftItems() {
+            return Array.from(goalGiftList.querySelectorAll('[data-goal-row]')).map((row) => {
+                const nameInput = row.querySelector('[data-goal-name]');
+                const catalogGift = resolveGiftFromCatalog(nameInput.value);
+                const targetValue = Number.parseInt(row.querySelector('[data-goal-target]').value, 10);
+                const currentValue = Number.parseInt(row.querySelector('[data-goal-current]').value, 10);
+                const giftName = nameInput.value.trim();
+                const giftId = row.dataset.goalGiftId || String(catalogGift?.id || '');
+
+                return {
+                    enabled: Boolean(giftId || giftName),
+                    giftId,
+                    giftName,
+                    displayName: row.querySelector('[data-goal-display-name]').value.trim(),
+                    note: row.querySelector('[data-goal-note]').value.trim(),
+                    giftImage: row.dataset.goalGiftImage || catalogGift?.imageUrl || '',
+                    targetCount: Number.isInteger(targetValue) && targetValue > 0 ? targetValue : 1,
+                    resetAtMidnight: row.querySelector('[data-goal-reset-at-midnight]').checked,
+                    currentCount: Number.isInteger(currentValue) && currentValue >= 0 ? currentValue : 0
+                };
+            });
+        }
+
+        async function copyText(value) {
+            await navigator.clipboard.writeText(value);
+            setStatus(saveStatus, '設定状態: URLをコピーしました。', 'ok');
+        }
+
+        async function loadGiftCatalog() {
+            try {
+                const response = await fetch('/api/tiktok/gifts');
+                const payload = await response.json();
+                state.giftCatalog = Array.isArray(payload.gifts)
+                    ? payload.gifts.filter((gift) => typeof gift?.name === 'string' && gift.name.trim())
+                    : [];
+                state.giftCatalogByName = new Map(state.giftCatalog.map((gift) => [String(gift.name || ''), gift]));
+            } catch {
+                state.giftCatalog = [];
+                state.giftCatalogByName = new Map();
+            }
+        }
+
+        async function loadConfig() {
+            const response = await fetch('/api/widgets/config');
+            const payload = await response.json();
+
+            state.broadcasterId = payload.broadcasterId || null;
+            state.todayDayKey = payload.todayDayKey || '';
+            state.displayDayKey = payload.displayDayKey || '';
+            state.contributorsDisplayRangeMode = normalizeContributorsDisplayRangeMode(payload.contributorsDisplayRangeMode);
+            state.liveSession = normalizeLiveSession(payload.liveSession);
+            state.widgetUrls = payload.widgetUrls || state.widgetUrls;
+            state.contributorsDisplayThreshold = normalizeContributorsDisplayThreshold(payload.contributorsDisplayThreshold);
+            state.contributorsGoalCount = normalizeContributorsGoalCount(payload.contributorsGoalCount);
+            state.contributorsAvatarVisibility = normalizeContributorsAvatarVisibility(payload.contributorsAvatarVisibility);
+            state.contributorsFontKey = normalizeContributorsFontKey(payload.contributorsFontKey);
+            state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.contributorsColorTheme);
+            state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.contributorsStrokeWidth);
+            state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
+            state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
+
+            refreshContributorsOverlayControls();
+            syncContributorsRangeControl();
+            syncContributorsThresholdControl();
+            syncContributorsGoalCountControl();
+            syncContributorsAvatarVisibilityControl();
+            syncContributorsFontControl();
+            syncContributorsTextStyleControl();
+            syncContributorsStrokeWidthControl();
+            topGiftUrl.textContent = state.widgetUrls.topGiftOverlayUrl || '未取得';
+            broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
+            todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
+            setStatus(saveStatus, '設定状態: 準備完了', 'ok');
+            applyTopGiftSettingsToForm(state.topGiftSettings);
+            renderGoalGiftRows();
+        }
+
+        async function refreshGoalGiftSnapshot() {
+            const response = await fetch('/api/widgets/goal-gifts/snapshot');
+            const payload = await response.json();
+            state.goalGiftItems = Array.isArray(payload.snapshot?.goals) ? payload.snapshot.goals : state.goalGiftItems;
+            renderGoalGiftRows();
+        }
+
+        function scheduleGoalGiftAutosave() {
+            if (goalGiftAutosaveTimer) {
+                clearTimeout(goalGiftAutosaveTimer);
+            }
+
+            setStatus(saveStatus, '設定状態: 目標ギフトを自動保存待機中...', 'warn');
+            goalGiftAutosaveTimer = setTimeout(() => {
+                goalGiftAutosaveTimer = null;
+                goalGiftAutosavePromise = saveGoalGiftSettings(true)
+                    .catch(() => {})
+                    .finally(() => {
+                        goalGiftAutosavePromise = null;
+                    });
+            }, 450);
+        }
+
+        async function flushGoalGiftAutosave() {
+            if (goalGiftAutosaveTimer) {
+                clearTimeout(goalGiftAutosaveTimer);
+                goalGiftAutosaveTimer = null;
+                goalGiftAutosavePromise = saveGoalGiftSettings(true)
+                    .catch(() => {})
+                    .finally(() => {
+                        goalGiftAutosavePromise = null;
+                    });
+            }
+
+            if (goalGiftAutosavePromise) {
+                await goalGiftAutosavePromise;
+            }
+        }
+
+        async function saveGoalGiftSettingsImmediately() {
+            if (goalGiftAutosaveTimer) {
+                clearTimeout(goalGiftAutosaveTimer);
+                goalGiftAutosaveTimer = null;
+            }
+
+            if (goalGiftAutosavePromise) {
+                await goalGiftAutosavePromise;
+            }
+
+            goalGiftAutosavePromise = saveGoalGiftSettings(true)
+                .catch(() => {})
+                .finally(() => {
+                    goalGiftAutosavePromise = null;
+                });
+
+            await goalGiftAutosavePromise;
+        }
+
+        async function saveTopGiftSettings() {
+            setStatus(saveStatus, '設定状態: 本日最高ギフトを保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/top-gift', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTopGiftSettings())
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'ウィジェット設定の保存に失敗しました。');
+                }
+                state.topGiftSettings = payload.settings;
+                applyTopGiftSettingsToForm(state.topGiftSettings);
+                setStatus(saveStatus, '設定状態: 本日最高ギフトを保存しました。', 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
+        }
+
+        function saveTopGiftSettingsImmediately() {
+            if (topGiftAutosaveTimer) {
+                window.clearTimeout(topGiftAutosaveTimer);
+                topGiftAutosaveTimer = null;
+            }
+
+            topGiftAutosavePromise = saveTopGiftSettings();
+            return topGiftAutosavePromise;
+        }
+
+        function scheduleTopGiftSettingsAutosave(delay = 250) {
+            if (topGiftAutosaveTimer) {
+                window.clearTimeout(topGiftAutosaveTimer);
+            }
+
+            topGiftAutosaveTimer = window.setTimeout(() => {
+                topGiftAutosaveTimer = null;
+                topGiftAutosavePromise = saveTopGiftSettings();
+            }, delay);
+
+            return topGiftAutosavePromise;
+        }
+
+        async function saveContributorsStyleSettingsImmediately() {
+            setStatus(saveStatus, '設定状態: ウィジェット共通文字設定を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/contributors-style', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        displayThreshold: normalizeContributorsDisplayThreshold(contributorsThresholdInput.value),
+                        goalCount: normalizeContributorsGoalCount(contributorsGoalCountInput.value),
+                        avatarVisibility: normalizeContributorsAvatarVisibility(contributorsAvatarVisibilitySelect.value),
+                        fontFamily: normalizeContributorsFontKey(contributorsFontSelect.value),
+                        colorTheme: normalizeContributorsTextStyleKey(contributorsTextStyleSelect.value),
+                        strokeWidth: normalizeContributorsStrokeWidth(contributorsStrokeWidthInput.value)
+                    })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || '貢献リスト設定の保存に失敗しました。');
+                }
+
+                state.contributorsDisplayThreshold = normalizeContributorsDisplayThreshold(payload.displayThreshold ?? contributorsThresholdInput.value);
+                state.contributorsGoalCount = normalizeContributorsGoalCount(payload.goalCount ?? contributorsGoalCountInput.value);
+                state.contributorsAvatarVisibility = normalizeContributorsAvatarVisibility(payload.avatarVisibility ?? contributorsAvatarVisibilitySelect.value);
+                state.contributorsFontKey = normalizeContributorsFontKey(payload.fontFamily ?? contributorsFontSelect.value);
+                state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.colorTheme ?? contributorsTextStyleSelect.value);
+                state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.strokeWidth ?? contributorsStrokeWidthInput.value);
+                syncContributorsThresholdControl();
+                syncContributorsGoalCountControl();
+                syncContributorsAvatarVisibilityControl();
+                syncContributorsFontControl();
+                syncContributorsTextStyleControl();
+                syncContributorsStrokeWidthControl();
+                setStatus(saveStatus, '設定状態: ウィジェット共通文字設定を保存しました。', 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
+        }
+
+        async function saveGoalGiftSettings(isAutosave = false) {
+            setStatus(saveStatus, `設定状態: 目標ギフトを${isAutosave ? '自動' : ''}保存中...`, 'warn');
+            try {
+                const response = await fetch('/api/widgets/goal-gifts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: getDraftGoalGiftItems()
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || '目標ギフト設定の保存に失敗しました。');
+                }
+                state.goalGiftItems = Array.isArray(payload.items) ? payload.items : [];
+                renderGoalGiftRows();
+                setStatus(saveStatus, `設定状態: 目標ギフトを${isAutosave ? '自動' : ''}保存しました。`, 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
+        }
+
+        document.getElementById('open-contributors-overlay-button').addEventListener('click', () => {
+            openWindow('/overlays/contributors', 'contributors-overlay-window', { width: 1180, height: 880 });
+        });
+        document.getElementById('copy-contributors-url-button').addEventListener('click', async () => {
+            await copyText(getContributorsOverlayUrl() || '');
+        });
+        contributorsThresholdInput.addEventListener('input', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsThresholdInput.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsGoalCountInput.addEventListener('input', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsGoalCountInput.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsAvatarVisibilitySelect.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsFontSelect.addEventListener('input', () => {
+            contributorsFontSelect.style.fontFamily = getContributorsFontFamily(contributorsFontSelect.value);
+        });
+        contributorsFontSelect.addEventListener('change', () => {
+            contributorsFontSelect.style.fontFamily = getContributorsFontFamily(contributorsFontSelect.value);
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsTextStyleSelect.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsStrokeWidthInput.addEventListener('input', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsStrokeWidthInput.addEventListener('change', () => {
+            saveContributorsStyleSettingsImmediately().catch(() => {});
+        });
+        contributorsRangeModeSelect.addEventListener('change', () => {
+            setContributorsDisplayRangeMode(contributorsRangeModeSelect.value).catch((error) => {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            });
+        });
+        contributorsPrevDayButton.addEventListener('click', () => {
+            const nextDayKey = shiftDayKey(state.displayDayKey || state.todayDayKey, -1);
+            setContributorsDisplayDay(nextDayKey).catch((error) => {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            });
+        });
+        contributorsNextDayButton.addEventListener('click', () => {
+            const nextDayKey = shiftDayKey(state.displayDayKey || state.todayDayKey, 1);
+            setContributorsDisplayDay(nextDayKey).catch((error) => {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            });
+        });
+        document.getElementById('open-admin-button').addEventListener('click', () => {
+            openWindow('/admin', 'user-coins-window', { width: 1320, height: 920 });
+        });
+        document.getElementById('open-top-gift-overlay-button').addEventListener('click', () => {
+            openWindow('/overlays/top-gift', 'top-gift-overlay-window', { width: 980, height: 660 });
+        });
+        document.getElementById('copy-top-gift-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.topGiftOverlayUrl || '');
+        });
+        titleInput.addEventListener('input', () => {
+            scheduleTopGiftSettingsAutosave();
+        });
+        titleInput.addEventListener('change', () => {
+            saveTopGiftSettingsImmediately().catch(() => {});
+        });
+        titleInput.addEventListener('blur', () => {
+            flushDeferredWidgetFormUpdates();
+        });
+        senderDisplayModeInput.addEventListener('change', () => {
+            saveTopGiftSettingsImmediately().catch(() => {});
+            flushDeferredWidgetFormUpdates();
+        });
+
+        socket.on('admin_day_updated', (payload) => {
+            state.todayDayKey = payload?.todayDayKey || state.todayDayKey || '';
+            state.displayDayKey = payload?.displayDayKey || state.displayDayKey || state.todayDayKey || '';
+            state.contributorsDisplayRangeMode = normalizeContributorsDisplayRangeMode(payload?.displayRangeMode || state.contributorsDisplayRangeMode);
+            state.liveSession = normalizeLiveSession(payload?.liveSession);
+            syncContributorsRangeControl();
+            refreshContributorsOverlayControls();
+            refreshGoalGiftSnapshot().catch(() => {});
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.gift-suggest-shell') && !goalGiftSuggestionPanel.contains(event.target)) {
+                hideGoalGiftSuggestionPanel();
+            }
+        });
+
+        goalGiftList.addEventListener('focusout', () => {
+            window.setTimeout(() => {
+                flushDeferredWidgetFormUpdates();
+            }, 0);
+        });
+
+        window.addEventListener('resize', () => {
+            if (!goalGiftSuggestionPanel.hidden) {
+                positionGoalGiftSuggestionPanel();
+            }
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!goalGiftSuggestionPanel.hidden) {
+                positionGoalGiftSuggestionPanel();
+            }
+        }, true);
+
+        Promise.all([loadGiftCatalog(), loadConfig()]).catch((error) => {
+            setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+        });
+    </script>
+</body>
+</html>

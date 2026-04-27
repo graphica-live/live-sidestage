@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comments</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(960px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, p { margin: 0; }
+
+        h1 {
+            font-size: 30px;
+            line-height: 1.1;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.56);
+            font-size: 14px;
+        }
+
+        .status-row {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .toolbar {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .comment-stream {
+            display: grid;
+            gap: 6px;
+            max-height: calc(100vh - 220px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .comment-stream-empty {
+            padding: 20px 16px;
+            border: 1px dashed var(--line);
+            border-radius: 2px;
+            color: var(--muted);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.34);
+        }
+
+        .comment-card {
+            display: grid;
+            grid-template-columns: 28px minmax(120px, auto) auto minmax(0, 1fr) 72px;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.68);
+        }
+
+        .comment-card.is-system {
+            background: rgba(246, 249, 252, 0.96);
+            border-left: 3px solid rgba(24, 37, 58, 0.28);
+        }
+
+        .comment-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            grid-column: 1 / span 2;
+        }
+
+        .comment-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(45, 39, 32, 0.08);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .comment-author {
+            min-width: 0;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .comment-author strong,
+        .comment-author span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .comment-author span,
+        .comment-time {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .comment-author strong {
+            font-size: 13px;
+            line-height: 1.1;
+        }
+
+        .comment-time {
+            margin-left: 0;
+            flex: 0 0 auto;
+            text-align: right;
+        }
+
+        .comment-body {
+            min-width: 0;
+            font-size: 13px;
+            line-height: 1.25;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .comment-kind {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            padding: 2px 6px;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: rgba(255, 255, 255, 0.8);
+            white-space: nowrap;
+        }
+
+        .modal-shell {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(24, 37, 58, 0.3);
+        }
+
+        .modal-shell.is-open {
+            display: flex;
+        }
+
+        .modal {
+            width: min(560px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 22px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .modal-head {
+            display: grid;
+            gap: 6px;
+        }
+
+        .filter-list {
+            display: grid;
+            gap: 10px;
+            max-height: min(52vh, 420px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
+        }
+
+        .filter-copy {
+            display: grid;
+            gap: 2px;
+        }
+
+        .filter-copy strong {
+            font-size: 14px;
+        }
+
+        .filter-copy span {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .filter-summary {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 840px) {
+            .comment-card {
+                grid-template-columns: 28px minmax(0, 1fr) auto;
+                align-items: start;
+            }
+
+            .comment-card-header {
+                grid-column: 1 / span 2;
+            }
+
+            .comment-kind {
+                grid-column: 3;
+                grid-row: 1;
+                justify-self: end;
+            }
+
+            .comment-body {
+                grid-column: 2 / span 2;
+                white-space: normal;
+            }
+
+            .comment-time {
+                grid-column: 3;
+                grid-row: 2;
+                align-self: center;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .toolbar button {
+                width: 100%;
+            }
+
+            .comment-card {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
+
+            .comment-card-header,
+            .comment-kind,
+            .comment-body,
+            .comment-time {
+                grid-column: auto;
+                grid-row: auto;
+                justify-self: start;
+            }
+
+            .comment-body {
+                white-space: normal;
+            }
+
+            .filter-item {
+                align-items: flex-start;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>コメント欄</h1>
+            <p class="subtext">TikTok 配信コメントと各種システムメッセージを表示します。並び順は切り替えでき、表示対象は設定モーダルで絞り込めます。</p>
+            <div class="status-row">
+                <div class="status" id="comment-feedback">コメント受信待機中です。</div>
+            </div>
+            <div class="toolbar">
+                <button type="button" id="sort-order-button">並び順: 新しい順</button>
+                <button type="button" id="comment-settings-button">表示設定</button>
+                <div class="filter-summary" id="filter-summary">表示対象を読み込み中です。</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div id="comment-stream" class="comment-stream">
+                <div class="comment-stream-empty">コメント受信待機中です。</div>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-shell" id="comment-settings-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-settings-title">
+            <div class="modal-head">
+                <h2 id="comment-settings-title">コメント表示設定</h2>
+                <p class="subtext">表示したいコメント種別だけを有効にします。取得自体は継続し、ここでは表示だけをフィルタします。</p>
+            </div>
+            <div class="filter-list" id="comment-filter-list"></div>
+            <div class="modal-actions">
+                <button type="button" id="comment-settings-select-all">すべて表示</button>
+                <button type="button" id="comment-settings-clear-all">すべて非表示</button>
+                <button type="button" id="comment-settings-cancel">キャンセル</button>
+                <button type="button" id="comment-settings-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const commentFeedback = document.getElementById('comment-feedback');
+        const commentStream = document.getElementById('comment-stream');
+        const sortOrderButton = document.getElementById('sort-order-button');
+        const commentSettingsButton = document.getElementById('comment-settings-button');
+        const filterSummary = document.getElementById('filter-summary');
+        const commentSettingsModal = document.getElementById('comment-settings-modal');
+        const commentFilterList = document.getElementById('comment-filter-list');
+        const commentSettingsSelectAll = document.getElementById('comment-settings-select-all');
+        const commentSettingsClearAll = document.getElementById('comment-settings-clear-all');
+        const commentSettingsCancel = document.getElementById('comment-settings-cancel');
+        const commentSettingsSave = document.getElementById('comment-settings-save');
+
+        let currentComments = [];
+        let currentCommentTypes = [];
+        let currentSettings = {
+            sortOrder: 'desc',
+            enabledTypes: []
+        };
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatTimestamp(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const date = new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
+            return date.toLocaleTimeString('ja-JP', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function normalizeCommentSettings(settings) {
+            const knownTypes = currentCommentTypes.map((item) => item.type);
+            const hasEnabledTypes = Array.isArray(settings?.enabledTypes);
+            const enabledTypes = hasEnabledTypes
+                ? settings.enabledTypes.filter((type) => knownTypes.includes(type))
+                : knownTypes;
+
+            return {
+                sortOrder: settings?.sortOrder === 'asc' ? 'asc' : 'desc',
+                enabledTypes: hasEnabledTypes ? enabledTypes : knownTypes
+            };
+        }
+
+        function setCommentFeedback(message) {
+            commentFeedback.textContent = message || 'コメント受信待機中です。';
+        }
+
+        function syncSortOrderButton() {
+            sortOrderButton.textContent = currentSettings.sortOrder === 'asc'
+                ? '並び順: 古い順'
+                : '並び順: 新しい順';
+        }
+
+        function syncFilterSummary() {
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            const visibleCount = currentCommentTypes.filter((item) => enabledTypes.has(item.type)).length;
+            filterSummary.textContent = currentCommentTypes.length
+                ? `表示対象: ${visibleCount}/${currentCommentTypes.length} 種別`
+                : '表示対象を読み込み中です。';
+        }
+
+        function getFilteredComments(comments) {
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            return (Array.isArray(comments) ? comments : []).filter((item) => enabledTypes.has(item.type || 'chat'));
+        }
+
+        function getOrderedComments(comments) {
+            return [...comments].sort((left, right) => {
+                const leftTime = new Date(left?.timestamp || 0).getTime();
+                const rightTime = new Date(right?.timestamp || 0).getTime();
+                return currentSettings.sortOrder === 'asc' ? leftTime - rightTime : rightTime - leftTime;
+            });
+        }
+
+        function renderCommentSettingsModal() {
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            commentFilterList.innerHTML = '';
+
+            currentCommentTypes.forEach((item) => {
+                const row = document.createElement('label');
+                row.className = 'filter-item';
+                row.innerHTML = `
+                    <div class="filter-copy">
+                        <strong>${escapeHtml(item.label || item.type)}</strong>
+                        <span>${item.system ? 'システムメッセージ' : '通常コメント'}</span>
+                    </div>
+                    <input type="checkbox" data-type="${escapeHtml(item.type)}" ${enabledTypes.has(item.type) ? 'checked' : ''}>
+                `;
+                commentFilterList.appendChild(row);
+            });
+        }
+
+        function openCommentSettingsModal() {
+            renderCommentSettingsModal();
+            commentSettingsModal.classList.add('is-open');
+            commentSettingsModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCommentSettingsModal() {
+            commentSettingsModal.classList.remove('is-open');
+            commentSettingsModal.setAttribute('aria-hidden', 'true');
+        }
+
+        async function saveCommentSettings(nextSettings) {
+            const response = await fetch('/api/comments/config', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(nextSettings)
+            });
+
+            if (!response.ok) {
+                throw new Error('コメント設定の保存に失敗しました。');
+            }
+
+            const payload = await response.json();
+            if (Array.isArray(payload.commentTypes)) {
+                currentCommentTypes = payload.commentTypes;
+            }
+            currentSettings = normalizeCommentSettings(payload.settings || nextSettings);
+            syncSortOrderButton();
+            syncFilterSummary();
+            renderLiveComments(currentComments);
+        }
+
+        function renderLiveComments(comments) {
+            commentStream.innerHTML = '';
+
+            const filteredComments = getFilteredComments(comments);
+            const orderedComments = getOrderedComments(filteredComments);
+
+            if (!Array.isArray(comments) || !comments.length) {
+                commentStream.innerHTML = '<div class="comment-stream-empty">コメント受信待機中です。</div>';
+                setCommentFeedback('コメント受信待機中です。');
+                return;
+            }
+
+            if (!orderedComments.length) {
+                commentStream.innerHTML = '<div class="comment-stream-empty">フィルタ条件に一致するコメントはありません。</div>';
+                setCommentFeedback('表示フィルタに一致するコメントがありません。');
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            orderedComments.forEach((item) => {
+                const card = document.createElement('article');
+                card.className = `comment-card${item.system ? ' is-system' : ''}`;
+                card.innerHTML = `
+                    <div class="comment-card-header">
+                        <img class="comment-avatar" src="${escapeHtml(item.image || '')}" alt="">
+                        <div class="comment-author">
+                            <strong>${escapeHtml(item.nickname || item.uniqueId || 'system')}</strong>
+                            <span>${item.uniqueId ? `@${escapeHtml(item.uniqueId)}` : 'system'}</span>
+                        </div>
+                    </div>
+                    <div class="comment-kind">${escapeHtml(item.typeLabel || item.type || 'コメント')}</div>
+                    <div class="comment-body">${escapeHtml(item.comment || '')}</div>
+                    <div class="comment-time">${escapeHtml(formatTimestamp(item.timestamp))}</div>
+                `;
+                fragment.appendChild(card);
+            });
+
+            commentStream.appendChild(fragment);
+            setCommentFeedback(`コメントを ${orderedComments.length} 件表示中です。`);
+
+            if (currentSettings.sortOrder === 'asc') {
+                commentStream.scrollTop = commentStream.scrollHeight;
+            } else {
+                commentStream.scrollTop = 0;
+            }
+        }
+
+        async function init() {
+            const [stateResponse, configResponse] = await Promise.all([
+                fetch('/api/state'),
+                fetch('/api/comments/config')
+            ]);
+            const statePayload = await stateResponse.json();
+            const configPayload = await configResponse.json();
+
+            currentCommentTypes = Array.isArray(configPayload.commentTypes) ? configPayload.commentTypes : [];
+            currentSettings = normalizeCommentSettings(configPayload.settings || {});
+            syncSortOrderButton();
+            syncFilterSummary();
+        }
+
+        socket.on('admin_day_updated', () => {
+        });
+
+        socket.on('admin_comments_updated', (payload) => {
+            if (Array.isArray(payload?.commentTypes)) {
+                currentCommentTypes = payload.commentTypes;
+            }
+
+            currentSettings = normalizeCommentSettings(payload?.settings || currentSettings);
+            currentComments = Array.isArray(payload?.comments) ? payload.comments : [];
+            syncSortOrderButton();
+            syncFilterSummary();
+            renderLiveComments(currentComments);
+        });
+
+        sortOrderButton.addEventListener('click', async () => {
+            const nextSettings = {
+                ...currentSettings,
+                sortOrder: currentSettings.sortOrder === 'asc' ? 'desc' : 'asc'
+            };
+
+            try {
+                await saveCommentSettings(nextSettings);
+            } catch (error) {
+                setCommentFeedback(error.message || '並び順の保存に失敗しました。');
+            }
+        });
+
+        commentSettingsButton.addEventListener('click', () => {
+            openCommentSettingsModal();
+        });
+
+        commentSettingsCancel.addEventListener('click', () => {
+            closeCommentSettingsModal();
+        });
+
+        commentSettingsModal.addEventListener('click', (event) => {
+            if (event.target === commentSettingsModal) {
+                closeCommentSettingsModal();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && commentSettingsModal.classList.contains('is-open')) {
+                closeCommentSettingsModal();
+            }
+        });
+
+        commentSettingsSelectAll.addEventListener('click', () => {
+            commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = true;
+            });
+        });
+
+        commentSettingsClearAll.addEventListener('click', () => {
+            commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = false;
+            });
+        });
+
+        commentSettingsSave.addEventListener('click', async () => {
+            const enabledTypes = [...commentFilterList.querySelectorAll('input[type="checkbox"]:checked')]
+                .map((input) => input.dataset.type)
+                .filter(Boolean);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    enabledTypes
+                });
+                closeCommentSettingsModal();
+            } catch (error) {
+                setCommentFeedback(error.message || 'コメント設定の保存に失敗しました。');
+            }
+        });
+
+        init().catch(() => {
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goal Gifts Overlay</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
+
+        :root {
+            --accent: #f59e0b;
+            --text: #f8fafc;
+            --muted: rgba(226, 232, 240, 0.82);
+            --goal-fill-color: #f8fafc;
+            --goal-count-color: #f59e0b;
+            --goal-note-color: rgba(226, 232, 240, 0.82);
+            --goal-stroke-color: rgba(15, 23, 42, 0.92);
+            --goal-text-shadow: rgba(15, 23, 42, 0.3);
+            --goal-stroke-width: 3px;
+            --gift-width: 320px;
+            --gift-height: 236px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background: transparent;
+            overflow: hidden;
+            font-family: "M PLUS Rounded 1c", sans-serif;
+        }
+
+        body {
+            padding: 32px;
+            color: var(--text);
+        }
+
+        .overlay {
+            display: none;
+            width: min(1680px, calc(100vw - 64px));
+            gap: 24px;
+        }
+
+        .overlay.is-visible {
+            display: grid;
+        }
+
+        .overlay.is-empty {
+            place-items: center;
+            min-height: calc(100vh - 64px);
+        }
+
+        .overlay-message {
+            display: grid;
+            gap: 10px;
+            justify-items: center;
+            width: min(720px, 100%);
+            padding: 28px 24px;
+            border: 1px solid rgba(248, 250, 252, 0.18);
+            background: rgba(15, 23, 42, 0.42);
+            backdrop-filter: blur(8px);
+        }
+
+        .overlay-message-copy {
+            color: var(--text);
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-align: center;
+        }
+
+        .goal-row {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            padding: 0;
+            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .goal-row.is-complete {
+            background: transparent;
+        }
+
+        .gift-visual {
+            position: relative;
+            width: var(--gift-width);
+            min-height: var(--gift-height);
+        }
+
+        .gift-image {
+            display: block;
+            width: var(--gift-width);
+            height: var(--gift-height);
+            object-fit: contain;
+            background: transparent;
+        }
+
+        .copy {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+            width: var(--gift-width);
+            max-width: 100%;
+            justify-items: center;
+            text-align: center;
+        }
+
+        .gift-name,
+        .count,
+        .note {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .gift-name {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 0 18px 0;
+            text-align: center;
+        }
+
+        .count {
+            margin-top: -4px;
+        }
+
+        .goal-svg-text {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100%;
+            overflow: visible;
+            white-space: nowrap;
+        }
+
+        .goal-svg-text svg {
+            display: block;
+            overflow: visible;
+            max-width: 100%;
+        }
+
+        .goal-svg-text text {
+            fill: currentColor;
+            stroke: var(--goal-stroke-color);
+            stroke-width: var(--goal-stroke-width);
+            paint-order: stroke fill;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            dominant-baseline: text-before-edge;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .gift-name .goal-svg-text {
+            color: var(--goal-fill-color);
+        }
+
+        .gift-name .goal-svg-text text {
+            text-shadow: 0 4px 14px var(--goal-text-shadow);
+        }
+
+        .count .goal-svg-text {
+            color: var(--goal-count-color);
+        }
+
+        .note .goal-svg-text {
+            color: var(--goal-note-color);
+        }
+
+        @media (max-width: 640px) {
+            :root {
+                --gift-width: 160px;
+                --gift-height: 118px;
+            }
+
+            body {
+                padding: 10px;
+            }
+
+            .overlay {
+                width: calc(100vw - 20px);
+            }
+
+            .goal-row {
+                grid-template-columns: 1fr;
+            }
+
+        }
+    </style>
+</head>
+<body>
+    <section class="overlay" id="overlay"></section>
+
+    <script>
+        const socket = io();
+        const overlay = document.getElementById('overlay');
+        const searchParams = new URLSearchParams(window.location.search);
+        const requestedSlot = Number.parseInt(searchParams.get('slot') || '', 10);
+        const previewMode = searchParams.get('preview') === '1';
+        const goalGiftFonts = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            mincho: '"Noto Serif JP", serif',
+            'ud-gothic': '"Kosugi", sans-serif',
+            'ud-mincho': '"Zen Old Mincho", serif',
+            meiryo: '"Klee One", cursive',
+            rounded: '"Zen Maru Gothic", sans-serif',
+            kyokasho: '"Klee One", cursive',
+            gyosho: '"Yuji Syuku", cursive',
+            togarie: '"Dela Gothic One", sans-serif',
+            'ln-pop': '"Mochiy Pop One", sans-serif',
+            'comic-impact': '"Rampart One", sans-serif',
+            'pop-idol': '"Hachi Maru Pop", cursive',
+            entame: '"RocknRoll One", sans-serif',
+            marker: '"Yusei Magic", cursive',
+            'retro-bold': '"Kaisei Decol", serif',
+            'luxury-mincho': '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush': '"Yuji Mai", cursive',
+            'pixel-code': '"DotGothic16", "Noto Sans JP", sans-serif'
+        };
+        const goalGiftTextStyles = {
+            'gold-night': {
+                fillColor: '#ffffff',
+                countColor: '#fbbf24',
+                noteColor: 'rgba(241, 245, 249, 0.9)',
+                strokeColor: 'rgba(15, 23, 42, 0.96)',
+                textShadow: 'rgba(15, 23, 42, 0.34)'
+            },
+            'ice-night': {
+                fillColor: '#dbeafe',
+                countColor: '#93c5fd',
+                noteColor: 'rgba(191, 219, 254, 0.9)',
+                strokeColor: 'rgba(23, 37, 84, 0.95)',
+                textShadow: 'rgba(23, 37, 84, 0.35)'
+            },
+            'candy-pop': {
+                fillColor: '#ffe4f1',
+                countColor: '#f472b6',
+                noteColor: 'rgba(251, 207, 232, 0.92)',
+                strokeColor: 'rgba(131, 24, 67, 0.95)',
+                textShadow: 'rgba(131, 24, 67, 0.35)'
+            },
+            'mint-lime': {
+                fillColor: '#f7fee7',
+                countColor: '#bef264',
+                noteColor: 'rgba(217, 249, 157, 0.94)',
+                strokeColor: 'rgba(20, 83, 45, 0.97)',
+                textShadow: 'rgba(20, 83, 45, 0.37)'
+            },
+            'sunset-party': {
+                fillColor: '#ffedd5',
+                countColor: '#fb923c',
+                noteColor: 'rgba(254, 215, 170, 0.92)',
+                strokeColor: 'rgba(124, 45, 18, 0.95)',
+                textShadow: 'rgba(124, 45, 18, 0.35)'
+            },
+            'violet-flash': {
+                fillColor: '#ede9fe',
+                countColor: '#c4b5fd',
+                noteColor: 'rgba(221, 214, 254, 0.9)',
+                strokeColor: 'rgba(49, 46, 129, 0.95)',
+                textShadow: 'rgba(49, 46, 129, 0.35)'
+            },
+            'mono-impact': {
+                fillColor: '#ffffff',
+                countColor: '#ffffff',
+                noteColor: 'rgba(229, 231, 235, 0.95)',
+                strokeColor: 'rgba(17, 24, 39, 1)',
+                textShadow: 'rgba(17, 24, 39, 0.4)'
+            },
+            'sakura-bloom': {
+                fillColor: '#fdf2f8',
+                countColor: '#f9a8d4',
+                noteColor: 'rgba(252, 231, 243, 0.92)',
+                strokeColor: 'rgba(157, 23, 77, 0.96)',
+                textShadow: 'rgba(157, 23, 77, 0.34)'
+            },
+            'ocean-glow': {
+                fillColor: '#ecfeff',
+                countColor: '#67e8f9',
+                noteColor: 'rgba(165, 243, 252, 0.92)',
+                strokeColor: 'rgba(22, 78, 99, 0.96)',
+                textShadow: 'rgba(8, 47, 73, 0.34)'
+            },
+            'emerald-city': {
+                fillColor: '#ecfdf5',
+                countColor: '#6ee7b7',
+                noteColor: 'rgba(167, 243, 208, 0.92)',
+                strokeColor: 'rgba(6, 78, 59, 0.96)',
+                textShadow: 'rgba(6, 78, 59, 0.34)'
+            },
+            'ruby-flare': {
+                fillColor: '#fff1f2',
+                countColor: '#fb7185',
+                noteColor: 'rgba(254, 205, 211, 0.92)',
+                strokeColor: 'rgba(63, 13, 18, 0.96)',
+                textShadow: 'rgba(127, 29, 29, 0.34)'
+            },
+            'lemon-pop': {
+                fillColor: '#fefce8',
+                countColor: '#fde047',
+                noteColor: 'rgba(254, 249, 195, 0.92)',
+                strokeColor: 'rgba(30, 58, 138, 0.96)',
+                textShadow: 'rgba(30, 58, 138, 0.34)'
+            },
+            'midnight-aqua': {
+                fillColor: '#f0fdfa',
+                countColor: '#5eead4',
+                noteColor: 'rgba(153, 246, 228, 0.92)',
+                strokeColor: 'rgba(15, 23, 42, 0.98)',
+                textShadow: 'rgba(15, 23, 42, 0.38)'
+            },
+            'peach-fizz': {
+                fillColor: '#fff7ed',
+                countColor: '#fdba74',
+                noteColor: 'rgba(254, 215, 170, 0.92)',
+                strokeColor: 'rgba(127, 29, 29, 0.94)',
+                textShadow: 'rgba(127, 29, 29, 0.34)'
+            },
+            'festival-red': {
+                fillColor: '#fef2f2',
+                countColor: '#f87171',
+                noteColor: 'rgba(252, 165, 165, 0.92)',
+                strokeColor: 'rgba(31, 41, 55, 0.98)',
+                textShadow: 'rgba(31, 41, 55, 0.36)'
+            },
+            'rose-gold': {
+                fillColor: '#fffaf7',
+                countColor: '#f8b4a6',
+                noteColor: 'rgba(254, 226, 214, 0.96)',
+                strokeColor: 'rgba(91, 52, 46, 0.98)',
+                textShadow: 'rgba(91, 52, 46, 0.38)'
+            },
+            'cyber-teal': {
+                fillColor: '#f0fdff',
+                countColor: '#67e8f9',
+                noteColor: 'rgba(165, 243, 252, 0.94)',
+                strokeColor: 'rgba(15, 39, 64, 0.99)',
+                textShadow: 'rgba(15, 39, 64, 0.38)'
+            },
+            'aurora-dream': {
+                fillColor: '#faf5ff',
+                countColor: '#e9d5ff',
+                noteColor: 'rgba(233, 213, 255, 0.94)',
+                strokeColor: 'rgba(76, 29, 149, 0.98)',
+                textShadow: 'rgba(76, 29, 149, 0.38)'
+            },
+            'coral-soda': {
+                fillColor: '#fff1f2',
+                countColor: '#fb7185',
+                noteColor: 'rgba(254, 205, 211, 0.96)',
+                strokeColor: 'rgba(127, 29, 29, 0.98)',
+                textShadow: 'rgba(127, 29, 29, 0.38)'
+            },
+            'platinum-pop': {
+                fillColor: '#ffffff',
+                countColor: '#e2e8f0',
+                noteColor: 'rgba(226, 232, 240, 0.98)',
+                strokeColor: 'rgba(30, 41, 59, 0.98)',
+                textShadow: 'rgba(30, 41, 59, 0.38)'
+            },
+            'champagne-shine': {
+                fillColor: ['#fff8db', '#f3d58a', '#fff2c2'],
+                countColor: ['#fff3bf', '#d9a441', '#fff8db'],
+                noteColor: 'rgba(255, 244, 214, 0.96)',
+                strokeColor: 'rgba(107, 79, 42, 0.98)',
+                textShadow: 'rgba(107, 79, 42, 0.34)'
+            },
+            'royal-velvet': {
+                fillColor: ['#f5e9ff', '#c084fc', '#e9d5ff'],
+                countColor: ['#ddd6fe', '#8b5cf6', '#f5d0fe'],
+                noteColor: 'rgba(233, 213, 255, 0.94)',
+                strokeColor: 'rgba(49, 46, 129, 0.98)',
+                textShadow: 'rgba(49, 46, 129, 0.34)'
+            },
+            'emerald-luxe': {
+                fillColor: ['#ecfdf5', '#86efac', '#d1fae5'],
+                countColor: ['#d1fae5', '#10b981', '#a7f3d0'],
+                noteColor: 'rgba(209, 250, 229, 0.94)',
+                strokeColor: 'rgba(20, 83, 45, 0.98)',
+                textShadow: 'rgba(20, 83, 45, 0.34)'
+            },
+            'sunrise-opal': {
+                fillColor: ['#fff7ed', '#fdba74', '#f9a8d4'],
+                countColor: ['#fde68a', '#fb7185', '#fdba74'],
+                noteColor: 'rgba(254, 215, 170, 0.94)',
+                strokeColor: 'rgba(154, 52, 18, 0.98)',
+                textShadow: 'rgba(154, 52, 18, 0.34)'
+            }
+        };
+
+        function getGoalGiftFontFamily(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return goalGiftFonts[normalizedValue] || goalGiftFonts.default;
+        }
+
+        function getGoalGiftTextStyle(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return goalGiftTextStyles[normalizedValue] || goalGiftTextStyles['gold-night'];
+        }
+
+        function getGoalGiftStrokeWidth(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 0) {
+                return 3;
+            }
+
+            return Math.min(parsed, 24);
+        }
+
+        function getPrimaryFontFamily(fontFamily) {
+            const match = String(fontFamily || '').match(/"([^"]+)"/);
+            return match ? `"${match[1]}"` : String(fontFamily || '').split(',')[0]?.trim() || 'sans-serif';
+        }
+
+        async function ensureGoalGiftFontLoaded(fontFamily) {
+            if (!document.fonts?.load) {
+                return;
+            }
+
+            const primaryFamily = getPrimaryFontFamily(fontFamily);
+
+            try {
+                await Promise.all([
+                    document.fonts.load(`400 1em ${primaryFamily}`),
+                    document.fonts.load(`700 1em ${primaryFamily}`)
+                ]);
+            } catch {
+                // Fall through to normal render using whatever fonts are available.
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function normalizeTextPaint(value) {
+            if (Array.isArray(value)) {
+                return value.filter((item) => typeof item === 'string' && item.trim());
+            }
+
+            return typeof value === 'string' && value.trim() ? value.trim() : '';
+        }
+
+        function getTextPaintPreviewColor(value, fallback) {
+            const normalizedValue = normalizeTextPaint(value);
+            if (Array.isArray(normalizedValue)) {
+                return normalizedValue[0] || fallback;
+            }
+
+            return normalizedValue || fallback;
+        }
+
+        function buildSvgPaint(fill, prefix) {
+            const normalizedFill = normalizeTextPaint(fill);
+            if (Array.isArray(normalizedFill) && normalizedFill.length >= 2) {
+                const gradientId = `${prefix}-gradient`;
+                const stops = normalizedFill
+                    .map((color, index) => {
+                        const offset = normalizedFill.length === 1 ? 0 : (index / (normalizedFill.length - 1)) * 100;
+                        return `<stop offset="${offset}%" stop-color="${escapeHtml(color)}"></stop>`;
+                    })
+                    .join('');
+
+                return {
+                    defs: `<defs><linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">${stops}</linearGradient></defs>`,
+                    fill: `url(#${gradientId})`
+                };
+            }
+
+            return {
+                defs: '',
+                fill: escapeHtml(normalizedFill || '#ffffff')
+            };
+        }
+
+        function buildOutlinedSvgMarkup(text, options = {}) {
+            const fontSize = Number(options.fontSize) || 16;
+            const fontWeight = Number(options.fontWeight) || 700;
+            const strokeWidth = Number(options.strokeWidth) || 0;
+            const shadowPad = Number(options.shadowPad) || 0;
+            const layoutHeight = Number(options.layoutHeight) || 0;
+            const paint = buildSvgPaint(options.fill, options.idPrefix || `goal-text-${Math.random().toString(36).slice(2, 10)}`);
+
+            return `
+                <span class="goal-svg-text" data-outlined-svg-host data-stroke-width="${strokeWidth}" data-shadow-pad="${shadowPad}" data-layout-height="${layoutHeight}">
+                    <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        ${paint.defs}
+                        <text data-outlined-svg-text x="0" y="0" style="font-size:${fontSize}px;font-weight:${fontWeight};fill:${paint.fill};">${escapeHtml(text)}</text>
+                    </svg>
+                </span>
+            `;
+        }
+
+        function layoutOutlinedSvgText(container = document) {
+            container.querySelectorAll('[data-outlined-svg-host]').forEach((host) => {
+                const svg = host.querySelector('svg');
+                const text = host.querySelector('[data-outlined-svg-text]');
+
+                if (!svg || !text) {
+                    return;
+                }
+
+                text.setAttribute('font-family', getComputedStyle(host).fontFamily);
+
+                let bounds;
+                try {
+                    bounds = text.getBBox();
+                } catch {
+                    return;
+                }
+
+                const strokeWidth = Number.parseFloat(host.dataset.strokeWidth || '0') || 0;
+                const shadowPad = Number.parseFloat(host.dataset.shadowPad || '0') || 0;
+                const horizontalPadding = Math.max(2, strokeWidth + shadowPad);
+                const verticalPadding = Math.max(1, strokeWidth + Math.min(shadowPad, 2));
+                const width = Math.max(1, bounds.width + horizontalPadding * 2);
+                const height = Math.max(1, bounds.height + verticalPadding * 2);
+                const fixedLayoutHeight = Number.parseFloat(host.dataset.layoutHeight || '0') || 0;
+                const layoutHeight = Math.max(1, fixedLayoutHeight || bounds.height);
+
+                svg.setAttribute('viewBox', `${bounds.x - horizontalPadding} ${bounds.y - verticalPadding} ${width} ${height}`);
+                svg.setAttribute('width', `${width}`);
+                svg.setAttribute('height', `${height}`);
+                host.style.width = `${width}px`;
+                host.style.height = `${layoutHeight}px`;
+            });
+        }
+
+        async function render(snapshot) {
+            const sourceGoals = Array.isArray(snapshot?.goals) ? snapshot.goals : [];
+            const fontFamily = getGoalGiftFontFamily(snapshot?.fontKey);
+            const textStyle = getGoalGiftTextStyle(snapshot?.textStyleKey);
+            const strokeWidth = getGoalGiftStrokeWidth(snapshot?.strokeWidth);
+            const fillPreviewColor = getTextPaintPreviewColor(textStyle.fillColor, '#f8fafc');
+            const countPreviewColor = getTextPaintPreviewColor(textStyle.countColor, fillPreviewColor);
+            const notePreviewColor = getTextPaintPreviewColor(textStyle.noteColor, fillPreviewColor);
+            const hasValidTargetGift = (item) => Boolean(item?.giftId && item?.giftName);
+            const requestedGoal = Number.isInteger(requestedSlot) && requestedSlot > 0
+                ? sourceGoals.find((item) => Number(item.slot) === requestedSlot)
+                : null;
+            const goals = requestedGoal
+                ? (hasValidTargetGift(requestedGoal) ? [requestedGoal] : [])
+                : sourceGoals.filter((item) => item.enabled && hasValidTargetGift(item));
+
+            if (requestedGoal && !hasValidTargetGift(requestedGoal)) {
+                await ensureGoalGiftFontLoaded(fontFamily);
+                overlay.classList.add('is-visible', 'is-empty');
+                overlay.innerHTML = `
+                    <div class="overlay-message" style='font-family: ${fontFamily};'>
+                        <div class="overlay-message-copy">対象ギフト未選択</div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (!goals.length) {
+                overlay.classList.remove('is-visible', 'is-empty');
+                overlay.innerHTML = '';
+                return;
+            }
+
+            await ensureGoalGiftFontLoaded(fontFamily);
+
+            overlay.classList.add('is-visible');
+            overlay.classList.remove('is-empty');
+            overlay.innerHTML = goals.map((goal, index) => `
+                <div class="goal-row ${goal.completed ? 'is-complete' : ''}" style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
+                    <div class="gift-visual">
+                        <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
+                        <div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName || goal.giftName, { fontSize: window.innerWidth <= 640 ? 24 : 46, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: window.innerWidth <= 640 ? 26 : 48, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>
+                    </div>
+                    <div class="copy">
+                        <div class="count">${buildOutlinedSvgMarkup(`${goal.currentCount}/${goal.targetCount}`, { fontSize: window.innerWidth <= 640 ? 34 : 62, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 36 : 64, fill: textStyle.countColor, idPrefix: `goal-count-${index}` })}</div>
+                        ${goal.note ? `<div class="note">${buildOutlinedSvgMarkup(goal.note, { fontSize: window.innerWidth <= 640 ? 16 : 28, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 18 : 30, fill: textStyle.noteColor, idPrefix: `goal-note-${index}` })}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+            layoutOutlinedSvgText(overlay);
+        }
+
+        async function refresh() {
+            const response = await fetch('/api/widgets/goal-gifts/snapshot');
+            const payload = await response.json();
+            await render(payload.snapshot);
+        }
+
+        socket.on('admin_day_updated', () => {
+            refresh().catch(() => {});
+        });
+
+        socket.on('widgets:goal-gifts:updated', (payload) => {
+            render(payload?.snapshot).catch(() => {});
+        });
+
+        refresh().catch(() => {});
+        setInterval(() => {
+            refresh().catch(() => {});
+        }, 10000);
+    </script>
+</body>
+</html>

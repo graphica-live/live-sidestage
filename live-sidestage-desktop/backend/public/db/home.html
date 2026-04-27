@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikEffect Launcher</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --danger: #b42318;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 28px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(960px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.1;
+        }
+
+        h2 {
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .status-row {
+            margin-top: 18px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .status-inline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 12px;
+            color: var(--muted);
+            background: #f9fbfd;
+            font-size: 14px;
+            width: fit-content;
+            max-width: 100%;
+        }
+
+        .status--grow {
+            flex: 0 1 auto;
+        }
+
+        .status.is-success {
+            color: #166534;
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.78);
+        }
+
+        .status.is-warning {
+            color: #9a3412;
+            border-color: rgba(154, 52, 18, 0.22);
+            background: rgba(255, 247, 237, 0.82);
+        }
+
+        .status.is-error {
+            color: var(--danger);
+            border-color: rgba(161, 45, 47, 0.25);
+            background: rgba(254, 242, 242, 0.82);
+        }
+
+        .window-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .window-grid.is-locked {
+            position: relative;
+        }
+
+        .window-button {
+            text-align: left;
+            padding: 18px;
+            border-radius: 2px;
+            background: #f9fbfd;
+        }
+
+        .window-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+            filter: grayscale(1);
+            transform: none;
+            background: rgba(89, 107, 128, 0.08);
+            color: rgba(24, 37, 58, 0.7);
+        }
+
+        .window-button:disabled:hover {
+            transform: none;
+            background: rgba(89, 107, 128, 0.08);
+        }
+
+        .window-button strong {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 6px;
+        }
+
+        .window-button span {
+            display: block;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .window-lock-note {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid rgba(154, 52, 18, 0.18);
+            background: rgba(255, 247, 237, 0.9);
+            color: #9a3412;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .window-lock-note[hidden] {
+            display: none;
+        }
+
+        @media (max-width: 640px) {
+            .layout {
+                width: min(100%, calc(100% - 24px));
+                margin: 12px auto 24px;
+            }
+
+            .panel {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            .status-inline button {
+                width: 100%;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>TikEffect</h1>
+            <p class="subtext">起動時は認証と各機能のランチャーだけを表示します。必要な機能は下のボタンから別ウィンドウで開きます。</p>
+
+            <div class="status-row">
+                <div class="status-inline">
+                    <div class="status status--grow" id="broadcaster-id-status">配信ユーザーID: 読み込み中</div>
+                    <button type="button" class="primary" id="open-auth-button">TikTok認証を開始</button>
+                </div>
+                <div class="status" id="tiktok-connection-status">TikTok接続: 読み込み中</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>機能ウィンドウ</h2>
+            <p class="subtext">ギフト履歴、ユーザーコイン数、コメント欄、ウィジェット管理は必要なときだけ別窓で開けます。</p>
+
+            <div class="window-grid" id="window-grid">
+                <button type="button" class="window-button" data-path="/gifts" data-name="gift-history-window">
+                    <strong>ギフト履歴</strong>
+                    <span>受信したギフトイベントを時系列で確認します。</span>
+                </button>
+                <button type="button" class="window-button" data-path="/admin" data-name="user-coins-window">
+                    <strong>ユーザーコイン数</strong>
+                    <span>日別のユーザー合計コインを編集します。</span>
+                </button>
+                <button type="button" class="window-button" data-path="/comments" data-name="comments-window">
+                    <strong>コメント欄</strong>
+                    <span>配信コメントを新着順で監視します。</span>
+                </button>
+                <button type="button" class="window-button" data-path="/effects" data-name="video-audio-effects-window">
+                    <strong>映像&音声エフェクト</strong>
+                    <span>トリガーとアクションを設定し、10個の URL 方式オーバーレイを管理します。</span>
+                </button>
+                <button type="button" class="window-button" data-path="/widgets" data-name="widgets-window">
+                    <strong>ウィジェット</strong>
+                    <span>1k貢献一覧オーバーレイと本日最高ギフト表示の URL・見た目を管理します。</span>
+                </button>
+            </div>
+            <div class="window-lock-note" id="window-lock-note" hidden>TikTok認証が完了するまで機能ウィンドウはロックされています。先に上の認証ボタンからログインしてください。</div>
+        </section>
+    </div>
+
+    <script>
+        const socket = io();
+        const broadcasterIdStatus = document.getElementById('broadcaster-id-status');
+        const tiktokConnectionStatus = document.getElementById('tiktok-connection-status');
+        const openAuthButton = document.getElementById('open-auth-button');
+        const windowGrid = document.getElementById('window-grid');
+        const windowLockNote = document.getElementById('window-lock-note');
+        const windowButtons = Array.from(document.querySelectorAll('.window-button'));
+
+        let currentBroadcasterId = null;
+        let currentTikTokConnection = null;
+
+        function isAuthenticated() {
+            return Boolean(currentBroadcasterId && currentTikTokConnection?.wsAuthAvailable === true);
+        }
+
+        function getTikTokConnectionTone(connection) {
+            if (!connection) {
+                return '';
+            }
+
+            if (connection.status === 'connected') {
+                return 'is-success';
+            }
+
+            switch (connection.status) {
+                case 'offline':
+                case 'error':
+                    return 'is-error';
+                case 'retrying':
+                case 'connecting':
+                    return 'is-warning';
+                default:
+                    return '';
+            }
+        }
+
+        function syncUi() {
+            broadcasterIdStatus.textContent = currentBroadcasterId
+                ? `配信ユーザーID: @${currentBroadcasterId}`
+                : '配信ユーザーID: 未設定';
+
+            const connection = currentTikTokConnection || {
+                message: 'TikTok接続状態を読み込み中です。'
+            };
+            const toneClassName = getTikTokConnectionTone(connection);
+
+            tiktokConnectionStatus.className = 'status';
+
+            if (toneClassName) {
+                tiktokConnectionStatus.classList.add(toneClassName);
+            }
+
+            tiktokConnectionStatus.textContent = `TikTok接続: ${connection.message || '状態不明'}`;
+            const hasAuth = connection.wsAuthAvailable === true;
+            openAuthButton.textContent = hasAuth ? 'ログアウト' : 'TikTok認証を開く';
+            openAuthButton.classList.toggle('primary', !hasAuth);
+            openAuthButton.classList.toggle('danger-button', hasAuth);
+
+            const locked = !isAuthenticated();
+            windowGrid.classList.toggle('is-locked', locked);
+            windowLockNote.hidden = !locked;
+            windowButtons.forEach((button) => {
+                button.disabled = locked;
+                button.setAttribute('aria-disabled', locked ? 'true' : 'false');
+            });
+        }
+
+        function openWindow(path, name) {
+            const windowSizes = {
+                '/setup': { width: 640, height: 840 },
+                '/gifts': { width: 1240, height: 860 },
+                '/admin': { width: 1320, height: 920 },
+                '/comments': { width: 980, height: 820 },
+                '/effects': { width: 1480, height: 980 },
+                '/widgets': { width: 1280, height: 940 }
+            };
+            const size = windowSizes[path] || { width: 1200, height: 860 };
+            const features = [
+                'popup=yes',
+                `width=${size.width}`,
+                `height=${size.height}`,
+                'resizable=yes',
+                'scrollbars=yes'
+            ].join(',');
+
+            window.open(path, name, features);
+        }
+
+        async function openTikTokAuthWindow(switchMode = false) {
+            const fallbackPath = switchMode ? '/setup?mode=switch' : '/setup';
+            const requestBody = {
+                switchMode,
+                currentBroadcasterId: currentBroadcasterId || null
+            };
+
+            try {
+                const response = await fetch('/api/tiktok-login/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    return;
+                }
+            } catch {
+            }
+
+            openWindow(fallbackPath, 'tiktok-auth-window');
+        }
+
+        async function logoutTikTokAuth() {
+            const response = await fetch('/api/tiktok-login/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || 'TikTok認証のログアウトに失敗しました。');
+            }
+        }
+
+        async function refreshState() {
+            const response = await fetch('/api/state');
+            const payload = await response.json();
+            currentBroadcasterId = payload.broadcasterId || null;
+            currentTikTokConnection = payload.tiktokConnection || null;
+            syncUi();
+        }
+
+        document.querySelectorAll('[data-path]').forEach((button) => {
+            button.addEventListener('click', () => {
+                openWindow(button.dataset.path, button.dataset.name);
+            });
+        });
+
+        openAuthButton.addEventListener('click', async () => {
+            openAuthButton.disabled = true;
+
+            try {
+                if (currentTikTokConnection?.wsAuthAvailable === true) {
+                    await logoutTikTokAuth();
+                    await refreshState();
+                    return;
+                }
+
+                await openTikTokAuthWindow(false);
+            } catch (error) {
+                const message = error?.message || '認証処理に失敗しました。';
+                tiktokConnectionStatus.className = 'status is-error';
+                tiktokConnectionStatus.textContent = `TikTok接続: ${message}`;
+            } finally {
+                openAuthButton.disabled = false;
+            }
+        });
+
+        socket.on('admin_day_updated', (payload) => {
+            currentBroadcasterId = payload?.broadcasterId || null;
+            currentTikTokConnection = payload?.tiktokConnection || null;
+            syncUi();
+        });
+
+        refreshState().catch(() => {
+            syncUi();
+        });
+    </script>
+</body>
+</html>

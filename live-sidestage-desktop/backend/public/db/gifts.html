@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gift History</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --danger: #b42318;
+            --danger-soft: rgba(180, 35, 24, 0.08);
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+            --overlay: rgba(15, 23, 42, 0.44);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background: linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, p { margin: 0; }
+
+        h1 {
+            font-size: 30px;
+            line-height: 1.1;
+        }
+
+        h2 {
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .toolbar {
+            margin-top: 18px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toolbar .status {
+            flex: 1 1 280px;
+        }
+
+        .status,
+        .mini-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.56);
+            font-size: 14px;
+        }
+
+        .mini-status {
+            font-size: 13px;
+            width: fit-content;
+        }
+
+        input,
+        select {
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 10px 14px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: middle;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        td.actions-cell,
+        th.actions-cell {
+            width: 72px;
+            text-align: center;
+        }
+
+        .gift-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .gift-image {
+            width: 44px;
+            height: 44px;
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .gift-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .gift-meta {
+            min-width: 0;
+            display: grid;
+            gap: 3px;
+        }
+
+        .gift-meta strong,
+        .gift-meta span,
+        .user-cell strong,
+        .user-cell span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .gift-meta span,
+        .user-cell span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .user-cell {
+            display: grid;
+            gap: 4px;
+        }
+
+        .icon-button {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            display: inline-grid;
+            place-items: center;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .empty {
+            padding: 28px 0;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: var(--overlay);
+            display: grid;
+            place-items: center;
+            padding: 18px;
+            z-index: 1000;
+        }
+
+        .modal-backdrop[hidden] {
+            display: none;
+        }
+
+        .modal {
+            width: min(760px, 100%);
+            max-height: min(88vh, 920px);
+            overflow: auto;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+            padding: 22px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .modal-head,
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .field label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .field input {
+            width: 100%;
+        }
+
+        .summary-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                width: min(100%, calc(100% - 24px));
+            }
+
+            .panel {
+                padding: 20px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 780px) {
+            body {
+                padding: 16px 10px;
+            }
+
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            table,
+            thead,
+            tbody,
+            tr,
+            td,
+            th {
+                display: block;
+            }
+
+            thead {
+                display: none;
+            }
+
+            tr {
+                padding: 12px 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            td {
+                padding: 8px 0;
+                border-bottom: 0;
+            }
+
+            td.actions-cell,
+            th.actions-cell {
+                width: auto;
+                text-align: left;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>ギフト履歴</h1>
+            <p class="subtext">指定した日付に受信したギフトイベントを時系列で表示します。テストデータはモーダルで細かく指定して追加できます。</p>
+            <div class="toolbar">
+                <input type="date" id="day-input">
+                <select id="sort-order-select" aria-label="並び順">
+                    <option value="timestamp-asc">昇順</option>
+                    <option value="timestamp-desc">降順</option>
+                    <option value="coins-desc">コイン数の大きい順</option>
+                    <option value="coins-asc">コイン数の小さい順</option>
+                </select>
+                <button type="button" class="primary-button" id="add-test-gifts-button">テストデータを追加</button>
+                <div class="status" id="message-box" hidden>操作待ち</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th>時刻</th>
+                        <th>ユーザー</th>
+                        <th>ギフト</th>
+                        <th>回数</th>
+                        <th>Coins</th>
+                        <th class="actions-cell">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+            <div class="empty" id="empty-state" hidden>この日付のギフト履歴はまだありません。</div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop" id="gift-modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gift-modal-title">
+            <div class="modal-head">
+                <div>
+                    <h2 id="gift-modal-title">テストギフトを追加</h2>
+                    <p class="subtext">ユーザー情報、ギフト種類、まとめ投げ個数、1回あたりコインを細かく指定できます。</p>
+                </div>
+                <button type="button" id="close-gift-modal-button">閉じる</button>
+            </div>
+
+            <div class="summary-grid">
+                <div class="mini-status" id="modal-day-status">対象日: -</div>
+                <div class="mini-status" id="modal-total-status">合計 Coins: 0</div>
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="modal-unique-id">ユーザーID</label>
+                    <input id="modal-unique-id" type="text" maxlength="80" list="recent-user-id-list" placeholder="example_user">
+                </div>
+                <div class="field">
+                    <label for="modal-nickname">ユーザー名</label>
+                    <input id="modal-nickname" type="text" maxlength="80" list="recent-user-name-list" placeholder="テスト視聴者">
+                </div>
+                <div class="field">
+                    <label for="modal-profile-image">プロフィール画像 URL</label>
+                    <input id="modal-profile-image" type="text" maxlength="500" placeholder="https://...">
+                </div>
+                <div class="field">
+                    <label for="modal-gift-name">ギフト名</label>
+                    <input id="modal-gift-name" type="text" maxlength="80" list="gift-name-list" placeholder="Rose">
+                </div>
+                <div class="field">
+                    <label for="modal-gift-id">ギフトID</label>
+                    <input id="modal-gift-id" type="text" maxlength="80" placeholder="565">
+                </div>
+                <div class="field">
+                    <label for="modal-gift-image">ギフト画像 URL</label>
+                    <input id="modal-gift-image" type="text" maxlength="500" placeholder="https://...">
+                </div>
+                <div class="field">
+                    <label for="modal-diamond-count">1回あたりコイン</label>
+                    <input id="modal-diamond-count" type="number" min="1" step="1" value="1">
+                </div>
+                <div class="field">
+                    <label for="modal-repeat-count">まとめ投げ個数</label>
+                    <input id="modal-repeat-count" type="number" min="1" step="1" value="1">
+                </div>
+                <div class="field full">
+                    <label for="modal-note">補足</label>
+                    <input id="modal-note" type="text" maxlength="120" placeholder="ギフト名を選ぶと ID、画像、コイン数を自動反映します。" disabled>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="cancel-gift-modal-button">キャンセル</button>
+                <button type="button" class="primary-button" id="submit-gift-modal-button">追加する</button>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="gift-name-list"></datalist>
+    <datalist id="recent-user-id-list"></datalist>
+    <datalist id="recent-user-name-list"></datalist>
+
+    <script>
+        const socket = io();
+        const dayInput = document.getElementById('day-input');
+        const sortOrderSelect = document.getElementById('sort-order-select');
+        const addTestGiftsButton = document.getElementById('add-test-gifts-button');
+        const messageBox = document.getElementById('message-box');
+        const tableBody = document.getElementById('table-body');
+        const emptyState = document.getElementById('empty-state');
+        const giftModalBackdrop = document.getElementById('gift-modal-backdrop');
+        const closeGiftModalButton = document.getElementById('close-gift-modal-button');
+        const cancelGiftModalButton = document.getElementById('cancel-gift-modal-button');
+        const submitGiftModalButton = document.getElementById('submit-gift-modal-button');
+        const modalDayStatus = document.getElementById('modal-day-status');
+        const modalTotalStatus = document.getElementById('modal-total-status');
+        const modalUniqueIdInput = document.getElementById('modal-unique-id');
+        const modalNicknameInput = document.getElementById('modal-nickname');
+        const modalProfileImageInput = document.getElementById('modal-profile-image');
+        const modalGiftNameInput = document.getElementById('modal-gift-name');
+        const modalGiftIdInput = document.getElementById('modal-gift-id');
+        const modalGiftImageInput = document.getElementById('modal-gift-image');
+        const modalDiamondCountInput = document.getElementById('modal-diamond-count');
+        const modalRepeatCountInput = document.getElementById('modal-repeat-count');
+        const giftNameList = document.getElementById('gift-name-list');
+        const recentUserIdList = document.getElementById('recent-user-id-list');
+        const recentUserNameList = document.getElementById('recent-user-name-list');
+
+        let selectedDayKey = null;
+        let currentDisplayDayKey = null;
+        let currentSortOrder = 'timestamp-asc';
+        let currentGifts = [];
+        let isLoadingGifts = false;
+        let isSubmittingGift = false;
+
+        const referenceData = {
+            giftsByName: new Map(),
+            usersById: new Map(),
+            usersByName: new Map()
+        };
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatTimestamp(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const date = new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
+            return date.toLocaleTimeString('ja-JP', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat('ja-JP').format(value || 0);
+        }
+
+        function setMessage(message, isError = false) {
+            messageBox.hidden = !message;
+            messageBox.textContent = message;
+            messageBox.style.color = isError ? '#a12d2f' : 'var(--muted)';
+            messageBox.style.borderColor = isError ? 'rgba(161, 45, 47, 0.25)' : 'var(--line)';
+        }
+
+        function syncSortOrderSelect() {
+            sortOrderSelect.value = currentSortOrder;
+        }
+
+        function getSortedGifts(gifts) {
+            const items = Array.isArray(gifts) ? [...gifts] : [];
+
+            items.sort((left, right) => {
+                const leftTime = Date.parse(left.timestamp || '') || 0;
+                const rightTime = Date.parse(right.timestamp || '') || 0;
+                const leftCoins = Number(left.totalGifts) || 0;
+                const rightCoins = Number(right.totalGifts) || 0;
+                const leftId = Number(left.id) || 0;
+                const rightId = Number(right.id) || 0;
+
+                if (currentSortOrder === 'coins-desc' || currentSortOrder === 'coins-asc') {
+                    if (leftCoins !== rightCoins) {
+                        return currentSortOrder === 'coins-desc'
+                            ? rightCoins - leftCoins
+                            : leftCoins - rightCoins;
+                    }
+
+                    if (leftTime !== rightTime) {
+                        return currentSortOrder === 'coins-desc'
+                            ? rightTime - leftTime
+                            : leftTime - rightTime;
+                    }
+
+                    return currentSortOrder === 'coins-desc'
+                        ? rightId - leftId
+                        : leftId - rightId;
+                }
+
+                if (leftTime !== rightTime) {
+                    return currentSortOrder === 'timestamp-asc'
+                        ? leftTime - rightTime
+                        : rightTime - leftTime;
+                }
+
+                return currentSortOrder === 'timestamp-asc'
+                    ? leftId - rightId
+                    : rightId - leftId;
+            });
+
+            return items;
+        }
+
+        function scrollToLatestGift() {
+            requestAnimationFrame(() => {
+                window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'smooth'
+                });
+            });
+        }
+
+        function renderTable(gifts) {
+            currentGifts = Array.isArray(gifts) ? [...gifts] : [];
+            tableBody.innerHTML = '';
+            emptyState.hidden = currentGifts.length > 0;
+
+            if (!currentGifts.length) {
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            const sortedGifts = getSortedGifts(currentGifts);
+
+            sortedGifts.forEach((gift) => {
+                const row = document.createElement('tr');
+                row.dataset.giftEventId = String(gift.id || '');
+                const giftImageMarkup = gift.giftImage
+                    ? `<img class="gift-image" src="${escapeHtml(gift.giftImage)}" alt="${escapeHtml(gift.giftName || 'gift')}">`
+                    : '<div class="gift-image is-empty">No Image</div>';
+
+                row.innerHTML = `
+                    <td>${escapeHtml(formatTimestamp(gift.timestamp))}</td>
+                    <td>
+                        <div class="user-cell">
+                            <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
+                            <span>@${escapeHtml(gift.uniqueId || '-')}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="gift-cell">
+                            ${giftImageMarkup}
+                            <div class="gift-meta">
+                                <strong>${escapeHtml(gift.giftName || '不明')}</strong>
+                                <span>ID: ${escapeHtml(gift.giftId || '-')}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(String(gift.repeatCount || 1))}</td>
+                    <td>${escapeHtml(formatNumber(gift.totalGifts))}</td>
+                    <td class="actions-cell">
+                        <button type="button" class="icon-button danger-button" data-delete-gift title="このギフト履歴を削除" aria-label="このギフト履歴を削除">🗑</button>
+                    </td>
+                `;
+                fragment.appendChild(row);
+            });
+
+            tableBody.appendChild(fragment);
+        }
+
+        function populateGiftSuggestions(gifts) {
+            giftNameList.innerHTML = Array.isArray(gifts)
+                ? gifts.map((gift) => `<option value="${escapeHtml(gift.name || '')}" label="${escapeHtml(`${gift.id || '-'} / ${gift.diamondCount || 0} coins`)}"></option>`).join('')
+                : '';
+            referenceData.giftsByName = new Map((gifts || []).map((gift) => [String(gift.name || ''), gift]));
+        }
+
+        function populateRecentUsers(users) {
+            recentUserIdList.innerHTML = Array.isArray(users)
+                ? users.map((user) => `<option value="${escapeHtml(user.uniqueId || '')}" label="${escapeHtml(user.nickname || user.uniqueId || '')}"></option>`).join('')
+                : '';
+            recentUserNameList.innerHTML = Array.isArray(users)
+                ? users.map((user) => `<option value="${escapeHtml(user.nickname || '')}" label="${escapeHtml(user.uniqueId || '')}"></option>`).join('')
+                : '';
+            referenceData.usersById = new Map((users || []).map((user) => [String(user.uniqueId || ''), user]));
+            referenceData.usersByName = new Map((users || []).map((user) => [String(user.nickname || ''), user]));
+        }
+
+        async function loadReferenceData() {
+            try {
+                const [giftResponse, userResponse] = await Promise.all([
+                    fetch('/api/tiktok/gifts'),
+                    fetch('/api/users/recent')
+                ]);
+                const giftPayload = await giftResponse.json();
+                const userPayload = await userResponse.json();
+                populateGiftSuggestions(Array.isArray(giftPayload.gifts) ? giftPayload.gifts : []);
+                populateRecentUsers(Array.isArray(userPayload.users) ? userPayload.users : []);
+            } catch {
+                populateGiftSuggestions([]);
+                populateRecentUsers([]);
+            }
+        }
+
+        function syncGiftDraftFromCatalog() {
+            const matchedGift = referenceData.giftsByName.get(modalGiftNameInput.value.trim());
+
+            if (!matchedGift) {
+                updateDraftTotalStatus();
+                return;
+            }
+
+            modalGiftIdInput.value = matchedGift.id || modalGiftIdInput.value;
+            modalGiftImageInput.value = matchedGift.imageUrl || modalGiftImageInput.value;
+            if (Number(matchedGift.diamondCount) > 0) {
+                modalDiamondCountInput.value = String(matchedGift.diamondCount);
+            }
+            updateDraftTotalStatus();
+        }
+
+        function syncUserDraftFromSuggestions() {
+            const idValue = modalUniqueIdInput.value.trim();
+            const nameValue = modalNicknameInput.value.trim();
+            const matchedUser = referenceData.usersById.get(idValue) || referenceData.usersByName.get(nameValue);
+
+            if (!matchedUser) {
+                return;
+            }
+
+            if (!modalUniqueIdInput.value.trim()) {
+                modalUniqueIdInput.value = matchedUser.uniqueId || '';
+            }
+
+            if (!modalNicknameInput.value.trim()) {
+                modalNicknameInput.value = matchedUser.nickname || matchedUser.uniqueId || '';
+            }
+
+            if (!modalProfileImageInput.value.trim()) {
+                modalProfileImageInput.value = matchedUser.image || '';
+            }
+        }
+
+        function updateDraftTotalStatus() {
+            const diamondCount = Number.parseInt(modalDiamondCountInput.value, 10) || 0;
+            const repeatCount = Number.parseInt(modalRepeatCountInput.value, 10) || 0;
+            modalTotalStatus.textContent = `合計 Coins: ${formatNumber(diamondCount * repeatCount)}`;
+        }
+
+        function resetGiftModal() {
+            modalUniqueIdInput.value = '';
+            modalNicknameInput.value = '';
+            modalProfileImageInput.value = '';
+            modalGiftNameInput.value = '';
+            modalGiftIdInput.value = '';
+            modalGiftImageInput.value = '';
+            modalDiamondCountInput.value = '1';
+            modalRepeatCountInput.value = '1';
+            modalDayStatus.textContent = `対象日: ${selectedDayKey || '-'}`;
+            updateDraftTotalStatus();
+        }
+
+        function openGiftModal() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            resetGiftModal();
+            giftModalBackdrop.hidden = false;
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => {
+                modalUniqueIdInput.focus();
+            });
+        }
+
+        function closeGiftModal() {
+            if (isSubmittingGift) {
+                return;
+            }
+
+            giftModalBackdrop.hidden = true;
+            document.body.style.overflow = '';
+        }
+
+        async function loadGifts(dayKey, options = {}) {
+            if (!dayKey || isLoadingGifts) {
+                return;
+            }
+
+            isLoadingGifts = true;
+
+            try {
+                const previousGiftCount = currentGifts.length;
+                const response = await fetch(`/api/gifts?dayKey=${encodeURIComponent(dayKey)}`);
+                const payload = await response.json();
+                const nextGifts = Array.isArray(payload.gifts) ? payload.gifts : [];
+                const shouldScrollToLatest = options.scrollToLatest === true
+                    && currentSortOrder === 'timestamp-asc'
+                    && nextGifts.length > previousGiftCount;
+
+                selectedDayKey = payload.dayKey;
+                dayInput.value = payload.dayKey;
+                renderTable(nextGifts);
+
+                if (shouldScrollToLatest) {
+                    scrollToLatestGift();
+                }
+            } finally {
+                isLoadingGifts = false;
+            }
+        }
+
+        async function refreshState() {
+            const response = await fetch('/api/state');
+            const payload = await response.json();
+            currentDisplayDayKey = payload.displayDayKey;
+            selectedDayKey = selectedDayKey || payload.todayDayKey || currentDisplayDayKey;
+            dayInput.value = selectedDayKey || '';
+            await loadGifts(selectedDayKey);
+        }
+
+        async function submitCustomGift() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            isSubmittingGift = true;
+            submitGiftModalButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/test-data/gifts/custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dayKey: selectedDayKey,
+                        uniqueId: modalUniqueIdInput.value.trim(),
+                        nickname: modalNicknameInput.value.trim(),
+                        profilePictureUrl: modalProfileImageInput.value.trim(),
+                        giftName: modalGiftNameInput.value.trim(),
+                        giftId: modalGiftIdInput.value.trim(),
+                        giftPictureUrl: modalGiftImageInput.value.trim(),
+                        diamondCount: modalDiamondCountInput.value,
+                        repeatCount: modalRepeatCountInput.value
+                    })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'テストデータの追加に失敗しました。');
+                }
+
+                closeGiftModal();
+                await loadGifts(selectedDayKey, { scrollToLatest: true });
+                await loadReferenceData();
+                setMessage(`${selectedDayKey} に ${payload.gift?.giftName || 'ギフト'} を追加しました。`);
+            } catch (error) {
+                setMessage(error.message || 'テストデータの追加に失敗しました。', true);
+            } finally {
+                isSubmittingGift = false;
+                submitGiftModalButton.disabled = false;
+            }
+        }
+
+        async function deleteGift(giftEventId) {
+            if (!selectedDayKey || !giftEventId) {
+                return;
+            }
+
+            if (!window.confirm('このギフト履歴を削除しますか。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/gifts?dayKey=${encodeURIComponent(selectedDayKey)}&giftEventId=${encodeURIComponent(giftEventId)}`, {
+                    method: 'DELETE'
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'ギフト履歴の削除に失敗しました。');
+                }
+
+                await loadGifts(selectedDayKey);
+                setMessage(`${payload.giftEvent?.giftName || 'ギフト'} を削除しました。`);
+            } catch (error) {
+                setMessage(error.message || 'ギフト履歴の削除に失敗しました。', true);
+            }
+        }
+
+        dayInput.addEventListener('change', () => {
+            if (!dayInput.value) {
+                return;
+            }
+
+            loadGifts(dayInput.value).catch(() => {
+                renderTable([]);
+            });
+        });
+
+        sortOrderSelect.addEventListener('change', () => {
+            currentSortOrder = sortOrderSelect.value;
+            syncSortOrderSelect();
+            renderTable(currentGifts);
+        });
+
+        addTestGiftsButton.addEventListener('click', () => {
+            openGiftModal();
+        });
+
+        closeGiftModalButton.addEventListener('click', closeGiftModal);
+        cancelGiftModalButton.addEventListener('click', closeGiftModal);
+        submitGiftModalButton.addEventListener('click', () => {
+            submitCustomGift().catch(() => {});
+        });
+
+        giftModalBackdrop.addEventListener('click', (event) => {
+            if (event.target === giftModalBackdrop) {
+                closeGiftModal();
+            }
+        });
+
+        modalGiftNameInput.addEventListener('change', syncGiftDraftFromCatalog);
+        modalGiftNameInput.addEventListener('blur', syncGiftDraftFromCatalog);
+        modalUniqueIdInput.addEventListener('change', syncUserDraftFromSuggestions);
+        modalUniqueIdInput.addEventListener('blur', syncUserDraftFromSuggestions);
+        modalNicknameInput.addEventListener('change', syncUserDraftFromSuggestions);
+        modalNicknameInput.addEventListener('blur', syncUserDraftFromSuggestions);
+        modalDiamondCountInput.addEventListener('input', updateDraftTotalStatus);
+        modalRepeatCountInput.addEventListener('input', updateDraftTotalStatus);
+
+        tableBody.addEventListener('click', (event) => {
+            const deleteButton = event.target.closest('[data-delete-gift]');
+
+            if (!deleteButton) {
+                return;
+            }
+
+            const row = deleteButton.closest('tr');
+            deleteGift(row?.dataset.giftEventId || '').catch(() => {});
+        });
+
+        socket.on('admin_day_updated', (payload) => {
+            currentDisplayDayKey = payload?.displayDayKey || currentDisplayDayKey;
+
+            if (!selectedDayKey && payload?.displayDayKey) {
+                selectedDayKey = payload.displayDayKey;
+                dayInput.value = selectedDayKey;
+            }
+
+            if (payload?.dayKey && payload.dayKey === selectedDayKey) {
+                loadGifts(selectedDayKey, { scrollToLatest: true }).catch(() => {
+                });
+            }
+        });
+
+        Promise.all([loadReferenceData(), refreshState()]).catch(() => {
+        });
+
+        syncSortOrderSelect();
+        updateDraftTotalStatus();
+    </script>
+</body>
+</html>

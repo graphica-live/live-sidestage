@@ -1,0 +1,98 @@
+:root {
+    --button-border: var(--line, rgba(24, 37, 58, 0.18));
+    --button-bg: rgba(255, 255, 255, 0.76);
+    --button-bg-hover: rgba(255, 255, 255, 0.96);
+    --button-text: var(--text, #18253a);
+    --button-primary-bg: var(--accent, #c2410c);
+    --button-primary-hover: var(--accent-strong, #9a3412);
+    --button-primary-text: #ffffff;
+    --button-danger-text: var(--danger, #b42318);
+    --button-danger-bg: rgba(180, 35, 24, 0.08);
+    --button-danger-bg-hover: rgba(180, 35, 24, 0.15);
+    --button-danger-border: rgba(180, 35, 24, 0.28);
+    --button-brand-bg: #161823;
+    --button-brand-hover: #2d2f3e;
+    --button-brand-text: #ffffff;
+    --button-focus-ring: rgba(194, 65, 12, 0.16);
+    --button-shadow-hover: 0 6px 16px rgba(24, 37, 58, 0.08);
+}
+
+button {
+    border: 1px solid var(--button-border);
+    border-radius: 2px;
+    padding: var(--button-padding, 10px 14px);
+    font: inherit;
+    cursor: pointer;
+    background: var(--button-bg);
+    color: var(--button-text);
+    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: var(--button-bg-hover);
+    box-shadow: var(--button-shadow-hover);
+}
+
+button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--button-focus-ring);
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+    transform: none;
+    box-shadow: none;
+}
+
+.primary,
+.primary-button {
+    background: var(--button-primary-bg);
+    border-color: var(--button-primary-bg);
+    color: var(--button-primary-text);
+}
+
+.primary:hover:not(:disabled),
+.primary-button:hover:not(:disabled) {
+    background: var(--button-primary-hover);
+    border-color: var(--button-primary-hover);
+}
+
+.danger,
+.danger-button {
+    background: var(--button-danger-bg);
+    border-color: var(--button-danger-border);
+    color: var(--button-danger-text);
+}
+
+.danger:hover:not(:disabled),
+.danger-button:hover:not(:disabled) {
+    background: var(--button-danger-bg-hover);
+    border-color: rgba(180, 35, 24, 0.34);
+}
+
+.ghost-button,
+.btn-secondary,
+.window-button {
+    background: #f9fbfd;
+    border-color: var(--button-border);
+    color: var(--button-text);
+}
+
+.ghost-button:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.window-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+.btn-tiktok-login {
+    background: var(--button-brand-bg);
+    border-color: var(--button-brand-bg);
+    color: var(--button-brand-text);
+}
+
+.btn-tiktok-login:hover:not(:disabled) {
+    background: var(--button-brand-hover);
+    border-color: var(--button-brand-hover);
+}

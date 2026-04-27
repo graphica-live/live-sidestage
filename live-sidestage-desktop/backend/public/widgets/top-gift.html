@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top Gift Overlay</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
+
+        :root {
+            --title-color: #ffffff;
+            --count-color: #fbbf24;
+            --name-color: #f8fafc;
+            --stroke-color: rgba(15, 23, 42, 0.96);
+            --shadow-color: rgba(15, 23, 42, 0.38);
+            --widget-font-family: "M PLUS Rounded 1c", "Yu Gothic UI", sans-serif;
+            --title-stroke-width: 5px;
+            --content-stroke-width: 4px;
+            --count-stroke-width: 3px;
+            --gift-width: 340px;
+            --gift-height: 250px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background: transparent;
+            overflow: hidden;
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+        }
+
+        body {
+            padding: 24px;
+            color: var(--title-color);
+            font-family: var(--widget-font-family);
+        }
+
+        .overlay {
+            display: none;
+            width: min(520px, calc(100vw - 48px));
+            justify-items: center;
+            gap: 0;
+            padding-top: 0;
+        }
+
+        .overlay.is-visible {
+            display: grid;
+        }
+
+        .title {
+            position: absolute;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 20px);
+            text-align: center;
+            font-size: 34px;
+            line-height: 1;
+            font-weight: 800;
+            color: var(--title-color);
+            -webkit-text-stroke: var(--title-stroke-width) var(--stroke-color);
+            paint-order: stroke fill;
+            text-shadow: 0 6px 18px var(--shadow-color);
+            margin-top: 0;
+            z-index: 2;
+        }
+
+        .gift-stage {
+            position: relative;
+            width: var(--gift-width);
+            min-height: calc(var(--gift-height) + 126px);
+            overflow: visible;
+        }
+
+        .gift-image {
+            display: block;
+            width: var(--gift-width);
+            height: var(--gift-height);
+            object-fit: contain;
+            background: transparent;
+        }
+
+        .info-stack {
+            position: absolute;
+            left: 50%;
+            top: calc(var(--gift-height) - 68px);
+            transform: translateX(-50%);
+            width: calc(100% - 24px);
+            display: grid;
+            gap: 0;
+            justify-items: center;
+        }
+
+        .coin-count,
+        .senders {
+            text-align: center;
+            font-weight: 800;
+            line-height: 0.92;
+            -webkit-text-stroke: var(--content-stroke-width) var(--stroke-color);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow-color);
+            position: static;
+            left: auto;
+            transform: none;
+            width: 100%;
+        }
+
+        .coin-count {
+            color: var(--count-color);
+            font-size: 28px;
+            -webkit-text-stroke-width: var(--count-stroke-width);
+            order: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .coin-count small {
+            display: none;
+        }
+
+        .coin-icon {
+            flex: 0 0 auto;
+            width: 28px;
+            height: 28px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='coin' cx='35%25' cy='30%25' r='70%25'%3E%3Cstop offset='0%25' stop-color='%23fff7b3'/%3E%3Cstop offset='55%25' stop-color='%23f5c542'/%3E%3Cstop offset='100%25' stop-color='%23d48a14'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23coin)'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23fff4a3' stroke-width='4'/%3E%3Cpath d='M32 18l6 10 10 4-10 4-6 10-6-10-10-4 10-4z' fill='%23fff8d6' opacity='.95'/%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.35));
+        }
+
+        .senders {
+            color: var(--name-color);
+        }
+
+        .senders {
+            display: grid;
+            gap: 0;
+            font-size: 30px;
+            -webkit-text-stroke-width: var(--title-stroke-width);
+            text-shadow: 0 6px 18px rgba(15, 23, 42, 0.52);
+            order: 3;
+        }
+
+        .senders.is-single {
+            display: block;
+        }
+
+        @media (max-width: 640px) {
+            :root {
+                --gift-width: 220px;
+                --gift-height: 162px;
+            }
+
+            body {
+                padding: 12px;
+            }
+
+            .overlay {
+                width: calc(100vw - 24px);
+            }
+
+            .title {
+                font-size: 26px;
+                -webkit-text-stroke-width: 4px;
+                top: 16px;
+            }
+
+            .gift-stage {
+                min-height: calc(var(--gift-height) + 88px);
+            }
+
+            .info-stack {
+                top: calc(var(--gift-height) - 46px);
+            }
+
+            .coin-count {
+                font-size: 20px;
+                -webkit-text-stroke-width: 3px;
+                gap: 6px;
+            }
+
+            .coin-icon {
+                width: 20px;
+                height: 20px;
+            }
+
+            .senders {
+                font-size: 20px;
+                -webkit-text-stroke-width: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="overlay" id="overlay">
+        <div class="gift-stage">
+            <div class="title" id="title"></div>
+            <img class="gift-image" id="gift-image" alt="gift">
+            <div class="info-stack">
+                <div class="coin-count" id="gift-amount"></div>
+                <div class="senders" id="sender"></div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const socket = io();
+        const overlay = document.getElementById('overlay');
+        const title = document.getElementById('title');
+        const giftImage = document.getElementById('gift-image');
+        const giftAmount = document.getElementById('gift-amount');
+        const sender = document.getElementById('sender');
+        const topGiftFonts = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            mincho: '"Noto Serif JP", serif',
+            'ud-gothic': '"Kosugi", sans-serif',
+            'ud-mincho': '"Zen Old Mincho", serif',
+            meiryo: '"Klee One", cursive',
+            rounded: '"Zen Maru Gothic", sans-serif',
+            kyokasho: '"Klee One", cursive',
+            gyosho: '"Yuji Syuku", cursive',
+            togarie: '"Dela Gothic One", sans-serif',
+            'ln-pop': '"Mochiy Pop One", sans-serif',
+            'comic-impact': '"Rampart One", sans-serif',
+            'pop-idol': '"Hachi Maru Pop", cursive',
+            entame: '"RocknRoll One", sans-serif',
+            marker: '"Yusei Magic", cursive',
+            'retro-bold': '"Kaisei Decol", serif',
+            'luxury-mincho': '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush': '"Yuji Mai", cursive',
+            'pixel-code': '"DotGothic16", "Noto Sans JP", sans-serif'
+        };
+        const topGiftTextStyles = {
+            'gold-night': { fillColor: '#ffffff', countColor: '#fbbf24', noteColor: 'rgba(241, 245, 249, 0.9)', strokeColor: 'rgba(15, 23, 42, 0.96)', textShadow: 'rgba(15, 23, 42, 0.34)' },
+            'ice-night': { fillColor: '#dbeafe', countColor: '#93c5fd', noteColor: 'rgba(191, 219, 254, 0.9)', strokeColor: 'rgba(23, 37, 84, 0.95)', textShadow: 'rgba(23, 37, 84, 0.35)' },
+            'candy-pop': { fillColor: '#ffe4f1', countColor: '#f472b6', noteColor: 'rgba(251, 207, 232, 0.92)', strokeColor: 'rgba(131, 24, 67, 0.95)', textShadow: 'rgba(131, 24, 67, 0.35)' },
+            'mint-lime': { fillColor: '#f7fee7', countColor: '#bef264', noteColor: 'rgba(217, 249, 157, 0.94)', strokeColor: 'rgba(20, 83, 45, 0.97)', textShadow: 'rgba(20, 83, 45, 0.37)' },
+            'sunset-party': { fillColor: '#ffedd5', countColor: '#fb923c', noteColor: 'rgba(254, 215, 170, 0.92)', strokeColor: 'rgba(124, 45, 18, 0.95)', textShadow: 'rgba(124, 45, 18, 0.35)' },
+            'violet-flash': { fillColor: '#ede9fe', countColor: '#c4b5fd', noteColor: 'rgba(221, 214, 254, 0.9)', strokeColor: 'rgba(49, 46, 129, 0.95)', textShadow: 'rgba(49, 46, 129, 0.35)' },
+            'mono-impact': { fillColor: '#ffffff', countColor: '#ffffff', noteColor: 'rgba(229, 231, 235, 0.95)', strokeColor: 'rgba(17, 24, 39, 1)', textShadow: 'rgba(17, 24, 39, 0.4)' },
+            'sakura-bloom': { fillColor: '#fdf2f8', countColor: '#f9a8d4', noteColor: 'rgba(252, 231, 243, 0.92)', strokeColor: 'rgba(157, 23, 77, 0.96)', textShadow: 'rgba(157, 23, 77, 0.34)' },
+            'ocean-glow': { fillColor: '#ecfeff', countColor: '#67e8f9', noteColor: 'rgba(165, 243, 252, 0.92)', strokeColor: 'rgba(22, 78, 99, 0.96)', textShadow: 'rgba(8, 47, 73, 0.34)' },
+            'emerald-city': { fillColor: '#ecfdf5', countColor: '#6ee7b7', noteColor: 'rgba(167, 243, 208, 0.92)', strokeColor: 'rgba(6, 78, 59, 0.96)', textShadow: 'rgba(6, 78, 59, 0.34)' },
+            'ruby-flare': { fillColor: '#fff1f2', countColor: '#fb7185', noteColor: 'rgba(254, 205, 211, 0.92)', strokeColor: 'rgba(63, 13, 18, 0.96)', textShadow: 'rgba(127, 29, 29, 0.34)' },
+            'lemon-pop': { fillColor: '#fefce8', countColor: '#fde047', noteColor: 'rgba(254, 249, 195, 0.92)', strokeColor: 'rgba(30, 58, 138, 0.96)', textShadow: 'rgba(30, 58, 138, 0.34)' },
+            'midnight-aqua': { fillColor: '#f0fdfa', countColor: '#5eead4', noteColor: 'rgba(153, 246, 228, 0.92)', strokeColor: 'rgba(15, 23, 42, 0.98)', textShadow: 'rgba(15, 23, 42, 0.38)' },
+            'peach-fizz': { fillColor: '#fff7ed', countColor: '#fdba74', noteColor: 'rgba(254, 215, 170, 0.92)', strokeColor: 'rgba(127, 29, 29, 0.94)', textShadow: 'rgba(127, 29, 29, 0.34)' },
+            'festival-red': { fillColor: '#fef2f2', countColor: '#f87171', noteColor: 'rgba(252, 165, 165, 0.92)', strokeColor: 'rgba(31, 41, 55, 0.98)', textShadow: 'rgba(31, 41, 55, 0.36)' },
+            'rose-gold': { fillColor: '#fffaf7', countColor: '#f8b4a6', noteColor: 'rgba(254, 226, 214, 0.96)', strokeColor: 'rgba(91, 52, 46, 0.98)', textShadow: 'rgba(91, 52, 46, 0.38)' },
+            'cyber-teal': { fillColor: '#f0fdff', countColor: '#67e8f9', noteColor: 'rgba(165, 243, 252, 0.94)', strokeColor: 'rgba(15, 39, 64, 0.99)', textShadow: 'rgba(15, 39, 64, 0.38)' },
+            'aurora-dream': { fillColor: '#faf5ff', countColor: '#e9d5ff', noteColor: 'rgba(233, 213, 255, 0.94)', strokeColor: 'rgba(76, 29, 149, 0.98)', textShadow: 'rgba(76, 29, 149, 0.38)' },
+            'coral-soda': { fillColor: '#fff1f2', countColor: '#fb7185', noteColor: 'rgba(254, 205, 211, 0.96)', strokeColor: 'rgba(127, 29, 29, 0.98)', textShadow: 'rgba(127, 29, 29, 0.38)' },
+            'platinum-pop': { fillColor: '#ffffff', countColor: '#e2e8f0', noteColor: 'rgba(226, 232, 240, 0.98)', strokeColor: 'rgba(30, 41, 59, 0.98)', textShadow: 'rgba(30, 41, 59, 0.38)' },
+            'champagne-shine': { fillColor: ['#fff8db', '#f3d58a', '#fff2c2'], countColor: ['#fff3bf', '#d9a441', '#fff8db'], noteColor: 'rgba(255, 244, 214, 0.96)', strokeColor: 'rgba(107, 79, 42, 0.98)', textShadow: 'rgba(107, 79, 42, 0.34)' },
+            'royal-velvet': { fillColor: ['#f5e9ff', '#c084fc', '#e9d5ff'], countColor: ['#ddd6fe', '#8b5cf6', '#f5d0fe'], noteColor: 'rgba(233, 213, 255, 0.94)', strokeColor: 'rgba(49, 46, 129, 0.98)', textShadow: 'rgba(49, 46, 129, 0.34)' },
+            'emerald-luxe': { fillColor: ['#ecfdf5', '#86efac', '#d1fae5'], countColor: ['#d1fae5', '#10b981', '#a7f3d0'], noteColor: 'rgba(209, 250, 229, 0.94)', strokeColor: 'rgba(20, 83, 45, 0.98)', textShadow: 'rgba(20, 83, 45, 0.34)' },
+            'sunrise-opal': { fillColor: ['#fff7ed', '#fdba74', '#f9a8d4'], countColor: ['#fde68a', '#fb7185', '#fdba74'], noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(154, 52, 18, 0.98)', textShadow: 'rgba(154, 52, 18, 0.34)' }
+        };
+
+        function normalizeTopGiftFontKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return topGiftFonts[normalizedValue] ? normalizedValue : 'default';
+        }
+
+        function getTopGiftFontFamily(value) {
+            return topGiftFonts[normalizeTopGiftFontKey(value)] || topGiftFonts.default;
+        }
+
+        function normalizeTopGiftTextStyleKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return topGiftTextStyles[normalizedValue] ? normalizedValue : 'gold-night';
+        }
+
+        function getTopGiftTextStyle(value) {
+            return topGiftTextStyles[normalizeTopGiftTextStyleKey(value)] || topGiftTextStyles['gold-night'];
+        }
+
+        function getPreviewColor(value, fallback) {
+            if (Array.isArray(value)) {
+                return value.find((item) => typeof item === 'string' && item.trim()) || fallback;
+            }
+
+            return typeof value === 'string' && value.trim() ? value : fallback;
+        }
+
+        function normalizeTopGiftStrokeWidth(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 1) {
+                return 4;
+            }
+
+            return Math.min(parsed, 12);
+        }
+
+        function applySharedAppearance(appearance = {}) {
+            const fontFamily = getTopGiftFontFamily(appearance.fontKey);
+            const textStyle = getTopGiftTextStyle(appearance.textStyleKey);
+            const strokeWidth = normalizeTopGiftStrokeWidth(appearance.strokeWidth);
+            const rootStyle = document.documentElement.style;
+
+            rootStyle.setProperty('--widget-font-family', fontFamily);
+            rootStyle.setProperty('--title-color', getPreviewColor(textStyle.noteColor, '#f8fafc'));
+            rootStyle.setProperty('--count-color', getPreviewColor(textStyle.countColor, '#fbbf24'));
+            rootStyle.setProperty('--name-color', getPreviewColor(textStyle.fillColor, '#ffffff'));
+            rootStyle.setProperty('--stroke-color', getPreviewColor(textStyle.strokeColor, 'rgba(15, 23, 42, 0.96)'));
+            rootStyle.setProperty('--shadow-color', getPreviewColor(textStyle.textShadow, 'rgba(15, 23, 42, 0.38)'));
+            rootStyle.setProperty('--title-stroke-width', `${Math.min(strokeWidth + 1, 12)}px`);
+            rootStyle.setProperty('--content-stroke-width', `${strokeWidth}px`);
+            rootStyle.setProperty('--count-stroke-width', `${Math.max(1, strokeWidth - 1)}px`);
+        }
+
+        function hideOverlay() {
+            overlay.classList.remove('is-visible');
+        }
+
+        function render(payload) {
+            const settings = payload?.settings || {};
+            const snapshot = payload?.snapshot || {};
+            const topGift = snapshot.topGift || null;
+
+            applySharedAppearance(settings.appearance);
+
+            if (!topGift) {
+                hideOverlay();
+                return;
+            }
+
+            title.textContent = settings.title || '本日最高ギフト';
+            giftAmount.innerHTML = `<span class="coin-icon" aria-hidden="true"></span><span>${Number(topGift.totalGifts || 0).toLocaleString()}</span><small>coins</small>`;
+
+            const senders = Array.isArray(topGift.senders) ? topGift.senders.filter(Boolean) : [];
+            const senderMode = settings.senderDisplayMode === 'all' ? 'all' : 'latest';
+            const visibleSenders = senderMode === 'all'
+                ? senders
+                : [topGift.latestSender || senders.at(-1) || topGift.nickname || topGift.uniqueId || ''];
+
+            sender.classList.toggle('is-single', visibleSenders.length <= 1);
+            sender.innerHTML = visibleSenders
+                .filter(Boolean)
+                .map((name) => `<div>${String(name)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')}</div>`)
+                .join('');
+            if (!topGift.giftImage) {
+                giftImage.style.visibility = 'hidden';
+            } else {
+                giftImage.style.visibility = 'visible';
+                giftImage.src = topGift.giftImage;
+            }
+
+            overlay.classList.add('is-visible');
+        }
+
+        async function refresh() {
+            const response = await fetch('/api/widgets/top-gift/snapshot');
+            const payload = await response.json();
+            render(payload);
+        }
+
+        socket.on('admin_day_updated', () => {
+            refresh().catch(() => {});
+        });
+
+        socket.on('widgets:top-gift:updated', (payload) => {
+            render(payload);
+        });
+
+        refresh().catch(() => {});
+        setInterval(() => {
+            refresh().catch(() => {});
+        }, 10000);
+    </script>
+</body>
+</html>

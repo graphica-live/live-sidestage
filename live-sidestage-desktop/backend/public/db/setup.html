@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok ID Setup</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --danger: #b42318;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+            padding: 24px;
+        }
+
+        .panel {
+            width: min(560px, 100%);
+            padding: 28px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        h1,
+        p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 32px;
+            line-height: 1.1;
+        }
+
+        .subtext {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.75;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 16px;
+            min-height: 24px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .status.error {
+            color: var(--danger);
+        }
+
+        .tiktok-auth-section {
+            margin-top: 28px;
+            padding-top: 22px;
+            border-top: 1px solid var(--line);
+        }
+
+        .tiktok-auth-section h2 {
+            font-size: 18px;
+            margin: 0 0 8px;
+        }
+
+        .tiktok-auth-status {
+            margin-top: 10px;
+            padding: 10px 14px;
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.55);
+            font-size: 13px;
+            line-height: 1.55;
+            color: var(--muted);
+        }
+
+        .tiktok-auth-status.is-success {
+            color: #166534;
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.78);
+        }
+
+        .tiktok-auth-status.is-warning {
+            color: #9a3412;
+            border-color: rgba(154, 52, 18, 0.22);
+            background: rgba(255, 247, 237, 0.82);
+        }
+
+        .btn-tiktok-login {
+            margin-top: 12px;
+            width: 100%;
+        }
+
+        .button-row {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <main class="panel">
+        <h1>TikTok 認証</h1>
+        <p class="subtext">このアプリは Electron での TikTok ログイン後に認証アカウントの配信ユーザーIDを自動取得します。認証は Electron 版のみ対応です。</p>
+
+        <div class="status" id="status-message">設定を確認しています。</div>
+
+        <section class="tiktok-auth-section" id="tiktok-auth-section" hidden>
+            <h2>WebSocket 認証 (Electron)</h2>
+            <p class="subtext">一部の配信では WebSocket 認証が必要な場合があります。下のボタンから TikTok にログインすると認証情報を自動取得します。</p>
+            <div class="tiktok-auth-status" id="tiktok-auth-status">認証状態を読み込み中...</div>
+            <div class="button-row">
+                <button type="button" class="btn-tiktok-login" id="tiktok-login-button">TikTok にログインして認証</button>
+                <button type="button" class="btn-secondary" id="back-to-admin-button" hidden>管理画面に戻る</button>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const statusMessage = document.getElementById('status-message');
+        const currentUrl = new URL(window.location.href);
+        const isSwitchMode = currentUrl.searchParams.get('mode') === 'switch';
+
+        function setStatus(message, isError = false) {
+            statusMessage.textContent = message;
+            statusMessage.classList.toggle('error', isError);
+        }
+
+        async function checkCurrentState() {
+            try {
+                const response = await fetch('/api/state');
+                const payload = await response.json();
+
+                if (payload.broadcasterIdConfigured && payload.broadcasterId) {
+                    if (isSwitchMode) {
+                        setStatus(`現在の配信ユーザーID: @${payload.broadcasterId}。別アカウントへ切り替えるには TikTok に再ログインしてください。`);
+                        return;
+                    }
+
+                    window.location.replace('/admin');
+                    return;
+                }
+
+                setStatus(isSwitchMode ? '新しいアカウントで TikTok に再ログインしてください。' : 'TikTok にログインして認証を完了してください。');
+            } catch (error) {
+                setStatus('現在の設定確認に失敗しました。', true);
+            }
+        }
+
+        checkCurrentState();
+
+        // TikTok認証セクション
+        (async function initTikTokAuthSection() {
+            const section = document.getElementById('tiktok-auth-section');
+            const statusEl = document.getElementById('tiktok-auth-status');
+            const loginButton = document.getElementById('tiktok-login-button');
+            const backToAdminButton = document.getElementById('back-to-admin-button');
+            let isRedirectingToAdmin = false;
+            let initialBroadcasterId = null;
+            let hasStartedLogin = false;
+
+            try {
+                const response = await fetch('/api/state');
+                const payload = await response.json();
+
+                if (!payload.isElectron) {
+                    setStatus('この認証画面は Electron 版専用です。TikTok 認証は Electron で起動したアプリから実行してください。', true);
+                    return;
+                }
+
+                section.hidden = false;
+                initialBroadcasterId = payload.broadcasterId || null;
+
+                if (isSwitchMode) {
+                    backToAdminButton.hidden = false;
+                }
+
+                function syncAuthStatus(conn) {
+                    if (!conn) {
+                        statusEl.textContent = 'TikTok 接続状態を取得中です。';
+                        statusEl.className = 'tiktok-auth-status';
+                        return;
+                    }
+
+                    if (conn.wsAuthAvailable) {
+                        statusEl.className = 'tiktok-auth-status is-success';
+                        statusEl.textContent = 'WebSocket 認証情報が設定済みです。';
+                    } else {
+                        statusEl.className = 'tiktok-auth-status is-warning';
+                        statusEl.textContent = conn.websocketReasonLabel
+                            ? `未認証: ${conn.websocketReasonLabel}`
+                            : 'WebSocket 認証情報が未設定です。TikTok にログインしてください。';
+                    }
+                }
+
+                function syncBroadcasterBinding(data) {
+                    if (!data?.broadcasterIdConfigured || !data?.broadcasterId || isRedirectingToAdmin) {
+                        return;
+                    }
+
+                    if (isSwitchMode && data.broadcasterId === initialBroadcasterId) {
+                        if (!hasStartedLogin || !data?.tiktokConnection?.wsAuthAvailable) {
+                            return;
+                        }
+
+                        setStatus('同じアカウントで認証されました。別アカウントに切り替えるには、ログインウィンドウでログアウトしてから別アカウントでログインしてください。必要なら管理画面に戻れます。', true);
+                        return;
+                    }
+
+                    setStatus(`認証アカウントから @${data.broadcasterId} を自動設定しました。管理画面へ移動します。`);
+                    isRedirectingToAdmin = true;
+                    window.location.replace('/admin');
+                }
+
+                async function startTikTokLogin() {
+                    loginButton.disabled = true;
+                    backToAdminButton.disabled = true;
+                    loginButton.textContent = 'TikTok ログインウィンドウを開いています...';
+                    isRedirectingToAdmin = false;
+                    hasStartedLogin = false;
+
+                    try {
+                        const response = await fetch('/api/tiktok-login/start', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                switchMode: isSwitchMode,
+                                currentBroadcasterId: initialBroadcasterId
+                            })
+                        });
+                        const payload = await response.json().catch(() => ({}));
+
+                        if (!response.ok) {
+                            throw new Error(payload.error || 'ログインウィンドウの起動に失敗しました。');
+                        }
+
+                        hasStartedLogin = true;
+                        statusEl.className = 'tiktok-auth-status';
+                        statusEl.textContent = isSwitchMode
+                            ? '別アカウントへ切り替える場合は、ログインウィンドウでログアウトしてから別アカウントでログインしてください。'
+                            : 'TikTok にログインすると認証情報と配信ユーザーIDを自動取得します。';
+                    } catch (error) {
+                        statusEl.className = 'tiktok-auth-status is-warning';
+                        statusEl.textContent = error.message || 'ログインウィンドウの起動に失敗しました。';
+                    } finally {
+                        loginButton.disabled = false;
+                        backToAdminButton.disabled = false;
+                        loginButton.textContent = 'TikTok にログインして認証';
+                    }
+                }
+
+                syncAuthStatus(payload.tiktokConnection);
+                syncBroadcasterBinding(payload);
+
+                // Socket.IO でリアルタイム更新
+                if (typeof io !== 'undefined') {
+                    const socket = io();
+                    socket.on('admin_day_updated', (data) => {
+                        syncAuthStatus(data.tiktokConnection);
+                        syncBroadcasterBinding(data);
+                    });
+                }
+
+                loginButton.addEventListener('click', () => {
+                    startTikTokLogin();
+                });
+
+                backToAdminButton.addEventListener('click', () => {
+                    window.location.replace('/admin');
+                });
+            } catch (error) {
+                // 状態取得失敗時はセクションを展開しない
+            }
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "38100:38100"
+    environment:
+      - NODE_ENV=development
+      - TIKTOK_USERNAME=${TIKTOK_USERNAME:-yu_ki_nojo}
+      - TIKTOK_SESSION_ID=${TIKTOK_SESSION_ID:-}
+    command: npm run backend:dev
+  overlay-contributors:
+    build: .
+    depends_on:
+      - backend
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "38101:38101"
+    environment:
+      - NODE_ENV=development
+      - OVERLAY_PORT=38101
+      - OVERLAY_BACKEND_ORIGIN=http://localhost:38100
+    command: npm run overlay:contributors:dev

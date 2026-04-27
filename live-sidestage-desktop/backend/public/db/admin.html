@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Coins</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(1200px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, h3, p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 32px;
+            line-height: 1.1;
+            margin-bottom: 8px;
+        }
+
+        .subtext {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .header-panel h1 {
+            margin-bottom: 0;
+        }
+
+        .status-row {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-label {
+            color: var(--muted);
+        }
+
+        .status-value {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .db-panel {
+            min-width: 0;
+        }
+
+        .stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .date-picker {
+            position: relative;
+        }
+
+        .day-input {
+            width: 170px;
+            cursor: pointer;
+        }
+
+        .date-picker.open .day-input {
+            border-color: rgba(15, 118, 110, 0.45);
+            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+        }
+
+        .date-picker-popover {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            z-index: 20;
+            width: min(320px, calc(100vw - 48px));
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            background: rgba(255, 250, 241, 0.98);
+            box-shadow: var(--shadow);
+        }
+
+        .date-picker-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .date-picker-month {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .calendar-nav {
+            width: 40px;
+            padding: 8px 0;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .calendar-nav:disabled {
+            cursor: default;
+            opacity: 0.4;
+            transform: none;
+        }
+
+        .date-picker-weekdays,
+        .date-picker-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .date-picker-weekdays {
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .calendar-weekday,
+        .calendar-spacer,
+        .calendar-day {
+            min-height: 38px;
+            display: grid;
+            place-items: center;
+        }
+
+        .calendar-day {
+            padding: 0;
+            border-radius: 2px;
+        }
+
+        .calendar-day.is-selected {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .calendar-day.is-display:not(.is-selected) {
+            border-color: rgba(15, 118, 110, 0.45);
+            color: var(--accent-strong);
+        }
+
+        .calendar-day:disabled {
+            cursor: default;
+            background: rgba(45, 39, 32, 0.05);
+            color: rgba(111, 103, 95, 0.45);
+            transform: none;
+        }
+
+        .calendar-empty {
+            padding: 18px 0 8px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.56);
+            font-size: 14px;
+        }
+
+        .status.is-success {
+            color: #166534;
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.78);
+        }
+
+        .status.is-warning {
+            color: #9a3412;
+            border-color: rgba(154, 52, 18, 0.22);
+            background: rgba(255, 247, 237, 0.82);
+        }
+
+        .status.is-error {
+            color: #a12d2f;
+            border-color: rgba(161, 45, 47, 0.25);
+            background: rgba(254, 242, 242, 0.82);
+        }
+
+        .status-message {
+            flex-basis: 100%;
+            margin-bottom: 0;
+        }
+
+        .meta-row {
+            margin-top: 12px;
+            margin-bottom: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .status-stack {
+            display: grid;
+            gap: 6px;
+            flex: 1 1 420px;
+            min-width: min(100%, 420px);
+        }
+
+        .connection-detail {
+            padding: 11px 13px;
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.62);
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.55;
+            white-space: pre-line;
+        }
+
+        .connection-detail.is-success {
+            color: #166534;
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.78);
+        }
+
+        .connection-detail.is-warning {
+            color: #9a3412;
+            border-color: rgba(154, 52, 18, 0.22);
+            background: rgba(255, 247, 237, 0.82);
+        }
+
+        .connection-detail.is-error {
+            color: #a12d2f;
+            border-color: rgba(161, 45, 47, 0.25);
+            background: rgba(254, 242, 242, 0.82);
+        }
+
+        .day-list {
+            margin-top: 18px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .day-item {
+            width: 100%;
+            text-align: left;
+            display: grid;
+            gap: 2px;
+        }
+
+        .day-item strong {
+            font-size: 15px;
+        }
+
+        .day-item span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: middle;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(45, 39, 32, 0.08);
+            object-fit: cover;
+        }
+
+        .empty {
+            padding: 28px 0;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .action-cell {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .small-button {
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+
+        .coin-input {
+            width: 110px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 10px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+        }
+
+        .name-input {
+            min-width: 180px;
+            max-width: 260px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 10px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+        }
+
+        .stat-input {
+            width: 100%;
+            margin-top: 6px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 24px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+        }
+
+        .stat-select {
+            width: 100%;
+            margin-top: 6px;
+        }
+
+        .threshold-input-row {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .threshold-input-row .stat-input {
+            margin-top: 0;
+        }
+
+        .threshold-suffix {
+            font-size: 24px;
+            color: var(--muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .glow-card {
+            grid-column: 1 / -1;
+        }
+
+        .glow-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .glow-card-copy {
+            margin-top: 6px;
+        }
+
+        .glow-rule-list {
+            margin-top: 14px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .glow-rule-row {
+            display: grid;
+            grid-template-columns: minmax(140px, 180px) minmax(180px, 1fr) 48px;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .glow-rule-field {
+            display: grid;
+            gap: 6px;
+        }
+
+        .glow-rule-field label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .glow-rule-input,
+        .glow-rule-select {
+            width: 100%;
+        }
+
+        .icon-button {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .glow-rule-empty {
+            padding: 16px;
+            border: 1px dashed var(--line);
+            border-radius: 2px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.36);
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .content {
+                overflow-x: auto;
+            }
+
+            .glow-rule-row {
+                grid-template-columns: 1fr;
+            }
+
+            .glow-card-header {
+                align-items: stretch;
+                flex-direction: column;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <header class="panel header-panel">
+            <h1>ユーザーコイン数</h1>
+            <p class="subtext">指定した日付のコイン集計を一覧表示します。日付変更は即時に OBS 表示へ反映されます。</p>
+
+            <div class="status-row">
+                <div class="status">
+                    <span class="status-label">表示日</span>
+                    <span class="status-value" id="selected-day-status">未選択</span>
+                </div>
+                <div class="status">
+                    <span class="status-label">合計コイン</span>
+                    <span class="status-value" id="total-coins">0</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="panel content db-panel">
+            <div class="control-row">
+                <button type="button" id="today-button">前日</button>
+                <button type="button" id="yesterday-button">翌日</button>
+                <div class="date-picker" id="day-picker">
+                    <input type="text" id="day-input" class="day-input" placeholder="日付を選択" readonly>
+                    <div class="date-picker-popover" id="day-picker-popover" hidden>
+                        <div class="date-picker-header">
+                            <button type="button" class="calendar-nav" id="calendar-prev-month" aria-label="前の月">◀</button>
+                            <div class="date-picker-month" id="calendar-month-label">-</div>
+                            <button type="button" class="calendar-nav" id="calendar-next-month" aria-label="次の月">▶</button>
+                        </div>
+                        <div class="date-picker-weekdays">
+                            <div class="calendar-weekday">日</div>
+                            <div class="calendar-weekday">月</div>
+                            <div class="calendar-weekday">火</div>
+                            <div class="calendar-weekday">水</div>
+                            <div class="calendar-weekday">木</div>
+                            <div class="calendar-weekday">金</div>
+                            <div class="calendar-weekday">土</div>
+                        </div>
+                        <div class="date-picker-grid" id="calendar-grid"></div>
+                        <div class="calendar-empty" id="calendar-empty" hidden>保存済みデータがある日だけ選べます。</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="danger-row">
+                <button type="button" id="add-test-contributors-button">テストデータを追加</button>
+                <button type="button" class="danger" id="reset-day-button">選択日の全件削除</button>
+                <div class="status status-message" id="message-box" hidden>操作待ち</div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>ユーザー</th>
+                        <th>Unique ID</th>
+                        <th>Coins</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+
+            <div class="empty" id="empty-state" hidden>この日付のデータはまだありません。</div>
+        </main>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const selectedDayStatus = document.getElementById('selected-day-status');
+        const totalCoins = document.getElementById('total-coins');
+        const tableBody = document.getElementById('table-body');
+        const emptyState = document.getElementById('empty-state');
+        const dayPicker = document.getElementById('day-picker');
+        const dayInput = document.getElementById('day-input');
+        const dayPickerPopover = document.getElementById('day-picker-popover');
+        const calendarPrevMonthButton = document.getElementById('calendar-prev-month');
+        const calendarNextMonthButton = document.getElementById('calendar-next-month');
+        const calendarMonthLabel = document.getElementById('calendar-month-label');
+        const calendarGrid = document.getElementById('calendar-grid');
+        const calendarEmpty = document.getElementById('calendar-empty');
+        const todayButton = document.getElementById('today-button');
+        const yesterdayButton = document.getElementById('yesterday-button');
+        const thresholdInput = null;
+        const goalInput = null;
+        const avatarVisibilityInput = null;
+        const fontFamilyInput = null;
+        const colorThemeInput = null;
+        const strokeWidthInput = null;
+        const milestoneEffectInput = null;
+        const milestoneRuleList = null;
+        const addMilestoneRuleButton = null;
+        const sortOrderInput = null;
+        const addTestContributorsButton = document.getElementById('add-test-contributors-button');
+        const resetDayButton = document.getElementById('reset-day-button');
+        const messageBox = document.getElementById('message-box');
+
+        let currentDisplayDayKey = null;
+        let currentBroadcasterId = null;
+        let todayDayKey = null;
+        let yesterdayDayKey = null;
+        let selectedDayKey = null;
+        let currentContributors = [];
+        let isRealtimeSyncPaused = false;
+        let refreshTimer = null;
+        const pendingSaveTimers = new Map();
+        let availableDays = [];
+        let availableDayKeys = new Set();
+        let availableMonthKeys = [];
+        let visibleCalendarMonthKey = null;
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat('ja-JP').format(value);
+        }
+
+        function formatCompactCoinValue(value) {
+            if (value >= 1000) {
+                return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+            }
+
+            return formatNumber(value);
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatTimestamp(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const date = new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
+            return date.toLocaleTimeString('ja-JP', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function getTikTokConnectionTone(connection) {
+            if (connection.status === 'connected') {
+                return 'is-success';
+            }
+
+            switch (connection.status) {
+                case 'offline':
+                case 'error':
+                    return 'is-error';
+                case 'retrying':
+                case 'connecting':
+                    return 'is-warning';
+                default:
+                    return '';
+            }
+        }
+
+        function setMessage(message, isError = false) {
+            messageBox.hidden = !message;
+            messageBox.textContent = message;
+            messageBox.style.color = isError ? '#a12d2f' : 'var(--muted)';
+            messageBox.style.borderColor = isError ? 'rgba(161, 45, 47, 0.25)' : 'var(--line)';
+        }
+
+        function parseDayKey(dayKey) {
+            const match = String(dayKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+            if (!match) {
+                return null;
+            }
+
+            return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        }
+
+        function addDaysToDayKey(dayKey, offsetDays) {
+            const date = parseDayKey(dayKey);
+
+            if (!date || !Number.isInteger(offsetDays)) {
+                return null;
+            }
+
+            date.setUTCDate(date.getUTCDate() + offsetDays);
+
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function getMonthKey(dayKey) {
+            const match = String(dayKey || '').match(/^(\d{4})-(\d{2})/);
+            return match ? `${match[1]}-${match[2]}` : null;
+        }
+
+        function getCalendarAnchorDayKey() {
+            return selectedDayKey || currentDisplayDayKey || availableDays[availableDays.length - 1]?.dayKey || todayDayKey || null;
+        }
+
+        function syncAvailableDays(days) {
+            availableDays = [...(days || [])].sort((left, right) => left.dayKey.localeCompare(right.dayKey));
+            availableDayKeys = new Set(availableDays.map((day) => day.dayKey));
+            availableMonthKeys = [...new Set(availableDays.map((day) => getMonthKey(day.dayKey)).filter(Boolean))];
+
+            const anchorMonthKey = getMonthKey(getCalendarAnchorDayKey());
+
+            if (anchorMonthKey && availableMonthKeys.includes(anchorMonthKey)) {
+                visibleCalendarMonthKey = anchorMonthKey;
+            } else if (!visibleCalendarMonthKey || !availableMonthKeys.includes(visibleCalendarMonthKey)) {
+                visibleCalendarMonthKey = availableMonthKeys[availableMonthKeys.length - 1] || null;
+            }
+
+            renderCalendar();
+        }
+
+        function setDayPickerOpen(isOpen) {
+            if (isOpen && !availableMonthKeys.length) {
+                return;
+            }
+
+            dayPicker.classList.toggle('open', isOpen);
+            dayPickerPopover.hidden = !isOpen;
+
+            if (isOpen) {
+                renderCalendar();
+            }
+        }
+
+        function formatCalendarMonthLabel(monthKey) {
+            const [year, month] = String(monthKey || '').split('-');
+            return year && month ? `${year}年${Number(month)}月` : '-';
+        }
+
+        function shiftCalendarMonth(offset) {
+            if (!availableMonthKeys.length) {
+                return;
+            }
+
+            const currentIndex = availableMonthKeys.indexOf(visibleCalendarMonthKey);
+            const nextIndex = currentIndex + offset;
+
+            if (nextIndex < 0 || nextIndex >= availableMonthKeys.length) {
+                return;
+            }
+
+            visibleCalendarMonthKey = availableMonthKeys[nextIndex];
+            renderCalendar();
+        }
+
+        function renderCalendar() {
+            if (!availableMonthKeys.length) {
+                calendarMonthLabel.textContent = '保存済み日付なし';
+                calendarGrid.innerHTML = '';
+                calendarEmpty.hidden = false;
+                calendarPrevMonthButton.disabled = true;
+                calendarNextMonthButton.disabled = true;
+                return;
+            }
+
+            if (!visibleCalendarMonthKey || !availableMonthKeys.includes(visibleCalendarMonthKey)) {
+                visibleCalendarMonthKey = availableMonthKeys[availableMonthKeys.length - 1];
+            }
+
+            const [yearText, monthText] = visibleCalendarMonthKey.split('-');
+            const year = Number(yearText);
+            const monthIndex = Number(monthText) - 1;
+            const firstDay = new Date(Date.UTC(year, monthIndex, 1));
+            const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+            const monthIndexInList = availableMonthKeys.indexOf(visibleCalendarMonthKey);
+            const fragment = document.createDocumentFragment();
+
+            calendarMonthLabel.textContent = formatCalendarMonthLabel(visibleCalendarMonthKey);
+            calendarGrid.innerHTML = '';
+            calendarEmpty.hidden = true;
+            calendarPrevMonthButton.disabled = monthIndexInList <= 0;
+            calendarNextMonthButton.disabled = monthIndexInList >= availableMonthKeys.length - 1;
+
+            for (let index = 0; index < firstDay.getUTCDay(); index += 1) {
+                const spacer = document.createElement('div');
+                spacer.className = 'calendar-spacer';
+                fragment.appendChild(spacer);
+            }
+
+            for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+                const button = document.createElement('button');
+                const dayKey = `${visibleCalendarMonthKey}-${String(dayNumber).padStart(2, '0')}`;
+                const isAvailable = availableDayKeys.has(dayKey);
+
+                button.type = 'button';
+                button.className = 'calendar-day';
+                button.textContent = String(dayNumber);
+                button.disabled = !isAvailable;
+
+                if (dayKey === selectedDayKey) {
+                    button.classList.add('is-selected');
+                }
+
+                if (dayKey === currentDisplayDayKey) {
+                    button.classList.add('is-display');
+                }
+
+                if (isAvailable) {
+                    button.addEventListener('click', async () => {
+                        setDayPickerOpen(false);
+                        await setActiveDay(dayKey);
+                    });
+                }
+
+                fragment.appendChild(button);
+            }
+
+            calendarGrid.appendChild(fragment);
+        }
+
+        function setSelectedDay(dayKey) {
+            selectedDayKey = dayKey;
+            dayInput.value = dayKey || '';
+            selectedDayStatus.textContent = dayKey || '未選択';
+
+            const monthKey = getMonthKey(dayKey);
+
+            if (monthKey) {
+                visibleCalendarMonthKey = monthKey;
+            }
+
+            renderCalendar();
+        }
+
+        function getNavigationBaseDayKey() {
+            return selectedDayKey || dayInput.value || currentDisplayDayKey || todayDayKey || null;
+        }
+
+        function moveSelectedDay(offsetDays) {
+            const baseDayKey = getNavigationBaseDayKey();
+
+            if (!baseDayKey) {
+                return;
+            }
+
+            const nextDayKey = addDaysToDayKey(baseDayKey, offsetDays);
+
+            if (nextDayKey) {
+                setActiveDay(nextDayKey);
+                return;
+            }
+
+            setMessage('日付の移動に失敗しました。', true);
+        }
+
+        function isEditingCoinInput() {
+            return document.activeElement?.classList?.contains('coin-input') || pendingSaveTimers.size > 0 || hasDirtyContributorCoinInputs();
+        }
+
+        function isEditingNameInput() {
+            return document.activeElement?.classList?.contains('name-input') || hasDirtyContributorNameInputs();
+        }
+
+        function hasUnsavedValue(input) {
+            if (!input) {
+                return false;
+            }
+
+            return input.value !== (input.dataset.lastSavedValue ?? input.value);
+        }
+
+        function hasDirtyContributorCoinInputs() {
+            return Array.from(tableBody.querySelectorAll('[data-coin-input]')).some((input) => hasUnsavedValue(input));
+        }
+
+        function hasDirtyContributorNameInputs() {
+            return Array.from(tableBody.querySelectorAll('[data-name-input]')).some((input) => hasUnsavedValue(input));
+        }
+
+        function renderTable(contributors) {
+            currentContributors = [...contributors].sort((a, b) => {
+                const aVal = a.firstSeenAt || '';
+                const bVal = b.firstSeenAt || '';
+                return aVal !== bVal ? aVal.localeCompare(bVal) : a.uniqueId.localeCompare(b.uniqueId);
+            });
+            tableBody.innerHTML = '';
+            emptyState.hidden = currentContributors.length > 0;
+
+            currentContributors.forEach((contributor, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>
+                        <div class="user-cell">
+                            <img class="avatar" src="${escapeHtml(contributor.image || '')}" alt="">
+                            <input
+                                type="text"
+                                class="name-input"
+                                value="${escapeHtml(contributor.nickname)}"
+                                data-name-input="${escapeHtml(contributor.uniqueId)}"
+                            >
+                        </div>
+                    </td>
+                    <td>${escapeHtml(contributor.uniqueId)}</td>
+                    <td>
+                        <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            class="coin-input"
+                            value="${escapeHtml(contributor.total)}"
+                            data-coin-input="${escapeHtml(contributor.uniqueId)}"
+                        >
+                    </td>
+                    <td class="action-cell">
+                        <button type="button" class="danger icon-button" data-unique-id="${escapeHtml(contributor.uniqueId)}" title="削除" aria-label="削除">🗑</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            totalCoins.textContent = formatNumber(
+                currentContributors.reduce((sum, contributor) => sum + contributor.total, 0)
+            );
+
+            tableBody.querySelectorAll('[data-unique-id]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    await deleteContributor(button.dataset.uniqueId);
+                });
+            });
+
+            tableBody.querySelectorAll('[data-coin-input]').forEach((input) => {
+                input.dataset.lastSavedValue = input.value;
+
+                input.addEventListener('input', () => {
+                    queueAutoSave(input);
+                });
+
+                input.addEventListener('blur', async () => {
+                    cancelPendingSave(input.dataset.coinInput);
+
+                    if (input.value === input.dataset.lastSavedValue) {
+                        return;
+                    }
+
+                    await updateContributorTotal(input.dataset.coinInput, input.value);
+                });
+            });
+
+            tableBody.querySelectorAll('[data-name-input]').forEach((input) => {
+                input.dataset.lastSavedValue = input.value;
+
+                input.addEventListener('blur', async () => {
+                    if (input.value === input.dataset.lastSavedValue) {
+                        return;
+                    }
+
+                    await updateContributorNickname(input.dataset.nameInput, input.value);
+                });
+
+                input.addEventListener('keydown', async (event) => {
+                    if (event.key !== 'Enter') {
+                        return;
+                    }
+
+                    event.preventDefault();
+
+                    if (input.value === input.dataset.lastSavedValue) {
+                        input.blur();
+                        return;
+                    }
+
+                    await updateContributorNickname(input.dataset.nameInput, input.value);
+                    input.blur();
+                });
+            });
+        }
+
+        function refreshSummary(contributors) {
+            totalCoins.textContent = formatNumber(
+                contributors.reduce((sum, contributor) => sum + contributor.total, 0)
+            );
+            emptyState.hidden = contributors.length > 0;
+        }
+
+        function applyLocalContributorTotal(uniqueId, total) {
+            currentContributors = currentContributors.map((contributor) => {
+                if (contributor.uniqueId !== uniqueId) {
+                    return contributor;
+                }
+
+                return { ...contributor, total };
+            });
+
+            refreshSummary(currentContributors);
+        }
+
+        function cancelPendingSave(uniqueId) {
+            const timer = pendingSaveTimers.get(uniqueId);
+
+            if (!timer) {
+                return;
+            }
+
+            clearTimeout(timer);
+            pendingSaveTimers.delete(uniqueId);
+        }
+
+        function queueAutoSave(input) {
+            const uniqueId = input.dataset.coinInput;
+
+            cancelPendingSave(uniqueId);
+
+            const timer = setTimeout(async () => {
+                pendingSaveTimers.delete(uniqueId);
+
+                if (input.value === input.dataset.lastSavedValue) {
+                    return;
+                }
+
+                await updateContributorTotal(uniqueId, input.value);
+            }, 450);
+
+            pendingSaveTimers.set(uniqueId, timer);
+        }
+
+        async function refreshDays() {
+            const response = await fetch('/api/days');
+            const payload = await response.json();
+
+            currentBroadcasterId = payload.broadcasterId || null;
+            currentDisplayDayKey = payload.displayDayKey;
+            todayDayKey = payload.todayDayKey;
+            yesterdayDayKey = payload.yesterdayDayKey;
+
+            syncAvailableDays(payload.days);
+        }
+
+        function applyRealtimePayload(payload) {
+            currentBroadcasterId = payload.broadcasterId || null;
+            currentDisplayDayKey = payload.displayDayKey;
+            todayDayKey = payload.todayDayKey;
+            yesterdayDayKey = payload.yesterdayDayKey;
+
+            syncAvailableDays(payload.days || []);
+
+            if (!selectedDayKey) {
+                setSelectedDay(payload.dayKey);
+            }
+
+            if (selectedDayKey === payload.dayKey && !isRealtimeSyncPaused && !isEditingCoinInput() && !isEditingNameInput()) {
+                renderTable(payload.contributors || []);
+            }
+        }
+
+        function startAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+
+            refreshTimer = setInterval(async () => {
+                if (!selectedDayKey || isRealtimeSyncPaused || isEditingCoinInput() || isEditingNameInput()) {
+                    return;
+                }
+
+                try {
+                    await refreshDays();
+                    await loadDay(selectedDayKey);
+                } catch (error) {
+                    setMessage('自動更新に失敗しました。', true);
+                }
+            }, 1500);
+        }
+
+        async function loadDay(dayKey) {
+            isRealtimeSyncPaused = true;
+
+            try {
+                const response = await fetch(`/api/contributors?dayKey=${encodeURIComponent(dayKey)}`);
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || '日付データの読み込みに失敗しました。');
+                }
+
+                setSelectedDay(payload.dayKey);
+                renderTable(payload.contributors);
+                setMessage('');
+            } catch (error) {
+                setMessage(error.message || '日付データの読み込みに失敗しました。', true);
+                throw error;
+            } finally {
+                isRealtimeSyncPaused = false;
+            }
+        }
+
+        async function setActiveDay(dayKey) {
+            if (!dayKey) {
+                return;
+            }
+
+            setDayPickerOpen(false);
+
+            isRealtimeSyncPaused = true;
+
+            try {
+                const [contributorsResponse, displayResponse] = await Promise.all([
+                    fetch(`/api/contributors?dayKey=${encodeURIComponent(dayKey)}`),
+                    fetch('/api/display/day', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ dayKey })
+                    })
+                ]);
+                const contributorsPayload = await contributorsResponse.json();
+                const displayPayload = await displayResponse.json();
+
+                if (!contributorsResponse.ok) {
+                    throw new Error(contributorsPayload.error || '日付データの読み込みに失敗しました。');
+                }
+
+                if (!displayResponse.ok) {
+                    throw new Error(displayPayload.error || 'OBS表示日の切り替えに失敗しました。');
+                }
+
+                currentDisplayDayKey = displayPayload.displayDayKey;
+                setSelectedDay(contributorsPayload.dayKey);
+                renderTable(contributorsPayload.contributors);
+            } catch (error) {
+                setMessage(error.message || '日付の切り替えに失敗しました。', true);
+            } finally {
+                isRealtimeSyncPaused = false;
+            }
+        }
+
+        async function deleteContributor(uniqueId) {
+            if (!selectedDayKey) {
+                return;
+            }
+
+            const target = currentContributors.find((contributor) => contributor.uniqueId === uniqueId);
+            const label = target ? target.nickname : uniqueId;
+            const confirmed = window.confirm(`${selectedDayKey} の ${label} を削除します。`);
+
+            if (!confirmed) {
+                return;
+            }
+
+            const response = await fetch(`/api/contributors?dayKey=${encodeURIComponent(selectedDayKey)}&uniqueId=${encodeURIComponent(uniqueId)}`, {
+                method: 'DELETE'
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                setMessage(payload.error || 'ユーザー削除に失敗しました。', true);
+                return;
+            }
+
+            await refreshDays();
+            await loadDay(selectedDayKey);
+            setMessage(`${label} を削除しました。`);
+        }
+
+        async function updateContributorTotal(uniqueId, nextTotal) {
+            if (!selectedDayKey) {
+                return;
+            }
+
+            isRealtimeSyncPaused = true;
+
+            const parsedTotal = Number(nextTotal);
+
+            if (!Number.isInteger(parsedTotal) || parsedTotal < 0) {
+                setMessage('コイン数は 0 以上の整数で入力してください。', true);
+                isRealtimeSyncPaused = false;
+                return;
+            }
+
+            const target = currentContributors.find((contributor) => contributor.uniqueId === uniqueId);
+            const label = target ? target.nickname : uniqueId;
+
+            const response = await fetch('/api/contributors', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dayKey: selectedDayKey,
+                    uniqueId,
+                    total: parsedTotal
+                })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                setMessage(payload.error || 'コイン数の更新に失敗しました。', true);
+                isRealtimeSyncPaused = false;
+                return;
+            }
+
+            applyLocalContributorTotal(uniqueId, parsedTotal);
+            await refreshDays();
+
+            const input = tableBody.querySelector(`[data-coin-input="${uniqueId}"]`);
+
+            if (input) {
+                input.dataset.lastSavedValue = String(parsedTotal);
+                input.value = String(parsedTotal);
+            }
+
+            setMessage(`${label} のコイン数を ${formatNumber(parsedTotal)} に更新しました。`);
+            isRealtimeSyncPaused = false;
+        }
+
+        async function updateContributorNickname(uniqueId, nextNickname) {
+            const parsedNickname = String(nextNickname || '').trim();
+
+            if (!parsedNickname) {
+                setMessage('名前は空欄にできません。', true);
+                await loadDay(selectedDayKey);
+                return;
+            }
+
+            const target = currentContributors.find((contributor) => contributor.uniqueId === uniqueId);
+            const previousLabel = target ? target.nickname : uniqueId;
+
+            const response = await fetch('/api/contributors/nickname', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uniqueId,
+                    nickname: parsedNickname
+                })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                setMessage(payload.error || '名前の更新に失敗しました。', true);
+                await loadDay(selectedDayKey);
+                return;
+            }
+
+            currentContributors = currentContributors.map((contributor) => {
+                if (contributor.uniqueId !== uniqueId) {
+                    return contributor;
+                }
+
+                return {
+                    ...contributor,
+                    nickname: parsedNickname
+                };
+            });
+
+            await refreshDays();
+            await loadDay(selectedDayKey);
+
+            const input = tableBody.querySelector(`[data-name-input="${uniqueId}"]`);
+
+            if (input) {
+                input.dataset.lastSavedValue = parsedNickname;
+                input.value = parsedNickname;
+            }
+
+            setMessage(`${previousLabel} の表示名を ${parsedNickname} に更新しました。`);
+        }
+
+        async function resetSelectedDay() {
+            if (!selectedDayKey) {
+                return;
+            }
+
+            const confirmed = window.confirm(`${selectedDayKey} のデータを全件削除します。元に戻せません。`);
+
+            if (!confirmed) {
+                return;
+            }
+
+            const response = await fetch(`/api/contributors/day?dayKey=${encodeURIComponent(selectedDayKey)}`, {
+                method: 'DELETE'
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                setMessage(payload.error || '日付リセットに失敗しました。', true);
+                return;
+            }
+
+            await refreshDays();
+            await loadDay(selectedDayKey);
+            setMessage(`${selectedDayKey} を ${formatNumber(payload.deletedCount)} 件削除しました。`);
+        }
+
+        async function addTestContributors() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            addTestContributorsButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/test-data/contributors', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ dayKey: selectedDayKey })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'テストデータの追加に失敗しました。');
+                }
+
+                await refreshDays();
+                await loadDay(selectedDayKey);
+                setMessage(`${selectedDayKey} にテストデータを ${formatNumber(payload.insertedCount)} 件追加しました。`);
+            } catch (error) {
+                setMessage(error.message || 'テストデータの追加に失敗しました。', true);
+            } finally {
+                addTestContributorsButton.disabled = false;
+            }
+        }
+
+        todayButton.addEventListener('click', () => {
+            moveSelectedDay(-1);
+        });
+
+        yesterdayButton.addEventListener('click', () => {
+            moveSelectedDay(1);
+        });
+
+        dayInput.addEventListener('click', () => {
+            setDayPickerOpen(dayPickerPopover.hidden);
+        });
+
+        dayInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                setDayPickerOpen(true);
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                setDayPickerOpen(false);
+            }
+        });
+
+        calendarPrevMonthButton.addEventListener('click', () => {
+            shiftCalendarMonth(-1);
+        });
+
+        calendarNextMonthButton.addEventListener('click', () => {
+            shiftCalendarMonth(1);
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!dayPicker.contains(event.target)) {
+                setDayPickerOpen(false);
+            }
+        });
+
+        resetDayButton.addEventListener('click', () => {
+            resetSelectedDay();
+        });
+
+        addTestContributorsButton.addEventListener('click', () => {
+            addTestContributors();
+        });
+
+        socket.on('admin_day_updated', (payload) => {
+            applyRealtimePayload(payload);
+        });
+
+        async function init() {
+            await refreshDays();
+            await loadDay(todayDayKey || currentDisplayDayKey || dayInput.value);
+            startAutoRefresh();
+        }
+
+        init();
+    </script>
+</body>
+</html>

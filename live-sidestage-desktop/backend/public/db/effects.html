@@ -1,0 +1,2596 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>映像&音声エフェクト</title>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --ok: #166534;
+            --error: #b42318;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 20px 14px 28px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(1240px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.08;
+        }
+
+        h2 {
+            font-size: 22px;
+            line-height: 1.2;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .action-row {
+            margin-top: 18px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+            transform: none;
+        }
+
+        .status {
+            padding: 10px 14px;
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: #f9fbfd;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .status.ok {
+            color: var(--ok);
+            border-color: rgba(22, 101, 52, 0.2);
+            background: rgba(240, 253, 244, 0.86);
+        }
+
+        .status.error {
+            color: var(--error);
+            border-color: rgba(180, 35, 24, 0.18);
+            background: rgba(254, 242, 242, 0.9);
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .record-list {
+            margin-top: 18px;
+            display: grid;
+            gap: 0;
+            border: 1px solid var(--line);
+            background: #f9fbfd;
+            overflow-x: auto;
+        }
+
+        .record-table-head {
+            margin-top: 18px;
+            display: grid;
+            align-items: center;
+            gap: 8px;
+            padding: 0 8px 6px;
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .event-table-head {
+            grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
+        }
+
+        .trigger-table-head {
+            grid-template-columns: 132px minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1.15fr) 72px minmax(0, 1.45fr);
+        }
+
+        .record-table-head > div {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .record-card {
+            border: none;
+            border-bottom: 1px solid var(--line);
+            border-radius: 0;
+            padding: 4px 8px;
+            background: transparent;
+            display: grid;
+            gap: 4px;
+        }
+
+        .record-list > .record-card:last-child {
+            border-bottom: none;
+        }
+
+        .record-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .record-title {
+            font-size: 18px;
+            line-height: 1.2;
+        }
+
+        .record-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        .record-fields {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .field {
+            display: grid;
+            gap: 4px;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .field label {
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            border-radius: 2px;
+            padding: 11px 12px;
+            font: inherit;
+            background: #ffffff;
+            color: var(--text);
+        }
+
+        textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
+        input[type="range"] {
+            padding: 0;
+            background: transparent;
+            border: none;
+        }
+
+        .range-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .range-value {
+            min-width: 42px;
+            text-align: right;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .asset-box {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 2px;
+            border: 1px solid rgba(58, 44, 29, 0.1);
+            background: #ffffff;
+        }
+
+        .asset-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .asset-name {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        .empty {
+            color: var(--muted);
+            font-size: 14px;
+            padding: 16px;
+            border: 1px dashed rgba(58, 44, 29, 0.18);
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.45);
+        }
+
+        .url-list {
+            margin-top: 16px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .url-item {
+            display: grid;
+            grid-template-columns: 96px 1fr auto auto;
+            gap: 8px;
+            align-items: center;
+            padding: 12px;
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: #f9fbfd;
+        }
+
+        .url-label {
+            font-size: 13px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .url-value {
+            width: 100%;
+        }
+
+        .icon-button-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
+
+        .icon-button {
+            width: 34px;
+            min-width: 34px;
+            height: 34px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .icon-button.play {
+            color: var(--ok);
+            border-color: rgba(22, 101, 52, 0.2);
+            background: rgba(240, 253, 244, 0.9);
+        }
+
+        .icon-button.edit {
+            color: #1d4ed8;
+            border-color: rgba(29, 78, 216, 0.2);
+            background: rgba(239, 246, 255, 0.95);
+        }
+
+        .trigger-enabled-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 34px;
+            padding: 0 8px;
+            border: 1px solid var(--line);
+            background: var(--card);
+            font-size: 13px;
+            color: var(--muted);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        .trigger-enabled-label:has(input:checked) {
+            border-color: rgba(22, 101, 52, 0.3);
+            background: rgba(240, 253, 244, 0.9);
+            color: var(--ok);
+        }
+
+        .trigger-enabled-label input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            cursor: pointer;
+            accent-color: var(--ok);
+        }
+
+        .modal-shell {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(47, 38, 29, 0.38);
+            z-index: 30;
+        }
+
+        .modal-shell.is-open {
+            display: flex;
+        }
+
+        .modal {
+            width: min(560px, 100%);
+            border-radius: 2px;
+            border: 1px solid var(--line);
+            background: #f6f9fc;
+            box-shadow: var(--shadow);
+            padding: 22px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .modal-fields-vertical {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+
+        .modal-fields-vertical .field,
+        .modal-fields-vertical .field.full {
+            grid-column: auto;
+        }
+
+        .modal-fields-vertical .field {
+            justify-items: start;
+            align-items: start;
+            text-align: left;
+        }
+
+        .modal-fields-vertical .field > label:first-child {
+            text-align: left;
+        }
+
+        .modal-fields-vertical .toggle {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            width: 100%;
+            text-align: left;
+        }
+
+        .modal-fields-vertical .range-row {
+            grid-template-columns: 1fr auto;
+            justify-items: start;
+            width: 100%;
+        }
+
+        .modal-check-list {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .modal-inline-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .modal-asset-name {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        .gift-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .gift-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .gift-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .gift-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 10px 12px;
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            text-align: left;
+            transform: none;
+        }
+
+        .gift-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .gift-suggestion-item:hover,
+        .gift-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .gift-suggestion-image {
+            width: 42px;
+            height: 42px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #f9fbfd;
+            object-fit: cover;
+        }
+
+        .gift-suggestion-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .gift-suggestion-meta {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .gift-suggestion-name,
+        .gift-suggestion-desc {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .gift-suggestion-name {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .gift-suggestion-desc {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .gift-suggestion-cost {
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .modal-media-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            width: 100%;
+        }
+
+        .modal-media-item {
+            display: grid;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #ffffff;
+        }
+
+        .modal-media-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .modal-media-item .modal-inline-row {
+            align-items: center;
+        }
+
+        .modal-media-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .modal-media-actions > button:first-of-type {
+            flex: 1 1 auto;
+        }
+
+        .modal-remove-button {
+            width: 36px;
+            min-width: 36px;
+            height: 36px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .summary-value {
+            min-height: 46px;
+            display: flex;
+            align-items: center;
+            padding: 11px 12px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #ffffff;
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .summary-value.wrap {
+            align-items: flex-start;
+            word-break: break-word;
+        }
+
+        #event-modal .modal {
+            text-align: left;
+        }
+
+        #event-modal .record-fields {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 14px;
+        }
+
+        #event-modal .field,
+        #event-modal .field.full {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: flex-start;
+            width: 100%;
+            text-align: left;
+            gap: 8px;
+        }
+
+        #event-modal .field > * {
+            align-self: flex-start;
+        }
+
+        #event-modal .field > input,
+        #event-modal .field > select,
+        #event-modal .field > textarea,
+        #event-modal .field > .range-row,
+        #event-modal .field > .modal-check-list {
+            width: 100%;
+            align-self: stretch;
+        }
+
+        #event-modal .modal-check-list {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 10px;
+        }
+
+        #event-modal .toggle {
+            display: flex;
+            width: max-content;
+            max-width: 100%;
+            align-items: center;
+            justify-content: flex-start;
+            text-align: left;
+            margin: 0;
+        }
+
+        #event-modal .toggle span {
+            white-space: nowrap;
+        }
+
+        #event-modal .range-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            width: 100%;
+        }
+
+        #event-modal .range-value {
+            text-align: left;
+            min-width: 0;
+        }
+
+        #trigger-modal .modal {
+            text-align: left;
+        }
+
+        #trigger-modal .record-fields {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 14px;
+        }
+
+        #trigger-modal .field,
+        #trigger-modal .field.full {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: flex-start;
+            width: 100%;
+            text-align: left;
+            gap: 8px;
+        }
+
+        #trigger-modal .field > * {
+            align-self: flex-start;
+        }
+
+        #trigger-modal .field > input,
+        #trigger-modal .field > select,
+        #trigger-modal .field > textarea,
+        #trigger-modal .field > .range-row,
+        #trigger-modal .field > .modal-check-list {
+            width: 100%;
+            align-self: stretch;
+        }
+
+        #trigger-modal .toggle {
+            display: flex;
+            width: max-content;
+            max-width: 100%;
+            align-items: center;
+            justify-content: flex-start;
+            text-align: left;
+            margin: 0;
+        }
+
+        #trigger-modal .toggle span {
+            white-space: nowrap;
+        }
+
+        .event-record-card {
+            grid-template-columns: 104px minmax(0, 1fr);
+            align-items: center;
+        }
+
+        .trigger-record-card {
+            grid-template-columns: 132px minmax(0, 1fr);
+            align-items: center;
+        }
+
+        .event-record-head {
+            min-width: 104px;
+            position: sticky;
+            left: 0;
+            background: var(--surface, #f9fbfd);
+            z-index: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .event-record-head .icon-button-row {
+            gap: 4px;
+        }
+
+        .event-record-head .icon-button {
+            width: 28px;
+            min-width: 28px;
+            height: 28px;
+            font-size: 14px;
+        }
+
+        .trigger-record-head {
+            min-width: 132px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .trigger-record-head .icon-button-row {
+            flex-wrap: nowrap;
+            justify-content: flex-start;
+            gap: 4px;
+        }
+
+        .trigger-record-head .icon-button {
+            width: 28px;
+            min-width: 28px;
+            height: 28px;
+            font-size: 14px;
+        }
+
+        .trigger-record-head .trigger-enabled-label {
+            height: 28px;
+            padding: 0 6px;
+            font-size: 12px;
+            gap: 4px;
+        }
+
+        .trigger-record-head .trigger-enabled-label input[type="checkbox"] {
+            width: 13px;
+            height: 13px;
+        }
+
+        .event-record-fields {
+            display: grid;
+            grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .trigger-record-fields {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1.15fr) 72px minmax(0, 1.45fr);
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .event-record-fields .field,
+        .trigger-record-fields .field {
+            gap: 0;
+        }
+
+        .event-record-fields .field label,
+        .trigger-record-fields .field label {
+            display: none;
+        }
+
+        .trigger-record-fields .field,
+        .trigger-gift-display,
+        .trigger-record-fields .summary-value {
+            min-width: 0;
+        }
+
+        .trigger-record-fields .field,
+        .trigger-record-fields .field.full {
+            grid-column: auto;
+        }
+
+        .event-record-fields .field,
+        .event-record-fields .field.full {
+            grid-column: auto;
+        }
+
+        .event-record-fields .toggle {
+            justify-content: flex-start;
+        }
+
+        .trigger-record-fields .summary-value {
+            min-height: 28px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            align-items: center;
+            line-height: 1.2;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .trigger-gift-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 28px;
+            font-size: 13px;
+            color: var(--text);
+            line-height: 1.2;
+            min-width: 0;
+        }
+
+        .trigger-gift-display span {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .trigger-gift-image-wrap {
+            flex-shrink: 0;
+        }
+
+        .trigger-gift-thumb {
+            width: 28px;
+            height: 28px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #f9fbfd;
+            object-fit: cover;
+            display: block;
+        }
+
+        .event-record-fields .summary-value {
+            min-height: 28px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            align-items: center;
+            line-height: 1.2;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .linked-indicator {
+            min-height: 28px;
+            font-size: 18px;
+        }
+
+        .linked-indicator.is-empty {
+            font-size: 14px;
+        }
+
+        .event-record-meta {
+            min-width: 0;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 6px 10px;
+            border: 1px solid rgba(22, 101, 52, 0.2);
+            background: rgba(240, 253, 244, 0.9);
+            color: var(--ok);
+            font-size: 13px;
+        }
+
+        .status-pill.is-disabled {
+            border-color: var(--line);
+            background: #eef2f6;
+            color: var(--muted);
+        }
+
+        .linked-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            font-size: 18px;
+            color: var(--ok);
+        }
+
+        .linked-indicator.is-empty {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 920px) {
+            .record-table-head {
+                display: none;
+            }
+
+            .event-record-fields .field label,
+            .trigger-record-fields .field label {
+                display: block;
+            }
+
+            .event-record-fields .field,
+            .trigger-record-fields .field {
+                gap: 4px;
+            }
+
+            .record-fields {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .record-list {
+                gap: 4px;
+                border: none;
+                background: transparent;
+            }
+
+            .record-card {
+                border: 1px solid var(--line);
+                border-radius: 2px;
+                border-bottom: 1px solid var(--line);
+                padding: 6px 8px;
+                background: #f9fbfd;
+                gap: 6px;
+            }
+
+            .event-record-card {
+                grid-template-columns: 1fr;
+            }
+
+            .event-record-head {
+                position: static;
+            }
+
+            .trigger-record-card {
+                grid-template-columns: 1fr;
+            }
+
+            .trigger-record-head {
+                justify-content: flex-start;
+            }
+
+            .trigger-record-fields {
+                display: grid;
+                grid-template-columns: 1fr;
+                width: auto;
+                min-width: 0;
+            }
+
+            .url-item {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .layout {
+                width: min(100%, calc(100% - 20px));
+                margin: 12px auto 20px;
+            }
+
+            .panel {
+                padding: 18px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            .panel-head,
+            .record-head,
+            .action-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .modal-media-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .record-fields {
+                grid-template-columns: 1fr;
+            }
+
+            .trigger-record-head .icon-button-row {
+                justify-content: flex-start;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>映像&音声エフェクト</h1>
+            <p class="subtext">上段でイベントとトリガーを管理し、最下部で 10 個の screen URL を確認します。イベントではローカル動画・音声を取り込み、どの screen に出すかを指定します。</p>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>イベント</h2>
+                    <p class="subtext">新規追加は無制限です。動画と音声は各行からローカルファイルを取り込み、再生先 screen を指定します。</p>
+                </div>
+                <button type="button" class="primary" id="add-event-button">イベントを新規追加</button>
+            </div>
+            <div class="record-table-head event-table-head" aria-hidden="true">
+                <div>操作</div>
+                <div>イベント名</div>
+                <div>Screen</div>
+                <div>動画</div>
+                <div>音声</div>
+                <div>音量</div>
+            </div>
+            <div class="record-list" id="event-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>トリガー</h2>
+                    <p class="subtext">ギフト名、最低コイン、ユーザー ID 条件に合致したら、指定イベントをオーバーレイで再生します。</p>
+                </div>
+                <button type="button" class="primary" id="add-trigger-button">トリガーを新規追加</button>
+            </div>
+            <div class="record-table-head trigger-table-head" aria-hidden="true">
+                <div>操作</div>
+                <div>トリガー名</div>
+                <div>再生イベント</div>
+                <div>対象ギフト名</div>
+                <div>コイン</div>
+                <div>対象ユーザーID</div>
+            </div>
+            <div class="record-list" id="trigger-list"></div>
+        </section>
+
+        <section class="panel">
+            <h2>URL 一覧</h2>
+            <p class="subtext">screen は 10 個固定です。イベント側ではこの screen 番号を指定して再生先を選びます。</p>
+            <div class="url-list" id="url-list"></div>
+        </section>
+    </div>
+
+    <div class="modal-shell" id="event-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
+            <div>
+                <h2 id="event-modal-title">イベントを新規追加</h2>
+                <p class="subtext" id="event-modal-description">表示名と再生先 screen を決め、動画と音声もこの画面で設定します。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>イベント名</label>
+                    <input type="text" id="event-modal-name" maxlength="80" placeholder="例: 常連ギフト演出">
+                </div>
+                <div class="field">
+                    <label>Screen</label>
+                    <select id="event-modal-screen"></select>
+                </div>
+                <div class="field">
+                    <label>再生機能</label>
+                    <div class="modal-media-grid">
+                        <div class="modal-media-item">
+                            <div class="modal-media-head">
+                                <label class="toggle"><input type="checkbox" id="event-modal-video-enabled"><span>動画を再生</span></label>
+                            </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-upload-video-button">動画を選ぶ</button>
+                                <button type="button" class="danger modal-remove-button" id="event-modal-clear-video-button" title="動画を外す" aria-label="動画を外す">🗑</button>
+                                <input type="file" id="event-modal-video-file" accept="video/*" hidden>
+                            </div>
+                            <div class="modal-asset-name" id="event-modal-video-name">未設定</div>
+                        </div>
+                        <div class="modal-media-item">
+                            <div class="modal-media-head">
+                                <label class="toggle"><input type="checkbox" id="event-modal-audio-enabled"><span>音声を再生</span></label>
+                            </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-upload-audio-button">音声を選ぶ</button>
+                                <button type="button" class="danger modal-remove-button" id="event-modal-clear-audio-button" title="音声を外す" aria-label="音声を外す">🗑</button>
+                                <input type="file" id="event-modal-audio-file" accept="audio/*" hidden>
+                            </div>
+                            <div class="modal-asset-name" id="event-modal-audio-name">未設定</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>メディアの音量</label>
+                    <div class="range-row">
+                        <input type="range" id="event-modal-media-volume" min="0" max="100" step="1" value="100">
+                        <div class="range-value" id="event-modal-media-volume-value">100%</div>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label>オプション</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="event-modal-treat-combo-single" checked><span>ギフトまとめ投げを1回とする</span></label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-event-modal">キャンセル</button>
+                <button type="button" class="primary" id="event-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="trigger-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trigger-modal-title">
+            <div>
+                <h2 id="trigger-modal-title">トリガーを新規追加</h2>
+                <p class="subtext" id="trigger-modal-description">トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>トリガー名</label>
+                    <input type="text" id="trigger-modal-name" maxlength="80" placeholder="例: Rose 用トリガー">
+                </div>
+                <div class="field">
+                    <label>再生イベント（任意）</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="trigger-modal-event" autocomplete="off" placeholder="イベント名で検索… 空欄で未選択">
+                        <input type="hidden" id="trigger-modal-event-id">
+                        <div class="gift-suggestion-panel" id="trigger-event-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>有効</label>
+                    <label class="toggle"><input type="checkbox" id="trigger-modal-enabled" checked><span>追加直後から有効</span></label>
+                </div>
+                <div class="field">
+                    <label>対象ギフト名</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="trigger-modal-gift-name" maxlength="80" autocomplete="off" placeholder="例: Rose / 5 / 100-500 / >=100。空欄で全ギフト対象">
+                        <div class="gift-suggestion-panel" id="trigger-gift-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>最低コイン</label>
+                    <input type="number" id="trigger-modal-min-coins" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field full">
+                    <label>コメント</label>
+                    <select id="trigger-modal-comment-mode">
+                        <option value="">未使用</option>
+                        <option value="any">あらゆるコメント</option>
+                        <option value="exact">入力と一致</option>
+                    </select>
+                    <input type="text" id="trigger-modal-comment-text" maxlength="160" placeholder="入力一致にするコメントを入力">
+                </div>
+                <div class="field full">
+                    <label>対象ユーザーID</label>
+                    <div class="gift-suggest-shell">
+                        <textarea id="trigger-modal-user-ids" placeholder="複数可。改行・カンマ・スペース区切り。空欄なら全ユーザー対象" autocomplete="off"></textarea>
+                        <div class="gift-suggestion-panel" id="trigger-user-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-trigger-modal">キャンセル</button>
+                <button type="button" class="primary" id="trigger-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <template id="event-template">
+        <article class="record-card event-record-card">
+            <div class="record-head event-record-head">
+                <div class="icon-button-row">
+                    <button type="button" class="icon-button danger" data-action="delete-event" title="削除" aria-label="削除">🗑</button>
+                    <button type="button" class="icon-button edit" data-action="edit-event" title="編集" aria-label="編集">🖊</button>
+                    <button type="button" class="icon-button play" data-action="play-event" title="再生" aria-label="再生">▶</button>
+                </div>
+            </div>
+            <div class="record-fields event-record-fields">
+                <div class="field">
+                    <label>イベント名</label>
+                    <div class="summary-value" data-role="name"></div>
+                </div>
+                <div class="field">
+                    <label>SCREEN</label>
+                    <div class="summary-value" data-role="screen"></div>
+                </div>
+                <div class="field">
+                    <label>動画</label>
+                    <div class="linked-indicator is-empty" data-role="video-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>音声</label>
+                    <div class="linked-indicator is-empty" data-role="audio-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>音量</label>
+                    <div class="summary-value" data-role="media-volume-value"></div>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <template id="trigger-template">
+        <article class="record-card trigger-record-card">
+            <div class="record-head trigger-record-head">
+                <div class="icon-button-row">
+                    <button type="button" class="icon-button danger" data-action="delete-trigger" title="削除" aria-label="削除">🗑</button>
+                    <button type="button" class="icon-button edit" data-action="edit-trigger" title="編集" aria-label="編集">🖊</button>
+                    <label class="trigger-enabled-label">
+                        <input type="checkbox" data-role="enabled" data-action="toggle-enabled">
+                        <span>有効</span>
+                    </label>
+                </div>
+            </div>
+            <div class="record-fields trigger-record-fields">
+                <div class="field full">
+                    <label>トリガー名</label>
+                    <div class="summary-value" data-role="name"></div>
+                </div>
+                <div class="field full">
+                    <label>再生イベント</label>
+                    <div class="summary-value" data-role="event-name"></div>
+                </div>
+                <div class="field">
+                    <label>対象ギフト名</label>
+                    <div class="trigger-gift-display" data-role="gift-name">
+                        <div class="trigger-gift-image-wrap" data-role="gift-image" hidden></div>
+                        <span data-role="gift-label"></span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>最低コイン</label>
+                    <div class="summary-value" data-role="min-coins"></div>
+                </div>
+                <div class="field full">
+                    <label>コメント</label>
+                    <div class="summary-value wrap" data-role="comment-summary"></div>
+                </div>
+                <div class="field full">
+                    <label>対象ユーザーID</label>
+                    <div class="summary-value wrap" data-role="user-ids"></div>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <script>
+        const eventList = document.getElementById('event-list');
+        const triggerList = document.getElementById('trigger-list');
+        const urlList = document.getElementById('url-list');
+        const eventTemplate = document.getElementById('event-template');
+        const triggerTemplate = document.getElementById('trigger-template');
+        const addEventButton = document.getElementById('add-event-button');
+        const addTriggerButton = document.getElementById('add-trigger-button');
+        const eventModal = document.getElementById('event-modal');
+        const eventModalTitle = document.getElementById('event-modal-title');
+        const eventModalDescription = document.getElementById('event-modal-description');
+        const eventModalName = document.getElementById('event-modal-name');
+        const eventModalScreen = document.getElementById('event-modal-screen');
+        const eventModalVideoEnabled = document.getElementById('event-modal-video-enabled');
+        const eventModalUploadVideoButton = document.getElementById('event-modal-upload-video-button');
+        const eventModalClearVideoButton = document.getElementById('event-modal-clear-video-button');
+        const eventModalVideoFile = document.getElementById('event-modal-video-file');
+        const eventModalVideoName = document.getElementById('event-modal-video-name');
+        const eventModalAudioEnabled = document.getElementById('event-modal-audio-enabled');
+        const eventModalUploadAudioButton = document.getElementById('event-modal-upload-audio-button');
+        const eventModalClearAudioButton = document.getElementById('event-modal-clear-audio-button');
+        const eventModalAudioFile = document.getElementById('event-modal-audio-file');
+        const eventModalAudioName = document.getElementById('event-modal-audio-name');
+        const eventModalMediaVolume = document.getElementById('event-modal-media-volume');
+        const eventModalMediaVolumeValue = document.getElementById('event-modal-media-volume-value');
+        const eventModalTreatComboSingle = document.getElementById('event-modal-treat-combo-single');
+        const eventModalSubmit = document.getElementById('event-modal-submit');
+        const triggerModal = document.getElementById('trigger-modal');
+        const triggerModalTitle = document.getElementById('trigger-modal-title');
+        const triggerModalDescription = document.getElementById('trigger-modal-description');
+        const triggerModalName = document.getElementById('trigger-modal-name');
+        const triggerModalEvent = document.getElementById('trigger-modal-event');
+        const triggerModalEventId = document.getElementById('trigger-modal-event-id');
+        const triggerEventSuggestionPanel = document.getElementById('trigger-event-suggestion-panel');
+        const triggerModalEnabled = document.getElementById('trigger-modal-enabled');
+        const triggerModalGiftName = document.getElementById('trigger-modal-gift-name');
+        const triggerGiftSuggestionPanel = document.getElementById('trigger-gift-suggestion-panel');
+        const triggerModalMinCoins = document.getElementById('trigger-modal-min-coins');
+        const triggerModalCommentMode = document.getElementById('trigger-modal-comment-mode');
+        const triggerModalCommentText = document.getElementById('trigger-modal-comment-text');
+        const triggerModalUserIds = document.getElementById('trigger-modal-user-ids');
+        const triggerUserSuggestionPanel = document.getElementById('trigger-user-suggestion-panel');
+        const triggerModalSubmit = document.getElementById('trigger-modal-submit');
+
+        let currentEvents = [];
+        let currentTriggers = [];
+        let currentScreenUrls = [];
+        let pendingEventModalVideoAsset = null;
+        let pendingEventModalAudioAsset = null;
+        let editingEventId = null;
+        let editingTriggerId = null;
+        let knownGiftSuggestions = [];
+        let visibleGiftSuggestions = [];
+        let activeGiftSuggestionIndex = -1;
+        let knownUserSuggestions = [];
+        let visibleUserSuggestions = [];
+        let activeUserSuggestionIndex = -1;
+        let visibleEventSuggestions = [];
+        let activeEventSuggestionIndex = -1;
+
+        function setStatus(message, tone = '') {
+            if (tone === 'error') {
+                console.error(message);
+                return;
+            }
+
+            console.info(message);
+        }
+
+        function createId(prefix) {
+            return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        }
+
+        function getPlaybackSummary(eventRecord) {
+            const features = [];
+
+            if (eventRecord.videoEnabled) {
+                features.push('動画');
+            }
+
+            if (eventRecord.audioEnabled) {
+                features.push('音声');
+            }
+
+            return features.length ? features.join(' / ') : '未設定';
+        }
+
+        function getOptionSummary(eventRecord) {
+            return eventRecord.treatGiftComboAsSingle !== false
+                ? 'ギフトまとめ投げを1回とする'
+                : 'まとめ投げを回数分再生する';
+        }
+
+        function resetEventModal() {
+            editingEventId = null;
+            eventModalTitle.textContent = 'イベントを新規追加';
+            eventModalDescription.textContent = '表示名と再生先 screen を決め、動画と音声もこの画面で設定します。';
+            eventModalSubmit.textContent = '追加';
+            syncEventModalOptions();
+            eventModalName.value = '';
+            eventModalVideoEnabled.checked = false;
+            pendingEventModalVideoAsset = null;
+            eventModalVideoName.textContent = '未設定';
+            eventModalAudioEnabled.checked = false;
+            pendingEventModalAudioAsset = null;
+            eventModalAudioName.textContent = '未設定';
+            eventModalMediaVolume.value = '100';
+            eventModalTreatComboSingle.checked = true;
+            syncEventModalVolume();
+        }
+
+        function openEventModalForCreate() {
+            resetEventModal();
+            openModal(eventModal);
+            eventModalName.focus();
+        }
+
+        function openEventModalForEdit(eventRecord) {
+            editingEventId = eventRecord.id;
+            eventModalTitle.textContent = 'イベントを編集';
+            eventModalDescription.textContent = '表示名、再生先 screen、動画と音声をここで更新します。';
+            eventModalSubmit.textContent = '更新';
+            eventModalScreen.innerHTML = buildScreenOptions(eventRecord.screen);
+            eventModalName.value = eventRecord.name || '';
+            eventModalVideoEnabled.checked = Boolean(eventRecord.videoEnabled);
+            pendingEventModalVideoAsset = eventRecord.videoAssetUrl
+                ? { url: eventRecord.videoAssetUrl, name: eventRecord.videoAssetName || '設定済み' }
+                : null;
+            eventModalVideoName.textContent = eventRecord.videoAssetName || '未設定';
+            eventModalAudioEnabled.checked = Boolean(eventRecord.audioEnabled);
+            pendingEventModalAudioAsset = eventRecord.audioAssetUrl
+                ? { url: eventRecord.audioAssetUrl, name: eventRecord.audioAssetName || '設定済み' }
+                : null;
+            eventModalAudioName.textContent = eventRecord.audioAssetName || '未設定';
+            eventModalMediaVolume.value = String(eventRecord.mediaVolume ?? 100);
+            eventModalTreatComboSingle.checked = eventRecord.treatGiftComboAsSingle !== false;
+            syncEventModalVolume();
+            openModal(eventModal);
+            eventModalName.focus();
+        }
+
+        function collectEventFromModal() {
+            return {
+                id: editingEventId || createId('event'),
+                name: eventModalName.value.trim(),
+                screen: Number(eventModalScreen.value || currentScreenUrls[0]?.slot || 1),
+                videoEnabled: eventModalVideoEnabled.checked,
+                videoAssetUrl: pendingEventModalVideoAsset?.url || '',
+                videoAssetName: pendingEventModalVideoAsset?.name || '',
+                audioEnabled: eventModalAudioEnabled.checked,
+                audioAssetUrl: pendingEventModalAudioAsset?.url || '',
+                audioAssetName: pendingEventModalAudioAsset?.name || '',
+                mediaVolume: Number(eventModalMediaVolume.value || 100),
+                treatGiftComboAsSingle: eventModalTreatComboSingle.checked
+            };
+        }
+
+        function getEventLabel(eventRecord, index) {
+            return eventRecord.name?.trim() || `イベント ${index + 1}`;
+        }
+
+        function getTriggerLabel(triggerRecord, index) {
+            return triggerRecord.name?.trim() || `トリガー ${index + 1}`;
+        }
+
+        function findGiftSuggestionForTrigger(giftName) {
+            const normalizedGiftName = String(giftName || '').trim();
+            if (!normalizedGiftName) {
+                return null;
+            }
+
+            const loweredGiftName = normalizedGiftName.toLowerCase();
+            const compactGiftName = normalizedGiftName.replace(/\s+/g, '');
+
+            return knownGiftSuggestions.find((gift) => {
+                const suggestionName = String(gift?.name || '').trim();
+                const suggestionId = String(gift?.id || '').trim();
+
+                if (!suggestionName && !suggestionId) {
+                    return false;
+                }
+
+                return suggestionName === normalizedGiftName
+                    || suggestionId === normalizedGiftName
+                    || suggestionName.toLowerCase() === loweredGiftName
+                    || suggestionName.replace(/\s+/g, '') === compactGiftName;
+            }) || null;
+        }
+
+        function normalizeUserIdsInput(value) {
+            return String(value || '')
+                .split(/[\s,]+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        function formatUserIdsSummary(userIds) {
+            if (Array.isArray(userIds)) {
+                return userIds.length ? userIds.join(', ') : '全ユーザー';
+            }
+
+            const normalized = normalizeUserIdsInput(userIds);
+            return normalized.length ? normalized.join(', ') : '全ユーザー';
+        }
+
+        function syncTriggerCommentField() {
+            const mode = triggerModalCommentMode.value;
+            const isExact = mode === 'exact';
+            triggerModalCommentText.disabled = !isExact;
+
+            if (mode === 'any') {
+                triggerModalCommentText.value = '';
+                triggerModalCommentText.placeholder = 'あらゆるコメントを対象にします';
+                return;
+            }
+
+            triggerModalCommentText.placeholder = isExact
+                ? '入力一致にするコメントを入力'
+                : 'コメント条件を使わない場合は未入力のまま';
+        }
+
+        function formatTriggerCommentSummary(triggerRecord) {
+            if (triggerRecord.commentMode === 'any') {
+                return 'あらゆるコメント';
+            }
+
+            if (triggerRecord.commentMode === 'exact') {
+                return triggerRecord.commentText || '入力一致';
+            }
+
+            return '未使用';
+        }
+
+        function getSelectedEventLabel(eventId) {
+            if (!eventId) {
+                return '未選択';
+            }
+
+            const matchedEvent = currentEvents.find((eventRecord) => eventRecord.id === eventId);
+            return matchedEvent ? getEventLabel(matchedEvent, currentEvents.indexOf(matchedEvent)) : '未選択';
+        }
+
+        function buildScreenOptions(selectedValue) {
+            return currentScreenUrls.map((item) => {
+                const selected = Number(item.slot) === Number(selectedValue) ? ' selected' : '';
+                return `<option value="${item.slot}"${selected}>screen ${item.slot}</option>`;
+            }).join('');
+        }
+
+        function renderEmptyState(container, message) {
+            container.innerHTML = `<div class="empty">${message}</div>`;
+        }
+
+        function openModal(modal) {
+            modal.classList.add('is-open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeModal(modal) {
+            modal.classList.remove('is-open');
+            modal.setAttribute('aria-hidden', 'true');
+
+            if (modal === triggerModal) {
+                hideGiftSuggestionPanel();
+                hideEventSuggestionPanel();
+            }
+        }
+
+        function syncEventModalOptions() {
+            eventModalScreen.innerHTML = buildScreenOptions(currentScreenUrls[0]?.slot || 1);
+        }
+
+        function syncEventModalVolume() {
+            eventModalMediaVolumeValue.textContent = `${eventModalMediaVolume.value}%`;
+        }
+
+        function resetTriggerModal() {
+            editingTriggerId = null;
+            triggerModalTitle.textContent = 'トリガーを新規追加';
+            triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。';
+            triggerModalSubmit.textContent = '追加';
+            syncTriggerModalOptions('');
+            triggerModalName.value = '';
+            triggerModalEnabled.checked = true;
+            triggerModalGiftName.value = '';
+            triggerModalMinCoins.value = '0';
+            triggerModalCommentMode.value = '';
+            triggerModalCommentText.value = '';
+            triggerModalUserIds.value = '';
+            syncTriggerCommentField();
+            hideGiftSuggestionPanel();
+        }
+
+        function openTriggerModalForCreate() {
+            resetTriggerModal();
+            openModal(triggerModal);
+            triggerModalName.focus();
+        }
+
+        function openTriggerModalForEdit(triggerRecord) {
+            editingTriggerId = triggerRecord.id;
+            triggerModalTitle.textContent = 'トリガーを編集';
+            triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をここで更新します。';
+            triggerModalSubmit.textContent = '更新';
+            syncTriggerModalOptions(triggerRecord.eventId || '');
+            triggerModalName.value = triggerRecord.name || '';
+            triggerModalEnabled.checked = Boolean(triggerRecord.enabled);
+            triggerModalGiftName.value = triggerRecord.giftName || '';
+            triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
+            triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
+            triggerModalCommentText.value = triggerRecord.commentText || '';
+            triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
+                ? triggerRecord.userIds.join('\n')
+                : '';
+            syncTriggerCommentField();
+            hideGiftSuggestionPanel();
+            openModal(triggerModal);
+            triggerModalName.focus();
+        }
+
+        function collectTriggerFromModal() {
+            return {
+                id: editingTriggerId || createId('trigger'),
+                name: triggerModalName.value.trim(),
+                eventId: triggerModalEventId.value,
+                giftName: triggerModalGiftName.value.trim(),
+                minCoins: Number(triggerModalMinCoins.value || 0),
+                commentMode: triggerModalCommentMode.value,
+                commentText: triggerModalCommentText.value.trim(),
+                userIds: normalizeUserIdsInput(triggerModalUserIds.value),
+                enabled: triggerModalEnabled.checked
+            };
+        }
+
+        function syncTriggerModalOptions(selectedValue = '') {
+            triggerModalEventId.value = selectedValue;
+            if (selectedValue) {
+                const matchedEvent = currentEvents.find((e) => e.id === selectedValue);
+                triggerModalEvent.value = matchedEvent
+                    ? getEventLabel(matchedEvent, currentEvents.indexOf(matchedEvent))
+                    : '';
+            } else {
+                triggerModalEvent.value = '';
+            }
+            hideEventSuggestionPanel();
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function positionGiftSuggestionPanel() {
+            const rect = triggerModalGiftName.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                triggerGiftSuggestionPanel.style.top = `${rect.bottom + 6}px`;
+                triggerGiftSuggestionPanel.style.bottom = '';
+            } else {
+                triggerGiftSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+                triggerGiftSuggestionPanel.style.top = '';
+            }
+            triggerGiftSuggestionPanel.style.left = `${rect.left}px`;
+            triggerGiftSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideGiftSuggestionPanel() {
+            triggerGiftSuggestionPanel.hidden = true;
+            triggerGiftSuggestionPanel.innerHTML = '';
+            visibleGiftSuggestions = [];
+            activeGiftSuggestionIndex = -1;
+        }
+
+        function applyGiftSuggestion(gift) {
+            if (!gift) {
+                return;
+            }
+
+            triggerModalGiftName.value = gift.name || '';
+            hideGiftSuggestionPanel();
+        }
+
+        function parseCoinFilter(query) {
+            // >= N
+            let m = query.match(/^>=\s*(\d+)$/);
+            if (m) return (c) => c >= Number(m[1]);
+            // <= N
+            m = query.match(/^<=\s*(\d+)$/);
+            if (m) return (c) => c <= Number(m[1]);
+            // > N
+            m = query.match(/^>\s*(\d+)$/);
+            if (m) return (c) => c > Number(m[1]);
+            // < N
+            m = query.match(/^<\s*(\d+)$/);
+            if (m) return (c) => c < Number(m[1]);
+            // N-M または N~M
+            m = query.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+            if (m) { const lo = Number(m[1]); const hi = Number(m[2]); return (c) => c >= lo && c <= hi; }
+            // 純粋な数値 → 完全一致
+            m = query.match(/^\d+$/);
+            if (m) { const n = Number(m[0]); return (c) => c === n; }
+            return null;
+        }
+
+        function getFilteredGiftSuggestions(query) {
+            const normalizedQuery = String(query || '').trim().toLowerCase();
+
+            if (!normalizedQuery) {
+                return knownGiftSuggestions;
+            }
+
+            const coinFilter = parseCoinFilter(normalizedQuery);
+            if (coinFilter) {
+                return knownGiftSuggestions.filter((gift) => Number.isFinite(gift.diamondCount) && coinFilter(gift.diamondCount));
+            }
+
+            return knownGiftSuggestions.filter((gift) => {
+                const name = String(gift.name || '').toLowerCase();
+                const description = String(gift.describe || '').toLowerCase();
+                return name.includes(normalizedQuery) || description.includes(normalizedQuery);
+            });
+        }
+
+        function renderTriggerGiftSuggestions(query = triggerModalGiftName.value) {
+            visibleGiftSuggestions = getFilteredGiftSuggestions(query);
+
+            if (!visibleGiftSuggestions.length) {
+                hideGiftSuggestionPanel();
+                return;
+            }
+
+            activeGiftSuggestionIndex = 0;
+            triggerGiftSuggestionPanel.innerHTML = visibleGiftSuggestions.map((gift, index) => {
+                const imageMarkup = gift.imageUrl
+                    ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(gift.name)}">`
+                    : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
+                const idPart = gift.id ? `ID: ${escapeHtml(String(gift.id))}` : '';
+                const descPart = gift.describe ? escapeHtml(gift.describe) : '';
+                const description = [idPart, descPart].filter(Boolean).join('  ·  ') || '&nbsp;';
+                const costText = Number.isFinite(gift.diamondCount) ? `${gift.diamondCount} coins` : '-';
+
+                return `
+                    <button type="button" class="gift-suggestion-item${index === activeGiftSuggestionIndex ? ' is-active' : ''}" data-gift-index="${index}">
+                        ${imageMarkup}
+                        <div class="gift-suggestion-meta">
+                            <div class="gift-suggestion-name">${escapeHtml(gift.name)}</div>
+                            <div class="gift-suggestion-desc">${description}</div>
+                        </div>
+                        <div class="gift-suggestion-cost">${escapeHtml(costText)}</div>
+                    </button>
+                `;
+            }).join('');
+
+            triggerGiftSuggestionPanel.hidden = false;
+            positionGiftSuggestionPanel();
+
+            triggerGiftSuggestionPanel.querySelectorAll('[data-gift-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    const selectedGift = visibleGiftSuggestions[Number(button.dataset.giftIndex)];
+                    applyGiftSuggestion(selectedGift);
+                });
+            });
+        }
+
+        function updateActiveGiftSuggestion(nextIndex) {
+            if (!visibleGiftSuggestions.length) {
+                return;
+            }
+
+            activeGiftSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleGiftSuggestions.length - 1));
+
+            triggerGiftSuggestionPanel.querySelectorAll('[data-gift-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeGiftSuggestionIndex);
+
+                if (index === activeGiftSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+
+        function positionEventSuggestionPanel() {
+            const rect = triggerModalEvent.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                triggerEventSuggestionPanel.style.top = `${rect.bottom + 6}px`;
+                triggerEventSuggestionPanel.style.bottom = '';
+            } else {
+                triggerEventSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+                triggerEventSuggestionPanel.style.top = '';
+            }
+            triggerEventSuggestionPanel.style.left = `${rect.left}px`;
+            triggerEventSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideEventSuggestionPanel() {
+            triggerEventSuggestionPanel.hidden = true;
+            triggerEventSuggestionPanel.innerHTML = '';
+            visibleEventSuggestions = [];
+            activeEventSuggestionIndex = -1;
+        }
+
+        function applyEventSuggestion(eventRecord) {
+            if (!eventRecord) {
+                return;
+            }
+            triggerModalEvent.value = getEventLabel(eventRecord, currentEvents.indexOf(eventRecord));
+            triggerModalEventId.value = eventRecord.id;
+            hideEventSuggestionPanel();
+            triggerModalEvent.focus();
+        }
+
+        function renderEventSuggestions(query) {
+            const q = String(query || '').trim().toLowerCase();
+            visibleEventSuggestions = q
+                ? currentEvents.filter((e) => getEventLabel(e, currentEvents.indexOf(e)).toLowerCase().includes(q))
+                : [...currentEvents];
+            if (!visibleEventSuggestions.length) {
+                hideEventSuggestionPanel();
+                return;
+            }
+            const currentId = triggerModalEventId.value;
+            activeEventSuggestionIndex = visibleEventSuggestions.findIndex((e) => e.id === currentId);
+            if (activeEventSuggestionIndex < 0) {
+                activeEventSuggestionIndex = 0;
+            }
+            triggerEventSuggestionPanel.innerHTML = visibleEventSuggestions.map((eventRecord, index) => {
+                const label = getEventLabel(eventRecord, currentEvents.indexOf(eventRecord));
+                const playbackDesc = getPlaybackSummary(eventRecord);
+                return `
+                    <button type="button" class="gift-suggestion-item${index === activeEventSuggestionIndex ? ' is-active' : ''}" data-event-index="${index}">
+                        <div class="gift-suggestion-image is-empty">▶</div>
+                        <div class="gift-suggestion-meta">
+                            <div class="gift-suggestion-name">${escapeHtml(label)}</div>
+                            <div class="gift-suggestion-desc">${escapeHtml(playbackDesc)}</div>
+                        </div>
+                        <div class="gift-suggestion-cost"></div>
+                    </button>
+                `;
+            }).join('');
+            triggerEventSuggestionPanel.hidden = false;
+            positionEventSuggestionPanel();
+            triggerEventSuggestionPanel.querySelectorAll('[data-event-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyEventSuggestion(visibleEventSuggestions[Number(button.dataset.eventIndex)]);
+                });
+            });
+        }
+
+        function updateActiveEventSuggestion(nextIndex) {
+            if (!visibleEventSuggestions.length) {
+                return;
+            }
+            activeEventSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleEventSuggestions.length - 1));
+            triggerEventSuggestionPanel.querySelectorAll('[data-event-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeEventSuggestionIndex);
+                if (index === activeEventSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+
+        function positionUserSuggestionPanel() {
+            const rect = triggerModalUserIds.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                triggerUserSuggestionPanel.style.top = `${rect.bottom + 6}px`;
+                triggerUserSuggestionPanel.style.bottom = '';
+            } else {
+                triggerUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+                triggerUserSuggestionPanel.style.top = '';
+            }
+            triggerUserSuggestionPanel.style.left = `${rect.left}px`;
+            triggerUserSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideUserSuggestionPanel() {
+            triggerUserSuggestionPanel.hidden = true;
+            triggerUserSuggestionPanel.innerHTML = '';
+            visibleUserSuggestions = [];
+            activeUserSuggestionIndex = -1;
+        }
+
+        function getActiveUserToken() {
+            const val = triggerModalUserIds.value;
+            const pos = triggerModalUserIds.selectionStart ?? val.length;
+            const before = val.slice(0, pos);
+            const match = before.match(/[^,\n]+$/);
+            return match ? match[0] : '';
+        }
+
+        function applyUserSuggestion(user) {
+            if (!user) {
+                return;
+            }
+            const val = triggerModalUserIds.value;
+            const pos = triggerModalUserIds.selectionStart ?? val.length;
+            const before = val.slice(0, pos);
+            const after = val.slice(pos);
+            const tokenMatch = before.match(/[^,\n]+$/);
+            const prefix = tokenMatch ? before.slice(0, before.length - tokenMatch[0].length) : before;
+            const needsSep = prefix.length > 0 && !/[\n,]\s*$/.test(prefix);
+            triggerModalUserIds.value = prefix + (needsSep ? '\n' : '') + user.uniqueId + '\n' + after.replace(/^[^,\n]*/, '');
+            hideUserSuggestionPanel();
+            triggerModalUserIds.focus();
+        }
+
+        function renderUserSuggestions(token) {
+            const q = String(token || '').trim().toLowerCase();
+            if (!q) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            visibleUserSuggestions = knownUserSuggestions.filter((u) => {
+                return String(u.uniqueId || '').toLowerCase().includes(q)
+                    || String(u.nickname || '').toLowerCase().includes(q);
+            }).slice(0, 20);
+            if (!visibleUserSuggestions.length) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            activeUserSuggestionIndex = 0;
+            triggerUserSuggestionPanel.innerHTML = visibleUserSuggestions.map((user, index) => {
+                const imgMarkup = user.image
+                    ? `<img class="gift-suggestion-image" src="${escapeHtml(user.image)}" alt="">`
+                    : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
+                return `
+                    <button type="button" class="gift-suggestion-item${index === activeUserSuggestionIndex ? ' is-active' : ''}" data-user-index="${index}">
+                        ${imgMarkup}
+                        <div class="gift-suggestion-meta">
+                            <div class="gift-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div>
+                            <div class="gift-suggestion-desc">@${escapeHtml(user.uniqueId)}</div>
+                        </div>
+                        <div class="gift-suggestion-cost"></div>
+                    </button>
+                `;
+            }).join('');
+            triggerUserSuggestionPanel.hidden = false;
+            positionUserSuggestionPanel();
+            triggerUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyUserSuggestion(visibleUserSuggestions[Number(button.dataset.userIndex)]);
+                });
+            });
+        }
+
+        function updateActiveUserSuggestion(nextIndex) {
+            if (!visibleUserSuggestions.length) {
+                return;
+            }
+            activeUserSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleUserSuggestions.length - 1));
+            triggerUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeUserSuggestionIndex);
+                if (index === activeUserSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+
+        async function loadUserSuggestions() {
+            const response = await fetch('/api/users/recent');
+            if (!response.ok) {
+                return;
+            }
+            const payload = await response.json();
+            knownUserSuggestions = Array.isArray(payload.users)
+                ? payload.users.filter((u) => u?.uniqueId)
+                : [];
+        }
+
+        async function loadGiftSuggestions() {
+            const response = await fetch('/api/tiktok/gifts');
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || 'ギフト候補の読み込みに失敗しました。');
+            }
+
+            knownGiftSuggestions = Array.isArray(payload.gifts)
+                ? payload.gifts.filter((gift) => typeof gift?.name === 'string' && gift.name.trim())
+                : [];
+
+            if (currentTriggers.length) {
+                renderTriggers();
+            }
+        }
+
+        async function uploadMedia(file, kind) {
+            const formData = new FormData();
+            formData.append('media', file);
+            formData.append('kind', kind);
+
+            const response = await fetch('/api/effects/media', {
+                method: 'POST',
+                body: formData
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || 'メディアの取り込みに失敗しました。');
+            }
+
+            return payload.asset;
+        }
+
+        async function previewEvent(eventRecord) {
+            const response = await fetch('/api/effects/preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    event: eventRecord
+                })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || 'イベントの再生に失敗しました。');
+            }
+
+            return payload;
+        }
+
+        function renderEvents() {
+            if (!currentEvents.length) {
+                renderEmptyState(eventList, 'イベントはまだありません。上のボタンから追加してください。');
+                return;
+            }
+
+            eventList.innerHTML = '';
+
+            currentEvents.forEach((eventRecord, index) => {
+                const fragment = eventTemplate.content.cloneNode(true);
+                const card = fragment.querySelector('.record-card');
+                const nameValue = fragment.querySelector('[data-role="name"]');
+                const screenValue = fragment.querySelector('[data-role="screen"]');
+                const videoLinkedValue = fragment.querySelector('[data-role="video-linked"]');
+                const audioLinkedValue = fragment.querySelector('[data-role="audio-linked"]');
+                const mediaVolumeValue = fragment.querySelector('[data-role="media-volume-value"]');
+                const hasVideoAsset = Boolean(eventRecord.videoAssetUrl || eventRecord.videoAssetName);
+                const hasAudioAsset = Boolean(eventRecord.audioAssetUrl || eventRecord.audioAssetName);
+
+                card.dataset.eventId = eventRecord.id;
+                nameValue.textContent = eventRecord.name || '未設定';
+                screenValue.textContent = `screen ${eventRecord.screen}`;
+                videoLinkedValue.textContent = hasVideoAsset ? '✓' : '-';
+                videoLinkedValue.classList.toggle('is-empty', !hasVideoAsset);
+                audioLinkedValue.textContent = hasAudioAsset ? '✓' : '-';
+                audioLinkedValue.classList.toggle('is-empty', !hasAudioAsset);
+                mediaVolumeValue.textContent = `${eventRecord.mediaVolume ?? 100}%`;
+
+                fragment.querySelector('[data-action="delete-event"]').addEventListener('click', async () => {
+                    currentEvents = currentEvents.filter((item) => item.id !== eventRecord.id);
+                    currentTriggers = currentTriggers.map((item) => item.eventId === eventRecord.id
+                        ? { ...item, eventId: '' }
+                        : item);
+                    syncTriggerModalOptions();
+                    renderEvents();
+                    renderTriggers();
+
+                    try {
+                        await saveConfig();
+                    } catch {
+                        // saveConfig already reports the failure in the status box.
+                    }
+                });
+
+                fragment.querySelector('[data-action="edit-event"]').addEventListener('click', () => {
+                    openEventModalForEdit(eventRecord);
+                });
+
+                fragment.querySelector('[data-action="play-event"]').addEventListener('click', async () => {
+                    setStatus(`${getEventLabel(eventRecord, index)} を再生しています。`);
+
+                    try {
+                        await previewEvent(eventRecord);
+                        setStatus(`${getEventLabel(eventRecord, index)} を再生しました。`, 'ok');
+                    } catch (error) {
+                        setStatus(error.message || 'イベントの再生に失敗しました。', 'error');
+                    }
+                });
+
+                eventList.appendChild(fragment);
+            });
+        }
+
+        function renderTriggers() {
+            if (!currentTriggers.length) {
+                renderEmptyState(triggerList, 'トリガーはまだありません。イベント未設定のままでも追加できます。');
+                return;
+            }
+
+            triggerList.innerHTML = '';
+
+            currentTriggers.forEach((triggerRecord, index) => {
+                const fragment = triggerTemplate.content.cloneNode(true);
+                const card = fragment.querySelector('.record-card');
+                const nameValue = fragment.querySelector('[data-role="name"]');
+                const eventNameValue = fragment.querySelector('[data-role="event-name"]');
+                const giftNameValue = fragment.querySelector('[data-role="gift-name"]');
+                const giftImageWrap = fragment.querySelector('[data-role="gift-image"]');
+                const giftLabel = fragment.querySelector('[data-role="gift-label"]');
+                const minCoinsValue = fragment.querySelector('[data-role="min-coins"]');
+                const commentSummaryValue = fragment.querySelector('[data-role="comment-summary"]');
+                const userIdsValue = fragment.querySelector('[data-role="user-ids"]');
+                const enabledCheckbox = fragment.querySelector('[data-role="enabled"]');
+
+                card.dataset.triggerId = triggerRecord.id;
+                nameValue.textContent = getTriggerLabel(triggerRecord, index);
+                eventNameValue.textContent = getSelectedEventLabel(triggerRecord.eventId);
+                const giftText = triggerRecord.giftName || '全ギフト';
+                giftLabel.textContent = giftText;
+                if (triggerRecord.giftName) {
+                    const matchedGift = findGiftSuggestionForTrigger(triggerRecord.giftName);
+                    if (matchedGift?.imageUrl) {
+                        const img = document.createElement('img');
+                        img.src = matchedGift.imageUrl;
+                        img.alt = matchedGift.name || '';
+                        img.className = 'trigger-gift-thumb';
+                        giftImageWrap.appendChild(img);
+                        giftImageWrap.hidden = false;
+                    }
+                }
+                minCoinsValue.textContent = `${Number(triggerRecord.minCoins || 0)}`;
+                commentSummaryValue.textContent = formatTriggerCommentSummary(triggerRecord);
+                userIdsValue.textContent = formatUserIdsSummary(triggerRecord.userIds);
+                enabledCheckbox.checked = Boolean(triggerRecord.enabled);
+
+                enabledCheckbox.addEventListener('change', async () => {
+                    triggerRecord.enabled = enabledCheckbox.checked;
+                    currentTriggers = currentTriggers.map((item) => item.id === triggerRecord.id
+                        ? { ...item, enabled: enabledCheckbox.checked }
+                        : item);
+
+                    try {
+                        await saveConfig();
+                    } catch {
+                        // saveConfig already reports the failure in the status box.
+                    }
+                });
+
+                fragment.querySelector('[data-action="delete-trigger"]').addEventListener('click', async () => {
+                    currentTriggers = currentTriggers.filter((item) => item.id !== triggerRecord.id);
+                    renderTriggers();
+
+                    try {
+                        await saveConfig();
+                    } catch {
+                        // saveConfig already reports the failure in the status box.
+                    }
+                });
+
+                fragment.querySelector('[data-action="edit-trigger"]').addEventListener('click', () => {
+                    openTriggerModalForEdit(triggerRecord);
+                });
+
+                triggerList.appendChild(fragment);
+            });
+        }
+
+        function renderUrls() {
+            urlList.innerHTML = '';
+
+            currentScreenUrls.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'url-item';
+                row.innerHTML = `
+                    <div class="url-label">screen ${item.slot}</div>
+                    <input class="url-value" type="text" readonly value="${item.url}">
+                    <button type="button">URL をコピー</button>
+                    <button type="button">debug 表示</button>
+                `;
+
+                row.querySelector('button:nth-of-type(1)').addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(item.url);
+                        setStatus(`screen ${item.slot} の URL をコピーしました。`, 'ok');
+                    } catch {
+                        setStatus('URL のコピーに失敗しました。', 'error');
+                    }
+                });
+
+                row.querySelector('button:nth-of-type(2)').addEventListener('click', () => {
+                    window.open(`/overlays/effects/${item.slot}?debug=1`, `effect-screen-debug-${item.slot}`, 'popup=yes,width=960,height=640');
+                });
+
+                urlList.appendChild(row);
+            });
+        }
+
+        function collectEvents() {
+            return currentEvents.map((eventRecord) => ({ ...eventRecord }));
+        }
+
+        function collectTriggers() {
+            return currentTriggers.map((triggerRecord) => ({
+                ...triggerRecord,
+                userIds: Array.isArray(triggerRecord.userIds)
+                    ? [...triggerRecord.userIds]
+                    : normalizeUserIdsInput(triggerRecord.userIds)
+            }));
+        }
+
+        async function loadConfig() {
+            const response = await fetch('/api/effects/config');
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || '設定の読み込みに失敗しました。');
+            }
+
+            currentEvents = payload.events || [];
+            currentTriggers = payload.triggers || [];
+            currentScreenUrls = payload.screenUrls || [];
+            syncEventModalOptions();
+            syncTriggerModalOptions();
+            renderEvents();
+            renderTriggers();
+            renderUrls();
+        }
+
+        async function saveConfig() {
+            addEventButton.disabled = true;
+            addTriggerButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/effects/config', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        events: collectEvents(),
+                        triggers: collectTriggers()
+                    })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || '設定の保存に失敗しました。');
+                }
+
+                currentEvents = payload.events || [];
+                currentTriggers = payload.triggers || [];
+                currentScreenUrls = payload.screenUrls || currentScreenUrls;
+                syncEventModalOptions();
+                syncTriggerModalOptions();
+                renderEvents();
+                renderTriggers();
+                renderUrls();
+            } catch (error) {
+                setStatus(error.message || '設定の保存に失敗しました。', 'error');
+            } finally {
+                addEventButton.disabled = false;
+                addTriggerButton.disabled = false;
+            }
+        }
+
+        addEventButton.addEventListener('click', () => {
+            openEventModalForCreate();
+        });
+
+        eventModalUploadVideoButton.addEventListener('click', () => {
+            eventModalVideoFile.click();
+        });
+
+        eventModalClearVideoButton.addEventListener('click', () => {
+            pendingEventModalVideoAsset = null;
+            eventModalVideoEnabled.checked = false;
+            eventModalVideoName.textContent = '未設定';
+            eventModalVideoFile.value = '';
+        });
+
+        eventModalVideoFile.addEventListener('change', async () => {
+            const file = eventModalVideoFile.files && eventModalVideoFile.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            setStatus(`動画 ${file.name} を取り込み中です。`);
+
+            try {
+                const asset = await uploadMedia(file, 'video');
+                pendingEventModalVideoAsset = asset;
+                eventModalVideoEnabled.checked = true;
+                eventModalVideoName.textContent = asset.name;
+                setStatus(`動画 ${asset.name} を取り込みました。`, 'ok');
+            } catch (error) {
+                setStatus(error.message || '動画の取り込みに失敗しました。', 'error');
+            } finally {
+                eventModalVideoFile.value = '';
+            }
+        });
+
+        eventModalUploadAudioButton.addEventListener('click', () => {
+            eventModalAudioFile.click();
+        });
+
+        eventModalClearAudioButton.addEventListener('click', () => {
+            pendingEventModalAudioAsset = null;
+            eventModalAudioEnabled.checked = false;
+            eventModalAudioName.textContent = '未設定';
+            eventModalAudioFile.value = '';
+        });
+
+        eventModalAudioFile.addEventListener('change', async () => {
+            const file = eventModalAudioFile.files && eventModalAudioFile.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            setStatus(`音声 ${file.name} を取り込み中です。`);
+
+            try {
+                const asset = await uploadMedia(file, 'audio');
+                pendingEventModalAudioAsset = asset;
+                eventModalAudioEnabled.checked = true;
+                eventModalAudioName.textContent = asset.name;
+                setStatus(`音声 ${asset.name} を取り込みました。`, 'ok');
+            } catch (error) {
+                setStatus(error.message || '音声の取り込みに失敗しました。', 'error');
+            } finally {
+                eventModalAudioFile.value = '';
+            }
+        });
+
+        addTriggerButton.addEventListener('click', () => {
+            openTriggerModalForCreate();
+        });
+
+        eventModalSubmit.addEventListener('click', async () => {
+            const nextEvent = collectEventFromModal();
+
+            if (editingEventId) {
+                currentEvents = currentEvents.map((item) => item.id === editingEventId ? nextEvent : item);
+            } else {
+                currentEvents = [
+                    ...currentEvents,
+                    nextEvent
+                ];
+            }
+
+            closeModal(eventModal);
+            syncTriggerModalOptions();
+            renderEvents();
+            renderTriggers();
+            editingEventId = null;
+
+            try {
+                await saveConfig();
+            } catch {
+                // saveConfig already reports the failure in the status box.
+            }
+        });
+
+        triggerModalSubmit.addEventListener('click', async () => {
+            const nextTrigger = collectTriggerFromModal();
+
+            if (editingTriggerId) {
+                currentTriggers = currentTriggers.map((item) => item.id === editingTriggerId ? nextTrigger : item);
+            } else {
+                currentTriggers = [
+                    ...currentTriggers,
+                    nextTrigger
+                ];
+            }
+
+            closeModal(triggerModal);
+            renderTriggers();
+            editingTriggerId = null;
+
+            try {
+                await saveConfig();
+            } catch {
+                // saveConfig already reports the failure in the status box.
+            }
+        });
+
+        triggerModalCommentMode.addEventListener('change', () => {
+            syncTriggerCommentField();
+        });
+
+        document.querySelectorAll('[data-action="close-event-modal"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                closeModal(eventModal);
+            });
+        });
+
+        document.querySelectorAll('[data-action="close-trigger-modal"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                closeModal(triggerModal);
+            });
+        });
+
+        [eventModal, triggerModal].forEach((modal) => {
+            modal.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    closeModal(modal);
+                }
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                hideGiftSuggestionPanel();
+                hideEventSuggestionPanel();
+                closeModal(eventModal);
+                closeModal(triggerModal);
+            }
+        });
+
+        triggerModalEvent.addEventListener('focus', () => {
+            renderEventSuggestions(triggerModalEvent.value);
+        });
+
+        triggerModalEvent.addEventListener('input', () => {
+            triggerModalEventId.value = '';
+            renderEventSuggestions(triggerModalEvent.value);
+        });
+
+        triggerModalEvent.addEventListener('keydown', (event) => {
+            if (triggerEventSuggestionPanel.hidden) {
+                if (event.key === 'ArrowDown' && currentEvents.length) {
+                    event.preventDefault();
+                    renderEventSuggestions(triggerModalEvent.value);
+                }
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                updateActiveEventSuggestion(activeEventSuggestionIndex + 1);
+                return;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                updateActiveEventSuggestion(activeEventSuggestionIndex - 1);
+                return;
+            }
+            if (event.key === 'Enter') {
+                const selected = visibleEventSuggestions[activeEventSuggestionIndex];
+                if (selected) {
+                    event.preventDefault();
+                    applyEventSuggestion(selected);
+                }
+                return;
+            }
+            if (event.key === 'Escape') {
+                hideEventSuggestionPanel();
+            }
+        });
+
+        triggerModalGiftName.addEventListener('focus', () => {
+            if (knownGiftSuggestions.length) {
+                renderTriggerGiftSuggestions();
+            }
+        });
+
+        triggerModalGiftName.addEventListener('input', () => {
+            renderTriggerGiftSuggestions(triggerModalGiftName.value);
+        });
+
+        triggerModalGiftName.addEventListener('keydown', (event) => {
+            if (triggerGiftSuggestionPanel.hidden) {
+                if (event.key === 'ArrowDown' && knownGiftSuggestions.length) {
+                    event.preventDefault();
+                    renderTriggerGiftSuggestions(triggerModalGiftName.value);
+                }
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                updateActiveGiftSuggestion(activeGiftSuggestionIndex + 1);
+                return;
+            }
+
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                updateActiveGiftSuggestion(activeGiftSuggestionIndex - 1);
+                return;
+            }
+
+            if (event.key === 'Enter') {
+                const selectedGift = visibleGiftSuggestions[activeGiftSuggestionIndex];
+
+                if (selectedGift) {
+                    event.preventDefault();
+                    applyGiftSuggestion(selectedGift);
+                }
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                hideGiftSuggestionPanel();
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.gift-suggest-shell') && !triggerGiftSuggestionPanel.contains(event.target)) {
+                hideGiftSuggestionPanel();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!triggerGiftSuggestionPanel.hidden) {
+                positionGiftSuggestionPanel();
+            }
+            if (!triggerEventSuggestionPanel.hidden) {
+                positionEventSuggestionPanel();
+            }
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!triggerGiftSuggestionPanel.hidden) {
+                positionGiftSuggestionPanel();
+            }
+            if (!triggerUserSuggestionPanel.hidden) {
+                positionUserSuggestionPanel();
+            }
+            if (!triggerEventSuggestionPanel.hidden) {
+                positionEventSuggestionPanel();
+            }
+        }, true);
+
+        window.addEventListener('resize', () => {
+            if (!triggerUserSuggestionPanel.hidden) {
+                positionUserSuggestionPanel();
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.gift-suggest-shell') && !triggerUserSuggestionPanel.contains(event.target)) {
+                hideUserSuggestionPanel();
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.gift-suggest-shell') && !triggerEventSuggestionPanel.contains(event.target)) {
+                hideEventSuggestionPanel();
+            }
+        });
+
+        triggerModalUserIds.addEventListener('input', () => {
+            renderUserSuggestions(getActiveUserToken());
+        });
+
+        triggerModalUserIds.addEventListener('keydown', (event) => {
+            if (triggerUserSuggestionPanel.hidden) {
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                updateActiveUserSuggestion(activeUserSuggestionIndex + 1);
+                return;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                updateActiveUserSuggestion(activeUserSuggestionIndex - 1);
+                return;
+            }
+            if (event.key === 'Enter') {
+                const selected = visibleUserSuggestions[activeUserSuggestionIndex];
+                if (selected) {
+                    event.preventDefault();
+                    applyUserSuggestion(selected);
+                }
+                return;
+            }
+            if (event.key === 'Escape') {
+                hideUserSuggestionPanel();
+            }
+        });
+
+        eventModalMediaVolume.addEventListener('input', () => {
+            syncEventModalVolume();
+        });
+
+        syncEventModalVolume();
+
+        loadGiftSuggestions().catch((error) => {
+            setStatus(error.message || 'ギフト候補の読み込みに失敗しました。', 'error');
+        });
+
+        loadUserSuggestions().catch(() => {});
+
+        loadConfig().catch((error) => {
+            setStatus(error.message || '設定の読み込みに失敗しました。', 'error');
+        });
+    </script>
+</body>
+</html>

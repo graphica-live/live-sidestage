@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Contributors</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap" rel="stylesheet">
+    <script>
+        window.__overlayRuntimeConfig = __OVERLAY_RUNTIME_CONFIG_PAYLOAD__;
+    </script>
+    <script src="__SOCKET_IO_CLIENT_URL__"></script>
+    <style>
+        :root {
+            --display-font-family: 'Noto Sans JP', sans-serif;
+            --display-text-color: rgba(255, 255, 255, 0.92);
+            --display-stroke-color: rgba(9, 9, 12, 0.96);
+            --display-label-stroke-width: 4.4px;
+            --display-name-stroke-width: 4px;
+            --display-label-outline-shadow: 0 0 0 transparent;
+            --display-name-outline-shadow: 0 0 0 transparent;
+            --display-summary-bg: rgba(18, 16, 14, 0.56);
+            --display-summary-border: rgba(255, 213, 97, 0.7);
+            --display-glow-color: rgba(255, 224, 138, 0.42);
+            --display-name-shadow: 0 1px 0 rgba(9, 9, 12, 0.96), 0 2px 4px rgba(9, 9, 12, 0.82), 0 0 10px rgba(255, 224, 138, 0.18);
+            --display-date-shadow: 0 1px 0 rgba(9, 9, 12, 0.98), 0 2px 5px rgba(9, 9, 12, 0.84), 0 0 12px rgba(255, 224, 138, 0.18);
+            --display-summary-shadow: 0 1px 0 rgba(9, 9, 12, 0.96), 0 2px 4px rgba(9, 9, 12, 0.82), 0 0 10px var(--display-glow-color);
+        }
+
+        body {
+            color: white;
+            font-family: var(--display-font-family);
+            background: transparent;
+        }
+        #day-label {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            margin-bottom: 10px;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }
+        .day-label-date {
+            display: inline-flex;
+            align-items: center;
+        }
+        .day-label-summary {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--display-summary-bg);
+            border: 1px solid var(--display-summary-border);
+        }
+        .outlined-svg-text-host {
+            display: inline-flex;
+            align-items: center;
+            overflow: visible;
+            white-space: nowrap;
+        }
+        .outlined-svg-text-host svg {
+            display: block;
+            overflow: visible;
+        }
+        .day-label-date .outlined-svg-text-host text,
+        .day-label-summary .outlined-svg-text-host text,
+        .contributor-name .outlined-svg-text-host text {
+            fill: var(--display-text-color);
+            stroke: var(--display-stroke-color);
+            paint-order: stroke fill;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            dominant-baseline: text-before-edge;
+            vector-effect: non-scaling-stroke;
+        }
+        .day-label-date .outlined-svg-text-host text {
+            stroke-width: var(--display-label-stroke-width);
+            text-shadow: var(--display-date-shadow);
+        }
+        .day-label-summary .outlined-svg-text-host text {
+            stroke-width: var(--display-label-stroke-width);
+            text-shadow: var(--display-summary-shadow);
+        }
+        .contributor-card {
+                padding: 4px 10px;
+            margin: 2px 5px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+        }
+        body:not(.display-hide-avatar) .contributor-card.no-avatar-image {
+                padding: 3px 10px;
+        }
+        .avatar-shell {
+            width: 40px;
+            height: 40px;
+            margin-right: 8px;
+            padding: 2px;
+            box-sizing: border-box;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            position: relative;
+            isolation: isolate;
+            background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.18) 45%, rgba(255, 255, 255, 0.08) 100%);
+            box-shadow:
+                0 0 0 2px rgba(255, 255, 255, 0.35),
+                0 2px 6px rgba(0, 0, 0, 0.35);
+            overflow: visible;
+        }
+        .avatar-shell::before,
+        .avatar-shell::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            -webkit-mask: radial-gradient(circle, transparent 58%, #000 70%);
+            mask: radial-gradient(circle, transparent 58%, #000 70%);
+        }
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: block;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+            border: 2px solid rgba(255, 255, 255, 0.92);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+            object-fit: cover;
+        }
+        .contributor-name {
+            position: relative;
+            display: inline-block;
+            isolation: isolate;
+        }
+        .contributor-name .outlined-svg-text-host text {
+            stroke-width: var(--display-name-stroke-width);
+            text-shadow:
+                0 0 2px rgba(255, 255, 255, 0.18),
+                var(--display-name-shadow);
+        }
+        .contributor-name::before {
+            content: none;
+        }
+        .contributor-name::after {
+            content: none;
+        }
+        body.display-hide-avatar .avatar-shell {
+            display: none;
+        }
+        body.display-hide-avatar .contributor-card {
+            padding: 3px 10px;
+            margin: 2px 5px;
+        }
+        body.display-hide-avatar .contributor-name {
+            line-height: 1.12;
+            text-shadow:
+                var(--display-name-outline-shadow),
+                0 0 4px rgba(255, 255, 255, 0.92),
+                0 0 8px rgba(255, 255, 255, 0.58),
+                var(--display-name-shadow);
+        }
+    </style>
+</head>
+<body>
+    <div id="day-label"></div>
+    <div id="list"></div>
+
+    <script>
+        const runtimeConfig = window.__overlayRuntimeConfig || {};
+        const snapshotPath = typeof runtimeConfig.snapshotPath === 'string' && runtimeConfig.snapshotPath
+            ? runtimeConfig.snapshotPath
+            : '/api/overlay/contributors/snapshot';
+        const backendOrigin = normalizeBackendOrigin(runtimeConfig.backendOrigin);
+        const socket = backendOrigin
+            ? io(backendOrigin, { path: '/socket.io' })
+            : io();
+        const contributorStore = new Map();
+        const listDiv = document.getElementById('list');
+        const dayLabel = document.getElementById('day-label');
+        let currentDisplayThreshold = 1000;
+        let currentGoalCount = 10;
+        let currentSortOrder = 'qualified_at_asc';
+        let currentAvatarVisibility = 'show';
+        let currentFontFamily = 'default';
+        let currentColorTheme = 'gold-night';
+        let currentTextPaint = '#fbbf24';
+        let currentStrokeWidth = 4;
+
+        const DISPLAY_FONT_FAMILIES = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            mincho: '"Noto Serif JP", serif',
+            'ud-gothic': '"Kosugi", sans-serif',
+            'ud-mincho': '"Zen Old Mincho", serif',
+            meiryo: '"Klee One", cursive',
+            rounded: '"Zen Maru Gothic", sans-serif',
+            kyokasho: '"Klee One", cursive',
+            gyosho: '"Yuji Syuku", cursive',
+            togarie: '"Dela Gothic One", sans-serif',
+            'ln-pop': '"Mochiy Pop One", sans-serif',
+            'comic-impact': '"Rampart One", sans-serif',
+            'pop-idol': '"Hachi Maru Pop", cursive',
+            entame: '"RocknRoll One", sans-serif',
+            marker: '"Yusei Magic", cursive',
+            'retro-bold': '"Kaisei Decol", serif',
+            'luxury-mincho': '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush': '"Yuji Mai", cursive',
+            'pixel-code': '"DotGothic16", "Noto Sans JP", sans-serif'
+        };
+
+        function createDisplayTheme(text, stroke, summaryBg, summaryBorder, glow, strokeWidth = '4.4px') {
+            return {
+                text,
+                stroke,
+                strokeWidth,
+                summaryBg,
+                summaryBorder,
+                glow,
+                nameShadow: `0 1px 0 ${stroke}, 0 2px 4px ${stroke.replace(/0\.9\d?\)/, '0.84)')}, 0 0 10px ${glow}`,
+                dateShadow: `0 1px 0 ${stroke}, 0 2px 5px ${stroke.replace(/0\.9\d?\)/, '0.86)')}, 0 0 12px ${glow}`,
+                summaryShadow: `0 1px 0 ${stroke}, 0 2px 4px ${stroke.replace(/0\.9\d?\)/, '0.84)')}, 0 0 10px ${glow}`
+            };
+        }
+
+        const DISPLAY_COLOR_THEMES = {
+            'gold-night': createDisplayTheme('#fbbf24', 'rgba(15, 23, 42, 0.98)', 'rgba(15, 23, 42, 0.62)', 'rgba(251, 191, 36, 0.82)', 'rgba(251, 191, 36, 0.26)'),
+            'ice-night': createDisplayTheme('#e0f2fe', 'rgba(23, 37, 84, 0.98)', 'rgba(23, 37, 84, 0.6)', 'rgba(147, 197, 253, 0.8)', 'rgba(147, 197, 253, 0.2)', '4.5px'),
+            'candy-pop': createDisplayTheme('#f9a8d4', 'rgba(131, 24, 67, 0.98)', 'rgba(131, 24, 67, 0.58)', 'rgba(249, 168, 212, 0.82)', 'rgba(249, 168, 212, 0.22)'),
+            'mint-lime': createDisplayTheme('#d9f99d', 'rgba(20, 83, 45, 0.98)', 'rgba(20, 83, 45, 0.62)', 'rgba(190, 242, 100, 0.84)', 'rgba(190, 242, 100, 0.22)'),
+            'sunset-party': createDisplayTheme('#fdba74', 'rgba(124, 45, 18, 0.98)', 'rgba(124, 45, 18, 0.6)', 'rgba(251, 146, 60, 0.82)', 'rgba(251, 146, 60, 0.22)'),
+            'violet-flash': createDisplayTheme('#c4b5fd', 'rgba(49, 46, 129, 0.98)', 'rgba(49, 46, 129, 0.6)', 'rgba(196, 181, 253, 0.82)', 'rgba(196, 181, 253, 0.22)'),
+            'mono-impact': createDisplayTheme('#ffffff', 'rgba(17, 24, 39, 0.99)', 'rgba(17, 24, 39, 0.62)', 'rgba(255, 255, 255, 0.76)', 'rgba(255, 255, 255, 0.18)', '4.6px'),
+            'sakura-bloom': createDisplayTheme('#fbcfe8', 'rgba(157, 23, 77, 0.98)', 'rgba(157, 23, 77, 0.58)', 'rgba(251, 207, 232, 0.82)', 'rgba(251, 207, 232, 0.2)'),
+            'ocean-glow': createDisplayTheme('#67e8f9', 'rgba(22, 78, 99, 0.98)', 'rgba(22, 78, 99, 0.58)', 'rgba(103, 232, 249, 0.82)', 'rgba(103, 232, 249, 0.2)'),
+            'emerald-city': createDisplayTheme('#6ee7b7', 'rgba(6, 78, 59, 0.98)', 'rgba(6, 78, 59, 0.58)', 'rgba(110, 231, 183, 0.8)', 'rgba(110, 231, 183, 0.2)'),
+            'ruby-flare': createDisplayTheme('#fb7185', 'rgba(63, 13, 18, 0.98)', 'rgba(63, 13, 18, 0.6)', 'rgba(251, 113, 133, 0.82)', 'rgba(251, 113, 133, 0.2)'),
+            'lemon-pop': createDisplayTheme('#fde047', 'rgba(30, 58, 138, 0.98)', 'rgba(30, 58, 138, 0.6)', 'rgba(253, 224, 71, 0.82)', 'rgba(253, 224, 71, 0.24)', '4.3px'),
+            'midnight-aqua': createDisplayTheme('#99f6e4', 'rgba(15, 23, 42, 0.99)', 'rgba(15, 23, 42, 0.62)', 'rgba(153, 246, 228, 0.82)', 'rgba(153, 246, 228, 0.2)'),
+            'peach-fizz': createDisplayTheme('#fdba74', 'rgba(127, 29, 29, 0.98)', 'rgba(127, 29, 29, 0.58)', 'rgba(253, 186, 116, 0.82)', 'rgba(253, 186, 116, 0.22)'),
+            'festival-red': createDisplayTheme('#fca5a5', 'rgba(31, 41, 55, 0.99)', 'rgba(31, 41, 55, 0.62)', 'rgba(252, 165, 165, 0.82)', 'rgba(252, 165, 165, 0.18)'),
+            'rose-gold': createDisplayTheme('#f8b4a6', 'rgba(91, 52, 46, 0.99)', 'rgba(91, 52, 46, 0.62)', 'rgba(248, 180, 166, 0.84)', 'rgba(248, 180, 166, 0.24)'),
+            'cyber-teal': createDisplayTheme('#67e8f9', 'rgba(15, 39, 64, 0.99)', 'rgba(15, 39, 64, 0.62)', 'rgba(103, 232, 249, 0.84)', 'rgba(103, 232, 249, 0.22)'),
+            'aurora-dream': createDisplayTheme('#e9d5ff', 'rgba(76, 29, 149, 0.99)', 'rgba(76, 29, 149, 0.62)', 'rgba(233, 213, 255, 0.84)', 'rgba(233, 213, 255, 0.22)'),
+            'coral-soda': createDisplayTheme('#fb7185', 'rgba(127, 29, 29, 0.99)', 'rgba(127, 29, 29, 0.62)', 'rgba(251, 113, 133, 0.84)', 'rgba(251, 113, 133, 0.22)'),
+            'platinum-pop': createDisplayTheme('#e2e8f0', 'rgba(30, 41, 59, 0.99)', 'rgba(30, 41, 59, 0.64)', 'rgba(226, 232, 240, 0.84)', 'rgba(226, 232, 240, 0.2)', '4.5px'),
+            'champagne-shine': createDisplayTheme(['#fff8db', '#f3d58a', '#fff2c2'], 'rgba(107, 79, 42, 0.99)', 'rgba(107, 79, 42, 0.58)', 'rgba(255, 232, 173, 0.84)', 'rgba(255, 232, 173, 0.24)', '4.5px'),
+            'royal-velvet': createDisplayTheme(['#f5e9ff', '#c084fc', '#e9d5ff'], 'rgba(49, 46, 129, 0.99)', 'rgba(49, 46, 129, 0.6)', 'rgba(216, 180, 254, 0.84)', 'rgba(216, 180, 254, 0.24)', '4.5px'),
+            'emerald-luxe': createDisplayTheme(['#ecfdf5', '#86efac', '#d1fae5'], 'rgba(20, 83, 45, 0.99)', 'rgba(20, 83, 45, 0.6)', 'rgba(167, 243, 208, 0.84)', 'rgba(167, 243, 208, 0.24)', '4.5px'),
+            'sunrise-opal': createDisplayTheme(['#fff7ed', '#fdba74', '#f9a8d4'], 'rgba(154, 52, 18, 0.99)', 'rgba(154, 52, 18, 0.58)', 'rgba(253, 186, 116, 0.84)', 'rgba(253, 186, 116, 0.24)', '4.5px')
+        };
+
+        function normalizeBackendOrigin(value) {
+            if (typeof value !== 'string') {
+                return '';
+            }
+
+            return value.trim().replace(/\/+$/u, '');
+        }
+
+        function buildBackendUrl(pathname) {
+            if (!backendOrigin) {
+                return pathname;
+            }
+
+            return new URL(pathname, `${backendOrigin}/`).toString();
+        }
+
+        function ensureContributorCard(uniqueId) {
+            let card = document.getElementById(uniqueId);
+
+            if (card) {
+                return card;
+            }
+
+            card = document.createElement('div');
+            card.id = uniqueId;
+            card.className = 'contributor-card';
+
+            const avatarShell = document.createElement('div');
+            avatarShell.className = 'avatar-shell';
+
+            const avatar = document.createElement('img');
+            avatar.className = 'avatar';
+            avatar.alt = '';
+
+            const content = document.createElement('div');
+            const name = document.createElement('strong');
+            name.className = 'contributor-name';
+
+            content.appendChild(name);
+
+            avatarShell.appendChild(avatar);
+            card.appendChild(avatarShell);
+            card.appendChild(content);
+            listDiv.appendChild(card);
+
+            return card;
+        }
+
+        function getAvatarEffectClass(total) {
+            return 'avatar-shell';
+        }
+
+        function getNameEffectClass(total) {
+            return 'contributor-name';
+        }
+
+        function compareContributorsByFirstSeen(left, right) {
+            const leftValue = left.firstSeenAt || '';
+            const rightValue = right.firstSeenAt || '';
+
+            if (leftValue !== rightValue) {
+                return leftValue.localeCompare(rightValue);
+            }
+
+            return left.uniqueId.localeCompare(right.uniqueId);
+        }
+
+        function compareContributorsByQualifiedAt(left, right) {
+            const leftValue = left.qualifiedAt || '';
+            const rightValue = right.qualifiedAt || '';
+
+            if (leftValue && rightValue) {
+                if (leftValue !== rightValue) {
+                    return leftValue.localeCompare(rightValue);
+                }
+
+                return compareContributorsByFirstSeen(left, right);
+            }
+
+            if (leftValue) {
+                return -1;
+            }
+
+            if (rightValue) {
+                return 1;
+            }
+
+            return compareContributorsByFirstSeen(left, right);
+        }
+
+        function compareContributorsByTotal(left, right, direction) {
+            const difference = direction === 'asc'
+                ? left.total - right.total
+                : right.total - left.total;
+
+            if (difference !== 0) {
+                return difference;
+            }
+
+            return compareContributorsByQualifiedAt(left, right);
+        }
+
+        function compareContributorsByNickname(left, right) {
+            const difference = String(left.nickname || '').localeCompare(String(right.nickname || ''), 'ja');
+
+            if (difference !== 0) {
+                return difference;
+            }
+
+            return compareContributorsByFirstSeen(left, right);
+        }
+
+        function sortContributors(contributors) {
+            const comparator = (() => {
+                switch (currentSortOrder) {
+                    case 'total_desc':
+                        return (left, right) => compareContributorsByTotal(left, right, 'desc');
+                    case 'total_asc':
+                        return (left, right) => compareContributorsByTotal(left, right, 'asc');
+                    case 'first_seen_asc':
+                        return compareContributorsByFirstSeen;
+                    case 'nickname_asc':
+                        return compareContributorsByNickname;
+                    case 'qualified_at_asc':
+                    default:
+                        return compareContributorsByQualifiedAt;
+                }
+            })();
+
+            return [...contributors].sort(comparator);
+        }
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat('ja-JP').format(value);
+        }
+
+        function formatCompactCoinValue(value) {
+            if (value >= 1000) {
+                return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+            }
+
+            return formatNumber(value);
+        }
+
+        function formatContributionLabel(value) {
+            return `${formatCompactCoinValue(value)}貢献達成目標`;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function normalizeTextPaint(value) {
+            if (Array.isArray(value)) {
+                return value.filter((item) => typeof item === 'string' && item.trim());
+            }
+
+            return typeof value === 'string' && value.trim() ? value.trim() : '';
+        }
+
+        function getTextPaintPreviewColor(value, fallback) {
+            const normalizedValue = normalizeTextPaint(value);
+            if (Array.isArray(normalizedValue)) {
+                return normalizedValue[0] || fallback;
+            }
+
+            return normalizedValue || fallback;
+        }
+
+        function buildSvgPaint(fill, prefix) {
+            const normalizedFill = normalizeTextPaint(fill);
+            if (Array.isArray(normalizedFill) && normalizedFill.length >= 2) {
+                const gradientId = `${prefix}-gradient`;
+                const stops = normalizedFill
+                    .map((color, index) => {
+                        const offset = normalizedFill.length === 1 ? 0 : (index / (normalizedFill.length - 1)) * 100;
+                        return `<stop offset="${offset}%" stop-color="${escapeHtml(color)}"></stop>`;
+                    })
+                    .join('');
+
+                return {
+                    defs: `<defs><linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">${stops}</linearGradient></defs>`,
+                    fill: `url(#${gradientId})`
+                };
+            }
+
+            return {
+                defs: '',
+                fill: escapeHtml(normalizedFill || '#ffffff')
+            };
+        }
+
+        function buildOutlinedSvgMarkup(text, options = {}) {
+            const fontSize = Number(options.fontSize) || 16;
+            const fontWeight = Number(options.fontWeight) || 700;
+            const strokeWidth = Number(options.strokeWidth) || 0;
+            const letterSpacing = options.letterSpacing || '0em';
+            const shadowPad = Number(options.shadowPad) || 0;
+            const layoutHeight = Number(options.layoutHeight) || 0;
+            const paint = buildSvgPaint(options.fill, options.idPrefix || `contributors-text-${Math.random().toString(36).slice(2, 10)}`);
+
+            return `
+                <span class="outlined-svg-text-host" data-outlined-svg-host data-stroke-width="${strokeWidth}" data-shadow-pad="${shadowPad}" data-layout-height="${layoutHeight}">
+                    <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        ${paint.defs}
+                        <text data-outlined-svg-text x="0" y="0" style="font-size:${fontSize}px;font-weight:${fontWeight};letter-spacing:${letterSpacing};fill:${paint.fill};">${escapeHtml(text)}</text>
+                    </svg>
+                </span>
+            `;
+        }
+
+        function layoutOutlinedSvgText(container = document) {
+            container.querySelectorAll('[data-outlined-svg-host]').forEach((host) => {
+                const svg = host.querySelector('svg');
+                const text = host.querySelector('[data-outlined-svg-text]');
+
+                if (!svg || !text) {
+                    return;
+                }
+
+                text.setAttribute('font-family', getComputedStyle(host).fontFamily);
+
+                let bounds;
+                try {
+                    bounds = text.getBBox();
+                } catch {
+                    return;
+                }
+
+                const strokeWidth = Number.parseFloat(host.dataset.strokeWidth || '0') || 0;
+                const shadowPad = Number.parseFloat(host.dataset.shadowPad || '0') || 0;
+                const horizontalPadding = Math.max(2, strokeWidth + shadowPad);
+                const verticalPadding = Math.max(1, strokeWidth + Math.min(shadowPad, 2));
+                const width = Math.max(1, bounds.width + horizontalPadding * 2);
+                const height = Math.max(1, bounds.height + verticalPadding * 2);
+                const fixedLayoutHeight = Number.parseFloat(host.dataset.layoutHeight || '0') || 0;
+                const layoutHeight = Math.max(1, fixedLayoutHeight || bounds.height);
+
+                svg.setAttribute('viewBox', `${bounds.x - horizontalPadding} ${bounds.y - verticalPadding} ${width} ${height}`);
+                svg.setAttribute('width', `${width}`);
+                svg.setAttribute('height', `${height}`);
+                host.style.width = `${width}px`;
+                host.style.height = `${layoutHeight}px`;
+            });
+        }
+
+        function renderContributors(dayKey) {
+            const contributors = sortContributors(
+                Array.from(contributorStore.values())
+                    .filter((contributor) => contributor.total >= currentDisplayThreshold)
+            );
+            listDiv.innerHTML = '';
+            dayLabel.innerHTML = buildDayLabel(dayKey, contributors.length, currentGoalCount, currentDisplayThreshold);
+
+            contributors.forEach((contributor) => {
+                const card = ensureContributorCard(contributor.uniqueId);
+                const avatarShell = card.querySelector('.avatar-shell');
+                const avatar = card.querySelector('.avatar');
+                const name = card.querySelector('strong');
+                const hasAvatarImage = typeof contributor.image === 'string'
+                    ? contributor.image.trim() !== ''
+                    : Boolean(contributor.image);
+
+                avatarShell.className = getAvatarEffectClass(contributor.total);
+                avatar.src = hasAvatarImage ? contributor.image : '';
+                card.classList.toggle('no-avatar-image', !hasAvatarImage);
+                name.className = getNameEffectClass(contributor.total);
+                name.innerHTML = buildOutlinedSvgMarkup(contributor.nickname, { fontSize: 28, fontWeight: 800, strokeWidth: currentStrokeWidth, shadowPad: 3, layoutHeight: 30, fill: currentTextPaint, idPrefix: `contributor-name-${contributor.uniqueId}` });
+                name.dataset.displayName = contributor.nickname;
+            });
+
+            layoutOutlinedSvgText(dayLabel);
+            layoutOutlinedSvgText(listDiv);
+        }
+
+        function formatDayLabel(dayKey) {
+            if (!dayKey) {
+                return '';
+            }
+
+            const match = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+            if (!match) {
+                return dayKey;
+            }
+
+            return `${Number(match[2])}/${Number(match[3])}`;
+        }
+
+        function getRequestedDayKey() {
+            const params = new URLSearchParams(window.location.search);
+            const dayKey = params.get('dayKey') || '';
+            return /^\d{4}-\d{2}-\d{2}$/.test(dayKey) ? dayKey : '';
+        }
+
+        function normalizeGoalCount(goalCount) {
+            return Number.isInteger(goalCount) && goalCount >= 0 ? goalCount : 10;
+        }
+
+        function normalizeDisplayThreshold(displayThreshold) {
+            return Number.isInteger(displayThreshold) && displayThreshold > 0 && displayThreshold % 100 === 0 ? displayThreshold : 1000;
+        }
+
+        function normalizeAvatarVisibility(avatarVisibility) {
+            return avatarVisibility === 'hide' ? 'hide' : 'show';
+        }
+
+        function normalizeFontFamily(fontFamily) {
+            const normalizedValue = String(fontFamily || '').trim().toLowerCase();
+            const aliases = {
+                notosans: 'gothic',
+                roboto: 'gothic',
+                robot: 'gothic',
+                rounded: 'default',
+                mincho: 'ud-mincho',
+                decol: 'retro-bold',
+                magic: 'marker',
+                gothic_heavy: 'togarie',
+                maru_pop: 'pop-idol',
+                dot: 'default',
+                display: 'comic-impact',
+                klee: 'kyokasho',
+                shippori: 'luxury-mincho',
+                reggae: 'entame',
+                'cyber-core': 'pixel-code',
+                'neon-grid': 'pixel-code',
+                'signal-runner': 'pixel-code'
+            };
+            const resolvedValue = aliases[normalizedValue] || normalizedValue;
+            return DISPLAY_FONT_FAMILIES[resolvedValue] ? resolvedValue : 'default';
+        }
+
+        function normalizeColorTheme(colorTheme) {
+            const aliases = {
+                gold_black: 'gold-night',
+                white_black: 'mono-impact',
+                mint_navy: 'mint-lime',
+                pink_burgundy: 'candy-pop',
+                sky_royal: 'ice-night',
+                neon_lime: 'lemon-pop',
+                sakura_plum: 'sakura-bloom',
+                sunset_fire: 'sunset-party',
+                ice_silver: 'ice-night',
+                citrus_forest: 'emerald-city'
+            };
+            const resolvedColorTheme = aliases[colorTheme] || colorTheme;
+            return DISPLAY_COLOR_THEMES[resolvedColorTheme] ? resolvedColorTheme : 'gold-night';
+        }
+
+        function normalizeStrokeWidth(strokeWidth) {
+            return Number.isInteger(strokeWidth) && strokeWidth >= 1 && strokeWidth <= 12 ? strokeWidth : 4;
+        }
+
+        function buildOutlineShadow(color, strokeWidth) {
+            if (!Number.isFinite(strokeWidth) || strokeWidth <= 0) {
+                return '0 0 0 transparent';
+            }
+
+            const layers = ['0 0 0 transparent'];
+            const ringCount = Math.min(12, Math.max(1, Math.ceil(strokeWidth * 2)));
+            const angleCount = Math.min(24, Math.max(12, Math.ceil(strokeWidth * 3)));
+
+            for (let ringIndex = 1; ringIndex <= ringCount; ringIndex += 1) {
+                const radius = (strokeWidth * ringIndex) / ringCount;
+
+                for (let angleIndex = 0; angleIndex < angleCount; angleIndex += 1) {
+                    const angle = (Math.PI * 2 * angleIndex) / angleCount;
+                    const offsetX = (Math.cos(angle) * radius).toFixed(2);
+                    const offsetY = (Math.sin(angle) * radius).toFixed(2);
+                    layers.push(`${offsetX}px ${offsetY}px 0 ${color}`);
+                }
+            }
+
+            return layers.join(', ');
+        }
+
+        function applyDisplayAppearance() {
+            const rootStyle = document.documentElement.style;
+            const activeTheme = DISPLAY_COLOR_THEMES[currentColorTheme] || DISPLAY_COLOR_THEMES['gold-night'];
+            const labelStrokeWidth = Math.max(0, Math.round(Number.parseFloat(activeTheme.strokeWidth || '4px') || 4));
+            const textPreviewColor = getTextPaintPreviewColor(activeTheme.text, '#fbbf24');
+
+            currentTextPaint = activeTheme.text;
+
+            rootStyle.setProperty('--display-font-family', DISPLAY_FONT_FAMILIES[currentFontFamily] || DISPLAY_FONT_FAMILIES.default);
+            rootStyle.setProperty('--display-text-color', textPreviewColor);
+            rootStyle.setProperty('--display-stroke-color', activeTheme.stroke);
+            rootStyle.setProperty('--display-label-stroke-width', activeTheme.strokeWidth || '4px');
+            rootStyle.setProperty('--display-name-stroke-width', `${currentStrokeWidth}px`);
+            rootStyle.setProperty('--display-label-outline-shadow', buildOutlineShadow(activeTheme.stroke, labelStrokeWidth));
+            rootStyle.setProperty('--display-name-outline-shadow', buildOutlineShadow(activeTheme.stroke, currentStrokeWidth));
+            rootStyle.setProperty('--display-summary-bg', activeTheme.summaryBg);
+            rootStyle.setProperty('--display-summary-border', activeTheme.summaryBorder);
+            rootStyle.setProperty('--display-glow-color', activeTheme.glow);
+            rootStyle.setProperty('--display-name-shadow', activeTheme.nameShadow || '0 2px 6px rgba(0, 0, 0, 0.45)');
+            rootStyle.setProperty('--display-date-shadow', activeTheme.dateShadow || '0 2px 8px rgba(0, 0, 0, 0.5)');
+            rootStyle.setProperty('--display-summary-shadow', activeTheme.summaryShadow || `0 0 8px ${activeTheme.glow}, 0 2px 6px rgba(0, 0, 0, 0.45)`);
+
+            document.body.classList.toggle('display-hide-avatar', currentAvatarVisibility === 'hide');
+        }
+
+        function buildDayLabel(dayKey, contributorCount, goalCount, displayThreshold) {
+            const summary = `${formatContributionLabel(displayThreshold)} ${contributorCount}/${goalCount}人`;
+            const labelStrokeWidth = Math.max(0, Math.round(Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--display-label-stroke-width')) || 4));
+            const summaryMarkup = `<span class="day-label-summary">${buildOutlinedSvgMarkup(summary, { fontSize: 18, fontWeight: 800, strokeWidth: labelStrokeWidth, letterSpacing: '0.02em', shadowPad: 8, fill: currentTextPaint, idPrefix: 'contributors-summary' })}</span>`;
+
+            return summaryMarkup;
+        }
+
+        function applyOverlaySnapshot(snapshot) {
+            const display = snapshot?.display || {};
+            const contributors = Array.isArray(snapshot?.contributors) ? snapshot.contributors : [];
+            const dayKey = snapshot?.dayKey || '';
+
+            currentDisplayThreshold = normalizeDisplayThreshold(display.threshold);
+            currentGoalCount = normalizeGoalCount(display.goalCount);
+            currentSortOrder = display.sortOrder || 'qualified_at_asc';
+            currentAvatarVisibility = normalizeAvatarVisibility(display.avatarVisibility);
+            currentFontFamily = normalizeFontFamily(display.fontFamily);
+            currentColorTheme = normalizeColorTheme(display.colorTheme);
+            currentStrokeWidth = normalizeStrokeWidth(display.strokeWidth);
+            contributorStore.clear();
+
+            applyDisplayAppearance();
+
+            contributors.forEach((contributor) => {
+                if (contributor.total >= currentDisplayThreshold) {
+                    contributorStore.set(contributor.uniqueId, contributor);
+                }
+            });
+
+            renderContributors(dayKey);
+        }
+
+        async function loadSnapshot(dayKey = getRequestedDayKey()) {
+            const url = new URL(buildBackendUrl(snapshotPath), window.location.href);
+
+            if (dayKey) {
+                url.searchParams.set('dayKey', dayKey);
+            }
+
+            const response = await fetch(url.toString());
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Overlay snapshot の取得に失敗しました。');
+            }
+
+            applyOverlaySnapshot(payload);
+        }
+
+        socket.on('overlay:contributors:snapshot', (snapshot) => {
+            if (!getRequestedDayKey() || snapshot?.dayKey === getRequestedDayKey()) {
+                applyOverlaySnapshot(snapshot);
+            }
+        });
+
+        loadSnapshot().catch((error) => {
+            console.error(error);
+        });
+    </script>
+</body>
+</html>
