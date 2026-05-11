@@ -6,9 +6,9 @@ const MAX_DONATION_YEN = 100000;
 const DONATION_STEP_YEN = 100;
 
 const DONATION_PRESET_OPTIONS = [
-  { amount: 500, label: 'ﾂ･500' },
-  { amount: 1000, label: 'ﾂ･1,000' },
-  { amount: 3000, label: 'ﾂ･3,000' },
+  { amount: 500, label: '¥500' },
+  { amount: 1000, label: '¥1,000' },
+  { amount: 3000, label: '¥3,000' },
 ] as const;
 
 function formatYen(amount: number): string {
@@ -17,19 +17,18 @@ function formatYen(amount: number): string {
 
 interface DonationCardProps {
   returnPath: string;
-  compact?: boolean;
 }
 
 function getSupportErrorMessage(errorCode: string | null): string {
   switch (errorCode) {
     case 'INVALID_DONATION_AMOUNT':
-      return `蠢懈抄鬘阪・${formatYen(MIN_DONATION_YEN)}蜀・°繧・{formatYen(MAX_DONATION_YEN)}蜀・∪縺ｧ縺ｮ${formatYen(DONATION_STEP_YEN)}蜀・腰菴阪〒蜈･蜉帙＠縺ｦ縺上□縺輔＞縲Ａ;
+      return `応援額は${formatYen(MIN_DONATION_YEN)}円から${formatYen(MAX_DONATION_YEN)}円までの${formatYen(DONATION_STEP_YEN)}円単位で入力してください。`;
     case 'MISSING_STRIPE_SECRET_KEY':
-      return '譛ｬ逡ｪ迺ｰ蠅・・ STRIPE_SECRET_KEY 縺梧悴險ｭ螳壹〒縺吶・loudflare Pages 縺ｮ Secrets 繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・;
+      return '本番環境の STRIPE_SECRET_KEY が未設定です。Cloudflare Pages の Secrets を確認してください。';
     case 'DONATION_CHECKOUT_FAILED':
-      return 'Stripe 蛛ｴ縺ｧ蠢懈抄繝壹・繧ｸ繧剃ｽ懈・縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲りｨｭ螳壼・螳ｹ縺ｨ Stripe 繝繝・す繝･繝懊・繝峨ｒ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・;
+      return 'Stripe 側で応援ページを作成できませんでした。設定内容と Stripe ダッシュボードを確認してください。';
     default:
-      return '蠢懈抄繝壹・繧ｸ縺ｮ襍ｷ蜍輔↓螟ｱ謨励＠縺ｾ縺励◆縲よ凾髢薙ｒ縺翫＞縺ｦ蜀榊ｺｦ縺願ｩｦ縺励￥縺縺輔＞縲・;
+      return '応援ページの起動に失敗しました。時間をおいて再度お試しください。';
   }
 }
 
@@ -118,7 +117,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       if (!data?.url) {
         throw new Error(JSON.stringify({
           error: 'DONATION_CHECKOUT_FAILED',
-          details: sanitizeErrorText(responseText) ?? 'Checkout URL 縺後Ξ繧ｹ繝昴Φ繧ｹ縺ｫ蜷ｫ縺ｾ繧後※縺・∪縺帙ｓ縲・,
+          details: sanitizeErrorText(responseText) ?? 'Checkout URL がレスポンスに含まれていません。',
           code: res.status ? `HTTP_${res.status}` : null,
         }));
       }
@@ -169,18 +168,18 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
         }}
       />
 
-      <div className="text-[2.2rem] mb-2">笘・/div>
+      <div className="text-[2.2rem] mb-2">☕</div>
 
       <p
         className="text-[1.2rem] font-extrabold mb-2"
         style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
       >
-        TikRing繧貞ｿ懈抄縺吶ｋ
+        TikRingを応援する
       </p>
 
       <p className="text-[0.85rem] leading-relaxed mb-5" style={{ color: 'rgb(204,204,170)' }}>
-        縺薙・繧ｵ繝ｼ繝薙せ縺ｯ螳悟・辟｡譁吶〒謠蝉ｾ帙＠縺ｦ縺・∪縺吶・br />
-        豌励↓蜈･縺｣縺ｦ縺・◆縺縺代◆繧峨√●縺ｲ縺疲髪謠ｴ繧偵♀鬘倥＞縺励∪縺呻ｼ・
+        このサービスは完全無料で運営しています。<br />
+        気に入っていただけたら、ぜひご支援をお願いします！
       </p>
 
       {/* preset buttons */}
@@ -207,14 +206,14 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
 
       {/* custom amount */}
       <div className="flex items-center gap-2 justify-center">
-        <span className="text-[0.9rem]" style={{ color: 'rgb(170,170,170)' }}>ﾂ･</span>
+        <span className="text-[0.9rem]" style={{ color: 'rgb(170,170,170)' }}>¥</span>
         <input
           type="number"
           min={MIN_DONATION_YEN}
           max={MAX_DONATION_YEN}
           step={DONATION_STEP_YEN}
           inputMode="numeric"
-          placeholder="驥鷹｡阪ｒ蜈･蜉・
+          placeholder="金額を入力"
           value={customAmount}
           onChange={(e) => { setCustomAmount(e.target.value); setSelectedPreset(null); }}
           disabled={isLoading}
@@ -223,7 +222,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
             background: 'rgb(15,15,24)',
             border: `1px solid ${customAmount && selectedPreset === null ? 'rgb(251,146,60)' : 'rgb(58,58,90)'}`,
           }}
-          aria-label="謾ｯ謠ｴ驥鷹｡・
+          aria-label="支援金額"
         />
         <button
           type="button"
@@ -232,7 +231,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
           className="px-5 py-2 rounded-[10px] text-base font-bold text-white transition-all hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed"
           style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))' }}
         >
-          {loadingTarget === 'custom' ? <Loader2 className="inline h-4 w-4 animate-spin" /> : '謾ｯ謠ｴ縺吶ｋ'}
+          {loadingTarget === 'custom' ? <Loader2 className="inline h-4 w-4 animate-spin" /> : '支援する'}
         </button>
       </div>
 
@@ -241,7 +240,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       ) : null}
 
       {supportSuccess ? (
-        <p className="mt-3 text-xs" style={{ color: 'rgb(74,222,128)' }}>蠢懈抄縺ゅｊ縺後→縺・＃縺悶＞縺ｾ縺吶４tripe 縺ｧ蜿励￠莉倥￠縺ｾ縺励◆縲・/p>
+        <p className="mt-3 text-xs" style={{ color: 'rgb(74,222,128)' }}>応援ありがとうございます。Stripe で受け付けました。</p>
       ) : null}
     </div>
   );
