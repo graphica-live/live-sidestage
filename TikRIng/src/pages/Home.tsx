@@ -2226,7 +2226,7 @@ export default function Home({ user }: HomeProps) {
             {requiresUploadRankingConsent ? (
               <div className="mt-5 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 py-4 sm:rounded-[1.25rem] sm:px-5">
                 <p className="text-sm leading-6 text-tiktok-lightgray">
-                  アップロードされたフレームはアクセスランキングとPickupの掲載対象になります。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。
+                  アップロードされたフレームは各種ランキングの掲載対象になります。なお、フレームを保護する仕様上、ランキング画面から第三者が直接ダウンロードや装着を行うことはできません。
                 </p>
                 <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-white" htmlFor="upload-ranking-consent">
                   <input
