@@ -190,13 +190,8 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
             key={option.amount}
             type="button"
             onClick={() => {
-              if (customAmount !== '') {
-                customInputRef.current?.focus();
-                customInputRef.current?.select();
-                return;
-              }
               setSelectedPreset(option.amount);
-              void handleDonate(option.amount, option.amount);
+              setCustomAmount('');
             }}
             disabled={isLoading}
             className="px-5 py-2.5 rounded-[10px] text-base font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -206,15 +201,13 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
               color: selectedPreset === option.amount ? 'rgb(253,186,116)' : 'rgb(224,224,224)',
             }}
           >
-            {loadingTarget === option.amount
-              ? <Loader2 className="inline h-4 w-4 animate-spin" />
-              : option.label}
+            {option.label}
           </button>
         ))}
       </div>
 
       {/* custom amount */}
-      <div className="flex items-center gap-2 justify-center">
+      <div className="flex items-center gap-2 justify-center mb-3">
         <span className="text-[0.9rem]" style={{ color: 'rgb(170,170,170)' }}>¥</span>
         <input
           type="number"
@@ -234,14 +227,24 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
           }}
           aria-label="支援金額"
         />
+      </div>
+
+      {/* submit button */}
+      <div className="flex justify-center">
         <button
           type="button"
-          onClick={() => void handleDonate(normalizedCustomAmount, 'custom')}
-          disabled={isLoading || !isCustomAmountValid}
-          className="px-5 py-2 rounded-[10px] text-base font-bold text-white transition-all hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed"
+          onClick={() => {
+            if (selectedPreset !== null) {
+              void handleDonate(selectedPreset, selectedPreset);
+            } else {
+              void handleDonate(normalizedCustomAmount, 'custom');
+            }
+          }}
+          disabled={isLoading || (selectedPreset === null && !isCustomAmountValid)}
+          className="px-8 py-2.5 rounded-[10px] text-base font-bold text-white transition-all hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed"
           style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))' }}
         >
-          {loadingTarget === 'custom' ? <Loader2 className="inline h-4 w-4 animate-spin" /> : '支援する'}
+          {isLoading ? <Loader2 className="inline h-4 w-4 animate-spin" /> : '支援する'}
         </button>
       </div>
 
