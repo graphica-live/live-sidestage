@@ -148,7 +148,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       className="relative w-full rounded-[18px] text-center"
       style={{
         background: 'linear-gradient(160deg, rgb(42,16,24) 0%, rgb(26,10,16) 100%)',
-        padding: '32px 28px 24px',
+        padding: '20px 28px 20px',
         animation: 'donate-glow 3s ease-in-out infinite',
       }}
     >
@@ -169,8 +169,6 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
         }}
       />
 
-      <div className="text-[2.2rem] mb-2">☕</div>
-
       <p
         className="text-[1.2rem] font-extrabold mb-2"
         style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
@@ -179,8 +177,8 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       </p>
 
       <p className="text-[0.85rem] leading-relaxed mb-5" style={{ color: 'rgb(204,204,170)' }}>
-        このサービスは完全無料で運営しています。<br />
-        気に入っていただけたら、ぜひご支援をお願いします！
+        完全無料サービスです。<br />
+        この活動をいいなと思ったらご支援をお願いします！
       </p>
 
       {/* preset buttons */}
