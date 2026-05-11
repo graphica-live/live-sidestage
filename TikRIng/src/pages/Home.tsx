@@ -1459,6 +1459,8 @@ export default function Home({ user }: HomeProps) {
             />
           </div>
 
+          <DonationCard returnPath="/" />
+
           <div className="h-4" />
 
           <div className="space-y-3">
@@ -1520,8 +1522,6 @@ export default function Home({ user }: HomeProps) {
               </a>
             </div>
           </div>
-
-          <DonationCard returnPath="/" />
 
         </div>
       ) : !shareUrl && frameImage ? (
