@@ -26,6 +26,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   const nowMs = Date.now();
 
+  // Get top 10 frame IDs by wear_count for ranking protection
+  const top10Rows = await context.env.DB.prepare(
+    'SELECT id FROM frames WHERE COALESCE(exclude_from_rankings, 0) = 0 ORDER BY COALESCE(wear_count, 0) DESC, created_at DESC LIMIT 10'
+  ).all<{ id: string }>();
+  const top10Ids = new Set((top10Rows.results ?? []).map((r) => r.id));
+
   const rows = await context.env.DB.prepare(
     'SELECT id, image_key FROM frames WHERE expires_at IS NOT NULL AND expires_at < ? ORDER BY expires_at ASC LIMIT ?'
   )
@@ -36,9 +42,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   let deletedR2 = 0;
   let deletedDb = 0;
+  let protectedCount = 0;
   const failures: Array<{ id: string; step: string }> = [];
 
   for (const row of expired) {
+    // Top 10 ranked frames: invalidate share URLs only, keep the frame itself
+    if (top10Ids.has(row.id)) {
+      try {
+        await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(row.id).run();
+        protectedCount += 1;
+      } catch {
+        failures.push({ id: row.id, step: 'share_url_invalidate' });
+      }
+      continue;
+    }
+
     try {
       await context.env.FRAMES_BUCKET.delete(row.image_key);
       deletedR2 += 1;
@@ -64,6 +82,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       scanned: expired.length,
       deletedR2,
       deletedDb,
+      protected: protectedCount,
       failures,
       nowMs,
       limit,

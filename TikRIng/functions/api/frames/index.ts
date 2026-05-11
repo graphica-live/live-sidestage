@@ -213,12 +213,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             FROM frames f
             LEFT JOIN users u ON u.id = f.owner_id
              LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-            WHERE (f.expires_at IS NULL OR f.expires_at > ?)
-              AND COALESCE(f.exclude_from_rankings, 0) = 0
+            WHERE COALESCE(f.exclude_from_rankings, 0) = 0
             ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.wear_count, 0) DESC, f.created_at DESC'}
             LIMIT 10`
           )
-           .bind(nowMs)
            .all<FrameRow>();
 
       const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({

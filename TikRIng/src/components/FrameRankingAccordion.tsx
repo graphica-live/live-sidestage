@@ -14,15 +14,6 @@ type RankingResponse = {
   frames?: RankingFrame[];
 };
 
-type GoodStateResponse = {
-  goods?: Record<string, boolean>;
-};
-
-type GoodSubmitResponse = {
-  ok?: boolean;
-  created?: boolean;
-};
-
 interface FrameRankingAccordionProps {
   title: string;
   eyebrow?: string;
@@ -236,28 +227,6 @@ async function fetchRanking(endpoint: string, signal: AbortSignal) {
   return fetchJsonWithFallback<RankingResponse>(endpoint, { signal }, 'ランキングを取得できませんでした。');
 }
 
-async function fetchGoodStates(frameIds: string[], signal: AbortSignal) {
-  const params = new URLSearchParams();
-  params.set('goodState', '1');
-  for (const frameId of frameIds) {
-    params.append('id', frameId);
-  }
-
-  return fetchJsonWithFallback<GoodStateResponse>(
-    `/api/frames?${params.toString()}`,
-    { signal, cache: 'no-store', credentials: 'include' },
-    'グッド状態を取得できませんでした。'
-  );
-}
-
-async function submitGood(frameId: string) {
-  return fetchJsonWithFallback<GoodSubmitResponse>(
-    `/api/frames/${encodeURIComponent(frameId)}?good=1`,
-    { method: 'POST', credentials: 'include' },
-    'グッドを保存できませんでした。'
-  );
-}
-
 function RankingThumbnail({
   frame,
 }: {
@@ -306,9 +275,6 @@ export default function FrameRankingAccordion({
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
   const [modalImageLoading, setModalImageLoading] = useState(false);
   const [modalImageError, setModalImageError] = useState<string | null>(null);
-  const [goodStates, setGoodStates] = useState<Record<string, boolean>>({});
-  const [goodSubmitting, setGoodSubmitting] = useState<Record<string, boolean>>({});
-  const [goodErrors, setGoodErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     if (!open || loaded) {
@@ -324,9 +290,6 @@ export default function FrameRankingAccordion({
         const data = await fetchRanking(getRankingEndpoint(rankingType), controller.signal);
 
         setFrames(Array.isArray(data.frames) ? data.frames : []);
-        setGoodStates({});
-        setGoodSubmitting({});
-        setGoodErrors({});
         setLoaded(true);
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
@@ -362,32 +325,6 @@ export default function FrameRankingAccordion({
 
     return () => controller.abort();
   }, [loaded, open, rankingType]);
-
-  useEffect(() => {
-    if (!open || frames.length === 0) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    void fetchGoodStates(frames.map((frame) => frame.id), controller.signal)
-      .then((data) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setGoodStates(data.goods ?? {});
-      })
-      .catch((fetchError) => {
-        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
-          return;
-        }
-
-        console.error(fetchError);
-      });
-
-    return () => controller.abort();
-  }, [frames, open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -441,44 +378,6 @@ export default function FrameRankingAccordion({
 
   const blockImageInteraction = (event: React.MouseEvent<HTMLElement> | React.DragEvent<HTMLElement>) => {
     event.preventDefault();
-  };
-
-  const handleGood = async (frameId: string) => {
-    if (goodStates[frameId] || goodSubmitting[frameId]) {
-      return;
-    }
-
-    setGoodSubmitting((current) => ({
-      ...current,
-      [frameId]: true,
-    }));
-    setGoodErrors((current) => ({
-      ...current,
-      [frameId]: null,
-    }));
-
-    try {
-      const result = await submitGood(frameId);
-      if (!result.ok) {
-        throw new Error('グッドを保存できませんでした。');
-      }
-
-      setGoodStates((current) => ({
-        ...current,
-        [frameId]: true,
-      }));
-    } catch (submitError) {
-      console.error(submitError);
-      setGoodErrors((current) => ({
-        ...current,
-        [frameId]: '保存に失敗しました',
-      }));
-    } finally {
-      setGoodSubmitting((current) => ({
-        ...current,
-        [frameId]: false,
-      }));
-    }
   };
 
   return (
