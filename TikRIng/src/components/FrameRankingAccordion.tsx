@@ -165,10 +165,15 @@ function StrongWatermarkOverlay({ compact = false }: { compact?: boolean }) {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {compact ? (
         <>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="select-none -rotate-[24deg] text-lg font-black uppercase tracking-[0.24em] text-white/72 drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)] sm:text-xl">
-              {WATERMARK_TEXT}
-            </span>
+          <div className="absolute inset-[-38%] grid grid-cols-2 gap-x-2 gap-y-4 -rotate-[24deg]">
+            {Array.from({ length: 28 }).map((_, index) => (
+              <span
+                key={index}
+                className="select-none text-center text-sm font-black uppercase tracking-[0.36em] text-white/72 drop-shadow-[0_2px_10px_rgba(0,0,0,0.98)] sm:text-base"
+              >
+                {WATERMARK_TEXT}
+              </span>
+            ))}
           </div>
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.3))]" />
         </>
