@@ -1342,7 +1342,7 @@ export default function Home({ user }: HomeProps) {
             )}
           </div>
 
-          {user !== undefined && user?.plan !== 'pro' ? (
+          {false ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
               <button
                 type="button"
@@ -1457,6 +1457,8 @@ export default function Home({ user }: HomeProps) {
                 closedSummary=""
             />
           </div>
+
+          <div className="h-4" />
 
           <div className="space-y-3">
             <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#a78bfa] to-[#38bdf8]">
@@ -2257,7 +2259,7 @@ export default function Home({ user }: HomeProps) {
         </div>
       ) : null}
 
-      {user !== undefined && user?.plan !== 'pro' && (!!shareUrl || !!frameImage) ? (
+      {false ? (
         <div className="w-full mt-10 rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
           <button
             type="button"
