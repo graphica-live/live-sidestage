@@ -51,70 +51,6 @@ type UploadConfirmationState = {
   avatarPreviewUrl: string;
 };
 
-const updateHistory = [
-  {
-    date: '2026.04.08',
-    title: 'ProでランキングとPickupの対象外設定を追加',
-    detail: 'フレーム登録時に、ProオプションからランキングとPickupの掲載対象外を選べるように変更。',
-  },
-  {
-    date: '2026.04.07',
-    title: 'Proで閲覧数と装着数を確認可能に変更',
-    detail: 'フレーム管理で管理者ページと同じ表示に揃え、Proユーザーも閲覧数・装着数を確認できるようにし、未登録者向けのPro案内文も更新。',
-  },
-  {
-    date: '2026.04.06',
-    title: '閉じていないフレームのプロフ画像表示範囲を全面開始に変更',
-    detail: '円形に閉じていないなど自動判定が難しいフレームでも、プロフ画像の表示範囲が初期状態で全面になるよう変更。',
-  },
-  {
-    date: '2026.03.29',
-    title: 'フレーム外周の透過機能を追加',
-    detail: 'フレーム外周の透過表現に対応し、外側まで自然に抜ける表示を追加。',
-  },
-  {
-    date: '2026.03.29',
-    title: 'コメント欄プレビュー機能を追加',
-    detail: 'コメント欄に載せたときの見え方を事前に確認できるプレビュー機能を追加。',
-  },
-  {
-    date: '2026.03.26',
-    title: '楕円形やフレーム外側に細かい装飾ある透過フレームに対応',
-    detail: '楕円形やフレーム外周に装飾がある透過フレームでも扱えるよう対応。',
-  },
-  {
-    date: '2026.03.26',
-    title: 'フレーム保存をPNGに変更',
-    detail: '配布フレームの保存形式をPNGへ統一。',
-  },
-  {
-    date: '2026.03.25',
-    title: '操作ヒントを追加',
-    detail: 'ドラッグとピンチ操作のガイドを表示。',
-  },
-  {
-    date: '2026.03.25',
-    title: '切り抜きガイドを見やすく調整',
-    detail: 'クロップガイドと表示バランスを改善。',
-  },
-  {
-    date: '2026.03.25',
-    title: '自動フィット精度を改善',
-    detail: '初期配置が切れにくいよう判定と余白を調整。',
-  },
-  {
-    date: '2026.03.25',
-    title: 'クロップ微調整UIを改善',
-    detail: '位置移動と拡大縮小の細かな調整操作を改善。',
-  },
-  {
-    date: '2026.03.25',
-    title: 'クロップ操作UIを調整',
-    detail: '切り抜き操作まわりの見た目と触り心地を改善。',
-  },
-] as const;
-
-const latestUpdateAt = '2026.04.08 13:25';
 const OPENING_MASK_OUTPUT_SIZE = 512;
 const OPENING_MASK_WATERMARK_TEXT = 'プロフ画像';
 
@@ -199,7 +135,6 @@ export default function Home({ user }: HomeProps) {
   const [uploadConfirmation, setUploadConfirmation] = useState<UploadConfirmationState | null>(null);
   const [uploadRankingConsentChecked, setUploadRankingConsentChecked] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
-  const [updateHistoryOpen, setUpdateHistoryOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
   const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
   const [profileAreaHelpOpen, setProfileAreaHelpOpen] = useState(false);

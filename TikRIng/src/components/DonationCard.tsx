@@ -246,9 +246,6 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
     </div>
   );
 }
-
-
-const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
 const DONATION_STEP_YEN = 100;
 type DonationPresetOption = {
