@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp } from 'lucide-react';
+import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ZoomIn, ZoomOut } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import FrameRankingAccordion from '../components/FrameRankingAccordion';
 import DonationCard from '../components/DonationCard';
@@ -136,7 +136,8 @@ export default function Home({ user }: HomeProps) {
   const [uploadRankingConsentChecked, setUploadRankingConsentChecked] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [loginOptionsOpen, setLoginOptionsOpen] = useState(false);
-  const [microAdjustOpen, setMicroAdjustOpen] = useState(false);
+  const [microAdjustOpen, setMicroAdjustOpen] = useState(true);
+  const [redFillOpen, setRedFillOpen] = useState(true);
   const [profileAreaHelpOpen, setProfileAreaHelpOpen] = useState(false);
   const [backgroundTransparencyDialog, setBackgroundTransparencyDialog] = useState<BackgroundTransparencyDialogState | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -257,7 +258,7 @@ export default function Home({ user }: HomeProps) {
 
     ctx.drawImage(sourceCanvas, 0, 0, width, height);
     ctx.globalCompositeOperation = 'source-in';
-    ctx.fillStyle = microAdjustOpen ? 'rgba(255, 91, 91, 0.42)' : 'rgba(255, 91, 91, 0.26)';
+    ctx.fillStyle = redFillOpen ? 'rgba(255, 91, 91, 0.42)' : 'rgba(255, 91, 91, 0.26)';
     ctx.fillRect(0, 0, width, height);
     ctx.globalCompositeOperation = 'source-atop';
     if (!manualOpeningTool) {
@@ -314,7 +315,7 @@ export default function Home({ user }: HomeProps) {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.putImageData(overlayImageData, 0, 0);
-  }, [hasOpeningMask, manualOpeningTool, microAdjustOpen, position, zoom]);
+  }, [hasOpeningMask, manualOpeningTool, redFillOpen, position, zoom]);
 
   const loadOpeningMaskBlobIntoCanvas = useCallback(async (maskBlob: Blob | null) => {
     const workingCanvas = ensureOpeningMaskWorkingCanvas();
@@ -483,7 +484,7 @@ export default function Home({ user }: HomeProps) {
     setIsAdjusting(false);
     setManualOpeningTool(null);
     setOpeningMaskNeedsAttention(false);
-    setMicroAdjustOpen(false);
+    setMicroAdjustOpen(true);
     setShowMaskIntro(false);
     showAutoFitNotice(null);
     setError(null);
@@ -894,7 +895,7 @@ export default function Home({ user }: HomeProps) {
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (microAdjustOpen && manualOpeningTool) {
+    if (redFillOpen && manualOpeningTool) {
       beginOpeningMaskPaint(e);
       return;
     }
@@ -918,7 +919,7 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (microAdjustOpen && manualOpeningTool) {
+    if (redFillOpen && manualOpeningTool) {
       continueOpeningMaskPaint(e);
       return;
     }
@@ -943,7 +944,7 @@ export default function Home({ user }: HomeProps) {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (microAdjustOpen && manualOpeningTool) {
+    if (redFillOpen && manualOpeningTool) {
       endOpeningMaskPaint(e);
       return;
     }
@@ -968,7 +969,7 @@ export default function Home({ user }: HomeProps) {
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (microAdjustOpen) {
+    if (redFillOpen) {
       return;
     }
 
@@ -1581,7 +1582,7 @@ export default function Home({ user }: HomeProps) {
               </div>
               <canvas
                 ref={openingMaskPreviewCanvasRef}
-                className={`editor-opening-mask-preview pointer-events-none absolute inset-0 z-30 h-full w-full ${microAdjustOpen ? 'editor-opening-mask-preview-static opacity-100' : 'opacity-95'}`}
+                className={`editor-opening-mask-preview pointer-events-none absolute inset-0 z-30 h-full w-full ${redFillOpen ? 'editor-opening-mask-preview-static opacity-100' : 'opacity-95'}`}
                 aria-label="Profile opening overlay"
               />
             </div>
@@ -1635,7 +1636,7 @@ export default function Home({ user }: HomeProps) {
               <CropMaskOverlay intro={showMaskIntro} active={!showMaskIntro && isAdjusting} />
             </div>
             <div
-              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint && !microAdjustOpen ? ' editor-gesture-hint-visible' : ''}`}
+              className={`editor-gesture-hint absolute inset-x-0 bottom-3 z-30 pointer-events-none flex justify-center px-3 sm:bottom-4 sm:px-4${showGestureHint && !redFillOpen ? ' editor-gesture-hint-visible' : ''}`}
               aria-hidden={!showGestureHint}
             >
               <div className="editor-gesture-card w-full max-w-[18rem] rounded-[1.5rem] border border-white/12 px-3.5 py-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md sm:max-w-[21rem] sm:rounded-[1.75rem] sm:px-4">
@@ -1712,40 +1713,48 @@ export default function Home({ user }: HomeProps) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-1.5 max-w-[11rem] mx-auto">
-                    <div />
-                    <button
-                      type="button"
-                      onClick={() => nudgePosition(0, -1)}
-                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
-                    >
-                      ↑
-                    </button>
-                    <div />
-                    <button
-                      type="button"
-                      onClick={() => nudgePosition(-1, 0)}
-                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
-                    >
-                      ←
-                    </button>
-                    <div className="flex items-center justify-center text-[10px] font-bold tracking-[0.08em] text-tiktok-lightgray">1px</div>
-                    <button
-                      type="button"
-                      onClick={() => nudgePosition(1, 0)}
-                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
-                    >
-                      →
-                    </button>
-                    <div />
-                    <button
-                      type="button"
-                      onClick={() => nudgePosition(0, 1)}
-                      className="py-1.5 rounded-md border border-tiktok-cyan/35 bg-black/25 text-sm font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
-                    >
-                      ↓
-                    </button>
-                    <div />
+                  <div className="flex flex-col items-center gap-1 w-fit mx-auto">
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => nudgePosition(0, -1)}
+                        aria-label="上へ1px移動"
+                        className="h-10 w-10 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-b from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => nudgePosition(-1, 0)}
+                        aria-label="左へ1px移動"
+                        className="h-10 w-10 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-r from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <div className="h-10 w-10 flex items-center justify-center rounded-xl border border-tiktok-cyan/15 bg-black/30">
+                        <span className="text-[9px] font-black tracking-[0.06em] text-tiktok-cyan/50">1px</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => nudgePosition(1, 0)}
+                        aria-label="右へ1px移動"
+                        className="h-10 w-10 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-l from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => nudgePosition(0, 1)}
+                        aria-label="下へ1px移動"
+                        className="h-10 w-10 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-t from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1754,10 +1763,10 @@ export default function Home({ user }: HomeProps) {
                       <button
                         type="button"
                         onClick={() => nudgeZoom(-0.001)}
-                        className="h-8 w-8 shrink-0 rounded-md border border-tiktok-cyan/35 bg-black/25 text-base font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-br from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
                         aria-label="zoom out one step"
                       >
-                        -
+                        <ZoomOut className="w-4 h-4" />
                       </button>
                       <input
                         type="range"
@@ -1777,10 +1786,10 @@ export default function Home({ user }: HomeProps) {
                       <button
                         type="button"
                         onClick={() => nudgeZoom(0.001)}
-                        className="h-8 w-8 shrink-0 rounded-md border border-tiktok-cyan/35 bg-black/25 text-base font-black text-white hover:bg-tiktok-cyan/12 transition-colors"
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl border border-tiktok-cyan/30 bg-gradient-to-bl from-tiktok-cyan/15 to-black/30 text-tiktok-cyan shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:from-tiktok-cyan/28 hover:border-tiktok-cyan/55 hover:shadow-[0_0_10px_rgba(37,244,238,0.18)] active:scale-95 transition-all"
                         aria-label="zoom in one step"
                       >
-                        +
+                        <ZoomIn className="w-4 h-4" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between text-[10px] font-medium text-tiktok-lightgray">
@@ -1790,63 +1799,69 @@ export default function Home({ user }: HomeProps) {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-[#ff5b5b]/25 bg-[#2a0c0c]/55 p-3 text-left">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-white">プロフ画像表示可能領域</p>
-                        <p className="mt-0.5 text-[10px] leading-4 text-white/70 sm:text-[11px]">
-                          半透明の赤塗りをそのまま塗って、表示領域を調整できます。
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                    </div>
-                    {microAdjustOpen ? (
-                      <div className="mt-3 space-y-3 rounded-md border border-[#ff5b5b]/20 bg-black/20 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setManualOpeningTool((current) => (current === 'paint' ? null : 'paint'))}
-                            className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'paint' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
-                          >
-                            塗る
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setManualOpeningTool((current) => (current === 'erase' ? null : 'erase'))}
-                            className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'erase' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
-                          >
-                            削る
-                          </button>
-                          <button
-                            type="button"
-                            onClick={resetOpeningMaskToAuto}
-                            className="px-3 py-1.5 rounded-md border border-white/12 bg-black/20 text-[11px] font-bold text-white/80 hover:bg-white/8 transition-colors"
-                          >
-                            自動判定に戻す
-                          </button>
-                        </div>
+                </div>
+              ) : null}
+            </div>
 
-                        {manualOpeningTool ? (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-white/75">
-                              <span>ブラシサイズ</span>
-                              <span>{manualOpeningBrushSize}px</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={8}
-                              max={80}
-                              step={1}
-                              value={manualOpeningBrushSize}
-                              onChange={(e) => setManualOpeningBrushSize(Number(e.target.value))}
-                              className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-[#ff8a8a]"
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
+            <div className="w-full rounded-xl border border-[#ff5b5b]/30 bg-[#ff5b5b]/12 overflow-hidden shadow-[0_10px_28px_rgba(255,91,91,0.10)]">
+              <button
+                type="button"
+                onClick={() => setRedFillOpen((open) => !open)}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-[#ff5b5b]/10 transition-colors"
+              >
+                <div className="min-w-0 flex items-center gap-2 pr-3">
+                  <p className="shrink-0 text-sm font-bold text-white">プロフ画像表示可能領域</p>
+                  <p className="truncate text-[11px] text-[#ff8a8a]/75">赤塗りで表示領域を調整</p>
+                </div>
+                <ChevronDown className={`w-5 h-5 text-[#ff8a8a] transition-transform ${redFillOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {redFillOpen ? (
+                <div className="px-3 pb-3 pt-2 space-y-3 border-t border-[#ff5b5b]/20 bg-black/15">
+                  <p className="text-[10px] leading-4 text-white/70 sm:text-[11px]">
+                    半透明の赤塗りをそのまま塗って、表示領域を調整できます。
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setManualOpeningTool((current) => (current === 'paint' ? null : 'paint'))}
+                      className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'paint' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
+                    >
+                      塗る
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualOpeningTool((current) => (current === 'erase' ? null : 'erase'))}
+                      className={`px-3 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${manualOpeningTool === 'erase' ? 'border-[#ff5b5b]/45 bg-[#ff5b5b]/16 text-[#ffb3b3]' : 'border-white/12 bg-black/20 text-white/80 hover:bg-white/8'}`}
+                    >
+                      削る
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetOpeningMaskToAuto}
+                      className="px-3 py-1.5 rounded-md border border-white/12 bg-black/20 text-[11px] font-bold text-white/80 hover:bg-white/8 transition-colors"
+                    >
+                      自動判定に戻す
+                    </button>
                   </div>
+
+                  {manualOpeningTool ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-white/75">
+                        <span>ブラシサイズ</span>
+                        <span>{manualOpeningBrushSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={8}
+                        max={80}
+                        step={1}
+                        value={manualOpeningBrushSize}
+                        onChange={(e) => setManualOpeningBrushSize(Number(e.target.value))}
+                        className="w-full h-1.5 bg-tiktok-gray rounded-full appearance-none cursor-pointer accent-[#ff8a8a]"
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

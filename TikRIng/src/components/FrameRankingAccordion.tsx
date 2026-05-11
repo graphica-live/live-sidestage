@@ -44,10 +44,6 @@ function getTikTokProfileUrl(profileId: string) {
   return `https://www.tiktok.com/@${encodeURIComponent(profileId)}`;
 }
 
-function getItemBadgeLabel(rankingType: 'views' | 'goods' | 'pickup', index: number) {
-  return rankingType === 'pickup' ? 'PICK' : `#${index + 1}`;
-}
-
 function getErrorStatus(error: unknown) {
   if (error instanceof Error && 'status' in error) {
     return Number((error as Error & { status?: number }).status);
@@ -225,38 +221,6 @@ async function fetchJsonWithFallback<T>(endpoint: string, init: RequestInit, err
 
 async function fetchRanking(endpoint: string, signal: AbortSignal) {
   return fetchJsonWithFallback<RankingResponse>(endpoint, { signal }, 'ランキングを取得できませんでした。');
-}
-
-function RankingThumbnail({
-  frame,
-}: {
-  frame: RankingFrame;
-}) {
-  const [imageError, setImageError] = useState(false);
-
-  return (
-    <div className="relative h-[4.25rem] w-[4.25rem] shrink-0 overflow-hidden rounded-md border border-white/10 bg-transparent sm:h-24 sm:w-24">
-      {!imageError ? (
-        <>
-          <img
-          src={frame.thumbnailUrl}
-          alt={frame.displayName}
-          loading="lazy"
-          onError={() => setImageError(true)}
-          className="h-full w-full object-contain"
-          draggable={false}
-          onContextMenu={(event) => event.preventDefault()}
-          onDragStart={(event) => event.preventDefault()}
-        />
-          <StrongWatermarkOverlay compact />
-        </>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-bold tracking-[0.12em] text-white/55">
-          NO IMAGE
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function FrameRankingAccordion({
