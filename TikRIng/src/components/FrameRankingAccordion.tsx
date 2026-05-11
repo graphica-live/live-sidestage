@@ -419,52 +419,98 @@ export default function FrameRankingAccordion({
                 まだランキング対象のフレームがありません。
               </div>
             ) : (
-              <ol className="space-y-2.5">
-                {frames.map((frame, index) => (
-                  <li key={frame.id}>
-                    <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-3 py-2.5 transition hover:border-white/14 hover:bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))]">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-                          <div className="flex w-8 shrink-0 flex-col items-center justify-center rounded-xl border border-tiktok-cyan/18 bg-tiktok-cyan/10 px-1 py-2 text-center sm:w-9 sm:px-1.5">
-                            <span className="text-[10px] font-black tracking-[0.18em] text-tiktok-cyan/72">{getItemBadgeLabel(rankingType, index)}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedFrame(frame)}
-                            className="shrink-0 text-left"
-                            aria-label={`${frame.displayName}を拡大表示`}
-                          >
-                            <RankingThumbnail frame={frame} />
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            {frame.ownerTikTokProfileId ? (
-                              <a
-                                href={getTikTokProfileUrl(frame.ownerTikTokProfileId)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block truncate text-sm font-bold text-tiktok-cyan transition hover:underline hover:underline-offset-2"
-                                title="TikTokプロフィールを開く"
-                              >
-                                {frame.ownerDisplayName}
-                              </a>
-                            ) : (
-                              <p className="truncate text-sm font-bold text-white">{frame.ownerDisplayName}</p>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedFrame(frame)}
-                              className="mt-1 text-[11px] text-tiktok-lightgray transition hover:text-white"
-                            >
-                              タップで拡大表示
-                            </button>
-                          </div>
-                        </div>
-
-                      </div>
+              <div className="space-y-2.5">
+                {/* 1位 */}
+                {frames.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFrame(frames[0])}
+                    className="relative w-full overflow-hidden rounded-2xl border border-tiktok-cyan/30 transition hover:border-tiktok-cyan/50"
+                    aria-label="1位を拡大表示"
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                      <img
+                        src={frames[0].thumbnailUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-contain"
+                        draggable={false}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onDragStart={(e) => e.preventDefault()}
+                      />
+                      <StrongWatermarkOverlay />
                     </div>
-                  </li>
-                ))}
-              </ol>
+                    <div className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-tiktok-cyan text-base font-black text-black shadow-lg">
+                      1
+                    </div>
+                  </button>
+                )}
+
+                {/* 2位・3位 */}
+                {frames.length > 1 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {frames.slice(1, 3).map((frame, i) => (
+                      <button
+                        key={frame.id}
+                        type="button"
+                        onClick={() => setSelectedFrame(frame)}
+                        className="relative overflow-hidden rounded-xl border border-white/14 transition hover:border-white/24"
+                        aria-label={`${i + 2}位を拡大表示`}
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                          <img
+                            src={frame.thumbnailUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                          <StrongWatermarkOverlay compact />
+                        </div>
+                        <div className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-tiktok-cyan/85 text-sm font-black text-black shadow-md">
+                          {i + 2}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4位以降 */}
+                {frames.length > 3 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {frames.slice(3).map((frame, i) => (
+                      <button
+                        key={frame.id}
+                        type="button"
+                        onClick={() => setSelectedFrame(frame)}
+                        className="relative overflow-hidden rounded-lg border border-white/8 transition hover:border-white/16"
+                        aria-label={`${i + 4}位を拡大表示`}
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                          <img
+                            src={frame.thumbnailUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                          <StrongWatermarkOverlay compact />
+                        </div>
+                        <div className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-xs font-black text-white shadow-sm">
+                          {i + 4}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ) : null}
