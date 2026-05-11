@@ -844,36 +844,63 @@ export default function FrameEditor({ id }: FrameEditorProps) {
           />
         </div>
         <div className="space-y-3 mt-4">
-          <a
-            href="https://tikgradation.graphica-produce.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
-          >
-            <span className="text-base">&#x1F517;</span>
-            <span className="flex-1">TikGradation — 蔙妹サイト</span>
-            <span className="text-tiktok-lightgray">&rarr;</span>
-          </a>
-          <a
-            href="https://www.tiktok.com/@yu_ki_nojo"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
-          >
-            <span className="text-base">&#x1F4BB;</span>
-            <span className="flex-1">PC配信環境の相談、コンサルティング依頼はこちら @yu_ki_nojo のTikTokへDM</span>
-            <span className="text-tiktok-lightgray">&rarr;</span>
-          </a>
-          <a
-            href="https://www.tiktok.com/@yu_ki_nojo"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
-          >
-            <span className="text-base">&#x1F4E9;</span>
-            <span className="flex-1">このサイトに関するお問い合わせはこちら @yu_ki_nojo のTikTokへDM</span>
-            <span className="text-tiktok-lightgray">&rarr;</span>
-          </a>
+          <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#a78bfa] to-[#38bdf8]">
+            <a
+              href="https://tikgradation.graphica-produce.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-between gap-4 rounded-[13px] bg-gradient-to-br from-[#1a0a2e] to-[#0a1a2e] px-6 py-5 no-underline transition hover:-translate-y-0.5"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#a78bfa] to-[#38bdf8] text-[1.8rem]">
+                  🔗
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[0.95rem] font-bold text-[#e0e0e0]">TikGradation - MP4透過エフェクト動画変換</span>
+                  <span className="text-[0.78rem] text-[#888888]">姉妹サイト</span>
+                </div>
+              </div>
+              <span className="shrink-0 bg-gradient-to-br from-[#a78bfa] to-[#38bdf8] bg-clip-text text-[1.1rem] text-transparent">→</span>
+            </a>
+          </div>
+          <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#FE2C55] to-[#25F4EE]">
+            <a
+              href="https://www.tiktok.com/@yu_ki_nojo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-between gap-4 rounded-[13px] bg-gradient-to-br from-[#1a0a2e] to-[#0a1a2e] px-6 py-5 no-underline transition hover:-translate-y-0.5"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] text-[1.8rem]">
+                  💻
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[0.95rem] font-bold text-[#e0e0e0]">PC配信環境の相談、コンサルティング依頼はこちら</span>
+                  <span className="text-[0.78rem] text-[#888888]">@yu_ki_nojo のTikTokへDM</span>
+                </div>
+              </div>
+              <span className="shrink-0 bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] bg-clip-text text-[1.1rem] text-transparent">→</span>
+            </a>
+          </div>
+          <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#FE2C55] to-[#25F4EE]">
+            <a
+              href="https://www.tiktok.com/@yu_ki_nojo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-between gap-4 rounded-[13px] bg-gradient-to-br from-[#1a0a2e] to-[#0a1a2e] px-6 py-5 no-underline transition hover:-translate-y-0.5"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] text-[1.8rem]">
+                  📩
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[0.95rem] font-bold text-[#e0e0e0]">このサイトに関するお問い合わせはこちら</span>
+                  <span className="text-[0.78rem] text-[#888888]">@yu_ki_nojo のTikTokへDM</span>
+                </div>
+              </div>
+              <span className="shrink-0 bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] bg-clip-text text-[1.1rem] text-transparent">→</span>
+            </a>
+          </div>
         </div>
       </div>
     </div>

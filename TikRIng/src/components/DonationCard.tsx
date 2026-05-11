@@ -1,5 +1,5 @@
 ﻿import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const MIN_DONATION_YEN = 100;
 const MAX_DONATION_YEN = 100000;
@@ -54,6 +54,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState('');
+  const customInputRef = useRef<HTMLInputElement>(null);
   const supportSuccess = new URLSearchParams(window.location.search).get('support') === 'success';
 
   const isLoading = loadingTarget !== null;
@@ -188,7 +189,15 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
           <button
             key={option.amount}
             type="button"
-            onClick={() => { setSelectedPreset(option.amount); setCustomAmount(''); void handleDonate(option.amount, option.amount); }}
+            onClick={() => {
+              if (customAmount !== '') {
+                customInputRef.current?.focus();
+                customInputRef.current?.select();
+                return;
+              }
+              setSelectedPreset(option.amount);
+              void handleDonate(option.amount, option.amount);
+            }}
             disabled={isLoading}
             className="px-5 py-2.5 rounded-[10px] text-base font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
@@ -214,6 +223,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
           step={DONATION_STEP_YEN}
           inputMode="numeric"
           placeholder="金額を入力"
+          ref={customInputRef}
           value={customAmount}
           onChange={(e) => { setCustomAmount(e.target.value); setSelectedPreset(null); }}
           disabled={isLoading}
