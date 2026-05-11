@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, Heart, Loader2, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type RankingFrame = {
@@ -561,28 +561,7 @@ export default function FrameRankingAccordion({
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => void handleGood(frame.id)}
-                          disabled={Boolean(goodStates[frame.id] || goodSubmitting[frame.id])}
-                          aria-pressed={Boolean(goodStates[frame.id])}
-                          aria-label={goodStates[frame.id] ? 'グッド済み' : 'グッドする'}
-                          title={goodStates[frame.id] ? 'グッド済み' : 'グッドする'}
-                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition sm:h-10 sm:w-10 ${goodStates[frame.id]
-                            ? 'border-[#ff6b95]/40 bg-[#ff6b95]/18 text-[#ff8cab]'
-                            : 'border-white/10 bg-white/[0.05] text-white hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-default disabled:border-white/10 disabled:bg-white/[0.05]'} ${goodSubmitting[frame.id] ? 'cursor-wait' : ''}`}
-                        >
-                          {goodSubmitting[frame.id] ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Heart className={`h-4 w-4 ${goodStates[frame.id] ? 'fill-current' : ''}`} />
-                          )}
-                        </button>
                       </div>
-
-                      {goodErrors[frame.id] ? (
-                        <p className="mt-2 pl-[6rem] text-[11px] text-[#ffb7c5] sm:pl-[8.5rem]">{goodErrors[frame.id]}</p>
-                      ) : null}
                     </div>
                   </li>
                 ))}
