@@ -78,12 +78,6 @@ type PublicTopFrameItem = {
   thumbnailUrl: string;
 };
 
-function getMonthStartJstTimestamp(now = new Date()) {
-  const jstOffsetMs = 9 * 60 * 60 * 1000;
-  const jstNow = new Date(now.getTime() + jstOffsetMs);
-  return Date.UTC(jstNow.getUTCFullYear(), jstNow.getUTCMonth(), 1, 0, 0, 0, 0) - jstOffsetMs;
-}
-
 type GoodStateRow = {
   frame_id: string;
 };
@@ -123,7 +117,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const isGoodStateRequest = url.searchParams.get('goodState') === '1';
   const rankingMetric = url.searchParams.get('metric') === 'goods' ? 'goods' : 'views';
   const rankingSource = url.searchParams.get('source') === 'pickup' ? 'pickup' : 'top';
-  const rankingTimeRange = url.searchParams.get('timeRange') === 'month' ? 'month' : 'all';
 
   if (isGoodStateRequest) {
     try {
@@ -193,7 +186,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (isTopRankingRequest) {
     try {
       const nowMs = Date.now();
-      const monthStartMs = getMonthStartJstTimestamp();
       const origin = url.origin;
       const rows = rankingSource === 'pickup'
         ? await context.env.DB.prepare(
@@ -212,43 +204,22 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         )
           .bind(nowMs)
           .all<FrameRow>()
-          : rankingMetric === 'goods' || rankingTimeRange !== 'month'
-           ? await context.env.DB.prepare(
-             `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
-               u.tiktok_profile_id AS owner_tiktok_profile_id,
-               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-               f.view_count,
-               f.good_count
-             FROM frames f
-             LEFT JOIN users u ON u.id = f.owner_id
-              LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-             WHERE (f.expires_at IS NULL OR f.expires_at > ?)
-               AND COALESCE(f.exclude_from_rankings, 0) = 0
-             ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.view_count, 0) DESC, f.created_at DESC'}
-             LIMIT 10`
-           )
-            .bind(nowMs)
-            .all<FrameRow>()
-           : await context.env.DB.prepare(
-             `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
-               u.tiktok_profile_id AS owner_tiktok_profile_id,
-               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-               COUNT(fve.id) AS view_count,
-               f.good_count
-             FROM frames f
-             LEFT JOIN users u ON u.id = f.owner_id
+        : await context.env.DB.prepare(
+            `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+              u.tiktok_profile_id AS owner_tiktok_profile_id,
+              COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+              f.view_count,
+              f.good_count
+            FROM frames f
+            LEFT JOIN users u ON u.id = f.owner_id
              LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-             LEFT JOIN frame_view_events fve
-              ON fve.frame_id = f.id
-              AND fve.created_at >= ?
-             WHERE (f.expires_at IS NULL OR f.expires_at > ?)
-               AND COALESCE(f.exclude_from_rankings, 0) = 0
-             GROUP BY f.id, f.owner_id, u.email, anon.id, f.custom_name, f.image_key, u.tiktok_profile_id, owner_display_name, f.good_count, f.created_at
-             ORDER BY COUNT(fve.id) DESC, f.created_at DESC
-             LIMIT 10`
-           )
-            .bind(monthStartMs, nowMs)
-            .all<FrameRow>();
+            WHERE (f.expires_at IS NULL OR f.expires_at > ?)
+              AND COALESCE(f.exclude_from_rankings, 0) = 0
+            ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.wear_count, 0) DESC, f.created_at DESC'}
+            LIMIT 10`
+          )
+           .bind(nowMs)
+           .all<FrameRow>();
 
       const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({
         id: row.id,
@@ -609,9 +580,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
   await context.env.FRAMES_BUCKET.delete(`previews/${frame.id}.png`);
 
-  await context.env.DB.prepare('DELETE FROM frame_view_events WHERE frame_id = ?').bind(frameId).run();
-  await context.env.DB.prepare('DELETE FROM frame_wear_events WHERE frame_id = ?').bind(frameId).run();
-  await context.env.DB.prepare('DELETE FROM frame_views WHERE frame_id = ?').bind(frameId).run();
+  await context.env.DB.prepare('DELETE FROM frame_wears WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frameId).run();
   await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frameId).run();

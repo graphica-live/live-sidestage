@@ -40,8 +40,6 @@ function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
     params.set('source', 'pickup');
   } else if (rankingType === 'goods') {
     params.set('metric', 'goods');
-  } else {
-    params.set('timeRange', 'month');
   }
 
   return `/api/frames?${params.toString()}`;

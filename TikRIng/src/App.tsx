@@ -234,15 +234,6 @@ function App() {
         {showContactLink ? (
           <div className="flex w-full items-center justify-center gap-3 pt-8 pb-2 text-center">
             <a
-              href="https://www.tiktok.com/@yu_ki_nojo?lang=ja-JP"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-tiktok-lightgray/80 underline underline-offset-4 hover:text-white"
-            >
-              お問い合わせ先
-            </a>
-            <span className="text-xs text-tiktok-lightgray/40">|</span>
-            <a
               href="/"
               className="text-xs text-tiktok-lightgray/80 underline underline-offset-4 hover:text-white"
             >

@@ -10,6 +10,12 @@
 
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-glitch: glitch 2s linear infinite;
+  --animate-donate-glow: donate-glow 3s ease-in-out infinite;
+}
+
+@keyframes donate-glow {
+  0%, 100% { box-shadow: 0 0 22px 4px rgba(251, 146, 60, 0.30); }
+  50%       { box-shadow: 0 0 40px 10px rgba(244, 63, 94, 0.35); }
 }
 
 body {

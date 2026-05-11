@@ -3,6 +3,7 @@ import { useDropzone, type FileRejection } from 'react-dropzone';
 import { UploadCloud, Link as LinkIcon, Check, Loader2, ChevronDown, CircleHelp } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import FrameRankingAccordion from '../components/FrameRankingAccordion';
+import DonationCard from '../components/DonationCard';
 import {
   analyzeFrameTransparency,
   getEditorCropRadiusRatio,
@@ -1516,57 +1517,47 @@ export default function Home({ user }: HomeProps) {
 
           <div className="space-y-4">
             <FrameRankingAccordion
-              title="ピックアップ"
-              eyebrow="Pickup"
-                closedSummary=""
-              rankingType="pickup"
-            />
-            <FrameRankingAccordion
-                title="月間閲覧ランキング"
+                title="人気ランキング"
               eyebrow="Ranking"
                 closedSummary=""
-            />
-            <FrameRankingAccordion
-                title="月間グッド数ランキング"
-              eyebrow="Ranking"
-                closedSummary=""
-              rankingType="goods"
             />
           </div>
 
-          <section className="w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-5">
-            <button
-              type="button"
-              onClick={() => setUpdateHistoryOpen((open) => !open)}
-              className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${updateHistoryOpen ? 'border-b border-white/8 pb-3' : ''}`}
+          <div className="space-y-3">
+            <a
+              href="https://tikgradation.graphica-produce.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
             >
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Updates</p>
-                <h2 className="mt-1 text-sm font-bold text-white sm:text-base">アップデート履歴</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.12em] text-tiktok-cyan/80">
-                  {latestUpdateAt}
-                </span>
-                <ChevronDown className={`h-5 w-5 text-tiktok-lightgray transition-transform ${updateHistoryOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </button>
+              <span className="text-base">&#x1F517;</span>
+              <span className="flex-1">TikGradation — 蔙妹サイト</span>
+              <span className="text-tiktok-lightgray">&rarr;</span>
+            </a>
+            <a
+              href="https://www.tiktok.com/@yu_ki_nojo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
+            >
+              <span className="text-base">&#x1F4BB;</span>
+              <span className="flex-1">PC配信環境の相談、コンサルティング依頼はこちら @yu_ki_nojo のTikTokへDM</span>
+              <span className="text-tiktok-lightgray">&rarr;</span>
+            </a>
+            <a
+              href="https://www.tiktok.com/@yu_ki_nojo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
+            >
+              <span className="text-base">&#x1F4E9;</span>
+              <span className="flex-1">このサイトに関するお問い合わせはこちら @yu_ki_nojo のTikTokへDM</span>
+              <span className="text-tiktok-lightgray">&rarr;</span>
+            </a>
+          </div>
 
-            {updateHistoryOpen ? (
-              <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-2.5">
-                <ul className="space-y-2">
-                  {updateHistory.map((item) => (
-                    <li key={`${item.date}-${item.title}`} className="text-xs leading-5 text-tiktok-lightgray sm:text-[13px]">
-                      <span className="mr-2 inline-block font-bold tracking-[0.16em] text-white/45">{item.date}</span>
-                      <span className="font-semibold text-white">{item.title}</span>
-                      <span className="mx-1.5 text-white/28">/</span>
-                      <span>{item.detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </section>
+          <DonationCard returnPath="/" />
+
         </div>
       ) : !shareUrl && frameImage ? (
         <div className="w-full flex flex-col items-center gap-6">

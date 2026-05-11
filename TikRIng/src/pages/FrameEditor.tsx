@@ -832,28 +832,48 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       )}
 
       <div className="w-full mt-8">
-        <DonationCard returnPath={returnPath} compact />
+        <DonationCard returnPath={returnPath} />
       </div>
 
       <div className="w-full mt-6">
         <div className="space-y-4">
           <FrameRankingAccordion
-            title="ピックアップ"
-            eyebrow="Pickup"
-            closedSummary=""
-            rankingType="pickup"
-          />
-          <FrameRankingAccordion
-            title="月間閲覧ランキング"
+            title="人気ランキング"
             eyebrow="Ranking"
             closedSummary=""
           />
-          <FrameRankingAccordion
-            title="月間グッド数ランキング"
-            eyebrow="Ranking"
-            closedSummary=""
-            rankingType="goods"
-          />
+        </div>
+        <div className="space-y-3 mt-4">
+          <a
+            href="https://tikgradation.graphica-produce.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
+          >
+            <span className="text-base">&#x1F517;</span>
+            <span className="flex-1">TikGradation — 蔙妹サイト</span>
+            <span className="text-tiktok-lightgray">&rarr;</span>
+          </a>
+          <a
+            href="https://www.tiktok.com/@yu_ki_nojo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
+          >
+            <span className="text-base">&#x1F4BB;</span>
+            <span className="flex-1">PC配信環境の相談、コンサルティング依頼はこちら @yu_ki_nojo のTikTokへDM</span>
+            <span className="text-tiktok-lightgray">&rarr;</span>
+          </a>
+          <a
+            href="https://www.tiktok.com/@yu_ki_nojo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition hover:border-white/20 hover:bg-white/[0.06] sm:text-base"
+          >
+            <span className="text-base">&#x1F4E9;</span>
+            <span className="flex-1">このサイトに関するお問い合わせはこちら @yu_ki_nojo のTikTokへDM</span>
+            <span className="text-tiktok-lightgray">&rarr;</span>
+          </a>
         </div>
       </div>
     </div>
