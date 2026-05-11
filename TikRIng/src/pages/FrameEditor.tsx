@@ -832,10 +832,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       )}
 
       <div className="w-full mt-8">
-        <DonationCard returnPath={returnPath} />
-      </div>
-
-      <div className="w-full mt-6">
         <div className="space-y-4">
           <FrameRankingAccordion
             title="人気ランキング"
@@ -902,6 +898,10 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             </a>
           </div>
         </div>
+      </div>
+
+      <div className="w-full mt-6">
+        <DonationCard returnPath={returnPath} />
       </div>
     </div>
   );

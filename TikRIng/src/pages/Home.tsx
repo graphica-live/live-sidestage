@@ -2084,14 +2084,14 @@ export default function Home({ user }: HomeProps) {
             </div>
 
             <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
+              <div className="rounded-2xl border border-tiktok-cyan/25 bg-tiktok-cyan/[0.06] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
                 <div className="flex items-center justify-between gap-3 px-1 pb-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">Original</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tiktok-cyan/75">Original</p>
                     <p className="mt-1 text-sm font-bold text-white">そのまま使う</p>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-white/55">
-                    現在の画像
+                  <span className="rounded-full border border-tiktok-cyan/30 bg-tiktok-cyan/15 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-tiktok-cyan">
+                    推奨
                   </span>
                 </div>
                 <div className="relative aspect-square overflow-hidden rounded-[1.25rem] border border-white/8 bg-[#f8fafc] bg-[linear-gradient(45deg,#d1d5db_25%,transparent_25%),linear-gradient(-45deg,#d1d5db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d1d5db_75%),linear-gradient(-45deg,transparent_75%,#d1d5db_75%)] bg-[length:26px_26px] bg-[position:0_0,0_13px,13px_-13px,-13px_0px]">
@@ -2108,20 +2108,20 @@ export default function Home({ user }: HomeProps) {
                 <button
                   type="button"
                   onClick={handleUseOriginalFrame}
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-white/10"
+                  className="mt-3 w-full rounded-xl border border-tiktok-cyan/35 bg-tiktok-cyan/14 px-4 py-3.5 text-sm font-bold text-tiktok-cyan transition hover:bg-tiktok-cyan/20"
                 >
                   このまま編集へ進む
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-tiktok-cyan/25 bg-tiktok-cyan/[0.06] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-4">
                 <div className="flex items-center justify-between gap-3 px-1 pb-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tiktok-cyan/75">Transparent Background</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">Transparent Background</p>
                     <p className="mt-1 text-sm font-bold text-white">背景色を透過して使う</p>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <div className="flex items-center gap-2 rounded-full border border-tiktok-cyan/25 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-tiktok-cyan">
+                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-white/55">
                       <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: backgroundTransparencyDialog.suggestedColorCss }} />
                       背景候補色
                     </div>
@@ -2136,12 +2136,12 @@ export default function Home({ user }: HomeProps) {
                   />
                 </div>
                 <p className="mt-3 px-1 text-[12px] leading-5 text-white/70 sm:text-xs">
-                  フレーム外側に装飾がある場合はこちら
+                  フレーム外側に装飾がある場合はこちら。過剰に透過される場合があるので、不要な場合は選択しないで下さい。
                 </p>
                 <button
                   type="button"
                   onClick={handleUseSuggestedFrame}
-                  className="mt-3 w-full rounded-xl border border-tiktok-cyan/35 bg-tiktok-cyan/14 px-4 py-3.5 text-sm font-bold text-tiktok-cyan transition hover:bg-tiktok-cyan/20"
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-white/10"
                 >
                   この背景透過版で進む
                 </button>
