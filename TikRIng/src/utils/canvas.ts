@@ -37,8 +37,6 @@ export const getCroppedAndMergedImg = async (
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, outputSize, outputSize);
 
-  const scaleRatio = outputSize / Math.max(previewSize, 1);
-
   const imgW = image.width;
   const imgH = image.height;
   const baseScale = Math.min(outputSize / imgW, outputSize / imgH);
@@ -47,8 +45,11 @@ export const getCroppedAndMergedImg = async (
   const drawH = imgH * finalScale;
   const centerX = (outputSize - drawW) / 2;
   const centerY = (outputSize - drawH) / 2;
-  const offsetX = position.x * scaleRatio;
-  const offsetY = position.y * scaleRatio;
+
+  // プレビューでの表示スケール（maxWidth/maxHeight:100% により自然サイズ以上には拡大しない）
+  const displayScale = Math.min(previewSize / imgW, previewSize / imgH, 1);
+  const offsetX = position.x * (baseScale / displayScale);
+  const offsetY = position.y * (baseScale / displayScale);
 
   ctx.drawImage(
     image,
