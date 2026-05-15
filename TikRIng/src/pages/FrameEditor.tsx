@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Download, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Download, Image as ImageIcon, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 import CropMaskOverlay from '../components/CropMaskOverlay';
 import { getCroppedAndMergedImg, getFrameOpeningMaskDataUrl } from '../utils/canvas';
 import DonationCard from '../components/DonationCard';
@@ -819,6 +819,16 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             </div>
           )}
 
+          <button
+            type="button"
+            onClick={() => document.getElementById('ranking-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/[0.04] text-xs text-tiktok-lightgray hover:bg-white/[0.08] hover:text-white hover:border-white/20 transition-all"
+          >
+            <span>🏆</span>
+            <span>人気ランキングを見る</span>
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </button>
+
           {downloading && (
             <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1px] flex items-center justify-center px-6">
               <div className="w-full max-w-sm rounded-xl border border-white/15 bg-tiktok-dark p-6 text-center shadow-2xl">
@@ -832,14 +842,7 @@ export default function FrameEditor({ id }: FrameEditorProps) {
       )}
 
       <div className="w-full mt-8">
-        <div className="space-y-4">
-          <FrameRankingAccordion
-            title="人気ランキング"
-            eyebrow="Ranking"
-            closedSummary=""
-          />
-        </div>
-        <div className="space-y-3 mt-4">
+        <div className="space-y-3">
           <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#a78bfa] to-[#38bdf8]">
             <a
               href="https://tikgradation.graphica-produce.com/"
@@ -905,6 +908,14 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               <span className="shrink-0 bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] bg-clip-text text-[1.1rem] text-transparent">→</span>
             </a>
           </div>
+        </div>
+        <div id="ranking-section" className="space-y-4 mt-4">
+          <FrameRankingAccordion
+            title="人気ランキング"
+            eyebrow="Ranking"
+            closedSummary=""
+            defaultOpen
+          />
         </div>
       </div>
 

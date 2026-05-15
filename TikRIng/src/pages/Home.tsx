@@ -1343,6 +1343,16 @@ export default function Home({ user }: HomeProps) {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => document.getElementById('ranking-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/[0.04] text-xs text-tiktok-lightgray hover:bg-white/[0.08] hover:text-white hover:border-white/20 transition-all"
+          >
+            <span>🏆</span>
+            <span>人気ランキングを見る</span>
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </button>
+
           {false ? (
             <div className="w-full rounded-md border border-tiktok-gray bg-tiktok-dark overflow-hidden">
               <button
@@ -1451,14 +1461,6 @@ export default function Home({ user }: HomeProps) {
             </div>
           ) : null}
 
-          <div className="space-y-4">
-            <FrameRankingAccordion
-                title="人気ランキング"
-              eyebrow="Ranking"
-                closedSummary=""
-            />
-          </div>
-
           <DonationCard returnPath="/" />
 
           <div className="h-4" />
@@ -1529,6 +1531,15 @@ export default function Home({ user }: HomeProps) {
                 <span className="shrink-0 bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] bg-clip-text text-[1.1rem] text-transparent">→</span>
               </a>
             </div>
+          </div>
+
+          <div id="ranking-section" className="space-y-4">
+            <FrameRankingAccordion
+              title="人気ランキング"
+              eyebrow="Ranking"
+              closedSummary=""
+              defaultOpen
+            />
           </div>
 
         </div>

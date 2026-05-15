@@ -20,6 +20,7 @@ interface FrameRankingAccordionProps {
   closedSummary?: string;
   className?: string;
   rankingType?: 'views' | 'goods' | 'pickup';
+  defaultOpen?: boolean;
 }
 
 const WATERMARK_TEXT = 'TikRing';
@@ -234,8 +235,9 @@ export default function FrameRankingAccordion({
   closedSummary = '月間閲覧数TOP10を表示',
   className,
   rankingType = 'views',
+  defaultOpen = false,
 }: FrameRankingAccordionProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [loading, setLoading] = useState(false);
   const [frames, setFrames] = useState<RankingFrame[]>([]);
   const [error, setError] = useState<string | null>(null);
