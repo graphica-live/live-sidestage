@@ -32,11 +32,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   ).all<{ id: string }>();
   const top10Ids = new Set((top10Rows.results ?? []).map((r) => r.id));
 
+  // 現在のtop10を ever_top10=1 としてマーク（一度でもtop10入りしたフレームを恒久保全）
+  if (top10Ids.size > 0) {
+    const placeholders = Array.from(top10Ids).map(() => '?').join(', ');
+    await context.env.DB.prepare(
+      `UPDATE frames SET ever_top10 = 1 WHERE id IN (${placeholders}) AND ever_top10 = 0`
+    ).bind(...Array.from(top10Ids)).run();
+  }
+
   const rows = await context.env.DB.prepare(
-    'SELECT id, image_key FROM frames WHERE expires_at IS NOT NULL AND expires_at < ? ORDER BY expires_at ASC LIMIT ?'
+    'SELECT id, image_key, ever_top10 FROM frames WHERE expires_at IS NOT NULL AND expires_at < ? ORDER BY expires_at ASC LIMIT ?'
   )
     .bind(nowMs, limit)
-    .all<{ id: string; image_key: string }>();
+    .all<{ id: string; image_key: string; ever_top10: number }>();
 
   const expired = rows.results ?? [];
 
@@ -46,8 +54,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const failures: Array<{ id: string; step: string }> = [];
 
   for (const row of expired) {
-    // Top 10 ranked frames: invalidate share URLs only, keep the frame itself
-    if (top10Ids.has(row.id)) {
+    // ever_top10=1 または現在のtop10フレーム: share URLのみ無効化、データは完全保全
+    if (row.ever_top10 === 1 || top10Ids.has(row.id)) {
       try {
         await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(row.id).run();
         protectedCount += 1;

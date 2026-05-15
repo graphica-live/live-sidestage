@@ -428,6 +428,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
      LEFT JOIN users u ON u.id = f.owner_id
      LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
      WHERE f.owner_id = ?
+     AND COALESCE(f.user_deleted, 0) = 0
      ORDER BY f.created_at DESC`
   )
     .bind(session.userId)
@@ -561,14 +562,24 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   }
 
   const frame = await context.env.DB.prepare(
-    'SELECT id, owner_id, image_key, opening_mask_key FROM frames WHERE id = ?'
+    'SELECT id, owner_id, image_key, opening_mask_key, ever_top10 FROM frames WHERE id = ?'
   )
     .bind(frameId)
-    .first<{ id: string; owner_id: string | null; image_key: string; opening_mask_key: string | null }>();
+    .first<{ id: string; owner_id: string | null; image_key: string; opening_mask_key: string | null; ever_top10: number }>();
 
   if (!frame || (!isAdmin && frame.owner_id !== session.userId)) {
     return new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
       status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // ever_top10=1 のフレームはユーザー削除でも画像・統計データを保全する（admin専用アーカイブ）
+  if (!isAdmin && frame.ever_top10 === 1) {
+    await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frameId).run();
+    await context.env.DB.prepare('UPDATE frames SET user_deleted = 1 WHERE id = ?').bind(frameId).run();
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
