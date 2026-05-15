@@ -819,16 +819,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => document.getElementById('ranking-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/[0.04] text-xs text-tiktok-lightgray hover:bg-white/[0.08] hover:text-white hover:border-white/20 transition-all"
-          >
-            <span>🏆</span>
-            <span>人気ランキングを見る</span>
-            <ChevronDown className="h-3 w-3 opacity-60" />
-          </button>
-
           {downloading && (
             <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1px] flex items-center justify-center px-6">
               <div className="w-full max-w-sm rounded-xl border border-white/15 bg-tiktok-dark p-6 text-center shadow-2xl">
@@ -841,7 +831,21 @@ export default function FrameEditor({ id }: FrameEditorProps) {
         </div>
       )}
 
-      <div className="w-full mt-8">
+      <button
+        type="button"
+        onClick={() => document.getElementById('ranking-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/[0.04] text-xs text-tiktok-lightgray hover:bg-white/[0.08] hover:text-white hover:border-white/20 transition-all mt-8"
+      >
+        <span>🏆</span>
+        <span>人気ランキングを見る</span>
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+
+      <div className="w-full mt-4">
+        <DonationCard returnPath={returnPath} />
+      </div>
+
+      <div className="w-full mt-4">
         <div className="space-y-3">
           <div className="p-[1px] rounded-[14px] bg-gradient-to-br from-[#a78bfa] to-[#38bdf8]">
             <a
@@ -917,10 +921,6 @@ export default function FrameEditor({ id }: FrameEditorProps) {
             defaultOpen
           />
         </div>
-      </div>
-
-      <div className="w-full mt-6">
-        <DonationCard returnPath={returnPath} />
       </div>
     </div>
   );
