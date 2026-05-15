@@ -7,7 +7,7 @@ import { getResolvedUserDisplayName, isAdminEmail, isEffectivePro } from '../../
 
 const ADMIN_PAGE_SIZE = 50;
 
-type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc';
+type AdminSortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc' | 'wears_desc';
 
 const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
   created_desc: 'f.created_at DESC',
@@ -20,6 +20,7 @@ const ADMIN_SORT_SQL: Record<AdminSortOption, string> = {
   expires_desc: 'CASE WHEN f.expires_at IS NULL THEN 1 ELSE 0 END ASC, f.expires_at DESC, f.created_at DESC',
   views_desc: 'COALESCE(f.view_count, 0) DESC, f.created_at DESC',
   goods_desc: 'COALESCE(f.good_count, 0) DESC, f.created_at DESC',
+  wears_desc: 'COALESCE(f.wear_count, 0) DESC, f.created_at DESC',
 };
 
 type FrameRow = {

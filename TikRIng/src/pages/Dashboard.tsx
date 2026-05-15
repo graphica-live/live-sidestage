@@ -32,7 +32,7 @@ type FramesMeta = {
   hasNextPage?: boolean;
 };
 
-type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc';
+type SortOption = 'created_desc' | 'created_asc' | 'owner_asc' | 'owner_desc' | 'name_asc' | 'name_desc' | 'expires_asc' | 'expires_desc' | 'views_desc' | 'goods_desc' | 'wears_desc';
 type PreviewMode = 'default' | 'opening-guide';
 type PreviewState = {
   frame: FrameItem;
@@ -64,7 +64,8 @@ function isSortOption(value: string | null): value is SortOption {
     || value === 'expires_asc'
     || value === 'expires_desc'
     || value === 'views_desc'
-    || value === 'goods_desc';
+    || value === 'goods_desc'
+    || value === 'wears_desc';
 }
 
 function getInitialDashboardPage() {
@@ -132,6 +133,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
     const valueForExpires = (frame: FrameItem) => frame.expiresAt ?? Number.MAX_SAFE_INTEGER;
     const valueForViews = (frame: FrameItem) => frame.viewCount ?? 0;
     const valueForGoods = (frame: FrameItem) => frame.goodCount ?? 0;
+    const valueForWears = (frame: FrameItem) => frame.wearCount ?? 0;
 
     items.sort((left, right) => {
       switch (sortBy) {
@@ -155,6 +157,10 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
         }
         case 'goods_desc': {
           const diff = valueForGoods(right) - valueForGoods(left);
+          return diff !== 0 ? diff : valueForCreated(right) - valueForCreated(left);
+        }
+        case 'wears_desc': {
+          const diff = valueForWears(right) - valueForWears(left);
           return diff !== 0 ? diff : valueForCreated(right) - valueForCreated(left);
         }
         case 'created_desc':
@@ -669,6 +675,7 @@ export default function Dashboard({ user, initialScope }: DashboardProps) {
               <option value="name_desc">フレーム名 Z-A</option>
               {canShowFrameStats ? <option value="views_desc">閲覧数が多い順</option> : null}
               {canShowFrameStats ? <option value="goods_desc">グッド数が多い順</option> : null}
+              {canShowFrameStats ? <option value="wears_desc">装着数が多い順</option> : null}
               {isAdminScope ? <option value="owner_asc">所有者 A-Z</option> : null}
               {isAdminScope ? <option value="owner_desc">所有者 Z-A</option> : null}
             </select>
