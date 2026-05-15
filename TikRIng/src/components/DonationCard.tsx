@@ -204,7 +204,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
         ))}
       </div>
 
-      {/* custom amount */}
+      {/* custom amount + submit */}
       <div className="flex items-center gap-2 justify-center mb-3">
         <span className="text-[0.9rem]" style={{ color: 'rgb(170,170,170)' }}>¥</span>
         <input
@@ -225,10 +225,6 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
           }}
           aria-label="支援金額"
         />
-      </div>
-
-      {/* submit button */}
-      <div className="flex justify-center">
         <button
           type="button"
           onClick={() => {
@@ -239,7 +235,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
             }
           }}
           disabled={isLoading || (selectedPreset === null && !isCustomAmountValid)}
-          className="px-8 py-2.5 rounded-[10px] text-base font-bold text-white transition-all hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed"
+          className="px-5 py-2 rounded-[10px] text-[0.9rem] font-bold text-white transition-all hover:opacity-90 disabled:opacity-35 disabled:cursor-not-allowed"
           style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))' }}
         >
           {isLoading ? <Loader2 className="inline h-4 w-4 animate-spin" /> : '支援する'}
