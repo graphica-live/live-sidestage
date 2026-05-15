@@ -867,8 +867,12 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               className="flex w-full items-center justify-between gap-4 rounded-[13px] bg-gradient-to-br from-[#1a0a2e] to-[#0a1a2e] px-6 py-5 no-underline transition hover:-translate-y-0.5"
             >
               <div className="flex items-center gap-3.5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] text-[1.8rem]">
-                  💻
+                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] p-[1px]">
+                  <img
+                    src="/yu_ki_nojo-avatar.jpg"
+                    alt="@yu_ki_nojo のTikTokプロフィール画像"
+                    className="h-full w-full rounded-[11px] object-cover"
+                  />
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[0.95rem] font-bold text-[#e0e0e0]">PC配信環境の相談、コンサルティング依頼はこちら</span>
@@ -886,8 +890,12 @@ export default function FrameEditor({ id }: FrameEditorProps) {
               className="flex w-full items-center justify-between gap-4 rounded-[13px] bg-gradient-to-br from-[#1a0a2e] to-[#0a1a2e] px-6 py-5 no-underline transition hover:-translate-y-0.5"
             >
               <div className="flex items-center gap-3.5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] text-[1.8rem]">
-                  📩
+                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-[#FE2C55] to-[#25F4EE] p-[1px]">
+                  <img
+                    src="/yu_ki_nojo-avatar.jpg"
+                    alt="@yu_ki_nojo のTikTokプロフィール画像"
+                    className="h-full w-full rounded-[11px] object-cover"
+                  />
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[0.95rem] font-bold text-[#e0e0e0]">このサイトに関するお問い合わせはこちら</span>
