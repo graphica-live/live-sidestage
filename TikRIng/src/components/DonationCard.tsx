@@ -148,7 +148,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       className="relative w-full rounded-[18px] text-center"
       style={{
         background: 'linear-gradient(160deg, rgb(42,16,24) 0%, rgb(26,10,16) 100%)',
-        padding: '20px 28px 20px',
+        padding: '12px 24px 14px',
         animation: 'donate-glow 3s ease-in-out infinite',
       }}
     >
@@ -170,19 +170,18 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       />
 
       <p
-        className="text-[1.2rem] font-extrabold mb-2"
+        className="text-[1.1rem] font-extrabold mb-1"
         style={{ background: 'linear-gradient(135deg, rgb(251,146,60), rgb(244,63,94))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
       >
         TikRingを応援する
       </p>
 
-      <p className="text-[0.85rem] leading-relaxed mb-5" style={{ color: 'rgb(204,204,170)' }}>
-        完全無料サービスです。<br />
-        この活動をいいなと思ったらご支援をお願いします！
+      <p className="text-[0.82rem] leading-snug mb-3" style={{ color: 'rgb(204,204,170)' }}>
+        完全無料サービスです。この活動をいいなと思ったらぜひご支援を！
       </p>
 
       {/* preset buttons */}
-      <div className="flex gap-2.5 justify-center flex-wrap mb-3">
+      <div className="flex gap-2 justify-center flex-wrap mb-2">
         {DONATION_PRESET_OPTIONS.map((option) => (
           <button
             key={option.amount}
@@ -192,7 +191,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
               setCustomAmount('');
             }}
             disabled={isLoading}
-            className="px-5 py-2.5 rounded-[10px] text-base font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-[10px] text-[0.9rem] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background: selectedPreset === option.amount ? 'linear-gradient(135deg, rgb(58,16,32), rgb(42,8,24))' : 'rgb(26,8,16)',
               border: `1.5px solid ${selectedPreset === option.amount ? 'rgb(251,146,60)' : 'rgb(107,32,48)'}`,
@@ -205,7 +204,7 @@ export default function DonationCard({ returnPath }: DonationCardProps) {
       </div>
 
       {/* custom amount + submit */}
-      <div className="flex items-center gap-2 justify-center mb-3">
+      <div className="flex items-center gap-2 justify-center mb-2">
         <span className="text-[0.9rem]" style={{ color: 'rgb(170,170,170)' }}>¥</span>
         <input
           type="number"
