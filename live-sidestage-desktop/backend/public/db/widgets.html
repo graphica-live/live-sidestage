@@ -1045,19 +1045,20 @@
                     </div>
 
                     <div class="widget-preview">
-                        <div class="widget-preview-label">サンプルプレビュー（Like貢献通知）</div>
+                        <div class="widget-preview-label">サンプルプレビュー</div>
                         <div class="widget-preview-frame like-contribution-preview">
                             <iframe id="like-contribution-preview-frame" title="Like貢献通知プレビュー" loading="eager"></iframe>
                         </div>
                     </div>
+                </article>
 
-                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:16px 0;">
-
-                    <div class="card-head" style="margin-bottom:8px;">
+                <article class="card">
+                    <div class="card-head">
                         <div>
-                            <h3 style="font-size:15px;font-weight:700;margin:0;">タップ数一覧オーバーレイ</h3>
-                            <p class="subtext" style="margin-top:2px;">ユーザーごとのタップ数を多い順に表示するオーバーレイです。Like貢献通知と同じデータを使用します。</p>
+                            <h2>タップ数一覧</h2>
+                            <p class="subtext">ユーザーごとのタップ数を多い順に縦に並べて表示するオーバーレイです。Like貢献通知と同じデータを使用します。</p>
                         </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="tap-list-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
 
                     <div class="field full overlay-url-field top-gift-url-field">
@@ -1069,23 +1070,25 @@
                         </div>
                     </div>
 
-                    <div class="form-grid" style="margin-top:10px;">
-                        <div class="field">
-                            <label for="tap-list-bg-style">背景スタイル</label>
-                            <select id="tap-list-bg-style">
-                                <option value="transparent">透過（OBSクロマキー向け）</option>
-                                <option value="semi">半透過ブラック</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label for="tap-list-max-entries">最大表示件数</label>
-                            <input id="tap-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                    <div class="widget-settings-panel" id="tap-list-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="tap-list-bg-style">背景スタイル</label>
+                                <select id="tap-list-bg-style">
+                                    <option value="transparent">透過（OBSクロマキー向け）</option>
+                                    <option value="semi">半透過ブラック</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-max-entries">最大表示件数</label>
+                                <input id="tap-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="widget-preview" style="margin-top:12px;">
-                        <div class="widget-preview-label">サンプルプレビュー（タップ数一覧）</div>
-                        <div class="widget-preview-frame" style="height:200px;background:rgba(0,0,0,0.18);">
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;background:rgba(0,0,0,0.18);">
                             <iframe id="tap-list-preview-frame" title="タップ数一覧プレビュー" loading="eager"></iframe>
                         </div>
                     </div>
