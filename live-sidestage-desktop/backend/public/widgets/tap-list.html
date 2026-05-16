@@ -97,6 +97,20 @@
             text-overflow: ellipsis;
         }
 
+        .count-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+            margin-left: 10px;
+        }
+
+        .count-icon {
+            font-size: 14px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
         .count {
             font-size: 18px;
             font-weight: 900;
@@ -156,7 +170,10 @@
                 return `<div class="row">
                     <span class="rank ${rankClass}">${rankLabel}</span>
                     <span class="name">${escapeHtml(e.nickname)}</span>
-                    <span class="count">${e.tapCount.toLocaleString()}</span>
+                    <span class="count-group">
+                        <span class="count-icon">❤️</span>
+                        <span class="count">${e.tapCount.toLocaleString()}</span>
+                    </span>
                 </div>`;
             }).join('');
         }
