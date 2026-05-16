@@ -36,7 +36,7 @@
         .list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: var(--row-gap, 8px);
         }
 
         /* 透過モード: カード行は背景なし（文字のみ） */
@@ -176,8 +176,8 @@
         }
 
         function applyRowGap(rowGap) {
-            const gap = Number.isInteger(rowGap) && rowGap >= 0 ? rowGap : 8;
-            document.getElementById('list').style.gap = gap + 'px';
+            const gap = (typeof rowGap === 'number' && rowGap >= 0) ? rowGap : 8;
+            document.documentElement.style.setProperty('--row-gap', gap + 'px');
         }
 
         function buildAvatarHtml(avatarUrl, nickname) {
