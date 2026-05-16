@@ -2688,7 +2688,7 @@ function normalizeWidgetTapListSettings(value) {
     return {
         bgStyle: bgStyle === 'semi' ? 'semi' : 'transparent',
         maxEntries: Number.isInteger(maxEntries) && maxEntries >= 1 ? Math.min(maxEntries, 100) : 20,
-        rowGap: Number.isInteger(rowGap) && rowGap >= 0 ? Math.min(rowGap, 80) : 8
+        rowGap: Number.isInteger(rowGap) && rowGap >= -30 ? Math.min(rowGap, 80) : 8
     };
 }
 
