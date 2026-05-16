@@ -12,8 +12,8 @@
             --name-color: #f1f5f9;
             --count-color: #fbbf24;
             --stroke: rgba(15, 23, 42, 0.96);
-            --shadow: rgba(15, 23, 42, 0.36);
-            --avatar-size: 44px;
+            --shadow: rgba(15, 23, 42, 0.40);
+            --avatar-size: 68px;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,26 +26,26 @@
         }
 
         .widget {
-            padding: 12px 14px;
+            padding: 14px 18px;
             width: max-content;
-            min-width: 240px;
-            max-width: min(420px, 100vw);
+            min-width: 300px;
+            max-width: min(520px, 100vw);
             pointer-events: none;
         }
 
         .list {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
         }
 
         /* 透過モード: カード行は背景なし（文字のみ） */
         .row {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 5px 10px 5px 5px;
-            border-radius: 12px;
+            gap: 14px;
+            padding: 6px 14px 6px 6px;
+            border-radius: 16px;
             background: transparent;
             border: 1px solid transparent;
             animation: rowIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -83,7 +83,7 @@
             justify-content: center;
             width: 100%;
             height: 100%;
-            font-size: 18px;
+            font-size: 26px;
             font-weight: 900;
             color: rgba(255, 255, 255, 0.55);
             -webkit-text-stroke: 2px var(--stroke);
@@ -95,18 +95,18 @@
         .info {
             display: flex;
             flex-direction: column;
-            gap: 1px;
+            gap: 3px;
             min-width: 0;
             flex: 1 1 0;
         }
 
         .name {
-            font-size: 16px;
+            font-size: 22px;
             font-weight: 800;
             color: var(--name-color);
-            -webkit-text-stroke: 3.5px var(--stroke);
+            -webkit-text-stroke: 5px var(--stroke);
             paint-order: stroke fill;
-            text-shadow: 0 4px 12px var(--shadow);
+            text-shadow: 0 4px 14px var(--shadow);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -116,33 +116,34 @@
         .count-row {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
             line-height: 1.15;
         }
 
-        .count-icon {
-            font-size: 13px;
+        /* SVGハート（絵文字非使用） */
+        .heart-icon {
             flex-shrink: 0;
-            line-height: 1;
+            width: 20px;
+            height: 20px;
         }
 
         .count {
-            font-size: 17px;
+            font-size: 24px;
             font-weight: 900;
             color: var(--count-color);
-            -webkit-text-stroke: 3.5px var(--stroke);
+            -webkit-text-stroke: 5px var(--stroke);
             paint-order: stroke fill;
-            text-shadow: 0 5px 14px var(--shadow);
+            text-shadow: 0 5px 16px var(--shadow);
         }
 
         .empty {
-            font-size: 13px;
+            font-size: 16px;
             color: rgba(241, 245, 249, 0.45);
-            padding: 8px 4px;
+            padding: 10px 6px;
         }
 
         @keyframes rowIn {
-            from { opacity: 0; transform: translateX(-12px); }
+            from { opacity: 0; transform: translateX(-14px); }
             to   { opacity: 1; transform: translateX(0); }
         }
     </style>
@@ -155,6 +156,11 @@
     </div>
 
     <script>
+        const HEART_SVG = `<svg class="heart-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
+            `<path d="M12 21C12 21 3 13.5 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 5.5-9 13-9 13z" ` +
+            `fill="#f87171" stroke="rgba(15,23,42,0.9)" stroke-width="1.5" stroke-linejoin="round"/>` +
+            `</svg>`;
+
         const socket = io();
         const searchParams = new URLSearchParams(window.location.search);
         const listEl = document.getElementById('list');
@@ -194,7 +200,7 @@
                     <div class="info">
                         <span class="name">${escapeHtml(e.nickname)}</span>
                         <div class="count-row">
-                            <span class="count-icon">❤️</span>
+                            ${HEART_SVG}
                             <span class="count">${e.tapCount.toLocaleString()}</span>
                         </div>
                     </div>
