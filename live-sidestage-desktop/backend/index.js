@@ -373,6 +373,27 @@ let cachedTikTokGiftCatalog = {
 let activeTikTokGiftCatalogPromise = null;
 const GIFT_JAR_HISTORY_LIMIT = 150;
 const giftJarHistory = [];
+let giftJarLastPositions = null;
+let giftJarHistoryPersistTimer = null;
+let giftJarPositionsPersistTimer = null;
+
+function scheduleGiftJarHistoryPersist() {
+    if (giftJarHistoryPersistTimer) clearTimeout(giftJarHistoryPersistTimer);
+    giftJarHistoryPersistTimer = setTimeout(() => {
+        giftJarHistoryPersistTimer = null;
+        try { dbStore.setGlobalStateValue('gift_jar_history_v2', JSON.stringify(giftJarHistory), new Date().toISOString()); } catch {}
+    }, 3000);
+}
+
+function scheduleGiftJarPositionsPersist() {
+    if (giftJarPositionsPersistTimer) clearTimeout(giftJarPositionsPersistTimer);
+    giftJarPositionsPersistTimer = setTimeout(() => {
+        giftJarPositionsPersistTimer = null;
+        if (giftJarLastPositions && giftJarLastPositions.length > 0) {
+            try { dbStore.setGlobalStateValue('gift_jar_last_positions', JSON.stringify(giftJarLastPositions), new Date().toISOString()); } catch {}
+        }
+    }, 3000);
+}
 const GIFT_JAR_THEMES = ['jar', 'glass', 'barrel', 'cauldron', 'flask', 'pig', 'bee'];
 const IS_PACKAGED_ELECTRON = process.env.ELECTRON_APP_PACKAGED === '1';
 const GIFT_JAR_WALL_EDITOR_ENABLED = !IS_PACKAGED_ELECTRON;
@@ -406,6 +427,13 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: { origin: '*' }
+});
+
+// keep-alive 接続を追跡して closeHttpServer で強制破棄できるようにする
+const openSockets = new Set();
+httpServer.on('connection', (socket) => {
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
 });
 
 const dbStore = createDbStore({
@@ -540,6 +568,20 @@ function persistGiftJarCustomProfiles() {
             giftJarConfig.customProfiles = {};
         }
     }
+    const savedHistoryV2 = dbStore.getGlobalStateValue('gift_jar_history_v2');
+    if (typeof savedHistoryV2 === 'string' && savedHistoryV2.trim()) {
+        try {
+            const parsed = JSON.parse(savedHistoryV2);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                giftJarHistory.push(...parsed.slice(-GIFT_JAR_HISTORY_LIMIT));
+            }
+        } catch {}
+    }
+    // giftJarLastPositions は起動時にはロードしない。
+    // restoreFromPositions() は全ボディを Sleeping.set(body, true) で強制スリープするため、
+    // 新しいギフトの初速 (velocity.y = 0.5) が Matter.js の wake threshold (~4.8) を下回り、
+    // スリープボディを起こせず新ギフトが瓶に入らなくなる。
+    // 再起動後は history replay (10x 速) で瓶を自然充填する。
 }
 
 app.use(express.json());
@@ -785,8 +827,9 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 .then(blob => {
                     const result = blob ? URL.createObjectURL(blob) : url;
                     mediaBlobCache.set(url, result);
+                    return result;
                 })
-                .catch(() => { mediaBlobCache.set(url, url); });
+                .catch(() => { mediaBlobCache.set(url, url); return url; });
             mediaBlobCache.set(url, promise);
         }
 
@@ -794,6 +837,15 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             if (!url) return url;
             const v = mediaBlobCache.get(url);
             return (v && typeof v === 'string') ? v : url;
+        }
+
+        function awaitMediaUrl(url) {
+            if (!url) return url;
+            const v = mediaBlobCache.get(url);
+            if (!v) return url;
+            if (typeof v === 'string') return v;
+            // まだfetch中 → 直接URLで即時再生。fetch完了後は次回以降Blob URLを使用
+            return url;
         }
 
         // ページ起動時に設定済みエフェクトのメディアをすべてプリロード
@@ -1051,6 +1103,14 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             }
 
             const payload = playbackQueue.shift();
+
+            // 次のアイテムを先行プリロード（現在の再生中にfetchを完了させておく）
+            if (playbackQueue.length > 0) {
+                const next = playbackQueue[0];
+                if (next.videoUrl) preloadMediaBlob(next.videoUrl);
+                if (next.audioUrl) preloadMediaBlob(next.audioUrl);
+            }
+
             isPlaying = true;
             activePlaybackId = payload.playbackId || String(Date.now());
             activePlaybackEventId = payload.eventId || '';
@@ -1060,8 +1120,11 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             setReadAloudCredit(payload.readAloudCreditText || '');
 
             try {
-                if (payload.videoUrl) {
-                    video.src = resolvedMediaUrl(payload.videoUrl);
+                const resolvedVideo = payload.videoUrl ? awaitMediaUrl(payload.videoUrl) : null;
+                const resolvedAudio = payload.audioUrl ? awaitMediaUrl(payload.audioUrl) : null;
+
+                if (resolvedVideo) {
+                    video.src = resolvedVideo;
                     video.currentTime = 0;
                     video.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume || 100) / 100));
                     video.style.display = 'block';
@@ -1070,8 +1133,8 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     video.style.display = 'none';
                 }
 
-                if (payload.audioUrl) {
-                    audio.src = resolvedMediaUrl(payload.audioUrl);
+                if (resolvedAudio) {
+                    audio.src = resolvedAudio;
                     audio.currentTime = 0;
                     audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume || 100) / 100));
                     await audio.play().catch(() => null);
@@ -1092,6 +1155,12 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 finishPlayback();
             }
         }
+
+        socket.on('effects:preload', (payload) => {
+            if (!payload || payload.screen !== slot) return;
+            if (payload.videoUrl) preloadMediaBlob(payload.videoUrl);
+            if (payload.audioUrl) preloadMediaBlob(payload.audioUrl);
+        });
 
         socket.on('effects:playback', async (payload) => {
             if (!payload || payload.screen !== slot) {
@@ -1688,20 +1757,19 @@ function isLoopbackRequest(req) {
 }
 
 function closeHttpServer() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         if (!httpServer.listening) {
             resolve();
             return;
         }
 
-        httpServer.close((error) => {
-            if (error) {
-                reject(error);
-                return;
-            }
+        // 既存の keep-alive 接続を強制破棄してから close する
+        for (const socket of openSockets) {
+            socket.destroy();
+        }
+        openSockets.clear();
 
-            resolve();
-        });
+        httpServer.close(() => resolve());
     });
 }
 
@@ -3103,6 +3171,7 @@ function createDefaultCommentFeedSettings() {
         readAloudVoiceCreditEnabled: false,
         readAloudRandomVoiceEnabled: false,
         readAloudVolume: 100,
+        readAloudSpeed: 1.0,
         readAloudFilters: [...COMMENT_READ_ALOUD_DEFAULT_FILTERS],
         readAloudTextReplacements: [],
         readAloudEmojiReplacements: [],
@@ -3126,11 +3195,12 @@ const commentReadAloudAudioCache = new Map();
 function getCommentReadAloudAudioCacheKey(payload) {
     const voice = String(payload?.voiceName || '');
     const volume = Number.isFinite(Number(payload?.volume)) ? Number(payload.volume) : 100;
+    const speed = Number.isFinite(Number(payload?.speed)) ? Number(payload.speed) : 1.0;
     const text = String(payload?.text || '');
     if (!voice || !text) {
         return '';
     }
-    return `${voice}|${volume}|${text}`;
+    return `${voice}|${volume}|${speed}|${text}`;
 }
 
 function getCommentReadAloudAudioCacheEntry(key) {
@@ -3516,6 +3586,8 @@ function normalizeCommentFeedSettings(value) {
     const readAloudVoiceCreditEnabled = source?.readAloudVoiceCreditEnabled === true;
     const readAloudRandomVoiceEnabled = source?.readAloudRandomVoiceEnabled === true;
     const readAloudVolume = Math.max(0, Math.min(100, normalizeWholeNumber(source?.readAloudVolume, defaults.readAloudVolume)));
+    const readAloudSpeedRaw = Number.isFinite(Number(source?.readAloudSpeed)) ? Number(source.readAloudSpeed) : defaults.readAloudSpeed;
+    const readAloudSpeed = Math.round(Math.max(0.5, Math.min(2.0, readAloudSpeedRaw)) * 10) / 10;
     const normalizedStoredReadAloudFilters = hasReadAloudFilters
         ? normalizeCommentReadAloudFilters(source?.readAloudFilters)
         : [];
@@ -3539,6 +3611,7 @@ function normalizeCommentFeedSettings(value) {
         readAloudVoiceCreditEnabled,
         readAloudRandomVoiceEnabled,
         readAloudVolume,
+        readAloudSpeed,
         readAloudFilters,
         readAloudTextReplacements,
         readAloudEmojiReplacements,
@@ -3756,6 +3829,7 @@ function createCommentReadAloudPayload(commentEvent) {
         nickname: commentEvent?.nickname || '',
         voiceName: mappedVoiceName || settings.readAloudVoiceName || '',
         volume: settings.readAloudVolume,
+        speed: settings.readAloudSpeed ?? 1.0,
         timestamp: getTimestamp()
     };
 }
@@ -3873,7 +3947,8 @@ async function emitCommentReadAloudToScreen(payload) {
         ...payload,
         voiceName: resolvedVoiceName,
         readAloudCreditText: await resolveCommentReadAloudVoiceCreditText(resolvedVoiceName, settings),
-        volume: Math.max(0, Math.min(100, Number(payload?.volume ?? settings?.readAloudVolume ?? 100) || 0))
+        volume: Math.max(0, Math.min(100, Number(payload?.volume ?? settings?.readAloudVolume ?? 100) || 0)),
+        speed: Math.max(0.5, Math.min(2.0, Number(payload?.speed ?? settings?.readAloudSpeed ?? 1.0) || 1.0))
     };
 
     if (commentReadAloudAudioProvider) {
@@ -4023,6 +4098,9 @@ function emitCommentReadAloudTest(overrides = null) {
     const volume = Number.isFinite(Number(source?.volume))
         ? Math.max(0, Math.min(100, Number(source.volume)))
         : settings.readAloudVolume;
+    const speed = Number.isFinite(Number(source?.speed))
+        ? Math.max(0.5, Math.min(2.0, Number(source.speed)))
+        : (settings.readAloudSpeed ?? 1.0);
     const payload = {
         playbackId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
         screen: COMMENT_READ_ALOUD_EFFECT_SCREEN,
@@ -4033,6 +4111,7 @@ function emitCommentReadAloudTest(overrides = null) {
         voiceName: voiceName || settings.readAloudVoiceName || '',
         forceVoiceName: Boolean(voiceName),
         volume,
+        speed,
         timestamp: getTimestamp()
     };
 
@@ -4672,6 +4751,26 @@ function matchesEffectTrigger(trigger, context) {
     return true;
 }
 
+// user-video file-map トリガーを持つユーザーの動画を、トリガー条件成立前に投機的プリロード
+function speculativelyPreloadUserVideos(userId) {
+    if (!userId) return;
+    const effectEvents = getEffectEvents();
+    const eventById = new Map(effectEvents.map((item) => [item.id, item]));
+    const fileMapTriggers = getEffectTriggers().filter(
+        (item) => item.enabled && item.userTargetMode === 'file-map' && item.userIdToFileDir && item.eventIds.length > 0
+    );
+    fileMapTriggers.forEach((trigger) => {
+        if (!findUserVideoFile(trigger.userIdToFileDir, userId)) return;
+        const normalizedUserId = normalizeUserIdForFilename(userId);
+        const videoUrl = `/api/effects/user-video/${encodeURIComponent(trigger.id)}/${encodeURIComponent(normalizedUserId)}`;
+        trigger.eventIds.forEach((eventId) => {
+            const effectEvent = eventById.get(eventId);
+            if (!effectEvent || !effectEvent.videoEnabled) return;
+            io.emit('effects:preload', { screen: effectEvent.screen, videoUrl });
+        });
+    });
+}
+
 function tryRunEffectTriggers(context, sourceEvent) {
     const effectEvents = getEffectEvents();
     const eventById = new Map(effectEvents.map((item) => [item.id, item]));
@@ -4727,12 +4826,14 @@ function tryRunEffectTriggers(context, sourceEvent) {
 }
 
 function tryRunEffectTriggersForGift(giftEvent) {
+    const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
+    speculativelyPreloadUserVideos(userId);
     return tryRunEffectTriggers({
         type: 'gift',
         giftName: normalizeEffectText(giftEvent?.giftName, 80).toLowerCase(),
         comment: '',
         totalGifts: normalizeWholeNumber(giftEvent?.totalGifts) ?? 0,
-        userId: normalizeBroadcasterId(giftEvent?.uniqueId)
+        userId
     }, giftEvent);
 }
 
@@ -4741,12 +4842,14 @@ function tryRunEffectTriggersForComment(commentEvent) {
         return;
     }
 
+    const userId = normalizeBroadcasterId(commentEvent?.uniqueId);
+    speculativelyPreloadUserVideos(userId);
     tryRunEffectTriggers({
         type: 'comment',
         giftName: '',
         comment: normalizeEffectText(commentEvent?.comment, 160).toLowerCase(),
         totalGifts: 0,
-        userId: normalizeBroadcasterId(commentEvent?.uniqueId)
+        userId
     }, commentEvent);
 }
 
@@ -6076,6 +6179,7 @@ function pushGiftJarHistoryEntries(payload, deltaRepeat) {
     while (giftJarHistory.length > GIFT_JAR_HISTORY_LIMIT) {
         giftJarHistory.shift();
     }
+    scheduleGiftJarHistoryPersist();
 }
 
 function emitGiftJarFromRawData(rawData, deltaRepeat) {
@@ -6354,6 +6458,15 @@ async function shutdownApplication(reason = 'manual') {
 
         await resetTikTokConnection();
 
+        // keep-alive 接続を先に破棄してから io.close() を呼ぶ
+        // （io.close() は内部で httpServer.close() を呼ぶため、
+        //   接続が残っていると io.close() が永遠に待ち続ける）
+        for (const socket of openSockets) {
+            socket.destroy();
+        }
+        openSockets.clear();
+
+        io.disconnectSockets(true);
         await new Promise((resolve) => {
             io.close(() => resolve());
         });
@@ -6401,8 +6514,16 @@ io.on('connection', (socket) => {
     if (giftJarHistory.length > 0) {
         socket.emit('widgets:gift-jar:history', giftJarHistory);
     }
+    // Send config before positions so walls are built before bodies are placed.
     socket.emit('widgets:gift-jar:config', { ...giftJarConfig });
+    if (giftJarLastPositions && giftJarLastPositions.length > 0) {
+        socket.emit('widgets:gift-jar:positions', giftJarLastPositions);
+    }
     socket.on('widgets:gift-jar:positions', (data) => {
+        if (Array.isArray(data) && data.length > 0 && data[0]?.settled) {
+            giftJarLastPositions = data;
+            scheduleGiftJarPositionsPersist();
+        }
         socket.broadcast.emit('widgets:gift-jar:positions', data);
     });
     if (pendingUpdateInfo) {
@@ -6444,6 +6565,26 @@ app.post('/api/update/install', (req, res) => {
     }
     res.json({ ok: true });
     serverEvents.emit('install-update-requested');
+});
+
+// 開発用: アップデートバナーの表示をシミュレートする（本番環境では無効）
+app.post('/api/debug/simulate-update', (req, res) => {
+    if (IS_PACKAGED_ELECTRON) {
+        return res.status(403).json({ error: 'not_available_in_production' });
+    }
+    const version = String(req.body?.version || '9.9.9');
+    pendingUpdateInfo = { version };
+    io.emit('app:update-ready', { version });
+    res.json({ ok: true, version });
+});
+
+// 開発用: シミュレートしたアップデートをリセットする（本番環境では無効）
+app.post('/api/debug/reset-update', (req, res) => {
+    if (IS_PACKAGED_ELECTRON) {
+        return res.status(403).json({ error: 'not_available_in_production' });
+    }
+    pendingUpdateInfo = null;
+    res.json({ ok: true });
 });
 
 app.get('/api/state', (req, res) => {
@@ -6662,7 +6803,9 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
         giftJarConfig.sizeMultiplier = Math.max(0.1, Math.min(sizeMultiplier, 5.0));
         dbStore.setGlobalStateValue('gift_jar_size_multiplier', giftJarConfig.sizeMultiplier, Date.now());
     }
+    let jarThemeChanged = false;
     if (typeof jarTheme === 'string' && GIFT_JAR_THEMES.includes(jarTheme)) {
+        if (giftJarConfig.jarTheme !== jarTheme) jarThemeChanged = true;
         giftJarConfig.jarTheme = jarTheme;
         dbStore.setGlobalStateValue('gift_jar_theme', giftJarConfig.jarTheme, Date.now());
     }
@@ -6691,12 +6834,22 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
             persistGiftJarCustomProfiles();
         }
     }
+    if (jarThemeChanged) {
+        giftJarHistory.length = 0;
+        giftJarLastPositions = null;
+        try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
+        try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
+        io.emit('widgets:gift-jar:reset');
+    }
     io.emit('widgets:gift-jar:config', { ...giftJarConfig });
     res.json({ ok: true, ...giftJarConfig });
 });
 
 app.post('/api/widgets/gift-jar/reset', (req, res) => {
     giftJarHistory.length = 0;
+    giftJarLastPositions = null;
+    try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
+    try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
     io.emit('widgets:gift-jar:reset');
     res.json({ ok: true });
 });
@@ -7091,6 +7244,7 @@ app.post('/api/tiktok/connect', (req, res) => {
         return res.status(400).json({ ok: false, error: '配信ユーザーIDが設定されていません。' });
     }
 
+    autoReconnectEnabled = false;
     connectToTikTok().catch(() => {});
     res.json({ ok: true });
 });
@@ -7100,6 +7254,7 @@ app.post('/api/tiktok/disconnect', async (req, res) => {
         return res.status(403).json({ error: 'This endpoint is available only from localhost.' });
     }
 
+    autoReconnectEnabled = false;
     await resetTikTokConnection();
     setTikTokConnectionState('idle', '手動切断しました。再接続するには接続ボタンを押してください。', {
         transportMethod: 'unknown',
@@ -7854,7 +8009,8 @@ async function startHttpServer() {
     }
 
     if (hasConfiguredBroadcasterId()) {
-        console.log(`ℹ️ Broadcaster ID is configured: @${getBroadcasterId()}. Use the connect button to connect.`);
+        autoReconnectEnabled = false;
+        connectToTikTok().catch(() => {});
     } else {
         setTikTokConnectionState('not_configured', 'TikTok 配信ユーザーIDが未設定です。セットアップ画面で設定してください。', {
             transportMethod: 'unknown',
