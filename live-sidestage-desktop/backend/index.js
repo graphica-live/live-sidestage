@@ -117,6 +117,7 @@ const WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY = 'widget_goal_gift_like_uniqu
 const WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY = 'widget_goal_gift_follow_state';
 const WIDGET_LIKE_CONTRIBUTION_USER_TOTALS_STATE_KEY = 'widget_like_contribution_user_totals';
 const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribution_user_nicknames';
+const WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY = 'widget_like_contribution_user_avatars';
 const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
@@ -2659,6 +2660,22 @@ function setLikeContributionUserNickname(uniqueId, nickname) {
     setScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY, JSON.stringify(current));
 }
 
+function getLikeContributionUserAvatars() {
+    let source = getScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY);
+    if (typeof source === 'string') {
+        try { source = JSON.parse(source); } catch { source = {}; }
+    }
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+    return source;
+}
+
+function setLikeContributionUserAvatar(uniqueId, avatarUrl) {
+    if (!uniqueId || !avatarUrl) return;
+    const current = getLikeContributionUserAvatars();
+    current[uniqueId] = avatarUrl;
+    setScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY, JSON.stringify(current));
+}
+
 function normalizeWidgetTapListSettings(value) {
     let source = value;
     if (typeof source === 'string') {
@@ -2683,35 +2700,37 @@ function setWidgetTapListSettings(settings) {
     return normalized;
 }
 
-function buildTapListNicknameMap() {
-    // ニックネームマップ（Like通知で蓄積）
-    const saved = getLikeContributionUserNicknames();
-    // コントリビューターDBの表示名で上書き（より正確）
+function buildTapListUserMap() {
+    const nicknames = getLikeContributionUserNicknames();
+    const avatars = getLikeContributionUserAvatars();
+    // コントリビューターDBの表示名で補完
     if (hasConfiguredBroadcasterId()) {
-        const todayKey = getTodayDayKey();
         try {
-            const contributors = dbStore.getAdminContributorsByDay(todayKey, getBroadcasterId());
+            const contributors = dbStore.getAdminContributorsByDay(getTodayDayKey(), getBroadcasterId());
             for (const c of contributors) {
-                if (c.uniqueId && c.nickname) {
-                    saved[c.uniqueId] = c.nickname;
-                }
+                if (c.uniqueId && c.nickname) nicknames[c.uniqueId] = c.nickname;
             }
         } catch {}
     }
-    return saved;
+    return { nicknames, avatars };
 }
 
 function buildTapListEntries(maxEntries = 20) {
     const dayKey = getTodayDayKey();
     const userTotalsState = getLikeContributionUserTotalsState();
     const todayMap = userTotalsState[dayKey] || {};
-    const nicknames = buildTapListNicknameMap();
+    const { nicknames, avatars } = buildTapListUserMap();
     return Object.entries(todayMap)
-        .map(([uniqueId, tapCount]) => ({ uniqueId, nickname: nicknames[uniqueId] || uniqueId, tapCount: Number(tapCount) || 0 }))
+        .map(([uniqueId, tapCount]) => ({
+            uniqueId,
+            nickname: nicknames[uniqueId] || uniqueId,
+            avatarUrl: avatars[uniqueId] || '',
+            tapCount: Number(tapCount) || 0
+        }))
         .filter((e) => e.tapCount > 0)
         .sort((a, b) => b.tapCount - a.tapCount)
         .slice(0, maxEntries)
-        .map((e, i) => ({ rank: i + 1, uniqueId: e.uniqueId, nickname: e.nickname, tapCount: e.tapCount }));
+        .map((e, i) => ({ rank: i + 1, uniqueId: e.uniqueId, nickname: e.nickname, avatarUrl: e.avatarUrl, tapCount: e.tapCount }));
 }
 
 function buildTapListPayload() {
@@ -5586,6 +5605,7 @@ function buildLikeContributionNotifications(commentEvent, data, settings = getWi
     const nextState = { ...userTotalsState, [dayKey]: { ...todayMap, [uniqueId]: userTotal } };
     setLikeContributionUserTotalsState(nextState);
     setLikeContributionUserNickname(uniqueId, displayName);
+    if (actor.image) setLikeContributionUserAvatar(uniqueId, actor.image);
 
     if (userTotal <= 0) {
         return [];
