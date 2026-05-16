@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Goal Gifts Overlay</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
 
@@ -20,6 +21,9 @@
             --goal-stroke-width: 3px;
             --gift-width: 320px;
             --gift-height: 236px;
+            --achievement-badge-size: 152px;
+            --achievement-badge-h: 68px;
+            /* CSS変数は後方互換のため残す。実際のサイズはインラインスタイルで上書き */
         }
 
         * {
@@ -40,6 +44,18 @@
             color: var(--text);
         }
 
+        body.preview-card {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 10px;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+            --gift-width: 112px;
+            --gift-height: 84px;
+            --achievement-badge-size: 52px;
+            --achievement-badge-h: 24px;
+        }
+
         .overlay {
             display: none;
             width: min(1680px, calc(100vw - 64px));
@@ -48,6 +64,13 @@
 
         .overlay.is-visible {
             display: grid;
+        }
+
+        body.preview-card .overlay {
+            width: min(240px, calc(100vw - 20px));
+            gap: 6px;
+            justify-items: center;
+            align-content: center;
         }
 
         .overlay.is-empty {
@@ -86,8 +109,19 @@
             animation: goalCelebrate 780ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
+        .goal-row.is-duplicate-feedback {
+            animation: goalDuplicateFeedback 620ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
         .goal-row.is-celebrating .gift-visual::before,
         .goal-row.is-celebrating .gift-visual::after {
+            content: '';
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .goal-row.is-duplicate-feedback .gift-visual::before,
+        .goal-row.is-duplicate-feedback .gift-visual::after {
             content: '';
             position: absolute;
             pointer-events: none;
@@ -133,6 +167,21 @@
             box-shadow: 0 0 26px rgba(255, 223, 142, 0.24), inset 0 0 0 1px rgba(255, 247, 221, 0.26);
         }
 
+        .goal-row.is-duplicate-feedback .gift-visual::before {
+            inset: 11% 15%;
+            border-radius: 999px;
+            background: radial-gradient(circle at center, rgba(255, 243, 243, 0.92) 0%, rgba(255, 159, 159, 0.4) 28%, rgba(239, 68, 68, 0.08) 62%, transparent 78%);
+            animation: goalDuplicateFlash 620ms ease-out;
+        }
+
+        .goal-row.is-duplicate-feedback .gift-visual::after {
+            inset: 16% 20%;
+            border: 3px solid rgba(248, 113, 113, 0.82);
+            border-radius: 999px;
+            box-shadow: 0 0 18px rgba(239, 68, 68, 0.34);
+            animation: goalDuplicateRing 620ms ease-out;
+        }
+
         .goal-row.is-complete {
             background: transparent;
         }
@@ -152,6 +201,77 @@
             35% {
                 transform: scale(1.04);
                 filter: brightness(1.18);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        @keyframes goalGiftImageCelebrate {
+            0% {
+                transform: scale(0.78) rotate(-9deg);
+                filter: brightness(0.96) saturate(0.92);
+            }
+
+            22% {
+                transform: scale(1.24) rotate(8deg);
+                filter: brightness(1.18) saturate(1.16);
+            }
+
+            46% {
+                transform: scale(0.92) rotate(-5deg);
+                filter: brightness(1.08) saturate(1.08);
+            }
+
+            70% {
+                transform: scale(1.12) rotate(3deg);
+                filter: brightness(1.14) saturate(1.12);
+            }
+
+            100% {
+                transform: scale(1) rotate(0deg);
+                filter: brightness(1) saturate(1);
+            }
+        }
+
+        @keyframes goalGiftImageDuplicate {
+            0% {
+                transform: scale(1);
+                filter: brightness(1) sepia(0) saturate(1) hue-rotate(0deg);
+            }
+
+            28% {
+                transform: scale(1.18) rotate(5deg);
+                filter: brightness(0.88) sepia(1) saturate(8) hue-rotate(300deg) drop-shadow(0 0 20px rgba(239, 68, 68, 0.7));
+            }
+
+            55% {
+                transform: scale(0.96) rotate(-3deg);
+                filter: brightness(0.92) sepia(1) saturate(5) hue-rotate(300deg) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5));
+            }
+
+            100% {
+                transform: scale(1) rotate(0deg);
+                filter: brightness(1) sepia(0) saturate(1) hue-rotate(0deg);
+            }
+        }
+
+        @keyframes goalDuplicateFeedback {
+            0% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+
+            22% {
+                transform: scale(0.84);
+                filter: brightness(1.04);
+            }
+
+            54% {
+                transform: scale(1.1);
+                filter: brightness(1.16);
             }
 
             100% {
@@ -211,12 +331,54 @@
             }
         }
 
+        @keyframes goalDuplicateFlash {
+            0% {
+                opacity: 0;
+                transform: scale(0.82);
+            }
+
+            30% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.08);
+            }
+        }
+
+        @keyframes goalDuplicateRing {
+            0% {
+                opacity: 0;
+                transform: scale(0.76);
+            }
+
+            32% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.12);
+            }
+        }
+
         .gift-image {
             display: block;
             width: var(--gift-width);
             height: var(--gift-height);
             object-fit: contain;
             background: transparent;
+            transform-origin: 50% 72%;
+            will-change: transform, filter;
+        }
+
+        .goal-row.is-celebrating .gift-image {
+            animation: goalGiftImageCelebrate 820ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .goal-row.is-duplicate-feedback .gift-image {
+            animation: goalGiftImageDuplicate 620ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .copy {
@@ -248,6 +410,41 @@
 
         .count {
             margin-top: -4px;
+        }
+
+        .count-split {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+        }
+
+        .count-roller {
+            overflow: hidden;
+        }
+
+        .count-roller-track {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: countRoll 800ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes countRoll {
+            from { transform: translateY(0); }
+            to { transform: translateY(calc(-1 * var(--roller-item-h, 64px))); }
+        }
+
+        body.preview-card .gift-name {
+            padding: 0 8px;
+        }
+
+        body.preview-card .count {
+            margin-top: 0;
+        }
+
+        body.preview-card .note {
+            opacity: 0.92;
         }
 
         .goal-svg-text {
@@ -310,6 +507,50 @@
                 grid-template-columns: 1fr;
             }
 
+            :root {
+                --achievement-badge-size: 88px;
+                --achievement-badge-h: 40px;
+            }
+
+        }
+
+        .achievement-badge {
+            display: none;
+            position: absolute;
+            top: calc(var(--gift-height) / 2);
+            left: 50%;
+            width: var(--achievement-badge-size);
+            height: var(--achievement-badge-h);
+            margin-left: calc(var(--achievement-badge-size) / -2);
+            margin-top: calc(var(--achievement-badge-h) / -2);
+            pointer-events: none;
+            z-index: 5;
+            filter: var(--achievement-badge-shadow, drop-shadow(0 2px 10px rgba(185, 28, 28, 0.6)));
+            transform-origin: center;
+        }
+
+        .gift-visual.is-achieved .achievement-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: achieveBadgeIn 560ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes achieveBadgeIn {
+            0% {
+                opacity: 0;
+                transform: scale(0) rotate(-24deg);
+            }
+
+            55% {
+                opacity: 1;
+                transform: scale(1.18) rotate(-10deg);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1) rotate(-14deg);
+            }
         }
     </style>
 </head>
@@ -322,16 +563,12 @@
         const searchParams = new URLSearchParams(window.location.search);
         const requestedSlot = Number.parseInt(searchParams.get('slot') || '', 10);
         const previewMode = searchParams.get('preview') === '1';
+        const sampleMode = searchParams.get('sample') === '1' || previewMode;
+        const previewCardMode = searchParams.get('card') === '1';
         const GOAL_GIFT_SYSTEM_IDS = {
             like: '__system__:like'
         };
         const FEEDBACK_SOUND_KEYS = [
-            'chime',
-            'magic',
-            'luxury',
-            'crystal',
-            'shimmer',
-            'glint',
             'business08',
             'business09',
             'business10',
@@ -353,9 +590,42 @@
                 FEEDBACK_SOUND_CANDIDATE_EXTENSIONS.map((extension) => `/audio/feedback/${soundKey}.${extension}`)
             ])
         );
+        const DUPLICATE_FEEDBACK_SOUND_KEY = 'business11';
+        // goalGiftImageCelebrate アニメーション(820ms)に合わせた値。
+        // CSS側のアニメーション時間を変更した場合はここも合わせること。
+        const CELEBRATE_ANIMATION_DURATION_MS = 820;
+        const ACHIEVEMENT_BADGE_STYLES = {
+            'stamp-red':   { fill: '#dc2626', stroke: '#7f1d1d', shadow: 'rgba(185,28,28,0.6)' },
+            'stamp-blue':  { fill: '#1d4ed8', stroke: '#1e3a8a', shadow: 'rgba(29,78,216,0.6)' },
+            'stamp-gold':  { fill: '#b45309', stroke: '#78350f', shadow: 'rgba(180,83,9,0.6)' },
+            'stamp-green': { fill: '#15803d', stroke: '#14532d', shadow: 'rgba(21,128,61,0.6)' },
+            'stamp-dark':  { fill: '#1e293b', stroke: '#0f172a', shadow: 'rgba(15,23,42,0.7)' }
+        };
+        function buildAchievementBadgeHtml(style, width, height, fontFamily) {
+            const s = ACHIEVEMENT_BADGE_STYLES[style] || ACHIEVEMENT_BADGE_STYLES['stamp-red'];
+            const shadow = `drop-shadow(0 2px 10px ${s.shadow})`;
+            const ff = fontFamily || '"Noto Sans JP","M PLUS Rounded 1c",sans-serif';
+            const fs = Math.max(10, Math.round(height * 0.41));
+            return `<div class="achievement-badge" style="width:${width}px;height:${height}px;margin-left:${-width/2}px;margin-top:${-height/2}px;--achievement-badge-size:${width}px;--achievement-badge-h:${height}px;--achievement-badge-shadow:${shadow};"><svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" aria-hidden="true" focusable="false"><rect x="2" y="2" width="${width-4}" height="${height-4}" rx="${Math.round(height*0.15)}" ry="${Math.round(height*0.15)}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="3"/><rect x="${Math.round(height*0.11)}" y="${Math.round(height*0.11)}" width="${width-Math.round(height*0.22)}" height="${height-Math.round(height*0.22)}" rx="${Math.round(height*0.09)}" ry="${Math.round(height*0.09)}" fill="none" stroke="#ffffff" stroke-width="2"/><text x="${width/2}" y="${height/2}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="900" fill="#ffffff" font-family="${escapeHtml(ff)}" letter-spacing="${Math.max(2, Math.round(fs * 0.18))}">達成</text></svg></div>`;
+        }
         const feedbackSoundUrlCache = new Map();
         let hasRenderedSnapshot = false;
         let previousGoalCounts = new Map();
+        let previousSnapshotDayKey = null;
+        let currentFeedbackSettings = normalizeFeedbackSettings();
+        let lastRenderStructureKey = null;
+        let renderGeneration = 0;
+        let lastRenderedCounts = new Map();
+        const celebrationEndTimes = new Map();
+        const previewGoalGiftImage = 'https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/adf6e9bd6219788151edb9fa026a0481.png~tplv-obj.webp';
+        const _previewGiftImageParam = searchParams.get('previewGiftImage');
+        const _previewGiftNameParam = searchParams.get('previewGiftName');
+        const resolvedPreviewGiftImage = _previewGiftImageParam || previewGoalGiftImage;
+        const resolvedPreviewGiftName = _previewGiftNameParam || 'Rose Bear';
+
+        if (previewCardMode) {
+            document.body.classList.add('preview-card');
+        }
         const goalGiftFonts = {
             default: '"M PLUS Rounded 1c", sans-serif',
             gothic: '"Noto Sans JP", sans-serif',
@@ -547,6 +817,48 @@
                 noteColor: 'rgba(254, 215, 170, 0.94)',
                 strokeColor: 'rgba(154, 52, 18, 0.98)',
                 textShadow: 'rgba(154, 52, 18, 0.34)'
+            },
+            'prism-burst': {
+                fillColor: ['#e0f2fe', '#7dd3fc', '#f0abfc'],
+                countColor: ['#fef3c7', '#f472b6', '#c084fc'],
+                noteColor: 'rgba(224, 242, 254, 0.94)',
+                strokeColor: 'rgba(67, 56, 202, 0.98)',
+                textShadow: 'rgba(67, 56, 202, 0.34)'
+            },
+            'tropical-punch': {
+                fillColor: ['#fef3c7', '#fb7185', '#fb923c'],
+                countColor: ['#fde68a', '#f97316', '#ef4444'],
+                noteColor: 'rgba(254, 215, 170, 0.94)',
+                strokeColor: 'rgba(127, 29, 29, 0.98)',
+                textShadow: 'rgba(127, 29, 29, 0.34)'
+            },
+            'lagoon-shine': {
+                fillColor: ['#ecfeff', '#2dd4bf', '#60a5fa'],
+                countColor: ['#a7f3d0', '#22d3ee', '#93c5fd'],
+                noteColor: 'rgba(165, 243, 252, 0.94)',
+                strokeColor: 'rgba(21, 94, 117, 0.98)',
+                textShadow: 'rgba(21, 94, 117, 0.34)'
+            },
+            'berry-mist': {
+                fillColor: ['#fdf2f8', '#f472b6', '#c084fc'],
+                countColor: ['#fecdd3', '#fb7185', '#a78bfa'],
+                noteColor: 'rgba(252, 231, 243, 0.94)',
+                strokeColor: 'rgba(112, 26, 117, 0.98)',
+                textShadow: 'rgba(112, 26, 117, 0.34)'
+            },
+            'polar-neon': {
+                fillColor: ['#ecfeff', '#67e8f9', '#e9d5ff'],
+                countColor: ['#cffafe', '#22d3ee', '#c4b5fd'],
+                noteColor: 'rgba(224, 242, 254, 0.94)',
+                strokeColor: 'rgba(30, 41, 59, 0.98)',
+                textShadow: 'rgba(30, 41, 59, 0.34)'
+            },
+            'citrus-splash': {
+                fillColor: ['#fefce8', '#a3e635', '#34d399'],
+                countColor: ['#fde047', '#84cc16', '#10b981'],
+                noteColor: 'rgba(254, 249, 195, 0.94)',
+                strokeColor: 'rgba(22, 101, 52, 0.98)',
+                textShadow: 'rgba(22, 101, 52, 0.34)'
             }
         };
 
@@ -569,75 +881,38 @@
             return Math.min(parsed, 24);
         }
 
+        function getGoalGiftNoteFontSize(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 8) {
+                return 28;
+            }
+
+            return Math.min(parsed, 96);
+        }
+
         function getPrimaryFontFamily(fontFamily) {
             const match = String(fontFamily || '').match(/"([^"]+)"/);
             return match ? `"${match[1]}"` : String(fontFamily || '').split(',')[0]?.trim() || 'sans-serif';
         }
 
-        async function ensureGoalGiftFontLoaded(fontFamily) {
+        async function ensureGoalGiftFontLoaded(fontFamily, text = '') {
             if (!document.fonts?.load) {
                 return;
             }
 
             const primaryFamily = getPrimaryFontFamily(fontFamily);
-
+            // text を渡すことで、日本語などの Unicode サブセットも確実にロードさせる。
+            // 空文字の場合はブラウザ既定のテスト文字列（Latin）を使うが、
+            // 日本語ゴール名（タップ・フォローなど）が含まれると日本語サブセットも対象になる。
+            const testText = text || undefined;
             try {
                 await Promise.all([
-                    document.fonts.load(`400 1em ${primaryFamily}`),
-                    document.fonts.load(`700 1em ${primaryFamily}`)
+                    document.fonts.load(`400 1em ${primaryFamily}`, testText),
+                    document.fonts.load(`700 1em ${primaryFamily}`, testText)
                 ]);
             } catch {
                 // Fall through to normal render using whatever fonts are available.
             }
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        function normalizeTextPaint(value) {
-            if (Array.isArray(value)) {
-                return value.filter((item) => typeof item === 'string' && item.trim());
-            }
-
-            return typeof value === 'string' && value.trim() ? value.trim() : '';
-        }
-
-        function getTextPaintPreviewColor(value, fallback) {
-            const normalizedValue = normalizeTextPaint(value);
-            if (Array.isArray(normalizedValue)) {
-                return normalizedValue[0] || fallback;
-            }
-
-            return normalizedValue || fallback;
-        }
-
-        function buildSvgPaint(fill, prefix) {
-            const normalizedFill = normalizeTextPaint(fill);
-            if (Array.isArray(normalizedFill) && normalizedFill.length >= 2) {
-                const gradientId = `${prefix}-gradient`;
-                const stops = normalizedFill
-                    .map((color, index) => {
-                        const offset = normalizedFill.length === 1 ? 0 : (index / (normalizedFill.length - 1)) * 100;
-                        return `<stop offset="${offset}%" stop-color="${escapeHtml(color)}"></stop>`;
-                    })
-                    .join('');
-
-                return {
-                    defs: `<defs><linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">${stops}</linearGradient></defs>`,
-                    fill: `url(#${gradientId})`
-                };
-            }
-
-            return {
-                defs: '',
-                fill: escapeHtml(normalizedFill || '#ffffff')
-            };
         }
 
         function buildOutlinedSvgMarkup(text, options = {}) {
@@ -683,41 +958,6 @@
             return `${compactValue}${matchedUnit.suffix}`;
         }
 
-        function layoutOutlinedSvgText(container = document) {
-            container.querySelectorAll('[data-outlined-svg-host]').forEach((host) => {
-                const svg = host.querySelector('svg');
-                const text = host.querySelector('[data-outlined-svg-text]');
-
-                if (!svg || !text) {
-                    return;
-                }
-
-                text.setAttribute('font-family', getComputedStyle(host).fontFamily);
-
-                let bounds;
-                try {
-                    bounds = text.getBBox();
-                } catch {
-                    return;
-                }
-
-                const strokeWidth = Number.parseFloat(host.dataset.strokeWidth || '0') || 0;
-                const shadowPad = Number.parseFloat(host.dataset.shadowPad || '0') || 0;
-                const horizontalPadding = Math.max(2, strokeWidth + shadowPad);
-                const verticalPadding = Math.max(1, strokeWidth + Math.min(shadowPad, 2));
-                const width = Math.max(1, bounds.width + horizontalPadding * 2);
-                const height = Math.max(1, bounds.height + verticalPadding * 2);
-                const fixedLayoutHeight = Number.parseFloat(host.dataset.layoutHeight || '0') || 0;
-                const layoutHeight = Math.max(1, fixedLayoutHeight || bounds.height);
-
-                svg.setAttribute('viewBox', `${bounds.x - horizontalPadding} ${bounds.y - verticalPadding} ${width} ${height}`);
-                svg.setAttribute('width', `${width}`);
-                svg.setAttribute('height', `${height}`);
-                host.style.width = `${width}px`;
-                host.style.height = `${layoutHeight}px`;
-            });
-        }
-
         function normalizeFeedbackSettings(value) {
             const soundKey = String(value?.soundKey || '').trim().toLowerCase();
             const effectKey = String(value?.effectKey || '').trim().toLowerCase();
@@ -725,13 +965,13 @@
             return {
                 soundEnabled: value?.soundEnabled !== false,
                 effectEnabled: value?.effectEnabled !== false,
-                soundKey: FEEDBACK_SOUND_KEYS.includes(soundKey) ? soundKey : 'chime',
+                soundKey: FEEDBACK_SOUND_KEYS.includes(soundKey) ? soundKey : 'business08',
                 effectKey: ['glow', 'magic', 'luxury'].includes(effectKey) ? effectKey : 'glow'
             };
         }
 
-        async function resolveFeedbackSoundUrl(soundKey = 'chime') {
-            const normalizedKey = FEEDBACK_SOUND_URLS[soundKey] ? soundKey : 'chime';
+        async function resolveFeedbackSoundUrl(soundKey = 'business08') {
+            const normalizedKey = FEEDBACK_SOUND_URLS[soundKey] ? soundKey : 'business08';
 
             if (feedbackSoundUrlCache.has(normalizedKey)) {
                 return feedbackSoundUrlCache.get(normalizedKey);
@@ -755,7 +995,7 @@
             return '';
         }
 
-        async function playGoalFeedbackTone(soundKey = 'chime') {
+        async function playGoalFeedbackTone(soundKey = 'business08') {
             const soundUrl = await resolveFeedbackSoundUrl(soundKey);
 
             if (!soundUrl) {
@@ -773,9 +1013,50 @@
             }
         }
 
-        function getGoalFeedbackDiff(snapshot) {
+        function playDuplicateGoalFeedback(payload) {
+            if (sampleMode) {
+                return;
+            }
+
+            const slots = Array.isArray(payload?.slots)
+                ? payload.slots.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+                : [];
+
+            if (!slots.length) {
+                return;
+            }
+
+            if (currentFeedbackSettings.effectEnabled) {
+                slots.forEach((slot) => {
+                    const row = overlay.querySelector(`[data-goal-slot="${slot}"]`);
+
+                    if (!row) {
+                        return;
+                    }
+
+                    row.classList.remove('is-duplicate-feedback');
+                    void row.offsetWidth;
+                    row.classList.add('is-duplicate-feedback');
+                });
+            }
+
+            if (currentFeedbackSettings.soundEnabled) {
+                playGoalFeedbackTone(DUPLICATE_FEEDBACK_SOUND_KEY).catch(() => {});
+            }
+        }
+
+        function getGoalFeedbackDiff(snapshot, { allowRegression = false } = {}) {
+            if (sampleMode) {
+                return {
+                    feedback: normalizeFeedbackSettings(snapshot?.feedback),
+                    increasedSlots: new Set(),
+                    shouldNotify: false
+                };
+            }
+
             const goals = Array.isArray(snapshot?.goals) ? snapshot.goals : [];
             const increasedSlots = new Set();
+            const previousCounts = new Map();
             let hasAudibleIncrease = false;
 
             goals.forEach((goal) => {
@@ -787,36 +1068,113 @@
                 const nextCount = Number(goal?.currentCount) || 0;
                 const previousCount = previousGoalCounts.get(slot);
                 if (hasRenderedSnapshot && typeof previousCount === 'number' && nextCount > previousCount) {
-                    if (goal?.giftId === GOAL_GIFT_SYSTEM_IDS.like) {
+                    if (goal?.giftId === GOAL_GIFT_SYSTEM_IDS.like && !goal?.countUniqueUsers) {
                         const previousMilestone = Math.floor(previousCount / 1000);
                         const nextMilestone = Math.floor(nextCount / 1000);
 
                         if (nextMilestone > previousMilestone) {
                             increasedSlots.add(slot);
+                            previousCounts.set(slot, previousCount);
                         }
                     } else {
                         increasedSlots.add(slot);
+                        previousCounts.set(slot, previousCount);
                         hasAudibleIncrease = true;
                     }
                 }
             });
 
-            previousGoalCounts = new Map(
-                goals.map((goal) => [Number(goal?.slot) || 0, Number(goal?.currentCount) || 0]).filter(([slot]) => slot > 0)
-            );
+            // スナップショットの日付が変わった場合はカウントをリセットする（日付跨ぎ対応）。
+            // 同日内では古い in-flight fetch が完了したときに previousGoalCounts が過去の値に
+            // 戻るのを防ぐため、カウントを下げる方向には更新しない。
+            // allowRegression=true（ソケット直接配信）の場合はアドミンによるリセット等のため常に更新する。
+            const snapshotDayKey = snapshot?.dayKey || null;
+            const dayChanged = snapshotDayKey && snapshotDayKey !== previousSnapshotDayKey;
+            if (dayChanged) {
+                previousGoalCounts = new Map();
+                previousSnapshotDayKey = snapshotDayKey;
+            }
+
+            goals.forEach((goal) => {
+                const slot = Number(goal?.slot) || 0;
+                if (!slot) return;
+                const newCount = Number(goal?.currentCount) || 0;
+                const storedCount = previousGoalCounts.get(slot);
+                if (allowRegression || storedCount === undefined || newCount > storedCount) {
+                    previousGoalCounts.set(slot, newCount);
+                }
+            });
 
             return {
                 feedback: normalizeFeedbackSettings(snapshot?.feedback),
                 increasedSlots,
+                previousCounts,
                 shouldNotify: hasRenderedSnapshot && hasAudibleIncrease
             };
         }
 
-        async function render(snapshot, increasedSlots = new Set(), effectKey = 'glow') {
-            const sourceGoals = Array.isArray(snapshot?.goals) ? snapshot.goals : [];
-            const fontFamily = getGoalGiftFontFamily(snapshot?.fontKey);
-            const textStyle = getGoalGiftTextStyle(snapshot?.textStyleKey);
-            const strokeWidth = getGoalGiftStrokeWidth(snapshot?.strokeWidth);
+        function buildSampleSnapshot(snapshot = {}) {
+            const realGoals = Array.isArray(snapshot?.goals) && snapshot.goals.some((g) => g?.giftId && g?.giftName);
+            return {
+                ...snapshot,
+                fontKey: snapshot?.fontKey,
+                textStyleKey: snapshot?.textStyleKey,
+                strokeWidth: snapshot?.strokeWidth,
+                feedback: {
+                    soundEnabled: false,
+                    effectEnabled: false,
+                    soundKey: 'business08',
+                    effectKey: 'glow'
+                },
+                goals: realGoals ? snapshot.goals : [
+                    {
+                        slot: 1,
+                        enabled: true,
+                        completed: false,
+                        giftId: '__sample__:goal-gift',
+                        giftName: resolvedPreviewGiftName,
+                        displayName: resolvedPreviewGiftName,
+                        note: 'あと少し',
+                        giftImage: resolvedPreviewGiftImage,
+                        targetCount: 30,
+                        currentCount: 12
+                    }
+                ]
+            };
+        }
+
+        function buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle) {
+            const _p = previousCounts.get(slot);
+            const _newNum = formatGoalGiftCount(goal.currentCount);
+            const _denom = `/${formatGoalGiftCount(goal.targetCount)}`;
+            if (rollerSlots.has(slot) && typeof _p === 'number') {
+                const _oldNum = formatGoalGiftCount(_p);
+                return `<div class="count count-split">`
+                    + `<div class="count-roller" style="height:${countLayoutHeight}px;--roller-item-h:${countLayoutHeight}px">`
+                    + `<div class="count-roller-track">`
+                    + buildOutlinedSvgMarkup(_oldNum, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-old-' + index })
+                    + buildOutlinedSvgMarkup(_newNum, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-new-' + index })
+                    + `</div></div>`
+                    + buildOutlinedSvgMarkup(_denom, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-denom-' + index })
+                    + `</div>`;
+            }
+            return `<div class="count">`
+                + buildOutlinedSvgMarkup(_newNum + _denom, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-' + index })
+                + `</div>`;
+        }
+
+        async function render(snapshot, increasedSlots = new Set(), effectKey = 'glow', rollerSlots = new Set(), previousCounts = new Map()) {
+            const generation = ++renderGeneration;
+            const resolvedSnapshot = sampleMode ? buildSampleSnapshot(snapshot) : snapshot;
+            const sourceGoals = Array.isArray(resolvedSnapshot?.goals) ? resolvedSnapshot.goals : [];
+            const fontFamily = getGoalGiftFontFamily(resolvedSnapshot?.fontKey);
+            const textStyle = getGoalGiftTextStyle(resolvedSnapshot?.textStyleKey);
+            const strokeWidth = getGoalGiftStrokeWidth(resolvedSnapshot?.strokeWidth);
+            const baseNoteFontSize = getGoalGiftNoteFontSize(resolvedSnapshot?.noteFontSize);
+            const rawBadgeSize = Number.parseInt(String(resolvedSnapshot?.achievementBadgeSize ?? 152), 10);
+            const badgeBaseWidth = (Number.isInteger(rawBadgeSize) && rawBadgeSize >= 40) ? Math.min(rawBadgeSize, 400) : 152;
+            const badgeBaseHeight = Math.round(badgeBaseWidth * 68 / 152);
+            const badgeStyle = String(resolvedSnapshot?.achievementBadgeStyle || 'stamp-red').trim().toLowerCase();
             const fillPreviewColor = getTextPaintPreviewColor(textStyle.fillColor, '#f8fafc');
             const countPreviewColor = getTextPaintPreviewColor(textStyle.countColor, fillPreviewColor);
             const notePreviewColor = getTextPaintPreviewColor(textStyle.noteColor, fillPreviewColor);
@@ -827,48 +1185,124 @@
             const goals = requestedGoal
                 ? (hasValidTargetGift(requestedGoal) ? [requestedGoal] : [])
                 : sourceGoals.filter((item) => item.enabled && hasValidTargetGift(item));
+            const nameFontSize = previewCardMode ? 18 : (window.innerWidth <= 640 ? 24 : 46);
+            const nameLayoutHeight = previewCardMode ? 20 : (window.innerWidth <= 640 ? 26 : 48);
+            const countFontSize = previewCardMode ? 24 : (window.innerWidth <= 640 ? 34 : 62);
+            const countLayoutHeight = previewCardMode ? 26 : (window.innerWidth <= 640 ? 36 : 64);
+            const noteFontSize = previewCardMode
+                ? Math.max(8, Math.round(baseNoteFontSize * (12 / 28)))
+                : (window.innerWidth <= 640 ? Math.max(8, Math.round(baseNoteFontSize * (16 / 28))) : baseNoteFontSize);
+            const noteLayoutHeight = previewCardMode
+                ? Math.max(10, Math.round(baseNoteFontSize * (14 / 28)))
+                : (window.innerWidth <= 640 ? Math.max(12, Math.round(baseNoteFontSize * (18 / 28))) : Math.max(noteFontSize + 2, Math.round(baseNoteFontSize * (30 / 28))));
 
             if (requestedGoal && !hasValidTargetGift(requestedGoal)) {
-                await ensureGoalGiftFontLoaded(fontFamily);
+                await ensureGoalGiftFontLoaded(fontFamily, '対象ギフト未選択');
+                if (generation !== renderGeneration) return;
                 overlay.classList.add('is-visible', 'is-empty');
                 overlay.innerHTML = `
                     <div class="overlay-message" style='font-family: ${fontFamily};'>
                         <div class="overlay-message-copy">対象ギフト未選択</div>
                     </div>
                 `;
+                lastRenderStructureKey = null;
                 return;
             }
 
             if (!goals.length) {
                 overlay.classList.remove('is-visible', 'is-empty');
                 overlay.innerHTML = '';
+                lastRenderStructureKey = null;
+                lastRenderedCounts = new Map();
                 return;
             }
 
-            await ensureGoalGiftFontLoaded(fontFamily);
+            const _fontLoadText = goals.map((g) => (g.displayName || g.giftName || '') + (g.note || '')).join('');
+            await ensureGoalGiftFontLoaded(fontFamily, _fontLoadText);
+            if (generation !== renderGeneration) return;
 
+            // Structure key: changes when layout/design or goal list changes (triggers full re-render)
+            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|`
+                + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
+
+            const canIncremental = lastRenderStructureKey === structureKey
+                && overlay.querySelectorAll('[data-goal-slot]').length === goals.length;
+
+            if (canIncremental) {
+                // Incremental update: only touch animation classes and count elements for changed slots
+                for (const [index, goal] of goals.entries()) {
+                    const slot = Number(goal.slot) || 0;
+                    const row = overlay.querySelector(`[data-goal-slot="${slot}"]`);
+                    if (!row) continue;
+
+                    const countChanged = goal.currentCount !== lastRenderedCounts.get(slot);
+                    if (countChanged) {
+                        const countEl = row.querySelector('.count, .count-split');
+                        if (countEl) {
+                            countEl.outerHTML = buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle);
+                            layoutOutlinedSvgText(row.querySelector('.copy') || row);
+                        }
+                        lastRenderedCounts.set(slot, goal.currentCount);
+                    }
+
+                    const isNowAchieved = goal.currentCount >= goal.targetCount;
+                    const giftVisual = row.querySelector('.gift-visual');
+                    if (giftVisual) {
+                        giftVisual.classList.toggle('is-achieved', isNowAchieved);
+                    }
+
+                    const shouldCelebrate = increasedSlots.has(slot);
+                    // NOTE: ライクイベントなど高頻度のスナップショット更新が来ても、
+                    // アニメーション(CELEBRATE_ANIMATION_DURATION_MS)の途中でクラスを消さないよう
+                    // 終了時刻を記録して保護する。早期削除するとエフェクトが見えなくなる。
+                    const animationStillPlaying = Date.now() < (celebrationEndTimes.get(slot) || 0);
+                    if (shouldCelebrate) {
+                        row.classList.remove('is-celebrating');
+                        delete row.dataset.feedbackEffect;
+                        void row.offsetWidth; // force reflow to restart CSS animation
+                        row.dataset.feedbackEffect = escapeHtml(effectKey);
+                        row.classList.add('is-celebrating');
+                        celebrationEndTimes.set(slot, Date.now() + CELEBRATE_ANIMATION_DURATION_MS);
+                    } else if (!animationStillPlaying) {
+                        // アニメーション終了後のみクラスを削除する
+                        row.classList.remove('is-celebrating');
+                        delete row.dataset.feedbackEffect;
+                    }
+                }
+                return;
+            }
+
+            // Full re-render
+            const badgeWidth = previewCardMode ? Math.max(24, Math.round(badgeBaseWidth * 52 / 152)) : (window.innerWidth <= 640 ? Math.max(40, Math.round(badgeBaseWidth * 88 / 152)) : badgeBaseWidth);
+            const badgeHeight = Math.round(badgeWidth * 68 / 152);
             overlay.classList.add('is-visible');
             overlay.classList.remove('is-empty');
-            overlay.innerHTML = goals.map((goal, index) => `
-                <div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(Number(goal.slot)) ? 'is-celebrating' : ''}" data-goal-slot="${Number(goal.slot) || 0}" ${increasedSlots.has(Number(goal.slot)) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
-                    <div class="gift-visual">
+            overlay.innerHTML = goals.map((goal, index) => {
+                const slot = Number(goal.slot) || 0;
+                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
+                    <div class="gift-visual ${goal.currentCount >= goal.targetCount ? 'is-achieved' : ''}">
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
-                        <div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName || goal.giftName, { fontSize: window.innerWidth <= 640 ? 24 : 46, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: window.innerWidth <= 640 ? 26 : 48, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>
+                        <div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName || goal.giftName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>
+                        ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
                     </div>
                     <div class="copy">
-                        <div class="count">${buildOutlinedSvgMarkup(`${formatGoalGiftCount(goal.currentCount)}/${formatGoalGiftCount(goal.targetCount)}`, { fontSize: window.innerWidth <= 640 ? 34 : 62, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 36 : 64, fill: textStyle.countColor, idPrefix: `goal-count-${index}` })}</div>
-                        ${goal.note ? `<div class="note">${buildOutlinedSvgMarkup(goal.note, { fontSize: window.innerWidth <= 640 ? 16 : 28, fontWeight: 700, strokeWidth, layoutHeight: window.innerWidth <= 640 ? 18 : 30, fill: textStyle.noteColor, idPrefix: `goal-note-${index}` })}</div>` : ''}
+                        ${buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle)}
+                        ${goal.note ? `<div class="note">${buildOutlinedSvgMarkup(goal.note, { fontSize: noteFontSize, fontWeight: 700, strokeWidth, layoutHeight: noteLayoutHeight, fill: textStyle.noteColor, idPrefix: `goal-note-${index}` })}</div>` : ''}
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
             layoutOutlinedSvgText(overlay);
+            lastRenderStructureKey = structureKey;
+            lastRenderedCounts = new Map(goals.map((g) => [Number(g.slot) || 0, g.currentCount]));
         }
 
-        async function applySnapshot(snapshot) {
-            const diff = getGoalFeedbackDiff(snapshot);
-            await render(snapshot, diff.feedback.effectEnabled ? diff.increasedSlots : new Set(), diff.feedback.effectKey);
+        async function applySnapshot(snapshot, { allowRegression = false, notify = true } = {}) {
+            const diff = getGoalFeedbackDiff(snapshot, { allowRegression });
+            currentFeedbackSettings = diff.feedback;
+            const notifiedSlots = notify ? diff.increasedSlots : new Set();
+            await render(snapshot, diff.feedback.effectEnabled ? notifiedSlots : new Set(), diff.feedback.effectKey, notifiedSlots, diff.previousCounts);
 
-            if (diff.shouldNotify && diff.feedback.soundEnabled) {
+            if (notify && diff.shouldNotify && diff.feedback.soundEnabled) {
                 playGoalFeedbackTone(diff.feedback.soundKey).catch(() => {});
             }
 
@@ -894,19 +1328,92 @@
         async function refresh() {
             const response = await fetch('/api/widgets/goal-gifts/snapshot');
             const payload = await response.json();
-            await applySnapshot(payload.snapshot);
+            await applySnapshot(payload.snapshot, { notify: false });
         }
+
+        let overlayRecoveryTimer = null;
+        let overlayRecoveryInFlight = false;
+        const OVERLAY_RECOVERY_RETRY_MS = 2000;
+
+        function clearOverlayRecoveryTimer() {
+            if (overlayRecoveryTimer) {
+                clearInterval(overlayRecoveryTimer);
+                overlayRecoveryTimer = null;
+            }
+        }
+
+        async function probeBackendAvailability() {
+            if (overlayRecoveryInFlight || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryInFlight = true;
+
+            try {
+                const response = await fetch('/api/widgets/goal-gifts/snapshot', { cache: 'no-store' });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                clearOverlayRecoveryTimer();
+                window.location.reload();
+            } catch {
+                // Backend is still restarting. Keep polling.
+            } finally {
+                overlayRecoveryInFlight = false;
+            }
+        }
+
+        function scheduleOverlayRecoveryReload() {
+            if (overlayRecoveryTimer || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryTimer = setInterval(() => {
+                probeBackendAvailability();
+            }, OVERLAY_RECOVERY_RETRY_MS);
+
+            probeBackendAvailability();
+        }
+
+        socket.on('connect', () => {
+            clearOverlayRecoveryTimer();
+            refresh().catch(() => {});
+        });
 
         socket.on('admin_day_updated', () => {
             refresh().catch(() => {});
         });
 
         socket.on('widgets:goal-gifts:updated', (payload) => {
-            applySnapshot(payload?.snapshot).catch(() => {});
+            if (sampleMode) {
+                return;
+            }
+            applySnapshot(payload?.snapshot, { allowRegression: true }).catch(() => {});
         });
 
         socket.on('widgets:goal-gifts:test-feedback', (payload) => {
             playTestFeedback(payload);
+        });
+
+        socket.on('widgets:goal-gifts:duplicate-feedback', (payload) => {
+            playDuplicateGoalFeedback(payload);
+        });
+
+        socket.on('disconnect', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        socket.on('connect_error', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!socket.connected) {
+                scheduleOverlayRecoveryReload();
+            }
         });
 
         refresh().catch(() => {});

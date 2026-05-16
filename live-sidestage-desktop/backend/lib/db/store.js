@@ -50,7 +50,7 @@ function createDbStore(options) {
     const db = new Database(dbPath);
 
     db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = FULL');
+    db.pragma('synchronous = NORMAL');
     db.pragma('busy_timeout = 5000');
 
     db.exec(`

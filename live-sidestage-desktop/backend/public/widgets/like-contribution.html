@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Like Contribution Overlay</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --fill-color: #ffffff;
+            --count-color: #fbbf24;
+            --note-color: rgba(241, 245, 249, 0.94);
+            --stroke-color: rgba(15, 23, 42, 0.96);
+            --shadow-color: rgba(15, 23, 42, 0.36);
+            --edge-color: rgba(251, 146, 60, 0.62);
+            --edge-soft: rgba(251, 191, 36, 0.24);
+            --lc-count-font-size: 42px;
+            --lc-name-font-size: 34px;
+            --lc-avatar-size: 32px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family);
+        }
+
+        body {
+            padding: 28px;
+            color: var(--fill-color);
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 12px;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            width: 100%;
+            min-height: calc(100vh - 56px);
+            display: grid;
+            justify-items: end;
+            align-items: start;
+            pointer-events: none;
+        }
+
+        body.preview-card .stage {
+            min-height: auto;
+            justify-items: center;
+            align-items: center;
+        }
+
+        .balloon {
+            position: relative;
+            width: min(320px, calc(100vw - 56px));
+            display: grid;
+            gap: 8px;
+            padding: 16px 18px 18px;
+            border-radius: 28px;
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06)),
+                linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.72));
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow:
+                0 20px 44px rgba(15, 23, 42, 0.34),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+            opacity: 0;
+            transform: translate3d(24px, -18px, 0) scale(0.92);
+            filter: saturate(0.96) brightness(0.98);
+        }
+
+        .balloon::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 28px;
+            padding: 1px;
+            background: linear-gradient(135deg, var(--edge-color), rgba(255, 255, 255, 0.18), var(--edge-soft));
+            -webkit-mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        .balloon::after {
+            content: '';
+            position: absolute;
+            right: 42px;
+            bottom: -14px;
+            width: 26px;
+            height: 26px;
+            border-right: 1px solid rgba(255, 255, 255, 0.18);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.72));
+            transform: rotate(45deg);
+            box-shadow: 8px 8px 18px rgba(15, 23, 42, 0.16);
+        }
+
+        .balloon.is-visible {
+            animation: balloonEnter 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.is-leaving {
+            animation: balloonLeave 280ms ease-in forwards;
+        }
+
+        .balloon.is-celebrating {
+            animation:
+                balloonEnter 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        .balloon.is-celebrating .pulse-ring,
+        .balloon.is-celebrating .spark-layer {
+            opacity: 1;
+        }
+
+        body.preview-card .balloon {
+            width: min(264px, calc(100vw - 24px));
+            padding: 14px 16px 16px;
+            border-radius: 24px;
+        }
+
+        body.preview-card .balloon::after {
+            right: 32px;
+            width: 20px;
+            height: 20px;
+            bottom: -11px;
+        }
+
+        .pulse-ring,
+        .spark-layer {
+            position: absolute;
+            inset: -14%;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        .pulse-ring {
+            border-radius: 999px;
+            border: 2px solid rgba(251, 191, 36, 0.62);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.24);
+            animation: pulseRing 760ms ease-out;
+        }
+
+        .spark-layer {
+            background:
+                radial-gradient(circle at 14% 28%, rgba(255, 255, 255, 0.94) 0 5px, transparent 6px),
+                radial-gradient(circle at 82% 18%, rgba(251, 191, 36, 0.84) 0 6px, transparent 7px),
+                radial-gradient(circle at 70% 78%, rgba(103, 232, 249, 0.82) 0 5px, transparent 6px),
+                radial-gradient(circle at 20% 74%, rgba(244, 114, 182, 0.78) 0 5px, transparent 6px);
+            filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.18));
+            animation: sparkFloat 820ms ease-out;
+        }
+
+        .name {
+            font-size: var(--lc-name-font-size);
+            line-height: 1.05;
+            font-weight: 900;
+            color: var(--fill-color);
+            -webkit-text-stroke: 5px var(--stroke-color);
+            paint-order: stroke fill;
+            text-shadow: 0 8px 18px var(--shadow-color);
+            word-break: break-word;
+        }
+
+        .total-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .count {
+            font-size: var(--lc-count-font-size);
+            line-height: 1;
+            font-weight: 900;
+            color: var(--count-color);
+            -webkit-text-stroke: 5px var(--stroke-color);
+            paint-order: stroke fill;
+            text-shadow: 0 10px 22px var(--shadow-color);
+        }
+
+        .suffix {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--note-color);
+            -webkit-text-stroke: 4px var(--stroke-color);
+            paint-order: stroke fill;
+            text-shadow: 0 6px 16px var(--shadow-color);
+        }
+
+        /* アバターはデフォルト非表示。和スタンプのみ表示。 */
+        .avatar {
+            display: none;
+        }
+
+        body.preview-card .name {
+            -webkit-text-stroke-width: 4px;
+        }
+
+        body.preview-card .count {
+            -webkit-text-stroke-width: 4px;
+        }
+
+        body.preview-card .suffix {
+            font-size: 13px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        @keyframes balloonEnter {
+            0% {
+                opacity: 0;
+                transform: translate3d(24px, -18px, 0) scale(0.92);
+                filter: saturate(0.92) brightness(0.96);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+                filter: saturate(1) brightness(1);
+            }
+        }
+
+        @keyframes balloonLeave {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate3d(22px, -10px, 0) scale(0.96);
+            }
+        }
+
+        @keyframes balloonPulse {
+            0% {
+                filter: brightness(1) saturate(1);
+            }
+
+            30% {
+                filter: brightness(1.18) saturate(1.08);
+            }
+
+            100% {
+                filter: brightness(1) saturate(1);
+            }
+        }
+
+        @keyframes pulseRing {
+            0% {
+                opacity: 0;
+                transform: scale(0.78);
+            }
+
+            24% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.16);
+            }
+        }
+
+        @keyframes sparkFloat {
+            0% {
+                opacity: 0;
+                transform: scale(0.86) rotate(-8deg);
+            }
+
+            28% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.12) rotate(10deg);
+            }
+        }
+
+        /* ---- Balloon design variants ---- */
+
+        /* === horizontal-pill ===
+           横長ピル形。名前を左・カウントを右に並べた1行レイアウト。尻尾なし。 */
+        .balloon.design-horizontal-pill {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 0;
+            width: max-content;
+            min-width: 200px;
+            max-width: min(520px, calc(100vw - 56px));
+            padding: 12px 22px 12px 20px;
+            border-radius: 999px;
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)),
+                linear-gradient(135deg, rgba(15, 23, 42, 0.90), rgba(30, 41, 59, 0.78));
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow:
+                0 16px 36px rgba(15, 23, 42, 0.36),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+            opacity: 0;
+            transform: translate3d(36px, 0, 0);
+        }
+
+        .balloon.design-horizontal-pill::before {
+            border-radius: 999px;
+        }
+
+        .balloon.design-horizontal-pill::after {
+            display: none;
+        }
+
+        .balloon.design-horizontal-pill .name {
+            flex: 1 1 0;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .balloon.design-horizontal-pill .total-row {
+            flex-shrink: 0;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            margin-left: 14px;
+            padding-left: 14px;
+            border-left: 1px solid rgba(255, 255, 255, 0.20);
+        }
+
+        .balloon.design-horizontal-pill .count {
+        }
+
+        .balloon.design-horizontal-pill .suffix {
+            font-size: 13px;
+        }
+
+        .balloon.design-horizontal-pill.is-visible {
+            animation: balloonEnterSlide 340ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.design-horizontal-pill.is-leaving {
+            animation: balloonLeaveSlide 260ms ease-in forwards;
+        }
+
+        .balloon.design-horizontal-pill.is-celebrating {
+            animation:
+                balloonEnterSlide 340ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        body.preview-card .balloon.design-horizontal-pill {
+            max-width: min(380px, calc(100vw - 24px));
+            padding: 10px 18px 10px 16px;
+        }
+
+        body.preview-card .balloon.design-horizontal-pill .name {
+            -webkit-text-stroke-width: 4px;
+        }
+
+        body.preview-card .balloon.design-horizontal-pill .count {
+            -webkit-text-stroke-width: 4px;
+        }
+
+        body.preview-card .balloon.design-horizontal-pill .suffix {
+            font-size: 11px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        /* === big-number ===
+           カウントを超大きく中央配置。名前は小さく下。スケールアップ入場。 */
+        .balloon.design-big-number {
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 2px;
+            padding: 18px 32px 22px;
+            border-radius: 20px;
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04)),
+                linear-gradient(160deg, rgba(15, 23, 42, 0.90), rgba(30, 41, 59, 0.80));
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow:
+                0 24px 52px rgba(15, 23, 42, 0.40),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+            opacity: 0;
+            transform: scale(0.78);
+        }
+
+        .balloon.design-big-number::after {
+            display: none;
+        }
+
+        .balloon.design-big-number .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .balloon.design-big-number .count {
+            line-height: 1;
+            -webkit-text-stroke-width: 6px;
+        }
+
+        .balloon.design-big-number .suffix {
+            font-size: 19px;
+            align-self: flex-end;
+            padding-bottom: 12px;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-big-number .name {
+            order: 1;
+            opacity: 0.92;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-big-number.is-visible {
+            animation: balloonEnterScale 420ms cubic-bezier(0.34, 1.48, 0.64, 1) forwards;
+        }
+
+        .balloon.design-big-number.is-leaving {
+            animation: balloonLeaveScale 280ms ease-in forwards;
+        }
+
+        .balloon.design-big-number.is-celebrating {
+            animation:
+                balloonEnterScale 420ms cubic-bezier(0.34, 1.48, 0.64, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        body.preview-card .balloon.design-big-number {
+            padding: 14px 24px 18px;
+        }
+
+        body.preview-card .balloon.design-big-number .count {
+            -webkit-text-stroke-width: 5px;
+        }
+
+        body.preview-card .balloon.design-big-number .name {
+            -webkit-text-stroke-width: 3.5px;
+        }
+
+        body.preview-card .balloon.design-big-number .suffix {
+            font-size: 14px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        /* === side-accent ===
+           左端に太いカラーストライプ。名前は上部、カウントは右寄せ大きく表示。尻尾なし。 */
+        .balloon.design-side-accent {
+            gap: 4px;
+            padding: 14px 18px 14px 20px;
+            border-radius: 4px 14px 14px 4px;
+            background: rgba(5, 7, 20, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-left: 4px solid var(--edge-color);
+            box-shadow:
+                -2px 0 22px var(--edge-soft),
+                0 18px 42px rgba(0, 0, 0, 0.44);
+            opacity: 0;
+            transform: translate3d(32px, 0, 0);
+        }
+
+        .balloon.design-side-accent::before {
+            display: none;
+        }
+
+        .balloon.design-side-accent::after {
+            display: none;
+        }
+
+        .balloon.design-side-accent .name {
+            line-height: 1.1;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-side-accent .total-row {
+            justify-content: flex-end;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        .balloon.design-side-accent .count {
+            line-height: 1;
+            -webkit-text-stroke-width: 6px;
+        }
+
+        .balloon.design-side-accent .suffix {
+            font-size: 16px;
+            padding-bottom: 7px;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-side-accent.is-visible {
+            animation: balloonEnterSlide 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.design-side-accent.is-leaving {
+            animation: balloonLeaveSlide 280ms ease-in forwards;
+        }
+
+        .balloon.design-side-accent.is-celebrating {
+            animation:
+                balloonEnterSlide 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        body.preview-card .balloon.design-side-accent {
+            padding: 12px 14px 12px 16px;
+        }
+
+        body.preview-card .balloon.design-side-accent .name {
+            -webkit-text-stroke-width: 3px;
+        }
+
+        body.preview-card .balloon.design-side-accent .count {
+            -webkit-text-stroke-width: 5px;
+        }
+
+        body.preview-card .balloon.design-side-accent .suffix {
+            font-size: 13px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        /* === compact-banner ===
+           横1行にすべてを詰め込んだ超コンパクトバナー。上端カラーライン。上から降下。 */
+        .balloon.design-compact-banner {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 0;
+            width: max-content;
+            min-width: 180px;
+            max-width: min(480px, calc(100vw - 56px));
+            padding: 10px 18px 10px 16px;
+            border-radius: 0 0 10px 10px;
+            background: linear-gradient(180deg, rgba(10, 14, 32, 0.96) 0%, rgba(18, 24, 48, 0.92) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-top: 2px solid var(--edge-color);
+            box-shadow:
+                0 0 0 1px var(--edge-soft),
+                0 14px 34px rgba(0, 0, 0, 0.40);
+            opacity: 0;
+            transform: translate3d(0, -28px, 0);
+        }
+
+        .balloon.design-compact-banner::before {
+            display: none;
+        }
+
+        .balloon.design-compact-banner::after {
+            display: none;
+        }
+
+        .balloon.design-compact-banner .name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 1;
+            min-width: 0;
+            max-width: 220px;
+            line-height: 1.1;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-compact-banner .total-row {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            flex-shrink: 0;
+            margin-left: 8px;
+            padding-left: 16px;
+            position: relative;
+        }
+
+        .balloon.design-compact-banner .total-row::before {
+            content: '×';
+            position: absolute;
+            left: 2px;
+            bottom: 4px;
+            font-size: 15px;
+            font-weight: 900;
+            font-family: var(--widget-font-family);
+            color: var(--note-color);
+            -webkit-text-stroke: 3px var(--stroke-color);
+            paint-order: stroke fill;
+        }
+
+        .balloon.design-compact-banner .count {
+            line-height: 1;
+            -webkit-text-stroke-width: 5px;
+        }
+
+        .balloon.design-compact-banner .suffix {
+            font-size: 13px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        .balloon.design-compact-banner.is-visible {
+            animation: balloonEnterTop 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.design-compact-banner.is-leaving {
+            animation: balloonLeaveTop 240ms ease-in forwards;
+        }
+
+        .balloon.design-compact-banner.is-celebrating {
+            animation:
+                balloonEnterTop 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        body.preview-card .balloon.design-compact-banner {
+            max-width: min(360px, calc(100vw - 24px));
+            padding: 8px 14px 8px 12px;
+        }
+
+        body.preview-card .balloon.design-compact-banner .name {
+            max-width: 160px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        body.preview-card .balloon.design-compact-banner .count {
+            -webkit-text-stroke-width: 4px;
+        }
+
+        body.preview-card .balloon.design-compact-banner .suffix {
+            font-size: 11px;
+        }
+
+        /* === stacked-center ===
+           カウントを上・名前を下に積み上げ、縦方向の対称構成。楕円ライン・中央配置。 */
+        .balloon.design-stacked-center {
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 0;
+            padding: 16px 36px 20px;
+            min-width: 220px;
+            border-radius: 50% 50% 50% 50% / 28% 28% 28% 28%;
+            background:
+                radial-gradient(ellipse at 50% 20%, rgba(255, 255, 255, 0.14) 0%, transparent 68%),
+                linear-gradient(180deg, rgba(14, 20, 44, 0.92) 0%, rgba(28, 38, 72, 0.84) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.20);
+            box-shadow:
+                0 0 0 1px var(--edge-soft),
+                0 26px 56px rgba(15, 23, 42, 0.42),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            opacity: 0;
+            transform: scale(0.78);
+        }
+
+        .balloon.design-stacked-center::before {
+            border-radius: 50% 50% 50% 50% / 28% 28% 28% 28%;
+            background: linear-gradient(180deg, var(--edge-color), var(--edge-soft) 60%, transparent);
+        }
+
+        .balloon.design-stacked-center::after {
+            display: none;
+        }
+
+        .balloon.design-stacked-center .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .balloon.design-stacked-center .count {
+            line-height: 1;
+            -webkit-text-stroke-width: 6px;
+        }
+
+        .balloon.design-stacked-center .suffix {
+            font-size: 15px;
+            align-self: flex-end;
+            padding-bottom: 10px;
+            -webkit-text-stroke-width: 4px;
+        }
+
+        .balloon.design-stacked-center .name {
+            order: 1;
+            opacity: 0.90;
+            padding-top: 6px;
+            -webkit-text-stroke-width: 3.5px;
+        }
+
+        .balloon.design-stacked-center.is-visible {
+            animation: balloonEnterScale 440ms cubic-bezier(0.34, 1.42, 0.64, 1) forwards;
+        }
+
+        .balloon.design-stacked-center.is-leaving {
+            animation: balloonLeaveScale 280ms ease-in forwards;
+        }
+
+        .balloon.design-stacked-center.is-celebrating {
+            animation:
+                balloonEnterScale 440ms cubic-bezier(0.34, 1.42, 0.64, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        body.preview-card .balloon.design-stacked-center {
+            padding: 14px 28px 18px;
+            min-width: 180px;
+        }
+
+        body.preview-card .balloon.design-stacked-center .count {
+            -webkit-text-stroke-width: 5px;
+        }
+
+        body.preview-card .balloon.design-stacked-center .name {
+            -webkit-text-stroke-width: 3px;
+        }
+
+        body.preview-card .balloon.design-stacked-center .suffix {
+            font-size: 12px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        /* === wa-stamp ===
+           和スタンプ。二重朱線枠・和紙背景・墨書き風テキスト。スタンプ入場アニメーション。
+           カウント大きく上・アバター＋名前を横並びで下部に配置。 */
+        .balloon.design-wa-stamp {
+            --fill-color: #1c0f07;
+            --count-color: #b91c1c;
+            --note-color: rgba(92, 40, 28, 0.90);
+            --stroke-color: rgba(249, 245, 237, 0.44);
+            --shadow-color: rgba(185, 28, 28, 0.20);
+            --edge-color: #b91c1c;
+            --edge-soft: rgba(185, 28, 28, 0.20);
+            /* ユーザー選択フォントを無視して筆書き風フォントを強制 */
+            --widget-font-family: "Yuji Syuku", "Zen Old Mincho", "Shippori Mincho B1", serif;
+            font-family: "Yuji Syuku", "Zen Old Mincho", "Shippori Mincho B1", serif;
+            /* gridからflexに切り替えてアバター＋名前を横並びにする */
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 6px 8px;
+            text-align: center;
+            padding: 16px 28px 18px;
+            min-width: 180px;
+            border-radius: 4px;
+            background: linear-gradient(160deg, #f9f5ed 0%, #ede8d8 100%);
+            border: 2px solid #b91c1c;
+            box-shadow:
+                0 0 0 5px #f9f5ed,
+                0 0 0 7px #b91c1c,
+                0 22px 48px rgba(15, 23, 42, 0.36);
+            opacity: 0;
+            transform: scale(1.18) rotate(-1.5deg);
+        }
+
+        .balloon.design-wa-stamp::before {
+            display: none;
+        }
+
+        .balloon.design-wa-stamp::after {
+            display: none;
+        }
+
+        /* カウント行：全幅で最上段 */
+        .balloon.design-wa-stamp .total-row {
+            order: 0;
+            width: 100%;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        /* アバター：名前の左隣 */
+        .balloon.design-wa-stamp .avatar {
+            display: block;
+            order: 1;
+            width: var(--lc-avatar-size);
+            height: var(--lc-avatar-size);
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #b91c1c;
+            box-shadow: 0 2px 8px rgba(185, 28, 28, 0.22);
+            flex-shrink: 0;
+        }
+
+        .balloon.design-wa-stamp .avatar[hidden] {
+            display: none;
+        }
+
+        .balloon.design-wa-stamp .count {
+            line-height: 1;
+            -webkit-text-stroke-width: 2px;
+            font-family: "Yuji Syuku", "Zen Old Mincho", "Shippori Mincho B1", serif;
+        }
+
+        .balloon.design-wa-stamp .suffix {
+            font-size: 16px;
+            align-self: flex-end;
+            padding-bottom: 10px;
+            -webkit-text-stroke-width: 1.5px;
+            font-family: "Yuji Syuku", "Zen Old Mincho", "Shippori Mincho B1", serif;
+        }
+
+        /* 名前：アバターの右隣 */
+        .balloon.design-wa-stamp .name {
+            order: 1;
+            font-weight: 700;
+            opacity: 0.82;
+            -webkit-text-stroke-width: 1.5px;
+            max-width: 180px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-family: "Shippori Mincho B1", "Zen Old Mincho", serif;
+            text-align: left;
+        }
+
+        .balloon.design-wa-stamp.is-visible {
+            animation: balloonEnterStamp 500ms cubic-bezier(0.34, 1.36, 0.64, 1) forwards;
+        }
+
+        .balloon.design-wa-stamp.is-leaving {
+            animation: balloonLeaveScale 280ms ease-in forwards;
+        }
+
+        .balloon.design-wa-stamp.is-celebrating {
+            animation:
+                balloonEnterStamp 500ms cubic-bezier(0.34, 1.36, 0.64, 1) forwards,
+                balloonPulse 760ms ease-out;
+        }
+
+        .balloon.design-wa-stamp .pulse-ring,
+        .balloon.design-wa-stamp .spark-layer {
+            display: none;
+        }
+
+        body.preview-card .balloon.design-wa-stamp {
+            padding: 13px 22px 16px;
+            min-width: 152px;
+        }
+
+        body.preview-card .balloon.design-wa-stamp .count {
+            -webkit-text-stroke-width: 2px;
+        }
+
+        body.preview-card .balloon.design-wa-stamp .name {
+            -webkit-text-stroke-width: 1px;
+        }
+
+        body.preview-card .balloon.design-wa-stamp .suffix {
+            font-size: 13px;
+            -webkit-text-stroke-width: 1.5px;
+        }
+
+        /* === singer-stage ===
+           ベルベット緞帳＋スポットライト。深紅背景・アンティークゴールド・
+           極細ストローク(1.8px)で他テーマと一線を画す上品な仕上がり。
+           演出はドット廃止→スポットライト放射グロー。リング廃止→輝度グロー。
+           入場はスポットライト点灯（輝度フェードイン）。 */
+        .balloon.design-singer-stage {
+            --fill-color: #fdf0d8;
+            --count-color: #d4a84b;
+            --note-color: rgba(212, 168, 75, 0.92);
+            --stroke-color: rgba(14, 3, 6, 0.98);
+            --shadow-color: rgba(140, 20, 40, 0.30);
+            --edge-color: rgba(212, 168, 75, 0.55);
+            --edge-soft: rgba(140, 20, 40, 0.16);
+            --widget-font-family: "Shippori Mincho B1", "Zen Old Mincho", serif;
+            font-family: "Shippori Mincho B1", "Zen Old Mincho", serif;
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 2px;
+            padding: 18px 36px 22px;
+            min-width: 220px;
+            border-radius: 10px;
+            background:
+                radial-gradient(ellipse at 50% 0%, rgba(255, 210, 100, 0.14) 0%, transparent 52%),
+                linear-gradient(175deg, rgba(52, 6, 16, 0.98) 0%, rgba(18, 2, 8, 0.99) 100%);
+            border: 1px solid rgba(212, 168, 75, 0.28);
+            box-shadow:
+                0 0 0 1px rgba(140, 20, 40, 0.10),
+                0 0 52px rgba(140, 20, 40, 0.12),
+                0 24px 52px rgba(14, 3, 6, 0.64),
+                inset 0 1px 0 rgba(255, 210, 100, 0.09);
+            opacity: 0;
+            transform: scale(1.04);
+            filter: brightness(0.5) saturate(0.2);
+        }
+
+        .balloon.design-singer-stage::before {
+            border-radius: 10px;
+            background: linear-gradient(180deg, rgba(212, 168, 75, 0.34) 0%, rgba(212, 168, 75, 0.06) 42%, transparent 68%);
+        }
+
+        .balloon.design-singer-stage::after {
+            display: none;
+        }
+
+        .balloon.design-singer-stage .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 5px;
+            width: 100%;
+        }
+
+        .balloon.design-singer-stage .count {
+            line-height: 1;
+            font-family: "Shippori Mincho B1", "Zen Old Mincho", serif;
+            -webkit-text-stroke-width: 1.8px;
+            letter-spacing: 0.05em;
+        }
+
+        .balloon.design-singer-stage .suffix {
+            font-size: 17px;
+            align-self: flex-end;
+            padding-bottom: 11px;
+            font-family: "Shippori Mincho B1", serif;
+            -webkit-text-stroke-width: 1.4px;
+            letter-spacing: 0.08em;
+        }
+
+        .balloon.design-singer-stage .name {
+            order: 1;
+            opacity: 0.90;
+            padding-top: 4px;
+            font-family: "Shippori Mincho B1", "Zen Old Mincho", serif;
+            -webkit-text-stroke-width: 1.6px;
+            letter-spacing: 0.04em;
+        }
+
+        /* スポットライト放射グロー — ドット一切なし */
+        .balloon.design-singer-stage .spark-layer {
+            background:
+                radial-gradient(ellipse at 50% 38%, rgba(255, 220, 120, 0.72) 0%, rgba(212, 168, 75, 0.26) 40%, transparent 68%);
+            filter: blur(6px);
+            animation: spotlightBloom 1000ms ease-out;
+        }
+
+        /* リング廃止 — 輝度拡散グロー */
+        .balloon.design-singer-stage .pulse-ring {
+            border: none;
+            background: radial-gradient(ellipse at 50% 50%, rgba(212, 168, 75, 0.36) 0%, transparent 68%);
+            box-shadow: none;
+            animation: spotlightGlow 900ms ease-out;
+        }
+
+        .balloon.design-singer-stage.is-visible {
+            animation: spotlightReveal 560ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .balloon.design-singer-stage.is-leaving {
+            animation: spotlightFade 320ms ease-in forwards;
+        }
+
+        .balloon.design-singer-stage.is-celebrating {
+            animation:
+                spotlightReveal 560ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
+                balloonPulse 800ms ease-out;
+        }
+
+        body.preview-card .balloon.design-singer-stage {
+            padding: 14px 28px 18px;
+            min-width: 180px;
+        }
+
+        body.preview-card .balloon.design-singer-stage .count {
+            -webkit-text-stroke-width: 1.6px;
+        }
+
+        body.preview-card .balloon.design-singer-stage .name {
+            -webkit-text-stroke-width: 1.4px;
+        }
+
+        body.preview-card .balloon.design-singer-stage .suffix {
+            font-size: 13px;
+            -webkit-text-stroke-width: 1.2px;
+        }
+
+        /* ---- 追加アニメーション ---- */
+        @keyframes balloonEnterSlide {
+            0% {
+                opacity: 0;
+                transform: translate3d(36px, 0, 0);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+        }
+
+        @keyframes balloonLeaveSlide {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate3d(30px, 0, 0);
+            }
+        }
+
+        @keyframes balloonEnterScale {
+            0% {
+                opacity: 0;
+                transform: scale(0.78);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes balloonLeaveScale {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(0.84);
+            }
+        }
+
+        @keyframes balloonEnterTop {
+            0% {
+                opacity: 0;
+                transform: translate3d(0, -28px, 0);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+        }
+
+        @keyframes balloonLeaveTop {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate3d(0, -22px, 0);
+            }
+        }
+
+        @keyframes balloonEnterStamp {
+            0% {
+                opacity: 0;
+                transform: scale(1.22) rotate(-1.5deg);
+                filter: saturate(0.3) brightness(1.3);
+            }
+
+            55% {
+                filter: saturate(1.2) brightness(0.92);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1) rotate(0deg);
+                filter: saturate(1) brightness(1);
+            }
+        }
+
+        @keyframes balloonEnterRise {
+            0% {
+                opacity: 0;
+                transform: translate3d(0, 32px, 0) scale(0.96);
+                filter: saturate(0.72) brightness(0.88);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+                filter: saturate(1) brightness(1);
+            }
+        }
+
+        @keyframes balloonLeaveRise {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate3d(0, -22px, 0) scale(0.96);
+            }
+        }
+
+        /* singer-stage 専用 */
+        @keyframes spotlightReveal {
+            0% {
+                opacity: 0;
+                transform: scale(1.04);
+                filter: brightness(0.5) saturate(0.2);
+            }
+
+            60% {
+                filter: brightness(1.08) saturate(1.1);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+                filter: brightness(1) saturate(1);
+            }
+        }
+
+        @keyframes spotlightFade {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+                filter: brightness(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(0.97);
+                filter: brightness(0.4) saturate(0.2);
+            }
+        }
+
+        @keyframes spotlightBloom {
+            0% {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+
+            30% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.6);
+            }
+        }
+
+        @keyframes spotlightGlow {
+            0% {
+                opacity: 0;
+                transform: scale(0.6);
+            }
+
+            25% {
+                opacity: 0.9;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.4);
+            }
+        }
+
+        /* === dance-floor ===
+           ディスコフロアのスポットライトグリッド＋ネオン発光。
+           マゼンタ×シアンの強コントラスト。文字はネオン管風グロー。
+           入場はX軸スライド＋ビートバウンス。パルスはビートフラッシュ。 */
+        .balloon.design-dance-floor {
+            --fill-color: #ffffff;
+            --count-color: #ff2dce;
+            --note-color: rgba(0, 240, 255, 0.92);
+            --stroke-color: rgba(10, 0, 30, 0.98);
+            --shadow-color: rgba(255, 45, 206, 0.30);
+            --edge-color: rgba(0, 240, 255, 0.70);
+            --edge-soft: rgba(255, 45, 206, 0.20);
+            --widget-font-family: "Dela Gothic One", "M PLUS Rounded 1c", sans-serif;
+            font-family: "Dela Gothic One", "M PLUS Rounded 1c", sans-serif;
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 2px;
+            padding: 16px 32px 20px;
+            min-width: 210px;
+            border-radius: 6px;
+            background:
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(0, 240, 255, 0.04) 0px, rgba(0, 240, 255, 0.04) 1px,
+                    transparent 1px, transparent 28px
+                ),
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(255, 45, 206, 0.04) 0px, rgba(255, 45, 206, 0.04) 1px,
+                    transparent 1px, transparent 28px
+                ),
+                linear-gradient(160deg, rgba(14, 2, 36, 0.97) 0%, rgba(4, 0, 20, 0.99) 100%);
+            border: 1.5px solid rgba(0, 240, 255, 0.50);
+            box-shadow:
+                0 0 0 1px rgba(255, 45, 206, 0.18),
+                0 0 24px rgba(0, 240, 255, 0.22),
+                0 0 48px rgba(255, 45, 206, 0.14),
+                0 20px 48px rgba(4, 0, 20, 0.72),
+                inset 0 1px 0 rgba(0, 240, 255, 0.12);
+            opacity: 0;
+            transform: translate3d(-32px, 0, 0);
+        }
+
+        .balloon.design-dance-floor::before {
+            border-radius: 6px;
+            background: linear-gradient(180deg, rgba(0, 240, 255, 0.18) 0%, rgba(255, 45, 206, 0.10) 50%, transparent 72%);
+        }
+
+        .balloon.design-dance-floor::after {
+            display: none;
+        }
+
+        .balloon.design-dance-floor .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .balloon.design-dance-floor .count {
+            line-height: 1;
+            font-family: "Dela Gothic One", sans-serif;
+            letter-spacing: 0.04em;
+            text-shadow:
+                0 0 8px #ff2dce,
+                0 0 20px rgba(255, 45, 206, 0.70),
+                0 0 40px rgba(255, 45, 206, 0.35);
+            -webkit-text-stroke-width: 0px;
+            color: #ff2dce;
+        }
+
+        .balloon.design-dance-floor .suffix {
+            font-size: 15px;
+            align-self: flex-end;
+            padding-bottom: 10px;
+            font-family: "Dela Gothic One", sans-serif;
+            letter-spacing: 0.06em;
+            color: rgba(0, 240, 255, 0.90);
+            text-shadow: 0 0 6px rgba(0, 240, 255, 0.80);
+            -webkit-text-stroke-width: 0px;
+        }
+
+        .balloon.design-dance-floor .name {
+            order: 1;
+            opacity: 0.90;
+            padding-top: 4px;
+            font-family: "Dela Gothic One", sans-serif;
+            letter-spacing: 0.03em;
+            color: rgba(0, 240, 255, 0.95);
+            text-shadow: 0 0 6px rgba(0, 240, 255, 0.60);
+            -webkit-text-stroke-width: 0px;
+        }
+
+        .balloon.design-dance-floor .spark-layer {
+            background:
+                radial-gradient(ellipse at 30% 50%, rgba(255, 45, 206, 0.55) 0%, transparent 52%),
+                radial-gradient(ellipse at 70% 50%, rgba(0, 240, 255, 0.45) 0%, transparent 52%);
+            filter: blur(4px);
+            animation: danceFlash 600ms ease-out;
+        }
+
+        .balloon.design-dance-floor .pulse-ring {
+            display: none;
+        }
+
+        .balloon.design-dance-floor.is-visible {
+            animation: danceEnter 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.design-dance-floor.is-leaving {
+            animation: danceLeave 280ms ease-in forwards;
+        }
+
+        .balloon.design-dance-floor.is-celebrating {
+            animation:
+                danceEnter 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                danceBeat 600ms ease-out;
+        }
+
+        body.preview-card .balloon.design-dance-floor {
+            padding: 12px 26px 16px;
+            min-width: 172px;
+        }
+
+        body.preview-card .balloon.design-dance-floor .count {
+            -webkit-text-stroke-width: 0px;
+        }
+
+        body.preview-card .balloon.design-dance-floor .name {
+            -webkit-text-stroke-width: 0px;
+        }
+
+        body.preview-card .balloon.design-dance-floor .suffix {
+            font-size: 12px;
+        }
+
+        @keyframes danceEnter {
+            0% {
+                opacity: 0;
+                transform: translate3d(-32px, 0, 0) scale(0.96);
+            }
+            60% {
+                transform: translate3d(4px, 0, 0) scale(1.01);
+            }
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+        }
+
+        @keyframes danceLeave {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate3d(28px, 0, 0) scale(0.95);
+            }
+        }
+
+        @keyframes danceBeat {
+            0%   { filter: brightness(1); }
+            18%  { filter: brightness(1.6) saturate(1.4); }
+            36%  { filter: brightness(1); }
+            54%  { filter: brightness(1.3) saturate(1.2); }
+            100% { filter: brightness(1); }
+        }
+
+        @keyframes danceFlash {
+            0%   { opacity: 0; transform: scale(0.6); }
+            25%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.8); }
+        }
+
+        /* === paw-pop ===
+           ペット配信向け。クリームベージュ地＋コーラルオレンジ＋
+           ふわふわ丸みボーダー。ぽよんと跳ねるバウンス入場。
+           リング一切なし。 */
+        .balloon.design-paw-pop {
+            --fill-color: #fff8f0;
+            --count-color: #ff7043;
+            --stroke-color: rgba(80, 30, 10, 0.94);
+            --shadow-color: rgba(255, 112, 67, 0.24);
+            --edge-color: rgba(255, 180, 120, 0.60);
+            --edge-soft: rgba(255, 220, 180, 0.20);
+            --widget-font-family: "Hachi Maru Pop", "M PLUS Rounded 1c", cursive;
+            font-family: "Hachi Maru Pop", "M PLUS Rounded 1c", cursive;
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 2px;
+            padding: 18px 34px 22px;
+            min-width: 210px;
+            border-radius: 28px;
+            background:
+                radial-gradient(ellipse at 50% 0%, rgba(255, 180, 120, 0.16) 0%, transparent 56%),
+                linear-gradient(160deg, rgba(255, 245, 232, 0.97) 0%, rgba(252, 236, 210, 0.98) 100%);
+            border: 2px solid rgba(255, 160, 90, 0.40);
+            box-shadow:
+                0 0 0 4px rgba(255, 220, 180, 0.25),
+                0 16px 40px rgba(80, 30, 10, 0.16),
+                inset 0 1px 0 rgba(255, 255, 255, 0.70);
+            opacity: 0;
+            transform: translate3d(0, -20px, 0) scale(0.88);
+        }
+
+        .balloon.design-paw-pop::before {
+            border-radius: 28px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.50) 0%, transparent 40%);
+        }
+
+        .balloon.design-paw-pop::after {
+            display: none;
+        }
+
+        .balloon.design-paw-pop .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .balloon.design-paw-pop .count {
+            line-height: 1;
+            font-family: "Hachi Maru Pop", cursive;
+            letter-spacing: 0.04em;
+            color: #ff7043;
+            -webkit-text-stroke-width: 0px;
+            text-shadow:
+                0 2px 6px rgba(255, 112, 67, 0.32),
+                0 1px 2px rgba(80, 30, 10, 0.12);
+        }
+
+        .balloon.design-paw-pop .suffix {
+            font-size: 15px;
+            align-self: flex-end;
+            padding-bottom: 11px;
+            font-family: "Hachi Maru Pop", cursive;
+            letter-spacing: 0.08em;
+            color: rgba(180, 100, 60, 0.85);
+            -webkit-text-stroke-width: 0px;
+        }
+
+        .balloon.design-paw-pop .name {
+            order: 1;
+            opacity: 0.88;
+            padding-top: 3px;
+            font-family: "Hachi Maru Pop", cursive;
+            letter-spacing: 0.03em;
+            color: rgba(100, 55, 20, 0.90);
+            -webkit-text-stroke-width: 0px;
+        }
+
+        /* ふわっとしたぬくもりグロー */
+        .balloon.design-paw-pop .spark-layer {
+            background:
+                radial-gradient(ellipse at 50% 50%, rgba(255, 160, 90, 0.45) 0%, rgba(255, 220, 180, 0.20) 50%, transparent 72%);
+            filter: blur(10px);
+            animation: pawGlow 800ms ease-out;
+        }
+
+        .balloon.design-paw-pop .pulse-ring {
+            display: none;
+        }
+
+        .balloon.design-paw-pop.is-visible {
+            animation: pawBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .balloon.design-paw-pop.is-leaving {
+            animation: pawLeave 260ms ease-in forwards;
+        }
+
+        .balloon.design-paw-pop.is-celebrating {
+            animation:
+                pawBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+                pawWiggle 600ms ease-out;
+        }
+
+        body.preview-card .balloon.design-paw-pop {
+            padding: 14px 28px 18px;
+            min-width: 172px;
+        }
+
+        body.preview-card .balloon.design-paw-pop .suffix {
+            font-size: 12px;
+        }
+
+        @keyframes pawBounce {
+            0%   { opacity: 0; transform: translate3d(0, -20px, 0) scale(0.88); }
+            55%  { opacity: 1; transform: translate3d(0, 6px, 0) scale(1.04); }
+            75%  { transform: translate3d(0, -3px, 0) scale(0.98); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+        }
+
+        @keyframes pawLeave {
+            0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+            100% { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.92); }
+        }
+
+        @keyframes pawWiggle {
+            0%   { rotate: 0deg; }
+            20%  { rotate: -3deg; }
+            45%  { rotate: 3deg; }
+            65%  { rotate: -1.5deg; }
+            100% { rotate: 0deg; }
+        }
+
+        @keyframes pawGlow {
+            0%   { opacity: 0; transform: scale(0.6); }
+            30%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.7); }
+        }
+
+        /* === kitchen-chalk ===
+           黒板メニュー風。チョーク質感の枠線＋サフランイエローのカウント。
+           手書き感のあるフォント・ラフなボーダー・蒸気グロー。
+           入場はプレートを差し出すようなスライドアップ。リング一切なし。 */
+        .balloon.design-kitchen-chalk {
+            --fill-color: #f5f0e8;
+            --count-color: #f5c842;
+            --stroke-color: rgba(20, 12, 4, 0.96);
+            --shadow-color: rgba(90, 55, 10, 0.28);
+            --edge-color: rgba(245, 200, 66, 0.55);
+            --edge-soft: rgba(80, 100, 60, 0.18);
+            --widget-font-family: "Klee One", "M PLUS Rounded 1c", cursive;
+            font-family: "Klee One", "M PLUS Rounded 1c", cursive;
+            text-align: center;
+            align-items: center;
+            justify-items: center;
+            gap: 2px;
+            padding: 18px 34px 22px;
+            min-width: 210px;
+            border-radius: 4px;
+            background:
+                radial-gradient(ellipse at 50% 0%, rgba(120, 160, 80, 0.08) 0%, transparent 60%),
+                linear-gradient(170deg, rgba(28, 38, 22, 0.97) 0%, rgba(18, 26, 14, 0.99) 100%);
+            border: 2px dashed rgba(235, 225, 190, 0.42);
+            box-shadow:
+                0 0 0 4px rgba(28, 38, 22, 0.60),
+                0 0 0 5px rgba(235, 225, 190, 0.18),
+                0 18px 44px rgba(10, 16, 6, 0.70),
+                inset 0 1px 0 rgba(245, 200, 66, 0.07);
+            opacity: 0;
+            transform: translate3d(0, 28px, 0) scale(0.97);
+        }
+
+        .balloon.design-kitchen-chalk::before {
+            border-radius: 4px;
+            background: linear-gradient(180deg, rgba(245, 200, 66, 0.10) 0%, transparent 48%);
+        }
+
+        .balloon.design-kitchen-chalk::after {
+            display: none;
+        }
+
+        .balloon.design-kitchen-chalk .total-row {
+            order: -1;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .balloon.design-kitchen-chalk .count {
+            line-height: 1;
+            font-family: "Klee One", cursive;
+            letter-spacing: 0.06em;
+            color: #f5c842;
+            -webkit-text-stroke-width: 0px;
+            text-shadow:
+                0 0 10px rgba(245, 200, 66, 0.55),
+                0 2px 4px rgba(10, 16, 6, 0.60);
+        }
+
+        .balloon.design-kitchen-chalk .suffix {
+            font-size: 15px;
+            align-self: flex-end;
+            padding-bottom: 11px;
+            font-family: "Klee One", cursive;
+            letter-spacing: 0.10em;
+            color: rgba(235, 225, 190, 0.80);
+            -webkit-text-stroke-width: 0px;
+            text-shadow: 0 1px 3px rgba(10, 16, 6, 0.50);
+        }
+
+        .balloon.design-kitchen-chalk .name {
+            order: 1;
+            opacity: 0.88;
+            padding-top: 4px;
+            font-family: "Klee One", cursive;
+            letter-spacing: 0.04em;
+            color: rgba(235, 225, 190, 0.90);
+            -webkit-text-stroke-width: 0px;
+            text-shadow: 0 1px 3px rgba(10, 16, 6, 0.50);
+        }
+
+        /* 湯気グロー */
+        .balloon.design-kitchen-chalk .spark-layer {
+            background:
+                radial-gradient(ellipse at 50% 60%, rgba(245, 200, 66, 0.40) 0%, rgba(180, 220, 100, 0.15) 45%, transparent 70%);
+            filter: blur(8px);
+            animation: chalkSteam 900ms ease-out;
+        }
+
+        .balloon.design-kitchen-chalk .pulse-ring {
+            display: none;
+        }
+
+        .balloon.design-kitchen-chalk.is-visible {
+            animation: chalkServe 480ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .balloon.design-kitchen-chalk.is-leaving {
+            animation: chalkUnserve 280ms ease-in forwards;
+        }
+
+        .balloon.design-kitchen-chalk.is-celebrating {
+            animation:
+                chalkServe 480ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+                chalkSizzle 700ms ease-out;
+        }
+
+        body.preview-card .balloon.design-kitchen-chalk {
+            padding: 14px 28px 18px;
+            min-width: 172px;
+        }
+
+        body.preview-card .balloon.design-kitchen-chalk .suffix {
+            font-size: 12px;
+        }
+
+        @keyframes chalkServe {
+            0% {
+                opacity: 0;
+                transform: translate3d(0, 28px, 0) scale(0.97);
+            }
+            65% {
+                transform: translate3d(0, -4px, 0) scale(1.01);
+            }
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+        }
+
+        @keyframes chalkUnserve {
+            0% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate3d(0, -20px, 0) scale(0.96);
+            }
+        }
+
+        @keyframes chalkSizzle {
+            0%   { filter: brightness(1) saturate(1); }
+            20%  { filter: brightness(1.5) saturate(1.3); }
+            45%  { filter: brightness(1) saturate(1); }
+            70%  { filter: brightness(1.25) saturate(1.15); }
+            100% { filter: brightness(1) saturate(1); }
+        }
+
+        @keyframes chalkSteam {
+            0%   { opacity: 0; transform: scale(0.5) translateY(10px); }
+            30%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.6) translateY(-8px); }
+        }
+
+        /* === singer-stage 音符フローティング === */
+        .music-note {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            line-height: 1;
+            font-style: normal;
+            font-family: sans-serif;
+            -webkit-text-stroke: 0 transparent;
+            text-shadow: 0 0 8px currentColor, 0 0 18px currentColor;
+            animation: noteFloat var(--note-dur, 1.6s) ease-out both;
+            will-change: transform, opacity;
+        }
+
+        @keyframes noteFloat {
+            0% {
+                opacity: 0;
+                transform: translate(0, 0) rotate(0deg) scale(0.7);
+            }
+
+            16% {
+                opacity: 0.95;
+            }
+
+            78% {
+                opacity: 0.55;
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate(var(--note-drift, 0px), -72px) rotate(var(--note-rotate, 12deg)) scale(1.08);
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="stage">
+        <article class="balloon" id="balloon">
+            <div class="pulse-ring"></div>
+            <div class="spark-layer"></div>
+            <img class="avatar" id="avatar" src="" alt="" aria-hidden="true">
+            <div class="name" id="name"></div>
+            <div class="total-row">
+                <span class="count" id="count"></span>
+                <span class="suffix">taps</span>
+            </div>
+        </article>
+    </section>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1';
+        const sampleMode = searchParams.get('sample') === '1' || previewMode;
+        const previewCardMode = searchParams.get('card') === '1';
+        const balloon = document.getElementById('balloon');
+        const nameElement = document.getElementById('name');
+        const countElement = document.getElementById('count');
+        const avatarElement = document.getElementById('avatar');
+        const DISPLAY_DURATION_MS = 3200;
+        const notificationQueue = [];
+        const feedbackSoundUrlCache = new Map();
+        // 新デザイン追加時は backend/index.js の ALLOWED_BALLOON_DESIGN_KEYS と
+        // db/widgets.html の select#like-contribution-balloon-design も同時に更新すること。
+        const BALLOON_DESIGN_KEYS = ['dark-glass', 'horizontal-pill', 'big-number', 'side-accent', 'compact-banner', 'stacked-center', 'wa-stamp', 'singer-stage', 'dance-floor', 'kitchen-chalk', 'paw-pop'];
+        const FEEDBACK_SOUND_KEYS = [
+            'business08',
+            'business09',
+            'business10',
+            'business11',
+            'bush-warbler',
+            'cow',
+            'hyoshigi',
+            'xylophone',
+            'glocken01',
+            'glocken02',
+            'glocken03',
+            'electronic-chime02',
+            'electronic-chime03'
+        ];
+        const FEEDBACK_SOUND_CANDIDATE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a'];
+        const FEEDBACK_SOUND_URLS = Object.fromEntries(
+            FEEDBACK_SOUND_KEYS.map((soundKey) => [
+                soundKey,
+                FEEDBACK_SOUND_CANDIDATE_EXTENSIONS.map((extension) => `/audio/feedback/${soundKey}.${extension}`)
+            ])
+        );
+        const fontFamilies = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            mincho: '"Noto Serif JP", serif',
+            'ud-gothic': '"Kosugi", sans-serif',
+            'ud-mincho': '"Zen Old Mincho", serif',
+            meiryo: '"Klee One", cursive',
+            rounded: '"Zen Maru Gothic", sans-serif',
+            kyokasho: '"Klee One", cursive',
+            gyosho: '"Yuji Syuku", cursive',
+            togarie: '"Dela Gothic One", sans-serif',
+            'ln-pop': '"Mochiy Pop One", sans-serif',
+            'comic-impact': '"Rampart One", sans-serif',
+            'pop-idol': '"Hachi Maru Pop", cursive',
+            entame: '"RocknRoll One", sans-serif',
+            marker: '"Yusei Magic", cursive',
+            'retro-bold': '"Kaisei Decol", serif',
+            'luxury-mincho': '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush': '"Yuji Mai", cursive',
+            'pixel-code': '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho': '"Sawarabi Mincho", serif',
+            'potta-one': '"Potta One", sans-serif',
+            'murecho-thin': '"Murecho", sans-serif',
+            stick: '"Stick", sans-serif'
+        };
+        const textStyles = {
+            'gold-night': { fillColor: '#ffffff', countColor: '#fbbf24', noteColor: 'rgba(241, 245, 249, 0.94)', strokeColor: 'rgba(15, 23, 42, 0.96)', textShadow: 'rgba(15, 23, 42, 0.34)' },
+            'ice-night': { fillColor: '#dbeafe', countColor: '#93c5fd', noteColor: 'rgba(191, 219, 254, 0.94)', strokeColor: 'rgba(23, 37, 84, 0.95)', textShadow: 'rgba(23, 37, 84, 0.35)' },
+            'candy-pop': { fillColor: '#ffe4f1', countColor: '#f472b6', noteColor: 'rgba(251, 207, 232, 0.94)', strokeColor: 'rgba(131, 24, 67, 0.95)', textShadow: 'rgba(131, 24, 67, 0.35)' },
+            'mint-lime': { fillColor: '#f7fee7', countColor: '#bef264', noteColor: 'rgba(217, 249, 157, 0.94)', strokeColor: 'rgba(20, 83, 45, 0.97)', textShadow: 'rgba(20, 83, 45, 0.37)' },
+            'sunset-party': { fillColor: '#ffedd5', countColor: '#fb923c', noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(124, 45, 18, 0.95)', textShadow: 'rgba(124, 45, 18, 0.35)' },
+            'violet-flash': { fillColor: '#ede9fe', countColor: '#c4b5fd', noteColor: 'rgba(221, 214, 254, 0.94)', strokeColor: 'rgba(49, 46, 129, 0.95)', textShadow: 'rgba(49, 46, 129, 0.35)' },
+            'mono-impact': { fillColor: '#ffffff', countColor: '#ffffff', noteColor: 'rgba(229, 231, 235, 0.95)', strokeColor: 'rgba(17, 24, 39, 1)', textShadow: 'rgba(17, 24, 39, 0.4)' },
+            'sakura-bloom': { fillColor: '#fdf2f8', countColor: '#f9a8d4', noteColor: 'rgba(252, 231, 243, 0.94)', strokeColor: 'rgba(157, 23, 77, 0.96)', textShadow: 'rgba(157, 23, 77, 0.34)' },
+            'ocean-glow': { fillColor: '#ecfeff', countColor: '#67e8f9', noteColor: 'rgba(165, 243, 252, 0.94)', strokeColor: 'rgba(22, 78, 99, 0.96)', textShadow: 'rgba(8, 47, 73, 0.34)' },
+            'emerald-city': { fillColor: '#ecfdf5', countColor: '#6ee7b7', noteColor: 'rgba(167, 243, 208, 0.94)', strokeColor: 'rgba(6, 78, 59, 0.96)', textShadow: 'rgba(6, 78, 59, 0.34)' },
+            'ruby-flare': { fillColor: '#fff1f2', countColor: '#fb7185', noteColor: 'rgba(254, 205, 211, 0.94)', strokeColor: 'rgba(63, 13, 18, 0.96)', textShadow: 'rgba(127, 29, 29, 0.34)' },
+            'lemon-pop': { fillColor: '#fefce8', countColor: '#fde047', noteColor: 'rgba(254, 249, 195, 0.94)', strokeColor: 'rgba(30, 58, 138, 0.96)', textShadow: 'rgba(30, 58, 138, 0.34)' },
+            'midnight-aqua': { fillColor: '#f0fdfa', countColor: '#5eead4', noteColor: 'rgba(153, 246, 228, 0.94)', strokeColor: 'rgba(15, 23, 42, 0.98)', textShadow: 'rgba(15, 23, 42, 0.38)' },
+            'peach-fizz': { fillColor: '#fff7ed', countColor: '#fdba74', noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(127, 29, 29, 0.94)', textShadow: 'rgba(127, 29, 29, 0.34)' },
+            'festival-red': { fillColor: '#fef2f2', countColor: '#f87171', noteColor: 'rgba(252, 165, 165, 0.94)', strokeColor: 'rgba(31, 41, 55, 0.98)', textShadow: 'rgba(31, 41, 55, 0.36)' },
+            'rose-gold': { fillColor: '#fffaf7', countColor: '#f8b4a6', noteColor: 'rgba(254, 226, 214, 0.96)', strokeColor: 'rgba(91, 52, 46, 0.98)', textShadow: 'rgba(91, 52, 46, 0.38)' },
+            'cyber-teal': { fillColor: '#f0fdff', countColor: '#67e8f9', noteColor: 'rgba(165, 243, 252, 0.94)', strokeColor: 'rgba(15, 39, 64, 0.99)', textShadow: 'rgba(15, 39, 64, 0.38)' },
+            'aurora-dream': { fillColor: '#faf5ff', countColor: '#e9d5ff', noteColor: 'rgba(233, 213, 255, 0.94)', strokeColor: 'rgba(76, 29, 149, 0.98)', textShadow: 'rgba(76, 29, 149, 0.38)' },
+            'coral-soda': { fillColor: '#fff1f2', countColor: '#fb7185', noteColor: 'rgba(254, 205, 211, 0.96)', strokeColor: 'rgba(127, 29, 29, 0.98)', textShadow: 'rgba(127, 29, 29, 0.38)' },
+            'platinum-pop': { fillColor: '#ffffff', countColor: '#e2e8f0', noteColor: 'rgba(226, 232, 240, 0.98)', strokeColor: 'rgba(30, 41, 59, 0.98)', textShadow: 'rgba(30, 41, 59, 0.38)' }
+        };
+
+        let currentSettings = {
+            title: 'Likeありがとう！',
+            interval: 50,
+            soundVolume: 100,
+            balloonDesignKey: 'dark-glass',
+            countFontSize: 42,
+            nameFontSize: 34,
+            appearance: {
+                fontKey: 'default',
+                textStyleKey: 'gold-night',
+                strokeWidth: 4
+            },
+            feedback: {
+                soundEnabled: true,
+                effectEnabled: true,
+                soundKey: 'business08',
+                effectKey: 'glow'
+            }
+        };
+        let activeHideTimer = null;
+        let isDisplaying = false;
+
+        if (previewCardMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        function getPreviewColor(value, fallback) {
+            const normalizedValue = normalizeTextPaint(value);
+            if (Array.isArray(normalizedValue)) {
+                return normalizedValue[0] || fallback;
+            }
+
+            return normalizedValue || fallback;
+        }
+
+        function normalizeFontKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return fontFamilies[normalizedValue] ? normalizedValue : 'default';
+        }
+
+        function normalizeTextStyleKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return textStyles[normalizedValue] ? normalizedValue : 'gold-night';
+        }
+
+        function normalizeStrokeWidth(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 1) {
+                return 4;
+            }
+
+            return Math.min(parsed, 12);
+        }
+
+        function normalizeBalloonDesignKey(value) {
+            const key = String(value || '').trim().toLowerCase();
+            return BALLOON_DESIGN_KEYS.includes(key) ? key : 'dark-glass';
+        }
+
+        function normalizeTypographySize(value, defaultVal, min, max) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < min) return defaultVal;
+            return Math.min(parsed, max);
+        }
+
+        function normalizeFeedbackSettings(value) {
+            const soundKey = String(value?.soundKey || '').trim().toLowerCase();
+            const effectKey = String(value?.effectKey || '').trim().toLowerCase();
+
+            return {
+                soundEnabled: value?.soundEnabled !== false,
+                effectEnabled: value?.effectEnabled !== false,
+                soundKey: FEEDBACK_SOUND_KEYS.includes(soundKey) ? soundKey : 'business08',
+                effectKey: ['glow', 'magic', 'luxury'].includes(effectKey) ? effectKey : 'glow'
+            };
+        }
+
+        function normalizeSettings(value) {
+            const settings = value && typeof value === 'object' ? value : {};
+
+            return {
+                title: String(settings.title || '').trim() || 'Likeありがとう！',
+                interval: Math.max(1, Number.parseInt(String(settings.interval ?? '50'), 10) || 50),
+                soundVolume: Math.max(0, Math.min(100, Number(settings.soundVolume ?? 100) || 0)),
+                balloonDesignKey: normalizeBalloonDesignKey(settings.balloonDesignKey),
+                countFontSize: normalizeTypographySize(settings.countFontSize, 42, 10, 200),
+                nameFontSize: normalizeTypographySize(settings.nameFontSize, 34, 8, 120),
+                appearance: {
+                    fontKey: normalizeFontKey(settings.appearance?.fontKey),
+                    textStyleKey: normalizeTextStyleKey(settings.appearance?.textStyleKey),
+                    strokeWidth: normalizeStrokeWidth(settings.appearance?.strokeWidth)
+                },
+                feedback: normalizeFeedbackSettings(settings.feedback)
+            };
+        }
+
+        function applyAppearance(appearance = {}) {
+            const normalizedAppearance = normalizeSettings({ appearance }).appearance;
+            const fontFamily = fontFamilies[normalizedAppearance.fontKey] || fontFamilies.default;
+            const textStyle = textStyles[normalizedAppearance.textStyleKey] || textStyles['gold-night'];
+            const rootStyle = document.documentElement.style;
+            const strokeColor = getPreviewColor(textStyle.strokeColor, 'rgba(15, 23, 42, 0.96)');
+            const countColor = getPreviewColor(textStyle.countColor, '#fbbf24');
+
+            rootStyle.setProperty('--widget-font-family', fontFamily);
+            rootStyle.setProperty('--fill-color', getPreviewColor(textStyle.fillColor, '#ffffff'));
+            rootStyle.setProperty('--count-color', countColor);
+            rootStyle.setProperty('--note-color', getPreviewColor(textStyle.noteColor, 'rgba(241, 245, 249, 0.94)'));
+            rootStyle.setProperty('--stroke-color', strokeColor);
+            rootStyle.setProperty('--shadow-color', getPreviewColor(textStyle.textShadow, 'rgba(15, 23, 42, 0.36)'));
+            rootStyle.setProperty('--edge-color', countColor);
+            rootStyle.setProperty('--edge-soft', getPreviewColor(textStyle.fillColor, 'rgba(255, 255, 255, 0.24)'));
+        }
+
+        function applyTypographySizes(settings) {
+            const rootStyle = document.documentElement.style;
+            const countPx = normalizeTypographySize(settings?.countFontSize, 42, 10, 200);
+            const namePx = normalizeTypographySize(settings?.nameFontSize, 34, 8, 120);
+            rootStyle.setProperty('--lc-count-font-size', `${countPx}px`);
+            rootStyle.setProperty('--lc-name-font-size', `${namePx}px`);
+            rootStyle.setProperty('--lc-avatar-size', `${Math.round(namePx * 1.5)}px`);
+        }
+
+        function applyBalloonDesign(designKey) {
+            const key = normalizeBalloonDesignKey(designKey);
+            BALLOON_DESIGN_KEYS.forEach((k) => balloon.classList.remove(`design-${k}`));
+            if (key !== 'dark-glass') {
+                balloon.classList.add(`design-${key}`);
+            }
+        }
+
+        async function resolveFeedbackSoundUrl(soundKey = 'business08') {
+            const normalizedKey = FEEDBACK_SOUND_URLS[soundKey] ? soundKey : 'business08';
+
+            if (feedbackSoundUrlCache.has(normalizedKey)) {
+                return feedbackSoundUrlCache.get(normalizedKey);
+            }
+
+            const candidates = FEEDBACK_SOUND_URLS[normalizedKey] || [];
+
+            for (const candidateUrl of candidates) {
+                try {
+                    const response = await fetch(candidateUrl, { method: 'HEAD', cache: 'no-store' });
+                    if (response.ok) {
+                        feedbackSoundUrlCache.set(normalizedKey, candidateUrl);
+                        return candidateUrl;
+                    }
+                } catch {
+                    // Try the next candidate extension.
+                }
+            }
+
+            feedbackSoundUrlCache.set(normalizedKey, '');
+            return '';
+        }
+
+        async function playFeedbackTone(soundKey = 'business08', soundVolume = 100) {
+            const soundUrl = await resolveFeedbackSoundUrl(soundKey);
+            if (!soundUrl) {
+                return;
+            }
+
+            const audio = new Audio(soundUrl);
+            audio.preload = 'auto';
+            audio.volume = Math.max(0, Math.min(1, Number(soundVolume || 0) / 100));
+
+            try {
+                await audio.play();
+            } catch {
+                // Ignore autoplay failures.
+            }
+        }
+
+        function spawnMusicNotes() {
+            // 残留ノートを即時削除
+            document.querySelectorAll('.music-note').forEach((el) => el.remove());
+
+            const rect = balloon.getBoundingClientRect();
+            if (rect.width === 0) return;
+
+            const NOTES = ['♩', '♪', '♫', '♬', '♪', '♩', '♫'];
+            const COUNT = 6;
+            const noteColor = 'rgba(212, 168, 75, 0.92)';
+
+            for (let i = 0; i < COUNT; i++) {
+                const el = document.createElement('span');
+                el.className = 'music-note';
+                el.textContent = NOTES[Math.floor(Math.random() * NOTES.length)];
+                const startX = rect.left + rect.width * (0.08 + Math.random() * 0.84);
+                const startY = rect.top + rect.height * (0.3 + Math.random() * 0.6);
+                const delay = i * 150;
+                const dur = 1400 + Math.random() * 700;
+                const drift = (Math.random() - 0.5) * 44;
+                const rotate = (Math.random() - 0.5) * 30;
+                const size = 28 + Math.random() * 20;
+                el.style.cssText = [
+                    `left:${startX.toFixed(1)}px`,
+                    `top:${startY.toFixed(1)}px`,
+                    `font-size:${size.toFixed(0)}px`,
+                    `animation-delay:${delay}ms`,
+                    `color:${noteColor}`,
+                    `--note-dur:${dur.toFixed(0)}ms`,
+                    `--note-drift:${drift.toFixed(1)}px`,
+                    `--note-rotate:${rotate.toFixed(1)}deg`
+                ].join(';');
+                el.addEventListener('animationend', () => el.remove(), { once: true });
+                document.body.appendChild(el);
+            }
+        }
+
+        function hideBalloon(immediate = false) {
+            if (activeHideTimer) {
+                clearTimeout(activeHideTimer);
+                activeHideTimer = null;
+            }
+
+            if (immediate) {
+                balloon.classList.remove('is-visible', 'is-leaving', 'is-celebrating');
+                isDisplaying = false;
+                return;
+            }
+
+            balloon.classList.remove('is-celebrating');
+            balloon.classList.add('is-leaving');
+            window.setTimeout(() => {
+                balloon.classList.remove('is-visible', 'is-leaving');
+                isDisplaying = false;
+                consumeQueue();
+            }, 280);
+        }
+
+        function renderNotification(notification, options = {}) {
+            const nickname = String(notification?.nickname || '視聴者').trim() || '視聴者';
+            const totalLikeCount = Number(notification?.totalLikeCount || 0);
+            const profilePictureUrl = String(notification?.profilePictureUrl || '').trim();
+            const shouldCelebrate = options.shouldCelebrate !== false;
+
+            nameElement.textContent = nickname;
+            countElement.textContent = totalLikeCount > 0 ? totalLikeCount.toLocaleString() : '0';
+            if (profilePictureUrl) {
+                avatarElement.src = profilePictureUrl;
+                avatarElement.hidden = false;
+            } else {
+                avatarElement.src = '';
+                avatarElement.hidden = true;
+            }
+
+            balloon.classList.remove('is-visible', 'is-leaving', 'is-celebrating');
+            void balloon.offsetWidth;
+            balloon.classList.add('is-visible');
+            if (shouldCelebrate) {
+                balloon.classList.add('is-celebrating');
+            }
+            if (balloon.classList.contains('design-singer-stage')) {
+                spawnMusicNotes();
+            }
+            isDisplaying = true;
+        }
+
+        function consumeQueue() {
+            if (isDisplaying || !notificationQueue.length) {
+                return;
+            }
+
+            const payload = notificationQueue.shift();
+            currentSettings = normalizeSettings(payload?.settings || currentSettings);
+            applyAppearance(currentSettings.appearance);
+            applyTypographySizes(currentSettings);
+            applyBalloonDesign(currentSettings.balloonDesignKey);
+            renderNotification(payload?.notification || {}, {
+                shouldCelebrate: currentSettings.feedback.effectEnabled
+            });
+
+            if (currentSettings.feedback.soundEnabled) {
+                playFeedbackTone(currentSettings.feedback.soundKey, currentSettings.soundVolume).catch(() => {});
+            }
+
+            activeHideTimer = window.setTimeout(() => {
+                hideBalloon();
+            }, DISPLAY_DURATION_MS);
+        }
+
+        function enqueueNotification(payload) {
+            if (!payload?.notification) {
+                return;
+            }
+
+            notificationQueue.push(payload);
+            consumeQueue();
+        }
+
+        function playTestNotification(payload) {
+            if (!payload?.notification) {
+                return;
+            }
+
+            notificationQueue.length = 0;
+            hideBalloon(true);
+            enqueueNotification(payload);
+        }
+
+        const SAMPLE_AVATAR_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="26" fill="#c2410c"/><text x="26" y="33" text-anchor="middle" font-size="26" font-family="serif" fill="#fff">人</text></svg>');
+
+        function showSampleNotification() {
+            currentSettings = normalizeSettings(currentSettings);
+            applyAppearance(currentSettings.appearance);
+            applyTypographySizes(currentSettings);
+            applyBalloonDesign(currentSettings.balloonDesignKey);
+            hideBalloon(true);
+            renderNotification({
+                nickname: 'Tap_たけし77',
+                totalLikeCount: 1250,
+                profilePictureUrl: SAMPLE_AVATAR_URL
+            }, {
+                shouldCelebrate: currentSettings.feedback.effectEnabled
+            });
+        }
+
+        async function refreshConfig() {
+            const response = await fetch('/api/widgets/like-contribution/config');
+            const payload = await response.json();
+
+            currentSettings = normalizeSettings(payload?.settings || currentSettings);
+            applyAppearance(currentSettings.appearance);
+            applyTypographySizes(currentSettings);
+            applyBalloonDesign(currentSettings.balloonDesignKey);
+
+            if (sampleMode) {
+                showSampleNotification();
+            }
+        }
+
+        let overlayRecoveryTimer = null;
+        let overlayRecoveryInFlight = false;
+        const OVERLAY_RECOVERY_RETRY_MS = 2000;
+
+        function clearOverlayRecoveryTimer() {
+            if (overlayRecoveryTimer) {
+                clearInterval(overlayRecoveryTimer);
+                overlayRecoveryTimer = null;
+            }
+        }
+
+        async function probeBackendAvailability() {
+            if (overlayRecoveryInFlight || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryInFlight = true;
+
+            try {
+                const response = await fetch('/api/widgets/like-contribution/config', { cache: 'no-store' });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                clearOverlayRecoveryTimer();
+                window.location.reload();
+            } catch {
+                // Backend is still restarting. Keep polling.
+            } finally {
+                overlayRecoveryInFlight = false;
+            }
+        }
+
+        function scheduleOverlayRecoveryReload() {
+            if (overlayRecoveryTimer || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryTimer = setInterval(() => {
+                probeBackendAvailability();
+            }, OVERLAY_RECOVERY_RETRY_MS);
+
+            probeBackendAvailability();
+        }
+
+        socket.on('connect', () => {
+            clearOverlayRecoveryTimer();
+            refreshConfig().catch(() => {
+                currentSettings = normalizeSettings(currentSettings);
+                applyAppearance(currentSettings.appearance);
+                applyTypographySizes(currentSettings);
+                applyBalloonDesign(currentSettings.balloonDesignKey);
+                if (sampleMode) {
+                    showSampleNotification();
+                }
+            });
+        });
+
+        socket.on('widgets:like-contribution:config', (payload) => {
+            currentSettings = normalizeSettings(payload?.settings || currentSettings);
+            applyAppearance(currentSettings.appearance);
+            applyTypographySizes(currentSettings);
+            applyBalloonDesign(currentSettings.balloonDesignKey);
+
+            if (sampleMode) {
+                showSampleNotification();
+            }
+        });
+
+        socket.on('widgets:like-contribution:notify', (payload) => {
+            if (sampleMode) {
+                return;
+            }
+
+            enqueueNotification(payload);
+        });
+
+        socket.on('widgets:like-contribution:test-notification', (payload) => {
+            playTestNotification(payload);
+        });
+
+        socket.on('disconnect', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        socket.on('connect_error', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!socket.connected) {
+                scheduleOverlayRecoveryReload();
+            }
+        });
+
+        refreshConfig().catch(() => {
+            currentSettings = normalizeSettings(currentSettings);
+            applyAppearance(currentSettings.appearance);
+            applyTypographySizes(currentSettings);
+            applyBalloonDesign(currentSettings.balloonDesignKey);
+            if (sampleMode) {
+                showSampleNotification();
+            }
+        });
+    </script>
+</body>
+</html>

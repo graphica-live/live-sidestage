@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Access</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e8eef5;
+            --panel: rgba(248, 250, 252, 0.92);
+            --line: rgba(24, 37, 58, 0.16);
+            --line-strong: rgba(24, 37, 58, 0.24);
+            --text: #18253a;
+            --muted: #5f6f82;
+            --accent: #0f766e;
+            --accent-strong: #115e59;
+            --accent-soft: rgba(15, 118, 110, 0.14);
+            --shadow: 0 16px 38px rgba(15, 23, 42, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                radial-gradient(circle at top right, var(--accent-soft) 0%, transparent 28%),
+                linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
+        }
+
+        h1, h2, p {
+            margin: 0;
+        }
+
+        .layout {
+            width: min(920px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        .hero {
+            display: grid;
+            gap: 12px;
+        }
+
+        .eyebrow {
+            width: fit-content;
+            padding: 5px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.7));
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.05;
+        }
+
+        .subtext {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+            max-width: 62ch;
+        }
+
+        .quick-card {
+            display: grid;
+            gap: 18px;
+            padding: 26px;
+            border: 1px solid var(--line-strong);
+            border-radius: 14px;
+            background:
+                linear-gradient(135deg, var(--panel-strong, var(--panel)) 0%, var(--surface, var(--panel)) 100%);
+        }
+
+        .quick-card-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .quick-card-copy {
+            display: grid;
+            gap: 8px;
+        }
+
+        .quick-card-copy h2 {
+            font-size: 24px;
+            line-height: 1.15;
+        }
+
+        .state-chip {
+            width: fit-content;
+            padding: 7px 13px;
+            border: 1px solid var(--line-strong);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.8));
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .state-chip.is-on {
+            color: var(--accent-strong);
+            border-color: var(--accent, rgba(15, 118, 110, 0.32));
+            background: var(--accent-soft);
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .quick-meta {
+            display: grid;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+            padding: 7px 12px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .status.is-error {
+            color: #a12d2f;
+            border-color: rgba(161, 45, 47, 0.24);
+            background: rgba(254, 242, 242, 0.86);
+        }
+
+        /* チェックボックス行 */
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .check-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .check-label input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--line-strong);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            flex: 0 0 auto;
+            position: relative;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .check-label input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent-strong);
+        }
+
+        .check-label input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            display: block;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'%3E%3Cpath d='M1 5l3.5 3.5L11 1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat;
+        }
+
+        .check-label input[type="checkbox"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* 停止中 chip */
+        .check-label[data-stop] input[type="checkbox"]:checked {
+            background: #dc2626;
+            border-color: #b91c1c;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 16px 12px;
+            }
+
+            .panel {
+                padding: 18px;
+            }
+
+            .quick-card {
+                padding: 18px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            .quick-card-copy h2 {
+                font-size: 21px;
+            }
+
+            .quick-actions button {
+                width: 100%;
+            }
+        }
+    </style>
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+</head>
+<body data-admin-settings-root="true">
+    <main class="layout">
+        <section class="panel hero">
+            <div class="eyebrow">Quick Access</div>
+            <h1>よく触る設定だけを先頭に出す</h1>
+            <p class="subtext">起動直後に必要な操作だけをまとめています。まずはコメント読み上げの ON/OFF をここから切り替えられるようにしています。</p>
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>コメント読み上げ</h2>
+                    <p class="subtext">コメント欄の詳細設定を開かなくても、screen1 への読み上げをすぐに切り替えます。</p>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label">
+                        <input type="checkbox" id="read-aloud-checkbox">
+                        読み上げ ON
+                    </label>
+                </div>
+                <button type="button" class="ghost-button" id="reset-random-voice-button">🎲 ランダムボイス更新</button>
+                <button type="button" class="ghost-button" id="open-comments-button">コメント欄を開く</button>
+            </div>
+
+            <div class="quick-meta">
+                <p id="read-aloud-summary">設定を読み込み中です。</p>
+                <div class="status" id="feedback-message">コメント設定を確認しています。</div>
+            </div>
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>エフェクト制御</h2>
+                    <p class="subtext">チェックを入れると全エフェクト再生を停止します。外すと再開します。</p>
+                </div>
+                <div class="state-chip" id="effects-pause-chip">再生中</div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label" data-stop>
+                        <input type="checkbox" id="effects-pause-checkbox">
+                        全エフェクト停止
+                    </label>
+                </div>
+            </div>
+
+            <div class="quick-meta">
+                <div class="status" id="effects-feedback-message">エフェクト状態を確認しています。</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const socket = io({ transports: ['websocket'] });
+        const readAloudCheckbox = document.getElementById('read-aloud-checkbox');
+        const resetRandomVoiceButton = document.getElementById('reset-random-voice-button');
+        const openCommentsButton = document.getElementById('open-comments-button');
+        const readAloudSummary = document.getElementById('read-aloud-summary');
+        const feedbackMessage = document.getElementById('feedback-message');
+        const effectsPauseCheckbox = document.getElementById('effects-pause-checkbox');
+        const effectsPauseChip = document.getElementById('effects-pause-chip');
+        const effectsFeedbackMessage = document.getElementById('effects-feedback-message');
+
+        let currentSettings = null;
+        let updatingReadAloud = false;
+        let updatingEffectsPause = false;
+
+        function setFeedback(message, isError = false) {
+            feedbackMessage.textContent = message || '準備完了';
+            feedbackMessage.classList.toggle('is-error', isError);
+        }
+
+        function setEffectsFeedback(message, isError = false) {
+            effectsFeedbackMessage.textContent = message || '準備完了';
+            effectsFeedbackMessage.classList.toggle('is-error', isError);
+        }
+
+        function syncReadAloudUi() {
+            const isEnabled = currentSettings?.readAloudEnabled === true;
+            readAloudCheckbox.checked = isEnabled;
+            readAloudSummary.textContent = isEnabled
+                ? '現在はコメント読み上げが有効です。'
+                : '現在はコメント読み上げが停止しています。';
+        }
+
+        function syncEffectsPauseUi(paused) {
+            effectsPauseCheckbox.checked = paused;
+            effectsPauseChip.textContent = paused ? '停止中' : '再生中';
+            effectsPauseChip.classList.toggle('is-on', paused);
+        }
+
+        async function loadCommentConfig() {
+            const response = await fetch('/api/comments/config');
+
+            if (!response.ok) {
+                throw new Error('コメント設定の取得に失敗しました。');
+            }
+
+            const payload = await response.json();
+            currentSettings = payload?.settings || {};
+            syncReadAloudUi();
+            setFeedback('クイックアクセスからコメント読み上げを切り替えられます。');
+        }
+
+        async function saveCommentConfig(nextSettings) {
+            const response = await fetch('/api/comments/config', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(nextSettings)
+            });
+
+            if (!response.ok) {
+                throw new Error('コメント設定の保存に失敗しました。');
+            }
+
+            const payload = await response.json();
+            currentSettings = payload?.settings || nextSettings;
+            syncReadAloudUi();
+        }
+
+        async function stopCommentReadAloudImmediately() {
+            const response = await fetch('/api/comments/read-aloud-stop', {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                throw new Error('コメント読み上げの停止に失敗しました。');
+            }
+        }
+
+        async function loadEffectsGlobalPause() {
+            const response = await fetch('/api/effects/global-pause');
+
+            if (!response.ok) {
+                throw new Error('エフェクト状態の取得に失敗しました。');
+            }
+
+            const payload = await response.json();
+            syncEffectsPauseUi(payload.paused === true);
+            setEffectsFeedback('全エフェクトの停止をここから切り替えられます。');
+        }
+
+        readAloudCheckbox.addEventListener('change', async () => {
+            if (!currentSettings || updatingReadAloud) {
+                readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
+                return;
+            }
+
+            updatingReadAloud = true;
+            const nextEnabled = readAloudCheckbox.checked;
+
+            try {
+                if (!nextEnabled) {
+                    await stopCommentReadAloudImmediately();
+                }
+
+                await saveCommentConfig({ ...currentSettings, readAloudEnabled: nextEnabled });
+                setFeedback(nextEnabled ? 'コメント読み上げを ON にしました。' : 'コメント読み上げを OFF にしました。');
+            } catch (error) {
+                readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
+                setFeedback(error?.message || 'コメント読み上げの切り替えに失敗しました。', true);
+            } finally {
+                updatingReadAloud = false;
+            }
+        });
+
+        resetRandomVoiceButton.addEventListener('click', async () => {
+            resetRandomVoiceButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/comments/read-aloud-random-voices/reset', { method: 'POST' });
+
+                if (!response.ok) {
+                    throw new Error('ランダムボイスのリセットに失敗しました。');
+                }
+
+                const payload = await response.json();
+                setFeedback(`ランダムボイスをリセットしました（${payload.clearedCount ?? 0} 件）。`);
+            } catch (error) {
+                setFeedback(error?.message || 'ランダムボイスのリセットに失敗しました。', true);
+            } finally {
+                resetRandomVoiceButton.disabled = false;
+            }
+        });
+
+        effectsPauseCheckbox.addEventListener('change', async () => {
+            if (updatingEffectsPause) {
+                return;
+            }
+
+            updatingEffectsPause = true;
+            const nextPaused = effectsPauseCheckbox.checked;
+
+            try {
+                const response = await fetch('/api/effects/global-pause', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paused: nextPaused })
+                });
+
+                if (!response.ok) {
+                    throw new Error('エフェクト停止の切り替えに失敗しました。');
+                }
+
+                const payload = await response.json();
+                syncEffectsPauseUi(payload.paused === true);
+                setEffectsFeedback(payload.paused ? '全エフェクトを停止しました。' : '全エフェクトの再生を再開しました。');
+            } catch (error) {
+                effectsPauseCheckbox.checked = !nextPaused;
+                setEffectsFeedback(error?.message || 'エフェクト停止の切り替えに失敗しました。', true);
+            } finally {
+                updatingEffectsPause = false;
+            }
+        });
+
+        openCommentsButton.addEventListener('click', () => {
+            window.location.assign('/comments');
+        });
+
+        socket.on('admin_comments_updated', (payload) => {
+            currentSettings = payload?.settings || currentSettings;
+            syncReadAloudUi();
+        });
+
+        socket.on('effects:global-pause-changed', (payload) => {
+            syncEffectsPauseUi(payload?.paused === true);
+        });
+
+        loadCommentConfig().catch((error) => {
+            setFeedback(error?.message || 'コメント設定の取得に失敗しました。', true);
+        });
+
+        loadEffectsGlobalPause().catch((error) => {
+            setEffectsFeedback(error?.message || 'エフェクト状態の取得に失敗しました。', true);
+        });
+    </script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

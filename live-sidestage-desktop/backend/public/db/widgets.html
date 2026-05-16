@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ウィジェット</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
 
         :root {
             --panel: #f6f9fc;
@@ -27,6 +29,8 @@
         body {
             margin: 0;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             padding: 22px 14px 30px;
             color: var(--text);
             font-family: "M PLUS Rounded 1c", sans-serif;
@@ -36,14 +40,23 @@
         .layout {
             width: min(1260px, 100%);
             margin: 0 auto;
-            display: grid;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
             gap: 18px;
+            min-height: calc(100vh - 52px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             padding: 24px;
         }
@@ -99,7 +112,8 @@
             align-items: center;
             gap: 8px;
             border: 1px solid var(--line);
-            padding: 9px 12px;
+            border-radius: 999px;
+            padding: 8px 14px;
             font-size: 13px;
             color: var(--text);
             background: #ffffff;
@@ -112,14 +126,16 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
             gap: 18px;
         }
 
         .card {
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.74);
-            padding: 18px;
+            border: 1px solid rgba(24, 37, 58, 0.22);
+            border-radius: 14px;
+            background: #ffffff;
+            box-shadow: 0 2px 12px rgba(24, 37, 58, 0.10), 0 1px 3px rgba(24, 37, 58, 0.06);
+            padding: 20px;
             display: grid;
             gap: 14px;
         }
@@ -131,13 +147,90 @@
             align-items: flex-start;
         }
 
+        .settings-toggle-btn {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--muted);
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .settings-toggle-btn:hover {
+            background: #eef4fa;
+            color: var(--text);
+        }
+
+        .settings-toggle-btn.is-active {
+            background: #fef3e8;
+            color: var(--accent);
+            border-color: rgba(194, 65, 12, 0.3);
+        }
+
+        .widget-settings-panel {
+            display: grid;
+            gap: 14px;
+            padding: 16px;
+            border: 1px solid rgba(24, 37, 58, 0.12);
+            border-radius: 12px;
+            background: rgba(248, 251, 254, 0.85);
+        }
+
+        .widget-settings-panel[hidden] {
+            display: none;
+        }
+
+        .utility-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .widget-modal-card {
+            width: min(720px, 100%);
+            max-height: 88vh;
+            overflow-y: auto;
+            display: grid;
+            gap: 20px;
+            padding: 28px;
+            border-radius: 22px;
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--line);
+            box-shadow: 0 28px 60px rgba(2, 6, 23, 0.22);
+        }
+
+        .widget-modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .widget-modal-head h2 {
+            font-size: 21px;
+            margin: 0;
+            color: var(--text);
+        }
+
         .chip,
         .status {
             display: inline-flex;
             align-items: center;
             gap: 8px;
             border: 1px solid var(--line);
-            padding: 8px 12px;
+            border-radius: 999px;
+            padding: 6px 12px;
             font-size: 13px;
             color: var(--muted);
             background: #f9fbfd;
@@ -171,7 +264,7 @@
         input[type="color"],
         select {
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 8px;
             font: inherit;
         }
 
@@ -204,6 +297,22 @@
             line-height: 1.25;
         }
 
+        .overlay-url-row {
+            display: flex;
+            align-items: stretch;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .overlay-url-row .url-box {
+            flex: 1 1 0;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            align-self: center;
+        }
+
         .top-gift-url-field {
             gap: 2px;
         }
@@ -215,6 +324,158 @@
             padding-top: 4px;
             padding-bottom: 4px;
             line-height: 1.1;
+        }
+
+        .top-gift-url-field .overlay-url-row .url-box {
+            display: block;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            align-self: center;
+        }
+
+        .widget-preview {
+            display: grid;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .widget-preview-label {
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        .widget-preview-frame {
+            width: 100%;
+            border: 1px solid var(--line);
+            background:
+                radial-gradient(circle at top left, rgba(255, 210, 176, 0.42), transparent 34%),
+                linear-gradient(180deg, rgba(24, 37, 58, 0.08) 0%, rgba(24, 37, 58, 0.02) 100%),
+                #dfe8f1;
+            overflow: hidden;
+        }
+
+        .widget-preview-frame iframe {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: transparent;
+        }
+
+        .widget-preview-frame.contributors-preview {
+            height: 156px;
+        }
+
+        .widget-preview-frame.top-gift-preview {
+            height: 220px;
+        }
+
+        .widget-preview-frame.like-contribution-preview {
+            height: 188px;
+        }
+
+        .widget-preview-frame.gift-jar-preview {
+            width: 100%;
+            position: relative;
+        }
+
+        .widget-preview-frame.gift-jar-preview iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1080px;
+            height: 1080px;
+            border: 0;
+            background: transparent;
+            transform-origin: top left;
+            /* scale set dynamically by JS */
+        }
+
+        .gift-jar-wall-editor {
+            display: grid;
+            gap: 10px;
+            margin-top: 10px;
+            padding: 14px;
+            border: 1px dashed rgba(24, 37, 58, 0.24);
+            border-radius: 12px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(246, 249, 252, 0.92) 100%);
+        }
+
+        .gift-jar-wall-editor[hidden] {
+            display: none;
+        }
+
+        .gift-jar-wall-editor-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .gift-jar-wall-editor-note {
+            font-size: 12px;
+            line-height: 1.65;
+            color: var(--muted);
+        }
+
+        .gift-jar-wall-editor-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .gift-jar-wall-editor-stage-wrap {
+            width: min(540px, 100%);
+        }
+
+        .gift-jar-wall-editor-stage {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 1px solid rgba(24, 37, 58, 0.18);
+            background:
+                linear-gradient(180deg, rgba(24, 37, 58, 0.08) 0%, rgba(24, 37, 58, 0.02) 100%),
+                radial-gradient(circle at top left, rgba(255, 210, 176, 0.34), transparent 36%),
+                #dde7f1;
+        }
+
+        .gift-jar-wall-editor-background {
+            position: absolute;
+            pointer-events: none;
+            object-fit: contain;
+            mix-blend-mode: screen;
+            opacity: 0.96;
+        }
+
+        .gift-jar-wall-editor-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .gift-jar-wall-editor-toolbar .ghost-button.is-active {
+            border-color: rgba(194, 65, 12, 0.42);
+            background: rgba(255, 237, 213, 0.92);
+            color: var(--accent-strong);
+        }
+
+        .gift-jar-wall-editor-status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .widget-preview-frame.goal-gift-preview {
+            height: 220px;
         }
 
         .field label,
@@ -250,8 +511,9 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 6px 8px;
+            padding: 6px 10px;
             border: 1px solid var(--line);
+            border-radius: 8px;
             background: rgba(255, 255, 255, 0.7);
         }
 
@@ -259,8 +521,9 @@
 
         .url-box {
             width: 100%;
-            padding: 9px 10px;
+            padding: 8px 10px;
             border: 1px solid var(--line);
+            border-radius: 8px;
             background: #ffffff;
             color: var(--text);
             font-size: 13px;
@@ -291,6 +554,7 @@
             max-height: 260px;
             overflow-y: auto;
             border: 1px solid rgba(58, 44, 29, 0.16);
+            border-radius: 12px;
             background: #ffffff;
             box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
             z-index: 9999;
@@ -372,9 +636,9 @@
         .goal-table-head,
         .goal-row {
             display: grid;
-            grid-template-columns: minmax(240px, 1.75fr) minmax(180px, 1.1fr) minmax(180px, 1fr) 112px 112px 112px 112px 126px;
+            grid-template-columns: minmax(240px, 1.75fr) minmax(180px, 1.1fr) 72px 72px 126px 44px;
             gap: 8px;
-            min-width: 1260px;
+            min-width: 820px;
         }
 
         .goal-table-head {
@@ -402,6 +666,11 @@
         .goal-row.is-complete {
             border-color: rgba(22, 101, 52, 0.22);
             background: rgba(240, 253, 244, 0.84);
+        }
+
+        .goal-panel-preview {
+            margin: 14px 0 16px;
+            width: min(320px, 100%);
         }
 
         .goal-gift-image {
@@ -451,6 +720,17 @@
             stroke-linejoin: round;
         }
 
+        .overlay-url-row .icon-button {
+            width: 48px;
+            height: auto;
+            align-self: stretch;
+        }
+
+        .overlay-url-row .icon-button svg {
+            width: 32px;
+            height: 32px;
+        }
+
         .goal-cell {
             display: grid;
             min-width: 0;
@@ -487,8 +767,8 @@
 
             .goal-table-head,
             .goal-row {
-                grid-template-columns: minmax(220px, 1.45fr) minmax(170px, 1fr) minmax(160px, 1fr) 104px 104px 104px 104px 118px;
-                min-width: 1160px;
+                grid-template-columns: minmax(220px, 1.45fr) minmax(170px, 1fr) 68px 68px 118px 40px;
+                min-width: 780px;
             }
         }
 
@@ -506,48 +786,79 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
 <body>
     <div class="layout">
         <section class="panel">
-            <h1>ウィジェット</h1>
-            <p class="subtext">各ウィジェットの設定とオーバーレイ URL だけを管理します。プレビューは表示しません。</p>
-
-            <div class="form-grid" style="margin-top: 18px; margin-bottom: 16px;">
-                <div class="field">
-                    <label for="contributors-font">共通フォント</label>
-                    <select id="contributors-font" aria-label="全ウィジェット共通フォント"></select>
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>ウィジェット</h1>
+                    <p class="subtext">各ウィジェットの設定とオーバーレイ URL を管理し、カード内で実際の見え方も確認できます。</p>
                 </div>
-                <div class="field">
-                    <label for="contributors-text-style">共通文字色と縁取り</label>
-                    <select id="contributors-text-style" aria-label="全ウィジェット共通文字色と縁取り"></select>
-                </div>
-                <div class="field">
-                    <label for="contributors-stroke-width">共通縁取り太さ</label>
-                    <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="全ウィジェット共通縁取り太さ" />
-                </div>
-            </div>
-
-            <div class="header-feedback-grid">
-                <div class="field">
-                    <label for="shared-sound-key">共通通知音</label>
-                    <select id="shared-sound-key" aria-label="全ウィジェット共通通知音"></select>
-                    <div class="subtext">ローカル音声ファイルを優先再生します。配置先: /audio/feedback/&lt;soundKey&gt;.(mp3|wav|ogg|m4a)</div>
-                    <div class="action-row" style="margin-top: 10px;">
-                        <button type="button" class="ghost-button" id="test-shared-sound-button">目標ギフト1でテスト再生</button>
+                <div class="page-hero-side">
+                    <div class="hero-status-grid">
+                        <div class="status" id="broadcaster-status">配信ユーザーID: 読み込み中</div>
+                        <div class="status" id="today-status">本日: 読み込み中</div>
+                        <div class="status" id="save-status">設定状態: 読み込み中</div>
                     </div>
                 </div>
-                <div class="field">
-                    <label for="shared-effect-key">共通エフェクト</label>
-                    <select id="shared-effect-key" aria-label="全ウィジェット共通エフェクト"></select>
-                </div>
             </div>
 
-            <div class="status-row">
-                <div class="status" id="broadcaster-status">配信ユーザーID: 読み込み中</div>
-                <div class="status" id="today-status">本日: 読み込み中</div>
-                <div class="status" id="save-status">設定状態: 読み込み中</div>
+            <div class="utility-card-grid" style="margin-top: 18px;">
+                <article class="utility-card">
+                    <div class="utility-card-head">
+                        <div>
+                            <h3>共通テキスト設定</h3>
+                            <p class="subtext">全ウィジェットに横断で効く見た目設定です。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="shared-text-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+                    <div class="widget-settings-panel" id="shared-text-settings-panel" hidden>
+                        <div class="form-grid" style="margin: 0;">
+                            <div class="field">
+                                <label for="contributors-font">共通フォント</label>
+                                <select id="contributors-font" aria-label="全ウィジェット共通フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="contributors-text-style">共通文字色と縁取り</label>
+                                <select id="contributors-text-style" aria-label="全ウィジェット共通文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="contributors-stroke-width">共通縁取り太さ</label>
+                                <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="全ウィジェット共通縁取り太さ" />
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <article class="utility-card">
+                    <div class="utility-card-head">
+                        <div>
+                            <h3>共通通知設定</h3>
+                            <p class="subtext">通知音とエフェクトをまとめて調整します。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="shared-notification-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+                    <div class="widget-settings-panel" id="shared-notification-settings-panel" hidden>
+                        <div class="form-grid" style="margin-top: 0;">
+                            <div class="field">
+                                <label for="shared-sound-key">共通通知音</label>
+                                <select id="shared-sound-key" aria-label="全ウィジェット共通通知音"></select>
+                            </div>
+                            <div class="field">
+                                <label for="shared-effect-key">共通エフェクト</label>
+                                <select id="shared-effect-key" aria-label="全ウィジェット共通エフェクト"></select>
+                            </div>
+                            <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                                <button type="button" class="ghost-button" id="test-shared-sound-button">テスト再生</button>
+                                <p class="subtext" style="margin: 0; flex: 1 1 200px;">ローカル音声ファイルを優先再生します。配置先: /audio/feedback/&lt;soundKey&gt;.(mp3|wav|ogg|m4a)</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
             </div>
         </section>
 
@@ -559,13 +870,19 @@
                             <h2>貢献目標リスト</h2>
                             <p class="subtext">指定した貢献額以上のリスナー一覧を OBS 向け URL として開きます。</p>
                         </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="contributors-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
 
                     <div class="field full overlay-url-field">
                         <label>Overlay URL</label>
-                        <div class="url-box" id="contributors-url">読み込み中</div>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="contributors-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-contributors-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-contributors-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
                     </div>
 
+                    <div class="widget-settings-panel" id="contributors-settings-panel" hidden>
                     <div class="field full">
                         <label for="contributors-range-mode">集計範囲</label>
                         <select id="contributors-range-mode" aria-label="集計範囲">
@@ -596,11 +913,17 @@
                             </select>
                         </div>
                     </div>
+                    </div><!-- /contributors-settings-panel -->
 
                     <div class="action-row">
-                        <button type="button" class="ghost-button" id="open-contributors-overlay-button">オーバーレイを開く</button>
-                        <button type="button" class="ghost-button" id="copy-contributors-url-button">URLをコピー</button>
                         <button type="button" class="ghost-button" id="open-admin-button">ユーザーコイン数を開く</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame contributors-preview">
+                            <iframe id="contributors-preview-frame" title="貢献目標リストプレビュー" loading="eager"></iframe>
+                        </div>
                     </div>
                 </article>
 
@@ -610,31 +933,221 @@
                             <h2>本日最高ギフト</h2>
                             <p class="subtext">表示設定だけを管理し、確認はオーバーレイ側で行います。</p>
                         </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="top-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
 
                     <div class="field full overlay-url-field top-gift-url-field">
                         <label>Overlay URL</label>
-                        <div class="url-box" id="top-gift-url">読み込み中</div>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="top-gift-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-top-gift-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-top-gift-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
                     </div>
 
-                    <div class="form-grid">
-                        <div class="field">
-                            <label for="top-gift-title">表示タイトル</label>
-                            <input id="top-gift-title" type="text" maxlength="40" placeholder="本日最高ギフト">
+                    <div class="widget-settings-panel" id="top-gift-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="top-gift-title">表示タイトル</label>
+                                <input id="top-gift-title" type="text" maxlength="40" placeholder="本日最高ギフト">
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-sender-display-mode">同点時の送信者表示</label>
+                                <select id="top-gift-sender-display-mode">
+                                    <option value="latest">最後に投げた人で上書き</option>
+                                    <option value="all">全員の名前を縦に並べる</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-metal-effect-enabled">発光エフェクト</label>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="top-gift-metal-effect-enabled">
+                                    <label for="top-gift-metal-effect-enabled">発光エフェクト</label>
+                                </div>
+                            </div>
                         </div>
-                        <div class="field">
-                            <label for="top-gift-sender-display-mode">同点時の送信者表示</label>
-                            <select id="top-gift-sender-display-mode">
-                                <option value="latest">最後に投げた人で上書き</option>
-                                <option value="all">全員の名前を縦に並べる</option>
-                            </select>
+                    </div>
+
+
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame top-gift-preview">
+                            <iframe id="top-gift-preview-frame" title="本日最高ギフトプレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>Like貢献通知</h2>
+                            <p class="subtext">指定タップ数ごとに名前と総タップ数をバルーン表示します。文字装飾と通知演出は上部の共通ヘッダー設定が反映されます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="like-contribution-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="like-contribution-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-like-contribution-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-like-contribution-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="like-contribution-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="like-contribution-title">表示タイトル</label>
+                                <input id="like-contribution-title" type="text" maxlength="40" placeholder="Likeありがとう！">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-interval">何タップごとに通知</label>
+                                <input id="like-contribution-interval" type="number" min="1" step="1" inputmode="numeric" placeholder="50">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-balloon-design">バルーンデザイン</label>
+                                <select id="like-contribution-balloon-design">
+                                    <option value="dark-glass">ダークガラス（デフォルト）</option>
+                                    <option value="horizontal-pill">横並びピル</option>
+                                    <option value="big-number">ビッグナンバー</option>
+                                    <option value="side-accent">サイドアクセント</option>
+                                    <option value="compact-banner">コンパクトバナー</option>
+                                    <option value="stacked-center">スタックセンター</option>
+                                    <option value="wa-stamp">和スタンプ</option>
+                                    <option value="singer-stage">シンガーステージ</option>
+                                    <option value="dance-floor">ダンスフロア</option>
+                                    <option value="kitchen-chalk">キッチン黒板</option>
+                                    <option value="paw-pop">ペット・もふもふ</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-count-font-size">タップ数 文字サイズ (px)</label>
+                                <input id="like-contribution-count-font-size" type="number" min="10" max="200" step="1" inputmode="numeric" placeholder="42">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-name-font-size">リスナー名 文字サイズ (px)</label>
+                                <input id="like-contribution-name-font-size" type="number" min="8" max="120" step="1" inputmode="numeric" placeholder="34">
+                            </div>
+                            <div class="field full">
+                                <label for="like-contribution-volume">通知音量</label>
+                                <div class="status-row">
+                                    <input id="like-contribution-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Like通知音量" style="flex: 1 1 220px;">
+                                    <div class="chip" id="like-contribution-volume-value">100%</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="action-row">
-                        <button type="button" class="ghost-button" id="open-top-gift-overlay-button">オーバーレイを開く</button>
-                        <button type="button" class="ghost-button" id="copy-top-gift-url-button">URLをコピー</button>
+                        <button type="button" class="ghost-button" id="test-like-contribution-button">通知デモ</button>
                     </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame like-contribution-preview">
+                            <iframe id="like-contribution-preview-frame" title="Like貢献通知プレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>瓶詰めギフト</h2>
+                            <p class="subtext">ギフトが飛ぶとそのギフト画像が瓶に落下して貯まっていきます。コイン数が多いほど画像が大きくなります。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="gift-jar-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="gift-jar-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-gift-jar-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-gift-jar-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label for="gift-jar-theme">瓶テーマ</label>
+                        <select id="gift-jar-theme" style="font-size:14px;padding:4px 8px;max-width:260px;">
+                            <option value="jar">瓶（デフォルト）</option>
+                            <option value="glass">ガラス瓶</option>
+                            <option value="barrel">木樽</option>
+                            <option value="cauldron">魔法の大釜</option>
+                            <option value="flask">実験フラスコ</option>
+                            <option value="pig">豚のガラス瓶</option>
+                            <option value="bee">蜂のガラス瓶</option>
+                        </select>
+                    </div>
+
+                    <div class="widget-settings-panel" id="gift-jar-settings-panel" hidden>
+                    <div class="field">
+                        <label for="gift-jar-drop-height">落下開始高さ</label>
+                        <input type="range" id="gift-jar-drop-height" min="0" max="1400" step="50" value="0" style="width:180px;vertical-align:middle;">
+                        <span id="gift-jar-drop-height-value" style="margin-left:8px;font-size:13px;">0 px</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="gift-jar-crush-threshold">あふれ時に潰すしきい値（0で無効）</label>
+                        <input type="number" id="gift-jar-crush-threshold" min="0" max="44999" step="1" value="1000" style="width:100px;">
+                        <span style="margin-left:6px;font-size:13px;">コイン未満</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="gift-jar-size-multiplier">ギフトサイズ係数</label>
+                        <input type="number" id="gift-jar-size-multiplier" min="0.1" max="5" step="0.05" value="1" style="width:80px;">
+                        <span style="margin-left:6px;font-size:13px;">倍（0.1〜5.0）</span>
+                    </div>
+                    </div><!-- /gift-jar-settings-panel -->
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="test-gift-jar-single-button">テストギフト送信</button>
+                        <button type="button" class="ghost-button" id="reset-gift-jar-button">瓶をリセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame gift-jar-preview">
+                            <iframe id="gift-jar-preview-frame" title="瓶詰めギフトプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="gift-jar-wall-settings-panel" hidden>
+                    <div class="gift-jar-wall-editor" id="gift-jar-wall-editor">
+                        <div class="gift-jar-wall-editor-head">
+                            <div>
+                                <div class="widget-preview-label">壁エディタ（管理用）</div>
+                                <div class="gift-jar-wall-editor-note" id="gift-jar-wall-editor-note">豚テーマ専用。ギフトを止めたい壁だけをマウスで線描きして保存します。線を描いていない場所は出入りできます。</div>
+                            </div>
+                            <div class="gift-jar-wall-editor-status" id="gift-jar-wall-editor-status">未保存</div>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-toolbar">
+                            <button type="button" class="ghost-button is-active" id="gift-jar-wall-paint-button">描く</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-erase-button">消す</button>
+                            <label for="gift-jar-wall-brush-size">ブラシ</label>
+                            <input type="range" id="gift-jar-wall-brush-size" min="4" max="48" step="2" value="18" style="width: 160px;">
+                            <span id="gift-jar-wall-brush-size-value" class="subtext" style="margin-top: 0;">18 px</span>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-stage-wrap">
+                            <div class="gift-jar-wall-editor-stage" id="gift-jar-wall-editor-stage">
+                                <img class="gift-jar-wall-editor-background" id="gift-jar-wall-editor-background" alt="wall editor background" hidden>
+                                <canvas class="gift-jar-wall-editor-canvas" id="gift-jar-wall-editor-canvas" width="540" height="540"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-toolbar">
+                            <button type="button" class="ghost-button" id="gift-jar-wall-load-button">保存済み壁を読み込む</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-clear-button">キャンバスを空にする</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-delete-button">保存壁を削除</button>
+                            <button type="button" class="primary" id="gift-jar-wall-save-button">今の壁線を初期壁として保存</button>
+                        </div>
+                    </div>
+                    </div><!-- /gift-jar-wall-settings-panel -->
                 </article>
             </div>
         </section>
@@ -645,11 +1158,81 @@
                     <h2>目標ギフト</h2>
                     <p class="subtext">文字装飾と通知演出は上部の共通ヘッダー設定がそのまま反映されます。</p>
                 </div>
+                <button type="button" class="settings-toggle-btn" data-panel-id="goal-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+            </div>
+
+            <div class="widget-settings-panel" id="goal-gift-settings-panel" hidden>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="goal-gift-note-font-size">備考文字サイズ</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-note-font-size" min="8" max="96" step="1" value="28" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-achievement-badge-style">達成バッジ スタイル</label>
+                        <select id="goal-gift-achievement-badge-style">
+                            <option value="stamp-red">赤スタンプ</option>
+                            <option value="stamp-blue">青スタンプ</option>
+                            <option value="stamp-gold">金スタンプ</option>
+                            <option value="stamp-green">緑スタンプ</option>
+                            <option value="stamp-dark">黒スタンプ</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-achievement-badge-size">達成バッジ 幅</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-achievement-badge-size" min="40" max="400" step="4" value="152" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="widget-preview goal-panel-preview">
+                <div class="widget-preview-label">サンプルプレビュー</div>
+                <div class="widget-preview-frame goal-gift-preview">
+                    <iframe id="goal-gift-preview-frame" title="目標ギフトサンプルプレビュー" loading="eager"></iframe>
+                </div>
             </div>
 
             <div class="goal-list" id="goal-gift-list"></div>
             <div class="gift-suggestion-panel" id="goal-gift-suggestion-panel" hidden></div>
         </section>
+    </div>
+
+    <div class="admin-settings-modal" id="widget-settings-modal" hidden>
+        <div class="widget-modal-card" role="dialog" aria-modal="true" aria-labelledby="widget-settings-modal-title">
+            <div class="widget-modal-head">
+                <h2 id="widget-settings-modal-title"></h2>
+                <button type="button" class="ghost-button" id="widget-settings-modal-close">✕ 閉じる</button>
+            </div>
+            <div class="widget-modal-body" id="widget-settings-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="admin-settings-modal" id="goal-row-settings-modal" hidden>
+        <div class="widget-modal-card" role="dialog" aria-modal="true" aria-labelledby="goal-row-settings-modal-title" style="width:min(440px,100%)">
+            <div class="widget-modal-head">
+                <h2 id="goal-row-settings-modal-title"></h2>
+                <button type="button" class="ghost-button" id="goal-row-settings-modal-close">✕ 閉じる</button>
+            </div>
+            <div class="widget-settings-panel" style="border:none;padding:0;background:transparent;">
+                <div class="field">
+                    <label for="goal-row-modal-note">備考 <span style="font-weight:400;opacity:0.7;">(オーバーレイに表示)</span></label>
+                    <input type="text" id="goal-row-modal-note" maxlength="120" placeholder="あと少し、イベントミッション…" autocomplete="off">
+                </div>
+                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                    <input type="checkbox" id="goal-row-modal-count-unique">
+                    <label for="goal-row-modal-count-unique" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">1人1個 <span style="font-weight:400;opacity:0.7;">— 同じユーザーは1回だけカウント</span></label>
+                </div>
+                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                    <input type="checkbox" id="goal-row-modal-reset-at-midnight">
+                    <label for="goal-row-modal-reset-at-midnight" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">0時リセット <span style="font-weight:400;opacity:0.7;">— 毎日0時に現在個数をリセット</span></label>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -668,14 +1251,74 @@
         const contributorsFontSelect = document.getElementById('contributors-font');
         const contributorsTextStyleSelect = document.getElementById('contributors-text-style');
         const contributorsStrokeWidthInput = document.getElementById('contributors-stroke-width');
+        const goalGiftNoteFontSizeInput = document.getElementById('goal-gift-note-font-size');
+        const goalGiftAchievementBadgeSizeInput = document.getElementById('goal-gift-achievement-badge-size');
+        const goalGiftAchievementBadgeStyleSelect = document.getElementById('goal-gift-achievement-badge-style');
         const sharedSoundKeySelect = document.getElementById('shared-sound-key');
         const sharedEffectKeySelect = document.getElementById('shared-effect-key');
         const testSharedSoundButton = document.getElementById('test-shared-sound-button');
         const topGiftUrl = document.getElementById('top-gift-url');
+        const likeContributionUrl = document.getElementById('like-contribution-url');
+        const giftJarUrl = document.getElementById('gift-jar-url');
+        const contributorsPreviewFrame = document.getElementById('contributors-preview-frame');
+        const topGiftPreviewFrame = document.getElementById('top-gift-preview-frame');
+        const likeContributionPreviewFrame = document.getElementById('like-contribution-preview-frame');
+        const giftJarPreviewFrame = document.getElementById('gift-jar-preview-frame');
+        const giftJarWallEditor = document.getElementById('gift-jar-wall-editor');
+        const giftJarWallEditorNote = document.getElementById('gift-jar-wall-editor-note');
+        const giftJarWallEditorStatus = document.getElementById('gift-jar-wall-editor-status');
+        const giftJarWallEditorBackground = document.getElementById('gift-jar-wall-editor-background');
+        const giftJarWallEditorCanvas = document.getElementById('gift-jar-wall-editor-canvas');
+        const giftJarWallPaintButton = document.getElementById('gift-jar-wall-paint-button');
+        const giftJarWallEraseButton = document.getElementById('gift-jar-wall-erase-button');
+        const giftJarWallBrushSizeInput = document.getElementById('gift-jar-wall-brush-size');
+        const giftJarWallBrushSizeValue = document.getElementById('gift-jar-wall-brush-size-value');
+        const giftJarWallLoadButton = document.getElementById('gift-jar-wall-load-button');
+        const giftJarWallClearButton = document.getElementById('gift-jar-wall-clear-button');
+        const giftJarWallDeleteButton = document.getElementById('gift-jar-wall-delete-button');
+        const giftJarWallSaveButton = document.getElementById('gift-jar-wall-save-button');
+        const giftJarWallEditorContext = giftJarWallEditorCanvas.getContext('2d', { willReadFrequently: true });
+        const GIFT_JAR_EDITOR_CANVAS_SIZE = 540;
+        const GIFT_JAR_EDITOR_WIDGET_SIZE = 1080;
+        const GIFT_JAR_EDITOR_SCALE = GIFT_JAR_EDITOR_WIDGET_SIZE / GIFT_JAR_EDITOR_CANVAS_SIZE;
+        const GIFT_JAR_EDITOR_BACKGROUND_BY_THEME = {
+            pig: {
+                src: '/widgets/pig.png',
+                left: -10,
+                top: 75,
+                width: 560,
+                height: 373
+            }
+        };
+        let giftJarWallProfiles = {};
+        let giftJarWallEditorEnabled = false;
+        let giftJarWallEditorTool = 'paint';
+        let giftJarWallEditorIsDrawing = false;
+        let giftJarWallEditorLastPoint = null;
+
+        function resizeGiftJarPreview() {
+            const container = giftJarPreviewFrame && giftJarPreviewFrame.parentElement;
+            if (!container) return;
+            const s = container.clientWidth / 1080;
+            giftJarPreviewFrame.style.transform = `scale(${s})`;
+            container.style.height = (1080 * s) + 'px';
+        }
+        resizeGiftJarPreview();
+        window.addEventListener('resize', resizeGiftJarPreview);
+        const goalGiftPreviewFrame = document.getElementById('goal-gift-preview-frame');
         const goalGiftList = document.getElementById('goal-gift-list');
         const goalGiftSuggestionPanel = document.getElementById('goal-gift-suggestion-panel');
         const titleInput = document.getElementById('top-gift-title');
         const senderDisplayModeInput = document.getElementById('top-gift-sender-display-mode');
+        const metalEffectEnabledInput = document.getElementById('top-gift-metal-effect-enabled');
+        const likeContributionTitleInput = document.getElementById('like-contribution-title');
+        const likeContributionIntervalInput = document.getElementById('like-contribution-interval');
+        const likeContributionBalloonDesignSelect = document.getElementById('like-contribution-balloon-design');
+        const likeContributionVolumeInput = document.getElementById('like-contribution-volume');
+        const likeContributionVolumeValue = document.getElementById('like-contribution-volume-value');
+        const likeContributionCountFontSizeInput = document.getElementById('like-contribution-count-font-size');
+        const likeContributionNameFontSizeInput = document.getElementById('like-contribution-name-font-size');
+        const testLikeContributionButton = document.getElementById('test-like-contribution-button');
         const contributorsPrevDayButton = document.getElementById('contributors-prev-day-button');
         const contributorsNextDayButton = document.getElementById('contributors-next-day-button');
 
@@ -691,8 +1334,15 @@
             },
             widgetUrls: {
                 contributorsOverlayUrl: '',
+                contributorsLoaderUrl: '',
                 topGiftOverlayUrl: '',
-                goalGiftsOverlayUrl: ''
+                topGiftLoaderUrl: '',
+                likeContributionOverlayUrl: '',
+                likeContributionLoaderUrl: '',
+                goalGiftsOverlayUrl: '',
+                goalGiftsLoaderUrl: '',
+                giftJarOverlayUrl: '',
+                giftJarLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -700,13 +1350,17 @@
             contributorsFontKey: 'default',
             contributorsColorTheme: 'gold-night',
             contributorsStrokeWidth: 4,
+            goalGiftNoteFontSize: 28,
+            goalGiftAchievementBadgeSize: 152,
+            goalGiftAchievementBadgeStyle: 'stamp-red',
             sharedWidgetFeedback: {
                 soundEnabled: true,
                 effectEnabled: true,
-                soundKey: 'chime',
+                soundKey: 'business08',
                 effectKey: 'glow'
             },
             topGiftSettings: null,
+            likeContributionSettings: null,
             goalGiftItems: [],
             giftCatalog: [],
             giftCatalogByName: new Map()
@@ -785,11 +1439,242 @@
         let activeGoalGiftSuggestionIndex = -1;
         let topGiftAutosaveTimer = null;
         let topGiftAutosavePromise = null;
+        let likeContributionAutosaveTimer = null;
+        let likeContributionAutosavePromise = null;
         let goalGiftAutosaveTimer = null;
         let goalGiftAutosavePromise = null;
         let pendingTopGiftSettings = null;
         let pendingGoalGiftItems = null;
         const goalGiftNotePlaceholderByRow = new Map();
+
+        function getGiftJarWallTheme() {
+            const themeSelect = document.getElementById('gift-jar-theme');
+            return themeSelect ? themeSelect.value : 'glass';
+        }
+
+        function setGiftJarWallEditorStatus(text) {
+            giftJarWallEditorStatus.textContent = text;
+        }
+
+        function setGiftJarWallEditorTool(nextTool) {
+            giftJarWallEditorTool = nextTool === 'erase' ? 'erase' : 'paint';
+            giftJarWallPaintButton.classList.toggle('is-active', giftJarWallEditorTool === 'paint');
+            giftJarWallEraseButton.classList.toggle('is-active', giftJarWallEditorTool === 'erase');
+        }
+
+        function setGiftJarWallEditorControlsDisabled(disabled) {
+            giftJarWallPaintButton.disabled = disabled;
+            giftJarWallEraseButton.disabled = disabled;
+            giftJarWallBrushSizeInput.disabled = disabled;
+            giftJarWallLoadButton.disabled = disabled;
+            giftJarWallClearButton.disabled = disabled;
+            giftJarWallDeleteButton.disabled = disabled;
+            giftJarWallSaveButton.disabled = disabled;
+            giftJarWallEditorCanvas.style.pointerEvents = disabled ? 'none' : 'auto';
+            giftJarWallEditorCanvas.style.opacity = disabled ? '0.55' : '1';
+        }
+
+        function clearGiftJarWallEditorCanvas() {
+            giftJarWallEditorContext.clearRect(0, 0, GIFT_JAR_EDITOR_CANVAS_SIZE, GIFT_JAR_EDITOR_CANVAS_SIZE);
+            setGiftJarWallEditorStatus('キャンバスを初期化しました');
+        }
+
+        function paintGiftJarWallEditorFromProfile(profile) {
+            giftJarWallEditorContext.clearRect(0, 0, GIFT_JAR_EDITOR_CANVAS_SIZE, GIFT_JAR_EDITOR_CANVAS_SIZE);
+            if (!profile || !Array.isArray(profile.wallPoints) || profile.wallPoints.length < 4) {
+                setGiftJarWallEditorStatus('保存済み壁はありません');
+                return;
+            }
+            giftJarWallEditorContext.save();
+            giftJarWallEditorContext.strokeStyle = 'rgba(194, 65, 12, 0.65)';
+            giftJarWallEditorContext.lineWidth = 6;
+            giftJarWallEditorContext.lineCap = 'round';
+            giftJarWallEditorContext.lineJoin = 'round';
+            giftJarWallEditorContext.beginPath();
+            for (let index = 0; index < profile.wallPoints.length; index++) {
+                const point = profile.wallPoints[index];
+                const x = Math.max(0, Math.min(GIFT_JAR_EDITOR_CANVAS_SIZE - 1, point[0] / GIFT_JAR_EDITOR_SCALE));
+                const y = Math.max(0, Math.min(GIFT_JAR_EDITOR_CANVAS_SIZE - 1, point[1] / GIFT_JAR_EDITOR_SCALE));
+                if (index === 0) {
+                    giftJarWallEditorContext.moveTo(x, y);
+                } else {
+                    giftJarWallEditorContext.lineTo(x, y);
+                }
+            }
+            giftJarWallEditorContext.closePath();
+            giftJarWallEditorContext.stroke();
+            giftJarWallEditorContext.restore();
+            setGiftJarWallEditorStatus('保存済み壁を読み込みました');
+        }
+
+        function getGiftJarWallEditorBrushRadius() {
+            return Math.max(2, Number(giftJarWallBrushSizeInput.value) || 18);
+        }
+
+        function getGiftJarWallEditorPoint(event) {
+            const rect = giftJarWallEditorCanvas.getBoundingClientRect();
+            const scaleX = GIFT_JAR_EDITOR_CANVAS_SIZE / Math.max(rect.width, 1);
+            const scaleY = GIFT_JAR_EDITOR_CANVAS_SIZE / Math.max(rect.height, 1);
+            return {
+                x: Math.max(0, Math.min(GIFT_JAR_EDITOR_CANVAS_SIZE - 1, (event.clientX - rect.left) * scaleX)),
+                y: Math.max(0, Math.min(GIFT_JAR_EDITOR_CANVAS_SIZE - 1, (event.clientY - rect.top) * scaleY))
+            };
+        }
+
+        function drawGiftJarWallEditorStroke(fromPoint, toPoint) {
+            const isErase = giftJarWallEditorTool === 'erase';
+            giftJarWallEditorContext.save();
+            giftJarWallEditorContext.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
+            giftJarWallEditorContext.strokeStyle = 'rgba(194, 65, 12, 0.42)';
+            giftJarWallEditorContext.lineWidth = getGiftJarWallEditorBrushRadius() * 2;
+            giftJarWallEditorContext.lineCap = 'round';
+            giftJarWallEditorContext.lineJoin = 'round';
+            giftJarWallEditorContext.beginPath();
+            giftJarWallEditorContext.moveTo(fromPoint.x, fromPoint.y);
+            giftJarWallEditorContext.lineTo(toPoint.x, toPoint.y);
+            giftJarWallEditorContext.stroke();
+            giftJarWallEditorContext.restore();
+        }
+
+        function simplifyGiftJarRows(rows) {
+            if (rows.length <= 2) return rows;
+            const simplified = [rows[0]];
+            let lastKept = rows[0];
+            for (let i = 1; i < rows.length - 1; i++) {
+                const row = rows[i];
+                const yGap = row.y - lastKept.y;
+                const leftGap = Math.abs(row.left - lastKept.left);
+                const rightGap = Math.abs(row.right - lastKept.right);
+                if (yGap >= 14 || leftGap >= 10 || rightGap >= 10) {
+                    simplified.push(row);
+                    lastKept = row;
+                }
+            }
+            simplified.push(rows[rows.length - 1]);
+            return simplified;
+        }
+
+        function buildGiftJarProfileFromWallRuns(rows) {
+            const passableRows = [];
+            for (const row of rows) {
+                if (!Array.isArray(row.runs) || row.runs.length < 2) continue;
+                const leftRun = row.runs[0];
+                const rightRun = row.runs[row.runs.length - 1];
+                const left = leftRun.end + 1;
+                const right = rightRun.start - 1;
+                if (right - left < 3) continue;
+                passableRows.push({
+                    y: Math.max(0, Math.min(1080, Math.round((row.y + 0.5) * GIFT_JAR_EDITOR_SCALE))),
+                    left: Math.max(0, Math.min(1080, Math.round(left * GIFT_JAR_EDITOR_SCALE))),
+                    right: Math.max(0, Math.min(1080, Math.round((right + 1) * GIFT_JAR_EDITOR_SCALE)))
+                });
+            }
+
+            if (passableRows.length < 4) {
+                throw new Error('壁線が足りません。左右の壁を線で描いてください。');
+            }
+
+            const widthStops = simplifyGiftJarRows(passableRows);
+            const leftPoints = widthStops.map((row) => [row.left, row.y]);
+            const rightPoints = widthStops.map((row) => [row.right, row.y]).reverse();
+            const firstRow = widthStops[0];
+            return {
+                dropSlot: {
+                    y: firstRow.y,
+                    left: firstRow.left,
+                    right: firstRow.right
+                },
+                widthStops,
+                wallPoints: leftPoints.concat(rightPoints)
+            };
+        }
+
+        function buildGiftJarWallProfileFromCanvas() {
+            const { data, width, height } = giftJarWallEditorContext.getImageData(0, 0, GIFT_JAR_EDITOR_CANVAS_SIZE, GIFT_JAR_EDITOR_CANVAS_SIZE);
+            const rows = [];
+            for (let y = 0; y < height; y++) {
+                const runs = [];
+                let runStart = -1;
+                for (let x = 0; x < width; x++) {
+                    const alpha = data[(y * width + x) * 4 + 3];
+                    if (alpha > 20) {
+                        if (runStart === -1) runStart = x;
+                    } else if (runStart !== -1) {
+                        runs.push({ start: runStart, end: x - 1 });
+                        runStart = -1;
+                    }
+                }
+                if (runStart !== -1) runs.push({ start: runStart, end: width - 1 });
+                if (runs.length === 0) continue;
+                rows.push({ y, runs });
+            }
+            return buildGiftJarProfileFromWallRuns(rows);
+        }
+
+        function refreshGiftJarWallEditorThemeState() {
+            if (!giftJarWallEditorEnabled) {
+                giftJarWallEditor.hidden = true;
+                return;
+            }
+            giftJarWallEditor.hidden = false;
+            const theme = getGiftJarWallTheme();
+            const background = GIFT_JAR_EDITOR_BACKGROUND_BY_THEME[theme];
+            const supported = Boolean(background);
+            setGiftJarWallEditorControlsDisabled(!supported);
+            if (!supported) {
+                giftJarWallEditorBackground.hidden = true;
+                clearGiftJarWallEditorCanvas();
+                giftJarWallEditorNote.textContent = 'このエディタは豚テーマ専用です。瓶テーマを「豚のガラス瓶」に切り替えると使えます。';
+                setGiftJarWallEditorStatus('豚テーマに切り替えてください');
+                return;
+            }
+            giftJarWallEditorBackground.hidden = false;
+            giftJarWallEditorBackground.src = background.src;
+            giftJarWallEditorBackground.style.left = `${background.left}px`;
+            giftJarWallEditorBackground.style.top = `${background.top}px`;
+            giftJarWallEditorBackground.style.width = `${background.width}px`;
+            giftJarWallEditorBackground.style.height = `${background.height}px`;
+            giftJarWallEditorNote.textContent = '豚テーマ専用。ギフトを止めたい壁だけをマウスで線描きして保存します。線を描いていない場所は出入りできます。保存はローカル管理端末からのみ許可します。';
+            paintGiftJarWallEditorFromProfile(giftJarWallProfiles[theme] || null);
+        }
+
+        async function saveGiftJarWallProfile() {
+            const theme = getGiftJarWallTheme();
+            if (!GIFT_JAR_EDITOR_BACKGROUND_BY_THEME[theme]) {
+                setStatus(saveStatus, '設定状態: このテーマの壁エディタはまだ用意していません。', 'warn');
+                return;
+            }
+            const customProfile = buildGiftJarWallProfileFromCanvas();
+            setStatus(saveStatus, '設定状態: 壁プロファイルを保存中...', 'warn');
+            const response = await fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customProfileTheme: theme, customProfile })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || '壁プロファイルを保存できませんでした。');
+            giftJarWallProfiles = payload.customProfiles || {};
+            setGiftJarWallEditorStatus('保存しました');
+            setStatus(saveStatus, '設定状態: 壁プロファイルを保存しました。', 'ok');
+            refreshGiftJarPreview({ forceReload: true });
+        }
+
+        async function deleteGiftJarWallProfile() {
+            const theme = getGiftJarWallTheme();
+            setStatus(saveStatus, '設定状態: 保存済み壁を削除中...', 'warn');
+            const response = await fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clearCustomProfileTheme: theme })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || '保存済み壁を削除できませんでした。');
+            giftJarWallProfiles = payload.customProfiles || {};
+            clearGiftJarWallEditorCanvas();
+            setGiftJarWallEditorStatus('保存済み壁を削除しました');
+            setStatus(saveStatus, '設定状態: 保存済み壁を削除しました。', 'ok');
+            refreshGiftJarPreview({ forceReload: true });
+        }
         const sharedFontOptions = [
             {
                 key: 'default',
@@ -895,6 +1780,26 @@
                 key: 'pixel-code',
                 label: 'PIXEL CODE',
                 family: '"DotGothic16", "Noto Sans JP", sans-serif'
+            },
+            {
+                key: 'sawarabi-mincho',
+                label: 'Sawarabi Mincho「さわらび明朝」',
+                family: '"Sawarabi Mincho", serif'
+            },
+            {
+                key: 'potta-one',
+                label: 'Potta One「ボールドインパクト」',
+                family: '"Potta One", sans-serif'
+            },
+            {
+                key: 'murecho-thin',
+                label: 'Murecho Thin「モダン細字」',
+                family: '"Murecho", sans-serif'
+            },
+            {
+                key: 'stick',
+                label: 'Stick「超細字」',
+                family: '"Stick", sans-serif'
             }
         ];
         const sharedFontOptionMap = new Map(sharedFontOptions.map((option) => [option.key, option]));
@@ -926,21 +1831,29 @@
             { key: 'champagne-shine', label: 'Champagne Shine', preview: 'color:#f8e7b5;-webkit-text-stroke:3px #6b4f2a;' },
             { key: 'royal-velvet', label: 'Royal Velvet', preview: 'color:#d8b4fe;-webkit-text-stroke:3px #312e81;' },
             { key: 'emerald-luxe', label: 'Emerald Luxe', preview: 'color:#a7f3d0;-webkit-text-stroke:3px #14532d;' },
-            { key: 'sunrise-opal', label: 'Sunrise Opal', preview: 'color:#fdba74;-webkit-text-stroke:3px #9a3412;' }
+            { key: 'sunrise-opal', label: 'Sunrise Opal', preview: 'color:#fdba74;-webkit-text-stroke:3px #9a3412;' },
+            { key: 'prism-burst', label: 'Prism Burst', preview: 'color:#7dd3fc;-webkit-text-stroke:3px #4338ca;' },
+            { key: 'tropical-punch', label: 'Tropical Punch', preview: 'color:#fb7185;-webkit-text-stroke:3px #7f1d1d;' },
+            { key: 'lagoon-shine', label: 'Lagoon Shine', preview: 'color:#2dd4bf;-webkit-text-stroke:3px #155e75;' },
+            { key: 'berry-mist', label: 'Berry Mist', preview: 'color:#f472b6;-webkit-text-stroke:3px #701a75;' },
+            { key: 'polar-neon', label: 'Polar Neon', preview: 'color:#67e8f9;-webkit-text-stroke:3px #1e293b;' },
+            { key: 'citrus-splash', label: 'Citrus Splash', preview: 'color:#a3e635;-webkit-text-stroke:3px #166534;' }
         ];
         const goalGiftTextStyleOptions = sharedTextStyleOptions;
         const goalGiftTextStyleOptionMap = new Map(goalGiftTextStyleOptions.map((option) => [option.key, option]));
         const MAX_GOAL_GIFT_STROKE_WIDTH = 24;
+        const DEFAULT_GOAL_GIFT_NOTE_FONT_SIZE = 28;
+        const MIN_GOAL_GIFT_NOTE_FONT_SIZE = 8;
+        const MAX_GOAL_GIFT_NOTE_FONT_SIZE = 96;
+        const DEFAULT_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE = 152;
+        const MIN_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE = 40;
+        const MAX_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE = 400;
+        const DEFAULT_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLE = 'stamp-red';
+        const ALLOWED_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLES = new Set(['stamp-red', 'stamp-blue', 'stamp-gold', 'stamp-green', 'stamp-dark']);
         const contributorsTextStyleOptions = sharedTextStyleOptions;
         const contributorsTextStyleOptionMap = new Map(contributorsTextStyleOptions.map((option) => [option.key, option]));
         const MAX_CONTRIBUTORS_STROKE_WIDTH = 12;
         const sharedFeedbackSoundOptions = [
-            { key: 'chime', label: 'Soft Bell' },
-            { key: 'magic', label: 'Sparkle Arp' },
-            { key: 'luxury', label: 'Victory Fanfare' },
-            { key: 'crystal', label: 'Glass Ping' },
-            { key: 'shimmer', label: 'Shimmer Sweep' },
-            { key: 'glint', label: 'Kiran Flash' },
             { key: 'business08', label: 'Business 08' },
             { key: 'business09', label: 'Business 09' },
             { key: 'business10', label: 'Business 10' },
@@ -1005,7 +1918,7 @@
             return {
                 soundEnabled: value?.soundEnabled !== false,
                 effectEnabled: value?.effectEnabled !== false,
-                soundKey: sharedFeedbackSoundOptionMap.has(normalizedSoundKey) ? normalizedSoundKey : 'chime',
+                soundKey: sharedFeedbackSoundOptionMap.has(normalizedSoundKey) ? normalizedSoundKey : 'business08',
                 effectKey: sharedFeedbackEffectOptionMap.has(normalizedEffectKey) ? normalizedEffectKey : 'glow'
             };
         }
@@ -1032,7 +1945,7 @@
             const selectedValue = String(sharedSoundKeySelect.value || '').trim().toLowerCase();
             return {
                 soundEnabled: selectedValue !== SHARED_FEEDBACK_DISABLED_VALUE,
-                soundKey: sharedFeedbackSoundOptionMap.has(selectedValue) ? selectedValue : 'chime'
+                soundKey: sharedFeedbackSoundOptionMap.has(selectedValue) ? selectedValue : 'business08'
             };
         }
 
@@ -1095,6 +2008,29 @@
             }
 
             return Math.min(normalizedValue, MAX_GOAL_GIFT_STROKE_WIDTH);
+        }
+
+        function normalizeGoalGiftNoteFontSize(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_NOTE_FONT_SIZE) {
+                return DEFAULT_GOAL_GIFT_NOTE_FONT_SIZE;
+            }
+
+            return Math.min(normalizedValue, MAX_GOAL_GIFT_NOTE_FONT_SIZE);
+        }
+
+        function normalizeGoalGiftAchievementBadgeSize(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE) {
+                return DEFAULT_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE;
+            }
+
+            return Math.min(normalizedValue, MAX_GOAL_GIFT_ACHIEVEMENT_BADGE_SIZE);
+        }
+
+        function normalizeGoalGiftAchievementBadgeStyle(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return ALLOWED_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLES.has(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLE;
         }
 
         function normalizeContributorsTextStyleKey(value) {
@@ -1170,6 +2106,15 @@
             contributorsStrokeWidthInput.value = String(normalizeContributorsStrokeWidth(state.contributorsStrokeWidth));
         }
 
+        function syncGoalGiftNoteFontSizeControl() {
+            goalGiftNoteFontSizeInput.value = String(normalizeGoalGiftNoteFontSize(state.goalGiftNoteFontSize));
+        }
+
+        function syncGoalGiftAchievementBadgeControls() {
+            goalGiftAchievementBadgeSizeInput.value = String(normalizeGoalGiftAchievementBadgeSize(state.goalGiftAchievementBadgeSize));
+            goalGiftAchievementBadgeStyleSelect.value = normalizeGoalGiftAchievementBadgeStyle(state.goalGiftAchievementBadgeStyle);
+        }
+
         function syncSharedFeedbackControls() {
             const feedback = normalizeFeedbackSettings(state.sharedWidgetFeedback);
             sharedSoundKeySelect.innerHTML = getSharedFeedbackSoundOptionsMarkup(feedback.soundKey);
@@ -1189,15 +2134,6 @@
                 element.classList.add(tone);
             }
             element.textContent = text;
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
         }
 
         function getGoalGiftNotePlaceholder(rowIndex) {
@@ -1251,7 +2187,7 @@
         function buildGoalGiftOverlayUrl(slot, options = {}) {
             const baseUrl = options.preview
                 ? '/overlays/goal-gifts'
-                : (state.widgetUrls.goalGiftsOverlayUrl || '');
+                : (state.widgetUrls.goalGiftsLoaderUrl || state.widgetUrls.goalGiftsOverlayUrl || '');
             if (!baseUrl) {
                 return '';
             }
@@ -1260,11 +2196,151 @@
             const params = [`slot=${encodeURIComponent(String(slot))}`];
             if (options.preview) {
                 params.push('preview=1');
+                params.push('sample=1');
+                params.push('card=1');
             }
             if (options.forceReload) {
                 params.push(`v=${encodeURIComponent(String(Date.now()))}`);
             }
             return `${baseUrl}${separator}${params.join('&')}`;
+        }
+
+        function buildPreviewUrl(url, options = {}) {
+            if (!url) {
+                return '';
+            }
+
+            try {
+                const previewUrl = new URL(url, window.location.origin);
+                if (options.forceReload) {
+                    previewUrl.searchParams.set('previewTs', String(Date.now()));
+                }
+                return previewUrl.toString();
+            } catch {
+                return url;
+            }
+        }
+
+        function updatePreviewFrame(frame, url, options = {}) {
+            if (!frame) {
+                return;
+            }
+
+            const nextUrl = buildPreviewUrl(url, options);
+            if (!nextUrl) {
+                frame.removeAttribute('src');
+                delete frame.dataset.previewSrc;
+                return;
+            }
+
+            if (!options.forceReload && frame.dataset.previewSrc === nextUrl) {
+                return;
+            }
+
+            frame.dataset.previewSrc = nextUrl;
+            frame.removeAttribute('srcdoc');
+            frame.src = nextUrl;
+        }
+
+        function refreshContributorsPreview(options = {}) {
+            const baseUrl = getContributorsOverlayUrl() || '/overlays/contributors';
+
+            try {
+                const previewUrl = new URL(baseUrl, window.location.origin);
+                previewUrl.searchParams.set('preview', '1');
+                previewUrl.searchParams.set('sample', '1');
+                previewUrl.searchParams.set('card', '1');
+                updatePreviewFrame(contributorsPreviewFrame, previewUrl.toString(), options);
+            } catch {
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                updatePreviewFrame(contributorsPreviewFrame, `${baseUrl}${separator}preview=1&sample=1&card=1`, options);
+            }
+        }
+
+        function buildTopGiftPreviewUrl() {
+            const baseUrl = state.widgetUrls.topGiftOverlayUrl || '/overlays/top-gift';
+
+            try {
+                const previewUrl = new URL(baseUrl, window.location.origin);
+                previewUrl.searchParams.set('preview', '1');
+                previewUrl.searchParams.set('sample', '1');
+                previewUrl.searchParams.set('card', '1');
+                return previewUrl.toString();
+            } catch {
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                return `${baseUrl}${separator}preview=1&sample=1&card=1`;
+            }
+        }
+
+        function refreshTopGiftPreview(options = {}) {
+            updatePreviewFrame(topGiftPreviewFrame, buildTopGiftPreviewUrl(), options);
+        }
+
+        function buildLikeContributionPreviewUrl() {
+            const baseUrl = state.widgetUrls.likeContributionOverlayUrl || '/overlays/like-contribution';
+
+            try {
+                const previewUrl = new URL(baseUrl, window.location.origin);
+                previewUrl.searchParams.set('preview', '1');
+                previewUrl.searchParams.set('sample', '1');
+                previewUrl.searchParams.set('card', '1');
+                return previewUrl.toString();
+            } catch {
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                return `${baseUrl}${separator}preview=1&sample=1&card=1`;
+            }
+        }
+
+        function refreshLikeContributionPreview(options = {}) {
+            updatePreviewFrame(likeContributionPreviewFrame, buildLikeContributionPreviewUrl(), options);
+        }
+
+        function buildGiftJarPreviewUrl() {
+            const baseUrl = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'preview=1';
+            }
+        }
+        function buildGiftJarSlaveUrl() {
+            const baseUrl = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('slave', '1');
+                return u.pathname + u.search;
+            } catch {
+                return baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'slave=1';
+            }
+        }
+        function buildGiftJarSlaveFullUrl() {
+            const baseUrl = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('slave', '1');
+                return u.toString();
+            } catch {
+                return baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'slave=1';
+            }
+        }
+
+        function refreshGiftJarPreview(options = {}) {
+            updatePreviewFrame(giftJarPreviewFrame, buildGiftJarPreviewUrl(), options);
+        }
+
+        function refreshGoalGiftPreviews(options = {}) {
+            const slot1 = Array.isArray(state.goalGiftItems) ? state.goalGiftItems[0] : null;
+            const baseUrl = buildGoalGiftOverlayUrl(1, { preview: true });
+            let url = baseUrl;
+            if (slot1?.giftImage) {
+                url += '&previewGiftImage=' + encodeURIComponent(slot1.giftImage);
+            }
+            if (slot1?.giftName || slot1?.displayName) {
+                url += '&previewGiftName=' + encodeURIComponent(slot1.displayName || slot1.giftName);
+            }
+            updatePreviewFrame(goalGiftPreviewFrame, url, options);
         }
 
         function refreshContributorsOverlayControls() {
@@ -1282,7 +2358,8 @@
                 contributorsDayLabel.textContent = `現在表示: 0時～24時 (${formatDisplayDayLabel(state.displayDayKey || state.todayDayKey)})`;
             }
 
-            contributorsUrl.textContent = getContributorsOverlayUrl() || '未取得';
+            contributorsUrl.textContent = state.widgetUrls.contributorsLoaderUrl || getContributorsOverlayUrl() || '未取得';
+            refreshContributorsPreview();
         }
 
         async function setContributorsDisplayDay(dayKey) {
@@ -1337,13 +2414,87 @@
 
             titleInput.value = settings.title || '';
             senderDisplayModeInput.value = settings.senderDisplayMode === 'all' ? 'all' : 'latest';
+            metalEffectEnabledInput.checked = settings.metalEffectKey === 'glow';
             pendingTopGiftSettings = null;
+            refreshTopGiftPreview();
+        }
+
+        function normalizeLikeContributionInterval(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed <= 0) {
+                return 50;
+            }
+
+            return Math.min(parsed, 100000);
+        }
+
+        // バルーンデザインキーは select#like-contribution-balloon-design の option から動的に取得。
+        // 追加時は <select> に option を足すだけでよい。
+        // backend/index.js の ALLOWED_BALLOON_DESIGN_KEYS と
+        // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
+        function normalizeLikeContributionBalloonDesignKey(value) {
+            const key = String(value || '').trim().toLowerCase();
+            const validKeys = Array.from(likeContributionBalloonDesignSelect.options).map((o) => o.value);
+            return validKeys.includes(key) ? key : 'dark-glass';
+        }
+
+        function normalizeLikeContributionSoundVolume(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed)) {
+                return 100;
+            }
+
+            return Math.max(0, Math.min(100, parsed));
+        }
+
+        function normalizeLikeContributionCountFontSize(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 10) return 42;
+            return Math.min(parsed, 200);
+        }
+
+        function normalizeLikeContributionNameFontSize(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 8) return 34;
+            return Math.min(parsed, 120);
+        }
+
+        function syncLikeContributionVolumeControl(value) {
+            const normalizedValue = normalizeLikeContributionSoundVolume(value);
+            likeContributionVolumeInput.value = String(normalizedValue);
+            likeContributionVolumeValue.textContent = `${normalizedValue}%`;
+        }
+
+        function applyLikeContributionSettingsToForm(settings) {
+            if (!settings) {
+                return;
+            }
+
+            likeContributionTitleInput.value = settings.title || '';
+            likeContributionIntervalInput.value = String(normalizeLikeContributionInterval(settings.interval));
+            syncLikeContributionVolumeControl(settings.soundVolume);
+            likeContributionBalloonDesignSelect.value = normalizeLikeContributionBalloonDesignKey(settings.balloonDesignKey);
+            likeContributionCountFontSizeInput.value = String(normalizeLikeContributionCountFontSize(settings.countFontSize ?? 42));
+            likeContributionNameFontSizeInput.value = String(normalizeLikeContributionNameFontSize(settings.nameFontSize ?? 34));
+            refreshLikeContributionPreview();
         }
 
         function getDraftTopGiftSettings() {
             return {
                 title: titleInput.value,
-                senderDisplayMode: senderDisplayModeInput.value === 'all' ? 'all' : 'latest'
+                senderDisplayMode: senderDisplayModeInput.value === 'all' ? 'all' : 'latest',
+                metalEffectKey: metalEffectEnabledInput.checked ? 'glow' : 'none'
+            };
+        }
+
+        function getDraftLikeContributionSettings() {
+            return {
+                title: likeContributionTitleInput.value,
+                interval: normalizeLikeContributionInterval(likeContributionIntervalInput.value),
+                soundVolume: normalizeLikeContributionSoundVolume(likeContributionVolumeInput.value),
+                balloonDesignKey: normalizeLikeContributionBalloonDesignKey(likeContributionBalloonDesignSelect.value),
+                countFontSize: normalizeLikeContributionCountFontSize(likeContributionCountFontSizeInput.value),
+                nameFontSize: normalizeLikeContributionNameFontSize(likeContributionNameFontSizeInput.value)
             };
         }
 
@@ -1602,12 +2753,10 @@
                 <div class="goal-table-head" aria-hidden="true">
                     <div class="goal-table-head-cell">対象ギフト</div>
                     <div class="goal-table-head-cell">ギフト名(任意)</div>
-                    <div class="goal-table-head-cell">備考</div>
                     <div class="goal-table-head-cell">現在個数</div>
-                    <div class="goal-table-head-cell">1人1個</div>
-                    <div class="goal-table-head-cell">0時リセット</div>
                     <div class="goal-table-head-cell">目標個数</div>
                     <div class="goal-table-head-cell">URL</div>
+                    <div class="goal-table-head-cell"></div>
                 </div>
             ` + items.map((item, index) => `
                 <div class="goal-row ${item.completed ? 'is-complete' : ''}" data-goal-row="${index}" data-goal-gift-id="${escapeHtml(item.giftId || '')}" data-goal-gift-image="${escapeHtml(item.giftImage || '')}">
@@ -1623,16 +2772,7 @@
                         <input type="text" data-goal-display-name maxlength="80" value="${escapeHtml(item.displayName || '')}" placeholder="表示名を上書きするときだけ入力" aria-label="ギフト名(任意)">
                     </div>
                     <div class="goal-cell">
-                        <input type="text" data-goal-note maxlength="120" value="${escapeHtml(item.note || '')}" placeholder="${escapeHtml(getGoalGiftNotePlaceholder(index))}" aria-label="備考">
-                    </div>
-                    <div class="goal-cell">
                         <input type="number" data-goal-current min="0" step="1" value="${escapeHtml(item.currentCount || 0)}" aria-label="現在個数">
-                    </div>
-                    <div class="goal-cell goal-inline-toggle">
-                        <div class="toggle"><input type="checkbox" data-goal-count-unique-users ${item.countUniqueUsers ? 'checked' : ''} aria-label="1人1個"></div>
-                    </div>
-                    <div class="goal-cell goal-inline-toggle">
-                        <div class="toggle"><input type="checkbox" data-goal-reset-at-midnight ${item.resetAtMidnight ? 'checked' : ''} aria-label="0時リセット"></div>
                     </div>
                     <div class="goal-cell">
                         <input type="number" data-goal-target min="1" step="1" value="${escapeHtml(item.targetCount || 1)}" aria-label="目標個数">
@@ -1652,6 +2792,19 @@
                                 </svg>
                             </button>
                         </div>
+                    </div>
+                    <div class="goal-cell">
+                        <button type="button" class="ghost-button icon-button goal-url-button" data-goal-row-settings aria-label="詳細設定" title="詳細設定">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div style="display:none">
+                        <input type="text" data-goal-note maxlength="120" value="${escapeHtml(item.note || '')}" aria-label="備考">
+                        <input type="checkbox" data-goal-count-unique-users ${item.countUniqueUsers ? 'checked' : ''} aria-label="1人1個">
+                        <input type="checkbox" data-goal-reset-at-midnight ${item.resetAtMidnight ? 'checked' : ''} aria-label="0時リセット">
                     </div>
                 </div>
             `).join('');
@@ -1734,7 +2887,15 @@
                 });
             });
 
+            goalGiftList.querySelectorAll('[data-goal-row-settings]').forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    const row = event.target.closest('[data-goal-row]');
+                    openGoalRowSettingsModal(row);
+                });
+            });
+
             restoreGoalGiftFocusState(focusState);
+            refreshGoalGiftPreviews();
             pendingGoalGiftItems = null;
         }
 
@@ -1830,6 +2991,7 @@
             state.broadcasterId = payload.broadcasterId || null;
             state.todayDayKey = payload.todayDayKey || '';
             state.displayDayKey = payload.displayDayKey || '';
+            giftJarWallEditorEnabled = payload.giftJarWallEditorEnabled === true;
             state.contributorsDisplayRangeMode = normalizeContributorsDisplayRangeMode(payload.contributorsDisplayRangeMode);
             state.liveSession = normalizeLiveSession(payload.liveSession);
             state.widgetUrls = payload.widgetUrls || state.widgetUrls;
@@ -1839,8 +3001,12 @@
             state.contributorsFontKey = normalizeContributorsFontKey(payload.contributorsFontKey);
             state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.contributorsColorTheme);
             state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.contributorsStrokeWidth);
+            state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.goalGiftNoteFontSize);
+            state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
+            state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
             state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.sharedWidgetFeedback || payload.contributorsFeedback || payload.goalGiftFeedback);
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
+            state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
             refreshContributorsOverlayControls();
@@ -1851,13 +3017,22 @@
             syncContributorsFontControl();
             syncContributorsTextStyleControl();
             syncContributorsStrokeWidthControl();
+            syncGoalGiftNoteFontSizeControl();
+            syncGoalGiftAchievementBadgeControls();
             syncSharedFeedbackControls();
-            topGiftUrl.textContent = state.widgetUrls.topGiftOverlayUrl || '未取得';
+            topGiftUrl.textContent = state.widgetUrls.topGiftLoaderUrl || state.widgetUrls.topGiftOverlayUrl || '未取得';
+            likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
+            giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
             todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
             setStatus(saveStatus, '設定状態: 準備完了', 'ok');
             applyTopGiftSettingsToForm(state.topGiftSettings);
+            applyLikeContributionSettingsToForm(state.likeContributionSettings);
             renderGoalGiftRows();
+            refreshContributorsPreview();
+            refreshTopGiftPreview();
+            refreshLikeContributionPreview();
+            refreshGiftJarPreview();
         }
 
         async function refreshGoalGiftSnapshot() {
@@ -1932,6 +3107,7 @@
                 }
                 state.topGiftSettings = payload.settings;
                 applyTopGiftSettingsToForm(state.topGiftSettings);
+                refreshTopGiftPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: 本日最高ギフトを保存しました。', 'ok');
             } catch (error) {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
@@ -1959,6 +3135,72 @@
             }, delay);
 
             return topGiftAutosavePromise;
+        }
+
+        async function saveLikeContributionSettings() {
+            setStatus(saveStatus, '設定状態: Like貢献通知を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/like-contribution', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftLikeContributionSettings())
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Like貢献通知の保存に失敗しました。');
+                }
+                state.likeContributionSettings = payload.settings || state.likeContributionSettings;
+                applyLikeContributionSettingsToForm(state.likeContributionSettings);
+                refreshLikeContributionPreview({ forceReload: true });
+                setStatus(saveStatus, '設定状態: Like貢献通知を保存しました。', 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
+        }
+
+        function saveLikeContributionSettingsImmediately() {
+            if (likeContributionAutosaveTimer) {
+                window.clearTimeout(likeContributionAutosaveTimer);
+                likeContributionAutosaveTimer = null;
+            }
+
+            likeContributionAutosavePromise = saveLikeContributionSettings();
+            return likeContributionAutosavePromise;
+        }
+
+        function scheduleLikeContributionSettingsAutosave(delay = 250) {
+            if (likeContributionAutosaveTimer) {
+                window.clearTimeout(likeContributionAutosaveTimer);
+            }
+
+            likeContributionAutosaveTimer = window.setTimeout(() => {
+                likeContributionAutosaveTimer = null;
+                likeContributionAutosavePromise = saveLikeContributionSettings();
+            }, delay);
+
+            return likeContributionAutosavePromise;
+        }
+
+        async function testLikeContributionNotification() {
+            setStatus(saveStatus, '設定状態: Like貢献通知デモを送信中...', 'warn');
+
+            try {
+                await saveLikeContributionSettingsImmediately();
+
+                const response = await fetch('/api/widgets/like-contribution/test-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Like貢献通知デモの送信に失敗しました。');
+                }
+
+                setStatus(saveStatus, '設定状態: Like貢献通知デモを表示しました。', 'ok');
+            } catch (error) {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            }
         }
 
         async function saveContributorsStyleSettingsImmediately() {
@@ -2004,6 +3246,7 @@
                 syncContributorsTextStyleControl();
                 syncContributorsStrokeWidthControl();
                 syncSharedFeedbackControls();
+                refreshContributorsPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: ウィジェット共通設定を保存しました。', 'ok');
             } catch (error) {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
@@ -2059,6 +3302,9 @@
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        noteFontSize: normalizeGoalGiftNoteFontSize(goalGiftNoteFontSizeInput.value),
+                        achievementBadgeSize: normalizeGoalGiftAchievementBadgeSize(goalGiftAchievementBadgeSizeInput.value),
+                        achievementBadgeStyle: normalizeGoalGiftAchievementBadgeStyle(goalGiftAchievementBadgeStyleSelect.value),
                         items: getDraftGoalGiftItems()
                     })
                 });
@@ -2066,8 +3312,14 @@
                 if (!response.ok) {
                     throw new Error(payload.error || '目標ギフト設定の保存に失敗しました。');
                 }
+                state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.snapshot?.noteFontSize ?? goalGiftNoteFontSizeInput.value);
+                state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.snapshot?.achievementBadgeSize ?? goalGiftAchievementBadgeSizeInput.value);
+                state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.snapshot?.achievementBadgeStyle ?? goalGiftAchievementBadgeStyleSelect.value);
                 state.goalGiftItems = Array.isArray(payload.items) ? payload.items : [];
+                syncGoalGiftNoteFontSizeControl();
+                syncGoalGiftAchievementBadgeControls();
                 renderGoalGiftRows();
+                refreshGoalGiftPreviews({ forceReload: true });
                 setStatus(saveStatus, `設定状態: 目標ギフトを${isAutosave ? '自動' : ''}保存しました。`, 'ok');
             } catch (error) {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
@@ -2078,7 +3330,7 @@
             openWindow('/overlays/contributors', 'contributors-overlay-window', { width: 1180, height: 880 });
         });
         document.getElementById('copy-contributors-url-button').addEventListener('click', async () => {
-            await copyText(getContributorsOverlayUrl() || '');
+            await copyText(state.widgetUrls.contributorsLoaderUrl || getContributorsOverlayUrl() || '');
         });
         contributorsThresholdInput.addEventListener('input', () => {
             saveContributorsStyleSettingsImmediately().catch(() => {});
@@ -2120,6 +3372,11 @@
         contributorsStrokeWidthInput.addEventListener('change', () => {
             saveContributorsStyleSettingsImmediately().catch(() => {});
         });
+        goalGiftNoteFontSizeInput.addEventListener('input', scheduleGoalGiftAutosave);
+        goalGiftNoteFontSizeInput.addEventListener('change', scheduleGoalGiftAutosave);
+        goalGiftAchievementBadgeSizeInput.addEventListener('blur', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftAchievementBadgeSizeInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftAchievementBadgeStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         contributorsRangeModeSelect.addEventListener('change', () => {
             setContributorsDisplayRangeMode(contributorsRangeModeSelect.value).catch((error) => {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
@@ -2144,8 +3401,154 @@
             openWindow('/overlays/top-gift', 'top-gift-overlay-window', { width: 980, height: 660 });
         });
         document.getElementById('copy-top-gift-url-button').addEventListener('click', async () => {
-            await copyText(state.widgetUrls.topGiftOverlayUrl || '');
+            await copyText(state.widgetUrls.topGiftLoaderUrl || state.widgetUrls.topGiftOverlayUrl || '');
         });
+        document.getElementById('open-like-contribution-overlay-button').addEventListener('click', () => {
+            openWindow('/overlays/like-contribution', 'like-contribution-overlay-window', { width: 900, height: 520 });
+        });
+        document.getElementById('copy-like-contribution-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '');
+        });
+        testLikeContributionButton.addEventListener('click', () => {
+            testLikeContributionNotification().catch(() => {});
+        });
+        document.getElementById('open-gift-jar-overlay-button').addEventListener('click', () => {
+            openWindow(buildGiftJarSlaveUrl(), 'gift-jar-overlay-window', { width: 700, height: 560 });
+        });
+        document.getElementById('copy-gift-jar-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.giftJarLoaderUrl || buildGiftJarSlaveFullUrl());
+        });
+        document.getElementById('test-gift-jar-single-button').addEventListener('click', () => {
+            fetch('/api/widgets/gift-jar/test-single', { method: 'POST' }).catch(() => {});
+        });
+        document.getElementById('reset-gift-jar-button').addEventListener('click', () => {
+            fetch('/api/widgets/gift-jar/reset', { method: 'POST' }).catch(() => {});
+        });
+
+        giftJarWallBrushSizeInput.addEventListener('input', () => {
+            giftJarWallBrushSizeValue.textContent = `${giftJarWallBrushSizeInput.value} px`;
+        });
+        giftJarWallPaintButton.addEventListener('click', () => {
+            setGiftJarWallEditorTool('paint');
+        });
+        giftJarWallEraseButton.addEventListener('click', () => {
+            setGiftJarWallEditorTool('erase');
+        });
+        giftJarWallClearButton.addEventListener('click', () => {
+            clearGiftJarWallEditorCanvas();
+        });
+        giftJarWallLoadButton.addEventListener('click', () => {
+            paintGiftJarWallEditorFromProfile(giftJarWallProfiles[getGiftJarWallTheme()] || null);
+        });
+        giftJarWallSaveButton.addEventListener('click', () => {
+            saveGiftJarWallProfile().catch((error) => {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            });
+        });
+        giftJarWallDeleteButton.addEventListener('click', () => {
+            deleteGiftJarWallProfile().catch((error) => {
+                setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
+            });
+        });
+        giftJarWallEditorCanvas.addEventListener('pointerdown', (event) => {
+            if (giftJarWallEditor.hidden) return;
+            giftJarWallEditorIsDrawing = true;
+            giftJarWallEditorLastPoint = getGiftJarWallEditorPoint(event);
+            drawGiftJarWallEditorStroke(giftJarWallEditorLastPoint, giftJarWallEditorLastPoint);
+            giftJarWallEditorCanvas.setPointerCapture(event.pointerId);
+            setGiftJarWallEditorStatus(giftJarWallEditorTool === 'erase' ? '消去中...' : '描画中...');
+        });
+        giftJarWallEditorCanvas.addEventListener('pointermove', (event) => {
+            if (!giftJarWallEditorIsDrawing || !giftJarWallEditorLastPoint) return;
+            const nextPoint = getGiftJarWallEditorPoint(event);
+            drawGiftJarWallEditorStroke(giftJarWallEditorLastPoint, nextPoint);
+            giftJarWallEditorLastPoint = nextPoint;
+        });
+        const finishGiftJarWallEditorStroke = () => {
+            if (!giftJarWallEditorIsDrawing) return;
+            giftJarWallEditorIsDrawing = false;
+            giftJarWallEditorLastPoint = null;
+            setGiftJarWallEditorStatus('未保存の変更があります');
+        };
+        giftJarWallEditorCanvas.addEventListener('pointerup', finishGiftJarWallEditorStroke);
+        giftJarWallEditorCanvas.addEventListener('pointercancel', finishGiftJarWallEditorStroke);
+        giftJarWallEditorCanvas.addEventListener('pointerleave', finishGiftJarWallEditorStroke);
+
+        const giftJarDropHeightInput = document.getElementById('gift-jar-drop-height');
+        const giftJarDropHeightValue = document.getElementById('gift-jar-drop-height-value');
+
+        giftJarDropHeightInput.addEventListener('input', () => {
+            giftJarDropHeightValue.textContent = `${giftJarDropHeightInput.value} px`;
+        });
+        giftJarDropHeightInput.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dropAboveJar: Number(giftJarDropHeightInput.value) })
+            }).catch(() => {});
+        });
+
+        const giftJarCrushThresholdInput = document.getElementById('gift-jar-crush-threshold');
+
+        giftJarCrushThresholdInput.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ crushThreshold: Number(giftJarCrushThresholdInput.value) })
+            }).catch(() => {});
+        });
+
+        const giftJarSizeMultiplierInput = document.getElementById('gift-jar-size-multiplier');
+        const DEFAULT_GIFT_JAR_SIZE_MULTIPLIER = 0.4;
+        const FLASK_DEFAULT_SIZE_MULTIPLIER = 0.4;
+
+        giftJarSizeMultiplierInput.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sizeMultiplier: Number(giftJarSizeMultiplierInput.value) })
+            }).catch(() => {});
+        });
+
+        const giftJarThemeSelect = document.getElementById('gift-jar-theme');
+
+        giftJarThemeSelect.addEventListener('change', () => {
+            const body = { jarTheme: giftJarThemeSelect.value };
+            const nextSizeMultiplier = giftJarThemeSelect.value === 'flask'
+                ? FLASK_DEFAULT_SIZE_MULTIPLIER
+                : giftJarThemeSelect.value === 'bee'
+                    ? 0.40
+                    : DEFAULT_GIFT_JAR_SIZE_MULTIPLIER;
+            giftJarSizeMultiplierInput.value = String(nextSizeMultiplier);
+            body.sizeMultiplier = nextSizeMultiplier;
+            fetch('/api/widgets/gift-jar/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).catch(() => {});
+            refreshGiftJarWallEditorThemeState();
+        });
+
+        fetch('/api/widgets/gift-jar/config').then(r => r.json()).then(cfg => {
+            if (typeof cfg.dropAboveJar === 'number') {
+                giftJarDropHeightInput.value = cfg.dropAboveJar;
+                giftJarDropHeightValue.textContent = `${cfg.dropAboveJar} px`;
+            }
+            if (typeof cfg.crushThreshold === 'number') {
+                giftJarCrushThresholdInput.value = cfg.crushThreshold;
+            }
+            if (typeof cfg.sizeMultiplier === 'number') {
+                giftJarSizeMultiplierInput.value = cfg.sizeMultiplier;
+            }
+            if (typeof cfg.jarTheme === 'string') {
+                giftJarThemeSelect.value = cfg.jarTheme;
+            }
+            if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
+                giftJarWallProfiles = cfg.customProfiles;
+            }
+            refreshGiftJarWallEditorThemeState();
+        }).catch(() => {});
+
         titleInput.addEventListener('input', () => {
             scheduleTopGiftSettingsAutosave();
         });
@@ -2159,7 +3562,47 @@
             saveTopGiftSettingsImmediately().catch(() => {});
             flushDeferredWidgetFormUpdates();
         });
-
+        metalEffectEnabledInput.addEventListener('change', () => {
+            saveTopGiftSettingsImmediately().catch(() => {});
+        });
+        likeContributionTitleInput.addEventListener('input', () => {
+            scheduleLikeContributionSettingsAutosave();
+        });
+        likeContributionTitleInput.addEventListener('change', () => {
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
+        likeContributionIntervalInput.addEventListener('input', () => {
+            scheduleLikeContributionSettingsAutosave();
+        });
+        likeContributionIntervalInput.addEventListener('change', () => {
+            likeContributionIntervalInput.value = String(normalizeLikeContributionInterval(likeContributionIntervalInput.value));
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
+        likeContributionVolumeInput.addEventListener('input', () => {
+            syncLikeContributionVolumeControl(likeContributionVolumeInput.value);
+            scheduleLikeContributionSettingsAutosave();
+        });
+        likeContributionVolumeInput.addEventListener('change', () => {
+            syncLikeContributionVolumeControl(likeContributionVolumeInput.value);
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
+        likeContributionBalloonDesignSelect.addEventListener('change', () => {
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
+        likeContributionCountFontSizeInput.addEventListener('input', () => {
+            scheduleLikeContributionSettingsAutosave();
+        });
+        likeContributionCountFontSizeInput.addEventListener('change', () => {
+            likeContributionCountFontSizeInput.value = String(normalizeLikeContributionCountFontSize(likeContributionCountFontSizeInput.value));
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
+        likeContributionNameFontSizeInput.addEventListener('input', () => {
+            scheduleLikeContributionSettingsAutosave();
+        });
+        likeContributionNameFontSizeInput.addEventListener('change', () => {
+            likeContributionNameFontSizeInput.value = String(normalizeLikeContributionNameFontSize(likeContributionNameFontSizeInput.value));
+            saveLikeContributionSettingsImmediately().catch(() => {});
+        });
         socket.on('admin_day_updated', (payload) => {
             state.todayDayKey = payload?.todayDayKey || state.todayDayKey || '';
             state.displayDayKey = payload?.displayDayKey || state.displayDayKey || state.todayDayKey || '';
@@ -2197,6 +3640,98 @@
         Promise.all([loadGiftCatalog(), loadConfig()]).catch((error) => {
             setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
         });
+
+        const widgetSettingsModal = document.getElementById('widget-settings-modal');
+        const widgetModalTitle = document.getElementById('widget-settings-modal-title');
+        const widgetModalBody = document.getElementById('widget-settings-modal-body');
+        const widgetModalClose = document.getElementById('widget-settings-modal-close');
+
+        let _activePanel = null;
+        let _activePlaceholder = null;
+
+        function openWidgetSettingsModal(btn) {
+            const panelId = btn.dataset.panelId;
+            const panel = document.getElementById(panelId);
+            if (!panel) return;
+            const card = btn.closest('article.card, section.panel, .panel');
+            const title = card?.querySelector('h2')?.textContent?.trim() || '設定';
+            widgetModalTitle.textContent = title + ' の設定';
+            _activePlaceholder = document.createComment('wsp:' + panelId);
+            panel.parentNode.insertBefore(_activePlaceholder, panel);
+            panel.hidden = false;
+            widgetModalBody.appendChild(panel);
+            _activePanel = panel;
+            widgetSettingsModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeWidgetSettingsModal() {
+            if (_activePlaceholder && _activePanel) {
+                _activePlaceholder.parentNode.insertBefore(_activePanel, _activePlaceholder);
+                _activePlaceholder.remove();
+                _activePanel.hidden = true;
+                _activePanel = null;
+                _activePlaceholder = null;
+            }
+            widgetSettingsModal.hidden = true;
+            document.body.style.overflow = '';
+        }
+
+        widgetModalClose.addEventListener('click', closeWidgetSettingsModal);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !widgetSettingsModal.hidden) closeWidgetSettingsModal();
+        });
+
+        document.querySelectorAll('.settings-toggle-btn').forEach((btn) => {
+            btn.addEventListener('click', () => openWidgetSettingsModal(btn));
+        });
+
+        // ---- goal row settings modal ----
+        const goalRowSettingsModal = document.getElementById('goal-row-settings-modal');
+        const goalRowModalTitle = document.getElementById('goal-row-settings-modal-title');
+        const goalRowModalClose = document.getElementById('goal-row-settings-modal-close');
+        const goalRowModalNote = document.getElementById('goal-row-modal-note');
+        const goalRowModalCountUnique = document.getElementById('goal-row-modal-count-unique');
+        const goalRowModalResetAtMidnight = document.getElementById('goal-row-modal-reset-at-midnight');
+
+        let _activeGoalRow = null;
+
+        function openGoalRowSettingsModal(row) {
+            if (!row) return;
+            _activeGoalRow = row;
+            const slot = Number(row.dataset.goalRow || '0') + 1;
+            goalRowModalTitle.textContent = `スロット ${slot} の詳細設定`;
+            goalRowModalNote.value = row.querySelector('[data-goal-note]').value;
+            goalRowModalCountUnique.checked = row.querySelector('[data-goal-count-unique-users]').checked;
+            goalRowModalResetAtMidnight.checked = row.querySelector('[data-goal-reset-at-midnight]').checked;
+            goalRowSettingsModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            goalRowModalNote.focus();
+        }
+
+        function closeGoalRowSettingsModal() {
+            goalRowSettingsModal.hidden = true;
+            document.body.style.overflow = '';
+            _activeGoalRow = null;
+        }
+
+        function syncGoalRowModalToRow() {
+            if (!_activeGoalRow) return;
+            _activeGoalRow.querySelector('[data-goal-note]').value = goalRowModalNote.value;
+            _activeGoalRow.querySelector('[data-goal-count-unique-users]').checked = goalRowModalCountUnique.checked;
+            _activeGoalRow.querySelector('[data-goal-reset-at-midnight]').checked = goalRowModalResetAtMidnight.checked;
+            scheduleGoalGiftAutosave();
+        }
+
+        goalRowModalClose.addEventListener('click', closeGoalRowSettingsModal);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !goalRowSettingsModal.hidden) closeGoalRowSettingsModal();
+        });
+        goalRowModalNote.addEventListener('input', syncGoalRowModalToRow);
+        goalRowModalNote.addEventListener('change', syncGoalRowModalToRow);
+        goalRowModalCountUnique.addEventListener('change', syncGoalRowModalToRow);
+        goalRowModalResetAtMidnight.addEventListener('change', syncGoalRowModalToRow);
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

@@ -3,259 +3,841 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TikEffect Launcher</title>
+    <title>TikEffect Control</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
         :root {
-            --bg: #e6edf4;
-            --panel: #f6f9fc;
-            --line: rgba(24, 37, 58, 0.18);
-            --text: #18253a;
-            --muted: #596b80;
-            --accent: #c2410c;
-            --accent-strong: #9a3412;
-            --danger: #b42318;
-            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+            --bg: #dfe6f0;
+            --panel: rgba(248, 250, 252, 0.86);
+            --panel-strong: rgba(255, 255, 255, 0.92);
+            --line: rgba(33, 45, 69, 0.12);
+            --line-strong: rgba(33, 45, 69, 0.18);
+            --text: #0f172a;
+            --muted: #5b6880;
+            --accent: #ef4444;
+            --accent-strong: #dc2626;
+            --accent-soft: rgba(239, 68, 68, 0.12);
+            --sidebar-bg: linear-gradient(180deg, #101826 0%, #121f35 42%, #1c2740 100%);
+            --sidebar-line: rgba(255, 255, 255, 0.12);
+            --sidebar-text: #ecf3ff;
+            --sidebar-muted: rgba(236, 243, 255, 0.72);
+            --content-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(226, 234, 244, 0.74) 100%);
+            --shadow: 0 22px 50px rgba(15, 23, 42, 0.16);
         }
 
         * {
             box-sizing: border-box;
         }
 
+        html {
+            height: 100%;
+        }
+
         body {
             margin: 0;
-            min-height: 100vh;
-            padding: 28px 16px;
+            height: 100vh;
+            overflow: hidden;
             color: var(--text);
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
             background:
-                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
-        }
-
-        .layout {
-            width: min(960px, 100%);
-            margin: 0 auto;
-            display: grid;
-            gap: 18px;
-        }
-
-        .panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 2px;
-            box-shadow: var(--shadow);
-            padding: 24px;
+                radial-gradient(circle at top left, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 34%),
+                linear-gradient(135deg, #eef3f8 0%, #dce5f0 50%, #cfd9e6 100%);
         }
 
         h1, h2, p {
             margin: 0;
         }
 
-        h1 {
-            font-size: 34px;
-            line-height: 1.1;
+        button,
+        input,
+        iframe {
+            font: inherit;
         }
 
-        h2 {
-            font-size: 20px;
+        .app-shell {
+            height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(200px, 13vw) minmax(0, 1fr);
+        }
+
+        .sidebar {
+            position: relative;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 22px 14px 18px;
+            color: var(--sidebar-text);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-line);
+        }
+
+        .sidebar::before,
+        .sidebar::after {
+            content: "";
+            position: absolute;
+            border-radius: 999px;
+            pointer-events: none;
+            filter: blur(4px);
+        }
+
+        .sidebar::before {
+            top: -72px;
+            right: -48px;
+            width: 180px;
+            height: 180px;
+            background: rgba(56, 189, 248, 0.16);
+        }
+
+        .sidebar::after {
+            bottom: 84px;
+            left: -42px;
+            width: 160px;
+            height: 160px;
+            background: rgba(244, 63, 94, 0.14);
+        }
+
+        .sidebar > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .brand-block {
+            display: grid;
+            gap: 8px;
+        }
+
+        .brand-chip {
+            width: fit-content;
+            padding: 4px 9px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--sidebar-muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .brand-title {
+            font-size: 22px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: 0.02em;
+        }
+
+        .brand-title-row {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .brand-version {
+            font-size: 10px;
+            font-weight: 500;
+            opacity: 0.5;
+            letter-spacing: 0.04em;
+        }
+
+        .brand-copy {
+            display: none;
+        }
+
+        .sidebar-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+            margin: 2px 0;
+        }
+
+        .sidebar-section {
+            display: grid;
+            gap: 8px;
+        }
+
+        .sidebar-label {
+            color: rgba(236, 243, 255, 0.5);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            padding: 0 2px;
+        }
+
+        .status-stack {
+            display: grid;
+            gap: 8px;
+        }
+
+        .status {
+            display: grid;
+            gap: 4px;
+            padding: 10px 11px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--sidebar-text);
+        }
+
+        .status strong {
+            font-size: 12px;
+            letter-spacing: 0.02em;
+        }
+
+        .status span {
+            color: var(--sidebar-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .status.is-success {
+            border-color: rgba(74, 222, 128, 0.24);
+            background: rgba(22, 163, 74, 0.12);
+        }
+
+        .status.is-warning {
+            border-color: rgba(251, 146, 60, 0.28);
+            background: rgba(249, 115, 22, 0.12);
+        }
+
+        .status.is-error {
+            border-color: rgba(251, 113, 133, 0.3);
+            background: rgba(190, 24, 93, 0.12);
+        }
+
+        .status-label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .status-edit-btn {
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            color: var(--sidebar-muted);
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .status-edit-btn:hover {
+            color: var(--sidebar-text);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Dark-sidebar button overrides */
+        .sidebar button {
+            --button-border: rgba(255, 255, 255, 0.14);
+            --button-bg: rgba(255, 255, 255, 0.07);
+            --button-bg-hover: rgba(255, 255, 255, 0.13);
+            --button-text: var(--sidebar-text);
+            --button-shadow-hover: none;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .sidebar-actions {
+            display: grid;
+            gap: 6px;
+        }
+
+        .sidebar-actions button {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .nav-list {
+            display: grid;
+            gap: 6px;
+        }
+
+        .nav-link {
+            position: relative;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 10px 12px;
+            text-align: left;
+            border-radius: 11px;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--sidebar-text);
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
+        }
+
+        .nav-link:hover:not(:disabled) {
+            transform: translateX(2px);
+            background: rgba(255, 255, 255, 0.09);
+            border-color: rgba(255, 255, 255, 0.11);
+            box-shadow: none;
+        }
+
+        .nav-link[aria-current="page"] {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.26) 0%, rgba(59, 130, 246, 0.12) 100%);
+            border-color: rgba(255, 255, 255, 0.18);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        }
+
+        .nav-link-icon {
+            flex: 0 0 auto;
+            font-size: 14px;
+            line-height: 1;
+            opacity: 0.82;
+        }
+
+        .nav-link-title {
+            flex: 1 1 auto;
+            font-size: 13px;
+            font-weight: 600;
             line-height: 1.2;
         }
 
-        .subtext {
-            margin-top: 8px;
+        .nav-link-lock {
+            flex: 0 0 auto;
+            font-size: 10px;
+            opacity: 0.45;
+        }
+
+        .nav-link[aria-current="page"] .nav-link-lock {
+            opacity: 0;
+        }
+
+        .nav-link:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .nav-footnote {
+            color: rgba(236, 243, 255, 0.62);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .content-pane {
+            min-width: 0;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 0;
+            background: transparent;
+        }
+
+        .content-shell {
+            height: 100vh;
+            min-height: 680px;
+            display: block;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(18px);
+        }
+
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 22px 24px;
+        }
+
+        .content-copy {
+            display: grid;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .content-kicker {
+            color: var(--accent-strong);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .content-title {
+            font-size: 28px;
+            line-height: 1.1;
+        }
+
+        .content-description {
             color: var(--muted);
             font-size: 14px;
             line-height: 1.7;
         }
 
-        .status-row {
-            margin-top: 18px;
-            display: grid;
-            gap: 10px;
-        }
-
-        .status-inline {
+        .content-actions {
             display: flex;
             flex-wrap: wrap;
-            align-items: center;
+            justify-content: flex-end;
             gap: 10px;
         }
 
-        .status {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: 1px solid var(--line);
-            border-radius: 2px;
-            padding: 8px 12px;
-            color: var(--muted);
-            background: #f9fbfd;
-            font-size: 14px;
-            width: fit-content;
-            max-width: 100%;
-        }
-
-        .status--grow {
-            flex: 0 1 auto;
-        }
-
-        .status.is-success {
-            color: #166534;
-            border-color: rgba(22, 101, 52, 0.22);
-            background: rgba(240, 253, 244, 0.78);
-        }
-
-        .status.is-warning {
-            color: #9a3412;
-            border-color: rgba(154, 52, 18, 0.22);
-            background: rgba(255, 247, 237, 0.82);
-        }
-
-        .status.is-error {
-            color: var(--danger);
-            border-color: rgba(161, 45, 47, 0.25);
-            background: rgba(254, 242, 242, 0.82);
-        }
-
-        .window-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 14px;
-        }
-
-        .window-grid.is-locked {
+        .content-frame-card {
             position: relative;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+            padding: 0;
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            backdrop-filter: none;
         }
 
-        .window-button {
-            text-align: left;
-            padding: 18px;
-            border-radius: 2px;
-            background: #f9fbfd;
+        .frame-shell {
+            position: relative;
+            height: 100%;
+            min-height: 0;
+            border-radius: 0;
+            overflow: hidden;
+            border: 0;
+            background: transparent;
         }
 
-        .window-button:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-            filter: grayscale(1);
-            transform: none;
-            background: rgba(89, 107, 128, 0.08);
-            color: rgba(24, 37, 58, 0.7);
+        .content-frame {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: #ffffff;
         }
 
-        .window-button:disabled:hover {
-            transform: none;
-            background: rgba(89, 107, 128, 0.08);
+        .frame-placeholder {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 28px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(241, 245, 249, 0.95) 100%);
         }
 
-        .window-button strong {
-            display: block;
-            font-size: 18px;
-            margin-bottom: 6px;
-        }
-
-        .window-button span {
-            display: block;
-            color: var(--muted);
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .window-lock-note {
-            margin-top: 12px;
-            padding: 10px 12px;
-            border: 1px solid rgba(154, 52, 18, 0.18);
-            background: rgba(255, 247, 237, 0.9);
-            color: #9a3412;
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .window-lock-note[hidden] {
+        .frame-placeholder[hidden] {
             display: none;
         }
 
-        @media (max-width: 640px) {
-            .layout {
-                width: min(100%, calc(100% - 24px));
-                margin: 12px auto 24px;
+        .placeholder-card {
+            width: min(720px, 100%);
+            display: grid;
+            gap: 18px;
+            padding: 28px;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background: var(--panel-strong);
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+        }
+
+        .placeholder-chip {
+            width: fit-content;
+            padding: 7px 11px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .placeholder-title {
+            font-size: 30px;
+            line-height: 1.14;
+        }
+
+        .placeholder-copy {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.8;
+        }
+
+        .placeholder-points {
+            display: grid;
+            gap: 10px;
+        }
+
+        .placeholder-point {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.68);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .placeholder-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .admin-settings-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.52);
+        }
+
+        .admin-settings-modal[hidden] {
+            display: none;
+        }
+
+        .admin-settings-card {
+            width: min(480px, 100%);
+            display: grid;
+            gap: 18px;
+            padding: 24px;
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            background: var(--panel-strong);
+            box-shadow: var(--shadow);
+        }
+
+        .admin-settings-head {
+            display: grid;
+            gap: 8px;
+        }
+
+        .admin-settings-head p,
+        .admin-settings-note p {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .admin-settings-section {
+            display: grid;
+            gap: 8px;
+        }
+
+        .admin-settings-label {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .admin-settings-select {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+            color: var(--text);
+        }
+
+        .admin-settings-note {
+            display: grid;
+            gap: 6px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.58);
+        }
+
+        .admin-settings-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        @media (max-width: 1079px) {
+            body {
+                height: auto;
+                min-height: 100vh;
+                overflow: auto;
             }
 
-            .panel {
-                padding: 20px;
+            .app-shell {
+                height: auto;
+                min-height: 100vh;
+                grid-template-columns: 1fr;
+                grid-template-rows: auto minmax(0, 1fr);
             }
 
-            h1 {
-                font-size: 28px;
+            .sidebar {
+                border-right: 0;
+                border-bottom: 1px solid var(--sidebar-line);
             }
 
-            .status-inline button {
+            .content-pane {
+                overflow: visible;
+                padding: 0;
+            }
+
+            .content-shell {
+                height: auto;
+                min-height: 100vh;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .sidebar,
+            .content-pane {
+                padding: 0;
+            }
+
+            .content-shell {
+                min-height: 100vh;
+            }
+
+            .content-header {
+                flex-direction: column;
+                padding: 18px;
+            }
+
+            .content-actions {
                 width: 100%;
+                justify-content: stretch;
+            }
+
+            .content-actions button {
+                flex: 1 1 100%;
+            }
+
+            .content-frame-card {
+                padding: 0;
+            }
+
+            .placeholder-card {
+                padding: 22px;
+            }
+
+            .placeholder-title {
+                font-size: 24px;
             }
         }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
-<body>
-    <div class="layout">
-        <section class="panel">
-            <h1>TikEffect</h1>
-            <p class="subtext">起動時は認証と各機能のランチャーだけを表示します。必要な機能は下のボタンから別ウィンドウで開きます。</p>
-
-            <div class="status-row">
-                <div class="status-inline">
-                    <div class="status status--grow" id="broadcaster-id-status">配信ユーザーID: 読み込み中</div>
-                    <button type="button" class="primary" id="open-auth-button">TikTok認証を開始</button>
+<body data-admin-settings-root="true">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <section class="brand-block">
+                <div class="brand-chip">Control Room</div>
+                <div class="brand-title-row">
+                    <h1 class="brand-title">TikEffect</h1>
+                    <span class="brand-version" id="app-version"></span>
                 </div>
-                <div class="status" id="tiktok-connection-status">TikTok接続: 読み込み中</div>
-            </div>
-        </section>
+                <p class="brand-copy">TikFinity のように左で機能を切り替え、右で管理画面を表示するシングルシェルです。認証と各機能への移動をここに集約します。</p>
+            </section>
 
-        <section class="panel">
-            <h2>機能ウィンドウ</h2>
-            <p class="subtext">ギフト履歴、ユーザーコイン数、コメント欄、ウィジェット管理は必要なときだけ別窓で開けます。</p>
+            <div class="sidebar-divider"></div>
+            <section class="sidebar-section">
+                <div class="sidebar-label">Live Status</div>
+                <div class="status-stack">
+                    <div class="status" id="broadcaster-id-status">
+                        <div class="status-label-row">
+                            <strong>配信ユーザーID</strong>
+                            <button type="button" class="status-edit-btn" id="edit-broadcaster-id-button" title="配信ユーザーIDを変更" aria-label="配信ユーザーIDを変更">✏️</button>
+                        </div>
+                        <span id="broadcaster-id-value">読み込み中</span>
+                    </div>
+                    <div class="status" id="tiktok-connection-status">
+                        <strong>TikTok接続</strong>
+                        <span>読み込み中</span>
+                    </div>
+                </div>
+            </section>
 
-            <div class="window-grid" id="window-grid">
-                <button type="button" class="window-button" data-path="/gifts" data-name="gift-history-window">
-                    <strong>ギフト履歴</strong>
-                    <span>受信したギフトイベントを時系列で確認します。</span>
-                </button>
-                <button type="button" class="window-button" data-path="/admin" data-name="user-coins-window">
-                    <strong>ユーザーコイン数</strong>
-                    <span>日別のユーザー合計コインを編集します。</span>
-                </button>
-                <button type="button" class="window-button" data-path="/comments" data-name="comments-window">
-                    <strong>コメント欄</strong>
-                    <span>配信コメントを新着順で監視します。</span>
-                </button>
-                <button type="button" class="window-button" data-path="/effects" data-name="video-audio-effects-window">
-                    <strong>映像&音声エフェクト</strong>
-                    <span>トリガーとアクションを設定し、10個の URL 方式オーバーレイを管理します。</span>
-                </button>
-                <button type="button" class="window-button" data-path="/widgets" data-name="widgets-window">
-                    <strong>ウィジェット</strong>
-                    <span>1k貢献一覧オーバーレイと本日最高ギフト表示の URL・見た目を管理します。</span>
-                </button>
+            <div class="sidebar-divider"></div>
+            <section class="sidebar-section">
+                <div class="sidebar-label">Preferences</div>
+                <button type="button" class="ghost-button" id="connect-tiktok-button" disabled>TikTok接続</button>
+                <button type="button" class="ghost-button" id="open-admin-settings-button">管理画面設定</button>
+                <p class="nav-footnote" id="sidebar-footnote">認証後に各管理画面へ切り替えられます。</p>
+            </section>
+
+            <div class="sidebar-divider"></div>
+            <section class="sidebar-section">
+                <div class="sidebar-label">Workspace</div>
+                <nav class="nav-list" aria-label="管理機能ナビゲーション">
+                    <button type="button" class="nav-link" data-view-path="/quick-access" data-name="quick-access-window" data-requires-auth="false">
+                        <span class="nav-link-icon">⚡</span>
+                        <span class="nav-link-title">ホーム</span>
+                    </button>
+                    <button type="button" class="nav-link" data-view-path="/widgets" data-name="widgets-window" data-requires-auth="true">
+                        <span class="nav-link-icon">🎛</span>
+                        <span class="nav-link-title">ウィジェット</span>
+                        <span class="nav-link-lock">🔒</span>
+                    </button>
+                    <button type="button" class="nav-link" data-view-path="/effects" data-name="video-audio-effects-window" data-requires-auth="true">
+                        <span class="nav-link-icon">✨</span>
+                        <span class="nav-link-title">映像&amp;音声エフェクト</span>
+                        <span class="nav-link-lock">🔒</span>
+                    </button>
+                    <button type="button" class="nav-link" data-view-path="/comments" data-name="comments-window" data-requires-auth="true">
+                        <span class="nav-link-icon">💬</span>
+                        <span class="nav-link-title">コメント欄</span>
+                        <span class="nav-link-lock">🔒</span>
+                    </button>
+                    <button type="button" class="nav-link" data-view-path="/gifts" data-name="gift-history-window" data-requires-auth="true">
+                        <span class="nav-link-icon">🎁</span>
+                        <span class="nav-link-title">ギフト履歴</span>
+                        <span class="nav-link-lock">🔒</span>
+                    </button>
+                    <button type="button" class="nav-link" data-view-path="/user-coins" data-name="user-coins-window" data-requires-auth="true">
+                        <span class="nav-link-icon">🪙</span>
+                        <span class="nav-link-title">ユーザーコイン数</span>
+                        <span class="nav-link-lock">🔒</span>
+                    </button>
+                </nav>
+            </section>
+
+        </aside>
+
+        <main class="content-pane">
+            <div class="content-shell">
+                <section class="content-frame-card">
+                    <div class="frame-shell">
+                        <iframe class="content-frame" id="content-frame" title="TikEffect Admin Content"></iframe>
+                        <div class="frame-placeholder" id="frame-placeholder" hidden>
+                            <div class="placeholder-card">
+                                <div class="placeholder-chip">Access Locked</div>
+                                <h2 class="placeholder-title">先に TikTok 認証を完了してください</h2>
+                                <p class="placeholder-copy">右側の領域には各管理画面を埋め込み表示します。まだ認証がないため、ユーザーコイン数やウィジェット設定などはロックされています。</p>
+                                <div class="placeholder-points">
+                                    <div class="placeholder-point">下のボタンからログインを開始すると、このレイアウトのまま各機能に移動できます。</div>
+                                    <div class="placeholder-point">認証が済むとギフト履歴、コメント欄、映像&音声エフェクト、ウィジェットが有効になります。</div>
+                                </div>
+                                <div class="placeholder-actions">
+                                    <button type="button" class="primary" id="placeholder-auth-button">TikTok認証を開く</button>
+                                    <button type="button" class="ghost-button" id="placeholder-setup-button">認証画面を表示</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
-            <div class="window-lock-note" id="window-lock-note" hidden>TikTok認証が完了するまで機能ウィンドウはロックされています。先に上の認証ボタンからログインしてください。</div>
-        </section>
+        </main>
+    </div>
+
+    <div class="admin-settings-modal" id="broadcaster-edit-modal" aria-hidden="true" hidden>
+        <div class="admin-settings-card" role="dialog" aria-modal="true" aria-labelledby="broadcaster-edit-modal-title">
+            <div class="admin-settings-head">
+                <h2 id="broadcaster-edit-modal-title">配信ユーザーIDを変更</h2>
+                <p>TikTokのユーザー名（@ なしでも可）を入力してください。</p>
+            </div>
+            <form id="broadcaster-edit-form">
+                <section class="admin-settings-section">
+                    <div class="admin-settings-label">Username</div>
+                    <input class="admin-settings-select" id="broadcaster-edit-input" type="text" placeholder="@username" autocomplete="off" />
+                </section>
+                <div class="admin-settings-actions" style="margin-top:18px; gap:8px;">
+                    <button type="button" class="ghost-button" id="broadcaster-edit-cancel">キャンセル</button>
+                    <button type="submit" class="primary" id="broadcaster-edit-save">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="admin-settings-modal" id="admin-settings-modal" aria-hidden="true" hidden>
+        <div class="admin-settings-card" role="dialog" aria-modal="true" aria-labelledby="admin-settings-title">
+            <div class="admin-settings-head">
+                <h2 id="admin-settings-title">管理画面設定</h2>
+                <p>テーマなどの全体設定をここにまとめます。共通シェル化したので、見た目の切り替えもこの画面から一括で反映できます。</p>
+            </div>
+            <section class="admin-settings-section">
+                <div class="admin-settings-label">Appearance</div>
+                <select id="admin-theme-select" class="admin-settings-select" aria-label="管理画面テーマ切替"></select>
+            </section>
+            <div class="admin-settings-note">
+                <strong>今後追加予定の置き場</strong>
+                <p>表示密度、既定の起動画面、サイドバーの表示方式などの共通設定をここに集約できます。</p>
+            </div>
+            <div class="admin-settings-actions">
+                <button type="button" class="primary" data-admin-settings-close>閉じる</button>
+            </div>
+        </div>
     </div>
 
     <script>
         const socket = io();
         const broadcasterIdStatus = document.getElementById('broadcaster-id-status');
+        const broadcasterIdValueEl = document.getElementById('broadcaster-id-value');
+        const editBroadcasterIdButton = document.getElementById('edit-broadcaster-id-button');
+        const broadcasterEditModal = document.getElementById('broadcaster-edit-modal');
+        const broadcasterEditForm = document.getElementById('broadcaster-edit-form');
+        const broadcasterEditInput = document.getElementById('broadcaster-edit-input');
+        const broadcasterEditSave = document.getElementById('broadcaster-edit-save');
+        const broadcasterEditCancel = document.getElementById('broadcaster-edit-cancel');
         const tiktokConnectionStatus = document.getElementById('tiktok-connection-status');
-        const openAuthButton = document.getElementById('open-auth-button');
-        const windowGrid = document.getElementById('window-grid');
-        const windowLockNote = document.getElementById('window-lock-note');
-        const windowButtons = Array.from(document.querySelectorAll('.window-button'));
+        const connectTikTokButton = document.getElementById('connect-tiktok-button');
+        const placeholderAuthButton = document.getElementById('placeholder-auth-button');
+        const placeholderSetupButton = document.getElementById('placeholder-setup-button');
+        const sidebarFootnote = document.getElementById('sidebar-footnote');
+        const contentFrame = document.getElementById('content-frame');
+        const framePlaceholder = document.getElementById('frame-placeholder');
+        const navButtons = Array.from(document.querySelectorAll('.nav-link'));
+
+        const pageMeta = {
+            '/quick-access': {
+                title: 'ホーム',
+                description: '起動直後に使う操作だけをまとめたショートカット画面です。'
+            },
+            '/setup': {
+                title: '認証設定',
+                description: 'ログイン、接続切り替え、認証状態の確認をこのレイアウトの右側で行います。'
+            },
+            '/gifts': {
+                title: 'ギフト履歴',
+                description: '受信したギフトイベントを時系列で確認し、反応をすばやく追えます。'
+            },
+            '/user-coins': {
+                title: 'ユーザーコイン数',
+                description: '日別コインの管理画面を右側に固定表示し、左ナビから他機能へ移動できます。'
+            },
+            '/comments': {
+                title: 'コメント欄',
+                description: '新着コメントの監視と読み上げまわりの確認を行います。'
+            },
+            '/effects': {
+                title: '映像&音声エフェクト',
+                description: 'トリガーとアクションを横断して調整できる設定画面です。'
+            },
+            '/widgets': {
+                title: 'ウィジェット',
+                description: 'オーバーレイURLや表示設定を切り替えながら管理します。'
+            }
+        };
 
         let currentBroadcasterId = null;
         let currentTikTokConnection = null;
+        let currentRoute = '/quick-access';
 
-        function isAuthenticated() {
-            return Boolean(currentBroadcasterId && currentTikTokConnection?.wsAuthAvailable === true);
+        function hasWorkspaceAccess() {
+            if (!currentBroadcasterId) {
+                return false;
+            }
+
+            if (!currentTikTokConnection) {
+                return false;
+            }
+
+            return currentTikTokConnection.status !== 'not_configured';
+        }
+
+        function requiresAuth(path) {
+            const target = navButtons.find((button) => button.dataset.viewPath === path);
+            return target?.dataset.requiresAuth !== 'false';
         }
 
         function getTikTokConnectionTone(connection) {
@@ -279,42 +861,111 @@
             }
         }
 
+        function syncStatusCard(element, label, value, toneClassName) {
+            element.className = 'status';
+
+            if (toneClassName) {
+                element.classList.add(toneClassName);
+            }
+
+            element.innerHTML = `<strong>${label}</strong><span>${value}</span>`;
+        }
+
+        function updateContentHeader(path) {
+            return pageMeta[path] || pageMeta['/quick-access'];
+        }
+
+        function updateNavState() {
+            navButtons.forEach((button) => {
+                const path = button.dataset.viewPath;
+                const locked = requiresAuth(path) && !hasWorkspaceAccess();
+                button.disabled = locked;
+                button.setAttribute('aria-current', path === currentRoute ? 'page' : 'false');
+            });
+        }
+
+        function showPlaceholder() {
+            framePlaceholder.hidden = false;
+            contentFrame.setAttribute('aria-hidden', 'true');
+        }
+
+        function hidePlaceholder() {
+            framePlaceholder.hidden = true;
+            contentFrame.removeAttribute('aria-hidden');
+        }
+
+        function setCurrentRoute(path, options = {}) {
+            const nextPath = pageMeta[path] ? path : '/quick-access';
+            const locked = requiresAuth(nextPath) && !hasWorkspaceAccess();
+
+            currentRoute = nextPath;
+            updateContentHeader(currentRoute);
+
+            if (locked) {
+                showPlaceholder();
+                updateNavState();
+                return;
+            }
+
+            hidePlaceholder();
+
+            if (options.forceReload || contentFrame.dataset.currentPath !== currentRoute) {
+                contentFrame.src = currentRoute;
+                contentFrame.dataset.currentPath = currentRoute;
+            }
+
+            updateNavState();
+        }
+
+        function syncBroadcasterIdCard() {
+            broadcasterIdStatus.className = 'status' + (currentBroadcasterId ? ' is-success' : '');
+            broadcasterIdValueEl.textContent = currentBroadcasterId ? `@${currentBroadcasterId}` : '未設定';
+        }
+
         function syncUi() {
-            broadcasterIdStatus.textContent = currentBroadcasterId
-                ? `配信ユーザーID: @${currentBroadcasterId}`
-                : '配信ユーザーID: 未設定';
+            syncBroadcasterIdCard();
 
             const connection = currentTikTokConnection || {
                 message: 'TikTok接続状態を読み込み中です。'
             };
-            const toneClassName = getTikTokConnectionTone(connection);
+            const hasAccess = hasWorkspaceAccess();
 
-            tiktokConnectionStatus.className = 'status';
+            syncStatusCard(
+                tiktokConnectionStatus,
+                'TikTok接続',
+                connection.message || '状態不明',
+                getTikTokConnectionTone(connection)
+            );
 
-            if (toneClassName) {
-                tiktokConnectionStatus.classList.add(toneClassName);
+            sidebarFootnote.textContent = hasAccess
+                ? '接続設定済みです。左のリンクで右側コンテンツを切り替えられます。'
+                : '接続設定前はホームを利用できます。セットアップ後に他の機能へ移動できます。';
+
+            const isConnected = connection.status === 'connected';
+            const isConnecting = connection.status === 'connecting';
+            const canConnect = !!currentBroadcasterId && !isConnected && !isConnecting;
+            const canDisconnect = isConnected;
+            connectTikTokButton.disabled = !canConnect && !canDisconnect;
+            connectTikTokButton.textContent = isConnected ? 'TikTok切断' : 'TikTok接続';
+            connectTikTokButton.dataset.mode = isConnected ? 'disconnect' : 'connect';
+            updateNavState();
+
+            if (!hasAccess && requiresAuth(currentRoute)) {
+                showPlaceholder();
+                return;
             }
 
-            tiktokConnectionStatus.textContent = `TikTok接続: ${connection.message || '状態不明'}`;
-            const hasAuth = connection.wsAuthAvailable === true;
-            openAuthButton.textContent = hasAuth ? 'ログアウト' : 'TikTok認証を開く';
-            openAuthButton.classList.toggle('primary', !hasAuth);
-            openAuthButton.classList.toggle('danger-button', hasAuth);
-
-            const locked = !isAuthenticated();
-            windowGrid.classList.toggle('is-locked', locked);
-            windowLockNote.hidden = !locked;
-            windowButtons.forEach((button) => {
-                button.disabled = locked;
-                button.setAttribute('aria-disabled', locked ? 'true' : 'false');
-            });
+            if (contentFrame.dataset.currentPath) {
+                hidePlaceholder();
+            }
         }
 
         function openWindow(path, name) {
             const windowSizes = {
+                '/quick-access': { width: 720, height: 760 },
                 '/setup': { width: 640, height: 840 },
                 '/gifts': { width: 1240, height: 860 },
-                '/admin': { width: 1320, height: 920 },
+                '/user-coins': { width: 1320, height: 920 },
                 '/comments': { width: 980, height: 820 },
                 '/effects': { width: 1480, height: 980 },
                 '/widgets': { width: 1280, height: 940 }
@@ -356,51 +1007,111 @@
             openWindow(fallbackPath, 'tiktok-auth-window');
         }
 
-        async function logoutTikTokAuth() {
-            const response = await fetch('/api/tiktok-login/logout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.error || 'TikTok認証のログアウトに失敗しました。');
-            }
-        }
-
         async function refreshState() {
             const response = await fetch('/api/state');
             const payload = await response.json();
             currentBroadcasterId = payload.broadcasterId || null;
             currentTikTokConnection = payload.tiktokConnection || null;
+            if (payload.appVersion) {
+                const versionEl = document.getElementById('app-version');
+                if (versionEl && !versionEl.textContent) versionEl.textContent = 'v' + payload.appVersion;
+            }
             syncUi();
+
+            if (hasWorkspaceAccess() && currentRoute === '/setup') {
+                setCurrentRoute('/user-coins');
+                return;
+            }
+
+            if (!hasWorkspaceAccess() && requiresAuth(currentRoute)) {
+                showPlaceholder();
+                return;
+            }
+
+            if (!contentFrame.dataset.currentPath) {
+                setCurrentRoute(currentRoute);
+            }
         }
 
-        document.querySelectorAll('[data-path]').forEach((button) => {
+        navButtons.forEach((button) => {
             button.addEventListener('click', () => {
-                openWindow(button.dataset.path, button.dataset.name);
+                setCurrentRoute(button.dataset.viewPath);
             });
         });
 
-        openAuthButton.addEventListener('click', async () => {
-            openAuthButton.disabled = true;
+        function openBroadcasterEditModal() {
+            broadcasterEditInput.value = currentBroadcasterId || '';
+            broadcasterEditModal.hidden = false;
+            broadcasterEditModal.removeAttribute('aria-hidden');
+            broadcasterEditInput.focus();
+        }
+
+        function closeBroadcasterEditModal() {
+            broadcasterEditModal.hidden = true;
+            broadcasterEditModal.setAttribute('aria-hidden', 'true');
+        }
+
+        editBroadcasterIdButton.addEventListener('click', openBroadcasterEditModal);
+
+        broadcasterEditCancel.addEventListener('click', closeBroadcasterEditModal);
+
+        broadcasterEditForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newId = broadcasterEditInput.value.trim();
+            if (!newId) return;
+
+            broadcasterEditSave.disabled = true;
+            broadcasterEditSave.textContent = '保存中...';
 
             try {
-                if (currentTikTokConnection?.wsAuthAvailable === true) {
-                    await logoutTikTokAuth();
-                    await refreshState();
-                    return;
-                }
+                const response = await fetch('/api/broadcaster/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broadcasterId: newId })
+                });
 
-                await openTikTokAuthWindow(false);
-            } catch (error) {
-                const message = error?.message || '認証処理に失敗しました。';
-                tiktokConnectionStatus.className = 'status is-error';
-                tiktokConnectionStatus.textContent = `TikTok接続: ${message}`;
+                if (response.ok) {
+                    closeBroadcasterEditModal();
+                    window.location.reload();
+                } else {
+                    const payload = await response.json().catch(() => ({}));
+                    alert(payload.error || '配信ユーザーIDの変更に失敗しました。');
+                }
+            } catch {
+                alert('配信ユーザーIDの変更中にエラーが発生しました。');
             } finally {
-                openAuthButton.disabled = false;
+                broadcasterEditSave.disabled = false;
+                broadcasterEditSave.textContent = '保存';
+            }
+        });
+
+        connectTikTokButton.addEventListener('click', async () => {
+            const mode = connectTikTokButton.dataset.mode || 'connect';
+            connectTikTokButton.disabled = true;
+            connectTikTokButton.textContent = mode === 'disconnect' ? '切断中...' : '接続中...';
+
+            try {
+                if (mode === 'disconnect') {
+                    await fetch('/api/tiktok/disconnect', { method: 'POST' });
+                } else {
+                    await fetch('/api/tiktok/connect', { method: 'POST' });
+                }
+            } finally {
+                // ボタン状態は次の syncUi() で再評価される
+            }
+        });
+
+        placeholderSetupButton.addEventListener('click', () => {
+            setCurrentRoute('/setup');
+        });
+
+        placeholderAuthButton.addEventListener('click', async () => {
+            placeholderAuthButton.disabled = true;
+
+            try {
+                await openTikTokAuthWindow(false);
+            } finally {
+                placeholderAuthButton.disabled = false;
             }
         });
 
@@ -410,9 +1121,13 @@
             syncUi();
         });
 
+        setCurrentRoute('/quick-access');
+
         refreshState().catch(() => {
             syncUi();
+            setCurrentRoute('/quick-access');
         });
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

@@ -1,0 +1,2231 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>�r�l�߃M�t�g</title>
+    <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            background: transparent;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* ---- Widget anchor ---- */
+        .widget {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 1080px;
+            height: 1080px;
+            transform-origin: bottom left;
+        }
+
+        body.preview-card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30,41,59,.88) 0%, rgba(15,23,42,.94) 100%);
+        }
+
+        /* ---- Gift canvas (single composited layer for OBS) ---- */
+        #gift-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* ---- Jar SVG layers ---- */
+        .jar-svg {
+            position: absolute;
+            top: 90px; left: 210px;
+            width: 660px; height: 990px;
+            pointer-events: none;
+            display: none;
+        }
+        .jar-photo {
+            position: absolute;
+            pointer-events: none;
+            display: none;
+            object-fit: contain;
+        }
+        .jar-layer-back { z-index: 1; }
+        .jar-layer-front { z-index: 3; }
+        [data-jar-theme="pig"]      .jar-theme-pig,
+        [data-jar-theme="pig"]      .jar-photo-pig,
+        [data-jar-theme="jar"]      .jar-photo-jar { display: block; }
+
+        .jar-photo-pig {
+            top: 150px;
+            left: -20px;
+            width: 1120px;
+            height: 746px;
+            z-index: 3;
+            mix-blend-mode: screen;
+            opacity: 0.98;
+        }
+
+        .jar-photo-jar {
+            top: 0;
+            left: 0;
+            width: 1080px;
+            height: 1080px;
+            z-index: 3;
+            mix-blend-mode: multiply;
+            opacity: 0.98;
+        }
+
+        #jar-mask-error {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(180, 20, 20, 0.92);
+            color: #fff;
+            font-family: monospace;
+            font-size: 52px;
+            font-weight: bold;
+            padding: 48px 60px;
+            border-radius: 24px;
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            width: 960px;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        #jar-mask-error.visible { display: block; }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget" data-jar-theme="jar">
+        <div id="jar-mask-error"></div>
+        <!-- Single canvas: all gifts composited here. OBS receives 1 texture regardless of gift count -->
+        <canvas id="gift-canvas"></canvas>
+
+        <!-- Front jar layer: rim, highlights and outer shell stay in front of gifts -->
+        <img class="jar-photo jar-photo-pig" src="/widgets/pig.png" alt="piggy bank">
+        <img class="jar-photo jar-photo-jar" src="/widgets/jar.png" alt="glass jar">
+    </div>
+
+    <script>
+        const isSlave = new URLSearchParams(location.search).get('slave') === '1';
+        const isPreview = new URLSearchParams(location.search).get('preview') === '1';
+        if (isPreview) document.body.classList.add('preview-card');
+
+        // Scale widget to fit window and center horizontally.
+        // When isSlave, add 120px overflow margin so x<0 area is visible.
+        const widgetEl = document.getElementById('widget');
+        const OVERFLOW_MARGIN = isSlave ? 120 : 0;
+        const WIDGET_W = 1080;
+        const WIDGET_H = 1080;
+        function applyScale() {
+            const visibleW = WIDGET_W + 2 * OVERFLOW_MARGIN;
+            const s = Math.min(window.innerWidth / visibleW, window.innerHeight / WIDGET_H, 1);
+            // Center the visible area (widget + margins) horizontally in the viewport
+            const leftEdge = (window.innerWidth - visibleW * s) / 2;
+            widgetEl.style.left = (leftEdge + OVERFLOW_MARGIN * s) + 'px';
+            widgetEl.style.transform = s < 1 ? `scale(${s})` : '';
+        }
+        applyScale();
+        window.addEventListener('resize', applyScale);
+
+        const socket = io();
+
+        let overlayRecoveryTimer = null;
+        let overlayRecoveryInFlight = false;
+        const OVERLAY_RECOVERY_RETRY_MS = 2000;
+
+        function clearOverlayRecoveryTimer() {
+            if (overlayRecoveryTimer) {
+                clearInterval(overlayRecoveryTimer);
+                overlayRecoveryTimer = null;
+            }
+        }
+
+        async function probeBackendAvailability() {
+            if (overlayRecoveryInFlight || sampleMode) return;
+            overlayRecoveryInFlight = true;
+            try {
+                const response = await fetch('/api/widgets/gift-jar/config', { cache: 'no-store' });
+                if (!response.ok) return;
+                clearOverlayRecoveryTimer();
+                window.location.reload();
+            } catch {
+                // Backend still restarting.
+            } finally {
+                overlayRecoveryInFlight = false;
+            }
+        }
+
+        function scheduleOverlayRecoveryReload() {
+            if (overlayRecoveryTimer || sampleMode) return;
+            overlayRecoveryTimer = setInterval(() => { probeBackendAvailability(); }, OVERLAY_RECOVERY_RETRY_MS);
+            probeBackendAvailability();
+        }
+
+        socket.on('connect', () => {
+            clearOverlayRecoveryTimer();
+        });
+
+        socket.on('disconnect', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        socket.on('connect_error', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!socket.connected) {
+                scheduleOverlayRecoveryReload();
+            }
+        });
+
+        const giftCanvas = document.getElementById('gift-canvas');
+        giftCanvas.width  = WIDGET_W;
+        giftCanvas.height = WIDGET_H;
+        const ctx = giftCanvas.getContext('2d');
+
+        // Image cache: url ?EHTMLImageElement
+        const imgCache = new Map();
+        // Glow cache: `${url}:${size}:${glowType}` ?EOffscreenCanvas (pre-baked, one-time CPU cost)
+        const glowCache = new Map();
+
+        function getCachedImage(url) {
+            let img = imgCache.get(url);
+            if (!img) {
+                img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.src = url;
+                imgCache.set(url, img);
+            }
+            return img;
+        }
+
+        // Pre-bake glow into an OffscreenCanvas so ctx.filter is NEVER called at draw time.
+        // Call this as soon as the image is loaded (addGift / history replay).
+        function prebakeGlow(url, size, diamonds) {
+            if (diamonds < 200) return;
+            const glowType = diamonds >= 1000 ? 'mega' : 'glow';
+            const key = `${url}:${size}:${glowType}`;
+            if (glowCache.has(key)) return;
+            const src = getCachedImage(url);
+            const doBake = () => {
+                if (glowCache.has(key)) return;
+                const pad = glowType === 'mega' ? 160 : 80;
+                const total = size + pad * 2;
+                const oc = new OffscreenCanvas(total, total);
+                const octx = oc.getContext('2d');
+                octx.filter = glowType === 'mega'
+                    ? 'drop-shadow(0 0 76px rgba(255,100,200,1)) drop-shadow(0 0 150px rgba(140,80,255,0.7))'
+                    : 'drop-shadow(0 0 54px rgba(255,200,30,0.9))';
+                octx.drawImage(src, pad, pad, size, size);
+                octx.filter = 'none';
+                glowCache.set(key, oc);
+            };
+            if (src.complete && src.naturalWidth > 0) doBake();
+            else src.addEventListener('load', doBake, { once: true });
+        }
+
+        // Fallback: called at draw time if prebakeGlow wasn't ready yet (rare, first frame)
+        function getGlowCanvas(url, size, diamonds) {
+            if (diamonds < 200) return null;
+            const glowType = diamonds >= 1000 ? 'mega' : 'glow';
+            const key = `${url}:${size}:${glowType}`;
+            if (glowCache.has(key)) return glowCache.get(key);
+            // Trigger bake now (image must be loaded at this point)
+            prebakeGlow(url, size, diamonds);
+            return glowCache.get(key) ?? null;
+        }
+
+        // Physics and rendering in widget coordinate space (widget top-left = origin)
+        const MAX_GIFTS = 150;
+        let customJarProfiles = {};
+        let maskJarProfiles = {};
+        const JAR_THEME_IMAGE_LAYOUTS = {
+            pig: {
+                left: -20,
+                top: 150,
+                width: 1120,
+                height: 746
+            },
+            jar: {
+                left: 180,
+                top: 0,
+                width: 720,
+                height: 1080
+            }
+        };
+        const JAR_THEME_MASK_SOURCES = {
+            jar: ['/widgets/jar.svg']
+        };
+        const JAR_THEME_HARDCODED_PROFILES = {
+            pig: {
+                dropSlot: { y: 163, left: 522, right: 629 },
+                widthStops: [
+                    { y: 296, left: 470, right: 670 },
+                    { y: 330, left: 360, right: 780 },
+                    { y: 360, left: 290, right: 850 },
+                    { y: 400, left: 240, right: 870 },
+                    { y: 440, left: 200, right: 840 },
+                    { y: 480, left: 185, right: 830 },
+                    { y: 523, left: 242, right: 826 },
+                    { y: 580, left: 250, right: 800 },
+                    { y: 620, left: 280, right: 770 },
+                    { y: 655, left: 340, right: 740 }
+                ],
+                wallPoints: [
+                    [470, 296], [360, 330], [290, 360], [240, 400], [200, 440],
+                    [185, 480], [242, 523], [250, 580], [280, 620], [340, 655],
+                    [740, 655], [770, 620], [800, 580], [826, 523], [830, 480],
+                    [840, 440], [870, 400], [850, 360], [780, 330], [670, 296]
+                ]
+            }
+        };
+        const maskJarProfileLoads = new Map();
+        let currentJarTheme = widgetEl.dataset.jarTheme || 'glass';
+        let currentJarProfile = null;
+
+        function clampJarCoordinate(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) return null;
+            return Math.max(0, Math.min(Math.round(numericValue), 1080));
+        }
+
+        function normalizeJarProfile(rawProfile) {
+            if (!rawProfile || typeof rawProfile !== 'object') return null;
+            let dropSlot = null;
+            if (rawProfile.dropSlot && typeof rawProfile.dropSlot === 'object') {
+                const y = clampJarCoordinate(rawProfile.dropSlot.y);
+                const left = clampJarCoordinate(rawProfile.dropSlot.left);
+                const right = clampJarCoordinate(rawProfile.dropSlot.right);
+                if (y !== null && left !== null && right !== null && right - left >= 8) {
+                    dropSlot = { y, left, right };
+                }
+            }
+            const widthStops = [];
+            const seenStops = new Set();
+            for (const stop of Array.isArray(rawProfile.widthStops) ? rawProfile.widthStops : []) {
+                const y = clampJarCoordinate(stop?.y);
+                const left = clampJarCoordinate(stop?.left);
+                const right = clampJarCoordinate(stop?.right);
+                if (y === null || left === null || right === null || right - left < 8) continue;
+                const key = `${y}:${left}:${right}`;
+                if (seenStops.has(key)) continue;
+                seenStops.add(key);
+                widthStops.push({ y, left, right });
+            }
+            widthStops.sort((a, b) => a.y - b.y);
+
+            const wallPoints = [];
+            let previousPointKey = '';
+            for (const point of Array.isArray(rawProfile.wallPoints) ? rawProfile.wallPoints : []) {
+                if (!Array.isArray(point) || point.length < 2) continue;
+                const x = clampJarCoordinate(point[0]);
+                const y = clampJarCoordinate(point[1]);
+                if (x === null || y === null) continue;
+                const key = `${x}:${y}`;
+                if (key === previousPointKey) continue;
+                previousPointKey = key;
+                wallPoints.push([x, y]);
+            }
+
+            if (widthStops.length < 4 || wallPoints.length < 6) return null;
+            return dropSlot ? { widthStops, wallPoints, dropSlot } : { widthStops, wallPoints };
+        }
+
+        function normalizeCustomJarProfiles(rawProfiles) {
+            const profiles = {};
+            if (!rawProfiles || typeof rawProfiles !== 'object') return profiles;
+            for (const [themeName, rawProfile] of Object.entries(rawProfiles)) {
+                const normalized = normalizeJarProfile(rawProfile);
+                if (normalized) profiles[themeName] = normalized;
+            }
+            return profiles;
+        }
+
+        function simplifyMaskWidthStops(rows) {
+            if (rows.length <= 2) return rows;
+            const simplified = [rows[0]];
+            let lastKept = rows[0];
+            for (let index = 1; index < rows.length - 1; index++) {
+                const row = rows[index];
+                const yGap = row.y - lastKept.y;
+                const leftGap = Math.abs(row.left - lastKept.left);
+                const rightGap = Math.abs(row.right - lastKept.right);
+                if (yGap >= 14 || leftGap >= 10 || rightGap >= 10) {
+                    simplified.push(row);
+                    lastKept = row;
+                }
+            }
+            simplified.push(rows[rows.length - 1]);
+            return simplified;
+        }
+
+        function selectPassableSpan(runs, preferredCenterX) {
+            if (!Array.isArray(runs) || runs.length < 2) return null;
+            const candidates = [];
+            for (let index = 0; index < runs.length - 1; index++) {
+                const left = runs[index].end + 1;
+                const right = runs[index + 1].start - 1;
+                if (right - left < 8) continue;
+                candidates.push({
+                    left,
+                    right,
+                    center: (left + right) / 2,
+                    width: right - left
+                });
+            }
+            if (candidates.length === 0) return null;
+            if (!Number.isFinite(preferredCenterX)) {
+                return candidates.reduce((best, candidate) => candidate.width > best.width ? candidate : best);
+            }
+
+            return candidates.reduce((best, candidate) => {
+                const candidateDistance = Math.abs(candidate.center - preferredCenterX);
+                const bestDistance = Math.abs(best.center - preferredCenterX);
+                if (candidateDistance !== bestDistance) {
+                    return candidateDistance < bestDistance ? candidate : best;
+                }
+                return candidate.width > best.width ? candidate : best;
+            });
+        }
+
+        function buildJarProfileFromWallRuns(rows, explicitDropSlot = null) {
+            const passableRows = [];
+            let trackedCenterX = explicitDropSlot ? (explicitDropSlot.left + explicitDropSlot.right) / 2 : null;
+            for (const row of rows) {
+                const span = selectPassableSpan(row.runs, trackedCenterX);
+                if (!span) continue;
+                const { left, right } = span;
+                passableRows.push({ y: row.y, left, right });
+                trackedCenterX = span.center;
+            }
+            if (passableRows.length < 4) {
+                console.warn(`[gift-jar] buildJarProfileFromWallRuns: only ${passableRows.length} passable rows (need ?4), totalRows=${rows.length}`);
+                return null;
+            }
+
+            const widthStops = simplifyMaskWidthStops(passableRows);
+            const leftPoints = widthStops.map((row) => [row.left, row.y]);
+            const rightPoints = widthStops.map((row) => [row.right, row.y]).reverse();
+            const firstRow = widthStops[0];
+            const dropSlot = explicitDropSlot || {
+                y: firstRow.y,
+                left: firstRow.left,
+                right: firstRow.right
+            };
+            return normalizeJarProfile({
+                dropSlot,
+                widthStops,
+                wallPoints: leftPoints.concat(rightPoints)
+            });
+        }
+
+        function buildJarProfileFromMaskImage(image, themeName) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1080;
+            canvas.height = 1080;
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            context.clearRect(0, 0, 1080, 1080);
+            const layout = JAR_THEME_IMAGE_LAYOUTS[themeName];
+            if (layout) {
+                context.drawImage(image, layout.left, layout.top, layout.width, layout.height);
+            } else {
+                context.drawImage(image, 0, 0, 1080, 1080);
+            }
+
+            const { data, width, height } = context.getImageData(0, 0, 1080, 1080);
+
+            // Auto-detect mask color convention by sampling within the image's draw bounds.
+            // "Dark outline on bright background" (e.g. white bg + dark strokes): walls are dark pixels.
+            // "Bright walls on transparent/dark background": walls are bright pixels (luminance >= 200).
+            const bx1 = layout ? Math.max(0, Math.round(layout.left)) : 0;
+            const bx2 = layout ? Math.min(width - 1, Math.round(layout.left + layout.width)) : width - 1;
+            const by1 = layout ? Math.max(0, Math.round(layout.top)) : 0;
+            const by2 = layout ? Math.min(height - 1, Math.round(layout.top + layout.height)) : height - 1;
+            let sampleOpaqueLumTotal = 0, sampleOpaqueCount = 0, sampleTransparentCount = 0;
+            const sampleStep = 40;
+            for (let sy = by1; sy <= by2; sy += sampleStep) {
+                for (let sx = bx1; sx <= bx2; sx += sampleStep) {
+                    const off = (sy * width + sx) * 4;
+                    if (data[off + 3] < 20) {
+                        sampleTransparentCount++;
+                    } else {
+                        sampleOpaqueLumTotal += data[off] * 0.2126 + data[off + 1] * 0.7152 + data[off + 2] * 0.0722;
+                        sampleOpaqueCount++;
+                    }
+                }
+            }
+            const avgOpaqueLum = sampleOpaqueCount > 0 ? sampleOpaqueLumTotal / sampleOpaqueCount : 0;
+            // Determine wall pixel color (dark outline vs bright fill):
+            // - Solid bg (no transparent): bright avg ?Edark-outline on bright bg; dark avg ?Ebright walls on dark bg
+            // - Transparent bg: opaque pixels ARE the walls; dark opaque ?Edark-outline; bright opaque ?Ebright walls
+            const darkOutlineStyle = sampleTransparentCount === 0
+                ? avgOpaqueLum > 150   // solid bg: bright bg ?Edark outlines
+                : sampleOpaqueCount > 0 && avgOpaqueLum < 150;  // transparent bg: dark opaque ?Edark outline walls
+            console.log(`[gift-jar] mask style detect theme=${themeName}`, {
+                sampleOpaqueCount, sampleTransparentCount,
+                avgOpaqueLum: Math.round(avgOpaqueLum), darkOutlineStyle
+            });
+
+            const rows = [];
+            for (let y = 0; y < height; y++) {
+                const runs = [];
+                let runStart = -1;
+                for (let x = 0; x < width; x++) {
+                    const offset = (y * width + x) * 4;
+                    const alpha = data[offset + 3];
+                    const luminance = data[offset] * 0.2126 + data[offset + 1] * 0.7152 + data[offset + 2] * 0.0722;
+                    const isWall = alpha > 20 && (darkOutlineStyle ? luminance < 120 : luminance >= 200);
+                    if (isWall) {
+                        if (runStart === -1) runStart = x;
+                    } else if (runStart !== -1) {
+                        runs.push({ start: runStart, end: x - 1 });
+                        runStart = -1;
+                    }
+                }
+                if (runStart !== -1) runs.push({ start: runStart, end: width - 1 });
+                if (runs.length === 0) continue;
+                rows.push({ y, runs });
+            }
+
+            return buildJarProfileFromWallRuns(rows, null);
+        }
+
+        function loadMaskImageSource(src, bustCache) {
+            const url = bustCache ? `${src}${src.includes('?') ? '&' : '?'}v=${Date.now()}` : src;
+            // SVGs loaded directly as <img> src can taint the canvas in Chromium/Electron,
+            // and createImageBitmap(svgBlob) is also unsupported. Workaround: fetch the SVG,
+            // wrap it in a blob: URL (same-origin ?Eno canvas taint), then load as <img>.
+            if (src.endsWith('.svg') || src.startsWith('data:image/svg')) {
+                return fetch(url, { cache: bustCache ? 'no-store' : 'default' })
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status} loading mask svg: ${url}`);
+                        return r.blob();
+                    })
+                    .then(blob => new Promise((resolve, reject) => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        const image = new Image();
+                        image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
+                        image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error(`failed to render svg blob: ${url}`)); };
+                        image.src = objectUrl;
+                    }));
+            }
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error(`failed to load mask image: ${src}`));
+                image.src = url;
+            });
+        }
+
+        async function loadMaskJarProfile(themeName, options = {}) {
+            const sources = JAR_THEME_MASK_SOURCES[themeName];
+            if (!Array.isArray(sources) || sources.length === 0) {
+                const hardcoded = JAR_THEME_HARDCODED_PROFILES[themeName];
+                if (!hardcoded) return null;
+                const normalized = normalizeJarProfile(hardcoded);
+                if (normalized) {
+                    maskJarProfiles = { ...maskJarProfiles, [themeName]: normalized };
+                }
+                return normalized || null;
+            }
+            const { forceReload = false } = options;
+            if (!forceReload && maskJarProfileLoads.has(themeName)) {
+                return maskJarProfileLoads.get(themeName);
+            }
+
+            const task = (async () => {
+                for (const src of sources) {
+                    try {
+                        const image = await loadMaskImageSource(src, forceReload);
+                        const profile = buildJarProfileFromMaskImage(image, themeName);
+                        if (profile) {
+                            maskJarProfiles = { ...maskJarProfiles, [themeName]: profile };
+                            return profile;
+                        }
+                        console.warn(`[gift-jar] mask profile build failed (returned null) for src=${src} theme=${themeName}`);
+                    } catch (e) {
+                        console.warn(`[gift-jar] mask source failed src=${src}:`, e?.message ?? e);
+                    }
+                }
+                if (maskJarProfiles[themeName]) {
+                    const nextProfiles = { ...maskJarProfiles };
+                    delete nextProfiles[themeName];
+                    maskJarProfiles = nextProfiles;
+                }
+                const hardcoded = JAR_THEME_HARDCODED_PROFILES[themeName];
+                if (hardcoded) {
+                    console.warn(`[gift-jar] using hardcoded fallback profile for theme=${themeName}`);
+                    const normalized = normalizeJarProfile(hardcoded);
+                    if (normalized) {
+                        maskJarProfiles = { ...maskJarProfiles, [themeName]: normalized };
+                        return normalized;
+                    }
+                }
+                return null;
+            })();
+
+            maskJarProfileLoads.set(themeName, task);
+            try {
+                return await task;
+            } finally {
+                maskJarProfileLoads.delete(themeName);
+            }
+        }
+
+        // Pixels above jar opening for gift spawn (0 = just above rim, updated via socket)
+        let dropAboveJar = 0;
+        let crushThreshold = 1000;
+        let sizeMultiplier = 0.4;
+
+        /** Map diamond count ?Eimage size in px (before multiplier) */
+        function sizeFor(diamonds) {
+            const d = Math.max(1, Math.round(diamonds));
+            let base;
+            if (d <=     1) base =  76;
+            else if (d <=     4) base =  86;
+            else if (d <=     9) base =  97;
+            else if (d <=    19) base = 108;
+            else if (d <=    49) base = 119;
+            else if (d <=    99) base = 135;
+            else if (d <=   199) base = 151;
+            else if (d <=   499) base = 173;
+            else if (d <=   999) base = 194;
+            else if (d <=  1999) base = 216;
+            else if (d <=  4999) base = 238;
+            else if (d <=  9999) base = 265;
+            else if (d <= 19999) base = 292;
+            else if (d <= 24999) base = 340;
+            else if (d <= 29999) base = 358;
+            else if (d <= 34999) base = 378;
+            else if (d <= 39999) base = 398;
+            else if (d <= 44999) base = 420;
+            else base = 420;
+            return Math.round(base * sizeMultiplier);
+        }
+
+        function getJarProfile(themeName) {
+            return maskJarProfiles[themeName] || customJarProfiles[themeName] || null;
+        }
+
+        function getJarDropSlot(themeName) {
+            const currentProfileSlot = currentJarProfile?.dropSlot;
+            if (currentProfileSlot && Number.isFinite(currentProfileSlot.y) && Number.isFinite(currentProfileSlot.left) && Number.isFinite(currentProfileSlot.right)) {
+                return currentProfileSlot;
+            }
+            return currentJarProfile.widthStops[0];
+        }
+
+        function isCenterDropTheme() {
+            return true;
+        }
+
+        function edgeAt(widgetY, edge) {
+            const stops = currentJarProfile.widthStops;
+            if (widgetY <= stops[0].y) return stops[0][edge];
+            for (let i = 1; i < stops.length; i++) {
+                const prev = stops[i - 1];
+                const next = stops[i];
+                if (widgetY <= next.y) {
+                    const t = (widgetY - prev.y) / Math.max(1, next.y - prev.y);
+                    return prev[edge] + (next[edge] - prev[edge]) * t;
+                }
+            }
+            return stops[stops.length - 1][edge];
+        }
+
+        function jarOpenY() {
+            return getJarDropSlot(currentJarTheme).y;
+        }
+
+        function jarOpenLeft() {
+            return getJarDropSlot(currentJarTheme).left;
+        }
+
+        function jarOpenRight() {
+            return getJarDropSlot(currentJarTheme).right;
+        }
+
+        function jarOpenWidth() {
+            return jarOpenRight() - jarOpenLeft();
+        }
+
+        function jarOpenCenter() {
+            return (jarOpenLeft() + jarOpenRight()) / 2;
+        }
+
+        function jarCenterAt(widgetY) {
+            return (edgeAt(widgetY, 'left') + edgeAt(widgetY, 'right')) / 2;
+        }
+
+        function jarWidthRange() {
+            return currentJarProfile.widthStops.reduce((acc, stop) => {
+                const width = stop.right - stop.left;
+                if (width > acc.width) return { width, y: stop.y };
+                return acc;
+            }, { width: 0, y: jarOpenY() });
+        }
+
+        /** Jar interior width at a given widget y coordinate */
+        function widthAt(widgetY) {
+            return Math.max(0, Math.round(edgeAt(widgetY, 'right') - edgeAt(widgetY, 'left')));
+        }
+
+        // ---- Matter.js physics ----
+        const { Engine, Bodies, Body, World, Events, Runner } = Matter;
+        const engine = Engine.create({ gravity: { x: 0, y: 1.4 }, enableSleeping: true, positionIterations: 14, velocityIterations: 10 });
+        const physWorld = engine.world;
+        const runner = Runner.create();
+        if (!isSlave) Runner.run(runner, engine);
+
+        const WALL_T = 30;
+        function makeWall(x1, y1, x2, y2) {
+            const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+            const len = Math.hypot(x2 - x1, y2 - y1) + WALL_T;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            return Bodies.rectangle(cx, cy, len, WALL_T, {
+                isStatic: true, angle,
+                friction: 0.55, restitution: 0.22, label: 'wall'
+            });
+        }
+
+        const boundaryWalls = [
+            makeWall(-200, 1075, 1280, 1075),
+            makeWall(-215, -2000, -215, 1075),
+            makeWall(1295, -2000, 1295, 1075),
+        ];
+        World.add(physWorld, boundaryWalls);
+
+        const jarMaskErrorEl = document.getElementById('jar-mask-error');
+        function showMaskError(themeName, detail = '') {
+            const sources = JAR_THEME_MASK_SOURCES[themeName];
+            const srcList = Array.isArray(sources) ? sources.join(', ') : '(none)';
+            jarMaskErrorEl.textContent = `�}�X�N�ǂݍ��ݎ�?E theme="${themeName}" src=${srcList}${detail ? ' / ' + detail : ''}`;
+            jarMaskErrorEl.classList.add('visible');
+            console.error('[gift-jar] mask load failed', { themeName, sources, detail });
+        }
+        function clearMaskError() {
+            jarMaskErrorEl.classList.remove('visible');
+        }
+
+        let jarWallBodies = [];
+        function rebuildJarWalls(themeName) {
+            currentJarTheme = themeName;
+            currentJarProfile = getJarProfile(themeName);
+            if (!currentJarProfile) return;
+            if (jarWallBodies.length > 0) {
+                for (const wall of jarWallBodies) World.remove(physWorld, wall);
+            }
+            const points = currentJarProfile.wallPoints;
+            jarWallBodies = [];
+            for (let i = 1; i < points.length; i++) {
+                const [x1, y1] = points[i - 1];
+                const [x2, y2] = points[i];
+                jarWallBodies.push(makeWall(x1, y1, x2, y2));
+            }
+            World.add(physWorld, jarWallBodies);
+        }
+        if (!isSlave) {
+            loadMaskJarProfile(currentJarTheme).then((profile) => {
+                if (profile) {
+                    clearMaskError();
+                    rebuildJarWalls(currentJarTheme);
+                } else {
+                    showMaskError(currentJarTheme);
+                }
+            }).catch(() => {
+                showMaskError(currentJarTheme);
+            });
+        }
+
+        // Active gift bodies: [{ body, imageUrl, size, diamonds }]
+        const giftBodies = [];
+        // Bodies mid-crush animation: [{ imageUrl, size, x, y, angle, startTime }]
+        const dyingBodies = [];
+
+        function crushAndRemove(g) {
+            World.remove(physWorld, g.body);
+            const idx = giftBodies.indexOf(g);
+            if (idx !== -1) giftBodies.splice(idx, 1);
+            dyingBodies.push({
+                imageUrl: g.imageUrl, size: g.size,
+                x: g.body.position.x, y: g.body.position.y,
+                angle: g.body.angle, startTime: performance.now()
+            });
+        }
+
+        // Sync DOM and broadcast positions (master only)
+        let lastCrushTime = 0;
+        let allSleepingEmitted = false;
+        Events.on(engine, 'afterUpdate', () => {
+            if (isSlave) return;
+            if (giftBodies.length === 0) return;  // nothing to do
+            // Safety net: remove any gift that tunnelled below the canvas floor
+            for (let i = giftBodies.length - 1; i >= 0; i--) {
+                const g = giftBodies[i];
+                if (g.body.position.y > WIDGET_H + g.size) {
+                    World.remove(physWorld, g.body);
+                    giftBodies.splice(i, 1);
+                }
+            }
+            // Overflow: any cheap gift rising above jar mouth
+            if (crushThreshold > 0) {
+                const isOverflowing = giftBodies.some(
+                    g => g.diamonds < crushThreshold &&
+                         g.body.position.y < jarOpenY() &&
+                         g.body.velocity.y < -0.5
+                );
+                if (isOverflowing) {
+                    const now = Date.now();
+                    if (now - lastCrushTime >= 80) {
+                        // Sort cheapest + bottommost first, crush up to 2 at once
+                        const candidates = giftBodies
+                            .filter(g => g.diamonds < crushThreshold)
+                            .sort((a, b) => b.body.position.y - a.body.position.y);
+                        const batch = candidates.slice(0, 2);
+                        batch.forEach(g => crushAndRemove(g));
+                        if (batch.length > 0) lastCrushTime = now;
+                    }
+                }
+            }
+            // Mark canvas dirty only when at least one body is actually moving
+            const hasMoving = giftBodies.some(g => !g.body.isSleeping);
+            if (hasMoving) {
+                dirty = true;
+                allSleepingEmitted = false;
+                // volatile.emit: drops frame if socket is busy ?Eprevents queue backpressure
+                socket.volatile.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
+                })));
+            } else if (!allSleepingEmitted) {
+                // All bodies just settled: send one reliable final-position update to slave
+                socket.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
+                })));
+                allSleepingEmitted = true;
+            }
+        });
+
+        function resetJar() {
+            for (const g of giftBodies) World.remove(physWorld, g.body);
+            giftBodies.length = 0;
+            dyingBodies.length = 0;
+            ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            dirty = false;
+        }
+
+        function addGift(imageUrl, diamonds, silent = false, trim = null) {
+            if (!currentJarProfile) return;
+            const size   = sizeFor(diamonds);
+
+            const defaultPx = Math.floor(size * 0.12);
+            const lTrim = trim ? trim.left  : defaultPx;
+            const rTrim = trim ? trim.right : defaultPx;
+            const packW = Math.max(8, size - lTrim - rTrim);
+            const radius = Math.max(6, Math.floor(packW / 2));
+
+            // Spawn in widget coordinates above the jar opening.
+            // Use +8 margin (instead of +1) so the initial horizontal velocity
+            // (up to �}2px/frame) cannot drift the ball outside the rim before
+            // the shoulder walls engage (~2 frames of free fall above the mouth).
+            const openLeft = jarOpenLeft();
+            const openRight = jarOpenRight();
+            const openWidth = jarOpenWidth();
+            const widest = jarWidthRange();
+            const xSpawnMin = openLeft + radius + 8;
+            const xSpawnMax = openRight - radius - 8;
+
+            let startX, startY;
+            if (xSpawnMax > xSpawnMin) {
+                // Fits through the opening ? spawn at configured drop height above rim
+                startX = isCenterDropTheme()
+                    ? jarOpenCenter()
+                    : xSpawnMin + Math.random() * (xSpawnMax - xSpawnMin);
+                startY = jarOpenY() - dropAboveJar - radius - 4;
+            } else {
+                // Too wide for opening: find the shoulder depth where it fits
+                let minY = jarOpenY() + 2;
+                if (2 * radius + 4 > openWidth) {
+                    minY = Math.max(minY, widest.y);
+                    for (let probeY = jarOpenY(); probeY <= widest.y; probeY += 6) {
+                        if (widthAt(probeY) >= 2 * radius + 4) {
+                            minY = probeY + 2;
+                            break;
+                        }
+                    }
+                }
+                startY = Math.ceil(minY);
+                const availW = widthAt(startY);
+                const cx = jarCenterAt(startY);
+                const half = Math.max(0, (availW - 2 * radius - 4) / 2);
+                startX = isCenterDropTheme() ? cx : cx + (Math.random() - 0.5) * 2 * half;
+            }
+
+            const body = Bodies.circle(startX, startY, radius, {
+                restitution: silent ? 0.08 : 0.32,
+                friction:    0.55,
+                frictionAir: silent ? 0.25 : 0.03,
+                density:     0.002,
+                label: 'gift'
+            });
+            if (!silent) {
+                Body.setVelocity(body, {
+                    x: isCenterDropTheme() ? 0 : (Math.random() - 0.5) * 4,
+                    y: 0.5
+                });
+            }
+            World.add(physWorld, body);
+
+            // Pre-warm image cache and pre-bake glow so first draw is instant
+            prebakeGlow(imageUrl, size, diamonds);
+
+            giftBodies.push({ body, imageUrl, size, diamonds });
+            dirty = true;
+            allSleepingEmitted = false;
+
+            // Trim oldest if over limit
+            while (giftBodies.length > MAX_GIFTS) {
+                const oldest = giftBodies.shift();
+                World.remove(physWorld, oldest.body);
+            }
+        }
+
+        // ---- Socket events ----
+
+        const FALLBACK_GIFT_IMAGE = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+            '<rect width="64" height="64" rx="14" fill="#f59e0b"/>' +
+            '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">??</text></svg>'
+        )}`;
+
+        // Cache: `${url}:${size}` ?E{ left, right, top, bottom } in px
+        const imageAnalysisCache = new Map();
+
+        /**
+         * Analyze the actual opaque-pixel bounding box of an image.
+         * Returns transparent padding on each edge in pixels.
+         * Falls back to 12% of size if CORS blocks pixel read.
+         */
+        function analyzeImageTrim(imageUrl, size) {
+            const cacheKey = `${imageUrl}:${size}`;
+            if (imageAnalysisCache.has(cacheKey)) {
+                return Promise.resolve(imageAnalysisCache.get(cacheKey));
+            }
+            const defaultPx = Math.floor(size * 0.12);
+            const fallback = { left: defaultPx, right: defaultPx, top: defaultPx, bottom: defaultPx };
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, size, size);
+                    try {
+                        const d = ctx.getImageData(0, 0, size, size).data;
+                        let minX = size, maxX = -1, minY = size, maxY = -1;
+                        for (let py = 0; py < size; py++) {
+                            for (let px = 0; px < size; px++) {
+                                if (d[(py * size + px) * 4 + 3] > 20) {
+                                    if (px < minX) minX = px;
+                                    if (px > maxX) maxX = px;
+                                    if (py < minY) minY = py;
+                                    if (py > maxY) maxY = py;
+                                }
+                            }
+                        }
+                        const result = maxX < 0 ? fallback : {
+                            left:   minX,
+                            right:  size - 1 - maxX,
+                            top:    minY,
+                            bottom: size - 1 - maxY
+                        };
+                        imageAnalysisCache.set(cacheKey, result);
+                        resolve(result);
+                    } catch (e) {
+                        // CORS security error ?Euse fallback
+                        imageAnalysisCache.set(cacheKey, fallback);
+                        resolve(fallback);
+                    }
+                };
+                img.onerror = () => { imageAnalysisCache.set(cacheKey, fallback); resolve(fallback); };
+                img.src = imageUrl;
+            });
+        }
+
+        // Replay full history silently on (re)connect ?Erun physics at 10x speed until settled
+        socket.on('widgets:gift-jar:history', async (history) => {
+            if (isSlave || !Array.isArray(history) || history.length === 0) return;
+            // Skip replay if the jar already has gifts -- reconnect case: live state is still valid.
+            if (giftBodies.length > 0) return;
+            const analyzed = await Promise.all(history.map(async (item) => {
+                const imageUrl = item.giftImage || FALLBACK_GIFT_IMAGE;
+                const diamonds = Math.max(1, Number(item.diamondCount || 1));
+                const trim = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
+                return { imageUrl, diamonds, trim };
+            }));
+            resetJar();
+            engine.timing.timeScale = 10;
+            analyzed.forEach(({ imageUrl, diamonds, trim }, i) => {
+                setTimeout(() => addGift(imageUrl, diamonds, true, trim), i * 30);
+            });
+            setTimeout(() => { engine.timing.timeScale = 1; }, analyzed.length * 30 + 1200);
+        });
+
+        socket.on('widgets:gift-jar:notify', async (data) => {
+            if (isSlave || !data) return;
+
+            const imageUrl = data.giftImage || FALLBACK_GIFT_IMAGE;
+            const diamonds = Math.max(1, Number(data.diamondCount || 1));
+            const repeat   = Math.min(Math.max(1, Number(data.repeatCount || 1)), 10);
+            const trim     = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
+
+            for (let i = 0; i < repeat; i++) {
+                setTimeout(() => addGift(imageUrl, diamonds, false, trim), i * 130);
+            }
+        });
+
+        socket.on('widgets:gift-jar:config', (cfg) => {
+            let shouldRebuildWalls = false;
+            if (cfg && typeof cfg.dropAboveJar === 'number') {
+                dropAboveJar = Math.max(0, Math.min(cfg.dropAboveJar, 2000));
+            }
+            if (cfg && typeof cfg.crushThreshold === 'number') {
+                crushThreshold = Math.max(0, Math.min(cfg.crushThreshold, 44999));
+            }
+            if (cfg && typeof cfg.sizeMultiplier === 'number') {
+                sizeMultiplier = Math.max(0.1, Math.min(cfg.sizeMultiplier, 5.0));
+            }
+            if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
+                customJarProfiles = normalizeCustomJarProfiles(cfg.customProfiles);
+                shouldRebuildWalls = true;
+            }
+            if (cfg && typeof cfg.jarTheme === 'string') {
+                widgetEl.dataset.jarTheme = cfg.jarTheme;
+                shouldRebuildWalls = true;
+            }
+            if (shouldRebuildWalls && !isSlave) {
+                const nextTheme = widgetEl.dataset.jarTheme || currentJarTheme;
+                loadMaskJarProfile(nextTheme, { forceReload: true }).then((profile) => {
+                    if (profile) {
+                        clearMaskError();
+                        rebuildJarWalls(nextTheme);
+                    } else {
+                        showMaskError(nextTheme);
+                    }
+                }).catch(() => {
+                    showMaskError(nextTheme);
+                });
+            }
+        });
+
+        // ---- Unified rAF render loop (master draws from giftBodies, slave from slaveState) ----
+        let slaveState = [];
+        // Dirty flag: set true when physics moved something; rAF clears it after redraw.
+        // Avoids clearRect+drawImage every frame when all bodies are sleeping.
+        let dirty = false;
+
+        socket.on('widgets:gift-jar:positions', (bodies) => {
+            if (!isSlave) return;
+            slaveState = bodies;
+            dirty = true;
+            for (const b of bodies) getCachedImage(b.src); // pre-warm cache
+        });
+
+        function drawBody(src, size, diamonds, x, y, a) {
+            const img = getCachedImage(src);
+            if (!img.complete || img.naturalWidth === 0) return;
+            const half = size * 0.5;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(a);
+            if (diamonds >= 200) {
+                // Use pre-baked glow canvas (no ctx.filter at draw time = no CPU fallback)
+                const oc = getGlowCanvas(src, size, diamonds);
+                if (oc) {
+                    const pad = diamonds >= 1000 ? 160 : 80;
+                    ctx.drawImage(oc, -half - pad, -half - pad);
+                } else {
+                    ctx.drawImage(img, -half, -half, size, size); // glow not ready yet
+                }
+            } else {
+                ctx.drawImage(img, -half, -half, size, size);
+            }
+            ctx.restore();
+        }
+
+        (function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            if (!dirty && dyingBodies.length === 0) return; // nothing changed
+            dirty = false;
+            ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            if (isSlave) {
+                for (const b of slaveState)
+                    drawBody(b.src, b.size, b.diamonds ?? (b.cls === 'mega-glow' ? 1000 : b.cls === 'glow' ? 200 : 1), b.x, b.y, b.a);
+            } else {
+                for (const g of giftBodies)
+                    drawBody(g.imageUrl, g.size, g.diamonds, g.body.position.x, g.body.position.y, g.body.angle);
+                // Crush animations
+                const now = performance.now();
+                for (let i = dyingBodies.length - 1; i >= 0; i--) {
+                    const d = dyingBodies[i];
+                    const t = (now - d.startTime) / 180;
+                    if (t >= 1) { dyingBodies.splice(i, 1); continue; }
+                    const img = getCachedImage(d.imageUrl);
+                    if (!img.complete || img.naturalWidth === 0) continue;
+                    const half = d.size * 0.5;
+                    ctx.save();
+                    ctx.globalAlpha = 1 - t;
+                    ctx.translate(d.x, d.y);
+                    ctx.rotate(d.angle);
+                    ctx.scale(1 - t, 1 - t);
+                    ctx.drawImage(img, -half, -half, d.size, d.size);
+                    ctx.restore();
+                }
+            }
+        })();
+
+        socket.on('widgets:gift-jar:reset', () => {
+            if (isSlave) {
+                slaveState = [];
+                ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            } else {
+                resetJar();
+            }
+        });
+    </script>
+</body>
+</html>
+        <img class="jar-photo jar-photo-pig" src="/widgets/pig.png" alt="piggy bank">
+        <img class="jar-photo jar-photo-jar" src="/widgets/jar.png" alt="glass jar">
+
+        <!-- ===== Theme: bee (�I?E�K���X�r) ?Eround honey jar, golden amber, cute bee ===== -->
+        <svg class="jar-svg jar-layer-front jar-theme-bee" viewBox="0 0 200 300" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="bee-fill" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%"   stop-color="rgba(220,130,20,0.36)"/>
+                    <stop offset="18%"  stop-color="rgba(255,210,95,0.15)"/>
+                    <stop offset="50%"  stop-color="rgba(255,240,168,0.05)"/>
+                    <stop offset="82%"  stop-color="rgba(255,208,90,0.13)"/>
+                    <stop offset="100%" stop-color="rgba(210,118,15,0.28)"/>
+                </linearGradient>
+                <radialGradient id="bee-bottom-light" cx="50%" cy="88%" r="55%">
+                    <stop offset="0%"   stop-color="rgba(255,222,100,0.36)"/>
+                    <stop offset="100%" stop-color="rgba(255,222,100,0)"/>
+                </radialGradient>
+                <radialGradient id="bee-spec" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%"   stop-color="rgba(255,255,255,0.88)"/>
+                    <stop offset="44%"  stop-color="rgba(255,255,255,0.34)"/>
+                    <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+                </radialGradient>
+                <linearGradient id="bee-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%"   stop-color="#F5C542"/>
+                    <stop offset="30%"  stop-color="#D4A017"/>
+                    <stop offset="65%"  stop-color="#B8860B"/>
+                    <stop offset="100%" stop-color="#8B6914"/>
+                </linearGradient>
+                <clipPath id="bee-body-clip">
+                    <path d="M 62 46 C 52 48 50 60 50 76 C 50 96 34 116 14 138 C 4 154 4 170 4 186 C 4 222 16 254 38 270 Q 64 286 100 288 Q 136 286 162 270 C 184 254 196 222 196 186 C 196 170 196 154 186 138 C 166 116 150 96 150 76 C 150 60 148 48 138 46 Z"/>
+                </clipPath>
+            </defs>
+
+            <!-- Honey jar body -->
+            <path d="M 62 46 C 52 48 50 60 50 76 C 50 96 34 116 14 138 C 4 154 4 170 4 186 C 4 222 16 254 38 270 Q 64 286 100 288 Q 136 286 162 270 C 184 254 196 222 196 186 C 196 170 196 154 186 138 C 166 116 150 96 150 76 C 150 60 148 48 138 46 Z"
+                  fill="url(#bee-fill)"/>
+
+            <!-- Subtle horizontal rings visible through glass -->
+            <rect x="-10" y="100" width="220" height="6" fill="rgba(130,75,0,0.07)" clip-path="url(#bee-body-clip)"/>
+            <rect x="-10" y="132" width="220" height="6" fill="rgba(130,75,0,0.07)" clip-path="url(#bee-body-clip)"/>
+            <rect x="-10" y="164" width="220" height="6" fill="rgba(130,75,0,0.06)" clip-path="url(#bee-body-clip)"/>
+            <rect x="-10" y="196" width="220" height="6" fill="rgba(130,75,0,0.06)" clip-path="url(#bee-body-clip)"/>
+            <rect x="-10" y="228" width="220" height="6" fill="rgba(130,75,0,0.05)" clip-path="url(#bee-body-clip)"/>
+            <rect x="-10" y="258" width="220" height="6" fill="rgba(130,75,0,0.05)" clip-path="url(#bee-body-clip)"/>
+
+            <!-- Outer wall lines -->
+            <path d="M 62 46 C 52 48 50 60 50 76 C 50 96 34 116 14 138 C 4 154 4 170 4 186 C 4 222 16 254 38 270 Q 64 286 100 288"
+                  fill="none" stroke="rgba(228,168,45,0.88)" stroke-width="2.5"/>
+            <path d="M 138 46 C 148 48 150 60 150 76 C 150 96 166 116 186 138 C 196 154 196 170 196 186 C 196 222 184 254 162 270 Q 136 286 100 288"
+                  fill="none" stroke="rgba(228,168,45,0.50)" stroke-width="2"/>
+            <!-- Inner wall lines -->
+            <path d="M 66 56 C 58 60 56 70 56 82 C 56 100 42 118 22 140 C 12 156 10 172 10 188 C 10 222 22 252 40 268 Q 64 282 100 284"
+                  fill="none" stroke="rgba(255,215,100,0.26)" stroke-width="1.2"/>
+            <path d="M 134 56 C 142 60 144 70 144 82 C 144 100 158 118 178 140 C 188 156 190 172 190 188 C 190 222 178 252 160 268 Q 136 282 100 284"
+                  fill="none" stroke="rgba(255,215,100,0.16)" stroke-width="1"/>
+
+            <!-- Bottom refraction -->
+            <ellipse cx="100" cy="280" rx="74" ry="7" fill="url(#bee-bottom-light)"/>
+            <path d="M 22 268 Q 100 292 178 268"
+                  fill="none" stroke="rgba(255,218,100,0.28)" stroke-width="1.5"/>
+
+            <!-- Golden metallic lid -->
+            <ellipse cx="100" cy="46" rx="84" ry="13" fill="rgba(210,150,10,0.22)"/>
+            <ellipse cx="100" cy="46" rx="80" ry="11"
+                     fill="url(#bee-lid)" stroke="rgba(100,60,0,0.90)" stroke-width="2.0"/>
+            <ellipse cx="100" cy="46" rx="70" ry="7.5"
+                     fill="rgba(10,5,0,0.55)" stroke="rgba(220,175,50,0.48)" stroke-width="1.2"/>
+            <path d="M 30 40 Q 100 32 170 40"
+                  fill="none" stroke="rgba(255,235,130,0.94)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M 34 52 Q 100 60 166 52"
+                  fill="none" stroke="rgba(160,100,0,0.28)" stroke-width="1.8" stroke-linecap="round"/>
+
+            <!-- === Bee emblem in upper portion of jar === -->
+            <!-- Wings (behind body) -->
+            <ellipse cx="78" cy="122" rx="22" ry="11"
+                     fill="rgba(212,246,255,0.72)" stroke="rgba(100,214,242,0.60)" stroke-width="1.2"
+                     transform="rotate(-25 78 122)"/>
+            <ellipse cx="122" cy="122" rx="22" ry="11"
+                     fill="rgba(212,246,255,0.72)" stroke="rgba(100,214,242,0.60)" stroke-width="1.2"
+                     transform="rotate(25 122 122)"/>
+            <!-- Abdomen -->
+            <ellipse cx="100" cy="148" rx="13" ry="18" fill="#FFD60A" stroke="#1A1000" stroke-width="1.4"/>
+            <!-- Stripes -->
+            <path d="M 88 139 Q 100 137 112 139" fill="none" stroke="#1A1000" stroke-width="5" stroke-linecap="round"/>
+            <path d="M 87 150 Q 100 148 113 150" fill="none" stroke="#1A1000" stroke-width="5" stroke-linecap="round"/>
+            <path d="M 88 161 Q 100 159 112 161" fill="none" stroke="#1A1000" stroke-width="4" stroke-linecap="round"/>
+            <!-- Stinger -->
+            <path d="M 100 166 L 98 175 Q 100 178 102 175 Z" fill="#C8A000" stroke="#1A1000" stroke-width="0.8"/>
+            <!-- Head -->
+            <circle cx="100" cy="129" r="10" fill="#FFD60A" stroke="#1A1000" stroke-width="1.4"/>
+            <!-- Eyes -->
+            <circle cx="95.5" cy="127" r="3" fill="#1A1000"/>
+            <circle cx="94.5" cy="126" r="1" fill="rgba(255,255,255,0.70)"/>
+            <circle cx="104.5" cy="127" r="3" fill="#1A1000"/>
+            <circle cx="103.5" cy="126" r="1" fill="rgba(255,255,255,0.70)"/>
+            <!-- Smile -->
+            <path d="M 95 133 Q 100 137 105 133" fill="none" stroke="#1A1000" stroke-width="1.4" stroke-linecap="round"/>
+            <!-- Antennae -->
+            <line x1="95" y1="119" x2="87" y2="108" stroke="#1A1000" stroke-width="1.6" stroke-linecap="round"/>
+            <circle cx="86" cy="107" r="2.8" fill="#1A1000"/>
+            <line x1="105" y1="119" x2="113" y2="108" stroke="#1A1000" stroke-width="1.6" stroke-linecap="round"/>
+            <circle cx="114" cy="107" r="2.8" fill="#1A1000"/>
+
+            <!-- Specular highlight (amber-tinted) -->
+            <ellipse cx="26" cy="184" rx="20" ry="82" transform="rotate(-8 26 184)"
+                     fill="url(#bee-spec)" opacity="0.52"/>
+            <ellipse cx="24" cy="184" rx="6.5" ry="48" transform="rotate(-8 24 184)"
+                     fill="url(#bee-spec)" opacity="0.82"/>
+            <path d="M 54 52 C 42 64 34 80 30 106"
+                  fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="4.5" stroke-linecap="round"/>
+            <path d="M 54 52 C 42 64 34 80 30 106"
+                  fill="none" stroke="rgba(255,255,255,0.36)" stroke-width="9" stroke-linecap="round"/>
+            <line x1="10" y1="218" x2="12" y2="260" stroke="rgba(255,255,255,0.18)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="192" y1="155" x2="192" y2="230" stroke="rgba(255,255,255,0.07)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <script>
+        const isSlave = new URLSearchParams(location.search).get('slave') === '1';
+        const isPreview = new URLSearchParams(location.search).get('preview') === '1';
+        if (isPreview) document.body.classList.add('preview-card');
+
+        // Scale widget to fit window and center horizontally.
+        // When isSlave, add 120px overflow margin so x<0 area is visible.
+        const widgetEl = document.getElementById('widget');
+        const OVERFLOW_MARGIN = isSlave ? 120 : 0;
+        const WIDGET_W = 1080;
+        const WIDGET_H = 1080;
+        function applyScale() {
+            const visibleW = WIDGET_W + 2 * OVERFLOW_MARGIN;
+            const s = Math.min(window.innerWidth / visibleW, window.innerHeight / WIDGET_H, 1);
+            // Center the visible area (widget + margins) horizontally in the viewport
+            const leftEdge = (window.innerWidth - visibleW * s) / 2;
+            widgetEl.style.left = (leftEdge + OVERFLOW_MARGIN * s) + 'px';
+            widgetEl.style.transform = s < 1 ? `scale(${s})` : '';
+        }
+        applyScale();
+        window.addEventListener('resize', applyScale);
+
+        const socket = io();
+
+        let overlayRecoveryTimer = null;
+        let overlayRecoveryInFlight = false;
+        const OVERLAY_RECOVERY_RETRY_MS = 2000;
+
+        function clearOverlayRecoveryTimer() {
+            if (overlayRecoveryTimer) {
+                clearInterval(overlayRecoveryTimer);
+                overlayRecoveryTimer = null;
+            }
+        }
+
+        async function probeBackendAvailability() {
+            if (overlayRecoveryInFlight || sampleMode) return;
+            overlayRecoveryInFlight = true;
+            try {
+                const response = await fetch('/api/widgets/gift-jar/config', { cache: 'no-store' });
+                if (!response.ok) return;
+                clearOverlayRecoveryTimer();
+                window.location.reload();
+            } catch {
+                // Backend still restarting.
+            } finally {
+                overlayRecoveryInFlight = false;
+            }
+        }
+
+        function scheduleOverlayRecoveryReload() {
+            if (overlayRecoveryTimer || sampleMode) return;
+            overlayRecoveryTimer = setInterval(() => { probeBackendAvailability(); }, OVERLAY_RECOVERY_RETRY_MS);
+            probeBackendAvailability();
+        }
+
+        socket.on('connect', () => {
+            clearOverlayRecoveryTimer();
+        });
+
+        socket.on('disconnect', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        socket.on('connect_error', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!socket.connected) {
+                scheduleOverlayRecoveryReload();
+            }
+        });
+
+        const giftCanvas = document.getElementById('gift-canvas');
+        giftCanvas.width  = WIDGET_W;
+        giftCanvas.height = WIDGET_H;
+        const ctx = giftCanvas.getContext('2d');
+
+        // Image cache: url ?EHTMLImageElement
+        const imgCache = new Map();
+        // Glow cache: `${url}:${size}:${glowType}` ?EOffscreenCanvas (pre-baked, one-time CPU cost)
+        const glowCache = new Map();
+
+        function getCachedImage(url) {
+            let img = imgCache.get(url);
+            if (!img) {
+                img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.src = url;
+                imgCache.set(url, img);
+            }
+            return img;
+        }
+
+        // Pre-bake glow into an OffscreenCanvas so ctx.filter is NEVER called at draw time.
+        // Call this as soon as the image is loaded (addGift / history replay).
+        function prebakeGlow(url, size, diamonds) {
+            if (diamonds < 200) return;
+            const glowType = diamonds >= 1000 ? 'mega' : 'glow';
+            const key = `${url}:${size}:${glowType}`;
+            if (glowCache.has(key)) return;
+            const src = getCachedImage(url);
+            const doBake = () => {
+                if (glowCache.has(key)) return;
+                const pad = glowType === 'mega' ? 160 : 80;
+                const total = size + pad * 2;
+                const oc = new OffscreenCanvas(total, total);
+                const octx = oc.getContext('2d');
+                octx.filter = glowType === 'mega'
+                    ? 'drop-shadow(0 0 76px rgba(255,100,200,1)) drop-shadow(0 0 150px rgba(140,80,255,0.7))'
+                    : 'drop-shadow(0 0 54px rgba(255,200,30,0.9))';
+                octx.drawImage(src, pad, pad, size, size);
+                octx.filter = 'none';
+                glowCache.set(key, oc);
+            };
+            if (src.complete && src.naturalWidth > 0) doBake();
+            else src.addEventListener('load', doBake, { once: true });
+        }
+
+        // Fallback: called at draw time if prebakeGlow wasn't ready yet (rare, first frame)
+        function getGlowCanvas(url, size, diamonds) {
+            if (diamonds < 200) return null;
+            const glowType = diamonds >= 1000 ? 'mega' : 'glow';
+            const key = `${url}:${size}:${glowType}`;
+            if (glowCache.has(key)) return glowCache.get(key);
+            // Trigger bake now (image must be loaded at this point)
+            prebakeGlow(url, size, diamonds);
+            return glowCache.get(key) ?? null;
+        }
+
+        // Physics and rendering in widget coordinate space (widget top-left = origin)
+        const MAX_GIFTS = 150;
+        let customJarProfiles = {};
+        let maskJarProfiles = {};
+        const JAR_THEME_IMAGE_LAYOUTS = {
+            pig: {
+                left: -20,
+                top: 150,
+                width: 1120,
+                height: 746
+            },
+            jar: {
+                left: 180,
+                top: 0,
+                width: 720,
+                height: 1080
+            }
+        };
+        const JAR_THEME_MASK_SOURCES = {
+            jar: ['/widgets/jar.svg']
+        };
+        const JAR_THEME_HARDCODED_PROFILES = {
+            pig: {
+                dropSlot: { y: 163, left: 522, right: 629 },
+                widthStops: [
+                    { y: 296, left: 470, right: 670 },
+                    { y: 330, left: 360, right: 780 },
+                    { y: 360, left: 290, right: 850 },
+                    { y: 400, left: 240, right: 870 },
+                    { y: 440, left: 200, right: 840 },
+                    { y: 480, left: 185, right: 830 },
+                    { y: 523, left: 242, right: 826 },
+                    { y: 580, left: 250, right: 800 },
+                    { y: 620, left: 280, right: 770 },
+                    { y: 655, left: 340, right: 740 }
+                ],
+                wallPoints: [
+                    [470, 296], [360, 330], [290, 360], [240, 400], [200, 440],
+                    [185, 480], [242, 523], [250, 580], [280, 620], [340, 655],
+                    [740, 655], [770, 620], [800, 580], [826, 523], [830, 480],
+                    [840, 440], [870, 400], [850, 360], [780, 330], [670, 296]
+                ]
+            }
+        };
+        const maskJarProfileLoads = new Map();
+        let currentJarTheme = widgetEl.dataset.jarTheme || 'glass';
+        let currentJarProfile = null;
+
+        function clampJarCoordinate(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) return null;
+            return Math.max(0, Math.min(Math.round(numericValue), 1080));
+        }
+
+        function normalizeJarProfile(rawProfile) {
+            if (!rawProfile || typeof rawProfile !== 'object') return null;
+            let dropSlot = null;
+            if (rawProfile.dropSlot && typeof rawProfile.dropSlot === 'object') {
+                const y = clampJarCoordinate(rawProfile.dropSlot.y);
+                const left = clampJarCoordinate(rawProfile.dropSlot.left);
+                const right = clampJarCoordinate(rawProfile.dropSlot.right);
+                if (y !== null && left !== null && right !== null && right - left >= 8) {
+                    dropSlot = { y, left, right };
+                }
+            }
+            const widthStops = [];
+            const seenStops = new Set();
+            for (const stop of Array.isArray(rawProfile.widthStops) ? rawProfile.widthStops : []) {
+                const y = clampJarCoordinate(stop?.y);
+                const left = clampJarCoordinate(stop?.left);
+                const right = clampJarCoordinate(stop?.right);
+                if (y === null || left === null || right === null || right - left < 8) continue;
+                const key = `${y}:${left}:${right}`;
+                if (seenStops.has(key)) continue;
+                seenStops.add(key);
+                widthStops.push({ y, left, right });
+            }
+            widthStops.sort((a, b) => a.y - b.y);
+
+            const wallPoints = [];
+            let previousPointKey = '';
+            for (const point of Array.isArray(rawProfile.wallPoints) ? rawProfile.wallPoints : []) {
+                if (!Array.isArray(point) || point.length < 2) continue;
+                const x = clampJarCoordinate(point[0]);
+                const y = clampJarCoordinate(point[1]);
+                if (x === null || y === null) continue;
+                const key = `${x}:${y}`;
+                if (key === previousPointKey) continue;
+                previousPointKey = key;
+                wallPoints.push([x, y]);
+            }
+
+            if (widthStops.length < 4 || wallPoints.length < 6) return null;
+            return dropSlot ? { widthStops, wallPoints, dropSlot } : { widthStops, wallPoints };
+        }
+
+        function normalizeCustomJarProfiles(rawProfiles) {
+            const profiles = {};
+            if (!rawProfiles || typeof rawProfiles !== 'object') return profiles;
+            for (const [themeName, rawProfile] of Object.entries(rawProfiles)) {
+                const normalized = normalizeJarProfile(rawProfile);
+                if (normalized) profiles[themeName] = normalized;
+            }
+            return profiles;
+        }
+
+        function simplifyMaskWidthStops(rows) {
+            if (rows.length <= 2) return rows;
+            const simplified = [rows[0]];
+            let lastKept = rows[0];
+            for (let index = 1; index < rows.length - 1; index++) {
+                const row = rows[index];
+                const yGap = row.y - lastKept.y;
+                const leftGap = Math.abs(row.left - lastKept.left);
+                const rightGap = Math.abs(row.right - lastKept.right);
+                if (yGap >= 14 || leftGap >= 10 || rightGap >= 10) {
+                    simplified.push(row);
+                    lastKept = row;
+                }
+            }
+            simplified.push(rows[rows.length - 1]);
+            return simplified;
+        }
+
+        function selectPassableSpan(runs, preferredCenterX) {
+            if (!Array.isArray(runs) || runs.length < 2) return null;
+            const candidates = [];
+            for (let index = 0; index < runs.length - 1; index++) {
+                const left = runs[index].end + 1;
+                const right = runs[index + 1].start - 1;
+                if (right - left < 8) continue;
+                candidates.push({
+                    left,
+                    right,
+                    center: (left + right) / 2,
+                    width: right - left
+                });
+            }
+            if (candidates.length === 0) return null;
+            if (!Number.isFinite(preferredCenterX)) {
+                return candidates.reduce((best, candidate) => candidate.width > best.width ? candidate : best);
+            }
+
+            return candidates.reduce((best, candidate) => {
+                const candidateDistance = Math.abs(candidate.center - preferredCenterX);
+                const bestDistance = Math.abs(best.center - preferredCenterX);
+                if (candidateDistance !== bestDistance) {
+                    return candidateDistance < bestDistance ? candidate : best;
+                }
+                return candidate.width > best.width ? candidate : best;
+            });
+        }
+
+        function buildJarProfileFromWallRuns(rows, explicitDropSlot = null) {
+            const passableRows = [];
+            let trackedCenterX = explicitDropSlot ? (explicitDropSlot.left + explicitDropSlot.right) / 2 : null;
+            for (const row of rows) {
+                const span = selectPassableSpan(row.runs, trackedCenterX);
+                if (!span) continue;
+                const { left, right } = span;
+                passableRows.push({ y: row.y, left, right });
+                trackedCenterX = span.center;
+            }
+            if (passableRows.length < 4) {
+                console.warn(`[gift-jar] buildJarProfileFromWallRuns: only ${passableRows.length} passable rows (need ?4), totalRows=${rows.length}`);
+                return null;
+            }
+
+            const widthStops = simplifyMaskWidthStops(passableRows);
+            const leftPoints = widthStops.map((row) => [row.left, row.y]);
+            const rightPoints = widthStops.map((row) => [row.right, row.y]).reverse();
+            const firstRow = widthStops[0];
+            const dropSlot = explicitDropSlot || {
+                y: firstRow.y,
+                left: firstRow.left,
+                right: firstRow.right
+            };
+            return normalizeJarProfile({
+                dropSlot,
+                widthStops,
+                wallPoints: leftPoints.concat(rightPoints)
+            });
+        }
+
+        function buildJarProfileFromMaskImage(image, themeName) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1080;
+            canvas.height = 1080;
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            context.clearRect(0, 0, 1080, 1080);
+            const layout = JAR_THEME_IMAGE_LAYOUTS[themeName];
+            if (layout) {
+                context.drawImage(image, layout.left, layout.top, layout.width, layout.height);
+            } else {
+                context.drawImage(image, 0, 0, 1080, 1080);
+            }
+
+            const { data, width, height } = context.getImageData(0, 0, 1080, 1080);
+
+            // Auto-detect mask color convention by sampling within the image's draw bounds.
+            // "Dark outline on bright background" (e.g. white bg + dark strokes): walls are dark pixels.
+            // "Bright walls on transparent/dark background": walls are bright pixels (luminance >= 200).
+            const bx1 = layout ? Math.max(0, Math.round(layout.left)) : 0;
+            const bx2 = layout ? Math.min(width - 1, Math.round(layout.left + layout.width)) : width - 1;
+            const by1 = layout ? Math.max(0, Math.round(layout.top)) : 0;
+            const by2 = layout ? Math.min(height - 1, Math.round(layout.top + layout.height)) : height - 1;
+            let sampleOpaqueLumTotal = 0, sampleOpaqueCount = 0, sampleTransparentCount = 0;
+            const sampleStep = 40;
+            for (let sy = by1; sy <= by2; sy += sampleStep) {
+                for (let sx = bx1; sx <= bx2; sx += sampleStep) {
+                    const off = (sy * width + sx) * 4;
+                    if (data[off + 3] < 20) {
+                        sampleTransparentCount++;
+                    } else {
+                        sampleOpaqueLumTotal += data[off] * 0.2126 + data[off + 1] * 0.7152 + data[off + 2] * 0.0722;
+                        sampleOpaqueCount++;
+                    }
+                }
+            }
+            const avgOpaqueLum = sampleOpaqueCount > 0 ? sampleOpaqueLumTotal / sampleOpaqueCount : 0;
+            // Determine wall pixel color (dark outline vs bright fill):
+            // - Solid bg (no transparent): bright avg ?Edark-outline on bright bg; dark avg ?Ebright walls on dark bg
+            // - Transparent bg: opaque pixels ARE the walls; dark opaque ?Edark-outline; bright opaque ?Ebright walls
+            const darkOutlineStyle = sampleTransparentCount === 0
+                ? avgOpaqueLum > 150   // solid bg: bright bg ?Edark outlines
+                : sampleOpaqueCount > 0 && avgOpaqueLum < 150;  // transparent bg: dark opaque ?Edark outline walls
+            console.log(`[gift-jar] mask style detect theme=${themeName}`, {
+                sampleOpaqueCount, sampleTransparentCount,
+                avgOpaqueLum: Math.round(avgOpaqueLum), darkOutlineStyle
+            });
+
+            const rows = [];
+            for (let y = 0; y < height; y++) {
+                const runs = [];
+                let runStart = -1;
+                for (let x = 0; x < width; x++) {
+                    const offset = (y * width + x) * 4;
+                    const alpha = data[offset + 3];
+                    const luminance = data[offset] * 0.2126 + data[offset + 1] * 0.7152 + data[offset + 2] * 0.0722;
+                    const isWall = alpha > 20 && (darkOutlineStyle ? luminance < 120 : luminance >= 200);
+                    if (isWall) {
+                        if (runStart === -1) runStart = x;
+                    } else if (runStart !== -1) {
+                        runs.push({ start: runStart, end: x - 1 });
+                        runStart = -1;
+                    }
+                }
+                if (runStart !== -1) runs.push({ start: runStart, end: width - 1 });
+                if (runs.length === 0) continue;
+                rows.push({ y, runs });
+            }
+
+            return buildJarProfileFromWallRuns(rows, null);
+        }
+
+        function loadMaskImageSource(src, bustCache) {
+            const url = bustCache ? `${src}${src.includes('?') ? '&' : '?'}v=${Date.now()}` : src;
+            // SVGs loaded directly as <img> src can taint the canvas in Chromium/Electron,
+            // and createImageBitmap(svgBlob) is also unsupported. Workaround: fetch the SVG,
+            // wrap it in a blob: URL (same-origin ?Eno canvas taint), then load as <img>.
+            if (src.endsWith('.svg') || src.startsWith('data:image/svg')) {
+                return fetch(url, { cache: bustCache ? 'no-store' : 'default' })
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status} loading mask svg: ${url}`);
+                        return r.blob();
+                    })
+                    .then(blob => new Promise((resolve, reject) => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        const image = new Image();
+                        image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
+                        image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error(`failed to render svg blob: ${url}`)); };
+                        image.src = objectUrl;
+                    }));
+            }
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error(`failed to load mask image: ${src}`));
+                image.src = url;
+            });
+        }
+
+        async function loadMaskJarProfile(themeName, options = {}) {
+            const sources = JAR_THEME_MASK_SOURCES[themeName];
+            if (!Array.isArray(sources) || sources.length === 0) {
+                const hardcoded = JAR_THEME_HARDCODED_PROFILES[themeName];
+                if (!hardcoded) return null;
+                const normalized = normalizeJarProfile(hardcoded);
+                if (normalized) {
+                    maskJarProfiles = { ...maskJarProfiles, [themeName]: normalized };
+                }
+                return normalized || null;
+            }
+            const { forceReload = false } = options;
+            if (!forceReload && maskJarProfileLoads.has(themeName)) {
+                return maskJarProfileLoads.get(themeName);
+            }
+
+            const task = (async () => {
+                for (const src of sources) {
+                    try {
+                        const image = await loadMaskImageSource(src, forceReload);
+                        const profile = buildJarProfileFromMaskImage(image, themeName);
+                        if (profile) {
+                            maskJarProfiles = { ...maskJarProfiles, [themeName]: profile };
+                            return profile;
+                        }
+                        console.warn(`[gift-jar] mask profile build failed (returned null) for src=${src} theme=${themeName}`);
+                    } catch (e) {
+                        console.warn(`[gift-jar] mask source failed src=${src}:`, e?.message ?? e);
+                    }
+                }
+                if (maskJarProfiles[themeName]) {
+                    const nextProfiles = { ...maskJarProfiles };
+                    delete nextProfiles[themeName];
+                    maskJarProfiles = nextProfiles;
+                }
+                const hardcoded = JAR_THEME_HARDCODED_PROFILES[themeName];
+                if (hardcoded) {
+                    console.warn(`[gift-jar] using hardcoded fallback profile for theme=${themeName}`);
+                    const normalized = normalizeJarProfile(hardcoded);
+                    if (normalized) {
+                        maskJarProfiles = { ...maskJarProfiles, [themeName]: normalized };
+                        return normalized;
+                    }
+                }
+                return null;
+            })();
+
+            maskJarProfileLoads.set(themeName, task);
+            try {
+                return await task;
+            } finally {
+                maskJarProfileLoads.delete(themeName);
+            }
+        }
+
+        // Pixels above jar opening for gift spawn (0 = just above rim, updated via socket)
+        let dropAboveJar = 0;
+        let crushThreshold = 1000;
+        let sizeMultiplier = 0.4;
+
+        /** Map diamond count ?Eimage size in px (before multiplier) */
+        function sizeFor(diamonds) {
+            const d = Math.max(1, Math.round(diamonds));
+            let base;
+            if (d <=     1) base =  76;
+            else if (d <=     4) base =  86;
+            else if (d <=     9) base =  97;
+            else if (d <=    19) base = 108;
+            else if (d <=    49) base = 119;
+            else if (d <=    99) base = 135;
+            else if (d <=   199) base = 151;
+            else if (d <=   499) base = 173;
+            else if (d <=   999) base = 194;
+            else if (d <=  1999) base = 216;
+            else if (d <=  4999) base = 238;
+            else if (d <=  9999) base = 265;
+            else if (d <= 19999) base = 292;
+            else if (d <= 24999) base = 340;
+            else if (d <= 29999) base = 358;
+            else if (d <= 34999) base = 378;
+            else if (d <= 39999) base = 398;
+            else if (d <= 44999) base = 420;
+            else base = 420;
+            return Math.round(base * sizeMultiplier);
+        }
+
+        function getJarProfile(themeName) {
+            return maskJarProfiles[themeName] || customJarProfiles[themeName] || null;
+        }
+
+        function getJarDropSlot(themeName) {
+            const currentProfileSlot = currentJarProfile?.dropSlot;
+            if (currentProfileSlot && Number.isFinite(currentProfileSlot.y) && Number.isFinite(currentProfileSlot.left) && Number.isFinite(currentProfileSlot.right)) {
+                return currentProfileSlot;
+            }
+            return currentJarProfile.widthStops[0];
+        }
+
+        function isCenterDropTheme() {
+            return true;
+        }
+
+        function edgeAt(widgetY, edge) {
+            const stops = currentJarProfile.widthStops;
+            if (widgetY <= stops[0].y) return stops[0][edge];
+            for (let i = 1; i < stops.length; i++) {
+                const prev = stops[i - 1];
+                const next = stops[i];
+                if (widgetY <= next.y) {
+                    const t = (widgetY - prev.y) / Math.max(1, next.y - prev.y);
+                    return prev[edge] + (next[edge] - prev[edge]) * t;
+                }
+            }
+            return stops[stops.length - 1][edge];
+        }
+
+        function jarOpenY() {
+            return getJarDropSlot(currentJarTheme).y;
+        }
+
+        function jarOpenLeft() {
+            return getJarDropSlot(currentJarTheme).left;
+        }
+
+        function jarOpenRight() {
+            return getJarDropSlot(currentJarTheme).right;
+        }
+
+        function jarOpenWidth() {
+            return jarOpenRight() - jarOpenLeft();
+        }
+
+        function jarOpenCenter() {
+            return (jarOpenLeft() + jarOpenRight()) / 2;
+        }
+
+        function jarCenterAt(widgetY) {
+            return (edgeAt(widgetY, 'left') + edgeAt(widgetY, 'right')) / 2;
+        }
+
+        function jarWidthRange() {
+            return currentJarProfile.widthStops.reduce((acc, stop) => {
+                const width = stop.right - stop.left;
+                if (width > acc.width) return { width, y: stop.y };
+                return acc;
+            }, { width: 0, y: jarOpenY() });
+        }
+
+        /** Jar interior width at a given widget y coordinate */
+        function widthAt(widgetY) {
+            return Math.max(0, Math.round(edgeAt(widgetY, 'right') - edgeAt(widgetY, 'left')));
+        }
+
+        // ---- Matter.js physics ----
+        const { Engine, Bodies, Body, World, Events, Runner } = Matter;
+        const engine = Engine.create({ gravity: { x: 0, y: 1.4 }, enableSleeping: true, positionIterations: 14, velocityIterations: 10 });
+        const physWorld = engine.world;
+        const runner = Runner.create();
+        if (!isSlave) Runner.run(runner, engine);
+
+        const WALL_T = 30;
+        function makeWall(x1, y1, x2, y2) {
+            const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+            const len = Math.hypot(x2 - x1, y2 - y1) + WALL_T;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            return Bodies.rectangle(cx, cy, len, WALL_T, {
+                isStatic: true, angle,
+                friction: 0.55, restitution: 0.22, label: 'wall'
+            });
+        }
+
+        const boundaryWalls = [
+            makeWall(-200, 1075, 1280, 1075),
+            makeWall(-215, -2000, -215, 1075),
+            makeWall(1295, -2000, 1295, 1075),
+        ];
+        World.add(physWorld, boundaryWalls);
+
+        const jarMaskErrorEl = document.getElementById('jar-mask-error');
+        function showMaskError(themeName, detail = '') {
+            const sources = JAR_THEME_MASK_SOURCES[themeName];
+            const srcList = Array.isArray(sources) ? sources.join(', ') : '(none)';
+            jarMaskErrorEl.textContent = `�}�X�N�ǂݍ��ݎ�?E theme="${themeName}" src=${srcList}${detail ? ' / ' + detail : ''}`;
+            jarMaskErrorEl.classList.add('visible');
+            console.error('[gift-jar] mask load failed', { themeName, sources, detail });
+        }
+        function clearMaskError() {
+            jarMaskErrorEl.classList.remove('visible');
+        }
+
+        let jarWallBodies = [];
+        function rebuildJarWalls(themeName) {
+            currentJarTheme = themeName;
+            currentJarProfile = getJarProfile(themeName);
+            if (!currentJarProfile) return;
+            if (jarWallBodies.length > 0) {
+                for (const wall of jarWallBodies) World.remove(physWorld, wall);
+            }
+            const points = currentJarProfile.wallPoints;
+            jarWallBodies = [];
+            for (let i = 1; i < points.length; i++) {
+                const [x1, y1] = points[i - 1];
+                const [x2, y2] = points[i];
+                jarWallBodies.push(makeWall(x1, y1, x2, y2));
+            }
+            World.add(physWorld, jarWallBodies);
+        }
+        if (!isSlave) {
+            loadMaskJarProfile(currentJarTheme).then((profile) => {
+                if (profile) {
+                    clearMaskError();
+                    rebuildJarWalls(currentJarTheme);
+                } else {
+                    showMaskError(currentJarTheme);
+                }
+            }).catch(() => {
+                showMaskError(currentJarTheme);
+            });
+        }
+
+        // Active gift bodies: [{ body, imageUrl, size, diamonds }]
+        const giftBodies = [];
+        // Bodies mid-crush animation: [{ imageUrl, size, x, y, angle, startTime }]
+        const dyingBodies = [];
+
+        function crushAndRemove(g) {
+            World.remove(physWorld, g.body);
+            const idx = giftBodies.indexOf(g);
+            if (idx !== -1) giftBodies.splice(idx, 1);
+            dyingBodies.push({
+                imageUrl: g.imageUrl, size: g.size,
+                x: g.body.position.x, y: g.body.position.y,
+                angle: g.body.angle, startTime: performance.now()
+            });
+        }
+
+        // Sync DOM and broadcast positions (master only)
+        let lastCrushTime = 0;
+        let allSleepingEmitted = false;
+        Events.on(engine, 'afterUpdate', () => {
+            if (isSlave) return;
+            if (giftBodies.length === 0) return;  // nothing to do
+            // Safety net: remove any gift that tunnelled below the canvas floor
+            for (let i = giftBodies.length - 1; i >= 0; i--) {
+                const g = giftBodies[i];
+                if (g.body.position.y > WIDGET_H + g.size) {
+                    World.remove(physWorld, g.body);
+                    giftBodies.splice(i, 1);
+                }
+            }
+            // Overflow: any cheap gift rising above jar mouth
+            if (crushThreshold > 0) {
+                const isOverflowing = giftBodies.some(
+                    g => g.diamonds < crushThreshold &&
+                         g.body.position.y < jarOpenY() &&
+                         g.body.velocity.y < -0.5
+                );
+                if (isOverflowing) {
+                    const now = Date.now();
+                    if (now - lastCrushTime >= 80) {
+                        // Sort cheapest + bottommost first, crush up to 2 at once
+                        const candidates = giftBodies
+                            .filter(g => g.diamonds < crushThreshold)
+                            .sort((a, b) => b.body.position.y - a.body.position.y);
+                        const batch = candidates.slice(0, 2);
+                        batch.forEach(g => crushAndRemove(g));
+                        if (batch.length > 0) lastCrushTime = now;
+                    }
+                }
+            }
+            // Mark canvas dirty only when at least one body is actually moving
+            const hasMoving = giftBodies.some(g => !g.body.isSleeping);
+            if (hasMoving) {
+                dirty = true;
+                allSleepingEmitted = false;
+                // volatile.emit: drops frame if socket is busy ?Eprevents queue backpressure
+                socket.volatile.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
+                })));
+            } else if (!allSleepingEmitted) {
+                // All bodies just settled: send one reliable final-position update to slave
+                socket.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
+                })));
+                allSleepingEmitted = true;
+            }
+        });
+
+        function resetJar() {
+            for (const g of giftBodies) World.remove(physWorld, g.body);
+            giftBodies.length = 0;
+            dyingBodies.length = 0;
+            ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            dirty = false;
+        }
+
+        function addGift(imageUrl, diamonds, silent = false, trim = null) {
+            if (!currentJarProfile) return;
+            const size   = sizeFor(diamonds);
+
+            const defaultPx = Math.floor(size * 0.12);
+            const lTrim = trim ? trim.left  : defaultPx;
+            const rTrim = trim ? trim.right : defaultPx;
+            const packW = Math.max(8, size - lTrim - rTrim);
+            const radius = Math.max(6, Math.floor(packW / 2));
+
+            // Spawn in widget coordinates above the jar opening.
+            // Use +8 margin (instead of +1) so the initial horizontal velocity
+            // (up to �}2px/frame) cannot drift the ball outside the rim before
+            // the shoulder walls engage (~2 frames of free fall above the mouth).
+            const openLeft = jarOpenLeft();
+            const openRight = jarOpenRight();
+            const openWidth = jarOpenWidth();
+            const widest = jarWidthRange();
+            const xSpawnMin = openLeft + radius + 8;
+            const xSpawnMax = openRight - radius - 8;
+
+            let startX, startY;
+            if (xSpawnMax > xSpawnMin) {
+                // Fits through the opening ? spawn at configured drop height above rim
+                startX = isCenterDropTheme()
+                    ? jarOpenCenter()
+                    : xSpawnMin + Math.random() * (xSpawnMax - xSpawnMin);
+                startY = jarOpenY() - dropAboveJar - radius - 4;
+            } else {
+                // Too wide for opening: find the shoulder depth where it fits
+                let minY = jarOpenY() + 2;
+                if (2 * radius + 4 > openWidth) {
+                    minY = Math.max(minY, widest.y);
+                    for (let probeY = jarOpenY(); probeY <= widest.y; probeY += 6) {
+                        if (widthAt(probeY) >= 2 * radius + 4) {
+                            minY = probeY + 2;
+                            break;
+                        }
+                    }
+                }
+                startY = Math.ceil(minY);
+                const availW = widthAt(startY);
+                const cx = jarCenterAt(startY);
+                const half = Math.max(0, (availW - 2 * radius - 4) / 2);
+                startX = isCenterDropTheme() ? cx : cx + (Math.random() - 0.5) * 2 * half;
+            }
+
+            const body = Bodies.circle(startX, startY, radius, {
+                restitution: silent ? 0.08 : 0.32,
+                friction:    0.55,
+                frictionAir: silent ? 0.25 : 0.03,
+                density:     0.002,
+                label: 'gift'
+            });
+            if (!silent) {
+                Body.setVelocity(body, {
+                    x: isCenterDropTheme() ? 0 : (Math.random() - 0.5) * 4,
+                    y: 0.5
+                });
+            }
+            World.add(physWorld, body);
+
+            // Pre-warm image cache and pre-bake glow so first draw is instant
+            prebakeGlow(imageUrl, size, diamonds);
+
+            giftBodies.push({ body, imageUrl, size, diamonds });
+            dirty = true;
+            allSleepingEmitted = false;
+
+            // Trim oldest if over limit
+            while (giftBodies.length > MAX_GIFTS) {
+                const oldest = giftBodies.shift();
+                World.remove(physWorld, oldest.body);
+            }
+        }
+
+        // ---- Socket events ----
+
+        const FALLBACK_GIFT_IMAGE = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+            '<rect width="64" height="64" rx="14" fill="#f59e0b"/>' +
+            '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">??</text></svg>'
+        )}`;
+
+        // Cache: `${url}:${size}` ?E{ left, right, top, bottom } in px
+        const imageAnalysisCache = new Map();
+
+        /**
+         * Analyze the actual opaque-pixel bounding box of an image.
+         * Returns transparent padding on each edge in pixels.
+         * Falls back to 12% of size if CORS blocks pixel read.
+         */
+        function analyzeImageTrim(imageUrl, size) {
+            const cacheKey = `${imageUrl}:${size}`;
+            if (imageAnalysisCache.has(cacheKey)) {
+                return Promise.resolve(imageAnalysisCache.get(cacheKey));
+            }
+            const defaultPx = Math.floor(size * 0.12);
+            const fallback = { left: defaultPx, right: defaultPx, top: defaultPx, bottom: defaultPx };
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, size, size);
+                    try {
+                        const d = ctx.getImageData(0, 0, size, size).data;
+                        let minX = size, maxX = -1, minY = size, maxY = -1;
+                        for (let py = 0; py < size; py++) {
+                            for (let px = 0; px < size; px++) {
+                                if (d[(py * size + px) * 4 + 3] > 20) {
+                                    if (px < minX) minX = px;
+                                    if (px > maxX) maxX = px;
+                                    if (py < minY) minY = py;
+                                    if (py > maxY) maxY = py;
+                                }
+                            }
+                        }
+                        const result = maxX < 0 ? fallback : {
+                            left:   minX,
+                            right:  size - 1 - maxX,
+                            top:    minY,
+                            bottom: size - 1 - maxY
+                        };
+                        imageAnalysisCache.set(cacheKey, result);
+                        resolve(result);
+                    } catch (e) {
+                        // CORS security error ?Euse fallback
+                        imageAnalysisCache.set(cacheKey, fallback);
+                        resolve(fallback);
+                    }
+                };
+                img.onerror = () => { imageAnalysisCache.set(cacheKey, fallback); resolve(fallback); };
+                img.src = imageUrl;
+            });
+        }
+
+        // Replay full history silently on (re)connect ?Erun physics at 10x speed until settled
+        socket.on('widgets:gift-jar:history', async (history) => {
+            if (isSlave || !Array.isArray(history) || history.length === 0) return;
+            // Skip replay if the jar already has gifts -- reconnect case: live state is still valid.
+            if (giftBodies.length > 0) return;
+            const analyzed = await Promise.all(history.map(async (item) => {
+                const imageUrl = item.giftImage || FALLBACK_GIFT_IMAGE;
+                const diamonds = Math.max(1, Number(item.diamondCount || 1));
+                const trim = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
+                return { imageUrl, diamonds, trim };
+            }));
+            resetJar();
+            engine.timing.timeScale = 10;
+            analyzed.forEach(({ imageUrl, diamonds, trim }, i) => {
+                setTimeout(() => addGift(imageUrl, diamonds, true, trim), i * 30);
+            });
+            setTimeout(() => { engine.timing.timeScale = 1; }, analyzed.length * 30 + 1200);
+        });
+
+        socket.on('widgets:gift-jar:notify', async (data) => {
+            if (isSlave || !data) return;
+
+            const imageUrl = data.giftImage || FALLBACK_GIFT_IMAGE;
+            const diamonds = Math.max(1, Number(data.diamondCount || 1));
+            const repeat   = Math.min(Math.max(1, Number(data.repeatCount || 1)), 10);
+            const trim     = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
+
+            for (let i = 0; i < repeat; i++) {
+                setTimeout(() => addGift(imageUrl, diamonds, false, trim), i * 130);
+            }
+        });
+
+        socket.on('widgets:gift-jar:config', (cfg) => {
+            let shouldRebuildWalls = false;
+            if (cfg && typeof cfg.dropAboveJar === 'number') {
+                dropAboveJar = Math.max(0, Math.min(cfg.dropAboveJar, 2000));
+            }
+            if (cfg && typeof cfg.crushThreshold === 'number') {
+                crushThreshold = Math.max(0, Math.min(cfg.crushThreshold, 44999));
+            }
+            if (cfg && typeof cfg.sizeMultiplier === 'number') {
+                sizeMultiplier = Math.max(0.1, Math.min(cfg.sizeMultiplier, 5.0));
+            }
+            if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
+                customJarProfiles = normalizeCustomJarProfiles(cfg.customProfiles);
+                shouldRebuildWalls = true;
+            }
+            if (cfg && typeof cfg.jarTheme === 'string') {
+                widgetEl.dataset.jarTheme = cfg.jarTheme;
+                shouldRebuildWalls = true;
+            }
+            if (shouldRebuildWalls && !isSlave) {
+                const nextTheme = widgetEl.dataset.jarTheme || currentJarTheme;
+                loadMaskJarProfile(nextTheme, { forceReload: true }).then((profile) => {
+                    if (profile) {
+                        clearMaskError();
+                        rebuildJarWalls(nextTheme);
+                    } else {
+                        showMaskError(nextTheme);
+                    }
+                }).catch(() => {
+                    showMaskError(nextTheme);
+                });
+            }
+        });
+
+        // ---- Unified rAF render loop (master draws from giftBodies, slave from slaveState) ----
+        let slaveState = [];
+        // Dirty flag: set true when physics moved something; rAF clears it after redraw.
+        // Avoids clearRect+drawImage every frame when all bodies are sleeping.
+        let dirty = false;
+
+        socket.on('widgets:gift-jar:positions', (bodies) => {
+            if (!isSlave) return;
+            slaveState = bodies;
+            dirty = true;
+            for (const b of bodies) getCachedImage(b.src); // pre-warm cache
+        });
+
+        function drawBody(src, size, diamonds, x, y, a) {
+            const img = getCachedImage(src);
+            if (!img.complete || img.naturalWidth === 0) return;
+            const half = size * 0.5;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(a);
+            if (diamonds >= 200) {
+                // Use pre-baked glow canvas (no ctx.filter at draw time = no CPU fallback)
+                const oc = getGlowCanvas(src, size, diamonds);
+                if (oc) {
+                    const pad = diamonds >= 1000 ? 160 : 80;
+                    ctx.drawImage(oc, -half - pad, -half - pad);
+                } else {
+                    ctx.drawImage(img, -half, -half, size, size); // glow not ready yet
+                }
+            } else {
+                ctx.drawImage(img, -half, -half, size, size);
+            }
+            ctx.restore();
+        }
+
+        (function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            if (!dirty && dyingBodies.length === 0) return; // nothing changed
+            dirty = false;
+            ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            if (isSlave) {
+                for (const b of slaveState)
+                    drawBody(b.src, b.size, b.diamonds ?? (b.cls === 'mega-glow' ? 1000 : b.cls === 'glow' ? 200 : 1), b.x, b.y, b.a);
+            } else {
+                for (const g of giftBodies)
+                    drawBody(g.imageUrl, g.size, g.diamonds, g.body.position.x, g.body.position.y, g.body.angle);
+                // Crush animations
+                const now = performance.now();
+                for (let i = dyingBodies.length - 1; i >= 0; i--) {
+                    const d = dyingBodies[i];
+                    const t = (now - d.startTime) / 180;
+                    if (t >= 1) { dyingBodies.splice(i, 1); continue; }
+                    const img = getCachedImage(d.imageUrl);
+                    if (!img.complete || img.naturalWidth === 0) continue;
+                    const half = d.size * 0.5;
+                    ctx.save();
+                    ctx.globalAlpha = 1 - t;
+                    ctx.translate(d.x, d.y);
+                    ctx.rotate(d.angle);
+                    ctx.scale(1 - t, 1 - t);
+                    ctx.drawImage(img, -half, -half, d.size, d.size);
+                    ctx.restore();
+                }
+            }
+        })();
+
+        socket.on('widgets:gift-jar:reset', () => {
+            if (isSlave) {
+                slaveState = [];
+                ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
+            } else {
+                resetJar();
+            }
+        });
+    </script>
+</body>
+</html>
+
+

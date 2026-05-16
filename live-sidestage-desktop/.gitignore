@@ -1,5 +1,9 @@
 node_modules/
 dist/
+sound/
+video/
+.wrangler/
+.claude/
 
 data/
 tmp-port-fallback-test/data/

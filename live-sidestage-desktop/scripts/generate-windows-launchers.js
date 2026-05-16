@@ -4,8 +4,6 @@ const path = require('path');
 const projectRoot = path.resolve(__dirname, '..');
 const configPath = path.join(__dirname, 'windows-launchers.config.json');
 const launcherRoot = path.join(projectRoot, 'launcher', 'windows');
-const installerGeneratedIconsPath = path.join(projectRoot, 'installer', 'windows', 'generated-launchers-icons.iss');
-const installerGeneratedRunPath = path.join(projectRoot, 'installer', 'windows', 'generated-launchers-run.iss');
 
 function loadConfig() {
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -71,34 +69,6 @@ function createVbsContent(entry) {
     ].join('\r\n');
 }
 
-function createInstallerIconsInclude(entries) {
-    const lines = [];
-
-    entries.filter((entry) => entry.includeInInstaller).forEach((entry) => {
-        if (entry.includeInProgramGroup) {
-            lines.push(`Name: "{autoprograms}\\${entry.programGroupShortcutName}"; Filename: "{app}\\${entry.fileBaseName}.vbs"; WorkingDir: "{app}"; IconFilename: "{app}\\TikEffect.ico"`);
-        }
-
-        if (entry.includeInDesktop) {
-            lines.push(`Name: "{autodesktop}\\${entry.desktopShortcutName}"; Filename: "{app}\\${entry.fileBaseName}.vbs"; WorkingDir: "{app}"; IconFilename: "{app}\\TikEffect.ico"`);
-        }
-    });
-
-    lines.push('');
-    return lines.join('\r\n');
-}
-
-function createInstallerRunInclude(entries) {
-    const lines = [];
-
-    entries.filter((entry) => entry.includeInInstaller && entry.includeInRunSection).forEach((entry) => {
-        lines.push(`Filename: "{app}\\${entry.fileBaseName}.vbs"; Description: "${entry.runShortcutDescription}"; Flags: nowait postinstall skipifsilent`);
-    });
-
-    lines.push('');
-    return lines.join('\r\n');
-}
-
 function main() {
     const entries = loadConfig();
 
@@ -106,9 +76,6 @@ function main() {
         fs.writeFileSync(path.join(launcherRoot, `${entry.fileBaseName}.cmd`), createCmdContent(entry), 'utf8');
         fs.writeFileSync(path.join(launcherRoot, `${entry.fileBaseName}.vbs`), createVbsContent(entry), 'utf8');
     });
-
-    fs.writeFileSync(installerGeneratedIconsPath, createInstallerIconsInclude(entries), 'utf8');
-    fs.writeFileSync(installerGeneratedRunPath, createInstallerRunInclude(entries), 'utf8');
 }
 
 main();

@@ -37,9 +37,250 @@
 
         .panel {
             width: min(560px, 100%);
-            padding: 28px;
+            padding: 32px;
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 20px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        h1,
+        p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 32px;
+            line-height: 1.1;
+        }
+
+        .subtext {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .status {
+            margin-top: 16px;
+            min-height: 24px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .status.error {
+            color: var(--danger);
+        }
+
+        .input-section {
+            margin-top: 28px;
+            padding-top: 22px;
+            border-top: 1px solid var(--line);
+        }
+
+        .input-section h2 {
+            font-size: 18px;
+            margin: 0 0 8px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .input-row input[type="text"] {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.7);
+            font-size: 15px;
+            font-family: inherit;
+            color: var(--text);
+            outline: none;
+        }
+
+        .input-row input[type="text"]:focus {
+            border-color: rgba(194, 65, 12, 0.5);
+            background: #fff;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.75;
+            transform: none;
+        }
+
+        .current-id {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.55);
+            font-size: 13px;
+            line-height: 1.55;
+            color: var(--muted);
+        }
+
+        .current-id.is-set {
+            color: #166534;
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(240, 253, 244, 0.78);
+        }
+
+        .app-version {
+            margin-top: 20px;
+            text-align: right;
+            font-size: 12px;
+            color: var(--muted);
+            opacity: 0.7;
+        }
+    </style>
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+</head>
+<body>
+    <main class="panel">
+        <h1>TikTok ID 設定</h1>
+        <p class="subtext">TikTok のユーザーID（@なし）を入力してください。配信中のアカウントと一致させてください。</p>
+
+        <div class="status" id="status-message">設定を確認しています。</div>
+
+        <section class="input-section">
+            <h2>配信ユーザーID</h2>
+            <div class="current-id" id="current-id-display">読み込み中...</div>
+            <div class="input-row">
+                <input type="text" id="broadcaster-input" placeholder="例: tiktok_username" autocomplete="off" spellcheck="false">
+                <button type="button" id="save-button">保存して接続</button>
+            </div>
+        </section>
+        <p class="app-version" id="app-version"></p>
+    </main>
+
+    <script>
+        const statusEl = document.getElementById('status-message');
+        const currentIdEl = document.getElementById('current-id-display');
+        const input = document.getElementById('broadcaster-input');
+        const saveButton = document.getElementById('save-button');
+
+        function setStatus(message, isError = false) {
+            statusEl.textContent = message;
+            statusEl.classList.toggle('error', isError);
+        }
+
+        async function init() {
+            try {
+                const res = await fetch('/api/state');
+                const payload = await res.json();
+
+                if (payload.broadcasterIdConfigured && payload.broadcasterId) {
+                    currentIdEl.textContent = `現在の設定: @${payload.broadcasterId}`;
+                    currentIdEl.classList.add('is-set');
+                    setStatus('配信ユーザーIDが設定済みです。変更する場合は新しいIDを入力してください。');
+                } else {
+                    currentIdEl.textContent = '未設定です。';
+                    setStatus('TikTok ユーザーIDを入力して保存してください。');
+                }
+
+                const versionEl = document.getElementById('app-version');
+                if (versionEl && payload.appVersion) {
+                    versionEl.textContent = `v${payload.appVersion}`;
+                }
+            } catch {
+                setStatus('設定の読み込みに失敗しました。', true);
+            }
+        }
+
+        async function save() {
+            const rawId = input.value.trim().replace(/^@/, '');
+
+            if (!rawId) {
+                setStatus('ユーザーIDを入力してください。', true);
+                return;
+            }
+
+            saveButton.disabled = true;
+            saveButton.textContent = '保存中...';
+            setStatus('');
+
+            try {
+                const res = await fetch('/api/broadcaster/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ broadcasterId: rawId })
+                });
+
+                const payload = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    throw new Error(payload.error || '保存に失敗しました。');
+                }
+
+                setStatus(`@${payload.broadcasterId} を設定しました。管理画面へ移動します。`);
+                currentIdEl.textContent = `現在の設定: @${payload.broadcasterId}`;
+                currentIdEl.classList.add('is-set');
+                input.value = '';
+
+                setTimeout(() => {
+                    window.location.replace('/');
+                }, 800);
+            } catch (err) {
+                setStatus(err.message || '保存に失敗しました。', true);
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = '保存して接続';
+            }
+        }
+
+        saveButton.addEventListener('click', save);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') save();
+        });
+
+        init();
+    </script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --danger: #b42318;
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+            padding: 24px;
+        }
+
+        .panel {
+            width: min(560px, 100%);
+            padding: 32px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
             background: var(--panel);
             box-shadow: var(--shadow);
         }
@@ -92,7 +333,7 @@
         .tiktok-auth-status {
             margin-top: 10px;
             padding: 10px 14px;
-            border-radius: 2px;
+            border-radius: 10px;
             border: 1px solid var(--line);
             background: rgba(255,255,255,0.55);
             font-size: 13px;
@@ -124,7 +365,10 @@
         }
 
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
 <body>
     <main class="panel">
@@ -165,7 +409,7 @@
                         return;
                     }
 
-                    window.location.replace('/admin');
+                    window.location.replace('/');
                     return;
                 }
 
@@ -203,7 +447,15 @@
                     backToAdminButton.hidden = false;
                 }
 
-                function syncAuthStatus(conn) {
+                function hasWorkspaceAccess(data) {
+                    if (!data?.broadcasterIdConfigured || !data?.broadcasterId) {
+                        return false;
+                    }
+
+                    return data?.tiktokConnection?.status !== 'not_configured';
+                }
+
+                function syncAuthStatus(conn, data) {
                     if (!conn) {
                         statusEl.textContent = 'TikTok 接続状態を取得中です。';
                         statusEl.className = 'tiktok-auth-status';
@@ -213,6 +465,9 @@
                     if (conn.wsAuthAvailable) {
                         statusEl.className = 'tiktok-auth-status is-success';
                         statusEl.textContent = 'WebSocket 認証情報が設定済みです。';
+                    } else if (hasWorkspaceAccess(data)) {
+                        statusEl.className = 'tiktok-auth-status is-success';
+                        statusEl.textContent = '配信ユーザーIDと接続設定は有効です。必要ならこの画面から再ログインできます。';
                     } else {
                         statusEl.className = 'tiktok-auth-status is-warning';
                         statusEl.textContent = conn.websocketReasonLabel
@@ -227,7 +482,7 @@
                     }
 
                     if (isSwitchMode && data.broadcasterId === initialBroadcasterId) {
-                        if (!hasStartedLogin || !data?.tiktokConnection?.wsAuthAvailable) {
+                        if (!hasStartedLogin || !hasWorkspaceAccess(data)) {
                             return;
                         }
 
@@ -237,7 +492,7 @@
 
                     setStatus(`認証アカウントから @${data.broadcasterId} を自動設定しました。管理画面へ移動します。`);
                     isRedirectingToAdmin = true;
-                    window.location.replace('/admin');
+                    window.location.replace('/');
                 }
 
                 async function startTikTokLogin() {
@@ -279,14 +534,14 @@
                     }
                 }
 
-                syncAuthStatus(payload.tiktokConnection);
+                syncAuthStatus(payload.tiktokConnection, payload);
                 syncBroadcasterBinding(payload);
 
                 // Socket.IO でリアルタイム更新
                 if (typeof io !== 'undefined') {
                     const socket = io();
                     socket.on('admin_day_updated', (data) => {
-                        syncAuthStatus(data.tiktokConnection);
+                        syncAuthStatus(data.tiktokConnection, data);
                         syncBroadcasterBinding(data);
                     });
                 }
@@ -296,12 +551,13 @@
                 });
 
                 backToAdminButton.addEventListener('click', () => {
-                    window.location.replace('/admin');
+                    window.location.replace('/');
                 });
             } catch (error) {
                 // 状態取得失敗時はセクションを展開しない
             }
         })();
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

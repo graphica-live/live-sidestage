@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Top Gift Overlay</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&display=swap');
 
@@ -31,7 +32,10 @@
             margin: 0;
             min-height: 100%;
             background: transparent;
-            overflow: hidden;
+            /* overflow-x のみ hidden にして縦方向のクリップを防ぐ。
+               senders が多い場合に body の高さを超えて切れるのを防止。 */
+            overflow-x: hidden;
+            overflow-y: visible;
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
         }
 
@@ -39,6 +43,16 @@
             padding: 24px;
             color: var(--title-color);
             font-family: var(--widget-font-family);
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 10px;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+            --gift-width: 156px;
+            --gift-height: 116px;
         }
 
         .overlay {
@@ -51,6 +65,47 @@
 
         .overlay.is-visible {
             display: grid;
+        }
+
+        body.preview-card .overlay {
+            width: min(240px, calc(100vw - 20px));
+            justify-items: center;
+            align-content: center;
+        }
+
+        body.preview-card .title {
+            top: 8px;
+            width: calc(100% - 8px);
+            font-size: 16px;
+            -webkit-text-stroke-width: 3px;
+        }
+
+        body.preview-card .coin-count {
+            top: 30px;
+            font-size: 14px;
+            gap: 4px;
+            -webkit-text-stroke-width: 2px;
+        }
+
+        body.preview-card .coin-icon {
+            width: 14px;
+            height: 14px;
+        }
+
+        body.preview-card .gift-stage {
+            min-height: calc(var(--gift-height) + 54px);
+            overflow: hidden;
+        }
+
+        body.preview-card .info-stack {
+            top: calc(var(--gift-height) - 14px);
+            width: calc(100% - 10px);
+        }
+
+        body.preview-card .senders {
+            gap: 2px;
+            font-size: 14px;
+            -webkit-text-stroke-width: 3px;
         }
 
         .title {
@@ -71,11 +126,206 @@
             z-index: 2;
         }
 
+        .coin-count {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 24px);
+            text-align: center;
+            z-index: 2;
+        }
+
         .gift-stage {
             position: relative;
             width: var(--gift-width);
             min-height: calc(var(--gift-height) + 126px);
             overflow: visible;
+        }
+
+        .gift-stage.is-celebrating {
+            animation: topGiftCelebrate 780ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .gift-stage.is-celebrating::before,
+        .gift-stage.is-celebrating::after {
+            content: '';
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .gift-stage.is-celebrating::after {
+            inset: 16% 16% 20%;
+            border: 3px solid rgba(251, 191, 36, 0.76);
+            border-radius: 999px;
+            box-shadow: 0 0 22px rgba(251, 191, 36, 0.42);
+            animation: topGiftRipple 780ms ease-out;
+        }
+
+        .gift-stage.is-celebrating[data-feedback-effect="magic"]::before {
+            inset: 8% 12% 16%;
+            background:
+                radial-gradient(circle at 18% 36%, rgba(255, 255, 255, 0.9) 0 5px, transparent 6px),
+                radial-gradient(circle at 70% 18%, rgba(196, 181, 253, 0.84) 0 6px, transparent 7px),
+                radial-gradient(circle at 82% 74%, rgba(103, 232, 249, 0.8) 0 5px, transparent 6px),
+                radial-gradient(circle at 26% 76%, rgba(251, 191, 36, 0.72) 0 6px, transparent 7px);
+            filter: drop-shadow(0 0 16px rgba(167, 139, 250, 0.5));
+            animation: topGiftSparkle 860ms ease-out;
+        }
+
+        .gift-stage.is-celebrating[data-feedback-effect="magic"]::after {
+            border-color: rgba(196, 181, 253, 0.74);
+            box-shadow: 0 0 24px rgba(167, 139, 250, 0.34), 0 0 40px rgba(103, 232, 249, 0.18);
+        }
+
+        .gift-stage.is-celebrating[data-feedback-effect="luxury"]::before {
+            inset: 4% 8% 12%;
+            border-radius: 999px;
+            background:
+                radial-gradient(circle at center, rgba(255, 246, 214, 0.5) 0%, rgba(255, 246, 214, 0.18) 42%, transparent 68%),
+                linear-gradient(120deg, transparent 20%, rgba(255, 240, 194, 0.56) 48%, transparent 76%);
+            mix-blend-mode: screen;
+            animation: topGiftLuxe 900ms ease-out;
+        }
+
+        .gift-stage.is-celebrating[data-feedback-effect="luxury"]::after {
+            border-width: 2px;
+            border-color: rgba(255, 230, 164, 0.82);
+            box-shadow: 0 0 26px rgba(255, 223, 142, 0.24), inset 0 0 0 1px rgba(255, 247, 221, 0.26);
+        }
+
+        @keyframes topGiftCelebrate {
+            0% {
+                transform: scale(0.94);
+                filter: brightness(1);
+            }
+
+            35% {
+                transform: scale(1.04);
+                filter: brightness(1.18);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        @keyframes topGiftRipple {
+            0% {
+                opacity: 0;
+                transform: scale(0.72);
+            }
+
+            18% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.18);
+            }
+        }
+
+        @keyframes topGiftSparkle {
+            0% {
+                opacity: 0;
+                transform: scale(0.84) rotate(-8deg);
+            }
+
+            30% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.12) rotate(8deg);
+            }
+        }
+
+        @keyframes topGiftLuxe {
+            0% {
+                opacity: 0;
+                transform: scale(0.88);
+                filter: brightness(1);
+            }
+
+            28% {
+                opacity: 1;
+                filter: brightness(1.24);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.08);
+                filter: brightness(1);
+            }
+        }
+
+        @keyframes topGiftSenderGlow {
+            0%,
+            100% {
+                filter: brightness(1) drop-shadow(0 0 0 rgba(255, 248, 196, 0));
+                text-shadow:
+                    0 6px 18px rgba(15, 23, 42, 0.52),
+                    0 0 0 rgba(255, 244, 180, 0);
+            }
+
+            50% {
+                filter: brightness(1.18) drop-shadow(0 0 12px rgba(255, 244, 180, 0.5));
+                text-shadow:
+                    0 6px 18px rgba(15, 23, 42, 0.52),
+                    0 0 14px rgba(255, 244, 180, 0.72),
+                    0 0 28px rgba(255, 214, 102, 0.46);
+            }
+        }
+
+        /* Metallic ambient glow effect (glow) */
+        .gift-stage.has-metallic-glow .gift-image {
+            animation: topGiftMetallicGlow 2.6s ease-in-out infinite;
+        }
+
+        .gift-stage.has-metallic-glow:not(.is-celebrating)::before {
+            content: '';
+            position: absolute;
+            inset: 6% 10% 12%;
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at 50% 40%,
+                rgba(255, 228, 110, 0.24) 0%,
+                rgba(255, 196, 50, 0.10) 52%,
+                transparent 74%
+            );
+            animation: topGiftMetallicAura 2.6s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes topGiftMetallicGlow {
+            0%, 100% {
+                filter: drop-shadow(0 0 6px rgba(255, 218, 80, 0.55))
+                        drop-shadow(0 0 16px rgba(220, 180, 40, 0.30))
+                        brightness(1);
+            }
+
+            50% {
+                filter: drop-shadow(0 0 14px rgba(255, 238, 140, 0.92))
+                        drop-shadow(0 0 32px rgba(255, 205, 55, 0.62))
+                        drop-shadow(0 0 52px rgba(200, 162, 30, 0.36))
+                        brightness(1.14);
+            }
+        }
+
+        @keyframes topGiftMetallicAura {
+            0%, 100% {
+                opacity: 0.55;
+                transform: scale(0.94);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.06);
+            }
         }
 
         .gift-image {
@@ -105,17 +355,26 @@
             -webkit-text-stroke: var(--content-stroke-width) var(--stroke-color);
             paint-order: stroke fill;
             text-shadow: 0 4px 14px var(--shadow-color);
-            position: static;
-            left: auto;
-            transform: none;
             width: 100%;
+        }
+
+        .text-paint-target {
+            display: inline-block;
+        }
+
+        .text-paint-target.is-gradient {
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            background-clip: text;
+            -webkit-background-clip: text;
         }
 
         .coin-count {
             color: var(--count-color);
             font-size: 28px;
             -webkit-text-stroke-width: var(--count-stroke-width);
-            order: 1;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -143,11 +402,31 @@
 
         .senders {
             display: grid;
-            gap: 0;
-            font-size: 30px;
+            gap: 4px;
+            font-size: 34px;
+            line-height: 1;
             -webkit-text-stroke-width: var(--title-stroke-width);
             text-shadow: 0 6px 18px rgba(15, 23, 42, 0.52);
-            order: 3;
+            position: static;
+            left: auto;
+            transform: none;
+            justify-items: center;
+        }
+
+        .senders > div {
+            display: block;
+            color: #fff6b0;
+            animation: topGiftSenderGlow 2.4s ease-in-out infinite;
+        }
+
+        .senders > div:nth-child(2n) {
+            color: #ffe6fb;
+            animation-delay: 0.4s;
+        }
+
+        .senders > div:nth-child(3n) {
+            color: #c8fff7;
+            animation-delay: 0.8s;
         }
 
         .senders.is-single {
@@ -174,6 +453,10 @@
                 top: 16px;
             }
 
+            .coin-count {
+                top: 48px;
+            }
+
             .gift-stage {
                 min-height: calc(var(--gift-height) + 88px);
             }
@@ -194,7 +477,7 @@
             }
 
             .senders {
-                font-size: 20px;
+                font-size: 24px;
                 -webkit-text-stroke-width: 4px;
             }
         }
@@ -202,11 +485,11 @@
 </head>
 <body>
     <section class="overlay" id="overlay">
-        <div class="gift-stage">
+        <div class="gift-stage" id="gift-stage">
             <div class="title" id="title"></div>
+            <div class="coin-count" id="gift-amount"></div>
             <img class="gift-image" id="gift-image" alt="gift">
             <div class="info-stack">
-                <div class="coin-count" id="gift-amount"></div>
                 <div class="senders" id="sender"></div>
             </div>
         </div>
@@ -214,11 +497,47 @@
 
     <script>
         const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1';
+        const sampleMode = searchParams.get('sample') === '1' || previewMode;
+        const previewCardMode = searchParams.get('card') === '1';
         const overlay = document.getElementById('overlay');
+        const giftStage = document.getElementById('gift-stage');
         const title = document.getElementById('title');
         const giftImage = document.getElementById('gift-image');
         const giftAmount = document.getElementById('gift-amount');
         const sender = document.getElementById('sender');
+        const FEEDBACK_SOUND_KEYS = [
+            'business08',
+            'business09',
+            'business10',
+            'business11',
+            'bush-warbler',
+            'cow',
+            'hyoshigi',
+            'xylophone',
+            'glocken01',
+            'glocken02',
+            'glocken03',
+            'electronic-chime02',
+            'electronic-chime03'
+        ];
+        const FEEDBACK_SOUND_CANDIDATE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a'];
+        const FEEDBACK_SOUND_URLS = Object.fromEntries(
+            FEEDBACK_SOUND_KEYS.map((soundKey) => [
+                soundKey,
+                FEEDBACK_SOUND_CANDIDATE_EXTENSIONS.map((extension) => `/audio/feedback/${soundKey}.${extension}`)
+            ])
+        );
+        const feedbackSoundUrlCache = new Map();
+        let hasRenderedSnapshot = false;
+        let previousTopGiftStateKey = '';
+
+        if (previewCardMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const previewGiftImage = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/8f471afbcebfda3841a6cc515e381f58~tplv-obj.webp';
         const topGiftFonts = {
             default: '"M PLUS Rounded 1c", sans-serif',
             gothic: '"Noto Sans JP", sans-serif',
@@ -266,8 +585,30 @@
             'champagne-shine': { fillColor: ['#fff8db', '#f3d58a', '#fff2c2'], countColor: ['#fff3bf', '#d9a441', '#fff8db'], noteColor: 'rgba(255, 244, 214, 0.96)', strokeColor: 'rgba(107, 79, 42, 0.98)', textShadow: 'rgba(107, 79, 42, 0.34)' },
             'royal-velvet': { fillColor: ['#f5e9ff', '#c084fc', '#e9d5ff'], countColor: ['#ddd6fe', '#8b5cf6', '#f5d0fe'], noteColor: 'rgba(233, 213, 255, 0.94)', strokeColor: 'rgba(49, 46, 129, 0.98)', textShadow: 'rgba(49, 46, 129, 0.34)' },
             'emerald-luxe': { fillColor: ['#ecfdf5', '#86efac', '#d1fae5'], countColor: ['#d1fae5', '#10b981', '#a7f3d0'], noteColor: 'rgba(209, 250, 229, 0.94)', strokeColor: 'rgba(20, 83, 45, 0.98)', textShadow: 'rgba(20, 83, 45, 0.34)' },
-            'sunrise-opal': { fillColor: ['#fff7ed', '#fdba74', '#f9a8d4'], countColor: ['#fde68a', '#fb7185', '#fdba74'], noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(154, 52, 18, 0.98)', textShadow: 'rgba(154, 52, 18, 0.34)' }
+            'sunrise-opal': { fillColor: ['#fff7ed', '#fdba74', '#f9a8d4'], countColor: ['#fde68a', '#fb7185', '#fdba74'], noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(154, 52, 18, 0.98)', textShadow: 'rgba(154, 52, 18, 0.34)' },
+            'prism-burst': { fillColor: ['#e0f2fe', '#7dd3fc', '#f0abfc'], countColor: ['#fef3c7', '#f472b6', '#c084fc'], noteColor: 'rgba(224, 242, 254, 0.94)', strokeColor: 'rgba(67, 56, 202, 0.98)', textShadow: 'rgba(67, 56, 202, 0.34)' },
+            'tropical-punch': { fillColor: ['#fef3c7', '#fb7185', '#fb923c'], countColor: ['#fde68a', '#f97316', '#ef4444'], noteColor: 'rgba(254, 215, 170, 0.94)', strokeColor: 'rgba(127, 29, 29, 0.98)', textShadow: 'rgba(127, 29, 29, 0.34)' },
+            'lagoon-shine': { fillColor: ['#ecfeff', '#2dd4bf', '#60a5fa'], countColor: ['#a7f3d0', '#22d3ee', '#93c5fd'], noteColor: 'rgba(165, 243, 252, 0.94)', strokeColor: 'rgba(21, 94, 117, 0.98)', textShadow: 'rgba(21, 94, 117, 0.34)' },
+            'berry-mist': { fillColor: ['#fdf2f8', '#f472b6', '#c084fc'], countColor: ['#fecdd3', '#fb7185', '#a78bfa'], noteColor: 'rgba(252, 231, 243, 0.94)', strokeColor: 'rgba(112, 26, 117, 0.98)', textShadow: 'rgba(112, 26, 117, 0.34)' },
+            'polar-neon': { fillColor: ['#ecfeff', '#67e8f9', '#e9d5ff'], countColor: ['#cffafe', '#22d3ee', '#c4b5fd'], noteColor: 'rgba(224, 242, 254, 0.94)', strokeColor: 'rgba(30, 41, 59, 0.98)', textShadow: 'rgba(30, 41, 59, 0.34)' },
+            'citrus-splash': { fillColor: ['#fefce8', '#a3e635', '#34d399'], countColor: ['#fde047', '#84cc16', '#10b981'], noteColor: 'rgba(254, 249, 195, 0.94)', strokeColor: 'rgba(22, 101, 52, 0.98)', textShadow: 'rgba(22, 101, 52, 0.34)' }
         };
+
+        function applyTextPaint(element, paint, fallbackColor) {
+            if (!element) {
+                return;
+            }
+
+            const normalizedValue = normalizeTextPaint(paint);
+            const previewColor = Array.isArray(normalizedValue)
+                ? (normalizedValue[0] || fallbackColor)
+                : (normalizedValue || fallbackColor);
+
+            element.classList.remove('is-gradient');
+            element.style.color = previewColor;
+            element.style.webkitTextFillColor = previewColor;
+            element.style.backgroundImage = 'none';
+        }
 
         function normalizeTopGiftFontKey(value) {
             const normalizedValue = String(value || '').trim().toLowerCase();
@@ -319,18 +660,128 @@
             rootStyle.setProperty('--title-stroke-width', `${Math.min(strokeWidth + 1, 12)}px`);
             rootStyle.setProperty('--content-stroke-width', `${strokeWidth}px`);
             rootStyle.setProperty('--count-stroke-width', `${Math.max(1, strokeWidth - 1)}px`);
+
+            return textStyle;
+        }
+
+        function normalizeFeedbackSettings(value) {
+            const soundKey = String(value?.soundKey || '').trim().toLowerCase();
+            const effectKey = String(value?.effectKey || '').trim().toLowerCase();
+
+            return {
+                soundEnabled: value?.soundEnabled !== false,
+                effectEnabled: value?.effectEnabled !== false,
+                soundKey: FEEDBACK_SOUND_KEYS.includes(soundKey) ? soundKey : 'business08',
+                effectKey: ['glow', 'magic', 'luxury'].includes(effectKey) ? effectKey : 'glow'
+            };
+        }
+
+        async function resolveFeedbackSoundUrl(soundKey = 'business08') {
+            const normalizedKey = FEEDBACK_SOUND_URLS[soundKey] ? soundKey : 'business08';
+
+            if (feedbackSoundUrlCache.has(normalizedKey)) {
+                return feedbackSoundUrlCache.get(normalizedKey);
+            }
+
+            const candidates = FEEDBACK_SOUND_URLS[normalizedKey] || [];
+
+            for (const candidateUrl of candidates) {
+                try {
+                    const response = await fetch(candidateUrl, { method: 'HEAD', cache: 'no-store' });
+                    if (response.ok) {
+                        feedbackSoundUrlCache.set(normalizedKey, candidateUrl);
+                        return candidateUrl;
+                    }
+                } catch {
+                    // Try the next candidate extension.
+                }
+            }
+
+            feedbackSoundUrlCache.set(normalizedKey, '');
+            return '';
+        }
+
+        async function playTopGiftFeedbackTone(soundKey = 'business08') {
+            const soundUrl = await resolveFeedbackSoundUrl(soundKey);
+
+            if (!soundUrl) {
+                console.warn(`Feedback sound file is missing for key: ${soundKey}`);
+                return;
+            }
+
+            const audio = new Audio(soundUrl);
+            audio.preload = 'auto';
+
+            try {
+                await audio.play();
+            } catch (error) {
+                console.warn(`Failed to play feedback sound: ${soundKey}`, error);
+            }
+        }
+
+        function buildTopGiftStateKey(topGift) {
+            if (!topGift) {
+                return '';
+            }
+
+            const giftValue = Number((topGift.giftValue ?? topGift.totalGifts) || 0);
+
+            return JSON.stringify({
+                giftId: String(topGift.giftId || ''),
+                giftName: String(topGift.giftName || ''),
+                giftValue,
+                timestamp: String(topGift.timestamp || ''),
+                latestSender: String(topGift.latestSender || ''),
+                senders: Array.isArray(topGift.senders) ? topGift.senders.filter(Boolean) : []
+            });
+        }
+
+        function getTopGiftFeedbackDiff(payload) {
+            const feedback = normalizeFeedbackSettings(payload?.settings?.feedback);
+            const currentTopGiftStateKey = buildTopGiftStateKey(payload?.snapshot?.topGift || null);
+            const shouldNotify = hasRenderedSnapshot && Boolean(currentTopGiftStateKey) && currentTopGiftStateKey !== previousTopGiftStateKey;
+
+            previousTopGiftStateKey = currentTopGiftStateKey;
+
+            return {
+                feedback,
+                shouldNotify,
+                shouldCelebrate: shouldNotify && feedback.effectEnabled
+            };
         }
 
         function hideOverlay() {
             overlay.classList.remove('is-visible');
+            giftStage.classList.remove('is-celebrating');
+            delete giftStage.dataset.feedbackEffect;
         }
 
-        function render(payload) {
+        function getPreviewTopGift(settings = {}) {
+            const senderMode = settings.senderDisplayMode === 'all' ? 'all' : 'latest';
+
+            return {
+                giftId: '__preview__:top-gift',
+                giftName: 'TikTok Universe',
+                giftValue: 44999,
+                totalGifts: 44999,
+                timestamp: 'preview',
+                latestSender: 'Universe Fan',
+                nickname: 'Universe Fan',
+                uniqueId: 'universe_fan',
+                senders: senderMode === 'all'
+                    ? ['Universe Fan', 'Galaxy Crew']
+                    : ['Universe Fan'],
+                giftImage: previewGiftImage
+            };
+        }
+
+        function render(payload, options = {}) {
             const settings = payload?.settings || {};
             const snapshot = payload?.snapshot || {};
-            const topGift = snapshot.topGift || null;
+            const topGift = sampleMode ? getPreviewTopGift(settings) : (snapshot.topGift || (previewMode ? getPreviewTopGift(settings) : null));
+            const shouldCelebrate = Boolean(options.shouldCelebrate && topGift);
 
-            applySharedAppearance(settings.appearance);
+            const textStyle = applySharedAppearance(settings.appearance);
 
             if (!topGift) {
                 hideOverlay();
@@ -338,7 +789,8 @@
             }
 
             title.textContent = settings.title || '本日最高ギフト';
-            giftAmount.innerHTML = `<span class="coin-icon" aria-hidden="true"></span><span>${Number(topGift.totalGifts || 0).toLocaleString()}</span><small>coins</small>`;
+            const giftValue = Number((topGift.giftValue ?? topGift.totalGifts) || 0);
+            giftAmount.innerHTML = `<span class="coin-icon" aria-hidden="true"></span><span class="coin-count-text text-paint-target">${giftValue.toLocaleString()}</span><small>coins</small>`;
 
             const senders = Array.isArray(topGift.senders) ? topGift.senders.filter(Boolean) : [];
             const senderMode = settings.senderDisplayMode === 'all' ? 'all' : 'latest';
@@ -349,13 +801,28 @@
             sender.classList.toggle('is-single', visibleSenders.length <= 1);
             sender.innerHTML = visibleSenders
                 .filter(Boolean)
-                .map((name) => `<div>${String(name)
+                .map((name) => `<div class="text-paint-target">${String(name)
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;')}</div>`)
                 .join('');
+
+            // senders が多い場合に gift-stage の min-height が不足して body の
+            // 高さを超えクリップされないよう、件数に応じて伸ばす。
+            // (font-size:34px, line-height:1, gap:4px 相当で計算)
+            const SENDER_ROW_HEIGHT_PX = 38; // 34px font + 4px gap
+            const COIN_COUNT_HEIGHT_PX = 28;
+            const INFO_STACK_TOP_PX = parseInt(getComputedStyle(giftStage).getPropertyValue('--gift-height') || '250', 10) - 68;
+            const requiredHeight = INFO_STACK_TOP_PX + COIN_COUNT_HEIGHT_PX
+                + Math.max(0, visibleSenders.filter(Boolean).length) * SENDER_ROW_HEIGHT_PX + 24;
+            const giftHeightPx = parseInt(getComputedStyle(giftStage).getPropertyValue('--gift-height') || '250', 10);
+            giftStage.style.minHeight = `${Math.max(giftHeightPx + 126, requiredHeight)}px`;
+            applyTextPaint(giftAmount.querySelector('.coin-count-text'), textStyle.countColor, '#fbbf24');
+            sender.querySelectorAll('.text-paint-target').forEach((element) => {
+                applyTextPaint(element, textStyle.fillColor, '#ffffff');
+            });
             if (!topGift.giftImage) {
                 giftImage.style.visibility = 'hidden';
             } else {
@@ -363,21 +830,115 @@
                 giftImage.src = topGift.giftImage;
             }
 
+            giftStage.classList.toggle('is-celebrating', shouldCelebrate);
+            giftStage.classList.remove('has-metallic-glow');
+            if (settings.metalEffectKey === 'glow') {
+                giftStage.classList.add('has-metallic-glow');
+            }
+            if (shouldCelebrate) {
+                giftStage.dataset.feedbackEffect = options.effectKey || 'glow';
+            } else {
+                delete giftStage.dataset.feedbackEffect;
+            }
             overlay.classList.add('is-visible');
+        }
+
+        async function applyPayload(payload) {
+            const diff = getTopGiftFeedbackDiff(payload);
+
+            render(payload, {
+                shouldCelebrate: diff.shouldCelebrate,
+                effectKey: diff.feedback.effectKey
+            });
+
+            if (diff.shouldNotify && diff.feedback.soundEnabled) {
+                playTopGiftFeedbackTone(diff.feedback.soundKey).catch(() => {});
+            }
+
+            hasRenderedSnapshot = true;
         }
 
         async function refresh() {
             const response = await fetch('/api/widgets/top-gift/snapshot');
             const payload = await response.json();
-            render(payload);
+            await applyPayload(payload);
         }
+
+        let overlayRecoveryTimer = null;
+        let overlayRecoveryInFlight = false;
+        const OVERLAY_RECOVERY_RETRY_MS = 2000;
+
+        function clearOverlayRecoveryTimer() {
+            if (overlayRecoveryTimer) {
+                clearInterval(overlayRecoveryTimer);
+                overlayRecoveryTimer = null;
+            }
+        }
+
+        async function probeBackendAvailability() {
+            if (overlayRecoveryInFlight || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryInFlight = true;
+
+            try {
+                const response = await fetch('/api/widgets/top-gift/snapshot', { cache: 'no-store' });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                clearOverlayRecoveryTimer();
+                window.location.reload();
+            } catch {
+                // Backend is still restarting. Keep polling.
+            } finally {
+                overlayRecoveryInFlight = false;
+            }
+        }
+
+        function scheduleOverlayRecoveryReload() {
+            if (overlayRecoveryTimer || sampleMode) {
+                return;
+            }
+
+            overlayRecoveryTimer = setInterval(() => {
+                probeBackendAvailability();
+            }, OVERLAY_RECOVERY_RETRY_MS);
+
+            probeBackendAvailability();
+        }
+
+        socket.on('connect', () => {
+            clearOverlayRecoveryTimer();
+            refresh().catch(() => {});
+        });
 
         socket.on('admin_day_updated', () => {
             refresh().catch(() => {});
         });
 
         socket.on('widgets:top-gift:updated', (payload) => {
-            render(payload);
+            if (sampleMode) {
+                return;
+            }
+            applyPayload(payload).catch(() => {});
+        });
+
+        socket.on('disconnect', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        socket.on('connect_error', () => {
+            scheduleOverlayRecoveryReload();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!socket.connected) {
+                scheduleOverlayRecoveryReload();
+            }
         });
 
         refresh().catch(() => {});

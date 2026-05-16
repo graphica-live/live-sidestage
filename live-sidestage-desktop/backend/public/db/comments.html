@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Comments</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
         :root {
@@ -22,6 +24,8 @@
         body {
             margin: 0;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             padding: 24px 16px;
             color: var(--text);
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
@@ -32,14 +36,25 @@
         .layout {
             width: min(960px, 100%);
             margin: 0 auto;
-            display: grid;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
             gap: 18px;
+            min-height: calc(100vh - 48px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             padding: 24px;
         }
@@ -63,8 +78,8 @@
             align-items: center;
             gap: 8px;
             border: 1px solid var(--line);
-            border-radius: 2px;
-            padding: 8px 12px;
+            border-radius: 999px;
+            padding: 7px 12px;
             color: var(--muted);
             background: rgba(255, 255, 255, 0.56);
             font-size: 14px;
@@ -85,10 +100,34 @@
             align-items: center;
         }
 
+        .toolbar-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 11px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.56);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .toolbar-control select,
+        .toolbar-control input[type="range"] {
+            max-width: 220px;
+        }
+
+        .toolbar-control strong {
+            color: var(--text);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+        }
+
         .comment-stream {
             display: grid;
+            flex: 1 1 auto;
             gap: 6px;
-            max-height: calc(100vh - 220px);
+            min-height: 0;
             overflow-y: auto;
             padding-right: 4px;
         }
@@ -96,7 +135,7 @@
         .comment-stream-empty {
             padding: 20px 16px;
             border: 1px dashed var(--line);
-            border-radius: 2px;
+            border-radius: 12px;
             color: var(--muted);
             text-align: center;
             background: rgba(255, 255, 255, 0.34);
@@ -107,9 +146,9 @@
             grid-template-columns: 28px minmax(120px, auto) auto minmax(0, 1fr) 72px;
             align-items: center;
             gap: 8px;
-            padding: 7px 10px;
+            padding: 8px 12px;
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 10px;
             background: rgba(255, 255, 255, 0.68);
         }
 
@@ -173,6 +212,29 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .comment-body-text {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .comment-body-text img {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            vertical-align: text-bottom;
+        }
+
+        .comment-emote {
+            width: 26px;
+            height: 26px;
+            object-fit: contain;
+            vertical-align: middle;
         }
 
         .comment-kind {
@@ -212,6 +274,10 @@
             padding: 22px;
             display: grid;
             gap: 16px;
+        }
+
+        .modal.is-wide {
+            width: min(960px, 100%);
         }
 
         .modal-head {
@@ -263,6 +329,435 @@
             font-size: 13px;
         }
 
+        .filter-textarea {
+            width: 100%;
+            min-height: 220px;
+            resize: vertical;
+            padding: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.74);
+            color: var(--text);
+            font: inherit;
+            line-height: 1.6;
+        }
+
+        .voice-settings-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .voice-setting-row {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--line);
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+        }
+
+        .voice-setting-row strong {
+            font-size: 13px;
+        }
+
+        .voice-setting-row select,
+        .voice-setting-row input[type="text"],
+        .voice-setting-row input[type="range"] {
+            width: 100%;
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: var(--surface-soft, rgba(255, 255, 255, 0.9));
+            color: var(--text);
+            font: inherit;
+        }
+
+        .voice-setting-row input[type="range"] {
+            padding: 0;
+        }
+
+        .voice-setting-link {
+            display: none;
+            width: fit-content;
+            color: var(--accent);
+            font-size: 12px;
+            text-decoration: none;
+        }
+
+        .voice-setting-link.is-visible {
+            display: inline-flex;
+        }
+
+        .voice-setting-link:hover {
+            text-decoration: underline;
+        }
+
+        .voice-setting-inline {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .voice-setting-value {
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .checkbox-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .icon-only-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border: 1px solid var(--line);
+            background: var(--surface-soft, rgba(255, 255, 255, 0.9));
+            color: var(--text);
+            cursor: pointer;
+            line-height: 0;
+        }
+
+        .icon-only-button svg {
+            display: block;
+            flex: none;
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .voice-mapping-editor {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: end;
+            padding: 12px;
+            border: 1px solid var(--line);
+            background: var(--surface-soft, rgba(255, 255, 255, 0.62));
+        }
+
+        .voice-mapping-editor button {
+            height: 42px;
+        }
+
+        .voice-setting-row .checkbox-control input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        .voice-setting-row .checkbox-control span {
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .voice-setting-row .voice-setting-inline {
+            align-items: center;
+        }
+
+        .voice-setting-row .voice-setting-inline:has(.checkbox-control) {
+            justify-content: space-between;
+        }
+
+        .voice-setting-row .voice-setting-inline:has(.checkbox-control) .checkbox-control {
+            flex: 1 1 auto;
+        }
+
+        .voice-mapping-editor label {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .voice-mapping-editor span {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .voice-mapping-modal-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .voice-mapping-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .voice-mapping-search {
+            display: grid;
+            gap: 6px;
+        }
+
+        .voice-mapping-search span,
+        .voice-mapping-summary {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .voice-mapping-search input {
+            width: 100%;
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: var(--surface-soft, rgba(255, 255, 255, 0.9));
+            color: var(--text);
+            font: inherit;
+        }
+
+        .voice-mapping-panel {
+            display: grid;
+            gap: 10px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+        }
+
+        .voice-mapping-list {
+            display: grid;
+            gap: 8px;
+            max-height: min(54vh, 560px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .voice-mapping-list-header {
+            display: grid;
+            grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) auto;
+            gap: 10px;
+            padding: 0 12px;
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .voice-mapping-item {
+            display: grid;
+            grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+        }
+
+        .voice-mapping-user {
+            font-family: Consolas, "Bahnschrift", sans-serif;
+            font-size: 13px;
+            color: var(--text);
+            word-break: break-all;
+        }
+
+        .voice-mapping-voice {
+            min-width: 0;
+            color: var(--text);
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 640px) {
+            .voice-mapping-toolbar,
+            .voice-mapping-list-header,
+            .voice-mapping-item {
+                grid-template-columns: 1fr;
+                justify-items: start;
+            }
+
+            .voice-mapping-item .emote-mapping-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        .emote-picker-section {
+            display: grid;
+            gap: 12px;
+        }
+
+        .emote-picker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+            gap: 10px;
+            max-height: 220px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .emote-picker-empty {
+            padding: 16px;
+            border: 1px dashed var(--line);
+            text-align: center;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        .emote-picker-item {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            padding: 10px 8px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+        }
+
+        .emote-picker-item:hover {
+            border-color: rgba(194, 65, 12, 0.45);
+            transform: translateY(-1px);
+        }
+
+        .emote-picker-item.is-selected {
+            border-color: var(--accent);
+            background: rgba(194, 65, 12, 0.08);
+        }
+
+        .emote-picker-item.is-mapped {
+            box-shadow: inset 0 0 0 1px rgba(194, 65, 12, 0.2);
+        }
+
+        .emote-picker-item img {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+        }
+
+        .emote-picker-id {
+            max-width: 100%;
+            color: var(--muted);
+            font-size: 10px;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        .emote-editor {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .emote-editor-preview {
+            width: 42px;
+            height: 42px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.9);
+            display: grid;
+            place-items: center;
+        }
+
+        .emote-editor-preview img {
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+        }
+
+        .emote-editor-placeholder {
+            color: var(--muted);
+            font-size: 11px;
+            text-align: center;
+            line-height: 1.3;
+        }
+
+        .emote-editor-copy {
+            display: grid;
+            gap: 6px;
+        }
+
+        .emote-editor-copy strong {
+            font-size: 13px;
+        }
+
+        .emote-editor-copy span {
+            color: var(--muted);
+            font-size: 11px;
+            word-break: break-all;
+        }
+
+        .emote-editor input {
+            width: 100%;
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--text);
+            font: inherit;
+        }
+
+        .emote-mapping-list {
+            display: grid;
+            gap: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .emote-mapping-empty {
+            padding: 14px;
+            border: 1px dashed var(--line);
+            text-align: center;
+            color: var(--muted);
+            background: var(--surface, rgba(255, 255, 255, 0.42));
+        }
+
+        .emote-mapping-item {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+        }
+
+        .emote-mapping-item img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+
+        .emote-mapping-copy {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .emote-mapping-copy strong,
+        .emote-mapping-copy span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .emote-mapping-copy span {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .emote-mapping-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
         @media (max-width: 840px) {
             .comment-card {
                 grid-template-columns: 28px minmax(0, 1fr) auto;
@@ -309,11 +804,22 @@
             .comment-card-header,
             .comment-kind,
             .comment-body,
-            .comment-time {
-                grid-column: auto;
-                grid-row: auto;
-                justify-self: start;
+
+            .emote-editor,
+            .emote-mapping-item,
+            .voice-mapping-editor {
+                grid-template-columns: 1fr;
+                justify-items: start;
             }
+
+            .emote-mapping-actions {
+                width: 100%;
+                justify-content: flex-start;
+            .comment-emote {
+                width: 26px;
+                height: 26px;
+                object-fit: contain;
+                vertical-align: middle;
 
             .comment-body {
                 white-space: normal;
@@ -323,21 +829,127 @@
                 align-items: flex-start;
             }
         }
+
+        .user-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .user-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .user-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .user-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 9px 12px;
+            display: grid;
+            grid-template-columns: 24px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .user-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-suggestion-item:hover,
+        .user-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .user-suggestion-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .user-suggestion-avatar.is-empty {
+            background: #d9e2ec;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: #596b80;
+        }
+
+        .user-suggestion-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .user-suggestion-id {
+            font-size: 11px;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
 <body>
     <div class="layout">
         <section class="panel">
-            <h1>コメント欄</h1>
-            <p class="subtext">TikTok 配信コメントと各種システムメッセージを表示します。並び順は切り替えでき、表示対象は設定モーダルで絞り込めます。</p>
-            <div class="status-row">
-                <div class="status" id="comment-feedback">コメント受信待機中です。</div>
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>コメント欄</h1>
+                    <p class="subtext">TikTok 配信コメントと各種システムメッセージを表示します。並び順は切り替えでき、表示対象は設定モーダルで絞り込めます。</p>
+                </div>
+                <div class="page-hero-side">
+                    <div class="status" id="comment-feedback">コメント受信待機中です。</div>
+                    <div class="filter-summary" id="filter-summary">表示対象を読み込み中です。</div>
+                </div>
             </div>
-            <div class="toolbar">
-                <button type="button" id="sort-order-button">並び順: 新しい順</button>
-                <button type="button" id="comment-settings-button">表示設定</button>
-                <div class="filter-summary" id="filter-summary">表示対象を読み込み中です。</div>
+            <div class="toolbar-sections">
+                <div class="control-panel">
+                    <div class="toolbar-section-label">Quick Controls</div>
+                    <div class="control-group">
+                        <button type="button" id="sort-order-button">並び順: 新しい順</button>
+                        <button type="button" id="comment-read-aloud-button">読み上げ: screen1 OFF</button>
+                        <button type="button" id="comment-settings-button">表示設定</button>
+                    </div>
+                </div>
+                <div class="control-panel">
+                    <div class="toolbar-section-label">Voice</div>
+                    <div class="control-group">
+                        <button type="button" id="comment-read-aloud-voice-button">VOICE: 既定の音声 / 0件</button>
+                    </div>
+                </div>
+                <div class="control-panel">
+                    <div class="toolbar-section-label">Filters And Mapping</div>
+                    <div class="control-group">
+                        <button type="button" id="comment-read-aloud-settings-button">読み上げ対象設定</button>
+                        <button type="button" id="comment-read-aloud-filter-button">読み上げフィルタ: 0件</button>
+                        <button type="button" id="comment-read-aloud-voice-mapping-button">ボイスマッピング</button>
+                        <button type="button" id="comment-read-aloud-text-replacement-button">読み上げ変換: 0件</button>
+                        <button type="button" id="comment-read-aloud-emoji-button">絵文字変換: 0件</button>
+                        <button type="button" id="comment-read-aloud-emote-button">エモート変換: 0件</button>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -364,12 +976,256 @@
         </div>
     </div>
 
+    <div class="modal-shell" id="comment-read-aloud-settings-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-settings-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-settings-title">コメント読み上げ対象設定</h2>
+                <p class="subtext">読み上げたいコメント種別だけを有効にします。表示設定とは別に管理されます。</p>
+            </div>
+            <div class="filter-list" id="comment-read-aloud-filter-list"></div>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-settings-select-all">すべて読み上げ</button>
+                <button type="button" id="comment-read-aloud-settings-clear-all">すべて読み上げ停止</button>
+                <button type="button" id="comment-read-aloud-settings-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-settings-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-voice-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-voice-title">VOICE 設定</h2>
+                <p class="subtext">既定ボイス、ランダムボイス選択、音量をここで管理します。ユーザーIDごとのボイスマッピングは専用モーダルから編集します。</p>
+            </div>
+            <div class="voice-settings-grid">
+                <label class="voice-setting-row" for="comment-read-aloud-voice-select">
+                    <strong>既定の音声</strong>
+                    <select id="comment-read-aloud-voice-select">
+                        <option value="">既定の音声</option>
+                    </select>
+                    <a id="comment-read-aloud-voice-terms-link" class="voice-setting-link" href="https://voicevox.hiroshiba.jp/term/" target="_blank" rel="noopener noreferrer">規約ページをブラウザで開く</a>
+                </label>
+                <div class="voice-setting-row">
+                    <strong>読み上げランダムボイス選択</strong>
+                    <div class="voice-setting-inline">
+                        <label class="checkbox-control" for="comment-read-aloud-random-voice-checkbox">
+                            <input type="checkbox" id="comment-read-aloud-random-voice-checkbox">
+                            <span>各ユーザーIDにランダムな音声を割り当て、更新または再起動まで維持する</span>
+                        </label>
+                        <button type="button" id="comment-read-aloud-random-voice-refresh-button" class="icon-only-button" aria-label="ランダムボイス割り当てを更新">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M21 12a9 9 0 0 1-15.36 6.36"></path>
+                                <path d="M3 12a9 9 0 0 1 15.36-6.36"></path>
+                                <path d="M7 18.5H5v-2"></path>
+                                <path d="M17 5.5h2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="voice-setting-row">
+                    <strong>VOICEVOX クレジット表記</strong>
+                    <div class="voice-setting-inline">
+                        <label class="checkbox-control" for="comment-read-aloud-voice-credit-checkbox">
+                            <input type="checkbox" id="comment-read-aloud-voice-credit-checkbox">
+                            <span>VOICEVOX 音声の読み上げ開始時に、screen1 の右下へクレジット表記を表示する</span>
+                        </label>
+                    </div>
+                </div>
+                <label class="voice-setting-row" for="comment-read-aloud-volume-range">
+                    <strong>音量</strong>
+                    <div class="voice-setting-inline">
+                        <input type="range" id="comment-read-aloud-volume-range" min="0" max="100" step="1" value="100">
+                        <span id="comment-read-aloud-volume-value" class="voice-setting-value">100%</span>
+                    </div>
+                </label>
+                <div class="voice-setting-row">
+                    <strong>読み上げテスト</strong>
+                    <div class="voice-setting-inline">
+                        <button type="button" id="comment-read-aloud-test-button">読み上げテスト</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-voice-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-voice-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-voice-mapping-modal" aria-hidden="true">
+        <div class="modal is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-mapping-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-voice-mapping-title">ボイスマッピング設定</h2>
+                <p class="subtext">ユーザーIDごとに固定の音声を割り当てます。件数が増えても検索しながら追加・編集できる専用モーダルです。ここで設定した内容はランダムボイスより優先されます。</p>
+            </div>
+            <div class="voice-mapping-modal-grid">
+                <div class="voice-mapping-toolbar">
+                    <label class="voice-mapping-search" for="comment-read-aloud-voice-mapping-search-input">
+                        <span>ユーザーIDまたはボイス名で検索</span>
+                        <input id="comment-read-aloud-voice-mapping-search-input" type="text" maxlength="120" placeholder="例: tiktok_user / ずんだもん">
+                    </label>
+                    <div id="comment-read-aloud-voice-mapping-summary" class="voice-mapping-summary">全0件</div>
+                </div>
+                <div class="voice-mapping-panel">
+                    <div class="voice-mapping-editor">
+                        <label for="comment-read-aloud-voice-mapping-user-id-input">
+                            <span>ユーザーID</span>
+                            <div class="user-suggest-shell">
+                                <input id="comment-read-aloud-voice-mapping-user-id-input" type="text" maxlength="80" autocomplete="off" placeholder="例: tiktok_user">
+                                <div class="user-suggestion-panel" id="voice-mapping-user-suggestion-panel" hidden></div>
+                            </div>
+                        </label>
+                        <label for="comment-read-aloud-voice-mapping-voice-select">
+                            <span>割り当てボイス</span>
+                            <select id="comment-read-aloud-voice-mapping-voice-select">
+                                <option value="">音声を選択</option>
+                            </select>
+                        </label>
+                        <button type="button" id="comment-read-aloud-voice-mapping-apply">追加 / 更新</button>
+                    </div>
+                </div>
+                <div class="voice-mapping-panel">
+                    <div class="voice-mapping-list-header" aria-hidden="true">
+                        <span>ユーザーID</span>
+                        <span>割り当てボイス</span>
+                        <span>操作</span>
+                    </div>
+                    <div id="comment-read-aloud-voice-mapping-list" class="voice-mapping-list"></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-voice-clear">マッピング全削除</button>
+                <button type="button" id="comment-read-aloud-voice-mapping-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-voice-mapping-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-filter-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-filter-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-filter-title">コメント読み上げフィルタ</h2>
+                <p class="subtext">1行に1つずつ登録します。コメント本文に登録済みの文字列が含まれる場合、そのコメントは読み上げしません。</p>
+            </div>
+            <textarea id="comment-read-aloud-filter-textarea" class="filter-textarea" placeholder="例\nNGワード\n読み上げ不要"></textarea>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-filter-clear">すべて削除</button>
+                <button type="button" id="comment-read-aloud-filter-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-filter-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-emoji-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emoji-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-emoji-title">コメント読み上げ絵文字変換</h2>
+                <p class="subtext">最近受信した絵文字画像を選んで読み上げ文字を登録します。登録済みの絵文字だけ文字列に変換して読み上げ、未登録の絵文字は従来どおり読み飛ばします。</p>
+            </div>
+            <div class="emote-picker-section">
+                <div id="comment-read-aloud-emoji-picker" class="emote-picker-grid"></div>
+                <div class="emote-editor">
+                    <div id="comment-read-aloud-emoji-preview" class="emote-editor-preview">
+                        <span class="emote-editor-placeholder">未選択</span>
+                    </div>
+                    <label class="emote-editor-copy" for="comment-read-aloud-emoji-text-input">
+                        <strong>読み上げ文字</strong>
+                        <span id="comment-read-aloud-emoji-selected-value">絵文字画像を選んでください</span>
+                        <input id="comment-read-aloud-emoji-text-input" type="text" maxlength="120" placeholder="例: えがお">
+                    </label>
+                    <button type="button" id="comment-read-aloud-emoji-apply">追加 / 更新</button>
+                </div>
+                <div id="comment-read-aloud-emoji-mapping-list" class="emote-mapping-list"></div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-emoji-clear">すべて削除</button>
+                <button type="button" id="comment-read-aloud-emoji-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-emoji-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-text-replacement-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-text-replacement-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-text-replacement-title">コメント読み上げ変換フィルタ</h2>
+                <p class="subtext">1行に1つずつ「変換前=変換後」で登録します。読み上げ時だけ文字列を置き換え、元のコメント表示は変えません。</p>
+            </div>
+            <textarea id="comment-read-aloud-text-replacement-textarea" class="filter-textarea" placeholder="例\nwww=わらわら\nTikTok＝ティックトック"></textarea>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-text-replacement-clear">すべて削除</button>
+                <button type="button" id="comment-read-aloud-text-replacement-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-text-replacement-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-emote-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emote-title">
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-emote-title">コメント読み上げエモート変換</h2>
+                <p class="subtext">最近受信したエモート画像を選んで読み上げ文字を登録します。登録済みの emote だけ文字列に変換して読み上げ、未登録の emote は読み上げません。</p>
+            </div>
+            <div class="emote-picker-section">
+                <div id="comment-read-aloud-emote-picker" class="emote-picker-grid"></div>
+                <div class="emote-editor">
+                    <div id="comment-read-aloud-emote-preview" class="emote-editor-preview">
+                        <span class="emote-editor-placeholder">未選択</span>
+                    </div>
+                    <label class="emote-editor-copy" for="comment-read-aloud-emote-text-input">
+                        <strong>読み上げ文字</strong>
+                        <span id="comment-read-aloud-emote-selected-id">エモート画像を選んでください</span>
+                        <input id="comment-read-aloud-emote-text-input" type="text" maxlength="120" placeholder="例: はくしゅ">
+                    </label>
+                    <button type="button" id="comment-read-aloud-emote-apply">追加 / 更新</button>
+                </div>
+                <div id="comment-read-aloud-emote-mapping-list" class="emote-mapping-list"></div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="comment-read-aloud-emote-clear">すべて削除</button>
+                <button type="button" id="comment-read-aloud-emote-cancel">キャンセル</button>
+                <button type="button" id="comment-read-aloud-emote-save">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const socket = io();
+        const socket = io({ transports: ['websocket'] });
         const commentFeedback = document.getElementById('comment-feedback');
         const commentStream = document.getElementById('comment-stream');
         const sortOrderButton = document.getElementById('sort-order-button');
+        const commentReadAloudButton = document.getElementById('comment-read-aloud-button');
+        const commentReadAloudTestButton = document.getElementById('comment-read-aloud-test-button');
+        const commentReadAloudVoiceButton = document.getElementById('comment-read-aloud-voice-button');
+        const commentReadAloudVoiceSelect = document.getElementById('comment-read-aloud-voice-select');
+        const commentReadAloudVoiceTermsLink = document.getElementById('comment-read-aloud-voice-terms-link');
+        const commentReadAloudRandomVoiceCheckbox = document.getElementById('comment-read-aloud-random-voice-checkbox');
+        const commentReadAloudVoiceCreditCheckbox = document.getElementById('comment-read-aloud-voice-credit-checkbox');
+        const commentReadAloudRandomVoiceRefreshButton = document.getElementById('comment-read-aloud-random-voice-refresh-button');
+        const commentReadAloudVolumeRange = document.getElementById('comment-read-aloud-volume-range');
+        const commentReadAloudVolumeValue = document.getElementById('comment-read-aloud-volume-value');
+        const commentReadAloudVoiceModal = document.getElementById('comment-read-aloud-voice-modal');
+        const commentReadAloudVoiceMappingModal = document.getElementById('comment-read-aloud-voice-mapping-modal');
+        const commentReadAloudVoiceMappingUserIdInput = document.getElementById('comment-read-aloud-voice-mapping-user-id-input');
+        const voiceMappingUserSuggestionPanel = document.getElementById('voice-mapping-user-suggestion-panel');
+        const commentReadAloudVoiceMappingVoiceSelect = document.getElementById('comment-read-aloud-voice-mapping-voice-select');
+        const commentReadAloudVoiceMappingApply = document.getElementById('comment-read-aloud-voice-mapping-apply');
+        const commentReadAloudVoiceMappingList = document.getElementById('comment-read-aloud-voice-mapping-list');
+        const commentReadAloudVoiceMappingSearchInput = document.getElementById('comment-read-aloud-voice-mapping-search-input');
+        const commentReadAloudVoiceMappingSummary = document.getElementById('comment-read-aloud-voice-mapping-summary');
+        const commentReadAloudVoiceClear = document.getElementById('comment-read-aloud-voice-clear');
+        const commentReadAloudVoiceMappingCancel = document.getElementById('comment-read-aloud-voice-mapping-cancel');
+        const commentReadAloudVoiceMappingSave = document.getElementById('comment-read-aloud-voice-mapping-save');
+        const commentReadAloudVoiceCancel = document.getElementById('comment-read-aloud-voice-cancel');
+        const commentReadAloudVoiceSave = document.getElementById('comment-read-aloud-voice-save');
+        const commentReadAloudVoiceMappingButton = document.getElementById('comment-read-aloud-voice-mapping-button');
         const commentSettingsButton = document.getElementById('comment-settings-button');
+        const commentReadAloudSettingsButton = document.getElementById('comment-read-aloud-settings-button');
+        const commentReadAloudFilterButton = document.getElementById('comment-read-aloud-filter-button');
+        const commentReadAloudTextReplacementButton = document.getElementById('comment-read-aloud-text-replacement-button');
+        const commentReadAloudEmojiButton = document.getElementById('comment-read-aloud-emoji-button');
+        const commentReadAloudEmoteButton = document.getElementById('comment-read-aloud-emote-button');
         const filterSummary = document.getElementById('filter-summary');
         const commentSettingsModal = document.getElementById('comment-settings-modal');
         const commentFilterList = document.getElementById('comment-filter-list');
@@ -377,21 +1233,737 @@
         const commentSettingsClearAll = document.getElementById('comment-settings-clear-all');
         const commentSettingsCancel = document.getElementById('comment-settings-cancel');
         const commentSettingsSave = document.getElementById('comment-settings-save');
+        const commentReadAloudSettingsModal = document.getElementById('comment-read-aloud-settings-modal');
+        const commentReadAloudFilterList = document.getElementById('comment-read-aloud-filter-list');
+        const commentReadAloudSettingsSelectAll = document.getElementById('comment-read-aloud-settings-select-all');
+        const commentReadAloudSettingsClearAll = document.getElementById('comment-read-aloud-settings-clear-all');
+        const commentReadAloudSettingsCancel = document.getElementById('comment-read-aloud-settings-cancel');
+        const commentReadAloudSettingsSave = document.getElementById('comment-read-aloud-settings-save');
+        const commentReadAloudFilterModal = document.getElementById('comment-read-aloud-filter-modal');
+        const commentReadAloudFilterTextarea = document.getElementById('comment-read-aloud-filter-textarea');
+        const commentReadAloudFilterClear = document.getElementById('comment-read-aloud-filter-clear');
+        const commentReadAloudFilterCancel = document.getElementById('comment-read-aloud-filter-cancel');
+        const commentReadAloudFilterSave = document.getElementById('comment-read-aloud-filter-save');
+        const commentReadAloudTextReplacementModal = document.getElementById('comment-read-aloud-text-replacement-modal');
+        const commentReadAloudTextReplacementTextarea = document.getElementById('comment-read-aloud-text-replacement-textarea');
+        const commentReadAloudTextReplacementClear = document.getElementById('comment-read-aloud-text-replacement-clear');
+        const commentReadAloudTextReplacementCancel = document.getElementById('comment-read-aloud-text-replacement-cancel');
+        const commentReadAloudTextReplacementSave = document.getElementById('comment-read-aloud-text-replacement-save');
+        const commentReadAloudEmojiModal = document.getElementById('comment-read-aloud-emoji-modal');
+        const commentReadAloudEmojiPicker = document.getElementById('comment-read-aloud-emoji-picker');
+        const commentReadAloudEmojiPreview = document.getElementById('comment-read-aloud-emoji-preview');
+        const commentReadAloudEmojiSelectedValue = document.getElementById('comment-read-aloud-emoji-selected-value');
+        const commentReadAloudEmojiTextInput = document.getElementById('comment-read-aloud-emoji-text-input');
+        const commentReadAloudEmojiApply = document.getElementById('comment-read-aloud-emoji-apply');
+        const commentReadAloudEmojiMappingList = document.getElementById('comment-read-aloud-emoji-mapping-list');
+        const commentReadAloudEmojiClear = document.getElementById('comment-read-aloud-emoji-clear');
+        const commentReadAloudEmojiCancel = document.getElementById('comment-read-aloud-emoji-cancel');
+        const commentReadAloudEmojiSave = document.getElementById('comment-read-aloud-emoji-save');
+        const commentReadAloudEmoteModal = document.getElementById('comment-read-aloud-emote-modal');
+        const commentReadAloudEmotePicker = document.getElementById('comment-read-aloud-emote-picker');
+        const commentReadAloudEmotePreview = document.getElementById('comment-read-aloud-emote-preview');
+        const commentReadAloudEmoteSelectedId = document.getElementById('comment-read-aloud-emote-selected-id');
+        const commentReadAloudEmoteTextInput = document.getElementById('comment-read-aloud-emote-text-input');
+        const commentReadAloudEmoteApply = document.getElementById('comment-read-aloud-emote-apply');
+        const commentReadAloudEmoteMappingList = document.getElementById('comment-read-aloud-emote-mapping-list');
+        const commentReadAloudEmoteClear = document.getElementById('comment-read-aloud-emote-clear');
+        const commentReadAloudEmoteCancel = document.getElementById('comment-read-aloud-emote-cancel');
+        const commentReadAloudEmoteSave = document.getElementById('comment-read-aloud-emote-save');
 
         let currentComments = [];
         let currentCommentTypes = [];
+        let observedEmojiCatalog = [];
+        let observedEmoteCatalog = [];
+        const COMMENT_DISPLAY_TTL_MS = 0;
+        const COMMENT_EXPIRATION_CHECK_INTERVAL_MS = 1000;
         let currentSettings = {
             sortOrder: 'desc',
-            enabledTypes: []
+            enabledTypes: [],
+            readAloudEnabledTypes: [],
+            readAloudEnabled: false,
+            readAloudVoiceName: '',
+            readAloudVoiceCreditEnabled: false,
+            readAloudRandomVoiceEnabled: false,
+            readAloudVolume: 100,
+            readAloudFilters: [],
+            readAloudTextReplacements: [],
+            readAloudEmojiReplacements: [],
+            readAloudEmoteReplacements: [],
+            readAloudVoiceMappings: []
         };
+        let availableReadAloudVoices = [];
+        let pendingReadAloudVoiceMappings = [];
+        let readAloudVoiceMappingSearchQuery = '';
+        let knownVoiceMappingUsers = [];
+        let visibleVoiceMappingUsers = [];
+        let activeVoiceMappingUserIndex = -1;
+        let pendingReadAloudEmojiReplacements = [];
+        let selectedReadAloudEmoji = '';
+        let pendingReadAloudEmoteReplacements = [];
+        let selectedReadAloudEmoteId = '';
+        let commentExpirationTimer = null;
 
-        function escapeHtml(value) {
-            return String(value)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+        function normalizeReadAloudUserId(value) {
+            return String(value || '').trim().replace(/^@+/u, '').slice(0, 80);
+        }
+
+        function normalizeReadAloudVoiceMappings(value) {
+            const source = Array.isArray(value)
+                ? value
+                : (typeof value === 'string' ? value.split(/\r?\n/gu) : []);
+
+            return source
+                .map((item) => {
+                    if (item && typeof item === 'object') {
+                        const uniqueId = normalizeReadAloudUserId(item.uniqueId || item.userId);
+                        const voiceName = String(item.voiceName || '').trim().slice(0, 200);
+
+                        if (!uniqueId || !voiceName) {
+                            return null;
+                        }
+
+                        return { uniqueId, voiceName };
+                    }
+
+                    const line = String(item || '').trim().slice(0, 320);
+
+                    if (!line) {
+                        return null;
+                    }
+
+                    const separatorIndex = line.search(/[=＝]/u);
+
+                    if (separatorIndex <= 0) {
+                        return null;
+                    }
+
+                    const uniqueId = normalizeReadAloudUserId(line.slice(0, separatorIndex));
+                    const voiceName = String(line.slice(separatorIndex + 1) || '').trim().slice(0, 200);
+
+                    if (!uniqueId || !voiceName) {
+                        return null;
+                    }
+
+                    return { uniqueId, voiceName };
+                })
+                .filter(Boolean)
+                .filter((item, index, list) => list.findIndex((candidate) => candidate.uniqueId === item.uniqueId) === index)
+                .slice(0, 200);
+        }
+
+        function getReadAloudVoiceLabel(voiceName) {
+            const voiceValue = String(voiceName || '').trim();
+
+            if (!voiceValue) {
+                return '既定の音声';
+            }
+
+            const matchedVoice = availableReadAloudVoices.find((voice) => (voice?.value || voice?.name || '') === voiceValue);
+            return matchedVoice?.name || voiceValue;
+        }
+
+        function getReadAloudVoiceMeta(voiceName) {
+            const voiceValue = String(voiceName || '').trim();
+
+            if (!voiceValue) {
+                return null;
+            }
+
+            return availableReadAloudVoices.find((voice) => (voice?.value || voice?.name || '') === voiceValue) || null;
+        }
+
+        function syncReadAloudVoiceTermsLink(selectedVoiceName = commentReadAloudVoiceSelect?.value || currentSettings.readAloudVoiceName || '') {
+            if (!commentReadAloudVoiceTermsLink) {
+                return;
+            }
+
+            const matchedVoice = getReadAloudVoiceMeta(selectedVoiceName);
+            const termsUrl = String(matchedVoice?.termsUrl || '').trim();
+
+            if (!termsUrl) {
+                commentReadAloudVoiceTermsLink.classList.remove('is-visible');
+                commentReadAloudVoiceTermsLink.removeAttribute('href');
+                commentReadAloudVoiceTermsLink.textContent = '規約ページをブラウザで開く';
+                return;
+            }
+
+            commentReadAloudVoiceTermsLink.href = termsUrl;
+            commentReadAloudVoiceTermsLink.textContent = `${matchedVoice?.name || '選択中の音声'}の規約ページをブラウザで開く`;
+            commentReadAloudVoiceTermsLink.classList.add('is-visible');
+        }
+
+        function buildReadAloudVoiceOptions(selectedVoiceName, options = {}) {
+            const includeDefault = options.includeDefault !== false;
+            const defaultLabel = options.defaultLabel || '既定の音声';
+            const list = [];
+
+            if (includeDefault) {
+                list.push(`<option value="">${escapeHtml(defaultLabel)}</option>`);
+            }
+
+            availableReadAloudVoices.forEach((voice) => {
+                const voiceValue = voice?.value || voice?.name || '';
+                const voiceName = voice?.name || voiceValue;
+                const selected = voiceValue === selectedVoiceName ? ' selected' : '';
+                const label = [voiceName, voice?.lang, voice?.provider].filter(Boolean).join(' / ');
+                list.push(`<option value="${escapeHtml(voiceValue)}"${selected}>${escapeHtml(label || voiceName)}</option>`);
+            });
+
+            if (selectedVoiceName && !availableReadAloudVoices.some((voice) => (voice?.value || voice?.name || '') === selectedVoiceName)) {
+                list.push(`<option value="${escapeHtml(selectedVoiceName)}" selected>${escapeHtml(selectedVoiceName)} (未検出)</option>`);
+            }
+
+            return list.join('');
+        }
+
+        function normalizeReadAloudFilters(value) {
+            const source = Array.isArray(value)
+                ? value
+                : (typeof value === 'string' ? value.split(/\r?\n/gu) : []);
+
+            return [...new Set(source
+                .map((item) => String(item || '').trim().slice(0, 120))
+                .filter(Boolean)
+                .slice(0, 100))];
+        }
+
+        function normalizeReadAloudTextReplacements(value) {
+            const source = Array.isArray(value)
+                ? value
+                : (typeof value === 'string' ? value.split(/\r?\n/gu) : []);
+
+            return source
+                .map((item) => {
+                    if (item && typeof item === 'object') {
+                        const from = String(item.from || '').trim().slice(0, 120);
+                        const to = String(item.to || '').trim().slice(0, 120);
+
+                        if (!from || !to) {
+                            return null;
+                        }
+
+                        return { from, to };
+                    }
+
+                    const line = String(item || '').trim().slice(0, 260);
+
+                    if (!line) {
+                        return null;
+                    }
+
+                    const separatorIndex = line.search(/[=＝]/u);
+
+                    if (separatorIndex <= 0) {
+                        return null;
+                    }
+
+                    const from = line.slice(0, separatorIndex).trim().slice(0, 120);
+                    const to = line.slice(separatorIndex + 1).trim().slice(0, 120);
+
+                    if (!from || !to) {
+                        return null;
+                    }
+
+                    return { from, to };
+                })
+                .filter(Boolean)
+                .sort((left, right) => String(right.from).length - String(left.from).length)
+                .filter((item, index, list) => list.findIndex((candidate) => candidate.from === item.from) === index)
+                .slice(0, 100);
+        }
+
+        function normalizeReadAloudEmojiReplacements(value) {
+            const source = Array.isArray(value)
+                ? value
+                : (typeof value === 'string' ? value.split(/\r?\n/gu) : []);
+
+            return source
+                .map((item) => {
+                    if (item && typeof item === 'object') {
+                        const emoji = String(item.emoji || '').trim().slice(0, 32);
+                        const text = String(item.text || '').trim().slice(0, 120);
+
+                        if (!emoji || !text) {
+                            return null;
+                        }
+
+                        return { emoji, text };
+                    }
+
+                    const line = String(item || '').trim().slice(0, 180);
+
+                    if (!line) {
+                        return null;
+                    }
+
+                    const separatorIndex = line.indexOf('=');
+
+                    if (separatorIndex <= 0) {
+                        return null;
+                    }
+
+                    const emoji = line.slice(0, separatorIndex).trim().slice(0, 32);
+                    const text = line.slice(separatorIndex + 1).trim().slice(0, 120);
+
+                    if (!emoji || !text) {
+                        return null;
+                    }
+
+                    return { emoji, text };
+                })
+                .filter(Boolean)
+                .sort((left, right) => String(right.emoji).length - String(left.emoji).length)
+                .filter((item, index, list) => list.findIndex((candidate) => candidate.emoji === item.emoji) === index)
+                .slice(0, 100);
+        }
+
+        function normalizeReadAloudEmoteKey(value) {
+            const normalizedValue = String(value || '').trim().slice(0, 64);
+
+            if (!normalizedValue) {
+                return '';
+            }
+
+            if (normalizedValue.startsWith('[emote:') && normalizedValue.endsWith(']')) {
+                return normalizedValue.slice(7, -1).trim().slice(0, 64);
+            }
+
+            if (normalizedValue.startsWith('emote:')) {
+                return normalizedValue.slice(6).trim().slice(0, 64);
+            }
+
+            return normalizedValue;
+        }
+
+        function normalizeReadAloudEmoteReplacements(value) {
+            const source = Array.isArray(value)
+                ? value
+                : (typeof value === 'string' ? value.split(/\r?\n/gu) : []);
+
+            return source
+                .map((item) => {
+                    if (item && typeof item === 'object') {
+                        const emoteId = normalizeReadAloudEmoteKey(item.emoteId || item.emote);
+                        const text = String(item.text || '').trim().slice(0, 120);
+
+                        if (!emoteId || !text) {
+                            return null;
+                        }
+
+                        return { emoteId, text };
+                    }
+
+                    const line = String(item || '').trim().slice(0, 200);
+
+                    if (!line) {
+                        return null;
+                    }
+
+                    const separatorIndex = line.indexOf('=');
+
+                    if (separatorIndex <= 0) {
+                        return null;
+                    }
+
+                    const emoteId = normalizeReadAloudEmoteKey(line.slice(0, separatorIndex));
+                    const text = line.slice(separatorIndex + 1).trim().slice(0, 120);
+
+                    if (!emoteId || !text) {
+                        return null;
+                    }
+
+                    return { emoteId, text };
+                })
+                .filter(Boolean)
+                .filter((item, index, list) => list.findIndex((candidate) => candidate.emoteId === item.emoteId) === index)
+                .slice(0, 100);
+        }
+
+        function serializeReadAloudEmojiReplacements(items) {
+            return normalizeReadAloudEmojiReplacements(items)
+                .map((item) => `${item.emoji}=${item.text}`)
+                .join('\n');
+        }
+
+        function serializeReadAloudTextReplacements(items) {
+            return normalizeReadAloudTextReplacements(items)
+                .map((item) => `${item.from}=${item.to}`)
+                .join('\n');
+        }
+
+        function isObservedEmojiGrapheme(value) {
+            if (typeof value !== 'string' || !value) {
+                return false;
+            }
+
+            return /[\p{Extended_Pictographic}\p{Regional_Indicator}]|[0-9#*]\uFE0F?\u20E3/gu.test(value);
+        }
+
+        function getEmojiCodepointKey(value) {
+            return Array.from(String(value || ''))
+                .map((char) => char.codePointAt(0)?.toString(16))
+                .filter(Boolean)
+                .join('-');
+        }
+
+        function getEmojiImageUrl(value) {
+            const codepointKey = getEmojiCodepointKey(value);
+            return codepointKey ? `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${codepointKey}.svg` : '';
+        }
+
+        function getObservedEmojiCatalog() {
+            const cachedItems = Array.isArray(observedEmojiCatalog) ? observedEmojiCatalog : [];
+            const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+                ? new Intl.Segmenter('ja', { granularity: 'grapheme' })
+                : null;
+            const knownKeys = new Set();
+            const catalog = [];
+
+            cachedItems.forEach((item) => {
+                const emoji = String(item?.emoji || '').trim();
+                const codepointKey = getEmojiCodepointKey(emoji);
+
+                if (!emoji || !codepointKey || knownKeys.has(codepointKey)) {
+                    return;
+                }
+
+                knownKeys.add(codepointKey);
+                catalog.push({ emoji, codepointKey, imageUrl: getEmojiImageUrl(emoji) });
+            });
+
+            currentComments.forEach((comment) => {
+                const body = String(comment?.comment || '').replace(/\[emote:[^\]]+\]/gu, ' ');
+                const graphemes = segmenter
+                    ? [...segmenter.segment(body)].map((item) => item.segment)
+                    : Array.from(body);
+
+                graphemes.forEach((grapheme) => {
+                    const emoji = String(grapheme || '').trim();
+
+                    if (!isObservedEmojiGrapheme(emoji)) {
+                        return;
+                    }
+
+                    const codepointKey = getEmojiCodepointKey(emoji);
+
+                    if (!codepointKey || knownKeys.has(codepointKey)) {
+                        return;
+                    }
+
+                    knownKeys.add(codepointKey);
+                    catalog.push({
+                        emoji,
+                        codepointKey,
+                        imageUrl: getEmojiImageUrl(emoji)
+                    });
+                });
+            });
+
+            return catalog;
+        }
+
+        function getObservedEmojiImageUrl(value) {
+            const codepointKey = getEmojiCodepointKey(value);
+
+            if (!codepointKey) {
+                return '';
+            }
+
+            const directMatch = getObservedEmojiCatalog().find((item) => item.codepointKey === codepointKey);
+            return directMatch?.imageUrl || getEmojiImageUrl(value);
+        }
+
+        function renderReadAloudEmojiPreview() {
+            const imageUrl = getObservedEmojiImageUrl(selectedReadAloudEmoji);
+
+            if (selectedReadAloudEmoji && imageUrl) {
+                commentReadAloudEmojiPreview.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(selectedReadAloudEmoji)}">`;
+            } else {
+                commentReadAloudEmojiPreview.innerHTML = '<span class="emote-editor-placeholder">未選択</span>';
+            }
+
+            commentReadAloudEmojiSelectedValue.textContent = selectedReadAloudEmoji
+                ? `絵文字: ${selectedReadAloudEmoji}`
+                : '絵文字画像を選んでください';
+        }
+
+        function renderReadAloudEmojiPicker() {
+            const observedEmojis = getObservedEmojiCatalog();
+            const mappedKeys = new Set(pendingReadAloudEmojiReplacements.map((item) => getEmojiCodepointKey(item.emoji)));
+
+            if (!observedEmojis.length) {
+                commentReadAloudEmojiPicker.innerHTML = '<div class="emote-picker-empty">まだ絵文字を含むコメントを受信していません。コメント欄に絵文字が流れると、ここで画像選択できます。</div>';
+                return;
+            }
+
+            commentReadAloudEmojiPicker.innerHTML = observedEmojis.map((item) => {
+                const isSelected = item.emoji === selectedReadAloudEmoji;
+                const isMapped = mappedKeys.has(item.codepointKey);
+                return `
+                    <button
+                        type="button"
+                        class="emote-picker-item${isSelected ? ' is-selected' : ''}${isMapped ? ' is-mapped' : ''}"
+                        data-emoji="${escapeHtml(item.emoji)}"
+                    >
+                        <img src="${escapeHtml(item.imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}">
+                        <span class="emote-picker-id">${escapeHtml(item.emoji)}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderReadAloudEmojiMappings() {
+            const items = normalizeReadAloudEmojiReplacements(pendingReadAloudEmojiReplacements);
+
+            if (!items.length) {
+                commentReadAloudEmojiMappingList.innerHTML = '<div class="emote-mapping-empty">まだ絵文字変換はありません。</div>';
+                return;
+            }
+
+            commentReadAloudEmojiMappingList.innerHTML = items.map((item) => {
+                const imageUrl = getObservedEmojiImageUrl(item.emoji);
+                return `
+                    <div class="emote-mapping-item">
+                        ${imageUrl
+                            ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}">`
+                            : `<div class="emote-editor-preview"><span class="emote-editor-placeholder">絵文字</span></div>`}
+                        <div class="emote-mapping-copy">
+                            <strong>${escapeHtml(item.text)}</strong>
+                            <span>${escapeHtml(item.emoji)}</span>
+                        </div>
+                        <div class="emote-mapping-actions">
+                            <button type="button" data-action="edit" data-emoji="${escapeHtml(item.emoji)}">編集</button>
+                            <button type="button" data-action="remove" data-emoji="${escapeHtml(item.emoji)}">削除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function syncReadAloudEmojiEditorFromSelection() {
+            const currentItem = pendingReadAloudEmojiReplacements.find((item) => item.emoji === selectedReadAloudEmoji);
+            commentReadAloudEmojiTextInput.value = currentItem?.text || '';
+            renderReadAloudEmojiPreview();
+            renderReadAloudEmojiPicker();
+            renderReadAloudEmojiMappings();
+        }
+
+        function selectReadAloudEmoji(emoji) {
+            selectedReadAloudEmoji = String(emoji || '').trim();
+            syncReadAloudEmojiEditorFromSelection();
+
+            if (selectedReadAloudEmoji) {
+                commentReadAloudEmojiTextInput.focus();
+                commentReadAloudEmojiTextInput.select();
+            }
+        }
+
+        function serializeReadAloudEmoteReplacements(items) {
+            return normalizeReadAloudEmoteReplacements(items)
+                .map((item) => `${item.emoteId}=${item.text}`)
+                .join('\n');
+        }
+
+        function getObservedEmoteCatalog() {
+            const catalog = [];
+            const knownIds = new Set();
+
+            (Array.isArray(observedEmoteCatalog) ? observedEmoteCatalog : []).forEach((item) => {
+                const emoteId = normalizeReadAloudEmoteKey(item?.emoteId);
+                const imageUrl = String(item?.imageUrl || '').trim();
+
+                if (!emoteId || !imageUrl || knownIds.has(emoteId)) {
+                    return;
+                }
+
+                knownIds.add(emoteId);
+                catalog.push({ emoteId, imageUrl });
+            });
+
+            currentComments.forEach((comment) => {
+                (Array.isArray(comment?.emotes) ? comment.emotes : []).forEach((emote) => {
+                    const emoteId = normalizeReadAloudEmoteKey(emote?.emoteId);
+                    const imageUrl = String(emote?.imageUrl || '').trim();
+
+                    if (!emoteId || !imageUrl || knownIds.has(emoteId)) {
+                        return;
+                    }
+
+                    knownIds.add(emoteId);
+                    catalog.push({ emoteId, imageUrl });
+                });
+            });
+
+            return catalog;
+        }
+
+        function getObservedEmoteImageUrl(emoteId) {
+            const normalizedId = normalizeReadAloudEmoteKey(emoteId);
+
+            if (!normalizedId) {
+                return '';
+            }
+
+            const directMatch = getObservedEmoteCatalog().find((item) => item.emoteId === normalizedId);
+            return directMatch?.imageUrl || '';
+        }
+
+        function renderReadAloudEmotePreview() {
+            const imageUrl = getObservedEmoteImageUrl(selectedReadAloudEmoteId);
+
+            if (selectedReadAloudEmoteId && imageUrl) {
+                commentReadAloudEmotePreview.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="emote ${escapeHtml(selectedReadAloudEmoteId)}">`;
+            } else {
+                commentReadAloudEmotePreview.innerHTML = '<span class="emote-editor-placeholder">未選択</span>';
+            }
+
+            commentReadAloudEmoteSelectedId.textContent = selectedReadAloudEmoteId
+                ? `emoteId: ${selectedReadAloudEmoteId}`
+                : 'エモート画像を選んでください';
+        }
+
+        function renderReadAloudEmotePicker() {
+            const observedEmotes = getObservedEmoteCatalog();
+            const mappedIds = new Set(pendingReadAloudEmoteReplacements.map((item) => item.emoteId));
+
+            if (!observedEmotes.length) {
+                commentReadAloudEmotePicker.innerHTML = '<div class="emote-picker-empty">まだエモートを受信していません。コメント欄にエモートが流れると、ここで画像選択できます。</div>';
+                return;
+            }
+
+            commentReadAloudEmotePicker.innerHTML = observedEmotes.map((item) => {
+                const isSelected = item.emoteId === selectedReadAloudEmoteId;
+                const isMapped = mappedIds.has(item.emoteId);
+                return `
+                    <button
+                        type="button"
+                        class="emote-picker-item${isSelected ? ' is-selected' : ''}${isMapped ? ' is-mapped' : ''}"
+                        data-emote-id="${escapeHtml(item.emoteId)}"
+                    >
+                        <img src="${escapeHtml(item.imageUrl)}" alt="emote ${escapeHtml(item.emoteId)}">
+                        <span class="emote-picker-id">${escapeHtml(item.emoteId)}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderReadAloudEmoteMappings() {
+            const items = normalizeReadAloudEmoteReplacements(pendingReadAloudEmoteReplacements);
+
+            if (!items.length) {
+                commentReadAloudEmoteMappingList.innerHTML = '<div class="emote-mapping-empty">まだエモート変換はありません。</div>';
+                return;
+            }
+
+            commentReadAloudEmoteMappingList.innerHTML = items.map((item) => {
+                const imageUrl = getObservedEmoteImageUrl(item.emoteId);
+                return `
+                    <div class="emote-mapping-item">
+                        ${imageUrl
+                            ? `<img src="${escapeHtml(imageUrl)}" alt="emote ${escapeHtml(item.emoteId)}">`
+                            : `<div class="emote-editor-preview"><span class="emote-editor-placeholder">ID</span></div>`}
+                        <div class="emote-mapping-copy">
+                            <strong>${escapeHtml(item.text)}</strong>
+                            <span>${escapeHtml(item.emoteId)}</span>
+                        </div>
+                        <div class="emote-mapping-actions">
+                            <button type="button" data-action="edit" data-emote-id="${escapeHtml(item.emoteId)}">編集</button>
+                            <button type="button" data-action="remove" data-emote-id="${escapeHtml(item.emoteId)}">削除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function syncReadAloudEmoteEditorFromSelection() {
+            const currentItem = pendingReadAloudEmoteReplacements.find((item) => item.emoteId === selectedReadAloudEmoteId);
+            commentReadAloudEmoteTextInput.value = currentItem?.text || '';
+            renderReadAloudEmotePreview();
+            renderReadAloudEmotePicker();
+            renderReadAloudEmoteMappings();
+        }
+
+        function selectReadAloudEmote(emoteId) {
+            selectedReadAloudEmoteId = normalizeReadAloudEmoteKey(emoteId);
+            syncReadAloudEmoteEditorFromSelection();
+            if (selectedReadAloudEmoteId) {
+                commentReadAloudEmoteTextInput.focus();
+                commentReadAloudEmoteTextInput.select();
+            }
+        }
+
+        function renderCommentTextSegment(value) {
+            const text = String(value || '');
+
+            if (!text) {
+                return '';
+            }
+
+            const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+                ? new Intl.Segmenter('ja', { granularity: 'grapheme' })
+                : null;
+            const graphemes = segmenter
+                ? [...segmenter.segment(text)].map((item) => item.segment)
+                : Array.from(text);
+
+            return graphemes.map((grapheme) => {
+                if (!isObservedEmojiGrapheme(grapheme)) {
+                    return escapeHtml(grapheme);
+                }
+
+                const imageUrl = getEmojiImageUrl(grapheme);
+                return imageUrl
+                    ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(grapheme)}">`
+                    : escapeHtml(grapheme);
+            }).join('');
+        }
+
+        function renderCommentBody(comment, emotes) {
+            const body = typeof comment === 'string' ? comment : '';
+            const emoteMap = new Map(
+                (Array.isArray(emotes) ? emotes : [])
+                    .map((item) => {
+                        const emoteId = String(item?.emoteId || '').trim();
+                        const imageUrl = String(item?.imageUrl || '').trim();
+                        return emoteId && imageUrl ? [emoteId, imageUrl] : null;
+                    })
+                    .filter(Boolean)
+            );
+
+            if (!body) {
+                return '';
+            }
+
+            const tokenPattern = /\[emote:([^\]]+)\]/gu;
+            let cursor = 0;
+            let markup = '';
+
+            body.replace(tokenPattern, (match, emoteId, offset) => {
+                const textSegment = body.slice(cursor, offset);
+
+                if (textSegment) {
+                    markup += `<span class="comment-body-text">${renderCommentTextSegment(textSegment)}</span>`;
+                }
+
+                const imageUrl = emoteMap.get(String(emoteId).trim());
+
+                if (imageUrl) {
+                    markup += `<img class="comment-emote" src="${escapeHtml(imageUrl)}" alt="emote ${escapeHtml(emoteId)}">`;
+                } else {
+                    markup += `<span class="comment-body-text">${escapeHtml(match)}</span>`;
+                }
+
+                cursor = offset + match.length;
+                return match;
+            });
+
+            const tail = body.slice(cursor);
+
+            if (tail) {
+                markup += `<span class="comment-body-text">${renderCommentTextSegment(tail)}</span>`;
+            }
+
+            return markup || `<span class="comment-body-text">${renderCommentTextSegment(body)}</span>`;
         }
 
         function formatTimestamp(value) {
@@ -412,16 +1984,93 @@
             });
         }
 
+        function getCommentTimestampMs(comment) {
+            const receivedAt = Number(comment?.receivedAt);
+
+            if (Number.isFinite(receivedAt) && receivedAt > 0) {
+                return receivedAt;
+            }
+
+            const sourceTimestamp = Number(comment?.sourceTimestamp);
+
+            if (Number.isFinite(sourceTimestamp) && sourceTimestamp > 0) {
+                return sourceTimestamp;
+            }
+
+            const timestamp = Date.parse(String(comment?.timestamp || ''));
+            return Number.isNaN(timestamp) ? 0 : timestamp;
+        }
+
+        function pruneExpiredComments(comments) {
+            if (!Array.isArray(comments) || !comments.length) {
+                return [];
+            }
+
+            if (!Number.isFinite(COMMENT_DISPLAY_TTL_MS) || COMMENT_DISPLAY_TTL_MS <= 0) {
+                return comments;
+            }
+
+            const now = Date.now();
+
+            return comments.filter((comment) => {
+                const timestampMs = getCommentTimestampMs(comment);
+
+                if (!timestampMs) {
+                    return true;
+                }
+
+                return now - timestampMs < COMMENT_DISPLAY_TTL_MS;
+            });
+        }
+
+        function ensureCommentExpirationTimer() {
+            if (commentExpirationTimer !== null) {
+                return;
+            }
+
+            commentExpirationTimer = window.setInterval(() => {
+                const nextComments = pruneExpiredComments(currentComments);
+
+                if (nextComments.length === currentComments.length) {
+                    return;
+                }
+
+                currentComments = nextComments;
+                renderLiveComments(currentComments);
+            }, COMMENT_EXPIRATION_CHECK_INTERVAL_MS);
+        }
+
         function normalizeCommentSettings(settings) {
             const knownTypes = currentCommentTypes.map((item) => item.type);
             const hasEnabledTypes = Array.isArray(settings?.enabledTypes);
             const enabledTypes = hasEnabledTypes
                 ? settings.enabledTypes.filter((type) => knownTypes.includes(type))
                 : knownTypes;
+            const hasReadAloudEnabledTypes = Array.isArray(settings?.readAloudEnabledTypes);
+            const readAloudEnabledTypes = hasReadAloudEnabledTypes
+                ? settings.readAloudEnabledTypes.filter((type) => knownTypes.includes(type))
+                : enabledTypes;
+            const readAloudVolume = Math.max(0, Math.min(100, Number(settings?.readAloudVolume ?? 100) || 0));
+            const readAloudFilters = normalizeReadAloudFilters(settings?.readAloudFilters);
+            const readAloudTextReplacements = normalizeReadAloudTextReplacements(settings?.readAloudTextReplacements);
+            const readAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(settings?.readAloudEmojiReplacements);
+            const readAloudEmoteReplacements = normalizeReadAloudEmoteReplacements(settings?.readAloudEmoteReplacements);
+            const readAloudVoiceMappings = normalizeReadAloudVoiceMappings(settings?.readAloudVoiceMappings);
 
             return {
                 sortOrder: settings?.sortOrder === 'asc' ? 'asc' : 'desc',
-                enabledTypes: hasEnabledTypes ? enabledTypes : knownTypes
+                enabledTypes: hasEnabledTypes ? enabledTypes : knownTypes,
+                readAloudEnabledTypes: hasReadAloudEnabledTypes ? readAloudEnabledTypes : enabledTypes,
+                readAloudEnabled: settings?.readAloudEnabled === true,
+                readAloudVoiceName: typeof settings?.readAloudVoiceName === 'string' ? settings.readAloudVoiceName : '',
+                readAloudVoiceCreditEnabled: settings?.readAloudVoiceCreditEnabled === true,
+                readAloudRandomVoiceEnabled: settings?.readAloudRandomVoiceEnabled === true,
+                readAloudVolume,
+                readAloudFilters,
+                readAloudTextReplacements,
+                readAloudEmojiReplacements,
+                readAloudEmoteReplacements,
+                readAloudVoiceMappings
             };
         }
 
@@ -433,6 +2082,106 @@
             sortOrderButton.textContent = currentSettings.sortOrder === 'asc'
                 ? '並び順: 古い順'
                 : '並び順: 新しい順';
+        }
+
+        function syncReadAloudButton() {
+            commentReadAloudButton.textContent = currentSettings.readAloudEnabled
+                ? '読み上げ: screen1 ON'
+                : '読み上げ: screen1 OFF';
+        }
+
+        function syncReadAloudVoiceButton() {
+            const mappingCount = Array.isArray(currentSettings.readAloudVoiceMappings) ? currentSettings.readAloudVoiceMappings.length : 0;
+            const voiceSummary = currentSettings.readAloudRandomVoiceEnabled
+                ? 'ランダム'
+                : getReadAloudVoiceLabel(currentSettings.readAloudVoiceName);
+            commentReadAloudVoiceButton.textContent = `VOICE: ${voiceSummary} / ${mappingCount}件`;
+        }
+
+        function syncReadAloudVoiceMappingButton() {
+            const mappingCount = Array.isArray(currentSettings.readAloudVoiceMappings) ? currentSettings.readAloudVoiceMappings.length : 0;
+            commentReadAloudVoiceMappingButton.textContent = `ボイスマッピング: ${mappingCount}件`;
+        }
+
+        function syncReadAloudFilterButton() {
+            const count = Array.isArray(currentSettings.readAloudFilters) ? currentSettings.readAloudFilters.length : 0;
+            commentReadAloudFilterButton.textContent = `読み上げフィルタ: ${count}件`;
+        }
+
+        function syncReadAloudTextReplacementButton() {
+            const count = Array.isArray(currentSettings.readAloudTextReplacements) ? currentSettings.readAloudTextReplacements.length : 0;
+            commentReadAloudTextReplacementButton.textContent = `読み上げ変換: ${count}件`;
+        }
+
+        function syncReadAloudEmojiButton() {
+            const count = Array.isArray(currentSettings.readAloudEmojiReplacements) ? currentSettings.readAloudEmojiReplacements.length : 0;
+            commentReadAloudEmojiButton.textContent = `絵文字変換: ${count}件`;
+        }
+
+        function syncReadAloudEmoteButton() {
+            const count = Array.isArray(currentSettings.readAloudEmoteReplacements) ? currentSettings.readAloudEmoteReplacements.length : 0;
+            commentReadAloudEmoteButton.textContent = `エモート変換: ${count}件`;
+        }
+
+        function syncReadAloudControls() {
+            const isVoiceModalOpen = commentReadAloudVoiceModal.classList.contains('is-open');
+
+            if (!isVoiceModalOpen) {
+                const selectedVoiceName = currentSettings.readAloudVoiceName || '';
+                commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(selectedVoiceName);
+                commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
+                commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
+                commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
+                commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+            }
+
+            commentReadAloudVoiceSelect.disabled = !availableReadAloudVoices.length;
+            syncReadAloudVoiceTermsLink();
+            if (commentReadAloudVoiceMappingVoiceSelect) {
+                commentReadAloudVoiceMappingVoiceSelect.innerHTML = buildReadAloudVoiceOptions(
+                    commentReadAloudVoiceMappingVoiceSelect.value || '',
+                    { includeDefault: true, defaultLabel: '音声を選択' }
+                );
+            }
+            syncReadAloudVoiceButton();
+            syncReadAloudVoiceMappingButton();
+        }
+
+        async function loadAvailableReadAloudVoices(options = {}) {
+            const forceRefresh = options?.forceRefresh === true;
+            let nextVoices = [];
+
+            try {
+                const response = await fetch(`/api/comments/read-aloud-voices${forceRefresh ? '?refresh=1' : ''}`);
+
+                if (response.ok) {
+                    const payload = await response.json();
+                    if (Array.isArray(payload?.voices)) {
+                        nextVoices = payload.voices;
+                    }
+                }
+            } catch {
+            }
+
+            if (!nextVoices.length) {
+                const synth = window.speechSynthesis;
+
+                if (synth && typeof synth.getVoices === 'function') {
+                    nextVoices = synth.getVoices()
+                        .filter((voice) => voice && voice.name)
+                        .map((voice) => ({
+                            value: `screen1:${voice.name}`,
+                            name: voice.name,
+                            lang: voice.lang || '',
+                            provider: 'screen1'
+                        }));
+                }
+            }
+
+            availableReadAloudVoices = nextVoices
+                .filter((voice) => voice && voice.name)
+                .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ja'));
+            syncReadAloudControls();
         }
 
         function syncFilterSummary() {
@@ -474,6 +2223,24 @@
             });
         }
 
+        function renderCommentReadAloudSettingsModal() {
+            const enabledTypes = new Set(currentSettings.readAloudEnabledTypes);
+            commentReadAloudFilterList.innerHTML = '';
+
+            currentCommentTypes.forEach((item) => {
+                const row = document.createElement('label');
+                row.className = 'filter-item';
+                row.innerHTML = `
+                    <div class="filter-copy">
+                        <strong>${escapeHtml(item.label || item.type)}</strong>
+                        <span>${item.system ? 'システムメッセージ' : '通常コメント'}</span>
+                    </div>
+                    <input type="checkbox" data-type="${escapeHtml(item.type)}" ${enabledTypes.has(item.type) ? 'checked' : ''}>
+                `;
+                commentReadAloudFilterList.appendChild(row);
+            });
+        }
+
         function openCommentSettingsModal() {
             renderCommentSettingsModal();
             commentSettingsModal.classList.add('is-open');
@@ -483,6 +2250,218 @@
         function closeCommentSettingsModal() {
             commentSettingsModal.classList.remove('is-open');
             commentSettingsModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function openCommentReadAloudSettingsModal() {
+            renderCommentReadAloudSettingsModal();
+            commentReadAloudSettingsModal.classList.add('is-open');
+            commentReadAloudSettingsModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCommentReadAloudSettingsModal() {
+            commentReadAloudSettingsModal.classList.remove('is-open');
+            commentReadAloudSettingsModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function renderReadAloudVoiceMappings() {
+            const items = normalizeReadAloudVoiceMappings(pendingReadAloudVoiceMappings);
+            const query = String(readAloudVoiceMappingSearchQuery || '').trim().toLowerCase();
+            const filteredItems = query
+                ? items.filter((item) => {
+                    const voiceLabel = getReadAloudVoiceLabel(item.voiceName).toLowerCase();
+                    return item.uniqueId.toLowerCase().includes(query) || voiceLabel.includes(query);
+                })
+                : items;
+
+            if (commentReadAloudVoiceMappingSummary) {
+                commentReadAloudVoiceMappingSummary.textContent = query
+                    ? `${filteredItems.length}件表示 / 全${items.length}件`
+                    : `全${items.length}件`;
+            }
+
+            if (!items.length) {
+                commentReadAloudVoiceMappingList.innerHTML = '<div class="emote-mapping-empty">まだボイスマッピングはありません。</div>';
+                return;
+            }
+
+            if (!filteredItems.length) {
+                commentReadAloudVoiceMappingList.innerHTML = '<div class="emote-mapping-empty">検索条件に一致するボイスマッピングはありません。</div>';
+                return;
+            }
+
+            commentReadAloudVoiceMappingList.innerHTML = filteredItems.map((item) => `
+                <div class="voice-mapping-item">
+                    <div class="voice-mapping-user">@${escapeHtml(item.uniqueId)}</div>
+                    <div class="voice-mapping-voice">${escapeHtml(getReadAloudVoiceLabel(item.voiceName))}</div>
+                    <div class="emote-mapping-actions">
+                        <button type="button" data-action="edit" data-unique-id="${escapeHtml(item.uniqueId)}">編集</button>
+                        <button type="button" data-action="remove" data-unique-id="${escapeHtml(item.uniqueId)}">削除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function populateReadAloudVoiceMappingEditor(uniqueId = '', voiceName = '') {
+            commentReadAloudVoiceMappingUserIdInput.value = normalizeReadAloudUserId(uniqueId);
+            commentReadAloudVoiceMappingVoiceSelect.innerHTML = buildReadAloudVoiceOptions(voiceName, {
+                includeDefault: true,
+                defaultLabel: '音声を選択'
+            });
+        }
+
+        async function openCommentReadAloudVoiceModal() {
+            await loadAvailableReadAloudVoices();
+            commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
+            commentReadAloudVoiceSelect.disabled = !availableReadAloudVoices.length;
+            syncReadAloudVoiceTermsLink(currentSettings.readAloudVoiceName || '');
+            commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
+            commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
+            commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
+            commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+            commentReadAloudVoiceModal.classList.add('is-open');
+            commentReadAloudVoiceModal.setAttribute('aria-hidden', 'false');
+        }
+
+        async function openCommentReadAloudVoiceMappingModal() {
+            await loadAvailableReadAloudVoices();
+            try {
+                const res = await fetch('/api/users/recent');
+                const payload = await res.json();
+                knownVoiceMappingUsers = Array.isArray(payload.users) ? payload.users.filter((u) => u?.uniqueId) : [];
+            } catch { knownVoiceMappingUsers = []; }
+            pendingReadAloudVoiceMappings = normalizeReadAloudVoiceMappings(currentSettings.readAloudVoiceMappings);
+            readAloudVoiceMappingSearchQuery = '';
+            commentReadAloudVoiceMappingSearchInput.value = '';
+            populateReadAloudVoiceMappingEditor();
+            renderReadAloudVoiceMappings();
+            commentReadAloudVoiceMappingModal.classList.add('is-open');
+            commentReadAloudVoiceMappingModal.setAttribute('aria-hidden', 'false');
+            commentReadAloudVoiceMappingUserIdInput.focus();
+        }
+
+        function positionVoiceMappingUserSuggestionPanel() {
+            const rect = commentReadAloudVoiceMappingUserIdInput.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                voiceMappingUserSuggestionPanel.style.top = `${rect.bottom + 4}px`;
+                voiceMappingUserSuggestionPanel.style.bottom = '';
+            } else {
+                voiceMappingUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+                voiceMappingUserSuggestionPanel.style.top = '';
+            }
+            voiceMappingUserSuggestionPanel.style.left = `${rect.left}px`;
+            voiceMappingUserSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideVoiceMappingUserSuggestionPanel() {
+            voiceMappingUserSuggestionPanel.hidden = true;
+            voiceMappingUserSuggestionPanel.innerHTML = '';
+            visibleVoiceMappingUsers = [];
+            activeVoiceMappingUserIndex = -1;
+        }
+
+        function applyVoiceMappingUserSuggestion(user) {
+            commentReadAloudVoiceMappingUserIdInput.value = user.uniqueId || '';
+            hideVoiceMappingUserSuggestionPanel();
+            commentReadAloudVoiceMappingUserIdInput.focus();
+        }
+
+        function renderVoiceMappingUserSuggestions(query) {
+            const q = String(query || '').trim().toLowerCase();
+            if (!q) { hideVoiceMappingUserSuggestionPanel(); return; }
+            visibleVoiceMappingUsers = knownVoiceMappingUsers.filter((u) => {
+                return String(u.uniqueId || '').toLowerCase().includes(q)
+                    || String(u.nickname || '').toLowerCase().includes(q);
+            }).slice(0, 20);
+            if (!visibleVoiceMappingUsers.length) { hideVoiceMappingUserSuggestionPanel(); return; }
+            activeVoiceMappingUserIndex = 0;
+            voiceMappingUserSuggestionPanel.innerHTML = visibleVoiceMappingUsers.map((user, index) => {
+                const imgMarkup = user.image
+                    ? `<img class="user-suggestion-avatar" src="${escapeHtml(user.image)}" alt="">`
+                    : `<div class="user-suggestion-avatar is-empty">?</div>`;
+                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
+            }).join('');
+            voiceMappingUserSuggestionPanel.hidden = false;
+            positionVoiceMappingUserSuggestionPanel();
+            voiceMappingUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyVoiceMappingUserSuggestion(visibleVoiceMappingUsers[Number(button.dataset.userIndex)]);
+                });
+            });
+        }
+
+        function updateActiveVoiceMappingUserSuggestion(nextIndex) {
+            if (!visibleVoiceMappingUsers.length) return;
+            activeVoiceMappingUserIndex = Math.max(0, Math.min(nextIndex, visibleVoiceMappingUsers.length - 1));
+            voiceMappingUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeVoiceMappingUserIndex);
+                if (index === activeVoiceMappingUserIndex) button.scrollIntoView({ block: 'nearest' });
+            });
+        }
+
+        function closeCommentReadAloudVoiceModal() {
+            commentReadAloudVoiceModal.classList.remove('is-open');
+            commentReadAloudVoiceModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function closeCommentReadAloudVoiceMappingModal() {
+            commentReadAloudVoiceMappingModal.classList.remove('is-open');
+            commentReadAloudVoiceMappingModal.setAttribute('aria-hidden', 'true');
+            readAloudVoiceMappingSearchQuery = '';
+            commentReadAloudVoiceMappingSearchInput.value = '';
+            populateReadAloudVoiceMappingEditor();
+        }
+
+        function openCommentReadAloudFilterModal() {
+            commentReadAloudFilterTextarea.value = normalizeReadAloudFilters(currentSettings.readAloudFilters).join('\n');
+            commentReadAloudFilterModal.classList.add('is-open');
+            commentReadAloudFilterModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCommentReadAloudFilterModal() {
+            commentReadAloudFilterModal.classList.remove('is-open');
+            commentReadAloudFilterModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function openCommentReadAloudTextReplacementModal() {
+            commentReadAloudTextReplacementTextarea.value = serializeReadAloudTextReplacements(currentSettings.readAloudTextReplacements);
+            commentReadAloudTextReplacementModal.classList.add('is-open');
+            commentReadAloudTextReplacementModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCommentReadAloudTextReplacementModal() {
+            commentReadAloudTextReplacementModal.classList.remove('is-open');
+            commentReadAloudTextReplacementModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function openCommentReadAloudEmojiModal() {
+            pendingReadAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(currentSettings.readAloudEmojiReplacements);
+            selectedReadAloudEmoji = pendingReadAloudEmojiReplacements[0]?.emoji || '';
+            commentReadAloudEmojiModal.classList.add('is-open');
+            commentReadAloudEmojiModal.setAttribute('aria-hidden', 'false');
+            syncReadAloudEmojiEditorFromSelection();
+        }
+
+        function closeCommentReadAloudEmojiModal() {
+            commentReadAloudEmojiModal.classList.remove('is-open');
+            commentReadAloudEmojiModal.setAttribute('aria-hidden', 'true');
+            selectedReadAloudEmoji = '';
+        }
+
+        function openCommentReadAloudEmoteModal() {
+            pendingReadAloudEmoteReplacements = normalizeReadAloudEmoteReplacements(currentSettings.readAloudEmoteReplacements);
+            selectedReadAloudEmoteId = pendingReadAloudEmoteReplacements[0]?.emoteId || '';
+            commentReadAloudEmoteModal.classList.add('is-open');
+            commentReadAloudEmoteModal.setAttribute('aria-hidden', 'false');
+            syncReadAloudEmoteEditorFromSelection();
+        }
+
+        function closeCommentReadAloudEmoteModal() {
+            commentReadAloudEmoteModal.classList.remove('is-open');
+            commentReadAloudEmoteModal.setAttribute('aria-hidden', 'true');
+            selectedReadAloudEmoteId = '';
         }
 
         async function saveCommentSettings(nextSettings) {
@@ -504,17 +2483,75 @@
             }
             currentSettings = normalizeCommentSettings(payload.settings || nextSettings);
             syncSortOrderButton();
+            syncReadAloudButton();
+            syncReadAloudVoiceButton();
+            syncReadAloudFilterButton();
+            syncReadAloudTextReplacementButton();
+            syncReadAloudEmojiButton();
+            syncReadAloudEmoteButton();
+            syncReadAloudControls();
             syncFilterSummary();
             renderLiveComments(currentComments);
+            if (commentReadAloudVoiceModal.classList.contains('is-open')) {
+                commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
+                syncReadAloudVoiceTermsLink(currentSettings.readAloudVoiceName || '');
+                commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
+                commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
+                commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
+                commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+            }
+            if (commentReadAloudVoiceMappingModal.classList.contains('is-open')) {
+                pendingReadAloudVoiceMappings = normalizeReadAloudVoiceMappings(currentSettings.readAloudVoiceMappings);
+                populateReadAloudVoiceMappingEditor(
+                    commentReadAloudVoiceMappingUserIdInput.value,
+                    commentReadAloudVoiceMappingVoiceSelect.value
+                );
+                renderReadAloudVoiceMappings();
+            }
+            if (commentReadAloudEmojiModal.classList.contains('is-open')) {
+                pendingReadAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(currentSettings.readAloudEmojiReplacements);
+                syncReadAloudEmojiEditorFromSelection();
+            }
+            if (commentReadAloudEmoteModal.classList.contains('is-open')) {
+                pendingReadAloudEmoteReplacements = normalizeReadAloudEmoteReplacements(currentSettings.readAloudEmoteReplacements);
+                if (selectedReadAloudEmoteId && !getObservedEmoteCatalog().some((item) => item.emoteId === selectedReadAloudEmoteId)) {
+                    selectedReadAloudEmoteId = '';
+                }
+                syncReadAloudEmoteEditorFromSelection();
+            }
+        }
+
+        function createCommentCardElement(item) {
+            const card = document.createElement('article');
+            card.className = `comment-card${item.system ? ' is-system' : ''}`;
+            card.innerHTML = `
+                <div class="comment-card-header">
+                    <img class="comment-avatar" src="${escapeHtml(item.image || '')}" alt="">
+                    <div class="comment-author">
+                        <strong>${escapeHtml(item.nickname || item.uniqueId || 'system')}</strong>
+                        <span>${item.uniqueId ? `@${escapeHtml(item.uniqueId)}` : 'system'}</span>
+                    </div>
+                </div>
+                <div class="comment-kind">${escapeHtml(item.typeLabel || item.type || 'コメント')}</div>
+                    <div class="comment-body">${renderCommentBody(item.comment || '', item.emotes)}</div>
+                <div class="comment-time">${escapeHtml(formatTimestamp(item.timestamp))}</div>
+            `;
+            return card;
         }
 
         function renderLiveComments(comments) {
             commentStream.innerHTML = '';
 
-            const filteredComments = getFilteredComments(comments);
+            const activeComments = pruneExpiredComments(comments);
+
+            if (comments === currentComments && activeComments.length !== currentComments.length) {
+                currentComments = activeComments;
+            }
+
+            const filteredComments = getFilteredComments(activeComments);
             const orderedComments = getOrderedComments(filteredComments);
 
-            if (!Array.isArray(comments) || !comments.length) {
+            if (!activeComments.length) {
                 commentStream.innerHTML = '<div class="comment-stream-empty">コメント受信待機中です。</div>';
                 setCommentFeedback('コメント受信待機中です。');
                 return;
@@ -529,21 +2566,7 @@
             const fragment = document.createDocumentFragment();
 
             orderedComments.forEach((item) => {
-                const card = document.createElement('article');
-                card.className = `comment-card${item.system ? ' is-system' : ''}`;
-                card.innerHTML = `
-                    <div class="comment-card-header">
-                        <img class="comment-avatar" src="${escapeHtml(item.image || '')}" alt="">
-                        <div class="comment-author">
-                            <strong>${escapeHtml(item.nickname || item.uniqueId || 'system')}</strong>
-                            <span>${item.uniqueId ? `@${escapeHtml(item.uniqueId)}` : 'system'}</span>
-                        </div>
-                    </div>
-                    <div class="comment-kind">${escapeHtml(item.typeLabel || item.type || 'コメント')}</div>
-                    <div class="comment-body">${escapeHtml(item.comment || '')}</div>
-                    <div class="comment-time">${escapeHtml(formatTimestamp(item.timestamp))}</div>
-                `;
-                fragment.appendChild(card);
+                fragment.appendChild(createCommentCardElement(item));
             });
 
             commentStream.appendChild(fragment);
@@ -556,6 +2579,46 @@
             }
         }
 
+        // 1コメントだけ DOM に差分追加する。全件再描画を避けて高頻度イベント時の複数画面描画コストを下げる。
+        function appendLiveComment(commentEvent) {
+            if (!commentEvent || typeof commentEvent !== 'object') {
+                return;
+            }
+
+            // データ側は「new first」で先頭追加し、上限を超えた末尾を落とす
+            currentComments = [commentEvent, ...currentComments].slice(0, 100);
+
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            if (!enabledTypes.has(commentEvent.type || 'chat')) {
+                return; // 表示フィルタで除外されるタイプは DOM 操作不要
+            }
+
+            // 空ステート・フィルタ不一致メッセージが出ている場合はクリア
+            const placeholder = commentStream.querySelector('.comment-stream-empty');
+            if (placeholder) {
+                placeholder.remove();
+            }
+
+            const card = createCommentCardElement(commentEvent);
+
+            if (currentSettings.sortOrder === 'asc') {
+                commentStream.appendChild(card);
+                // 上限を越えたら先頭を削除
+                while (commentStream.children.length > 100) {
+                    commentStream.firstElementChild?.remove();
+                }
+                commentStream.scrollTop = commentStream.scrollHeight;
+            } else {
+                commentStream.insertBefore(card, commentStream.firstChild);
+                while (commentStream.children.length > 100) {
+                    commentStream.lastElementChild?.remove();
+                }
+                commentStream.scrollTop = 0;
+            }
+
+            setCommentFeedback(`コメントを ${commentStream.children.length} 件表示中です。`);
+        }
+
         async function init() {
             const [stateResponse, configResponse] = await Promise.all([
                 fetch('/api/state'),
@@ -565,9 +2628,19 @@
             const configPayload = await configResponse.json();
 
             currentCommentTypes = Array.isArray(configPayload.commentTypes) ? configPayload.commentTypes : [];
+            observedEmoteCatalog = Array.isArray(configPayload.observedEmotes) ? configPayload.observedEmotes : [];
+            observedEmojiCatalog = Array.isArray(configPayload.observedEmojis) ? configPayload.observedEmojis : [];
             currentSettings = normalizeCommentSettings(configPayload.settings || {});
             syncSortOrderButton();
+            syncReadAloudButton();
+            syncReadAloudVoiceButton();
+            syncReadAloudFilterButton();
+            syncReadAloudTextReplacementButton();
+            syncReadAloudEmojiButton();
+            syncReadAloudEmoteButton();
+            syncReadAloudControls();
             syncFilterSummary();
+            ensureCommentExpirationTimer();
         }
 
         socket.on('admin_day_updated', () => {
@@ -578,11 +2651,40 @@
                 currentCommentTypes = payload.commentTypes;
             }
 
+            observedEmoteCatalog = Array.isArray(payload?.observedEmotes) ? payload.observedEmotes : observedEmoteCatalog;
+            observedEmojiCatalog = Array.isArray(payload?.observedEmojis) ? payload.observedEmojis : observedEmojiCatalog;
+
             currentSettings = normalizeCommentSettings(payload?.settings || currentSettings);
             currentComments = Array.isArray(payload?.comments) ? payload.comments : [];
             syncSortOrderButton();
+            syncReadAloudButton();
+            syncReadAloudVoiceButton();
+            syncReadAloudFilterButton();
+            syncReadAloudTextReplacementButton();
+            syncReadAloudEmojiButton();
+            syncReadAloudEmoteButton();
+            syncReadAloudControls();
             syncFilterSummary();
             renderLiveComments(currentComments);
+            if (commentReadAloudVoiceMappingModal.classList.contains('is-open')) {
+                // モーダルが開いている間は編集中の pending 状態を保持する（上書きしない）
+            }
+            if (commentReadAloudEmojiModal.classList.contains('is-open')) {
+                syncReadAloudEmojiEditorFromSelection();
+            }
+            if (commentReadAloudEmoteModal.classList.contains('is-open')) {
+                syncReadAloudEmoteEditorFromSelection();
+            }
+        });
+
+        // 1コメントごとのデルタ。admin_comments_updated と同じ画面で使うものだが、
+        // こちらは追加しかしないため高頻度イベント時も軽い。
+        // observedEmotes/Emojis は送信しない（コメント描画には不要、設定モーダル用カタログは admin_comments_updated で更新）。
+        socket.on('admin_comments_appended', (payload) => {
+            if (!payload || !payload.comment) {
+                return;
+            }
+            appendLiveComment(payload.comment);
         });
 
         sortOrderButton.addEventListener('click', async () => {
@@ -598,8 +2700,204 @@
             }
         });
 
+        commentReadAloudButton.addEventListener('click', async () => {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEnabled: !currentSettings.readAloudEnabled
+                });
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げ設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudTestButton.addEventListener('click', async () => {
+            try {
+                const payload = {
+                    voiceName: String(commentReadAloudVoiceSelect?.value || ''),
+                    volume: Number(commentReadAloudVolumeRange?.value || currentSettings.readAloudVolume || 100)
+                };
+                const response = await fetch('/api/comments/read-aloud-test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error('読み上げテストの送信に失敗しました。');
+                }
+
+                setCommentFeedback('screen1 に読み上げテストを送信しました。');
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げテストの送信に失敗しました。');
+            }
+        });
+
+        commentReadAloudVoiceButton.addEventListener('click', () => {
+            openCommentReadAloudVoiceModal();
+        });
+
+        commentReadAloudVoiceMappingButton.addEventListener('click', () => {
+            openCommentReadAloudVoiceMappingModal();
+        });
+
+        commentReadAloudVoiceMappingSearchInput.addEventListener('input', () => {
+            readAloudVoiceMappingSearchQuery = commentReadAloudVoiceMappingSearchInput.value || '';
+            renderReadAloudVoiceMappings();
+        });
+
+        commentReadAloudVolumeRange.addEventListener('input', () => {
+            commentReadAloudVolumeValue.textContent = `${commentReadAloudVolumeRange.value}%`;
+        });
+
+        commentReadAloudVoiceSelect.addEventListener('change', () => {
+            syncReadAloudVoiceTermsLink(commentReadAloudVoiceSelect.value || '');
+        });
+
         commentSettingsButton.addEventListener('click', () => {
             openCommentSettingsModal();
+        });
+
+        commentReadAloudSettingsButton.addEventListener('click', () => {
+            openCommentReadAloudSettingsModal();
+        });
+
+        commentReadAloudVoiceCancel.addEventListener('click', () => {
+            closeCommentReadAloudVoiceModal();
+        });
+
+        commentReadAloudVoiceMappingCancel.addEventListener('click', () => {
+            closeCommentReadAloudVoiceMappingModal();
+        });
+
+        commentReadAloudVoiceClear.addEventListener('click', () => {
+            pendingReadAloudVoiceMappings = [];
+            populateReadAloudVoiceMappingEditor();
+            renderReadAloudVoiceMappings();
+        });
+
+        commentReadAloudVoiceModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudVoiceModal) {
+                closeCommentReadAloudVoiceModal();
+            }
+        });
+
+        commentReadAloudVoiceMappingModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudVoiceMappingModal) {
+                closeCommentReadAloudVoiceMappingModal();
+            }
+        });
+
+        commentReadAloudRandomVoiceRefreshButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/comments/read-aloud-random-voices/reset', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('ランダムボイス割り当ての更新に失敗しました。');
+                }
+
+                const payload = await response.json();
+                const clearedCount = Number(payload?.clearedCount || 0);
+                setCommentFeedback(`ランダムボイス割り当てを更新しました。${clearedCount}件をリセットしました。`);
+            } catch (error) {
+                setCommentFeedback(error.message || 'ランダムボイス割り当ての更新に失敗しました。');
+            }
+        });
+
+        commentReadAloudVoiceMappingUserIdInput.addEventListener('input', () => {
+            renderVoiceMappingUserSuggestions(commentReadAloudVoiceMappingUserIdInput.value);
+        });
+        commentReadAloudVoiceMappingUserIdInput.addEventListener('keydown', (event) => {
+            if (voiceMappingUserSuggestionPanel.hidden) return;
+            if (event.key === 'ArrowDown') { event.preventDefault(); updateActiveVoiceMappingUserSuggestion(activeVoiceMappingUserIndex + 1); return; }
+            if (event.key === 'ArrowUp') { event.preventDefault(); updateActiveVoiceMappingUserSuggestion(activeVoiceMappingUserIndex - 1); return; }
+            if (event.key === 'Enter') {
+                const selected = visibleVoiceMappingUsers[activeVoiceMappingUserIndex];
+                if (selected) { event.preventDefault(); applyVoiceMappingUserSuggestion(selected); }
+                return;
+            }
+            if (event.key === 'Escape') { hideVoiceMappingUserSuggestionPanel(); }
+        });
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.user-suggest-shell') && !voiceMappingUserSuggestionPanel.contains(event.target)) {
+                hideVoiceMappingUserSuggestionPanel();
+            }
+        });
+        window.addEventListener('resize', () => {
+            if (!voiceMappingUserSuggestionPanel.hidden) positionVoiceMappingUserSuggestionPanel();
+        });
+
+        commentReadAloudVoiceMappingApply.addEventListener('click', () => {
+            const uniqueId = normalizeReadAloudUserId(commentReadAloudVoiceMappingUserIdInput.value);
+            const voiceName = String(commentReadAloudVoiceMappingVoiceSelect.value || '').trim();
+
+            if (!uniqueId) {
+                setCommentFeedback('ボイスマッピングするユーザーIDを入力してください。');
+                return;
+            }
+
+            if (!voiceName) {
+                setCommentFeedback('割り当てる音声を選択してください。');
+                return;
+            }
+
+            pendingReadAloudVoiceMappings = normalizeReadAloudVoiceMappings([
+                ...pendingReadAloudVoiceMappings.filter((item) => item.uniqueId !== uniqueId),
+                { uniqueId, voiceName }
+            ]);
+            populateReadAloudVoiceMappingEditor();
+            renderReadAloudVoiceMappings();
+            setCommentFeedback(`@${uniqueId} のボイスマッピングを更新しました。`);
+        });
+
+        commentReadAloudVoiceMappingList.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-action][data-unique-id]');
+
+            if (!trigger) {
+                return;
+            }
+
+            const uniqueId = normalizeReadAloudUserId(trigger.dataset.uniqueId || '');
+
+            if (!uniqueId) {
+                return;
+            }
+
+            if (trigger.dataset.action === 'remove') {
+                pendingReadAloudVoiceMappings = pendingReadAloudVoiceMappings.filter((item) => item.uniqueId !== uniqueId);
+                if (normalizeReadAloudUserId(commentReadAloudVoiceMappingUserIdInput.value) === uniqueId) {
+                    populateReadAloudVoiceMappingEditor();
+                }
+                renderReadAloudVoiceMappings();
+                return;
+            }
+
+            if (trigger.dataset.action === 'edit') {
+                const mapping = pendingReadAloudVoiceMappings.find((item) => item.uniqueId === uniqueId);
+                populateReadAloudVoiceMappingEditor(uniqueId, mapping?.voiceName || '');
+                commentReadAloudVoiceMappingUserIdInput.focus();
+                commentReadAloudVoiceMappingUserIdInput.select();
+            }
+        });
+
+        commentReadAloudFilterButton.addEventListener('click', () => {
+            openCommentReadAloudFilterModal();
+        });
+
+        commentReadAloudTextReplacementButton.addEventListener('click', () => {
+            openCommentReadAloudTextReplacementModal();
+        });
+
+        commentReadAloudEmojiButton.addEventListener('click', () => {
+            openCommentReadAloudEmojiModal();
+        });
+
+        commentReadAloudEmoteButton.addEventListener('click', () => {
+            openCommentReadAloudEmoteModal();
         });
 
         commentSettingsCancel.addEventListener('click', () => {
@@ -612,9 +2910,229 @@
             }
         });
 
+        commentReadAloudSettingsCancel.addEventListener('click', () => {
+            closeCommentReadAloudSettingsModal();
+        });
+
+        commentReadAloudSettingsModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudSettingsModal) {
+                closeCommentReadAloudSettingsModal();
+            }
+        });
+
+        commentReadAloudFilterCancel.addEventListener('click', () => {
+            closeCommentReadAloudFilterModal();
+        });
+
+        commentReadAloudFilterClear.addEventListener('click', () => {
+            commentReadAloudFilterTextarea.value = '';
+        });
+
+        commentReadAloudFilterModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudFilterModal) {
+                closeCommentReadAloudFilterModal();
+            }
+        });
+
+        commentReadAloudTextReplacementCancel.addEventListener('click', () => {
+            closeCommentReadAloudTextReplacementModal();
+        });
+
+        commentReadAloudTextReplacementClear.addEventListener('click', () => {
+            commentReadAloudTextReplacementTextarea.value = '';
+        });
+
+        commentReadAloudTextReplacementModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudTextReplacementModal) {
+                closeCommentReadAloudTextReplacementModal();
+            }
+        });
+
+        commentReadAloudEmojiCancel.addEventListener('click', () => {
+            closeCommentReadAloudEmojiModal();
+        });
+
+        commentReadAloudEmojiClear.addEventListener('click', () => {
+            pendingReadAloudEmojiReplacements = [];
+            selectedReadAloudEmoji = '';
+            syncReadAloudEmojiEditorFromSelection();
+        });
+
+        commentReadAloudEmojiModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudEmojiModal) {
+                closeCommentReadAloudEmojiModal();
+            }
+        });
+
+        commentReadAloudEmojiPicker.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-emoji]');
+
+            if (!trigger) {
+                return;
+            }
+
+            selectReadAloudEmoji(trigger.dataset.emoji || '');
+        });
+
+        commentReadAloudEmojiMappingList.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-action][data-emoji]');
+
+            if (!trigger) {
+                return;
+            }
+
+            const emoji = String(trigger.dataset.emoji || '').trim();
+
+            if (!emoji) {
+                return;
+            }
+
+            if (trigger.dataset.action === 'remove') {
+                pendingReadAloudEmojiReplacements = pendingReadAloudEmojiReplacements.filter((item) => item.emoji !== emoji);
+                if (selectedReadAloudEmoji === emoji) {
+                    selectedReadAloudEmoji = '';
+                }
+                syncReadAloudEmojiEditorFromSelection();
+                return;
+            }
+
+            if (trigger.dataset.action === 'edit') {
+                selectReadAloudEmoji(emoji);
+            }
+        });
+
+        commentReadAloudEmojiApply.addEventListener('click', () => {
+            const emoji = String(selectedReadAloudEmoji || '').trim();
+            const text = String(commentReadAloudEmojiTextInput.value || '').trim().slice(0, 120);
+
+            if (!emoji) {
+                setCommentFeedback('先に絵文字画像を選択してください。');
+                return;
+            }
+
+            if (!text) {
+                setCommentFeedback('読み上げ文字を入力してください。');
+                return;
+            }
+
+            pendingReadAloudEmojiReplacements = normalizeReadAloudEmojiReplacements([
+                ...pendingReadAloudEmojiReplacements.filter((item) => item.emoji !== emoji),
+                { emoji, text }
+            ]);
+            syncReadAloudEmojiEditorFromSelection();
+            setCommentFeedback(`絵文字 ${emoji} の読み上げを更新しました。`);
+        });
+
+        commentReadAloudEmoteCancel.addEventListener('click', () => {
+            closeCommentReadAloudEmoteModal();
+        });
+
+        commentReadAloudEmoteClear.addEventListener('click', () => {
+            pendingReadAloudEmoteReplacements = [];
+            selectedReadAloudEmoteId = '';
+            syncReadAloudEmoteEditorFromSelection();
+        });
+
+        commentReadAloudEmoteModal.addEventListener('click', (event) => {
+            if (event.target === commentReadAloudEmoteModal) {
+                closeCommentReadAloudEmoteModal();
+            }
+        });
+
+        commentReadAloudEmotePicker.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-emote-id]');
+
+            if (!trigger) {
+                return;
+            }
+
+            selectReadAloudEmote(trigger.dataset.emoteId || '');
+        });
+
+        commentReadAloudEmoteMappingList.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-action][data-emote-id]');
+
+            if (!trigger) {
+                return;
+            }
+
+            const emoteId = normalizeReadAloudEmoteKey(trigger.dataset.emoteId || '');
+
+            if (!emoteId) {
+                return;
+            }
+
+            if (trigger.dataset.action === 'remove') {
+                pendingReadAloudEmoteReplacements = pendingReadAloudEmoteReplacements.filter((item) => item.emoteId !== emoteId);
+                if (selectedReadAloudEmoteId === emoteId) {
+                    selectedReadAloudEmoteId = '';
+                }
+                syncReadAloudEmoteEditorFromSelection();
+                return;
+            }
+
+            if (trigger.dataset.action === 'edit') {
+                selectReadAloudEmote(emoteId);
+            }
+        });
+
+        commentReadAloudEmoteApply.addEventListener('click', () => {
+            const emoteId = normalizeReadAloudEmoteKey(selectedReadAloudEmoteId);
+            const text = String(commentReadAloudEmoteTextInput.value || '').trim().slice(0, 120);
+
+            if (!emoteId) {
+                setCommentFeedback('先にエモート画像を選択してください。');
+                return;
+            }
+
+            if (!text) {
+                setCommentFeedback('読み上げ文字を入力してください。');
+                return;
+            }
+
+            pendingReadAloudEmoteReplacements = normalizeReadAloudEmoteReplacements([
+                ...pendingReadAloudEmoteReplacements.filter((item) => item.emoteId !== emoteId),
+                { emoteId, text }
+            ]);
+            syncReadAloudEmoteEditorFromSelection();
+            setCommentFeedback(`エモート ${emoteId} の読み上げを更新しました。`);
+        });
+
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && commentSettingsModal.classList.contains('is-open')) {
+            if (event.key !== 'Escape') {
+                return;
+            }
+
+            if (commentSettingsModal.classList.contains('is-open')) {
                 closeCommentSettingsModal();
+            }
+
+            if (commentReadAloudSettingsModal.classList.contains('is-open')) {
+                closeCommentReadAloudSettingsModal();
+            }
+
+            if (commentReadAloudVoiceModal.classList.contains('is-open')) {
+                closeCommentReadAloudVoiceModal();
+            }
+
+            if (commentReadAloudVoiceMappingModal.classList.contains('is-open')) {
+                closeCommentReadAloudVoiceMappingModal();
+            }
+
+            if (commentReadAloudFilterModal.classList.contains('is-open')) {
+                closeCommentReadAloudFilterModal();
+            }
+
+            if (commentReadAloudTextReplacementModal.classList.contains('is-open')) {
+                closeCommentReadAloudTextReplacementModal();
+            }
+
+            if (commentReadAloudEmojiModal.classList.contains('is-open')) {
+                closeCommentReadAloudEmojiModal();
+            }
+
+            if (commentReadAloudEmoteModal.classList.contains('is-open')) {
+                closeCommentReadAloudEmoteModal();
             }
         });
 
@@ -626,6 +3144,18 @@
 
         commentSettingsClearAll.addEventListener('click', () => {
             commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = false;
+            });
+        });
+
+        commentReadAloudSettingsSelectAll.addEventListener('click', () => {
+            commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = true;
+            });
+        });
+
+        commentReadAloudSettingsClearAll.addEventListener('click', () => {
+            commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 input.checked = false;
             });
         });
@@ -646,8 +3176,114 @@
             }
         });
 
+        commentReadAloudSettingsSave.addEventListener('click', async () => {
+            const readAloudEnabledTypes = [...commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]:checked')]
+                .map((input) => input.dataset.type)
+                .filter(Boolean);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEnabledTypes
+                });
+                closeCommentReadAloudSettingsModal();
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げ対象設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudVoiceSave.addEventListener('click', async () => {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudVoiceName: commentReadAloudVoiceSelect.value || '',
+                    readAloudVoiceCreditEnabled: commentReadAloudVoiceCreditCheckbox.checked,
+                    readAloudRandomVoiceEnabled: commentReadAloudRandomVoiceCheckbox.checked,
+                    readAloudVolume: Number(commentReadAloudVolumeRange.value || 100)
+                });
+                closeCommentReadAloudVoiceModal();
+            } catch (error) {
+                setCommentFeedback(error.message || 'VOICE 設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudVoiceMappingSave.addEventListener('click', async () => {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudVoiceMappings: normalizeReadAloudVoiceMappings(pendingReadAloudVoiceMappings)
+                });
+                closeCommentReadAloudVoiceMappingModal();
+            } catch (error) {
+                setCommentFeedback(error.message || 'ボイスマッピング設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudFilterSave.addEventListener('click', async () => {
+            const readAloudFilters = normalizeReadAloudFilters(commentReadAloudFilterTextarea.value);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudFilters
+                });
+                closeCommentReadAloudFilterModal();
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げフィルタ設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudTextReplacementSave.addEventListener('click', async () => {
+            const readAloudTextReplacements = normalizeReadAloudTextReplacements(commentReadAloudTextReplacementTextarea.value);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudTextReplacements
+                });
+                closeCommentReadAloudTextReplacementModal();
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げ変換設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudEmojiSave.addEventListener('click', async () => {
+            const readAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(pendingReadAloudEmojiReplacements);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEmojiReplacements
+                });
+                closeCommentReadAloudEmojiModal();
+            } catch (error) {
+                setCommentFeedback(error.message || '絵文字変換設定の保存に失敗しました。');
+            }
+        });
+
+        commentReadAloudEmoteSave.addEventListener('click', async () => {
+            const readAloudEmoteReplacements = normalizeReadAloudEmoteReplacements(pendingReadAloudEmoteReplacements);
+
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEmoteReplacements
+                });
+                closeCommentReadAloudEmoteModal();
+            } catch (error) {
+                setCommentFeedback(error.message || 'エモート変換設定の保存に失敗しました。');
+            }
+        });
+
+        if (window.speechSynthesis && typeof window.speechSynthesis.addEventListener === 'function') {
+            window.speechSynthesis.addEventListener('voiceschanged', loadAvailableReadAloudVoices);
+        }
+
+        loadAvailableReadAloudVoices();
+
         init().catch(() => {
         });
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

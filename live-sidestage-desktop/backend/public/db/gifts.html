@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gift History</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
         :root {
@@ -26,6 +28,8 @@
         body {
             margin: 0;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             padding: 24px 16px;
             color: var(--text);
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
@@ -35,14 +39,23 @@
         .layout {
             width: min(1180px, 100%);
             margin: 0 auto;
-            display: grid;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
             gap: 18px;
+            min-height: calc(100vh - 48px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             padding: 24px;
         }
@@ -84,8 +97,8 @@
             align-items: center;
             gap: 8px;
             border: 1px solid var(--line);
-            border-radius: 2px;
-            padding: 8px 12px;
+            border-radius: 999px;
+            padding: 7px 12px;
             color: var(--muted);
             background: rgba(255, 255, 255, 0.56);
             font-size: 14px;
@@ -99,8 +112,8 @@
         input,
         select {
             border: 1px solid var(--line);
-            border-radius: 2px;
-            padding: 10px 14px;
+            border-radius: 8px;
+            padding: 9px 12px;
             font: inherit;
             background: rgba(255, 255, 255, 0.72);
             color: var(--text);
@@ -142,7 +155,7 @@
         .gift-image {
             width: 44px;
             height: 44px;
-            border-radius: 2px;
+            border-radius: 10px;
             border: 1px solid var(--line);
             background: rgba(255, 255, 255, 0.6);
             object-fit: cover;
@@ -185,13 +198,14 @@
         }
 
         .icon-button {
-            width: 40px;
-            height: 40px;
+            width: 34px;
+            height: 34px;
             padding: 0;
             display: inline-grid;
             place-items: center;
-            font-size: 18px;
+            font-size: 16px;
             line-height: 1;
+            border-radius: 8px;
         }
 
         .empty {
@@ -220,9 +234,9 @@
             overflow: auto;
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 20px;
             box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
-            padding: 22px;
+            padding: 24px;
             display: grid;
             gap: 16px;
         }
@@ -322,24 +336,110 @@
                 text-align: left;
             }
         }
+
+        .user-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .user-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .user-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .user-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 9px 12px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .user-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-suggestion-item:hover,
+        .user-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .user-suggestion-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-suggestion-avatar.is-empty {
+            background: #d9e2ec;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: #596b80;
+        }
+
+        .user-suggestion-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .user-suggestion-id {
+            font-size: 11px;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
 <body>
     <div class="layout">
         <section class="panel">
-            <h1>ギフト履歴</h1>
-            <p class="subtext">指定した日付に受信したギフトイベントを時系列で表示します。テストデータはモーダルで細かく指定して追加できます。</p>
-            <div class="toolbar">
-                <input type="date" id="day-input">
-                <select id="sort-order-select" aria-label="並び順">
-                    <option value="timestamp-asc">昇順</option>
-                    <option value="timestamp-desc">降順</option>
-                    <option value="coins-desc">コイン数の大きい順</option>
-                    <option value="coins-asc">コイン数の小さい順</option>
-                </select>
-                <button type="button" class="primary-button" id="add-test-gifts-button">テストデータを追加</button>
-                <div class="status" id="message-box" hidden>操作待ち</div>
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>ギフト履歴</h1>
+                    <p class="subtext">指定した日付に受信したギフトイベントを時系列で表示します。テストデータはモーダルで細かく指定して追加できます。</p>
+                </div>
+                <div class="page-hero-side">
+                    <div class="control-stack">
+                        <div class="control-group">
+                            <input type="date" id="day-input">
+                            <select id="sort-order-select" aria-label="並び順">
+                                <option value="timestamp-asc">昇順</option>
+                                <option value="timestamp-desc">降順</option>
+                                <option value="coins-desc">コイン数の大きい順</option>
+                                <option value="coins-asc">コイン数の小さい順</option>
+                            </select>
+                        </div>
+                        <button type="button" class="primary-button hero-primary-action" id="add-test-gifts-button">テストデータを追加</button>
+                        <div class="status message-inline" id="message-box" hidden>操作待ち</div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -379,7 +479,10 @@
             <div class="form-grid">
                 <div class="field">
                     <label for="modal-unique-id">ユーザーID</label>
-                    <input id="modal-unique-id" type="text" maxlength="80" list="recent-user-id-list" placeholder="example_user">
+                    <div class="user-suggest-shell">
+                        <input id="modal-unique-id" type="text" maxlength="80" autocomplete="off" list="recent-user-id-list" placeholder="example_user">
+                        <div class="user-suggestion-panel" id="gifts-user-suggestion-panel" hidden></div>
+                    </div>
                 </div>
                 <div class="field">
                     <label for="modal-nickname">ユーザー名</label>
@@ -426,7 +529,36 @@
     <datalist id="recent-user-id-list"></datalist>
     <datalist id="recent-user-name-list"></datalist>
 
+    <div class="modal-backdrop" id="confirm-dialog-backdrop" hidden>
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style="width:min(400px,100%);max-height:unset;gap:16px;">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function showConfirm(message, okLabel = '削除する') {
+            return new Promise((resolve) => {
+                const backdrop = document.getElementById('confirm-dialog-backdrop');
+                const msgEl = document.getElementById('confirm-dialog-message');
+                const okBtn = document.getElementById('confirm-dialog-ok');
+                const cancelBtn = document.getElementById('confirm-dialog-cancel');
+                msgEl.textContent = message;
+                okBtn.textContent = okLabel;
+                backdrop.hidden = false;
+                function cleanup(result) {
+                    backdrop.hidden = true;
+                    resolve(result);
+                }
+                okBtn.addEventListener('click', () => cleanup(true), { once: true });
+                cancelBtn.addEventListener('click', () => cleanup(false), { once: true });
+            });
+        }
+
         const socket = io();
         const dayInput = document.getElementById('day-input');
         const sortOrderSelect = document.getElementById('sort-order-select');
@@ -451,6 +583,7 @@
         const giftNameList = document.getElementById('gift-name-list');
         const recentUserIdList = document.getElementById('recent-user-id-list');
         const recentUserNameList = document.getElementById('recent-user-name-list');
+        const userSuggestionPanel = document.getElementById('gifts-user-suggestion-panel');
 
         let selectedDayKey = null;
         let currentDisplayDayKey = null;
@@ -458,21 +591,15 @@
         let currentGifts = [];
         let isLoadingGifts = false;
         let isSubmittingGift = false;
+        let knownUserSuggestions = [];
+        let visibleUserSuggestions = [];
+        let activeUserSuggestionIndex = -1;
 
         const referenceData = {
             giftsByName: new Map(),
             usersById: new Map(),
             usersByName: new Map()
         };
-
-        function escapeHtml(value) {
-            return String(value)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
 
         function formatTimestamp(value) {
             if (!value) {
@@ -615,6 +742,7 @@
         }
 
         function populateRecentUsers(users) {
+            knownUserSuggestions = Array.isArray(users) ? users.filter((u) => u?.uniqueId) : [];
             recentUserIdList.innerHTML = Array.isArray(users)
                 ? users.map((user) => `<option value="${escapeHtml(user.uniqueId || '')}" label="${escapeHtml(user.nickname || user.uniqueId || '')}"></option>`).join('')
                 : '';
@@ -623,6 +751,82 @@
                 : '';
             referenceData.usersById = new Map((users || []).map((user) => [String(user.uniqueId || ''), user]));
             referenceData.usersByName = new Map((users || []).map((user) => [String(user.nickname || ''), user]));
+        }
+
+        function positionUserSuggestionPanel() {
+            const rect = modalUniqueIdInput.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                userSuggestionPanel.style.top = `${rect.bottom + 4}px`;
+                userSuggestionPanel.style.bottom = '';
+            } else {
+                userSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+                userSuggestionPanel.style.top = '';
+            }
+            userSuggestionPanel.style.left = `${rect.left}px`;
+            userSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideUserSuggestionPanel() {
+            userSuggestionPanel.hidden = true;
+            userSuggestionPanel.innerHTML = '';
+            visibleUserSuggestions = [];
+            activeUserSuggestionIndex = -1;
+        }
+
+        function applyUserSuggestion(user) {
+            modalUniqueIdInput.value = user.uniqueId || '';
+            if (!modalNicknameInput.value.trim()) {
+                modalNicknameInput.value = user.nickname || user.uniqueId || '';
+            }
+            if (!modalProfileImageInput.value.trim()) {
+                modalProfileImageInput.value = user.image || '';
+            }
+            hideUserSuggestionPanel();
+            modalUniqueIdInput.focus();
+        }
+
+        function renderUserSuggestions(query) {
+            const q = String(query || '').trim().toLowerCase();
+            if (!q) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            visibleUserSuggestions = knownUserSuggestions.filter((u) => {
+                return String(u.uniqueId || '').toLowerCase().includes(q)
+                    || String(u.nickname || '').toLowerCase().includes(q);
+            }).slice(0, 20);
+            if (!visibleUserSuggestions.length) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            activeUserSuggestionIndex = 0;
+            userSuggestionPanel.innerHTML = visibleUserSuggestions.map((user, index) => {
+                const imgMarkup = user.image
+                    ? `<img class="user-suggestion-avatar" src="${escapeHtml(user.image)}" alt="">`
+                    : `<div class="user-suggestion-avatar is-empty">?</div>`;
+                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
+            }).join('');
+            userSuggestionPanel.hidden = false;
+            positionUserSuggestionPanel();
+            userSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyUserSuggestion(visibleUserSuggestions[Number(button.dataset.userIndex)]);
+                });
+            });
+        }
+
+        function updateActiveUserSuggestion(nextIndex) {
+            if (!visibleUserSuggestions.length) return;
+            activeUserSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleUserSuggestions.length - 1));
+            userSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeUserSuggestionIndex);
+                if (index === activeUserSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
         }
 
         async function loadReferenceData() {
@@ -808,7 +1012,7 @@
                 return;
             }
 
-            if (!window.confirm('このギフト履歴を削除しますか。')) {
+            if (!await showConfirm('このギフト履歴を削除しますか。')) {
                 return;
             }
 
@@ -855,14 +1059,30 @@
             submitCustomGift().catch(() => {});
         });
 
-        giftModalBackdrop.addEventListener('click', (event) => {
-            if (event.target === giftModalBackdrop) {
-                closeGiftModal();
-            }
-        });
-
         modalGiftNameInput.addEventListener('change', syncGiftDraftFromCatalog);
         modalGiftNameInput.addEventListener('blur', syncGiftDraftFromCatalog);
+        modalUniqueIdInput.addEventListener('input', () => {
+            renderUserSuggestions(modalUniqueIdInput.value);
+        });
+        modalUniqueIdInput.addEventListener('keydown', (event) => {
+            if (userSuggestionPanel.hidden) return;
+            if (event.key === 'ArrowDown') { event.preventDefault(); updateActiveUserSuggestion(activeUserSuggestionIndex + 1); return; }
+            if (event.key === 'ArrowUp') { event.preventDefault(); updateActiveUserSuggestion(activeUserSuggestionIndex - 1); return; }
+            if (event.key === 'Enter') {
+                const selected = visibleUserSuggestions[activeUserSuggestionIndex];
+                if (selected) { event.preventDefault(); applyUserSuggestion(selected); }
+                return;
+            }
+            if (event.key === 'Escape') { hideUserSuggestionPanel(); }
+        });
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.user-suggest-shell') && !userSuggestionPanel.contains(event.target)) {
+                hideUserSuggestionPanel();
+            }
+        });
+        window.addEventListener('resize', () => {
+            if (!userSuggestionPanel.hidden) positionUserSuggestionPanel();
+        });
         modalUniqueIdInput.addEventListener('change', syncUserDraftFromSuggestions);
         modalUniqueIdInput.addEventListener('blur', syncUserDraftFromSuggestions);
         modalNicknameInput.addEventListener('change', syncUserDraftFromSuggestions);
@@ -901,5 +1121,6 @@
         syncSortOrderSelect();
         updateDraftTotalStatus();
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

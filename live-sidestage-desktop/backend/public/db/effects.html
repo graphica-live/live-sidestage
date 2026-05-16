@@ -25,6 +25,8 @@
         body {
             margin: 0;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             padding: 20px 14px 28px;
             color: var(--text);
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
@@ -35,14 +37,23 @@
         .layout {
             width: min(1240px, 100%);
             margin: 0 auto;
-            display: grid;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
             gap: 18px;
+            min-height: calc(100vh - 48px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             padding: 24px;
         }
@@ -83,8 +94,8 @@
         }
 
         .status {
-            padding: 10px 14px;
-            border-radius: 2px;
+            padding: 8px 14px;
+            border-radius: 999px;
             border: 1px solid var(--line);
             background: #f9fbfd;
             color: var(--muted);
@@ -115,7 +126,9 @@
             display: grid;
             gap: 0;
             border: 1px solid var(--line);
+            border-radius: 12px;
             background: #f9fbfd;
+            overflow: hidden;
             overflow-x: auto;
         }
 
@@ -209,8 +222,8 @@
         textarea {
             width: 100%;
             border: 1px solid rgba(58, 44, 29, 0.16);
-            border-radius: 2px;
-            padding: 11px 12px;
+            border-radius: 8px;
+            padding: 10px 12px;
             font: inherit;
             background: #ffffff;
             color: var(--text);
@@ -253,7 +266,7 @@
             display: grid;
             gap: 8px;
             padding: 12px;
-            border-radius: 2px;
+            border-radius: 10px;
             border: 1px solid rgba(58, 44, 29, 0.1);
             background: #ffffff;
         }
@@ -277,7 +290,7 @@
             font-size: 14px;
             padding: 16px;
             border: 1px dashed rgba(58, 44, 29, 0.18);
-            border-radius: 2px;
+            border-radius: 10px;
             background: rgba(255, 255, 255, 0.45);
         }
 
@@ -293,7 +306,7 @@
             gap: 8px;
             align-items: center;
             padding: 12px;
-            border-radius: 2px;
+            border-radius: 10px;
             border: 1px solid var(--line);
             background: #f9fbfd;
         }
@@ -345,8 +358,9 @@
             align-items: center;
             gap: 5px;
             height: 34px;
-            padding: 0 8px;
+            padding: 0 10px;
             border: 1px solid var(--line);
+            border-radius: 8px;
             background: var(--card);
             font-size: 13px;
             color: var(--muted);
@@ -386,11 +400,13 @@
 
         .modal {
             width: min(560px, 100%);
-            border-radius: 2px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            border-radius: 20px;
             border: 1px solid var(--line);
             background: #f6f9fc;
             box-shadow: var(--shadow);
-            padding: 22px;
+            padding: 24px;
             display: grid;
             gap: 16px;
         }
@@ -707,7 +723,9 @@
         #trigger-modal .field > select,
         #trigger-modal .field > textarea,
         #trigger-modal .field > .range-row,
-        #trigger-modal .field > .modal-check-list {
+        #trigger-modal .field > .modal-check-list,
+        #trigger-modal .field > #trigger-modal-user-list-section,
+        #trigger-modal .field > #trigger-modal-user-filemap-section {
             width: 100%;
             align-self: stretch;
         }
@@ -724,6 +742,107 @@
 
         #trigger-modal .toggle span {
             white-space: nowrap;
+        }
+
+        .user-target-radio-group {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 12px 20px;
+            margin-bottom: 8px;
+        }
+
+        .user-filemap-dir-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .user-filemap-dir-path {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: 13px;
+            color: var(--muted);
+            word-break: break-all;
+            padding: 6px 8px;
+            background: rgba(24, 37, 58, 0.06);
+            border-radius: 6px;
+            border: 1px solid var(--line);
+        }
+
+        .field-hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .event-ids-play-mode-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 20px;
+            margin-bottom: 8px;
+        }
+
+        .event-ids-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 6px;
+            min-height: 0;
+        }
+
+        .event-ids-list:empty::before {
+            content: '未選択（イベントなし）';
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .event-id-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            background: rgba(24, 37, 58, 0.07);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .event-id-chip-label {
+            flex: 1 1 0;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .event-id-chip-order {
+            font-size: 11px;
+            color: var(--muted);
+            min-width: 1.4em;
+            text-align: right;
+        }
+
+        .event-id-chip-remove {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--error);
+            padding: 0 2px;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .event-id-chip-remove:hover {
+            color: var(--accent-strong);
+        }
+
+        .event-ids-add-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
         }
 
         .event-record-card {
@@ -1038,7 +1157,13 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <script src="/shared/utils.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
 </head>
 <body>
     <div class="layout">
@@ -1055,6 +1180,7 @@
                 </div>
                 <button type="button" class="primary" id="add-event-button">イベントを新規追加</button>
             </div>
+            <input type="search" id="event-filter" placeholder="イベント名で絞り込み…" style="margin-top:14px;width:100%;max-width:340px;">
             <div class="record-table-head event-table-head" aria-hidden="true">
                 <div>操作</div>
                 <div>イベント名</div>
@@ -1074,6 +1200,7 @@
                 </div>
                 <button type="button" class="primary" id="add-trigger-button">トリガーを新規追加</button>
             </div>
+            <input type="search" id="trigger-filter" placeholder="トリガー名 / ギフト名 / ユーザーIDで絞り込み…" style="margin-top:14px;width:100%;max-width:340px;">
             <div class="record-table-head trigger-table-head" aria-hidden="true">
                 <div>操作</div>
                 <div>トリガー名</div>
@@ -1141,12 +1268,6 @@
                         <div class="range-value" id="event-modal-media-volume-value">100%</div>
                     </div>
                 </div>
-                <div class="field full">
-                    <label>オプション</label>
-                    <div class="modal-check-list">
-                        <label class="toggle"><input type="checkbox" id="event-modal-treat-combo-single" checked><span>ギフトまとめ投げを1回とする</span></label>
-                    </div>
-                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" data-action="close-event-modal">キャンセル</button>
@@ -1166,12 +1287,18 @@
                     <label>トリガー名</label>
                     <input type="text" id="trigger-modal-name" maxlength="80" placeholder="例: Rose 用トリガー">
                 </div>
-                <div class="field">
-                    <label>再生イベント（任意）</label>
-                    <div class="gift-suggest-shell">
-                        <input type="text" id="trigger-modal-event" autocomplete="off" placeholder="イベント名で検索… 空欄で未選択">
-                        <input type="hidden" id="trigger-modal-event-id">
-                        <div class="gift-suggestion-panel" id="trigger-event-suggestion-panel" hidden></div>
+                <div class="field full">
+                    <label>再生イベント</label>
+                    <div class="event-ids-play-mode-row">
+                        <label class="toggle"><input type="radio" name="event-play-mode" id="trigger-modal-play-sequential" value="sequential" checked><span>順次起動</span></label>
+                        <label class="toggle"><input type="radio" name="event-play-mode" id="trigger-modal-play-random" value="random"><span>ランダム（1つ）</span></label>
+                    </div>
+                    <div class="event-ids-list" id="trigger-modal-event-ids-list"></div>
+                    <div class="event-ids-add-row">
+                        <div class="gift-suggest-shell" style="flex:1;min-width:0;">
+                            <input type="text" id="trigger-modal-event" autocomplete="off" placeholder="イベント名で検索して追加…">
+                            <div class="gift-suggestion-panel" id="trigger-event-suggestion-panel" hidden></div>
+                        </div>
                     </div>
                 </div>
                 <div class="field">
@@ -1190,6 +1317,12 @@
                     <input type="number" id="trigger-modal-min-coins" min="0" step="1" placeholder="0">
                 </div>
                 <div class="field full">
+                    <label>ギフトオプション</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-treat-combo-single" checked><span>ギフトまとめ投げを1回とする</span></label>
+                    </div>
+                </div>
+                <div class="field full">
                     <label>コメント</label>
                     <select id="trigger-modal-comment-mode">
                         <option value="">未使用</option>
@@ -1199,10 +1332,24 @@
                     <input type="text" id="trigger-modal-comment-text" maxlength="160" placeholder="入力一致にするコメントを入力">
                 </div>
                 <div class="field full">
-                    <label>対象ユーザーID</label>
-                    <div class="gift-suggest-shell">
-                        <textarea id="trigger-modal-user-ids" placeholder="複数可。改行・カンマ・スペース区切り。空欄なら全ユーザー対象" autocomplete="off"></textarea>
-                        <div class="gift-suggestion-panel" id="trigger-user-suggestion-panel" hidden></div>
+                    <label>対象ユーザー</label>
+                    <div class="modal-check-list user-target-radio-group">
+                        <label class="toggle"><input type="radio" name="user-target-mode" id="trigger-modal-user-target-list" value="list" checked><span>対象ユーザーID指定</span></label>
+                        <label class="toggle"><input type="radio" name="user-target-mode" id="trigger-modal-user-target-filemap" value="file-map"><span>ユーザーID to ファイル名</span></label>
+                    </div>
+                    <div id="trigger-modal-user-list-section">
+                        <div class="gift-suggest-shell">
+                            <textarea id="trigger-modal-user-ids" placeholder="複数可。改行・カンマ・スペース区切り。空欄なら全ユーザー対象" autocomplete="off"></textarea>
+                            <div class="gift-suggestion-panel" id="trigger-user-suggestion-panel" hidden></div>
+                        </div>
+                    </div>
+                    <div id="trigger-modal-user-filemap-section" hidden>
+                        <div class="user-filemap-dir-row">
+                            <div class="user-filemap-dir-path" id="trigger-modal-filemap-dir-display">未選択</div>
+                            <button type="button" id="trigger-modal-filemap-dir-button">フォルダを選択</button>
+                        </div>
+                        <input type="hidden" id="trigger-modal-filemap-dir">
+                        <div class="field-hint">選択したフォルダ内の「ユーザーID.mp4 / .vp9 / .mov」を再生します。対象ギフト名が必須です。</div>
                     </div>
                 </div>
             </div>
@@ -1280,18 +1427,53 @@
                     <div class="summary-value" data-role="min-coins"></div>
                 </div>
                 <div class="field full">
+                    <label>ギフトオプション</label>
+                    <div class="summary-value wrap" data-role="gift-options"></div>
+                </div>
+                <div class="field full">
                     <label>コメント</label>
                     <div class="summary-value wrap" data-role="comment-summary"></div>
                 </div>
                 <div class="field full">
-                    <label>対象ユーザーID</label>
+                    <label>対象ユーザー</label>
                     <div class="summary-value wrap" data-role="user-ids"></div>
                 </div>
             </div>
         </article>
     </template>
 
+    <div class="modal-shell" id="confirm-dialog" aria-hidden="true">
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style="width:min(400px,100%);gap:16px;">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function showConfirm(message, okLabel = '削除する') {
+            return new Promise((resolve) => {
+                const shell = document.getElementById('confirm-dialog');
+                const msgEl = document.getElementById('confirm-dialog-message');
+                const okBtn = document.getElementById('confirm-dialog-ok');
+                const cancelBtn = document.getElementById('confirm-dialog-cancel');
+                msgEl.textContent = message;
+                okBtn.textContent = okLabel;
+                shell.classList.add('is-open');
+                shell.setAttribute('aria-hidden', 'false');
+                function cleanup(result) {
+                    shell.classList.remove('is-open');
+                    shell.setAttribute('aria-hidden', 'true');
+                    resolve(result);
+                }
+                okBtn.addEventListener('click', () => cleanup(true), { once: true });
+                cancelBtn.addEventListener('click', () => cleanup(false), { once: true });
+            });
+        }
+
         const eventList = document.getElementById('event-list');
         const triggerList = document.getElementById('trigger-list');
         const urlList = document.getElementById('url-list');
@@ -1316,28 +1498,39 @@
         const eventModalAudioName = document.getElementById('event-modal-audio-name');
         const eventModalMediaVolume = document.getElementById('event-modal-media-volume');
         const eventModalMediaVolumeValue = document.getElementById('event-modal-media-volume-value');
-        const eventModalTreatComboSingle = document.getElementById('event-modal-treat-combo-single');
         const eventModalSubmit = document.getElementById('event-modal-submit');
         const triggerModal = document.getElementById('trigger-modal');
         const triggerModalTitle = document.getElementById('trigger-modal-title');
         const triggerModalDescription = document.getElementById('trigger-modal-description');
         const triggerModalName = document.getElementById('trigger-modal-name');
         const triggerModalEvent = document.getElementById('trigger-modal-event');
-        const triggerModalEventId = document.getElementById('trigger-modal-event-id');
         const triggerEventSuggestionPanel = document.getElementById('trigger-event-suggestion-panel');
+        const triggerModalPlaySequential = document.getElementById('trigger-modal-play-sequential');
+        const triggerModalPlayRandom = document.getElementById('trigger-modal-play-random');
+        const triggerModalEventIdsList = document.getElementById('trigger-modal-event-ids-list');
         const triggerModalEnabled = document.getElementById('trigger-modal-enabled');
         const triggerModalGiftName = document.getElementById('trigger-modal-gift-name');
         const triggerGiftSuggestionPanel = document.getElementById('trigger-gift-suggestion-panel');
         const triggerModalMinCoins = document.getElementById('trigger-modal-min-coins');
+        const triggerModalTreatComboSingle = document.getElementById('trigger-modal-treat-combo-single');
         const triggerModalCommentMode = document.getElementById('trigger-modal-comment-mode');
         const triggerModalCommentText = document.getElementById('trigger-modal-comment-text');
         const triggerModalUserIds = document.getElementById('trigger-modal-user-ids');
         const triggerUserSuggestionPanel = document.getElementById('trigger-user-suggestion-panel');
+        const triggerModalUserTargetList = document.getElementById('trigger-modal-user-target-list');
+        const triggerModalUserTargetFilemap = document.getElementById('trigger-modal-user-target-filemap');
+        const triggerModalUserListSection = document.getElementById('trigger-modal-user-list-section');
+        const triggerModalUserFilemapSection = document.getElementById('trigger-modal-user-filemap-section');
+        const triggerModalFilemapDirDisplay = document.getElementById('trigger-modal-filemap-dir-display');
+        const triggerModalFilemapDirButton = document.getElementById('trigger-modal-filemap-dir-button');
+        const triggerModalFilemapDir = document.getElementById('trigger-modal-filemap-dir');
         const triggerModalSubmit = document.getElementById('trigger-modal-submit');
 
         let currentEvents = [];
         let currentTriggers = [];
         let currentScreenUrls = [];
+        let eventFilterQuery = '';
+        let triggerFilterQuery = '';
         let pendingEventModalVideoAsset = null;
         let pendingEventModalAudioAsset = null;
         let editingEventId = null;
@@ -1378,8 +1571,8 @@
             return features.length ? features.join(' / ') : '未設定';
         }
 
-        function getOptionSummary(eventRecord) {
-            return eventRecord.treatGiftComboAsSingle !== false
+        function getTriggerGiftOptionSummary(triggerRecord) {
+            return triggerRecord.treatGiftComboAsSingle !== false
                 ? 'ギフトまとめ投げを1回とする'
                 : 'まとめ投げを回数分再生する';
         }
@@ -1398,7 +1591,6 @@
             pendingEventModalAudioAsset = null;
             eventModalAudioName.textContent = '未設定';
             eventModalMediaVolume.value = '100';
-            eventModalTreatComboSingle.checked = true;
             syncEventModalVolume();
         }
 
@@ -1426,7 +1618,6 @@
                 : null;
             eventModalAudioName.textContent = eventRecord.audioAssetName || '未設定';
             eventModalMediaVolume.value = String(eventRecord.mediaVolume ?? 100);
-            eventModalTreatComboSingle.checked = eventRecord.treatGiftComboAsSingle !== false;
             syncEventModalVolume();
             openModal(eventModal);
             eventModalName.focus();
@@ -1443,8 +1634,7 @@
                 audioEnabled: eventModalAudioEnabled.checked,
                 audioAssetUrl: pendingEventModalAudioAsset?.url || '',
                 audioAssetName: pendingEventModalAudioAsset?.name || '',
-                mediaVolume: Number(eventModalMediaVolume.value || 100),
-                treatGiftComboAsSingle: eventModalTreatComboSingle.checked
+                mediaVolume: Number(eventModalMediaVolume.value || 100)
             };
         }
 
@@ -1494,6 +1684,32 @@
 
             const normalized = normalizeUserIdsInput(userIds);
             return normalized.length ? normalized.join(', ') : '全ユーザー';
+        }
+
+        function formatUserTargetSummary(triggerRecord) {
+            if (triggerRecord.userTargetMode === 'file-map') {
+                const dir = triggerRecord.userIdToFileDir || '未設定';
+                return `ファイルマップ: ${dir}`;
+            }
+
+            return formatUserIdsSummary(triggerRecord.userIds);
+        }
+
+        function formatEventIdsSummary(triggerRecord) {
+            const ids = Array.isArray(triggerRecord.eventIds) && triggerRecord.eventIds.length > 0
+                ? triggerRecord.eventIds
+                : (triggerRecord.eventId ? [triggerRecord.eventId] : []);
+
+            if (!ids.length) {
+                return '未選択';
+            }
+
+            const mode = triggerRecord.eventPlayMode === 'random' ? '[ランダム] ' : '[順次] ';
+            const labels = ids.map((id) => {
+                const ev = currentEvents.find((e) => e.id === id);
+                return ev ? getEventLabel(ev, currentEvents.indexOf(ev)) : id;
+            });
+            return mode + labels.join(' → ');
         }
 
         function syncTriggerCommentField() {
@@ -1567,21 +1783,64 @@
             eventModalMediaVolumeValue.textContent = `${eventModalMediaVolume.value}%`;
         }
 
+        // トリガーモーダルの選択済みイベントIDリスト（表示順）
+        let triggerModalSelectedEventIds = [];
+
+        function renderTriggerModalEventIdsList() {
+            const isRandom = triggerModalPlayRandom.checked;
+            triggerModalEventIdsList.innerHTML = triggerModalSelectedEventIds.map((eventId, index) => {
+                const ev = currentEvents.find((e) => e.id === eventId);
+                const label = ev ? getEventLabel(ev, currentEvents.indexOf(ev)) : `(ID: ${eventId})`;
+                const orderLabel = isRandom ? '' : `${index + 1}.`;
+                return `<div class="event-id-chip" data-event-id="${escapeHtml(eventId)}">
+                    <span class="event-id-chip-order">${escapeHtml(orderLabel)}</span>
+                    <span class="event-id-chip-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+                    <button type="button" class="event-id-chip-remove" data-remove-event-id="${escapeHtml(eventId)}" title="削除" aria-label="削除">×</button>
+                </div>`;
+            }).join('');
+            triggerModalEventIdsList.querySelectorAll('[data-remove-event-id]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    triggerModalSelectedEventIds = triggerModalSelectedEventIds.filter((id) => id !== btn.dataset.removeEventId);
+                    renderTriggerModalEventIdsList();
+                });
+            });
+        }
+
+        function syncUserTargetMode() {
+            const isFilemap = triggerModalUserTargetFilemap.checked;
+            triggerModalUserListSection.hidden = isFilemap;
+            triggerModalUserFilemapSection.hidden = !isFilemap;
+        }
+
+        function setFilemapDir(dirPath) {
+            triggerModalFilemapDir.value = dirPath || '';
+            triggerModalFilemapDirDisplay.textContent = dirPath || '未選択';
+            triggerModalFilemapDirDisplay.title = dirPath || '';
+        }
+
         function resetTriggerModal() {
             editingTriggerId = null;
             triggerModalTitle.textContent = 'トリガーを新規追加';
             triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。';
             triggerModalSubmit.textContent = '追加';
-            syncTriggerModalOptions('');
             triggerModalName.value = '';
             triggerModalEnabled.checked = true;
+            triggerModalSelectedEventIds = [];
+            triggerModalPlaySequential.checked = true;
+            renderTriggerModalEventIdsList();
+            triggerModalEvent.value = '';
             triggerModalGiftName.value = '';
             triggerModalMinCoins.value = '0';
+            triggerModalTreatComboSingle.checked = true;
             triggerModalCommentMode.value = '';
             triggerModalCommentText.value = '';
             triggerModalUserIds.value = '';
+            triggerModalUserTargetList.checked = true;
+            setFilemapDir('');
+            syncUserTargetMode();
             syncTriggerCommentField();
             hideGiftSuggestionPanel();
+            hideEventSuggestionPanel();
         }
 
         function openTriggerModalForCreate() {
@@ -1595,56 +1854,59 @@
             triggerModalTitle.textContent = 'トリガーを編集';
             triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をここで更新します。';
             triggerModalSubmit.textContent = '更新';
-            syncTriggerModalOptions(triggerRecord.eventId || '');
             triggerModalName.value = triggerRecord.name || '';
             triggerModalEnabled.checked = Boolean(triggerRecord.enabled);
+            // eventIds 複数対応（旧フォーマット eventId も考慮）
+            const ids = Array.isArray(triggerRecord.eventIds) && triggerRecord.eventIds.length > 0
+                ? triggerRecord.eventIds
+                : (triggerRecord.eventId ? [triggerRecord.eventId] : []);
+            triggerModalSelectedEventIds = [...ids];
+            const isRandom = triggerRecord.eventPlayMode === 'random';
+            triggerModalPlayRandom.checked = isRandom;
+            triggerModalPlaySequential.checked = !isRandom;
+            renderTriggerModalEventIdsList();
+            triggerModalEvent.value = '';
             triggerModalGiftName.value = triggerRecord.giftName || '';
             triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
+            triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
             triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
             triggerModalCommentText.value = triggerRecord.commentText || '';
             triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
                 ? triggerRecord.userIds.join('\n')
                 : '';
+            const isFilemap = triggerRecord.userTargetMode === 'file-map';
+            triggerModalUserTargetFilemap.checked = isFilemap;
+            triggerModalUserTargetList.checked = !isFilemap;
+            setFilemapDir(isFilemap ? (triggerRecord.userIdToFileDir || '') : '');
+            syncUserTargetMode();
             syncTriggerCommentField();
             hideGiftSuggestionPanel();
+            hideEventSuggestionPanel();
             openModal(triggerModal);
             triggerModalName.focus();
         }
 
         function collectTriggerFromModal() {
+            const isFilemap = triggerModalUserTargetFilemap.checked;
             return {
                 id: editingTriggerId || createId('trigger'),
                 name: triggerModalName.value.trim(),
-                eventId: triggerModalEventId.value,
+                eventIds: [...triggerModalSelectedEventIds],
+                eventPlayMode: triggerModalPlayRandom.checked ? 'random' : 'sequential',
                 giftName: triggerModalGiftName.value.trim(),
                 minCoins: Number(triggerModalMinCoins.value || 0),
+                treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
                 commentMode: triggerModalCommentMode.value,
                 commentText: triggerModalCommentText.value.trim(),
-                userIds: normalizeUserIdsInput(triggerModalUserIds.value),
-                enabled: triggerModalEnabled.checked
+                userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),
+                enabled: triggerModalEnabled.checked,
+                userTargetMode: isFilemap ? 'file-map' : 'list',
+                userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : ''
             };
         }
 
-        function syncTriggerModalOptions(selectedValue = '') {
-            triggerModalEventId.value = selectedValue;
-            if (selectedValue) {
-                const matchedEvent = currentEvents.find((e) => e.id === selectedValue);
-                triggerModalEvent.value = matchedEvent
-                    ? getEventLabel(matchedEvent, currentEvents.indexOf(matchedEvent))
-                    : '';
-            } else {
-                triggerModalEvent.value = '';
-            }
+        function syncTriggerModalOptions() {
             hideEventSuggestionPanel();
-        }
-
-        function escapeHtml(value) {
-            return String(value)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
         }
 
         function positionGiftSuggestionPanel() {
@@ -1803,8 +2065,13 @@
             if (!eventRecord) {
                 return;
             }
-            triggerModalEvent.value = getEventLabel(eventRecord, currentEvents.indexOf(eventRecord));
-            triggerModalEventId.value = eventRecord.id;
+
+            if (!triggerModalSelectedEventIds.includes(eventRecord.id)) {
+                triggerModalSelectedEventIds.push(eventRecord.id);
+                renderTriggerModalEventIdsList();
+            }
+
+            triggerModalEvent.value = '';
             hideEventSuggestionPanel();
             triggerModalEvent.focus();
         }
@@ -1818,19 +2085,16 @@
                 hideEventSuggestionPanel();
                 return;
             }
-            const currentId = triggerModalEventId.value;
-            activeEventSuggestionIndex = visibleEventSuggestions.findIndex((e) => e.id === currentId);
-            if (activeEventSuggestionIndex < 0) {
-                activeEventSuggestionIndex = 0;
-            }
+            activeEventSuggestionIndex = 0;
             triggerEventSuggestionPanel.innerHTML = visibleEventSuggestions.map((eventRecord, index) => {
                 const label = getEventLabel(eventRecord, currentEvents.indexOf(eventRecord));
                 const playbackDesc = getPlaybackSummary(eventRecord);
+                const isAlreadySelected = triggerModalSelectedEventIds.includes(eventRecord.id);
                 return `
-                    <button type="button" class="gift-suggestion-item${index === activeEventSuggestionIndex ? ' is-active' : ''}" data-event-index="${index}">
+                    <button type="button" class="gift-suggestion-item${index === activeEventSuggestionIndex ? ' is-active' : ''}${isAlreadySelected ? ' is-selected' : ''}" data-event-index="${index}">
                         <div class="gift-suggestion-image is-empty">▶</div>
                         <div class="gift-suggestion-meta">
-                            <div class="gift-suggestion-name">${escapeHtml(label)}</div>
+                            <div class="gift-suggestion-name">${escapeHtml(label)}${isAlreadySelected ? ' ✓' : ''}</div>
                             <div class="gift-suggestion-desc">${escapeHtml(playbackDesc)}</div>
                         </div>
                         <div class="gift-suggestion-cost"></div>
@@ -1987,12 +2251,13 @@
             }
         }
 
-        async function uploadMedia(file, kind) {
+        async function uploadMedia(file, kind, eventId) {
             const formData = new FormData();
             formData.append('media', file);
             formData.append('kind', kind);
 
-            const response = await fetch('/api/effects/media', {
+            const params = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
+            const response = await fetch(`/api/effects/media${params}`, {
                 method: 'POST',
                 body: formData
             });
@@ -2025,14 +2290,23 @@
         }
 
         function renderEvents() {
+            const filtered = eventFilterQuery
+                ? currentEvents.filter((e) => getEventLabel(e, currentEvents.indexOf(e)).toLowerCase().includes(eventFilterQuery))
+                : currentEvents;
+
             if (!currentEvents.length) {
                 renderEmptyState(eventList, 'イベントはまだありません。上のボタンから追加してください。');
                 return;
             }
 
+            if (!filtered.length) {
+                renderEmptyState(eventList, '「' + eventFilterQuery + '」に一致するイベントはありません。');
+                return;
+            }
+
             eventList.innerHTML = '';
 
-            currentEvents.forEach((eventRecord, index) => {
+            filtered.forEach((eventRecord, index) => {
                 const fragment = eventTemplate.content.cloneNode(true);
                 const card = fragment.querySelector('.record-card');
                 const nameValue = fragment.querySelector('[data-role="name"]');
@@ -2053,10 +2327,18 @@
                 mediaVolumeValue.textContent = `${eventRecord.mediaVolume ?? 100}%`;
 
                 fragment.querySelector('[data-action="delete-event"]').addEventListener('click', async () => {
+                    const label = getEventLabel(eventRecord, index);
+                    if (!await showConfirm(`「${label}」を削除してもよいですか？`)) return;
                     currentEvents = currentEvents.filter((item) => item.id !== eventRecord.id);
-                    currentTriggers = currentTriggers.map((item) => item.eventId === eventRecord.id
-                        ? { ...item, eventId: '' }
-                        : item);
+                    currentTriggers = currentTriggers.map((item) => ({
+                        ...item,
+                        eventIds: Array.isArray(item.eventIds)
+                            ? item.eventIds.filter((id) => id !== eventRecord.id)
+                            : []
+                    }));
+                    // モーダルが開いている場合はリストから除去
+                    triggerModalSelectedEventIds = triggerModalSelectedEventIds.filter((id) => id !== eventRecord.id);
+                    renderTriggerModalEventIdsList();
                     syncTriggerModalOptions();
                     renderEvents();
                     renderTriggers();
@@ -2088,14 +2370,30 @@
         }
 
         function renderTriggers() {
+            const filtered = triggerFilterQuery
+                ? currentTriggers.filter((t) => {
+                    const q = triggerFilterQuery;
+                    if (getTriggerLabel(t, currentTriggers.indexOf(t)).toLowerCase().includes(q)) return true;
+                    if (String(t.giftName || '').toLowerCase().includes(q)) return true;
+                    const userIds = Array.isArray(t.userIds) ? t.userIds : [];
+                    if (userIds.some((id) => String(id).toLowerCase().includes(q))) return true;
+                    return false;
+                })
+                : currentTriggers;
+
             if (!currentTriggers.length) {
                 renderEmptyState(triggerList, 'トリガーはまだありません。イベント未設定のままでも追加できます。');
                 return;
             }
 
+            if (!filtered.length) {
+                renderEmptyState(triggerList, '「' + triggerFilterQuery + '」に一致するトリガーはありません。');
+                return;
+            }
+
             triggerList.innerHTML = '';
 
-            currentTriggers.forEach((triggerRecord, index) => {
+            filtered.forEach((triggerRecord, index) => {
                 const fragment = triggerTemplate.content.cloneNode(true);
                 const card = fragment.querySelector('.record-card');
                 const nameValue = fragment.querySelector('[data-role="name"]');
@@ -2104,13 +2402,14 @@
                 const giftImageWrap = fragment.querySelector('[data-role="gift-image"]');
                 const giftLabel = fragment.querySelector('[data-role="gift-label"]');
                 const minCoinsValue = fragment.querySelector('[data-role="min-coins"]');
+                const giftOptionsValue = fragment.querySelector('[data-role="gift-options"]');
                 const commentSummaryValue = fragment.querySelector('[data-role="comment-summary"]');
                 const userIdsValue = fragment.querySelector('[data-role="user-ids"]');
                 const enabledCheckbox = fragment.querySelector('[data-role="enabled"]');
 
                 card.dataset.triggerId = triggerRecord.id;
                 nameValue.textContent = getTriggerLabel(triggerRecord, index);
-                eventNameValue.textContent = getSelectedEventLabel(triggerRecord.eventId);
+                eventNameValue.textContent = formatEventIdsSummary(triggerRecord);
                 const giftText = triggerRecord.giftName || '全ギフト';
                 giftLabel.textContent = giftText;
                 if (triggerRecord.giftName) {
@@ -2125,8 +2424,9 @@
                     }
                 }
                 minCoinsValue.textContent = `${Number(triggerRecord.minCoins || 0)}`;
+                giftOptionsValue.textContent = getTriggerGiftOptionSummary(triggerRecord);
                 commentSummaryValue.textContent = formatTriggerCommentSummary(triggerRecord);
-                userIdsValue.textContent = formatUserIdsSummary(triggerRecord.userIds);
+                userIdsValue.textContent = formatUserTargetSummary(triggerRecord);
                 enabledCheckbox.checked = Boolean(triggerRecord.enabled);
 
                 enabledCheckbox.addEventListener('change', async () => {
@@ -2143,6 +2443,8 @@
                 });
 
                 fragment.querySelector('[data-action="delete-trigger"]').addEventListener('click', async () => {
+                    const label = getTriggerLabel(triggerRecord, index);
+                    if (!await showConfirm(`「${label}」を削除してもよいですか？`)) return;
                     currentTriggers = currentTriggers.filter((item) => item.id !== triggerRecord.id);
                     renderTriggers();
 
@@ -2184,7 +2486,7 @@
                 });
 
                 row.querySelector('button:nth-of-type(2)').addEventListener('click', () => {
-                    window.open(`/overlays/effects/${item.slot}?debug=1`, `effect-screen-debug-${item.slot}`, 'popup=yes,width=960,height=640');
+                    window.open(`${item.directUrl || item.url}?debug=1`, `effect-screen-debug-${item.slot}`, 'popup=yes,width=960,height=640');
                 });
 
                 urlList.appendChild(row);
@@ -2259,6 +2561,19 @@
             }
         }
 
+        const eventFilterInput = document.getElementById('event-filter');
+        const triggerFilterInput = document.getElementById('trigger-filter');
+
+        eventFilterInput.addEventListener('input', () => {
+            eventFilterQuery = eventFilterInput.value.trim().toLowerCase();
+            renderEvents();
+        });
+
+        triggerFilterInput.addEventListener('input', () => {
+            triggerFilterQuery = triggerFilterInput.value.trim().toLowerCase();
+            renderTriggers();
+        });
+
         addEventButton.addEventListener('click', () => {
             openEventModalForCreate();
         });
@@ -2284,7 +2599,7 @@
             setStatus(`動画 ${file.name} を取り込み中です。`);
 
             try {
-                const asset = await uploadMedia(file, 'video');
+                const asset = await uploadMedia(file, 'video', editingEventId);
                 pendingEventModalVideoAsset = asset;
                 eventModalVideoEnabled.checked = true;
                 eventModalVideoName.textContent = asset.name;
@@ -2317,7 +2632,7 @@
             setStatus(`音声 ${file.name} を取り込み中です。`);
 
             try {
-                const asset = await uploadMedia(file, 'audio');
+                const asset = await uploadMedia(file, 'audio', editingEventId);
                 pendingEventModalAudioAsset = asset;
                 eventModalAudioEnabled.checked = true;
                 eventModalAudioName.textContent = asset.name;
@@ -2335,6 +2650,18 @@
 
         eventModalSubmit.addEventListener('click', async () => {
             const nextEvent = collectEventFromModal();
+
+            if (nextEvent.name) {
+                const isDuplicate = currentEvents.some((item) =>
+                    item.id !== nextEvent.id && item.name.trim() === nextEvent.name
+                );
+                if (isDuplicate) {
+                    eventModalName.setCustomValidity('同じイベント名が既に存在します。');
+                    eventModalName.reportValidity();
+                    return;
+                }
+            }
+            eventModalName.setCustomValidity('');
 
             if (editingEventId) {
                 currentEvents = currentEvents.map((item) => item.id === editingEventId ? nextEvent : item);
@@ -2361,6 +2688,33 @@
         triggerModalSubmit.addEventListener('click', async () => {
             const nextTrigger = collectTriggerFromModal();
 
+            if (nextTrigger.name) {
+                const isDuplicate = currentTriggers.some((item) =>
+                    item.id !== nextTrigger.id && item.name.trim() === nextTrigger.name
+                );
+                if (isDuplicate) {
+                    triggerModalName.setCustomValidity('同じトリガー名が既に存在します。');
+                    triggerModalName.reportValidity();
+                    return;
+                }
+            }
+            triggerModalName.setCustomValidity('');
+
+            if (nextTrigger.userTargetMode === 'file-map' && !nextTrigger.giftName) {
+                triggerModalGiftName.focus();
+                triggerModalGiftName.setCustomValidity('ファイルマップモードでは対象ギフト名が必須です。');
+                triggerModalGiftName.reportValidity();
+                return;
+            }
+
+            triggerModalGiftName.setCustomValidity('');
+
+            if (nextTrigger.userTargetMode === 'file-map' && !nextTrigger.userIdToFileDir) {
+                triggerModalFilemapDirButton.focus();
+                alert('フォルダを選択してください。');
+                return;
+            }
+
             if (editingTriggerId) {
                 currentTriggers = currentTriggers.map((item) => item.id === editingTriggerId ? nextTrigger : item);
             } else {
@@ -2385,6 +2739,41 @@
             syncTriggerCommentField();
         });
 
+        triggerModalUserTargetList.addEventListener('change', () => {
+            syncUserTargetMode();
+        });
+
+        triggerModalUserTargetFilemap.addEventListener('change', () => {
+            syncUserTargetMode();
+        });
+
+        triggerModalFilemapDirButton.addEventListener('click', async () => {
+            triggerModalFilemapDirButton.disabled = true;
+            try {
+                const response = await fetch('/api/electron/pick-directory', { method: 'POST' });
+                if (!response.ok) {
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.dirPath) {
+                    setFilemapDir(result.dirPath);
+                }
+            } catch {
+                // ダイアログが閉じられた場合など
+            } finally {
+                triggerModalFilemapDirButton.disabled = false;
+            }
+        });
+
+        triggerModalPlaySequential.addEventListener('change', () => {
+            renderTriggerModalEventIdsList();
+        });
+
+        triggerModalPlayRandom.addEventListener('change', () => {
+            renderTriggerModalEventIdsList();
+        });
+
         document.querySelectorAll('[data-action="close-event-modal"]').forEach((button) => {
             button.addEventListener('click', () => {
                 closeModal(eventModal);
@@ -2394,14 +2783,6 @@
         document.querySelectorAll('[data-action="close-trigger-modal"]').forEach((button) => {
             button.addEventListener('click', () => {
                 closeModal(triggerModal);
-            });
-        });
-
-        [eventModal, triggerModal].forEach((modal) => {
-            modal.addEventListener('click', (event) => {
-                if (event.target === modal) {
-                    closeModal(modal);
-                }
             });
         });
 
@@ -2419,7 +2800,6 @@
         });
 
         triggerModalEvent.addEventListener('input', () => {
-            triggerModalEventId.value = '';
             renderEventSuggestions(triggerModalEvent.value);
         });
 
@@ -2580,6 +2960,14 @@
             syncEventModalVolume();
         });
 
+        eventModalName.addEventListener('input', () => {
+            eventModalName.setCustomValidity('');
+        });
+
+        triggerModalName.addEventListener('input', () => {
+            triggerModalName.setCustomValidity('');
+        });
+
         syncEventModalVolume();
 
         loadGiftSuggestions().catch((error) => {
@@ -2592,5 +2980,6 @@
             setStatus(error.message || '設定の読み込みに失敗しました。', 'error');
         });
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

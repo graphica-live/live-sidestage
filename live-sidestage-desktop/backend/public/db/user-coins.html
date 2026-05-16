@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Coins</title>
+    <title>ユーザーコイン数</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
         :root {
@@ -16,6 +18,7 @@
             --accent: #c2410c;
             --accent-strong: #9a3412;
             --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+            --overlay: rgba(15, 23, 42, 0.44);
         }
 
         * {
@@ -25,6 +28,8 @@
         body {
             margin: 0;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             padding: 24px 16px;
             color: var(--text);
             font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
@@ -35,14 +40,23 @@
         .layout {
             width: min(1200px, 100%);
             margin: 0 auto;
-            display: grid;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
             gap: 18px;
+            min-height: calc(100vh - 48px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             padding: 24px;
         }
@@ -114,7 +128,7 @@
             width: min(320px, calc(100vw - 48px));
             padding: 14px;
             border: 1px solid var(--line);
-            border-radius: 2px;
+            border-radius: 16px;
             background: rgba(255, 250, 241, 0.98);
             box-shadow: var(--shadow);
         }
@@ -169,7 +183,7 @@
 
         .calendar-day {
             padding: 0;
-            border-radius: 2px;
+            border-radius: 8px;
         }
 
         .calendar-day.is-selected {
@@ -202,8 +216,8 @@
             align-items: center;
             gap: 8px;
             border: 1px solid var(--line);
-            border-radius: 2px;
-            padding: 8px 12px;
+            border-radius: 999px;
+            padding: 7px 12px;
             color: var(--muted);
             background: rgba(255, 255, 255, 0.56);
             font-size: 14px;
@@ -250,7 +264,7 @@
 
         .connection-detail {
             padding: 11px 13px;
-            border-radius: 2px;
+            border-radius: 10px;
             border: 1px solid var(--line);
             background: rgba(255, 255, 255, 0.62);
             color: var(--muted);
@@ -487,54 +501,243 @@
                 flex-direction: column;
             }
         }
+
+        .confirm-shell {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.44);
+            z-index: 100;
+        }
+
+        .confirm-shell.is-open {
+            display: flex;
+        }
+
+        .confirm-modal {
+            width: min(400px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .mini-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 7px 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.56);
+            font-size: 13px;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: var(--overlay);
+            display: grid;
+            place-items: center;
+            padding: 18px;
+            z-index: 1000;
+        }
+
+        .modal-backdrop[hidden] {
+            display: none;
+        }
+
+        .contributor-modal {
+            width: min(560px, 100%);
+            max-height: min(88vh, 920px);
+            overflow: auto;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+            padding: 24px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .modal-head,
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .form-field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .form-field.full {
+            grid-column: 1 / -1;
+        }
+
+        .form-field label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .form-field input {
+            width: 100%;
+        }
+
+        .summary-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .user-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .user-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .user-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .user-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 9px 12px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .user-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-suggestion-item:hover,
+        .user-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .user-suggestion-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-suggestion-avatar.is-empty {
+            background: #d9e2ec;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: #596b80;
+        }
+
+        .user-suggestion-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .user-suggestion-id {
+            font-size: 11px;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
-    <link rel="stylesheet" href="/db/admin-dark-theme.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
 </head>
 <body>
     <div class="layout">
         <header class="panel header-panel">
-            <h1>ユーザーコイン数</h1>
-            <p class="subtext">指定した日付のコイン集計を一覧表示します。日付変更は即時に OBS 表示へ反映されます。</p>
-
-            <div class="status-row">
-                <div class="status">
-                    <span class="status-label">表示日</span>
-                    <span class="status-value" id="selected-day-status">未選択</span>
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>ユーザーコイン数</h1>
+                    <p class="subtext">指定した日付のコイン集計を一覧表示します。日付変更は即時に OBS 表示へ反映されます。</p>
+                    <div class="hero-status-grid">
+                        <div class="status">
+                            <span class="status-label">表示日</span>
+                            <span class="status-value" id="selected-day-status">未選択</span>
+                        </div>
+                        <div class="status">
+                            <span class="status-label">合計コイン</span>
+                            <span class="status-value" id="total-coins">0</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="status">
-                    <span class="status-label">合計コイン</span>
-                    <span class="status-value" id="total-coins">0</span>
+                <div class="page-hero-side">
+                    <div class="control-group">
+                        <button type="button" id="today-button">前日</button>
+                        <button type="button" id="yesterday-button">翌日</button>
+                    </div>
+                    <div class="date-picker" id="day-picker">
+                        <input type="text" id="day-input" class="day-input" placeholder="日付を選択" readonly>
+                        <div class="date-picker-popover" id="day-picker-popover" hidden>
+                            <div class="date-picker-header">
+                                <button type="button" class="calendar-nav" id="calendar-prev-month" aria-label="前の月">◀</button>
+                                <div class="date-picker-month" id="calendar-month-label">-</div>
+                                <button type="button" class="calendar-nav" id="calendar-next-month" aria-label="次の月">▶</button>
+                            </div>
+                            <div class="date-picker-weekdays">
+                                <div class="calendar-weekday">日</div>
+                                <div class="calendar-weekday">月</div>
+                                <div class="calendar-weekday">火</div>
+                                <div class="calendar-weekday">水</div>
+                                <div class="calendar-weekday">木</div>
+                                <div class="calendar-weekday">金</div>
+                                <div class="calendar-weekday">土</div>
+                            </div>
+                            <div class="date-picker-grid" id="calendar-grid"></div>
+                            <div class="calendar-empty" id="calendar-empty" hidden>保存済みデータがある日だけ選べます。</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>
 
         <main class="panel content db-panel">
-            <div class="control-row">
-                <button type="button" id="today-button">前日</button>
-                <button type="button" id="yesterday-button">翌日</button>
-                <div class="date-picker" id="day-picker">
-                    <input type="text" id="day-input" class="day-input" placeholder="日付を選択" readonly>
-                    <div class="date-picker-popover" id="day-picker-popover" hidden>
-                        <div class="date-picker-header">
-                            <button type="button" class="calendar-nav" id="calendar-prev-month" aria-label="前の月">◀</button>
-                            <div class="date-picker-month" id="calendar-month-label">-</div>
-                            <button type="button" class="calendar-nav" id="calendar-next-month" aria-label="次の月">▶</button>
-                        </div>
-                        <div class="date-picker-weekdays">
-                            <div class="calendar-weekday">日</div>
-                            <div class="calendar-weekday">月</div>
-                            <div class="calendar-weekday">火</div>
-                            <div class="calendar-weekday">水</div>
-                            <div class="calendar-weekday">木</div>
-                            <div class="calendar-weekday">金</div>
-                            <div class="calendar-weekday">土</div>
-                        </div>
-                        <div class="date-picker-grid" id="calendar-grid"></div>
-                        <div class="calendar-empty" id="calendar-empty" hidden>保存済みデータがある日だけ選べます。</div>
-                    </div>
-                </div>
-            </div>
-
             <div class="danger-row">
                 <button type="button" id="add-test-contributors-button">テストデータを追加</button>
                 <button type="button" class="danger" id="reset-day-button">選択日の全件削除</button>
@@ -558,7 +761,84 @@
         </main>
     </div>
 
+    <div class="confirm-shell" id="confirm-dialog" aria-hidden="true">
+        <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="contributor-modal-backdrop" hidden>
+        <div class="contributor-modal" role="dialog" aria-modal="true" aria-labelledby="contributor-modal-title">
+            <div class="modal-head">
+                <div>
+                    <h2 id="contributor-modal-title">テストデータを追加</h2>
+                    <p class="subtext">ユーザー情報とコイン数を指定してコイン集計に追加します。</p>
+                </div>
+                <button type="button" id="close-contributor-modal-button">閉じる</button>
+            </div>
+
+            <div class="summary-grid">
+                <div class="mini-status" id="contributor-modal-day-status">対象日: -</div>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="contributor-modal-unique-id">ユーザーID</label>
+                    <div class="user-suggest-shell">
+                        <input id="contributor-modal-unique-id" type="text" maxlength="80" autocomplete="off" placeholder="example_user">
+                        <div class="user-suggestion-panel" id="admin-user-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label for="contributor-modal-nickname">ユーザー名</label>
+                    <input id="contributor-modal-nickname" type="text" maxlength="80" list="contributor-recent-user-name-list" placeholder="テスト視聴者">
+                </div>
+                <div class="form-field full">
+                    <label for="contributor-modal-profile-image">プロフィール画像 URL</label>
+                    <input id="contributor-modal-profile-image" type="text" maxlength="500" placeholder="https://...">
+                </div>
+                <div class="form-field full">
+                    <label for="contributor-modal-coins">コイン数</label>
+                    <input id="contributor-modal-coins" type="number" min="1" step="1" value="100">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="cancel-contributor-modal-button">キャンセル</button>
+                <button type="button" class="primary-button" id="submit-contributor-modal-button">追加する</button>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="contributor-recent-user-id-list"></datalist>
+    <datalist id="contributor-recent-user-name-list"></datalist>
+
     <script>
+        function showConfirm(message, okLabel = '削除する') {
+            return new Promise((resolve) => {
+                const shell = document.getElementById('confirm-dialog');
+                const msgEl = document.getElementById('confirm-dialog-message');
+                const okBtn = document.getElementById('confirm-dialog-ok');
+                const cancelBtn = document.getElementById('confirm-dialog-cancel');
+                msgEl.textContent = message;
+                okBtn.textContent = okLabel;
+                shell.classList.add('is-open');
+                shell.setAttribute('aria-hidden', 'false');
+                function cleanup(result) {
+                    shell.classList.remove('is-open');
+                    shell.setAttribute('aria-hidden', 'true');
+                    resolve(result);
+                }
+                okBtn.addEventListener('click', () => cleanup(true), { once: true });
+                cancelBtn.addEventListener('click', () => cleanup(false), { once: true });
+            });
+        }
+
         const socket = io();
 
         const selectedDayStatus = document.getElementById('selected-day-status');
@@ -575,19 +855,20 @@
         const calendarEmpty = document.getElementById('calendar-empty');
         const todayButton = document.getElementById('today-button');
         const yesterdayButton = document.getElementById('yesterday-button');
-        const thresholdInput = null;
-        const goalInput = null;
-        const avatarVisibilityInput = null;
-        const fontFamilyInput = null;
-        const colorThemeInput = null;
-        const strokeWidthInput = null;
-        const milestoneEffectInput = null;
-        const milestoneRuleList = null;
-        const addMilestoneRuleButton = null;
-        const sortOrderInput = null;
         const addTestContributorsButton = document.getElementById('add-test-contributors-button');
         const resetDayButton = document.getElementById('reset-day-button');
         const messageBox = document.getElementById('message-box');
+        const contributorModalBackdrop = document.getElementById('contributor-modal-backdrop');
+        const closeContributorModalButton = document.getElementById('close-contributor-modal-button');
+        const cancelContributorModalButton = document.getElementById('cancel-contributor-modal-button');
+        const submitContributorModalButton = document.getElementById('submit-contributor-modal-button');
+        const contributorModalDayStatus = document.getElementById('contributor-modal-day-status');
+        const contributorModalUniqueIdInput = document.getElementById('contributor-modal-unique-id');
+        const contributorModalNicknameInput = document.getElementById('contributor-modal-nickname');
+        const contributorModalProfileImageInput = document.getElementById('contributor-modal-profile-image');
+        const contributorModalCoinsInput = document.getElementById('contributor-modal-coins');
+        const contributorRecentUserNameList = document.getElementById('contributor-recent-user-name-list');
+        const contributorUserSuggestionPanel = document.getElementById('admin-user-suggestion-panel');
 
         let currentDisplayDayKey = null;
         let currentBroadcasterId = null;
@@ -596,12 +877,20 @@
         let selectedDayKey = null;
         let currentContributors = [];
         let isRealtimeSyncPaused = false;
+        let isSubmittingContributor = false;
+        let knownContributorUserSuggestions = [];
+        let visibleContributorUserSuggestions = [];
+        let activeContributorUserSuggestionIndex = -1;
         let refreshTimer = null;
         const pendingSaveTimers = new Map();
         let availableDays = [];
         let availableDayKeys = new Set();
         let availableMonthKeys = [];
         let visibleCalendarMonthKey = null;
+        const contributorModalReferenceData = {
+            usersById: new Map(),
+            usersByName: new Map()
+        };
 
         function formatNumber(value) {
             return new Intl.NumberFormat('ja-JP').format(value);
@@ -613,15 +902,6 @@
             }
 
             return formatNumber(value);
-        }
-
-        function escapeHtml(value) {
-            return String(value)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
         }
 
         function formatTimestamp(value) {
@@ -1139,7 +1419,7 @@
 
             const target = currentContributors.find((contributor) => contributor.uniqueId === uniqueId);
             const label = target ? target.nickname : uniqueId;
-            const confirmed = window.confirm(`${selectedDayKey} の ${label} を削除します。`);
+            const confirmed = await showConfirm(`${selectedDayKey} の ${label} を削除します。`);
 
             if (!confirmed) {
                 return;
@@ -1270,7 +1550,7 @@
                 return;
             }
 
-            const confirmed = window.confirm(`${selectedDayKey} のデータを全件削除します。元に戻せません。`);
+            const confirmed = await showConfirm(`${selectedDayKey} のデータを全件削除します。元に戻せません。`, '全件削除');
 
             if (!confirmed) {
                 return;
@@ -1292,20 +1572,171 @@
         }
 
         async function addTestContributors() {
+            openContributorModal();
+        }
+
+        function populateContributorRecentUsers(users) {
+            knownContributorUserSuggestions = Array.isArray(users) ? users.filter((u) => u?.uniqueId) : [];
+            contributorRecentUserNameList.innerHTML = Array.isArray(users)
+                ? users.map((user) => `<option value="${escapeHtml(user.nickname || '')}" label="${escapeHtml(user.uniqueId || '')}"></option>`).join('')
+                : '';
+            contributorModalReferenceData.usersById = new Map((users || []).map((user) => [String(user.uniqueId || ''), user]));
+            contributorModalReferenceData.usersByName = new Map((users || []).map((user) => [String(user.nickname || ''), user]));
+        }
+
+        function positionContributorUserSuggestionPanel() {
+            const rect = contributorModalUniqueIdInput.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                contributorUserSuggestionPanel.style.top = `${rect.bottom + 4}px`;
+                contributorUserSuggestionPanel.style.bottom = '';
+            } else {
+                contributorUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+                contributorUserSuggestionPanel.style.top = '';
+            }
+            contributorUserSuggestionPanel.style.left = `${rect.left}px`;
+            contributorUserSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideContributorUserSuggestionPanel() {
+            contributorUserSuggestionPanel.hidden = true;
+            contributorUserSuggestionPanel.innerHTML = '';
+            visibleContributorUserSuggestions = [];
+            activeContributorUserSuggestionIndex = -1;
+        }
+
+        function applyContributorUserSuggestion(user) {
+            contributorModalUniqueIdInput.value = user.uniqueId || '';
+            if (!contributorModalNicknameInput.value.trim()) {
+                contributorModalNicknameInput.value = user.nickname || user.uniqueId || '';
+            }
+            if (!contributorModalProfileImageInput.value.trim()) {
+                contributorModalProfileImageInput.value = user.image || '';
+            }
+            hideContributorUserSuggestionPanel();
+            contributorModalUniqueIdInput.focus();
+        }
+
+        function renderContributorUserSuggestions(query) {
+            const q = String(query || '').trim().toLowerCase();
+            if (!q) { hideContributorUserSuggestionPanel(); return; }
+            visibleContributorUserSuggestions = knownContributorUserSuggestions.filter((u) => {
+                return String(u.uniqueId || '').toLowerCase().includes(q)
+                    || String(u.nickname || '').toLowerCase().includes(q);
+            }).slice(0, 20);
+            if (!visibleContributorUserSuggestions.length) { hideContributorUserSuggestionPanel(); return; }
+            activeContributorUserSuggestionIndex = 0;
+            contributorUserSuggestionPanel.innerHTML = visibleContributorUserSuggestions.map((user, index) => {
+                const imgMarkup = user.image
+                    ? `<img class="user-suggestion-avatar" src="${escapeHtml(user.image)}" alt="">`
+                    : `<div class="user-suggestion-avatar is-empty">?</div>`;
+                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
+            }).join('');
+            contributorUserSuggestionPanel.hidden = false;
+            positionContributorUserSuggestionPanel();
+            contributorUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyContributorUserSuggestion(visibleContributorUserSuggestions[Number(button.dataset.userIndex)]);
+                });
+            });
+        }
+
+        function updateActiveContributorUserSuggestion(nextIndex) {
+            if (!visibleContributorUserSuggestions.length) return;
+            activeContributorUserSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleContributorUserSuggestions.length - 1));
+            contributorUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeContributorUserSuggestionIndex);
+                if (index === activeContributorUserSuggestionIndex) button.scrollIntoView({ block: 'nearest' });
+            });
+        }
+
+        async function loadContributorRecentUsers() {
+            try {
+                const response = await fetch('/api/users/recent');
+                const payload = await response.json();
+                populateContributorRecentUsers(Array.isArray(payload.users) ? payload.users : []);
+            } catch {
+                populateContributorRecentUsers([]);
+            }
+        }
+
+        function syncContributorUserFromSuggestions() {
+            const idValue = contributorModalUniqueIdInput.value.trim();
+            const nameValue = contributorModalNicknameInput.value.trim();
+            const matchedUser = contributorModalReferenceData.usersById.get(idValue) || contributorModalReferenceData.usersByName.get(nameValue);
+
+            if (!matchedUser) {
+                return;
+            }
+
+            if (!contributorModalUniqueIdInput.value.trim()) {
+                contributorModalUniqueIdInput.value = matchedUser.uniqueId || '';
+            }
+
+            if (!contributorModalNicknameInput.value.trim()) {
+                contributorModalNicknameInput.value = matchedUser.nickname || matchedUser.uniqueId || '';
+            }
+
+            if (!contributorModalProfileImageInput.value.trim()) {
+                contributorModalProfileImageInput.value = matchedUser.image || '';
+            }
+        }
+
+        function resetContributorModal() {
+            contributorModalUniqueIdInput.value = '';
+            contributorModalNicknameInput.value = '';
+            contributorModalProfileImageInput.value = '';
+            contributorModalCoinsInput.value = '100';
+            contributorModalDayStatus.textContent = `対象日: ${selectedDayKey || '-'}`;
+        }
+
+        function openContributorModal() {
             if (!selectedDayKey) {
                 setMessage('先に日付を選択してください。', true);
                 return;
             }
 
-            addTestContributorsButton.disabled = true;
+            resetContributorModal();
+            contributorModalBackdrop.hidden = false;
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => {
+                contributorModalUniqueIdInput.focus();
+            });
+        }
+
+        function closeContributorModal() {
+            if (isSubmittingContributor) {
+                return;
+            }
+
+            contributorModalBackdrop.hidden = true;
+            document.body.style.overflow = '';
+        }
+
+        async function submitContributorModal() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            isSubmittingContributor = true;
+            submitContributorModalButton.disabled = true;
 
             try {
-                const response = await fetch('/api/test-data/contributors', {
+                const response = await fetch('/api/test-data/contributors/custom', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ dayKey: selectedDayKey })
+                    body: JSON.stringify({
+                        dayKey: selectedDayKey,
+                        uniqueId: contributorModalUniqueIdInput.value.trim(),
+                        nickname: contributorModalNicknameInput.value.trim(),
+                        profilePictureUrl: contributorModalProfileImageInput.value.trim(),
+                        coins: contributorModalCoinsInput.value
+                    })
                 });
                 const payload = await response.json();
 
@@ -1313,13 +1744,17 @@
                     throw new Error(payload.error || 'テストデータの追加に失敗しました。');
                 }
 
+                closeContributorModal();
                 await refreshDays();
                 await loadDay(selectedDayKey);
-                setMessage(`${selectedDayKey} にテストデータを ${formatNumber(payload.insertedCount)} 件追加しました。`);
+                await loadContributorRecentUsers();
+                const label = payload.contributor?.nickname || payload.contributor?.uniqueId || 'ユーザー';
+                setMessage(`${selectedDayKey} に ${label} を追加しました。`);
             } catch (error) {
                 setMessage(error.message || 'テストデータの追加に失敗しました。', true);
             } finally {
-                addTestContributorsButton.disabled = false;
+                isSubmittingContributor = false;
+                submitContributorModalButton.disabled = false;
             }
         }
 
@@ -1369,17 +1804,53 @@
             addTestContributors();
         });
 
+        closeContributorModalButton.addEventListener('click', closeContributorModal);
+        cancelContributorModalButton.addEventListener('click', closeContributorModal);
+        submitContributorModalButton.addEventListener('click', () => {
+            submitContributorModal().catch(() => {});
+        });
+
+        contributorModalUniqueIdInput.addEventListener('input', () => {
+            renderContributorUserSuggestions(contributorModalUniqueIdInput.value);
+        });
+        contributorModalUniqueIdInput.addEventListener('keydown', (event) => {
+            if (contributorUserSuggestionPanel.hidden) return;
+            if (event.key === 'ArrowDown') { event.preventDefault(); updateActiveContributorUserSuggestion(activeContributorUserSuggestionIndex + 1); return; }
+            if (event.key === 'ArrowUp') { event.preventDefault(); updateActiveContributorUserSuggestion(activeContributorUserSuggestionIndex - 1); return; }
+            if (event.key === 'Enter') {
+                const selected = visibleContributorUserSuggestions[activeContributorUserSuggestionIndex];
+                if (selected) { event.preventDefault(); applyContributorUserSuggestion(selected); }
+                return;
+            }
+            if (event.key === 'Escape') { hideContributorUserSuggestionPanel(); }
+        });
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.user-suggest-shell') && !contributorUserSuggestionPanel.contains(event.target)) {
+                hideContributorUserSuggestionPanel();
+            }
+        });
+        window.addEventListener('resize', () => {
+            if (!contributorUserSuggestionPanel.hidden) positionContributorUserSuggestionPanel();
+        });
+        contributorModalUniqueIdInput.addEventListener('change', syncContributorUserFromSuggestions);
+        contributorModalUniqueIdInput.addEventListener('blur', syncContributorUserFromSuggestions);
+        contributorModalNicknameInput.addEventListener('change', syncContributorUserFromSuggestions);
+        contributorModalNicknameInput.addEventListener('blur', syncContributorUserFromSuggestions);
+
         socket.on('admin_day_updated', (payload) => {
             applyRealtimePayload(payload);
         });
 
         async function init() {
-            await refreshDays();
+            await Promise.all([refreshDays(), loadContributorRecentUsers()]);
             await loadDay(todayDayKey || currentDisplayDayKey || dayInput.value);
             startAutoRefresh();
         }
 
-        init();
+        init().catch((error) => {
+            setMessage(error?.message || '初期化に失敗しました。ページを再読み込みしてください。', true);
+        });
     </script>
+    <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

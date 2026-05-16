@@ -4,12 +4,6 @@ Place licensed audio files for widget feedback here.
 
 Supported file names:
 
-- chime.mp3|wav|ogg|m4a
-- magic.mp3|wav|ogg|m4a
-- luxury.mp3|wav|ogg|m4a
-- crystal.mp3|wav|ogg|m4a
-- shimmer.mp3|wav|ogg|m4a
-- glint.mp3|wav|ogg|m4a
 - business08.mp3|wav|ogg|m4a
 - business09.mp3|wav|ogg|m4a
 - business10.mp3|wav|ogg|m4a
