@@ -2683,11 +2683,29 @@ function setWidgetTapListSettings(settings) {
     return normalized;
 }
 
+function buildTapListNicknameMap() {
+    // ニックネームマップ（Like通知で蓄積）
+    const saved = getLikeContributionUserNicknames();
+    // コントリビューターDBの表示名で上書き（より正確）
+    if (hasConfiguredBroadcasterId()) {
+        const todayKey = getTodayDayKey();
+        try {
+            const contributors = dbStore.getAdminContributorsByDay(todayKey, getBroadcasterId());
+            for (const c of contributors) {
+                if (c.uniqueId && c.nickname) {
+                    saved[c.uniqueId] = c.nickname;
+                }
+            }
+        } catch {}
+    }
+    return saved;
+}
+
 function buildTapListEntries(maxEntries = 20) {
     const dayKey = getTodayDayKey();
     const userTotalsState = getLikeContributionUserTotalsState();
     const todayMap = userTotalsState[dayKey] || {};
-    const nicknames = getLikeContributionUserNicknames();
+    const nicknames = buildTapListNicknameMap();
     return Object.entries(todayMap)
         .map(([uniqueId, tapCount]) => ({ uniqueId, nickname: nicknames[uniqueId] || uniqueId, tapCount: Number(tapCount) || 0 }))
         .filter((e) => e.tapCount > 0)
