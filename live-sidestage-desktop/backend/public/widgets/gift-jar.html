@@ -142,6 +142,7 @@
 
         let overlayRecoveryTimer = null;
         let overlayRecoveryInFlight = false;
+        let overlayWasDisconnected = false;
         const OVERLAY_RECOVERY_RETRY_MS = 2000;
 
         function clearOverlayRecoveryTimer() {
@@ -158,6 +159,9 @@
                 const response = await fetch('/api/widgets/gift-jar/config', { cache: 'no-store' });
                 if (!response.ok) return;
                 clearOverlayRecoveryTimer();
+                // If socket already reconnected on its own, a page reload is unnecessary
+                // and would cause a visible reset. Only reload when still disconnected.
+                if (socket.connected) return;
                 window.location.reload();
             } catch {
                 // Backend still restarting.
@@ -173,10 +177,15 @@
         }
 
         socket.on('connect', () => {
+            if (overlayWasDisconnected && !sampleMode) {
+                window.location.reload();
+                return;
+            }
             clearOverlayRecoveryTimer();
         });
 
         socket.on('disconnect', () => {
+            overlayWasDisconnected = true;
             scheduleOverlayRecoveryReload();
         });
 
@@ -233,8 +242,12 @@
                 octx.filter = 'none';
                 glowCache.set(key, oc);
             };
-            if (src.complete && src.naturalWidth > 0) doBake();
-            else src.addEventListener('load', doBake, { once: true });
+            const scheduleBake = () => {
+                if ('requestIdleCallback' in window) requestIdleCallback(doBake, { timeout: 2000 });
+                else setTimeout(doBake, 0);
+            };
+            if (src.complete && src.naturalWidth > 0) scheduleBake();
+            else src.addEventListener('load', scheduleBake, { once: true });
         }
 
         // Fallback: called at draw time if prebakeGlow wasn't ready yet (rare, first frame)
@@ -547,12 +560,31 @@
             }
 
             const task = (async () => {
+                // localStorage キャッシュを確認（1080²走査をスキップ）
+                if (!forceReload) {
+                    for (const src of sources) {
+                        try {
+                            const lsKey = `gift-jar-mask-v1:${themeName}:${src}`;
+                            const cached = localStorage.getItem(lsKey);
+                            if (cached) {
+                                const parsed = normalizeJarProfile(JSON.parse(cached));
+                                if (parsed) {
+                                    maskJarProfiles = { ...maskJarProfiles, [themeName]: parsed };
+                                    return parsed;
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                }
+
                 for (const src of sources) {
                     try {
                         const image = await loadMaskImageSource(src, forceReload);
                         const profile = buildJarProfileFromMaskImage(image, themeName);
                         if (profile) {
                             maskJarProfiles = { ...maskJarProfiles, [themeName]: profile };
+                            // 次回起動用にキャッシュ保存
+                            try { localStorage.setItem(`gift-jar-mask-v1:${themeName}:${src}`, JSON.stringify(profile)); } catch (_) {}
                             return profile;
                         }
                         console.warn(`[gift-jar] mask profile build failed (returned null) for src=${src} theme=${themeName}`);
@@ -684,7 +716,7 @@
         }
 
         // ---- Matter.js physics ----
-        const { Engine, Bodies, Body, World, Events, Runner } = Matter;
+        const { Engine, Bodies, Body, World, Events, Runner, Sleeping } = Matter;
         const engine = Engine.create({ gravity: { x: 0, y: 1.4 }, enableSleeping: true, positionIterations: 14, velocityIterations: 10 });
         const physWorld = engine.world;
         const runner = Runner.create();
@@ -738,15 +770,19 @@
             World.add(physWorld, jarWallBodies);
         }
         if (!isSlave) {
-            loadMaskJarProfile(currentJarTheme).then((profile) => {
+            const _initialTheme = currentJarTheme;
+            loadMaskJarProfile(_initialTheme).then((profile) => {
+                // If the theme was updated by a config event before this async load finished,
+                // discard the stale result to avoid overwriting the correct walls.
+                if (currentJarTheme !== _initialTheme) return;
                 if (profile) {
                     clearMaskError();
-                    rebuildJarWalls(currentJarTheme);
+                    rebuildJarWalls(_initialTheme);
                 } else {
-                    showMaskError(currentJarTheme);
+                    showMaskError(_initialTheme);
                 }
             }).catch(() => {
-                showMaskError(currentJarTheme);
+                if (currentJarTheme === _initialTheme) showMaskError(_initialTheme);
             });
         }
 
@@ -805,20 +841,25 @@
             if (hasMoving) {
                 dirty = true;
                 allSleepingEmitted = false;
-                // volatile.emit: drops frame if socket is busy ?Eprevents queue backpressure
-                socket.volatile.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
-                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
-                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
-                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
-                })));
+                if (!isReplayingHistory) {
+                    // volatile.emit: drops frame if socket is busy ?Eprevents queue backpressure
+                    socket.volatile.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                        src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                        cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                        x: g.body.position.x, y: g.body.position.y, a: g.body.angle
+                    })));
+                }
             } else if (!allSleepingEmitted) {
-                // All bodies just settled: send one reliable final-position update to slave
-                socket.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
-                    src: g.imageUrl, size: g.size, diamonds: g.diamonds,
-                    cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
-                    x: g.body.position.x, y: g.body.position.y, a: g.body.angle
-                })));
-                allSleepingEmitted = true;
+                if (!isReplayingHistory) {
+                    // All bodies just settled: send one reliable final-position update to slave
+                    socket.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                        src: g.imageUrl, size: g.size, diamonds: g.diamonds,
+                        cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
+                        x: g.body.position.x, y: g.body.position.y, a: g.body.angle,
+                        settled: true
+                    })));
+                    allSleepingEmitted = true;
+                }
             }
         });
 
@@ -828,6 +869,41 @@
             dyingBodies.length = 0;
             ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
             dirty = false;
+            restoredFromPositions = false;
+        }
+
+        // Place gift bodies directly at their last known positions without physics replay.
+        // Used on reload when the server provides a settled-state snapshot.
+        function restoreFromPositions(bodies) {
+            if (!currentJarProfile) return;
+            restoredFromPositions = true;
+            // Cancel any in-progress history replay
+            engine.timing.timeScale = 1;
+            isReplayingHistory = false;
+            // Clear bodies that resetJar may have left behind before restore was called
+            for (const g of giftBodies) World.remove(physWorld, g.body);
+            giftBodies.length = 0;
+            for (const b of bodies) {
+                if (!b.src || !b.size) continue;
+                const diamonds = b.diamonds ?? (b.cls === 'mega-glow' ? 1000 : b.cls === 'glow' ? 200 : 1);
+                const size = b.size;
+                // Approximate radius matching addGift default trim (12% each side)
+                const packW = Math.max(8, Math.round(size * 0.76));
+                const radius = Math.max(6, Math.floor(packW / 2));
+                const body = Bodies.circle(b.x, b.y, radius, {
+                    restitution: 0.08, friction: 0.55, frictionAir: 0.25, density: 0.002, label: 'gift'
+                });
+                Body.setPosition(body, { x: b.x, y: b.y });
+                Body.setAngle(body, b.a);
+                Body.setVelocity(body, { x: 0, y: 0 });
+                Body.setAngularVelocity(body, 0);
+                Sleeping.set(body, true);
+                World.add(physWorld, body);
+                prebakeGlow(b.src, size, diamonds);
+                giftBodies.push({ body, imageUrl: b.src, size, diamonds });
+            }
+            dirty = true;
+            allSleepingEmitted = true;
         }
 
         function addGift(imageUrl, diamonds, silent = false, trim = null) {
@@ -914,66 +990,74 @@
             '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">??</text></svg>'
         )}`;
 
-        // Cache: `${url}:${size}` ?E{ left, right, top, bottom } in px
+        // Cache: `${url}:${size}` → { left, right, top, bottom } in px
         const imageAnalysisCache = new Map();
 
-        /**
-         * Analyze the actual opaque-pixel bounding box of an image.
-         * Returns transparent padding on each edge in pixels.
-         * Falls back to 12% of size if CORS blocks pixel read.
-         */
+        // Web Worker: 50px縮小キャンバスでピクセル走査（メインスレッドをブロックしない）
+        const _trimWorker = (() => {
+            const code = `
+self.onmessage = async function(e) {
+    const { id, url, size } = e.data;
+    const S = 50;
+    const scale = size / S;
+    const def = Math.floor(size * 0.12);
+    const fallback = { left: def, right: def, top: def, bottom: def };
+    try {
+        const opts = url.startsWith('data:') ? {} : { mode: 'cors', credentials: 'omit' };
+        const resp = await fetch(url, opts);
+        if (!resp.ok) { self.postMessage({ id, result: fallback }); return; }
+        const blob = await resp.blob();
+        const bitmap = await createImageBitmap(blob, { resizeWidth: S, resizeHeight: S, resizeQuality: 'low' });
+        const oc = new OffscreenCanvas(S, S);
+        const ctx = oc.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, S, S);
+        bitmap.close();
+        const d = ctx.getImageData(0, 0, S, S).data;
+        let minX = S, maxX = -1, minY = S, maxY = -1;
+        for (let py = 0; py < S; py++) {
+            for (let px = 0; px < S; px++) {
+                if (d[(py * S + px) * 4 + 3] > 20) {
+                    if (px < minX) minX = px;
+                    if (px > maxX) maxX = px;
+                    if (py < minY) minY = py;
+                    if (py > maxY) maxY = py;
+                }
+            }
+        }
+        if (maxX < 0) { self.postMessage({ id, result: fallback }); return; }
+        self.postMessage({ id, result: {
+            left:   Math.round(minX * scale),
+            right:  Math.round((S - 1 - maxX) * scale),
+            top:    Math.round(minY * scale),
+            bottom: Math.round((S - 1 - maxY) * scale)
+        }});
+    } catch (_) {
+        self.postMessage({ id, result: fallback });
+    }
+};`;
+            const worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+            let seq = 0;
+            const pending = new Map();
+            worker.onmessage = ({ data: { id, result } }) => {
+                const cb = pending.get(id);
+                if (cb) { pending.delete(id); cb(result); }
+            };
+            return { post: (url, size) => new Promise(resolve => { pending.set(++seq, resolve); worker.postMessage({ id: seq, url, size }); }) };
+        })();
+
         function analyzeImageTrim(imageUrl, size) {
             const cacheKey = `${imageUrl}:${size}`;
-            if (imageAnalysisCache.has(cacheKey)) {
-                return Promise.resolve(imageAnalysisCache.get(cacheKey));
-            }
-            const defaultPx = Math.floor(size * 0.12);
-            const fallback = { left: defaultPx, right: defaultPx, top: defaultPx, bottom: defaultPx };
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = size;
-                    canvas.height = size;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, size, size);
-                    try {
-                        const d = ctx.getImageData(0, 0, size, size).data;
-                        let minX = size, maxX = -1, minY = size, maxY = -1;
-                        for (let py = 0; py < size; py++) {
-                            for (let px = 0; px < size; px++) {
-                                if (d[(py * size + px) * 4 + 3] > 20) {
-                                    if (px < minX) minX = px;
-                                    if (px > maxX) maxX = px;
-                                    if (py < minY) minY = py;
-                                    if (py > maxY) maxY = py;
-                                }
-                            }
-                        }
-                        const result = maxX < 0 ? fallback : {
-                            left:   minX,
-                            right:  size - 1 - maxX,
-                            top:    minY,
-                            bottom: size - 1 - maxY
-                        };
-                        imageAnalysisCache.set(cacheKey, result);
-                        resolve(result);
-                    } catch (e) {
-                        // CORS security error ?Euse fallback
-                        imageAnalysisCache.set(cacheKey, fallback);
-                        resolve(fallback);
-                    }
-                };
-                img.onerror = () => { imageAnalysisCache.set(cacheKey, fallback); resolve(fallback); };
-                img.src = imageUrl;
+            if (imageAnalysisCache.has(cacheKey)) return Promise.resolve(imageAnalysisCache.get(cacheKey));
+            return _trimWorker.post(imageUrl, size).then(result => {
+                imageAnalysisCache.set(cacheKey, result);
+                return result;
             });
         }
 
-        // Replay full history silently on (re)connect ?Erun physics at 10x speed until settled
+        // Replay full history silently on (re)connect — run physics at 10x speed until settled.
+        // Skipped when restoreFromPositions already ran (server sent a settled-state snapshot).
         socket.on('widgets:gift-jar:history', async (history) => {
             if (isSlave || !Array.isArray(history) || history.length === 0) return;
-            // Skip replay if the jar already has gifts -- reconnect case: live state is still valid.
             if (giftBodies.length > 0) return;
             const analyzed = await Promise.all(history.map(async (item) => {
                 const imageUrl = item.giftImage || FALLBACK_GIFT_IMAGE;
@@ -981,12 +1065,28 @@
                 const trim = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
                 return { imageUrl, diamonds, trim };
             }));
+            // Re-check: restoreFromPositions may have run while analyzeImageTrim was awaited.
+            if (restoredFromPositions) return;
             resetJar();
+            isReplayingHistory = true;
+            // リプレイ中は精度不要なので物理演算コストを下げる
             engine.timing.timeScale = 10;
+            engine.positionIterations = 4;
+            engine.velocityIterations = 3;
             analyzed.forEach(({ imageUrl, diamonds, trim }, i) => {
-                setTimeout(() => addGift(imageUrl, diamonds, true, trim), i * 30);
+                setTimeout(() => {
+                    if (restoredFromPositions) return;
+                    addGift(imageUrl, diamonds, true, trim);
+                }, i * 30);
             });
-            setTimeout(() => { engine.timing.timeScale = 1; }, analyzed.length * 30 + 1200);
+            setTimeout(() => {
+                if (restoredFromPositions) return;
+                engine.timing.timeScale = 1;
+                engine.positionIterations = 14;
+                engine.velocityIterations = 10;
+                isReplayingHistory = false;
+                allSleepingEmitted = false;
+            }, analyzed.length * 30 + 1200);
         });
 
         socket.on('widgets:gift-jar:notify', async (data) => {
@@ -1041,12 +1141,24 @@
         // Dirty flag: set true when physics moved something; rAF clears it after redraw.
         // Avoids clearRect+drawImage every frame when all bodies are sleeping.
         let dirty = false;
+        // True during history fast-replay: suppresses position broadcasts so slave overlays
+        // don't see a visual reset-and-refill every time the admin preview iframe reconnects.
+        let isReplayingHistory = false;
+        // True once restoreFromPositions succeeds: cancels any pending history replay timeouts.
+        let restoredFromPositions = false;
 
         socket.on('widgets:gift-jar:positions', (bodies) => {
-            if (!isSlave) return;
-            slaveState = bodies;
-            dirty = true;
-            for (const b of bodies) getCachedImage(b.src); // pre-warm cache
+            if (isSlave) {
+                slaveState = bodies;
+                dirty = true;
+                for (const b of bodies) getCachedImage(b.src); // pre-warm cache
+                return;
+            }
+            // Master: on initial connect the server sends the last settled snapshot.
+            // Restore bodies directly at those positions instead of doing a full physics replay.
+            if (Array.isArray(bodies) && bodies.length > 0) {
+                restoreFromPositions(bodies);
+            }
         });
 
         function drawBody(src, size, diamonds, x, y, a) {
