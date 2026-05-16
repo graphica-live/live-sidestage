@@ -2684,9 +2684,11 @@ function normalizeWidgetTapListSettings(value) {
     if (!source || typeof source !== 'object') source = {};
     const bgStyle = String(source.bgStyle || '').trim();
     const maxEntries = Number.parseInt(String(source.maxEntries ?? '20'), 10);
+    const rowGap = Number.parseInt(String(source.rowGap ?? '8'), 10);
     return {
         bgStyle: bgStyle === 'semi' ? 'semi' : 'transparent',
-        maxEntries: Number.isInteger(maxEntries) && maxEntries >= 1 ? Math.min(maxEntries, 100) : 20
+        maxEntries: Number.isInteger(maxEntries) && maxEntries >= 1 ? Math.min(maxEntries, 100) : 20,
+        rowGap: Number.isInteger(rowGap) && rowGap >= 0 ? Math.min(rowGap, 80) : 8
     };
 }
 

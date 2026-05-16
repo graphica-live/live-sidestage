@@ -1083,6 +1083,10 @@
                                 <label for="tap-list-max-entries">最大表示件数</label>
                                 <input id="tap-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
                             </div>
+                            <div class="field">
+                                <label for="tap-list-row-gap">ユーザー間の間隔 (px)</label>
+                                <input id="tap-list-row-gap" type="number" min="0" max="80" step="1" inputmode="numeric" placeholder="8">
+                            </div>
                         </div>
                     </div>
 
@@ -1304,6 +1308,7 @@
         const tapListPreviewFrame = document.getElementById('tap-list-preview-frame');
         const tapListBgStyleSelect = document.getElementById('tap-list-bg-style');
         const tapListMaxEntriesInput = document.getElementById('tap-list-max-entries');
+        const tapListRowGapInput = document.getElementById('tap-list-row-gap');
         const giftJarPreviewFrame = document.getElementById('gift-jar-preview-frame');
         const giftJarWallEditor = document.getElementById('gift-jar-wall-editor');
         const giftJarWallEditorNote = document.getElementById('gift-jar-wall-editor-note');
@@ -2529,6 +2534,7 @@
             if (!settings) return;
             tapListBgStyleSelect.value = settings.bgStyle === 'semi' ? 'semi' : 'transparent';
             tapListMaxEntriesInput.value = String(Number.parseInt(String(settings.maxEntries ?? 20), 10) || 20);
+            tapListRowGapInput.value = String(Number.parseInt(String(settings.rowGap ?? 8), 10));
             refreshTapListPreview();
         }
 
@@ -2552,7 +2558,8 @@
         function getDraftTapListSettings() {
             return {
                 bgStyle: tapListBgStyleSelect ? tapListBgStyleSelect.value : 'transparent',
-                maxEntries: Number.parseInt(tapListMaxEntriesInput ? tapListMaxEntriesInput.value : '20', 10) || 20
+                maxEntries: Number.parseInt(tapListMaxEntriesInput ? tapListMaxEntriesInput.value : '20', 10) || 20,
+                rowGap: Number.parseInt(tapListRowGapInput ? tapListRowGapInput.value : '8', 10)
             };
         }
 
@@ -3531,6 +3538,9 @@
             saveTapListSettingsImmediately().catch(() => {});
         });
         tapListMaxEntriesInput.addEventListener('change', () => {
+            saveTapListSettingsImmediately().catch(() => {});
+        });
+        tapListRowGapInput.addEventListener('change', () => {
             saveTapListSettingsImmediately().catch(() => {});
         });
         document.getElementById('open-gift-jar-overlay-button').addEventListener('click', () => {
