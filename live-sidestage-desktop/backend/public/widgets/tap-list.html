@@ -172,8 +172,9 @@
         function buildAvatarHtml(avatarUrl, nickname) {
             const letter = escapeHtml(String(nickname || '?').charAt(0).toUpperCase());
             if (avatarUrl) {
+                const proxied = `/api/proxy/avatar?url=${encodeURIComponent(avatarUrl)}`;
                 return `<div class="avatar-wrap">` +
-                    `<img src="${escapeAttr(avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" ` +
+                    `<img src="${escapeAttr(proxied)}" alt="" ` +
                     `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
                     `<span class="avatar-placeholder" style="display:none">${letter}</span>` +
                     `</div>`;

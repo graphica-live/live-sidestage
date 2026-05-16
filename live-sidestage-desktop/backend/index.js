@@ -6892,6 +6892,48 @@ app.post('/api/widgets/like-contribution/test-notification', (req, res) => {
     });
 });
 
+const ALLOWED_AVATAR_HOSTS = new Set([
+    'p16-sign.tiktokcdn-us.com',
+    'p19-sign.tiktokcdn-us.com',
+    'p16-sign-va.tiktokcdn.com',
+    'p58-sign-va.tiktokcdn.com',
+    'p16-sign-sg.tiktokcdn.com',
+    'p16-amd-va.tiktokcdn.com',
+    'p77-sign-va.tiktokcdn.com',
+    'p16-pu-sign-no.tiktokcdn.com',
+    'p16-sign-sg.ibyteimg.com',
+    'p16-va.tiktokcdn.com',
+    'p16-sg.tiktokcdn.com'
+]);
+
+app.get('/api/proxy/avatar', async (req, res) => {
+    const url = String(req.query.url || '');
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(url);
+    } catch {
+        return res.status(400).end();
+    }
+    if (parsedUrl.protocol !== 'https:' || !ALLOWED_AVATAR_HOSTS.has(parsedUrl.hostname)) {
+        return res.status(400).end();
+    }
+    try {
+        const upstream = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': '' },
+            signal: AbortSignal.timeout(6000)
+        });
+        if (!upstream.ok) return res.status(upstream.status).end();
+        const ct = upstream.headers.get('content-type') || 'image/jpeg';
+        if (!ct.startsWith('image/')) return res.status(400).end();
+        res.setHeader('Content-Type', ct);
+        res.setHeader('Cache-Control', 'public, max-age=600');
+        const buf = await upstream.arrayBuffer();
+        res.end(Buffer.from(buf));
+    } catch {
+        res.status(502).end();
+    }
+});
+
 app.get('/api/widgets/tap-list/config', (req, res) => {
     res.json(buildTapListPayload());
 });
