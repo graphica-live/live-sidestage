@@ -1045,9 +1045,48 @@
                     </div>
 
                     <div class="widget-preview">
-                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-label">サンプルプレビュー（Like貢献通知）</div>
                         <div class="widget-preview-frame like-contribution-preview">
                             <iframe id="like-contribution-preview-frame" title="Like貢献通知プレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+
+                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:16px 0;">
+
+                    <div class="card-head" style="margin-bottom:8px;">
+                        <div>
+                            <h3 style="font-size:15px;font-weight:700;margin:0;">タップ数一覧オーバーレイ</h3>
+                            <p class="subtext" style="margin-top:2px;">ユーザーごとのタップ数を多い順に表示するオーバーレイです。Like貢献通知と同じデータを使用します。</p>
+                        </div>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="tap-list-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-tap-list-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-tap-list-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="form-grid" style="margin-top:10px;">
+                        <div class="field">
+                            <label for="tap-list-bg-style">背景スタイル</label>
+                            <select id="tap-list-bg-style">
+                                <option value="transparent">透過（OBSクロマキー向け）</option>
+                                <option value="semi">半透過ブラック</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="tap-list-max-entries">最大表示件数</label>
+                            <input id="tap-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                        </div>
+                    </div>
+
+                    <div class="widget-preview" style="margin-top:12px;">
+                        <div class="widget-preview-label">サンプルプレビュー（タップ数一覧）</div>
+                        <div class="widget-preview-frame" style="height:200px;background:rgba(0,0,0,0.18);">
+                            <iframe id="tap-list-preview-frame" title="タップ数一覧プレビュー" loading="eager"></iframe>
                         </div>
                     </div>
                 </article>
@@ -1258,6 +1297,10 @@
         const contributorsPreviewFrame = document.getElementById('contributors-preview-frame');
         const topGiftPreviewFrame = document.getElementById('top-gift-preview-frame');
         const likeContributionPreviewFrame = document.getElementById('like-contribution-preview-frame');
+        const tapListUrl = document.getElementById('tap-list-url');
+        const tapListPreviewFrame = document.getElementById('tap-list-preview-frame');
+        const tapListBgStyleSelect = document.getElementById('tap-list-bg-style');
+        const tapListMaxEntriesInput = document.getElementById('tap-list-max-entries');
         const giftJarPreviewFrame = document.getElementById('gift-jar-preview-frame');
         const giftJarWallEditor = document.getElementById('gift-jar-wall-editor');
         const giftJarWallEditorNote = document.getElementById('gift-jar-wall-editor-note');
@@ -1337,7 +1380,9 @@
                 goalGiftsOverlayUrl: '',
                 goalGiftsLoaderUrl: '',
                 giftJarOverlayUrl: '',
-                giftJarLoaderUrl: ''
+                giftJarLoaderUrl: '',
+                tapListOverlayUrl: '',
+                tapListLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -1356,6 +1401,7 @@
             },
             topGiftSettings: null,
             likeContributionSettings: null,
+            tapListSettings: null,
             goalGiftItems: [],
             giftCatalog: [],
             giftCatalogByName: new Map()
@@ -1436,6 +1482,8 @@
         let topGiftAutosavePromise = null;
         let likeContributionAutosaveTimer = null;
         let likeContributionAutosavePromise = null;
+        let tapListAutosaveTimer = null;
+        let tapListAutosavePromise = null;
         let goalGiftAutosaveTimer = null;
         let goalGiftAutosavePromise = null;
         let pendingTopGiftSettings = null;
@@ -2474,6 +2522,65 @@
             refreshLikeContributionPreview();
         }
 
+        function applyTapListSettingsToForm(settings) {
+            if (!settings) return;
+            tapListBgStyleSelect.value = settings.bgStyle === 'semi' ? 'semi' : 'transparent';
+            tapListMaxEntriesInput.value = String(Number.parseInt(String(settings.maxEntries ?? 20), 10) || 20);
+            refreshTapListPreview();
+        }
+
+        function buildTapListPreviewUrl() {
+            const baseUrl = state.widgetUrls.tapListOverlayUrl || '/overlays/tap-list';
+            const bgStyle = tapListBgStyleSelect ? tapListBgStyleSelect.value : 'semi';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('bg', bgStyle);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?bg=${bgStyle}&preview=1`;
+            }
+        }
+
+        function refreshTapListPreview(options = {}) {
+            updatePreviewFrame(tapListPreviewFrame, buildTapListPreviewUrl(), options);
+        }
+
+        function getDraftTapListSettings() {
+            return {
+                bgStyle: tapListBgStyleSelect ? tapListBgStyleSelect.value : 'transparent',
+                maxEntries: Number.parseInt(tapListMaxEntriesInput ? tapListMaxEntriesInput.value : '20', 10) || 20
+            };
+        }
+
+        async function saveTapListSettings() {
+            setStatus(saveStatus, '設定状態: タップ一覧を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/tap-list', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTapListSettings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'タップ一覧の保存に失敗しました。');
+                state.tapListSettings = payload.settings || state.tapListSettings;
+                applyTapListSettingsToForm(state.tapListSettings);
+                refreshTapListPreview({ forceReload: true });
+                setStatus(saveStatus, '設定状態: タップ一覧を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function saveTapListSettingsImmediately() {
+            if (tapListAutosaveTimer) {
+                window.clearTimeout(tapListAutosaveTimer);
+                tapListAutosaveTimer = null;
+            }
+            tapListAutosavePromise = saveTapListSettings();
+            return tapListAutosavePromise;
+        }
+
         function getDraftTopGiftSettings() {
             return {
                 title: titleInput.value,
@@ -2722,7 +2829,7 @@
         }
 
         function renderGoalGiftRows() {
-            if (goalGiftList.contains(document.activeElement)) {
+            if (goalGiftList.contains(document.activeElement) || (typeof goalRowSettingsModal !== 'undefined' && !goalRowSettingsModal.hidden)) {
                 pendingGoalGiftItems = Array.isArray(state.goalGiftItems) ? state.goalGiftItems : [];
                 return;
             }
@@ -3002,6 +3109,7 @@
             state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.sharedWidgetFeedback || payload.contributorsFeedback || payload.goalGiftFeedback);
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
+            state.tapListSettings = payload.tapListSettings || state.tapListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
             refreshContributorsOverlayControls();
@@ -3017,12 +3125,14 @@
             syncSharedFeedbackControls();
             topGiftUrl.textContent = state.widgetUrls.topGiftLoaderUrl || state.widgetUrls.topGiftOverlayUrl || '未取得';
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
+            tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
             todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
             setStatus(saveStatus, '設定状態: 準備完了', 'ok');
             applyTopGiftSettingsToForm(state.topGiftSettings);
             applyLikeContributionSettingsToForm(state.likeContributionSettings);
+            applyTapListSettingsToForm(state.tapListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();
             refreshTopGiftPreview();
@@ -3407,11 +3517,26 @@
         testLikeContributionButton.addEventListener('click', () => {
             testLikeContributionNotification().catch(() => {});
         });
+        document.getElementById('open-tap-list-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.tapListOverlayUrl || '/overlays/tap-list';
+            openWindow(url, 'tap-list-overlay-window', { width: 420, height: 560 });
+        });
+        document.getElementById('copy-tap-list-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '');
+        });
+        tapListBgStyleSelect.addEventListener('change', () => {
+            saveTapListSettingsImmediately().catch(() => {});
+        });
+        tapListMaxEntriesInput.addEventListener('change', () => {
+            saveTapListSettingsImmediately().catch(() => {});
+        });
         document.getElementById('open-gift-jar-overlay-button').addEventListener('click', () => {
-            openWindow(buildGiftJarSlaveUrl(), 'gift-jar-overlay-window', { width: 700, height: 560 });
+            const url = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
+            openWindow(url, 'gift-jar-overlay-window', { width: 700, height: 560 });
         });
         document.getElementById('copy-gift-jar-url-button').addEventListener('click', async () => {
-            await copyText(state.widgetUrls.giftJarLoaderUrl || buildGiftJarSlaveFullUrl());
+            const url = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
+            await copyText(url);
         });
         document.getElementById('test-gift-jar-single-button').addEventListener('click', () => {
             fetch('/api/widgets/gift-jar/test-single', { method: 'POST' }).catch(() => {});
@@ -3705,6 +3830,7 @@
         }
 
         function closeGoalRowSettingsModal() {
+            syncGoalRowModalToRow();
             goalRowSettingsModal.hidden = true;
             document.body.style.overflow = '';
             _activeGoalRow = null;

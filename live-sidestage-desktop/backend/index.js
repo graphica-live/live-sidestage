@@ -116,6 +116,8 @@ const WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY = 'widget_goal_gift_like_totals';
 const WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY = 'widget_goal_gift_like_unique_seen';
 const WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY = 'widget_goal_gift_follow_state';
 const WIDGET_LIKE_CONTRIBUTION_USER_TOTALS_STATE_KEY = 'widget_like_contribution_user_totals';
+const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribution_user_nicknames';
+const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
 const DEFAULT_GOAL_COUNT = 10;
@@ -1283,7 +1285,9 @@ function buildWidgetUrls(req) {
         goalGiftsOverlayUrl: `${origin}/overlays/goal-gifts`,
         goalGiftsLoaderUrl: `${loaderOrigin}/overlays/goal-gifts`,
         giftJarOverlayUrl: `${origin}/overlays/gift-jar`,
-        giftJarLoaderUrl: `${loaderOrigin}/overlays/gift-jar?slave=1`
+        giftJarLoaderUrl: `${loaderOrigin}/overlays/gift-jar?slave=1`,
+        tapListOverlayUrl: `${origin}/overlays/tap-list`,
+        tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`
     };
 }
 
@@ -1453,6 +1457,18 @@ app.get(['/overlays/like-contribution', '/overlays/widgets/like-contribution'], 
 
 app.get(['/overlays/like-contribution/index.html', '/overlays/widgets/like-contribution/index.html'], (req, res) => {
     return res.redirect('/overlays/like-contribution');
+});
+
+app.get(['/overlays/tap-list', '/overlays/widgets/tap-list'], (req, res) => {
+    if (!hasConfiguredBroadcasterId()) {
+        return res.redirect('/setup');
+    }
+
+    return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'tap-list.html'));
+});
+
+app.get(['/overlays/tap-list/index.html', '/overlays/widgets/tap-list/index.html'], (req, res) => {
+    return res.redirect('/overlays/tap-list');
 });
 
 app.get(['/overlays/goal-gifts', '/overlays/widgets/goal-gifts'], (req, res) => {
@@ -2619,6 +2635,73 @@ function setLikeContributionUserTotalsState(value) {
 
     setScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_TOTALS_STATE_KEY, JSON.stringify(pruned));
     return pruned;
+}
+
+function getLikeContributionUserNicknames() {
+    let source = getScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY);
+    if (typeof source === 'string') {
+        try { source = JSON.parse(source); } catch { source = {}; }
+    }
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+    const result = {};
+    for (const [uid, nick] of Object.entries(source)) {
+        if (typeof uid === 'string' && uid && typeof nick === 'string' && nick) {
+            result[uid] = nick;
+        }
+    }
+    return result;
+}
+
+function setLikeContributionUserNickname(uniqueId, nickname) {
+    if (!uniqueId || !nickname) return;
+    const current = getLikeContributionUserNicknames();
+    current[uniqueId] = nickname;
+    setScopedStateValue(WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY, JSON.stringify(current));
+}
+
+function normalizeWidgetTapListSettings(value) {
+    let source = value;
+    if (typeof source === 'string') {
+        try { source = JSON.parse(source); } catch { source = null; }
+    }
+    if (!source || typeof source !== 'object') source = {};
+    const bgStyle = String(source.bgStyle || '').trim();
+    const maxEntries = Number.parseInt(String(source.maxEntries ?? '20'), 10);
+    return {
+        bgStyle: bgStyle === 'semi' ? 'semi' : 'transparent',
+        maxEntries: Number.isInteger(maxEntries) && maxEntries >= 1 ? Math.min(maxEntries, 100) : 20
+    };
+}
+
+function getWidgetTapListSettings() {
+    return normalizeWidgetTapListSettings(getScopedStateValue(WIDGET_TAP_LIST_SETTINGS_STATE_KEY));
+}
+
+function setWidgetTapListSettings(settings) {
+    const normalized = normalizeWidgetTapListSettings(settings);
+    setScopedStateValue(WIDGET_TAP_LIST_SETTINGS_STATE_KEY, JSON.stringify(normalized));
+    return normalized;
+}
+
+function buildTapListEntries(maxEntries = 20) {
+    const dayKey = getTodayDayKey();
+    const userTotalsState = getLikeContributionUserTotalsState();
+    const todayMap = userTotalsState[dayKey] || {};
+    const nicknames = getLikeContributionUserNicknames();
+    return Object.entries(todayMap)
+        .map(([uniqueId, tapCount]) => ({ uniqueId, nickname: nicknames[uniqueId] || uniqueId, tapCount: Number(tapCount) || 0 }))
+        .filter((e) => e.tapCount > 0)
+        .sort((a, b) => b.tapCount - a.tapCount)
+        .slice(0, maxEntries)
+        .map((e, i) => ({ rank: i + 1, uniqueId: e.uniqueId, nickname: e.nickname, tapCount: e.tapCount }));
+}
+
+function buildTapListPayload() {
+    const settings = getWidgetTapListSettings();
+    return {
+        settings,
+        entries: buildTapListEntries(settings.maxEntries)
+    };
 }
 
 function normalizeGoalGiftFollowState(value) {
@@ -5484,6 +5567,7 @@ function buildLikeContributionNotifications(commentEvent, data, settings = getWi
     // 更新して永続化
     const nextState = { ...userTotalsState, [dayKey]: { ...todayMap, [uniqueId]: userTotal } };
     setLikeContributionUserTotalsState(nextState);
+    setLikeContributionUserNickname(uniqueId, displayName);
 
     if (userTotal <= 0) {
         return [];
@@ -6712,6 +6796,7 @@ app.get('/api/widgets/config', (req, res) => {
         sharedWidgetAppearance,
         topGiftSettings: getWidgetTopGiftSettings(),
         likeContributionSettings: getWidgetLikeContributionSettings(),
+        tapListSettings: getWidgetTapListSettings(),
         topGiftSnapshot: buildTopGiftSnapshot(getTodayDayKey()),
         goalGiftFontKey: sharedWidgetAppearance.fontKey,
         goalGiftTextStyleKey: sharedWidgetAppearance.textStyleKey,
@@ -6767,6 +6852,19 @@ app.post('/api/widgets/like-contribution/test-notification', (req, res) => {
         ok: true,
         ...payload
     });
+});
+
+app.get('/api/widgets/tap-list/config', (req, res) => {
+    res.json(buildTapListPayload());
+});
+
+app.patch('/api/widgets/tap-list', (req, res) => {
+    const settings = setWidgetTapListSettings(req.body || {});
+    const payload = buildTapListPayload();
+
+    io.emit('widgets:tap-list:updated', payload);
+
+    res.json({ ok: true, settings, ...payload });
 });
 
 app.get('/api/widgets/gift-jar/catalog', (req, res) => {
@@ -7808,6 +7906,8 @@ function ensureTikTokConnection() {
                 notifications.forEach((notification) => {
                     io.emit('widgets:like-contribution:notify', buildLikeContributionWidgetPayload(notification));
                 });
+
+                io.emit('widgets:tap-list:updated', buildTapListPayload());
             }
 
             if (goalGiftCountsChanged) {
