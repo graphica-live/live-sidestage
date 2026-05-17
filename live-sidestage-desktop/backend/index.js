@@ -355,6 +355,12 @@ const DB_STATIC_DIRECTORY = path.join(PUBLIC_DIRECTORY, 'db');
 const EFFECT_MEDIA_ROOT_DIRECTORY = path.join(USER_DATA_DIRECTORY, 'effects-media');
 const EFFECT_VIDEO_ROOT_DIRECTORY = path.join(EFFECT_MEDIA_ROOT_DIRECTORY, 'video');
 const EFFECT_SOUND_ROOT_DIRECTORY = path.join(EFFECT_MEDIA_ROOT_DIRECTORY, 'sound');
+// 旧バージョン互換: exe隣接ディレクトリに保存されていたファイルを引き続き配信する
+const LEGACY_EFFECT_BASE_DIRECTORY = (IS_ELECTRON && !process.defaultApp && process.execPath)
+    ? path.dirname(process.execPath)
+    : APP_ROOT;
+const LEGACY_VIDEO_ROOT_DIRECTORY = path.join(LEGACY_EFFECT_BASE_DIRECTORY, 'video');
+const LEGACY_SOUND_ROOT_DIRECTORY = path.join(LEGACY_EFFECT_BASE_DIRECTORY, 'sound');
 
 let currentBroadcasterId = null;
 let tiktokLiveConnection = null;
@@ -1383,8 +1389,18 @@ app.use('/video', express.static(EFFECT_VIDEO_ROOT_DIRECTORY, {
         res.setHeader('Cache-Control', 'no-store');
     }
 }));
+app.use('/video', express.static(LEGACY_VIDEO_ROOT_DIRECTORY, {
+    setHeaders(res) {
+        res.setHeader('Cache-Control', 'no-store');
+    }
+}));
 
 app.use('/sound', express.static(EFFECT_SOUND_ROOT_DIRECTORY, {
+    setHeaders(res) {
+        res.setHeader('Cache-Control', 'no-store');
+    }
+}));
+app.use('/sound', express.static(LEGACY_SOUND_ROOT_DIRECTORY, {
     setHeaders(res) {
         res.setHeader('Cache-Control', 'no-store');
     }
