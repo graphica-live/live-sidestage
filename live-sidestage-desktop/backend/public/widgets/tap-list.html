@@ -42,7 +42,6 @@
             margin-top: var(--row-gap, 8px);
         }
 
-        /* 透過モード: カード行は背景なし（文字のみ） */
         .row {
             display: flex;
             align-items: center;
@@ -54,13 +53,11 @@
             animation: rowIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
-        /* 半透過モード: カード行に半透明黒背景 */
         body.bg-semi .row {
             background: rgba(0, 0, 0, 0.52);
             border-color: rgba(255, 255, 255, 0.10);
         }
 
-        /* プロフィール画像 */
         .avatar-wrap {
             flex-shrink: 0;
             width: var(--avatar-size);
@@ -94,7 +91,6 @@
             line-height: 1;
         }
 
-        /* テキスト列（名前 + タップ数の2行） */
         .info {
             display: flex;
             flex-direction: column;
@@ -123,20 +119,59 @@
             line-height: 1.15;
         }
 
-        /* SVGハート（絵文字非使用） */
         .heart-icon {
             flex-shrink: 0;
             width: 20px;
             height: 20px;
         }
 
+        /* カウント用ラッパー: 退場スパンを絶対配置するための基点 */
+        .count-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
         .count {
+            display: inline-block;
             font-size: 24px;
             font-weight: 900;
             color: var(--count-color);
             -webkit-text-stroke: 5px var(--stroke);
             paint-order: stroke fill;
             text-shadow: 0 5px 16px var(--shadow);
+            line-height: 1.15;
+        }
+
+        /* 退場中の古い値 */
+        .count-out {
+            position: absolute;
+            top: 0;
+            left: 0;
+            white-space: nowrap;
+            pointer-events: none;
+            animation: countExit 260ms ease-in forwards;
+        }
+
+        /* 入場アニメーション（新しい値に付与） */
+        .count-enter {
+            animation: countEnter 260ms ease-out forwards;
+        }
+
+        @keyframes countExit {
+            from { transform: translateY(0);     opacity: 1; }
+            to   { transform: translateY(-130%); opacity: 0; }
+        }
+
+        @keyframes countEnter {
+            from { transform: translateY(130%); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+        }
+
+        @keyframes heartPulse {
+            0%   { transform: scale(1); }
+            35%  { transform: scale(1.45); }
+            65%  { transform: scale(0.90); }
+            100% { transform: scale(1); }
         }
 
         .empty {
@@ -169,9 +204,12 @@
         const listEl = document.getElementById('list');
 
         const bgParam = searchParams.get('bg');
-        if (bgParam === 'semi') {
-            document.body.classList.add('bg-semi');
-        }
+        if (bgParam === 'semi') document.body.classList.add('bg-semi');
+
+        // ソケットから受け取った最新データ
+        let targetEntries = [];
+        // 表示中行の管理: uniqueId -> { rowEl, countEl, heartEl, displayedCount }
+        const rowMap = new Map();
 
         function applyBgStyle(bgStyle) {
             const effective = bgParam !== null ? bgParam : bgStyle;
@@ -181,6 +219,14 @@
         function applyRowGap(rowGap) {
             const gap = typeof rowGap === 'number' ? rowGap : 8;
             document.documentElement.style.setProperty('--row-gap', gap + 'px');
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function buildAvatarHtml(avatarUrl, nickname) {
@@ -196,33 +242,92 @@
             return `<div class="avatar-wrap"><span class="avatar-placeholder">${letter}</span></div>`;
         }
 
-        function render(entries) {
+        function createRow(e) {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'row';
+            rowEl.innerHTML =
+                buildAvatarHtml(e.avatarUrl, e.nickname) +
+                `<div class="info">` +
+                    `<span class="name">${escapeHtml(e.nickname)}</span>` +
+                    `<div class="count-row">` +
+                        HEART_SVG +
+                        `<span class="count-wrap"><span class="count">${e.tapCount.toLocaleString()}</span></span>` +
+                    `</div>` +
+                `</div>`;
+            return rowEl;
+        }
+
+        function pulseHeart(heartEl) {
+            heartEl.style.animation = 'none';
+            requestAnimationFrame(() => {
+                heartEl.style.animation = 'heartPulse 380ms ease-out';
+            });
+        }
+
+        function animateCount(info, newVal) {
+            const { countEl, heartEl } = info;
+
+            pulseHeart(heartEl);
+
+            const wrap = countEl.parentElement;
+
+            // 古い値を絶対配置スパンにコピーして退場させる
+            const outEl = document.createElement('span');
+            outEl.className = 'count count-out';
+            outEl.textContent = countEl.textContent;
+            wrap.appendChild(outEl);
+            outEl.addEventListener('animationend', () => outEl.remove(), { once: true });
+
+            // 新しい値でスライドイン
+            countEl.textContent = newVal.toLocaleString();
+            countEl.classList.add('count-enter');
+            countEl.addEventListener('animationend', () => countEl.classList.remove('count-enter'), { once: true });
+        }
+
+        function reconcile(entries) {
             if (!Array.isArray(entries) || entries.length === 0) {
                 listEl.innerHTML = '<div class="empty">データなし</div>';
+                rowMap.clear();
                 return;
             }
 
-            listEl.innerHTML = entries.map((e) => {
-                return `<div class="row">
-                    ${buildAvatarHtml(e.avatarUrl, e.nickname)}
-                    <div class="info">
-                        <span class="name">${escapeHtml(e.nickname)}</span>
-                        <div class="count-row">
-                            ${HEART_SVG}
-                            <span class="count">${e.tapCount.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>`;
-            }).join('');
+            const emptyEl = listEl.querySelector('.empty');
+            if (emptyEl) emptyEl.remove();
+
+            const newIds = new Set(entries.map((e) => e.uniqueId));
+
+            // 不要になった行を削除
+            for (const [id, info] of rowMap) {
+                if (!newIds.has(id)) {
+                    info.rowEl.remove();
+                    rowMap.delete(id);
+                }
+            }
+
+            // 順番通りに挿入・更新（appendChildで既存行の並び替えも兼ねる）
+            entries.forEach((e) => {
+                if (rowMap.has(e.uniqueId)) {
+                    const info = rowMap.get(e.uniqueId);
+                    if (info.displayedCount !== e.tapCount) {
+                        animateCount(info, e.tapCount);
+                        info.displayedCount = e.tapCount;
+                    }
+                    listEl.appendChild(info.rowEl);
+                } else {
+                    const rowEl = createRow(e);
+                    listEl.appendChild(rowEl);
+                    rowMap.set(e.uniqueId, {
+                        rowEl,
+                        countEl: rowEl.querySelector('.count'),
+                        heartEl: rowEl.querySelector('.heart-icon'),
+                        displayedCount: e.tapCount,
+                    });
+                }
+            });
         }
 
-        function escapeHtml(s) {
-            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        function escapeAttr(s) {
-            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
+        // 表示更新を1秒固定にする
+        setInterval(() => reconcile(targetEntries), 1000);
 
         function applyPayload(payload) {
             if (!payload) return;
@@ -230,13 +335,18 @@
                 applyBgStyle(payload.settings.bgStyle);
                 applyRowGap(payload.settings.rowGap);
             }
-            render(payload.entries || []);
+            if (Array.isArray(payload.entries)) {
+                targetEntries = payload.entries;
+            }
         }
 
         socket.on('connect', () => {
             fetch('/api/widgets/tap-list/config')
                 .then((r) => r.json())
-                .then(applyPayload)
+                .then((p) => {
+                    applyPayload(p);
+                    reconcile(targetEntries);
+                })
                 .catch(() => {});
         });
 
