@@ -45,13 +45,6 @@ function firstDefinedString(values) {
     return null;
 }
 
-function resolveEffectAssetBaseDirectory() {
-    if (IS_ELECTRON && !process.defaultApp && typeof process.execPath === 'string' && process.execPath.trim()) {
-        return path.dirname(process.execPath);
-    }
-
-    return APP_ROOT;
-}
 
 function extractAuthenticatedBroadcasterId(accountInfo) {
     const data = accountInfo?.data || accountInfo || {};
@@ -359,10 +352,9 @@ const AUTO_OPEN_BROWSER = !IS_ELECTRON && normalizeBooleanEnv(process.env.AUTO_O
 const APP_START_PATH = normalizeStartPath(process.env.APP_START_PATH);
 const PUBLIC_DIRECTORY = path.join(BACKEND_ROOT, 'public');
 const DB_STATIC_DIRECTORY = path.join(PUBLIC_DIRECTORY, 'db');
-const EFFECT_ASSET_BASE_DIRECTORY = resolveEffectAssetBaseDirectory();
-const EFFECT_VIDEO_ROOT_DIRECTORY = path.join(EFFECT_ASSET_BASE_DIRECTORY, 'video');
-const EFFECT_SOUND_ROOT_DIRECTORY = path.join(EFFECT_ASSET_BASE_DIRECTORY, 'sound');
 const EFFECT_MEDIA_ROOT_DIRECTORY = path.join(USER_DATA_DIRECTORY, 'effects-media');
+const EFFECT_VIDEO_ROOT_DIRECTORY = path.join(EFFECT_MEDIA_ROOT_DIRECTORY, 'video');
+const EFFECT_SOUND_ROOT_DIRECTORY = path.join(EFFECT_MEDIA_ROOT_DIRECTORY, 'sound');
 
 let currentBroadcasterId = null;
 let tiktokLiveConnection = null;
