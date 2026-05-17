@@ -4472,7 +4472,11 @@ function extractCommentFeedActor(data) {
         data?.profilePictureUrl,
         data?.user?.profilePictureUrl,
         data?.fromUser?.profilePictureUrl,
-        Array.isArray(data?.avatarThumb?.urlList) ? data.avatarThumb.urlList[0] : ''
+        Array.isArray(data?.user?.profilePicture?.url) ? data.user.profilePicture.url[0] : '',
+        data?.user?.profilePicture?.mUri,
+        Array.isArray(data?.fromUser?.profilePicture?.url) ? data.fromUser.profilePicture.url[0] : '',
+        Array.isArray(data?.avatarThumb?.urlList) ? data.avatarThumb.urlList[0] : '',
+        Array.isArray(data?.avatarThumb?.url) ? data.avatarThumb.url[0] : ''
     ]) || '';
 
     return {
@@ -6902,19 +6906,8 @@ app.post('/api/widgets/like-contribution/test-notification', (req, res) => {
     });
 });
 
-const ALLOWED_AVATAR_HOSTS = new Set([
-    'p16-sign.tiktokcdn-us.com',
-    'p19-sign.tiktokcdn-us.com',
-    'p16-sign-va.tiktokcdn.com',
-    'p58-sign-va.tiktokcdn.com',
-    'p16-sign-sg.tiktokcdn.com',
-    'p16-amd-va.tiktokcdn.com',
-    'p77-sign-va.tiktokcdn.com',
-    'p16-pu-sign-no.tiktokcdn.com',
-    'p16-sign-sg.ibyteimg.com',
-    'p16-va.tiktokcdn.com',
-    'p16-sg.tiktokcdn.com'
-]);
+// p16-sign-va.tiktokcdn.com, p19-common-sign.tiktokcdn.com など各種 TikTok CDN ホストを許可
+const ALLOWED_AVATAR_HOST_RE = /^p\d+(?:-[a-z0-9]+)*\.(?:tiktokcdn(?:-us)?\.com|ibyteimg\.com)$/;
 
 app.get('/api/proxy/avatar', async (req, res) => {
     const url = String(req.query.url || '');
@@ -6924,7 +6917,7 @@ app.get('/api/proxy/avatar', async (req, res) => {
     } catch {
         return res.status(400).end();
     }
-    if (parsedUrl.protocol !== 'https:' || !ALLOWED_AVATAR_HOSTS.has(parsedUrl.hostname)) {
+    if (parsedUrl.protocol !== 'https:' || !ALLOWED_AVATAR_HOST_RE.test(parsedUrl.hostname)) {
         return res.status(400).end();
     }
     try {

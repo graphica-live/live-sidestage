@@ -297,14 +297,16 @@
             const newIds = new Set(entries.map((e) => e.uniqueId));
 
             // 不要になった行を削除
+            let structureChanged = false;
             for (const [id, info] of rowMap) {
                 if (!newIds.has(id)) {
                     info.rowEl.remove();
                     rowMap.delete(id);
+                    structureChanged = true;
                 }
             }
 
-            // 順番通りに挿入・更新（appendChildで既存行の並び替えも兼ねる）
+            // カウント更新と新規行の作成
             entries.forEach((e) => {
                 if (rowMap.has(e.uniqueId)) {
                     const info = rowMap.get(e.uniqueId);
@@ -312,18 +314,37 @@
                         animateCount(info, e.tapCount);
                         info.displayedCount = e.tapCount;
                     }
-                    listEl.appendChild(info.rowEl);
                 } else {
                     const rowEl = createRow(e);
-                    listEl.appendChild(rowEl);
                     rowMap.set(e.uniqueId, {
                         rowEl,
                         countEl: rowEl.querySelector('.count'),
                         heartEl: rowEl.querySelector('.heart-icon'),
                         displayedCount: e.tapCount,
                     });
+                    structureChanged = true;
                 }
             });
+
+            // 新規行がなければ順序が変わったか確認
+            if (!structureChanged) {
+                const kids = listEl.children;
+                if (kids.length !== entries.length) {
+                    structureChanged = true;
+                } else {
+                    for (let i = 0; i < entries.length; i++) {
+                        if (kids[i] !== rowMap.get(entries[i].uniqueId)?.rowEl) {
+                            structureChanged = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 構造変化があった場合のみ DOM 並び替え
+            if (structureChanged) {
+                entries.forEach((e) => listEl.appendChild(rowMap.get(e.uniqueId).rowEl));
+            }
         }
 
         // 表示更新を1秒固定にする

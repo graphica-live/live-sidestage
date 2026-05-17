@@ -4,12 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog } = require('electron');
-const { autoUpdater } = require('electron-updater');
+let autoUpdater = null;
 
 const PORT = 38100;
-const APP_URL = `http://localhost:${PORT}/`;
+const LOADER_PORT = 38099;
+const APP_URL = `http://localhost:${LOADER_PORT}/`;
 const COMMENT_READ_ALOUD_SCREEN_URL = `http://localhost:${PORT}/overlays/effects/1?readAloudOnly=1`;
-const SETUP_URL = `http://localhost:${PORT}/setup`;
+const SETUP_URL = `http://localhost:${LOADER_PORT}/setup`;
 const VOICEVOX_API_BASE_URL = 'http://127.0.0.1:50021';
 const COEIROINK_API_BASE_URL = 'http://127.0.0.1:50032/v1';
 const DEFAULT_AUTO_UPDATE_URL = 'https://update.graphica-produce.com/tikeffect/win';
@@ -65,6 +66,17 @@ const VOICEVOX_PRODUCT_PATH_BY_SPEAKER = {
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
+// --loader-only モード: Windows スタートアップから起動されるローダーサーバー専用プロセス
+// このプロセスは TikEffect 本体とは独立して常時稼働し、ポート 38099 で待機する
+// シングルインスタンスロックを取得しないことで、本体プロセスの起動を妨げない
+if (process.argv.includes('--loader-only')) {
+    app.on('window-all-closed', () => {});
+    app.whenReady().then(() => {
+        require('../loader-server/index.js');
+    });
+    return; // CommonJS モジュールのトップレベル return: 以降の実行を停止
+}
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -83,16 +95,6 @@ function getVoiceVoxTermsUrl(speakerName) {
         : VOICEVOX_TERMS_FALLBACK_URL;
 }
 
-// --loader-only モード: Windows スタートアップから起動されるローダーサーバー専用プロセス
-// このプロセスは TikEffect 本体とは独立して常時稼働し、ポート 38099 で待機する
-if (process.argv.includes('--loader-only')) {
-    app.on('window-all-closed', () => {});
-    app.whenReady().then(() => {
-        require('../loader-server/index.js');
-    });
-    return; // CommonJS モジュールのトップレベル return: 以降の実行を停止
-}
-
 // index.js がブラウザ自動起動や process.exit を呼ぶのを抑制するフラグ
 process.env.ELECTRON_RUN = '1';
 process.env.ELECTRON_APP_PACKAGED = app.isPackaged ? '1' : '0';
@@ -103,7 +105,6 @@ const server = require('../backend/index.js');
 // loader-server（ポート 38099）が未起動の場合のみ起動
 {
     const net = require('net');
-    const LOADER_PORT = 38099;
     const probe = new net.Socket();
     probe.setTimeout(200);
     const startLoader = () => require('../loader-server/index.js');
@@ -200,6 +201,10 @@ function configureAutoUpdater() {
 
     if (hasScheduledAutoUpdateCheck) {
         return;
+    }
+
+    if (!autoUpdater) {
+        autoUpdater = require('electron-updater').autoUpdater;
     }
 
     const updateUrl = resolveAutoUpdateUrl();
@@ -754,6 +759,9 @@ if (typeof server.setCommentReadAloudAudioProvider === 'function') {
         const volume = Number.isFinite(Number(payload?.volume))
             ? Math.max(0, Math.min(100, Number(payload.volume)))
             : 100;
+        const speed = Number.isFinite(Number(payload?.speed))
+            ? Math.max(0.5, Math.min(2.0, Number(payload.speed)))
+            : 1.0;
 
         if (selectedVoice.provider === 'screen1') {
             return null;
@@ -779,6 +787,7 @@ if (typeof server.setCommentReadAloudAudioProvider === 'function') {
                 audioQuery.outputSamplingRate = 24000;
                 audioQuery.outputStereo = false;
                 audioQuery.volumeScale = volume / 100;
+                audioQuery.speedScale = speed;
             }
 
             const synthesisResponse = await fetch(
@@ -817,7 +826,7 @@ if (typeof server.setCommentReadAloudAudioProvider === 'function') {
                         speakerUuid: selectedVoice.speakerUuid,
                         styleId: selectedVoice.styleId,
                         text,
-                        speedScale: 1,
+                        speedScale: speed,
                         volumeScale: volume / 100,
                         pitchScale: 0,
                         intonationScale: 1,
@@ -917,11 +926,14 @@ app.on('before-quit', (event) => {
         autoUpdateCheckInterval = null;
     }
 
-    quitPromise = Promise.resolve()
-        .then(() => (typeof server.shutdownServer === 'function' ? server.shutdownServer() : null))
-        .catch((error) => {
-            console.error('❌ Failed to shutdown backend during app quit:', error);
-        })
+    const shutdownWithTimeout = Promise.race([
+        (typeof server.shutdownServer === 'function' ? server.shutdownServer() : Promise.resolve()),
+        new Promise((resolve) => setTimeout(resolve, 5000))
+    ]).catch((error) => {
+        console.error('❌ Failed to shutdown backend during app quit:', error);
+    });
+
+    quitPromise = shutdownWithTimeout
         .finally(() => {
             isFinalAppExit = true;
 
