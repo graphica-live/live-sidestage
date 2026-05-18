@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>プッシュ＆プル</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            background: transparent;
+            overflow: hidden;
+            font-family: "M PLUS Rounded 1c", sans-serif;
+        }
+
+        .widget {
+            display: flex;
+            align-items: center;
+            padding: 14px 20px;
+            background: rgba(10, 12, 20, 0.80);
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            backdrop-filter: blur(12px);
+            width: max-content;
+            min-width: 640px;
+        }
+
+        .side {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 112px;
+            gap: 2px;
+            flex-shrink: 0;
+        }
+
+        .side-label {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .side-points {
+            font-size: 38px;
+            font-weight: 900;
+            line-height: 1;
+            transition: transform 0.15s ease;
+        }
+
+        .push-side .side-label { color: #fca5a5; }
+        .push-side .side-points { color: #f87171; text-shadow: 0 0 20px rgba(248, 113, 113, 0.55); }
+
+        .pull-side .side-label { color: #93c5fd; }
+        .pull-side .side-points { color: #60a5fa; text-shadow: 0 0 20px rgba(96, 165, 250, 0.55); }
+
+        .meter-wrap {
+            flex: 1;
+            margin: 0 16px;
+        }
+
+        .meter-track {
+            height: 44px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .meter-fill-push {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: linear-gradient(to right, #991b1b, #ef4444);
+            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .meter-fill-pull {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            background: linear-gradient(to left, #1d4ed8, #60a5fa);
+            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .meter-center-line {
+            position: absolute;
+            left: 50%;
+            top: 8%;
+            height: 84%;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.28);
+            transform: translateX(-50%);
+            z-index: 2;
+            border-radius: 1px;
+        }
+
+        @keyframes pulse-push {
+            0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.55); }
+            50%  { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0.18); }
+            100% { box-shadow: none; }
+        }
+
+        @keyframes pulse-pull {
+            0%   { box-shadow: 0 0 0 0   rgba(96, 165, 250, 0.55); }
+            50%  { box-shadow: 0 0 0 10px rgba(96, 165, 250, 0.18); }
+            100% { box-shadow: none; }
+        }
+
+        .meter-track.pulse-push { animation: pulse-push 0.65s ease-out; }
+        .meter-track.pulse-pull { animation: pulse-pull 0.65s ease-out; }
+
+        @keyframes points-pop {
+            0%   { transform: scale(1); }
+            35%  { transform: scale(1.22); }
+            100% { transform: scale(1); }
+        }
+
+        .side-points.pop { animation: points-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+    </style>
+</head>
+<body>
+    <div class="widget">
+        <div class="side push-side">
+            <div class="side-label" id="push-label">プッシュ</div>
+            <div class="side-points" id="push-points">0</div>
+        </div>
+
+        <div class="meter-wrap">
+            <div class="meter-track" id="meter-track">
+                <div class="meter-fill-push" id="meter-push" style="width:50%"></div>
+                <div class="meter-fill-pull" id="meter-pull" style="width:50%"></div>
+                <div class="meter-center-line"></div>
+            </div>
+        </div>
+
+        <div class="side pull-side">
+            <div class="side-label" id="pull-label">プル</div>
+            <div class="side-points" id="pull-points">0</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const sampleMode = searchParams.get('sample') === '1' || searchParams.get('preview') === '1';
+
+        const pushLabelEl = document.getElementById('push-label');
+        const pullLabelEl = document.getElementById('pull-label');
+        const pushPointsEl = document.getElementById('push-points');
+        const pullPointsEl = document.getElementById('pull-points');
+        const meterPush = document.getElementById('meter-push');
+        const meterPull = document.getElementById('meter-pull');
+        const meterTrack = document.getElementById('meter-track');
+
+        let lastPushPoints = -1;
+        let lastPullPoints = -1;
+
+        function updateMeter(data) {
+            const push = Math.max(0, Number(data.pushPoints) || 0);
+            const pull = Math.max(0, Number(data.pullPoints) || 0);
+            const total = push + pull;
+
+            const pushChanged = push !== lastPushPoints;
+            const pullChanged = pull !== lastPullPoints;
+
+            pushPointsEl.textContent = push.toLocaleString('ja-JP');
+            pullPointsEl.textContent = pull.toLocaleString('ja-JP');
+
+            if (typeof data.pushLabel === 'string' && data.pushLabel) pushLabelEl.textContent = data.pushLabel;
+            if (typeof data.pullLabel === 'string' && data.pullLabel) pullLabelEl.textContent = data.pullLabel;
+
+            const pushPct = total === 0 ? 50 : (push / total * 100);
+            const pullPct = total === 0 ? 50 : (pull / total * 100);
+
+            meterPush.style.width = pushPct.toFixed(3) + '%';
+            meterPull.style.width = pullPct.toFixed(3) + '%';
+
+            if (lastPushPoints >= 0 || lastPullPoints >= 0) {
+                if (pushChanged && push > lastPushPoints) {
+                    triggerPulse('push');
+                    triggerPop(pushPointsEl);
+                } else if (pullChanged && pull > lastPullPoints) {
+                    triggerPulse('pull');
+                    triggerPop(pullPointsEl);
+                }
+            }
+
+            lastPushPoints = push;
+            lastPullPoints = pull;
+        }
+
+        function triggerPulse(side) {
+            meterTrack.classList.remove('pulse-push', 'pulse-pull');
+            void meterTrack.offsetWidth;
+            meterTrack.classList.add('pulse-' + side);
+        }
+
+        function triggerPop(el) {
+            el.classList.remove('pop');
+            void el.offsetWidth;
+            el.classList.add('pop');
+        }
+
+        const sampleData = {
+            pushLabel: 'プッシュ',
+            pullLabel: 'プル',
+            pushPoints: 350,
+            pullPoints: 210,
+        };
+
+        socket.on('widgets:push-pull:snapshot', (data) => {
+            updateMeter(sampleMode ? sampleData : data);
+        });
+
+        socket.on('widgets:push-pull:updated', (data) => {
+            if (!sampleMode) updateMeter(data);
+        });
+
+        async function refresh() {
+            try {
+                const res = await fetch('/api/widgets/push-pull/snapshot');
+                const data = await res.json();
+                updateMeter(sampleMode ? sampleData : data);
+            } catch {}
+        }
+
+        let recoveryTimer = null;
+
+        socket.on('connect', () => {
+            if (recoveryTimer) { clearInterval(recoveryTimer); recoveryTimer = null; }
+            refresh();
+        });
+
+        socket.on('disconnect', () => {
+            if (!recoveryTimer) {
+                recoveryTimer = setInterval(() => {
+                    fetch('/api/widgets/push-pull/snapshot', { cache: 'no-store' })
+                        .then((r) => { if (r.ok) { clearInterval(recoveryTimer); recoveryTimer = null; window.location.reload(); } })
+                        .catch(() => {});
+                }, 2000);
+            }
+        });
+
+        refresh();
+    </script>
+</body>
+</html>

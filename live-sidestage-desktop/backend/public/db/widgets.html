@@ -785,6 +785,130 @@
                 font-size: 28px;
             }
         }
+
+        .push-pull-sides {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .push-pull-side-head {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 6px 0 8px;
+            border-bottom: 2px solid;
+        }
+
+        .push-pull-side-head.push { color: #dc2626; border-color: #dc2626; }
+        .push-pull-side-head.pull { color: #2563eb; border-color: #2563eb; }
+
+        .push-pull-gift-row {
+            display: grid;
+            grid-template-columns: 32px 1fr 80px;
+            gap: 6px;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(24,37,58,0.08);
+        }
+
+        .push-pull-gift-row:last-child { border-bottom: none; }
+
+        .push-pull-gift-img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+            border-radius: 6px;
+            background: rgba(24,37,58,0.06);
+            cursor: pointer;
+        }
+
+        .push-pull-gift-img.empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: var(--muted);
+            border: 1px dashed var(--line);
+        }
+
+        .push-pull-gift-name {
+            font-size: 13px;
+            padding: 5px 8px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #fff;
+            color: var(--text);
+            width: 100%;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .push-pull-gift-name.empty { color: var(--muted); }
+
+        .push-pull-points-input {
+            width: 80px;
+            padding: 5px 8px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #fff;
+            font: inherit;
+            font-size: 13px;
+            text-align: right;
+            appearance: textfield;
+        }
+
+        .push-pull-suggest-panel {
+            position: fixed;
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid rgba(24,37,58,0.15);
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(24,37,58,0.16);
+            z-index: 9999;
+            min-width: 240px;
+        }
+
+        .push-pull-suggest-panel[hidden] { display: none; }
+
+        .push-pull-suggest-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            font: inherit;
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        .push-pull-suggest-item:hover,
+        .push-pull-suggest-item.is-active {
+            background: rgba(24,37,58,0.06);
+        }
+
+        .push-pull-suggest-img {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            flex-shrink: 0;
+            border-radius: 5px;
+        }
+
+        .push-pull-suggest-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .push-pull-suggest-cost { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+        .widget-preview-frame.push-pull-preview {
+            height: 100px;
+        }
     </style>
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
@@ -1190,8 +1314,66 @@
                     </div>
                     </div><!-- /gift-jar-wall-settings-panel -->
                 </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>プッシュ＆プル</h2>
+                            <p class="subtext">ギフトが飛ぶたびに設定ポイント分だけメーターが傾きます。左（赤）がプッシュ、右（青）がプルです。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="push-pull-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="push-pull-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-push-pull-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-push-pull-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="push-pull-settings-panel" hidden>
+                        <div class="form-grid" style="margin-bottom:14px;">
+                            <div class="field">
+                                <label for="push-pull-push-label">プッシュ側ラベル</label>
+                                <input type="text" id="push-pull-push-label" maxlength="30" placeholder="プッシュ">
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-pull-label">プル側ラベル</label>
+                                <input type="text" id="push-pull-pull-label" maxlength="30" placeholder="プル">
+                            </div>
+                        </div>
+
+                        <div class="push-pull-sides">
+                            <div>
+                                <div class="push-pull-side-head push">プッシュギフト（最大5つ）</div>
+                                <div id="push-pull-push-gifts"></div>
+                            </div>
+                            <div>
+                                <div class="push-pull-side-head pull">プルギフト（最大5つ）</div>
+                                <div id="push-pull-pull-gifts"></div>
+                            </div>
+                        </div>
+                    </div><!-- /push-pull-settings-panel -->
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="push-pull-test-push-button">プッシュをテスト (+10pt)</button>
+                        <button type="button" class="ghost-button" id="push-pull-test-pull-button">プルをテスト (+10pt)</button>
+                        <button type="button" class="ghost-button" id="push-pull-reset-button">リセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame push-pull-preview">
+                            <iframe id="push-pull-preview-frame" title="プッシュ＆プルプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
             </div>
         </section>
+
+        <div class="push-pull-suggest-panel" id="push-pull-suggest-panel" hidden></div>
 
         <section class="panel">
             <div class="card-head">
@@ -1390,7 +1572,9 @@
                 giftJarOverlayUrl: '',
                 giftJarLoaderUrl: '',
                 tapListOverlayUrl: '',
-                tapListLoaderUrl: ''
+                tapListLoaderUrl: '',
+                pushPullOverlayUrl: '',
+                pushPullLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -3137,6 +3321,7 @@
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
+            pushPullUrl.textContent = state.widgetUrls.pushPullLoaderUrl || state.widgetUrls.pushPullOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
             todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
             setStatus(saveStatus, '設定状態: 準備完了', 'ok');
@@ -3148,6 +3333,7 @@
             refreshTopGiftPreview();
             refreshLikeContributionPreview();
             refreshGiftJarPreview();
+            refreshPushPullPreview();
         }
 
         async function refreshGoalGiftSnapshot() {
@@ -3865,6 +4051,254 @@
         goalRowModalNote.addEventListener('change', syncGoalRowModalToRow);
         goalRowModalCountUnique.addEventListener('change', syncGoalRowModalToRow);
         goalRowModalResetAtMidnight.addEventListener('change', syncGoalRowModalToRow);
+
+        // ---- Push & Pull widget ----
+        const pushPullUrl = document.getElementById('push-pull-url');
+        const pushPullPreviewFrame = document.getElementById('push-pull-preview-frame');
+        const pushPullPushLabel = document.getElementById('push-pull-push-label');
+        const pushPullPullLabel = document.getElementById('push-pull-pull-label');
+        const pushPullPushGiftsEl = document.getElementById('push-pull-push-gifts');
+        const pushPullPullGiftsEl = document.getElementById('push-pull-pull-gifts');
+        const pushPullSuggestPanel = document.getElementById('push-pull-suggest-panel');
+
+        const MAX_PUSH_PULL_GIFTS = 5;
+        let pushPullPushGifts = [];
+        let pushPullPullGifts = [];
+        let pushPullActivePicker = null; // {side, index, inputEl}
+        let pushPullSaveTimer = null;
+
+        function buildPushPullPreviewUrl() {
+            const base = state.widgetUrls.pushPullOverlayUrl || '/overlays/push-pull';
+            try {
+                const u = new URL(base, window.location.origin);
+                u.searchParams.set('sample', '1');
+                return u.pathname + u.search;
+            } catch {
+                return base + (base.includes('?') ? '&' : '?') + 'sample=1';
+            }
+        }
+
+        function refreshPushPullPreview(options = {}) {
+            updatePreviewFrame(pushPullPreviewFrame, buildPushPullPreviewUrl(), options);
+        }
+
+        function renderPushPullGiftRows(side) {
+            const container = side === 'push' ? pushPullPushGiftsEl : pushPullPullGiftsEl;
+            const gifts = side === 'push' ? pushPullPushGifts : pushPullPullGifts;
+            container.innerHTML = '';
+
+            for (let i = 0; i < MAX_PUSH_PULL_GIFTS; i++) {
+                const gift = gifts[i] || null;
+                const row = document.createElement('div');
+                row.className = 'push-pull-gift-row';
+                row.dataset.side = side;
+                row.dataset.index = String(i);
+
+                const imgEl = document.createElement('div');
+                imgEl.className = 'push-pull-gift-img' + (gift ? '' : ' empty');
+                imgEl.title = 'ギフトを選ぶ';
+                imgEl.tabIndex = 0;
+                imgEl.setAttribute('role', 'button');
+                if (gift && gift.giftImage) {
+                    const img = document.createElement('img');
+                    img.src = gift.giftImage;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:5px;';
+                    imgEl.appendChild(img);
+                } else {
+                    imgEl.textContent = '+';
+                }
+                imgEl.addEventListener('click', () => openPushPullPicker(side, i, nameEl));
+                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPushPullPicker(side, i, nameEl); } });
+
+                const nameEl = document.createElement('button');
+                nameEl.type = 'button';
+                nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
+                nameEl.textContent = gift ? gift.giftName : 'ギフトを選ぶ';
+                nameEl.title = 'ギフトを選ぶ';
+                nameEl.addEventListener('click', () => openPushPullPicker(side, i, nameEl));
+
+                const pointsEl = document.createElement('input');
+                pointsEl.type = 'number';
+                pointsEl.className = 'push-pull-points-input';
+                pointsEl.min = '1';
+                pointsEl.max = '99999';
+                pointsEl.placeholder = 'pt';
+                pointsEl.value = gift ? String(gift.points) : '';
+                pointsEl.disabled = !gift;
+                pointsEl.addEventListener('change', () => {
+                    const list = side === 'push' ? pushPullPushGifts : pushPullPullGifts;
+                    if (list[i]) {
+                        list[i].points = Math.max(1, Math.min(99999, parseInt(pointsEl.value, 10) || 1));
+                        schedulePushPullSave();
+                    }
+                });
+
+                row.appendChild(imgEl);
+                row.appendChild(nameEl);
+                row.appendChild(pointsEl);
+                container.appendChild(row);
+            }
+        }
+
+        function renderPushPullRows() {
+            renderPushPullGiftRows('push');
+            renderPushPullGiftRows('pull');
+        }
+
+        function openPushPullPicker(side, index, anchorEl) {
+            const catalog = state.giftCatalog || [];
+            if (catalog.length === 0) { alert('ギフトカタログを取得できませんでした。TikTokに接続してからお試しください。'); return; }
+
+            pushPullActivePicker = { side, index, anchorEl };
+            const gifts = side === 'push' ? pushPullPushGifts : pushPullPullGifts;
+            const current = gifts[index];
+
+            const filteredCatalog = catalog.filter((g) => g.imageUrl);
+
+            pushPullSuggestPanel.innerHTML = '';
+            for (const gift of filteredCatalog.slice(0, 80)) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'push-pull-suggest-item' + (current && current.giftId === String(gift.id || '') ? ' is-active' : '');
+                const img = document.createElement('img');
+                img.src = gift.imageUrl;
+                img.className = 'push-pull-suggest-img';
+                img.alt = '';
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'push-pull-suggest-name';
+                nameSpan.textContent = gift.name || '(名前なし)';
+                const costSpan = document.createElement('span');
+                costSpan.className = 'push-pull-suggest-cost';
+                costSpan.textContent = gift.diamondCount != null ? `${gift.diamondCount}コイン` : '';
+                btn.appendChild(img);
+                btn.appendChild(nameSpan);
+                btn.appendChild(costSpan);
+                btn.addEventListener('click', () => selectPushPullGift(gift));
+                pushPullSuggestPanel.appendChild(btn);
+            }
+
+            pushPullSuggestPanel.hidden = false;
+            positionPushPullSuggestPanel(anchorEl);
+        }
+
+        function positionPushPullSuggestPanel(anchorEl) {
+            const rect = anchorEl.getBoundingClientRect();
+            const panelH = Math.min(240, pushPullSuggestPanel.scrollHeight);
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            const top = spaceBelow >= panelH ? rect.bottom + 4 : rect.top - panelH - 4;
+            pushPullSuggestPanel.style.left = rect.left + 'px';
+            pushPullSuggestPanel.style.top = Math.max(4, top) + 'px';
+            pushPullSuggestPanel.style.width = Math.max(260, rect.width + 100) + 'px';
+        }
+
+        function selectPushPullGift(catalogGift) {
+            if (!pushPullActivePicker) return;
+            const { side, index } = pushPullActivePicker;
+            const list = side === 'push' ? pushPullPushGifts : pushPullPullGifts;
+            const existing = list[index];
+            list[index] = {
+                giftId: String(catalogGift.id || ''),
+                giftName: String(catalogGift.name || ''),
+                giftImage: String(catalogGift.imageUrl || ''),
+                points: existing ? existing.points : 10,
+            };
+            while (list.length < index + 1) list.push(null);
+            closePushPullSuggestPanel();
+            renderPushPullGiftRows(side);
+            schedulePushPullSave();
+        }
+
+        function closePushPullSuggestPanel() {
+            pushPullSuggestPanel.hidden = true;
+            pushPullActivePicker = null;
+        }
+
+        function schedulePushPullSave() {
+            if (pushPullSaveTimer) clearTimeout(pushPullSaveTimer);
+            pushPullSaveTimer = setTimeout(() => savePushPullConfig().catch(() => {}), 600);
+        }
+
+        async function savePushPullConfig() {
+            const pushLabel = pushPullPushLabel.value.trim() || 'プッシュ';
+            const pullLabel = pushPullPullLabel.value.trim() || 'プル';
+            const pushGifts = pushPullPushGifts.filter(Boolean).map((g) => ({ ...g }));
+            const pullGifts = pushPullPullGifts.filter(Boolean).map((g) => ({ ...g }));
+
+            const response = await fetch('/api/widgets/push-pull', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pushLabel, pullLabel, pushGifts, pullGifts })
+            });
+            if (!response.ok) throw new Error('プッシュ＆プル設定の保存に失敗しました');
+        }
+
+        async function loadPushPullConfig() {
+            const res = await fetch('/api/widgets/push-pull/snapshot');
+            const data = await res.json();
+            pushPullPushLabel.value = data.pushLabel || 'プッシュ';
+            pushPullPullLabel.value = data.pullLabel || 'プル';
+            pushPullPushGifts = Array.isArray(data.pushGifts) ? data.pushGifts.slice(0, MAX_PUSH_PULL_GIFTS) : [];
+            pushPullPullGifts = Array.isArray(data.pullGifts) ? data.pullGifts.slice(0, MAX_PUSH_PULL_GIFTS) : [];
+            renderPushPullRows();
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!pushPullSuggestPanel.hidden &&
+                !pushPullSuggestPanel.contains(e.target) &&
+                !e.target.closest('.push-pull-gift-name') &&
+                !e.target.closest('.push-pull-gift-img')) {
+                closePushPullSuggestPanel();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!pushPullSuggestPanel.hidden && pushPullActivePicker) {
+                positionPushPullSuggestPanel(pushPullActivePicker.anchorEl);
+            }
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!pushPullSuggestPanel.hidden && pushPullActivePicker) {
+                positionPushPullSuggestPanel(pushPullActivePicker.anchorEl);
+            }
+        }, true);
+
+        pushPullPushLabel.addEventListener('input', schedulePushPullSave);
+        pushPullPullLabel.addEventListener('input', schedulePushPullSave);
+
+        document.getElementById('open-push-pull-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.pushPullOverlayUrl || '/overlays/push-pull';
+            openWindow(url, 'push-pull-overlay-window', { width: 720, height: 120 });
+        });
+
+        document.getElementById('copy-push-pull-url-button').addEventListener('click', async () => {
+            const url = state.widgetUrls.pushPullLoaderUrl || state.widgetUrls.pushPullOverlayUrl || '/overlays/push-pull';
+            await copyText(url);
+        });
+
+        document.getElementById('push-pull-test-push-button').addEventListener('click', () => {
+            fetch('/api/widgets/push-pull/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: 'push', points: 10 })
+            }).catch(() => {});
+        });
+
+        document.getElementById('push-pull-test-pull-button').addEventListener('click', () => {
+            fetch('/api/widgets/push-pull/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: 'pull', points: 10 })
+            }).catch(() => {});
+        });
+
+        document.getElementById('push-pull-reset-button').addEventListener('click', () => {
+            if (!confirm('プッシュ＆プルのポイントをリセットしますか？')) return;
+            fetch('/api/widgets/push-pull/reset', { method: 'POST' }).catch(() => {});
+        });
+
+        loadPushPullConfig().catch(() => {});
+        refreshPushPullPreview();
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>

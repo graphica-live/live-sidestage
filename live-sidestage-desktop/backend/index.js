@@ -410,6 +410,17 @@ const giftJarConfig = {
     jarTheme: 'jar',
     customProfiles: {}
 };
+
+const pushPullConfig = {
+    pushLabel: 'プッシュ',
+    pullLabel: 'プル',
+    pushGifts: [],
+    pullGifts: [],
+};
+let pushPullState = {
+    pushPoints: 0,
+    pullPoints: 0,
+};
 let tiktokConnectionState = {
     status: 'idle',
     message: 'TikTok接続はまだ開始していません。',
@@ -583,6 +594,74 @@ function persistGiftJarCustomProfiles() {
     // 新しいギフトの初速 (velocity.y = 0.5) が Matter.js の wake threshold (~4.8) を下回り、
     // スリープボディを起こせず新ギフトが瓶に入らなくなる。
     // 再起動後は history replay (10x 速) で瓶を自然充填する。
+}
+
+function normalizePushPullGifts(items) {
+    if (!Array.isArray(items)) return [];
+    return items.slice(0, 5).filter(Boolean).map((item) => ({
+        giftId: String(item.giftId || '').trim(),
+        giftName: String(item.giftName || '').trim(),
+        giftImage: String(item.giftImage || '').trim(),
+        points: Math.max(1, Math.min(99999, Math.round(Number(item.points) || 1))),
+    })).filter((item) => item.giftId.length > 0);
+}
+
+function buildPushPullSnapshot() {
+    return {
+        pushLabel: pushPullConfig.pushLabel,
+        pullLabel: pushPullConfig.pullLabel,
+        pushGifts: pushPullConfig.pushGifts,
+        pullGifts: pushPullConfig.pullGifts,
+        pushPoints: pushPullState.pushPoints,
+        pullPoints: pushPullState.pullPoints,
+    };
+}
+
+function persistPushPullConfig() {
+    try {
+        dbStore.setGlobalStateValue('push_pull_config', JSON.stringify({
+            pushLabel: pushPullConfig.pushLabel,
+            pullLabel: pushPullConfig.pullLabel,
+            pushGifts: pushPullConfig.pushGifts,
+            pullGifts: pushPullConfig.pullGifts,
+        }), Date.now());
+    } catch {}
+}
+
+function persistPushPullState() {
+    try {
+        dbStore.setGlobalStateValue('push_pull_state', JSON.stringify(pushPullState), Date.now());
+    } catch {}
+}
+
+// Restore persisted push-pull config and state
+{
+    const savedCfg = dbStore.getGlobalStateValue('push_pull_config');
+    if (typeof savedCfg === 'string' && savedCfg.trim()) {
+        try {
+            const parsed = JSON.parse(savedCfg);
+            if (typeof parsed.pushLabel === 'string' && parsed.pushLabel.trim()) {
+                pushPullConfig.pushLabel = parsed.pushLabel.trim().slice(0, 30);
+            }
+            if (typeof parsed.pullLabel === 'string' && parsed.pullLabel.trim()) {
+                pushPullConfig.pullLabel = parsed.pullLabel.trim().slice(0, 30);
+            }
+            if (Array.isArray(parsed.pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(parsed.pushGifts);
+            if (Array.isArray(parsed.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(parsed.pullGifts);
+        } catch {}
+    }
+    const savedState = dbStore.getGlobalStateValue('push_pull_state');
+    if (typeof savedState === 'string' && savedState.trim()) {
+        try {
+            const parsed = JSON.parse(savedState);
+            if (typeof parsed.pushPoints === 'number' && Number.isFinite(parsed.pushPoints)) {
+                pushPullState.pushPoints = Math.max(0, Math.round(parsed.pushPoints));
+            }
+            if (typeof parsed.pullPoints === 'number' && Number.isFinite(parsed.pullPoints)) {
+                pushPullState.pullPoints = Math.max(0, Math.round(parsed.pullPoints));
+            }
+        } catch {}
+    }
 }
 
 app.use(express.json());
@@ -1286,7 +1365,9 @@ function buildWidgetUrls(req) {
         giftJarOverlayUrl: `${origin}/overlays/gift-jar`,
         giftJarLoaderUrl: `${loaderOrigin}/overlays/gift-jar?slave=1`,
         tapListOverlayUrl: `${origin}/overlays/tap-list`,
-        tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`
+        tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`,
+        pushPullOverlayUrl: `${origin}/overlays/push-pull`,
+        pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`
     };
 }
 
@@ -1502,6 +1583,14 @@ app.get(['/overlays/gift-jar', '/overlays/widgets/gift-jar'], (req, res) => {
 
 app.get(['/overlays/gift-jar/index.html', '/overlays/widgets/gift-jar/index.html'], (req, res) => {
     return res.redirect('/overlays/gift-jar');
+});
+
+app.get(['/overlays/push-pull', '/overlays/widgets/push-pull'], (req, res) => {
+    return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'push-pull.html'));
+});
+
+app.get(['/overlays/push-pull/index.html', '/overlays/widgets/push-pull/index.html'], (req, res) => {
+    return res.redirect('/overlays/push-pull');
 });
 
 app.use(express.static(PUBLIC_DIRECTORY, {
@@ -6662,6 +6751,7 @@ io.on('connection', (socket) => {
         }
         socket.broadcast.emit('widgets:gift-jar:positions', data);
     });
+    socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
     if (pendingUpdateInfo) {
         socket.emit('app:update-ready', { version: pendingUpdateInfo.version });
     }
@@ -7136,6 +7226,49 @@ app.post('/api/widgets/gift-jar/test', (req, res) => {
     });
 
     res.json({ ok: true, count: DEMO_COINS.length, source: 'fallback' });
+});
+
+app.get('/api/widgets/push-pull/snapshot', (req, res) => {
+    res.json(buildPushPullSnapshot());
+});
+
+app.patch('/api/widgets/push-pull', (req, res) => {
+    const { pushLabel, pullLabel, pushGifts, pullGifts } = req.body || {};
+    if (typeof pushLabel === 'string') {
+        pushPullConfig.pushLabel = pushLabel.trim().slice(0, 30) || 'プッシュ';
+    }
+    if (typeof pullLabel === 'string') {
+        pushPullConfig.pullLabel = pullLabel.trim().slice(0, 30) || 'プル';
+    }
+    if (Array.isArray(pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(pushGifts);
+    if (Array.isArray(pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(pullGifts);
+    persistPushPullConfig();
+    const snapshot = buildPushPullSnapshot();
+    io.emit('widgets:push-pull:updated', snapshot);
+    res.json({ ok: true, ...snapshot });
+});
+
+app.post('/api/widgets/push-pull/reset', (req, res) => {
+    pushPullState.pushPoints = 0;
+    pushPullState.pullPoints = 0;
+    persistPushPullState();
+    const snapshot = buildPushPullSnapshot();
+    io.emit('widgets:push-pull:updated', snapshot);
+    res.json({ ok: true, ...snapshot });
+});
+
+app.post('/api/widgets/push-pull/test', (req, res) => {
+    const side = String(req.body?.side || 'push').trim();
+    const points = Math.max(1, Math.min(9999, Math.round(Number(req.body?.points) || 10)));
+    if (side === 'pull') {
+        pushPullState.pullPoints += points;
+    } else {
+        pushPullState.pushPoints += points;
+    }
+    persistPushPullState();
+    const snapshot = buildPushPullSnapshot();
+    io.emit('widgets:push-pull:updated', snapshot);
+    res.json({ ok: true, ...snapshot });
 });
 
 app.get('/api/widgets/goal-gifts/snapshot', (req, res) => {
@@ -7955,6 +8088,23 @@ function ensureTikTokConnection() {
 
         if (duplicateSlots.length) {
             io.emit('widgets:goal-gifts:duplicate-feedback', { slots: duplicateSlots });
+        }
+
+        // Push-pull: check if this gift matches a configured push or pull gift
+        if (normalizedEvent.giftId) {
+            const giftId = String(normalizedEvent.giftId);
+            const repeatCount = normalizedEvent.repeatCount || 1;
+            const pushMatch = pushPullConfig.pushGifts.find((g) => g.giftId === giftId);
+            const pullMatch = !pushMatch && pushPullConfig.pullGifts.find((g) => g.giftId === giftId);
+            if (pushMatch) {
+                pushPullState.pushPoints += pushMatch.points * repeatCount;
+                persistPushPullState();
+                io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
+            } else if (pullMatch) {
+                pushPullState.pullPoints += pullMatch.points * repeatCount;
+                persistPushPullState();
+                io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
+            }
         }
 
         scheduleRawEventFlush(0);
