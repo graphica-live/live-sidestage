@@ -177,11 +177,8 @@
         }
 
         socket.on('connect', () => {
-            if (overlayWasDisconnected && !sampleMode) {
-                window.location.reload();
-                return;
-            }
             clearOverlayRecoveryTimer();
+            overlayWasDisconnected = false;
         });
 
         socket.on('disconnect', () => {
