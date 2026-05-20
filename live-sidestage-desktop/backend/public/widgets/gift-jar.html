@@ -832,13 +832,13 @@
                 }
             }
             // Overflow: cheap gift above jar mouth — either actively expelled (high upward velocity)
-            // or has settled above the mouth for too long (sleeping pile-up that velocity check misses)
+            // or sleeping above the mouth (can never fall in on its own)
             if (crushThreshold > 0) {
-                // Gifts sleeping/stuck above the mouth (time-based)
+                // Sleeping above the mouth = definitively stuck; remove immediately
                 const stuckAboveMouth = giftBodies.filter(
                     g => g.diamonds < crushThreshold &&
                          g.body.position.y < jarOpenY() &&
-                         (now - (g.spawnTime || 0)) > 2000
+                         g.body.isSleeping
                 );
                 // Gifts actively being expelled upward (velocity-based)
                 const velOverflow = giftBodies.some(
