@@ -753,6 +753,9 @@
         }
 
         let jarWallBodies = [];
+        let pendingRestorePositions = null;
+        let _profileLoadedResolve;
+        const profileLoadedPromise = new Promise(resolve => { _profileLoadedResolve = resolve; });
         function rebuildJarWalls(themeName) {
             currentJarTheme = themeName;
             currentJarProfile = getJarProfile(themeName);
@@ -768,6 +771,12 @@
                 jarWallBodies.push(makeWall(x1, y1, x2, y2));
             }
             World.add(physWorld, jarWallBodies);
+            _profileLoadedResolve();
+            if (pendingRestorePositions) {
+                const bodies = pendingRestorePositions;
+                pendingRestorePositions = null;
+                restoreFromPositions(bodies);
+            }
         }
         if (!isSlave) {
             const _initialTheme = currentJarTheme;
@@ -808,6 +817,7 @@
         Events.on(engine, 'afterUpdate', () => {
             if (isSlave) return;
             if (giftBodies.length === 0) return;  // nothing to do
+            const now = Date.now();
             // Safety net: remove any gift that tunnelled below the canvas floor
             for (let i = giftBodies.length - 1; i >= 0; i--) {
                 const g = giftBodies[i];
@@ -816,24 +826,30 @@
                     giftBodies.splice(i, 1);
                 }
             }
-            // Overflow: any cheap gift rising above jar mouth
+            // Safety net: remove any gift that floated above the visible canvas area
+            for (let i = giftBodies.length - 1; i >= 0; i--) {
+                const g = giftBodies[i];
+                if (g.body.position.y < -(g.size + 100)) {
+                    World.remove(physWorld, g.body);
+                    giftBodies.splice(i, 1);
+                }
+            }
+            // Overflow: cheap gift above jar mouth — either actively expelled (high upward velocity)
+            // or has settled above the mouth for too long (sleeping pile-up that velocity check misses)
             if (crushThreshold > 0) {
                 const isOverflowing = giftBodies.some(
                     g => g.diamonds < crushThreshold &&
                          g.body.position.y < jarOpenY() &&
-                         g.body.velocity.y < -0.5
+                         (g.body.velocity.y < -0.5 || (now - (g.spawnTime || 0)) > 2000)
                 );
-                if (isOverflowing) {
-                    const now = Date.now();
-                    if (now - lastCrushTime >= 80) {
-                        // Sort cheapest + bottommost first, crush up to 2 at once
-                        const candidates = giftBodies
-                            .filter(g => g.diamonds < crushThreshold)
-                            .sort((a, b) => b.body.position.y - a.body.position.y);
-                        const batch = candidates.slice(0, 2);
-                        batch.forEach(g => crushAndRemove(g));
-                        if (batch.length > 0) lastCrushTime = now;
-                    }
+                if (isOverflowing && now - lastCrushTime >= 80) {
+                    // Sort cheapest + bottommost first, crush up to 2 at once
+                    const candidates = giftBodies
+                        .filter(g => g.diamonds < crushThreshold)
+                        .sort((a, b) => b.body.position.y - a.body.position.y);
+                    const batch = candidates.slice(0, 2);
+                    batch.forEach(g => crushAndRemove(g));
+                    if (batch.length > 0) lastCrushTime = now;
                 }
             }
             // Mark canvas dirty only when at least one body is actually moving
@@ -875,7 +891,11 @@
         // Place gift bodies directly at their last known positions without physics replay.
         // Used on reload when the server provides a settled-state snapshot.
         function restoreFromPositions(bodies) {
-            if (!currentJarProfile) return;
+            if (!currentJarProfile) {
+                pendingRestorePositions = bodies;
+                return;
+            }
+            pendingRestorePositions = null;
             restoredFromPositions = true;
             // Cancel any in-progress history replay
             engine.timing.timeScale = 1;
@@ -900,7 +920,7 @@
                 Sleeping.set(body, true);
                 World.add(physWorld, body);
                 prebakeGlow(b.src, size, diamonds);
-                giftBodies.push({ body, imageUrl: b.src, size, diamonds });
+                giftBodies.push({ body, imageUrl: b.src, size, diamonds, spawnTime: 0 });
             }
             dirty = true;
             allSleepingEmitted = true;
@@ -971,7 +991,7 @@
             // Pre-warm image cache and pre-bake glow so first draw is instant
             prebakeGlow(imageUrl, size, diamonds);
 
-            giftBodies.push({ body, imageUrl, size, diamonds });
+            giftBodies.push({ body, imageUrl, size, diamonds, spawnTime: Date.now() });
             dirty = true;
             allSleepingEmitted = false;
 
@@ -1065,7 +1085,9 @@ self.onmessage = async function(e) {
                 const trim = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
                 return { imageUrl, diamonds, trim };
             }));
-            // Re-check: restoreFromPositions may have run while analyzeImageTrim was awaited.
+            // Wait for jar profile to be ready (SVG mask may still be loading).
+            // Re-check restoredFromPositions after both awaits complete.
+            await profileLoadedPromise;
             if (restoredFromPositions) return;
             resetJar();
             isReplayingHistory = true;
@@ -1163,7 +1185,7 @@ self.onmessage = async function(e) {
 
         function drawBody(src, size, diamonds, x, y, a) {
             const img = getCachedImage(src);
-            if (!img.complete || img.naturalWidth === 0) return;
+            if (!img.complete || img.naturalWidth === 0) { dirty = true; return; }
             const half = size * 0.5;
             ctx.save();
             ctx.translate(x, y);
