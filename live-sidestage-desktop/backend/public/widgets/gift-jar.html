@@ -1080,10 +1080,14 @@ self.onmessage = async function(e) {
         function analyzeImageTrim(imageUrl, size) {
             const cacheKey = `${imageUrl}:${size}`;
             if (imageAnalysisCache.has(cacheKey)) return Promise.resolve(imageAnalysisCache.get(cacheKey));
-            return _trimWorker.post(imageUrl, size).then(result => {
+            const def = Math.floor(size * 0.12);
+            const fallback = { left: def, right: def, top: def, bottom: def };
+            const workerP = _trimWorker.post(imageUrl, size).then(result => {
                 imageAnalysisCache.set(cacheKey, result);
                 return result;
             });
+            // Timeout fallback: CDN fetch can hang indefinitely with no rejection
+            return Promise.race([workerP, new Promise(res => setTimeout(() => res(fallback), 2000))]);
         }
 
         // Replay full history silently on (re)connect — run physics at 10x speed until settled.
@@ -1123,16 +1127,17 @@ self.onmessage = async function(e) {
             }, analyzed.length * 30 + 1200);
         });
 
-        socket.on('widgets:gift-jar:notify', async (data) => {
+        socket.on('widgets:gift-jar:notify', (data) => {
             if (isSlave || !data) return;
 
             const imageUrl = data.giftImage || FALLBACK_GIFT_IMAGE;
             const diamonds = Math.max(1, Number(data.diamondCount || 1));
             const repeat   = Math.min(Math.max(1, Number(data.repeatCount || 1)), 10);
-            const trim     = await analyzeImageTrim(imageUrl, sizeFor(diamonds));
-
+            // Spawn immediately with default trim — no Worker await on the live path.
+            // analyzeImageTrim warms the cache in the background for history replay.
+            analyzeImageTrim(imageUrl, sizeFor(diamonds));
             for (let i = 0; i < repeat; i++) {
-                setTimeout(() => addGift(imageUrl, diamonds, false, trim), i * 130);
+                setTimeout(() => addGift(imageUrl, diamonds, false, null), i * 130);
             }
         });
 
