@@ -834,17 +834,32 @@
             // Overflow: cheap gift above jar mouth — either actively expelled (high upward velocity)
             // or has settled above the mouth for too long (sleeping pile-up that velocity check misses)
             if (crushThreshold > 0) {
-                const isOverflowing = giftBodies.some(
+                // Gifts sleeping/stuck above the mouth (time-based)
+                const stuckAboveMouth = giftBodies.filter(
                     g => g.diamonds < crushThreshold &&
                          g.body.position.y < jarOpenY() &&
-                         (g.body.velocity.y < -0.5 || (now - (g.spawnTime || 0)) > 2000)
+                         (now - (g.spawnTime || 0)) > 2000
                 );
-                if (isOverflowing && now - lastCrushTime >= 80) {
-                    // Sort cheapest + bottommost first, crush up to 2 at once
-                    const candidates = giftBodies
-                        .filter(g => g.diamonds < crushThreshold)
-                        .sort((a, b) => b.body.position.y - a.body.position.y);
-                    const batch = candidates.slice(0, 2);
+                // Gifts actively being expelled upward (velocity-based)
+                const velOverflow = giftBodies.some(
+                    g => g.diamonds < crushThreshold &&
+                         g.body.position.y < jarOpenY() &&
+                         g.body.velocity.y < -0.5
+                );
+                if ((stuckAboveMouth.length > 0 || velOverflow) && now - lastCrushTime >= 80) {
+                    let batch;
+                    if (stuckAboveMouth.length > 0) {
+                        // Remove the actual stuck gifts directly (highest above mouth first)
+                        batch = stuckAboveMouth
+                            .sort((a, b) => a.body.position.y - b.body.position.y)
+                            .slice(0, 2);
+                    } else {
+                        // Dynamic overflow: crush deepest cheap gifts to release upward pressure
+                        batch = giftBodies
+                            .filter(g => g.diamonds < crushThreshold)
+                            .sort((a, b) => b.body.position.y - a.body.position.y)
+                            .slice(0, 2);
+                    }
                     batch.forEach(g => crushAndRemove(g));
                     if (batch.length > 0) lastCrushTime = now;
                 }
