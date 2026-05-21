@@ -10,6 +10,8 @@ const { Server } = require('socket.io');
 const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
 const { createDbStore } = require('./lib/db/store');
 const { renderContributorsOverlayHtml } = require('../overlays/contributors/render');
+const { WhisperEngine, WHISPER_MODELS } = require('./lib/caption/whisper-engine');
+const { SherpaEngine } = require('./lib/caption/sherpa-engine');
 
 const APP_NAME = 'TikEffect';
 const APP_VERSION = require('../package.json').version;
@@ -139,7 +141,8 @@ const DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS = {
     nameFontSize: 34
 };
 const DEFAULT_WIDGET_CAPTION_SETTINGS = {
-    recognitionEngine: 'parakeet',
+    recognitionEngine: 'whisper-cpp',
+    whisperModel: 'medium',
     translationEnabled: false,
     translationEngine: 'mymemory',
     targetLang: 'en',
@@ -148,6 +151,7 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     bgStyle: 'transparent',
     pythonPath: 'python'
 };
+const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['small', 'medium', 'large']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
 // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
 const ALLOWED_BALLOON_DESIGN_KEYS = new Set(['dark-glass', 'horizontal-pill', 'big-number', 'side-accent', 'compact-banner', 'stacked-center', 'wa-stamp', 'singer-stage', 'dance-floor', 'kitchen-chalk', 'paw-pop']);
@@ -2822,7 +2826,7 @@ function setWidgetTapListSettings(settings) {
 
 // ---- 字幕ウィジェット ----
 
-const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['webspeech', 'parakeet']);
+const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['webspeech', 'parakeet', 'whisper-cpp', 'sherpa-parakeet']);
 const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki']);
 const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
 const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
@@ -2836,6 +2840,7 @@ function normalizeWidgetCaptionSettings(raw) {
     const rawPythonPath = typeof s.pythonPath === 'string' ? s.pythonPath.trim() : '';
     return {
         recognitionEngine: CAPTION_ALLOWED_RECOGNITION_ENGINES.has(s.recognitionEngine) ? s.recognitionEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.recognitionEngine,
+        whisperModel: CAPTION_ALLOWED_WHISPER_MODELS.has(s.whisperModel) ? s.whisperModel : DEFAULT_WIDGET_CAPTION_SETTINGS.whisperModel,
         translationEnabled: Boolean(s.translationEnabled),
         translationEngine: CAPTION_ALLOWED_ENGINES.has(s.translationEngine) ? s.translationEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.translationEngine,
         targetLang: CAPTION_ALLOWED_LANGS.has(s.targetLang) ? s.targetLang : DEFAULT_WIDGET_CAPTION_SETTINGS.targetLang,
@@ -3012,6 +3017,71 @@ function startParakeetProcess(deviceIndex) {
 
 function stopParakeetProcess() {
     if (parakeetProc) { parakeetProc.kill(); parakeetProc = null; }
+}
+
+// ── Node.js ネイティブ ASR エンジン（Whisper-cpp / Sherpa-Parakeet） ──────────
+
+const ASR_DATA_DIR = path.join(USER_DATA_DIRECTORY, 'asr');
+
+let whisperEngine = null;
+let sherpaEngine  = null;
+let activeAsrSocket = null;   // socket that owns the current streaming session
+
+function getWhisperEngine() {
+    if (!whisperEngine) {
+        whisperEngine = new WhisperEngine(ASR_DATA_DIR);
+        whisperEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'whisper-cpp' }));
+        whisperEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'whisper-cpp', error: true }));
+        whisperEngine.on('transcript', ({ text, isFinal }) => handleCaptionText(text, isFinal, 'ja'));
+        whisperEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+    }
+    return whisperEngine;
+}
+
+function getSherpaEngine() {
+    if (!sherpaEngine) {
+        sherpaEngine = new SherpaEngine(ASR_DATA_DIR);
+        sherpaEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'sherpa-parakeet' }));
+        sherpaEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'sherpa-parakeet', error: true }));
+        sherpaEngine.on('transcript', ({ text, isFinal }) => handleCaptionText(text, isFinal, 'ja'));
+        sherpaEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+    }
+    return sherpaEngine;
+}
+
+async function startNativeAsr(socketId, engine, modelKey) {
+    activeAsrSocket = socketId;
+    try {
+        if (engine === 'whisper-cpp') {
+            const e = getWhisperEngine();
+            await e.init(modelKey || 'medium');
+            e.start();
+        } else if (engine === 'sherpa-parakeet') {
+            const e = getSherpaEngine();
+            await e.init();
+            e.start();
+        }
+    } catch (err) {
+        activeAsrSocket = null;
+        io.emit('widgets:caption:status', { message: `起動失敗: ${err.message}`, engine, error: true });
+    }
+}
+
+function stopNativeAsr(engine) {
+    activeAsrSocket = null;
+    if (engine === 'whisper-cpp' && whisperEngine) {
+        whisperEngine.stop();
+        io.emit('widgets:caption:status', { message: '停止しました', engine: 'whisper-cpp' });
+    } else if (engine === 'sherpa-parakeet' && sherpaEngine) {
+        sherpaEngine.stop();
+        io.emit('widgets:caption:status', { message: '停止しました', engine: 'sherpa-parakeet' });
+    }
+}
+
+function feedAudioToEngine(socketId, engine, buf) {
+    if (socketId !== activeAsrSocket) return;
+    if (engine === 'whisper-cpp' && whisperEngine) whisperEngine.feedAudio(buf);
+    else if (engine === 'sherpa-parakeet' && sherpaEngine) sherpaEngine.feedAudio(buf);
 }
 
 // ---- /字幕ウィジェット ----
@@ -6980,12 +7050,25 @@ io.on('connection', (socket) => {
         handleCaptionText(text.slice(0, 500), Boolean(isFinal), srcLang || 'ja');
     });
 
-    // Parakeet 起動・停止
+    // Parakeet 起動・停止（Python サブプロセス）
     socket.on('caption:start-parakeet', ({ deviceIndex } = {}) => {
         startParakeetProcess(typeof deviceIndex === 'number' ? deviceIndex : undefined);
     });
     socket.on('caption:stop-parakeet', () => {
         stopParakeetProcess();
+    });
+
+    // ネイティブ ASR（whisper-cpp / sherpa-parakeet）
+    socket.on('caption:start-asr', ({ engine, modelKey } = {}) => {
+        if (!engine) return;
+        startNativeAsr(socket.id, engine, modelKey);
+    });
+    socket.on('caption:stop-asr', ({ engine } = {}) => {
+        stopNativeAsr(engine || 'whisper-cpp');
+    });
+    // ブラウザから送られてくる PCM Int16 音声チャンク（16 kHz）
+    socket.on('caption:audio-chunk', (buf, engine) => {
+        feedAudioToEngine(socket.id, engine || 'whisper-cpp', buf);
     });
 });
 
@@ -7285,6 +7368,21 @@ app.post('/api/widgets/tap-list/reset', (req, res) => {
 
 app.get('/api/widgets/caption/config', (req, res) => {
     res.json(buildCaptionConfig());
+});
+
+app.get('/api/widgets/caption/asr-status', (req, res) => {
+    const w = whisperEngine || new WhisperEngine(ASR_DATA_DIR);
+    const s = sherpaEngine  || new SherpaEngine(ASR_DATA_DIR);
+    res.json({
+        whisper: {
+            binaryReady: w.isBinaryReady(),
+            models: w.modelList(),
+        },
+        sherpa: {
+            moduleAvailable: s.isSherpaAvailable(),
+            modelReady: s.isModelReady(),
+        },
+    });
 });
 
 app.patch('/api/widgets/caption', (req, res) => {

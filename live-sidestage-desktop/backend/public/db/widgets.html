@@ -1398,13 +1398,29 @@
                             <div class="field full">
                                 <label for="caption-engine-select">音声認識エンジン</label>
                                 <select id="caption-engine-select">
-                                    <option value="webspeech">Web Speech API（ブラウザ内・インターネット必要）</option>
-                                    <option value="parakeet">Parakeet（推奨）— ローカル・高精度・GPU必要</option>
+                                    <option value="whisper-cpp">Whisper（推奨）— CUDA GPU・初回DL ~900MB</option>
+                                    <option value="sherpa-parakeet">Parakeet-JA — DirectML GPU・初回DL ~640MB</option>
+                                    <option value="webspeech">Web Speech API — インターネット必要</option>
+                                    <option value="parakeet">Parakeet Python版 — Python+NeMo 別途必要</option>
                                 </select>
                             </div>
-                            <div class="field full">
-                                <label for="caption-python-path">Python 実行ファイルパス（Parakeet 用）</label>
+                            <div class="field full" id="caption-whisper-model-row">
+                                <label for="caption-whisper-model">Whisper モデルサイズ</label>
+                                <select id="caption-whisper-model">
+                                    <option value="small">Small (~244MB) — 軽量・速め</option>
+                                    <option value="medium" selected>Medium (~769MB) — バランス型（推奨）</option>
+                                    <option value="large">Large-v3-turbo (~874MB) — 高精度</option>
+                                </select>
+                            </div>
+                            <div class="field full" id="caption-python-path-row">
+                                <label for="caption-python-path">Python 実行ファイルパス（Parakeet Python版 用）</label>
                                 <input id="caption-python-path" type="text" placeholder="python" style="font-family:monospace;">
+                            </div>
+                            <div id="caption-download-progress-row" style="display:none;margin-bottom:8px;">
+                                <div style="font-size:12px;color:var(--muted);margin-bottom:4px;" id="caption-download-label">ダウンロード中...</div>
+                                <div style="height:8px;border-radius:4px;background:#dfe8f1;overflow:hidden;">
+                                    <div id="caption-download-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:4px;transition:width 0.3s;"></div>
+                                </div>
                             </div>
                             <div class="field full">
                                 <label for="caption-device-select">入力デバイス</label>
@@ -4425,7 +4441,13 @@
         const captionUrlEl = document.getElementById('caption-url');
         const captionStatusChip = document.getElementById('caption-status-chip');
         const captionEngineSelect = document.getElementById('caption-engine-select');
+        const captionWhisperModelSelect = document.getElementById('caption-whisper-model');
+        const captionWhisperModelRow = document.getElementById('caption-whisper-model-row');
         const captionPythonPathInput = document.getElementById('caption-python-path');
+        const captionPythonPathRow = document.getElementById('caption-python-path-row');
+        const captionDownloadRow = document.getElementById('caption-download-progress-row');
+        const captionDownloadBar = document.getElementById('caption-download-bar');
+        const captionDownloadLabel = document.getElementById('caption-download-label');
         const captionDeviceSelect = document.getElementById('caption-device-select');
         const captionLevelBar = document.getElementById('caption-level-bar');
         const captionFontSizeInput = document.getElementById('caption-font-size');
@@ -4448,14 +4470,27 @@
         let levelStream = null;
         let levelRafId = null;
 
+        // ネイティブ ASR 用ストリーミング状態
+        let asrStream = null;
+        let asrAudioCtx = null;
+        let asrProcessor = null;
+        let asrActiveEngine = null;
+
         function setCaptionStatus(msg, isError) {
             captionStatusChip.textContent = msg;
             captionStatusChip.className = 'chip' + (isError ? ' error' : '');
         }
 
+        function updateCaptionEngineVisibility() {
+            const e = captionEngineSelect.value;
+            captionWhisperModelRow.style.display = (e === 'whisper-cpp') ? '' : 'none';
+            captionPythonPathRow.style.display   = (e === 'parakeet')    ? '' : 'none';
+        }
+
         function saveCaptionSettings() {
             const body = {
                 recognitionEngine: captionEngineSelect.value,
+                whisperModel: captionWhisperModelSelect.value,
                 pythonPath: captionPythonPathInput.value.trim() || 'python',
                 fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
                 bgStyle: captionBgStyleSelect.value,
@@ -4471,9 +4506,10 @@
             }).catch(() => {});
         }
 
-        [captionEngineSelect, captionFontSizeInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
+        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
+        captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
         captionPythonPathInput.addEventListener('change', saveCaptionSettings);
         [captionShowInterimCheck, captionTranslationEnabledCheck].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
@@ -4482,7 +4518,8 @@
         function applyCaptionConfig(cfg) {
             if (!cfg?.settings) return;
             const s = cfg.settings;
-            captionEngineSelect.value = s.recognitionEngine ?? 'parakeet';
+            captionEngineSelect.value = s.recognitionEngine ?? 'whisper-cpp';
+            captionWhisperModelSelect.value = s.whisperModel ?? 'medium';
             captionPythonPathInput.value = s.pythonPath ?? 'python';
             captionFontSizeInput.value = s.fontSize ?? 52;
             captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
@@ -4490,6 +4527,7 @@
             captionTranslationEnabledCheck.checked = Boolean(s.translationEnabled);
             captionTranslationEngineSelect.value = s.translationEngine ?? 'mymemory';
             captionTargetLangSelect.value = s.targetLang ?? 'en';
+            updateCaptionEngineVisibility();
         }
 
         async function loadCaptionDevices() {
@@ -4559,11 +4597,18 @@
         }
 
         fetch('/api/widgets/caption/config').then((r) => r.json()).then(applyCaptionConfig).catch(() => {});
+        updateCaptionEngineVisibility();
         loadCaptionDevices();
 
         socket.on('widgets:caption:config', applyCaptionConfig);
         socket.on('widgets:caption:status', ({ message, error }) => {
             setCaptionStatus(message, Boolean(error));
+        });
+        socket.on('widgets:caption:download-progress', ({ pct, label }) => {
+            captionDownloadRow.style.display = '';
+            captionDownloadLabel.textContent = `${label || 'ダウンロード'} ${pct}%`;
+            captionDownloadBar.style.width = pct + '%';
+            if (pct >= 100) setTimeout(() => { captionDownloadRow.style.display = 'none'; }, 2000);
         });
         socket.on('widgets:caption:updated', ({ original, isFinal } = {}) => {
             if (!original) return;
@@ -4581,21 +4626,55 @@
             if (url && url !== '読み込み中') navigator.clipboard.writeText(url).catch(() => {});
         });
 
-        captionStartBtn.addEventListener('click', () => {
+        // ── ネイティブ ASR 音声ストリーミング ──────────────────────────────────────
+
+        async function startAsrStreaming(engine, deviceId) {
+            const constraints = deviceId ? { audio: { deviceId: { exact: deviceId }, sampleRate: 16000 } } : { audio: { sampleRate: 16000 } };
+            try {
+                asrStream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (e) {
+                asrStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+            asrAudioCtx  = new AudioContext({ sampleRate: 16000 });
+            const source = asrAudioCtx.createMediaStreamSource(asrStream);
+            // ScriptProcessorNode: 100ms chunks (1600 samples @ 16kHz)
+            asrProcessor = asrAudioCtx.createScriptProcessor(1600, 1, 1);
+            source.connect(asrProcessor);
+            asrProcessor.connect(asrAudioCtx.destination);
+            asrActiveEngine = engine;
+            asrProcessor.onaudioprocess = (e) => {
+                if (!asrActiveEngine) return;
+                const f32 = e.inputBuffer.getChannelData(0);
+                const i16 = new Int16Array(f32.length);
+                for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32768));
+                socket.emit('caption:audio-chunk', i16.buffer, engine);
+            };
+        }
+
+        function stopAsrStreaming() {
+            asrActiveEngine = null;
+            if (asrProcessor) { try { asrProcessor.disconnect(); } catch {} asrProcessor = null; }
+            if (asrAudioCtx)  { asrAudioCtx.close().catch(() => {}); asrAudioCtx = null; }
+            if (asrStream)    { asrStream.getTracks().forEach(t => t.stop()); asrStream = null; }
+        }
+
+        // ── 開始ボタン ─────────────────────────────────────────────────────────
+
+        captionStartBtn.addEventListener('click', async () => {
             const engine = captionEngineSelect.value;
             const selectedOpt = captionDeviceSelect.selectedOptions[0];
-            const deviceId = selectedOpt?.value || '';
+            const deviceId    = selectedOpt?.value || '';
             const deviceIndex = selectedOpt?.dataset.index !== undefined ? parseInt(selectedOpt.dataset.index, 10) : null;
 
             captionStartBtn.disabled = true;
-            captionStopBtn.disabled = false;
+            captionStopBtn.disabled  = false;
 
             if (engine === 'webspeech') {
                 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SR) {
                     setCaptionStatus('Web Speech API はこのブラウザで利用できません', true);
                     captionStartBtn.disabled = false;
-                    captionStopBtn.disabled = true;
+                    captionStopBtn.disabled  = true;
                     return;
                 }
                 const rec = new SR();
@@ -4614,11 +4693,27 @@
                 rec.start();
                 webSpeechRecognition = rec;
                 setCaptionStatus('Web Speech API 認識中');
-            } else {
+
+            } else if (engine === 'parakeet') {
                 socket.emit('caption:start-parakeet', { deviceIndex: deviceIndex !== null ? deviceIndex : undefined });
-                setCaptionStatus('Parakeet 起動中...');
+                setCaptionStatus('Parakeet (Python) 起動中...');
+
+            } else if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+                const modelKey = captionWhisperModelSelect.value || 'medium';
+                socket.emit('caption:start-asr', { engine, modelKey });
+                setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
+                try {
+                    await startAsrStreaming(engine, deviceId);
+                } catch (err) {
+                    setCaptionStatus(`マイクアクセス失敗: ${err.message}`, true);
+                    socket.emit('caption:stop-asr', { engine });
+                    captionStartBtn.disabled = false;
+                    captionStopBtn.disabled  = true;
+                }
             }
         });
+
+        // ── 停止ボタン ─────────────────────────────────────────────────────────
 
         captionStopBtn.addEventListener('click', () => {
             if (webSpeechRecognition) {
@@ -4626,9 +4721,15 @@
                 webSpeechRecognition.stop();
                 webSpeechRecognition = null;
             }
-            socket.emit('caption:stop-parakeet');
+            const engine = captionEngineSelect.value;
+            if (engine === 'parakeet') {
+                socket.emit('caption:stop-parakeet');
+            } else if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+                socket.emit('caption:stop-asr', { engine });
+                stopAsrStreaming();
+            }
             captionStartBtn.disabled = false;
-            captionStopBtn.disabled = true;
+            captionStopBtn.disabled  = true;
             setCaptionStatus('停止中');
         });
 

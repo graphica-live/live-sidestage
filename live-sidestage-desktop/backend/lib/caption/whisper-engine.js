@@ -1,0 +1,297 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+const http = require('http');
+const os = require('os');
+const { spawn } = require('child_process');
+const { EventEmitter } = require('events');
+
+const WHISPER_MODELS = {
+    small:  { name: 'ggml-small.bin',  size: 244000000, label: 'Small  (~244MB)' },
+    medium: { name: 'ggml-medium.bin', size: 769000000, label: 'Medium (~769MB)' },
+    large:  { name: 'ggml-large-v3-turbo.bin', size: 874000000, label: 'Large-v3-turbo (~874MB)' },
+};
+
+// HuggingFace model URLs (ggerganov/whisper.cpp repo)
+const HF_BASE = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
+const MODEL_URLS = {
+    small:  HF_BASE + 'ggml-small.bin',
+    medium: HF_BASE + 'ggml-medium.bin',
+    large:  HF_BASE + 'ggml-large-v3-turbo.bin',
+};
+
+class WhisperEngine extends EventEmitter {
+    constructor(dataDir) {
+        super();
+        this.dataDir  = dataDir;
+        this.binDir   = path.join(dataDir, 'whisper-bin');
+        this.modelDir = path.join(dataDir, 'whisper-models');
+        this._mainExe = null;
+        this._modelKey = 'medium';
+        this._audioBufs = [];
+        this._running = false;
+        this._timer = null;
+        this._busy = false;
+    }
+
+    // ── Status helpers ──────────────────────────────────────────────────────
+
+    isBinaryReady() {
+        return this._findExe(this.binDir) !== null;
+    }
+
+    isModelReady(key) {
+        const m = WHISPER_MODELS[key];
+        return m ? fs.existsSync(path.join(this.modelDir, m.name)) : false;
+    }
+
+    modelList() {
+        return Object.entries(WHISPER_MODELS).map(([key, m]) => ({
+            key,
+            label: m.label,
+            ready: this.isModelReady(key),
+        }));
+    }
+
+    // ── Initialise (download if needed) ────────────────────────────────────
+
+    async init(modelKey = 'medium') {
+        this._modelKey = modelKey;
+        if (!this.isBinaryReady()) await this._downloadBinary();
+        if (!this.isModelReady(modelKey)) await this._downloadModel(modelKey);
+        this._mainExe = this._findExe(this.binDir);
+        this.emit('status', 'Whisper 準備完了（CUDA/GPU）');
+    }
+
+    // ── Start / Stop audio streaming ────────────────────────────────────────
+
+    start() {
+        this._running = true;
+        this._audioBufs = [];
+        this._busy = false;
+        this._timer = setInterval(() => this._flush(), 4000);
+    }
+
+    stop() {
+        this._running = false;
+        clearInterval(this._timer);
+        this._timer = null;
+        this._audioBufs = [];
+        this._busy = false;
+    }
+
+    // Receives Int16 PCM at 16 kHz from the browser
+    feedAudio(buf) {
+        if (!this._running) return;
+        this._audioBufs.push(Buffer.isBuffer(buf) ? buf : Buffer.from(buf));
+    }
+
+    // ── Private: flush & transcribe ─────────────────────────────────────────
+
+    async _flush() {
+        if (!this._running || this._audioBufs.length === 0 || this._busy) return;
+
+        const chunks = this._audioBufs.splice(0);
+        const pcm = Buffer.concat(chunks);
+
+        // Silence gate (RMS < 0.003)
+        const i16 = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length >> 1);
+        let rms = 0;
+        for (let i = 0; i < i16.length; i++) rms += (i16[i] / 32768) ** 2;
+        rms = Math.sqrt(rms / (i16.length || 1));
+        if (rms < 0.003) return;
+
+        this._busy = true;
+        try {
+            const text = await this._transcribe(pcm);
+            if (text) this.emit('transcript', { text, isFinal: true });
+        } catch (e) {
+            this.emit('error', `認識エラー: ${e.message}`);
+        } finally {
+            this._busy = false;
+        }
+    }
+
+    async _transcribe(pcmBuf) {
+        const prefix  = path.join(os.tmpdir(), `caption_${Date.now()}`);
+        const wavPath  = prefix + '.wav';
+        const jsonPath = prefix + '.json';
+
+        this._writePcmWav(wavPath, pcmBuf, 16000);
+
+        const modelPath = path.join(this.modelDir, WHISPER_MODELS[this._modelKey].name);
+        const exeDir    = path.dirname(this._mainExe);
+
+        return new Promise((resolve, reject) => {
+            const proc = spawn(this._mainExe, [
+                '-m', modelPath,
+                '-f', wavPath,
+                '-l', 'ja',
+                '-oj', '-of', prefix,
+            ], { cwd: exeDir, stdio: ['ignore', 'ignore', 'ignore'] });
+
+            proc.on('close', (code) => {
+                try { fs.unlinkSync(wavPath); } catch {}
+                if (code !== 0) {
+                    try { fs.unlinkSync(jsonPath); } catch {}
+                    return reject(new Error(`whisper exit ${code}`));
+                }
+                try {
+                    const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+                    fs.unlinkSync(jsonPath);
+                    const text = (raw.transcription || [])
+                        .map(s => (s.text || '').trim())
+                        .filter(t => t && t !== '[BLANK_AUDIO]' && t !== '[ BLANK_AUDIO ]')
+                        .join('');
+                    resolve(text || null);
+                } catch (e) {
+                    try { fs.unlinkSync(jsonPath); } catch {}
+                    reject(e);
+                }
+            });
+            proc.on('error', (e) => {
+                try { fs.unlinkSync(wavPath); } catch {}
+                reject(e);
+            });
+        });
+    }
+
+    _writePcmWav(wavPath, pcmBuf, sr) {
+        const nCh   = 1;
+        const bps   = 16;
+        const dSize = pcmBuf.length;
+        const buf   = Buffer.allocUnsafe(44 + dSize);
+        buf.write('RIFF', 0, 'ascii');
+        buf.writeUInt32LE(36 + dSize, 4);
+        buf.write('WAVE', 8, 'ascii');
+        buf.write('fmt ', 12, 'ascii');
+        buf.writeUInt32LE(16, 16);
+        buf.writeUInt16LE(1, 20);
+        buf.writeUInt16LE(nCh, 22);
+        buf.writeUInt32LE(sr, 24);
+        buf.writeUInt32LE(sr * nCh * (bps >> 3), 28);
+        buf.writeUInt16LE(nCh * (bps >> 3), 32);
+        buf.writeUInt16LE(bps, 34);
+        buf.write('data', 36, 'ascii');
+        buf.writeUInt32LE(dSize, 40);
+        pcmBuf.copy(buf, 44);
+        fs.writeFileSync(wavPath, buf);
+    }
+
+    // ── Private: binary download ─────────────────────────────────────────────
+
+    async _downloadBinary() {
+        this.emit('status', 'GitHub から Whisper バイナリ情報を取得中...');
+
+        let assetUrl, assetName;
+        try {
+            const info = await this._fetchJson('https://api.github.com/repos/ggerganov/whisper.cpp/releases/latest');
+            const assets = info.assets || [];
+            // Prefer CUDA/cublas build for x64
+            let asset = assets.find(a => /cublas.*bin.*x64/i.test(a.name) && a.name.endsWith('.zip'));
+            // Fallback to any x64 Windows zip
+            if (!asset) asset = assets.find(a => /bin.*x64/i.test(a.name) && a.name.endsWith('.zip'));
+            if (!asset) throw new Error('x64 ビルドが見つかりません');
+            assetUrl  = asset.browser_download_url;
+            assetName = asset.name;
+        } catch (e) {
+            throw new Error(`バイナリ取得失敗: ${e.message}`);
+        }
+
+        fs.mkdirSync(this.binDir, { recursive: true });
+        const zipPath = path.join(this.binDir, 'whisper-bin.zip');
+
+        this.emit('status', `バイナリをダウンロード中... (${assetName})`);
+        await this._downloadFile(assetUrl, zipPath, (r, t) => {
+            this.emit('download-progress', { pct: Math.round(r / t * 100), label: 'バイナリ', received: r, total: t });
+        });
+
+        this.emit('status', '展開中...');
+        await this._extractZip(zipPath, this.binDir);
+        try { fs.unlinkSync(zipPath); } catch {}
+        this.emit('status', 'バイナリ展開完了');
+    }
+
+    async _downloadModel(key) {
+        const m = WHISPER_MODELS[key];
+        fs.mkdirSync(this.modelDir, { recursive: true });
+        const dest = path.join(this.modelDir, m.name);
+
+        this.emit('status', `モデルをダウンロード中... (${m.name}, ${m.label})`);
+        await this._downloadFile(MODEL_URLS[key], dest, (r, t) => {
+            this.emit('download-progress', { pct: Math.round(r / t * 100), label: 'モデル', received: r, total: t });
+        });
+        this.emit('status', 'モデルダウンロード完了');
+    }
+
+    // ── Private: network helpers ─────────────────────────────────────────────
+
+    _fetchJson(url) {
+        return new Promise((resolve, reject) => {
+            const proto = url.startsWith('https') ? https : http;
+            proto.get(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } }, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    return this._fetchJson(res.headers.location).then(resolve).catch(reject);
+                }
+                let data = '';
+                res.on('data', d => { data += d; });
+                res.on('end', () => {
+                    try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    _downloadFile(url, dest, onProgress) {
+        return new Promise((resolve, reject) => {
+            const proto = url.startsWith('https') ? https : http;
+            proto.get(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } }, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    return this._downloadFile(res.headers.location, dest, onProgress).then(resolve).catch(reject);
+                }
+                if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+                const total = parseInt(res.headers['content-length'] || '0', 10);
+                let received = 0;
+                const file = fs.createWriteStream(dest);
+                res.on('data', chunk => {
+                    received += chunk.length;
+                    if (onProgress && total > 0) onProgress(received, total);
+                });
+                res.pipe(file);
+                file.on('finish', () => file.close(resolve));
+                file.on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
+            }).on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
+        });
+    }
+
+    _extractZip(zipPath, destDir) {
+        return new Promise((resolve, reject) => {
+            const proc = spawn('powershell', [
+                '-Command',
+                `Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force`,
+            ], { stdio: 'pipe' });
+            proc.on('close', code => (code === 0 ? resolve() : reject(new Error(`Expand-Archive exit ${code}`))));
+            proc.on('error', reject);
+        });
+    }
+
+    _findExe(dir) {
+        if (!fs.existsSync(dir)) return null;
+        for (const entry of fs.readdirSync(dir)) {
+            const p = path.join(dir, entry);
+            try {
+                const stat = fs.statSync(p);
+                if (stat.isDirectory()) {
+                    const found = this._findExe(p);
+                    if (found) return found;
+                } else if (entry === 'main.exe') {
+                    return p;
+                }
+            } catch {}
+        }
+        return null;
+    }
+}
+
+module.exports = { WhisperEngine, WHISPER_MODELS };
