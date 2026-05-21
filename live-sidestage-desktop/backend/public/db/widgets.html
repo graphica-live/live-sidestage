@@ -1668,7 +1668,9 @@
                 tapListOverlayUrl: '',
                 tapListLoaderUrl: '',
                 pushPullOverlayUrl: '',
-                pushPullLoaderUrl: ''
+                pushPullLoaderUrl: '',
+                captionOverlayUrl: '',
+                captionLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -3416,6 +3418,7 @@
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             pushPullUrl.textContent = state.widgetUrls.pushPullLoaderUrl || state.widgetUrls.pushPullOverlayUrl || '未取得';
+            captionUrlEl.textContent = state.widgetUrls.captionLoaderUrl || state.widgetUrls.captionOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
             todayStatus.textContent = state.todayDayKey ? `本日: ${state.todayDayKey}` : '本日: 未取得';
             setStatus(saveStatus, '設定状態: 準備完了', 'ok');
@@ -4447,10 +4450,6 @@
         function applyCaptionConfig(cfg) {
             if (!cfg?.settings) return;
             const s = cfg.settings;
-            const captionUrl = cfg.captionLoaderUrl || cfg.captionOverlayUrl;
-            if (captionUrlEl.textContent === '読み込み中' && captionUrl) {
-                captionUrlEl.textContent = captionUrl;
-            }
             captionFontSizeInput.value = s.fontSize ?? 52;
             captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
             captionShowInterimCheck.checked = s.showInterim !== false;
@@ -4458,11 +4457,6 @@
             captionTranslationEngineSelect.value = s.translationEngine ?? 'mymemory';
             captionTargetLangSelect.value = s.targetLang ?? 'en';
         }
-
-        fetch('/api/widgets/config').then((r) => r.json()).then((cfg) => {
-            const url = cfg.captionLoaderUrl || cfg.captionOverlayUrl;
-            if (url) captionUrlEl.textContent = url;
-        }).catch(() => {});
 
         fetch('/api/widgets/caption/config').then((r) => r.json()).then(applyCaptionConfig).catch(() => {});
 
