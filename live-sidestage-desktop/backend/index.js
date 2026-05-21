@@ -3056,10 +3056,12 @@ async function startNativeAsr(socketId, engine, modelKey) {
             const e = getWhisperEngine();
             await e.init(modelKey || 'medium');
             e.start();
+            io.emit('widgets:caption:status', { message: '認識中...', engine: 'whisper-cpp' });
         } else if (engine === 'sherpa-parakeet') {
             const e = getSherpaEngine();
             await e.init();
             e.start();
+            io.emit('widgets:caption:status', { message: '認識中...', engine: 'sherpa-parakeet' });
         }
     } catch (err) {
         activeAsrSocket = null;

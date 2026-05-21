@@ -68,6 +68,7 @@ class WhisperEngine extends EventEmitter {
     // ── Start / Stop audio streaming ────────────────────────────────────────
 
     start() {
+        if (this._timer) clearInterval(this._timer); // guard against double-start
         this._running = true;
         this._audioBufs = [];
         this._busy = false;

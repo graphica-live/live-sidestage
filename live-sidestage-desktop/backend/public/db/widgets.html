@@ -4635,6 +4635,7 @@
             if (!sharedStream) throw new Error('レベルメーターストリームが利用できません。デバイスを選択してください。');
             asrStream = null;  // not owned — don't stop it on cleanup
             asrAudioCtx = new AudioContext({ sampleRate: 16000 });
+            await asrAudioCtx.resume(); // ensure not suspended (Electron autoplay policy)
             // Browser resamples from device native rate → 16 kHz automatically
             const source = asrAudioCtx.createMediaStreamSource(sharedStream);
             asrProcessor = asrAudioCtx.createScriptProcessor(1600, 1, 1);
