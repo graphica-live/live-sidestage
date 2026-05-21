@@ -116,9 +116,17 @@ class WhisperEngine extends EventEmitter {
         if (rms < 0.003) return;
 
         this._busy = true;
+        const t0 = Date.now();
+        this.emit('status', `Whisper 処理中... (${(pcm.length / 32000).toFixed(1)}s 音声)`);
         try {
             const text = await this._transcribe(pcm);
-            if (text) this.emit('transcript', { text, isFinal: true });
+            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+            if (text) {
+                this.emit('status', `認識完了 (${elapsed}s): ${text.slice(0, 40)}`);
+                this.emit('transcript', { text, isFinal: true });
+            } else {
+                this.emit('status', `認識結果なし (${elapsed}s)`);
+            }
         } catch (e) {
             this.emit('error', `認識エラー: ${e.message}`);
         } finally {
