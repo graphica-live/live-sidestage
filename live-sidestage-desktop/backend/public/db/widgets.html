@@ -1477,6 +1477,7 @@
                             <button type="button" class="ghost-button" id="caption-test-btn">テスト字幕</button>
                         </div>
                         <div class="chip" id="caption-status-chip" style="margin-top:10px;">停止中</div>
+                        <div id="caption-preview-text" style="margin-top:8px;font-size:13px;color:var(--muted);min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;word-break:break-all;line-height:1.5;">（未認識）</div>
                     </div>
                 </article>
             </div>
@@ -4431,6 +4432,7 @@
         const captionStartBtn = document.getElementById('caption-start-btn');
         const captionStopBtn = document.getElementById('caption-stop-btn');
         const captionTestBtn = document.getElementById('caption-test-btn');
+        const captionPreviewText = document.getElementById('caption-preview-text');
         const openCaptionOverlayBtn = document.getElementById('open-caption-overlay-button');
         const copyCaptionUrlBtn = document.getElementById('copy-caption-url-button');
 
@@ -4498,8 +4500,20 @@
                     opt.dataset.index = String(i);
                     captionDeviceSelect.appendChild(opt);
                 });
+                const saved = localStorage.getItem('caption-device-id');
+                if (saved) {
+                    for (const opt of captionDeviceSelect.options) {
+                        if (opt.value === saved) { captionDeviceSelect.value = saved; break; }
+                    }
+                }
             } catch {}
+            startLevelMeter(captionDeviceSelect.value);
         }
+
+        captionDeviceSelect.addEventListener('change', () => {
+            localStorage.setItem('caption-device-id', captionDeviceSelect.value);
+            startLevelMeter(captionDeviceSelect.value);
+        });
 
         function startLevelMeter(deviceId) {
             stopLevelMeter();
@@ -4543,6 +4557,11 @@
         socket.on('widgets:caption:status', ({ message, error }) => {
             setCaptionStatus(message, Boolean(error));
         });
+        socket.on('widgets:caption:updated', ({ original, isFinal } = {}) => {
+            if (!original) return;
+            captionPreviewText.textContent = original;
+            captionPreviewText.style.color = isFinal ? 'var(--text)' : 'var(--muted)';
+        });
 
         openCaptionOverlayBtn.addEventListener('click', () => {
             const url = captionUrlEl.textContent;
@@ -4560,7 +4579,6 @@
             const deviceId = selectedOpt?.value || '';
             const deviceIndex = selectedOpt?.dataset.index !== undefined ? parseInt(selectedOpt.dataset.index, 10) : null;
 
-            startLevelMeter(deviceId);
             captionStartBtn.disabled = true;
             captionStopBtn.disabled = false;
 
@@ -4568,7 +4586,6 @@
                 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SR) {
                     setCaptionStatus('Web Speech API はこのブラウザで利用できません', true);
-                    stopLevelMeter();
                     captionStartBtn.disabled = false;
                     captionStopBtn.disabled = true;
                     return;
@@ -4596,7 +4613,6 @@
         });
 
         captionStopBtn.addEventListener('click', () => {
-            stopLevelMeter();
             if (webSpeechRecognition) {
                 webSpeechRecognition.onend = null;
                 webSpeechRecognition.stop();
