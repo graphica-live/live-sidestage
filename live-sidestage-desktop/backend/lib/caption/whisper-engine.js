@@ -1,8 +1,6 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
 const os = require('os');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
@@ -225,44 +223,45 @@ class WhisperEngine extends EventEmitter {
         this.emit('status', 'モデルダウンロード完了');
     }
 
-    // ── Private: network helpers ─────────────────────────────────────────────
+    // ── Private: network helpers (use global fetch, available in Node 18+) ────
 
-    _fetchJson(url) {
-        return new Promise((resolve, reject) => {
-            const proto = url.startsWith('https') ? https : http;
-            proto.get(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } }, (res) => {
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    return this._fetchJson(res.headers.location).then(resolve).catch(reject);
-                }
-                let data = '';
-                res.on('data', d => { data += d; });
-                res.on('end', () => {
-                    try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-                });
-            }).on('error', reject);
-        });
+    async _fetchJson(url) {
+        const ctrl  = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 20000);
+        try {
+            const resp = await fetch(url, {
+                headers: { 'User-Agent': 'TikEffect-ASR/1.0', Accept: 'application/json' },
+                signal: ctrl.signal,
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+            return resp.json();
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
-    _downloadFile(url, dest, onProgress) {
-        return new Promise((resolve, reject) => {
-            const proto = url.startsWith('https') ? https : http;
-            proto.get(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } }, (res) => {
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    return this._downloadFile(res.headers.location, dest, onProgress).then(resolve).catch(reject);
-                }
-                if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-                const total = parseInt(res.headers['content-length'] || '0', 10);
-                let received = 0;
-                const file = fs.createWriteStream(dest);
-                res.on('data', chunk => {
-                    received += chunk.length;
-                    if (onProgress && total > 0) onProgress(received, total);
-                });
-                res.pipe(file);
-                file.on('finish', () => file.close(resolve));
-                file.on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
-            }).on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
+    async _downloadFile(url, dest, onProgress) {
+        const resp = await fetch(url, {
+            headers: { 'User-Agent': 'TikEffect-ASR/1.0' },
         });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText} (${url})`);
+
+        const total    = parseInt(resp.headers.get('content-length') || '0', 10);
+        let received   = 0;
+        const file     = fs.createWriteStream(dest);
+
+        try {
+            for await (const chunk of resp.body) {
+                received += chunk.length;
+                if (!file.write(chunk)) await new Promise(r => file.once('drain', r));
+                if (onProgress && total > 0) onProgress(received, total);
+            }
+            await new Promise((res, rej) => { file.end(); file.on('finish', res); file.on('error', rej); });
+        } catch (err) {
+            file.destroy();
+            try { fs.unlinkSync(dest); } catch {}
+            throw err;
+        }
     }
 
     _extractZip(zipPath, destDir) {

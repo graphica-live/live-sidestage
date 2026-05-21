@@ -1,8 +1,6 @@
 'use strict';
 const fs   = require('fs');
 const path = require('path');
-const https = require('https');
-const http  = require('http');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 
@@ -153,26 +151,26 @@ class SherpaEngine extends EventEmitter {
         this.emit('status', 'Parakeet モデル展開完了');
     }
 
-    _downloadFile(url, dest, onProgress) {
-        return new Promise((resolve, reject) => {
-            const proto = url.startsWith('https') ? https : http;
-            proto.get(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } }, (res) => {
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    return this._downloadFile(res.headers.location, dest, onProgress).then(resolve).catch(reject);
-                }
-                if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-                const total    = parseInt(res.headers['content-length'] || '0', 10);
-                let received   = 0;
-                const file     = fs.createWriteStream(dest);
-                res.on('data', chunk => {
-                    received += chunk.length;
-                    if (onProgress && total > 0) onProgress(received, total);
-                });
-                res.pipe(file);
-                file.on('finish', () => file.close(resolve));
-                file.on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
-            }).on('error', err => { try { fs.unlinkSync(dest); } catch {} reject(err); });
-        });
+    async _downloadFile(url, dest, onProgress) {
+        const resp = await fetch(url, { headers: { 'User-Agent': 'TikEffect-ASR/1.0' } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText} (${url})`);
+
+        const total  = parseInt(resp.headers.get('content-length') || '0', 10);
+        let received = 0;
+        const file   = fs.createWriteStream(dest);
+
+        try {
+            for await (const chunk of resp.body) {
+                received += chunk.length;
+                if (!file.write(chunk)) await new Promise(r => file.once('drain', r));
+                if (onProgress && total > 0) onProgress(received, total);
+            }
+            await new Promise((res, rej) => { file.end(); file.on('finish', res); file.on('error', rej); });
+        } catch (err) {
+            file.destroy();
+            try { fs.unlinkSync(dest); } catch {}
+            throw err;
+        }
     }
 
     _extractTarBz2(archivePath, destDir) {
