@@ -100,6 +100,7 @@
         const translatedEl = document.getElementById('translated-text');
 
         let hideTimer = null;
+        let typewriterTimer = null;
         let currentSettings = {};
 
         function applySettings(settings) {
@@ -115,12 +116,10 @@
             document.body.classList.toggle('bg-semi', effective === 'semi');
         }
 
-        function setText(el, text, extraClass) {
-            if (!text) {
-                el.classList.add('hidden');
-                el.textContent = '';
-                return;
-            }
+        function showInstant(el, text, extraClass) {
+            if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
+            clearInterval(typewriterTimer);
+            typewriterTimer = null;
             el.textContent = text;
             el.classList.remove('hidden', 'slide-in', 'interim');
             if (extraClass) el.classList.add(extraClass);
@@ -128,13 +127,41 @@
             el.classList.add('slide-in');
         }
 
+        function showTypewriter(el, text, extraClass, charsPerSec) {
+            if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
+            clearInterval(typewriterTimer);
+            typewriterTimer = null;
+            el.textContent = '';
+            el.classList.remove('hidden', 'slide-in', 'interim');
+            if (extraClass) el.classList.add(extraClass);
+            void el.offsetWidth;
+            el.classList.add('slide-in');
+            let i = 0;
+            const interval = Math.max(16, Math.round(1000 / charsPerSec));
+            typewriterTimer = setInterval(() => {
+                i++;
+                el.textContent = text.slice(0, i);
+                if (i >= text.length) { clearInterval(typewriterTimer); typewriterTimer = null; }
+            }, interval);
+        }
+
+        function setText(el, text, extraClass) {
+            const cps = currentSettings.charsPerSec ?? 12;
+            if (cps >= 60) {
+                showInstant(el, text, extraClass);
+            } else {
+                showTypewriter(el, text, extraClass, cps);
+            }
+        }
+
         function scheduleHide(isFinal) {
             clearTimeout(hideTimer);
             if (!isFinal) return;
+            const ms = (currentSettings.segmentDuration ?? 6) * 1000;
             hideTimer = setTimeout(() => {
                 originalEl.classList.add('hidden');
                 translatedEl.classList.add('hidden');
-            }, 6000);
+            }, ms);
         }
 
         socket.on('widgets:caption:updated', (payload) => {

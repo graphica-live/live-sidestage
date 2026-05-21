@@ -1433,6 +1433,14 @@
                                 <input id="caption-font-size" type="number" min="16" max="200" step="2" inputmode="numeric" placeholder="52">
                             </div>
                             <div class="field">
+                                <label for="caption-chars-per-sec">1秒の文字数</label>
+                                <input id="caption-chars-per-sec" type="number" min="1" max="60" step="1" inputmode="numeric" placeholder="12">
+                            </div>
+                            <div class="field">
+                                <label for="caption-segment-duration">字幕表示時間 (秒)</label>
+                                <input id="caption-segment-duration" type="number" min="2" max="30" step="1" inputmode="numeric" placeholder="6">
+                            </div>
+                            <div class="field">
                                 <label for="caption-bg-style">背景スタイル</label>
                                 <select id="caption-bg-style">
                                     <option value="transparent">透過（OBS クロマキー向け）</option>
@@ -4451,6 +4459,8 @@
         const captionDeviceSelect = document.getElementById('caption-device-select');
         const captionLevelBar = document.getElementById('caption-level-bar');
         const captionFontSizeInput = document.getElementById('caption-font-size');
+        const captionCharsPerSecInput = document.getElementById('caption-chars-per-sec');
+        const captionSegmentDurationInput = document.getElementById('caption-segment-duration');
         const captionBgStyleSelect = document.getElementById('caption-bg-style');
         const captionShowInterimCheck = document.getElementById('caption-show-interim');
         const captionTranslationEnabledCheck = document.getElementById('caption-translation-enabled');
@@ -4493,6 +4503,8 @@
                 whisperModel: captionWhisperModelSelect.value,
                 pythonPath: captionPythonPathInput.value.trim() || 'python',
                 fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
+                charsPerSec: parseInt(captionCharsPerSecInput.value, 10) || 12,
+                segmentDuration: parseInt(captionSegmentDurationInput.value, 10) || 6,
                 bgStyle: captionBgStyleSelect.value,
                 showInterim: captionShowInterimCheck.checked,
                 translationEnabled: captionTranslationEnabledCheck.checked,
@@ -4506,7 +4518,7 @@
             }).catch(() => {});
         }
 
-        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
+        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
         captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
@@ -4522,6 +4534,8 @@
             captionWhisperModelSelect.value = s.whisperModel ?? 'medium';
             captionPythonPathInput.value = s.pythonPath ?? 'python';
             captionFontSizeInput.value = s.fontSize ?? 52;
+            captionCharsPerSecInput.value = s.charsPerSec ?? 12;
+            captionSegmentDurationInput.value = s.segmentDuration ?? 6;
             captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
             captionShowInterimCheck.checked = s.showInterim !== false;
             captionTranslationEnabledCheck.checked = Boolean(s.translationEnabled);
