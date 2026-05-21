@@ -1214,6 +1214,10 @@
                         </div>
                     </div>
 
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="reset-tap-list-button">タップ数をリセット</button>
+                    </div>
+
                     <div class="widget-preview">
                         <div class="widget-preview-label">サンプルプレビュー</div>
                         <div class="widget-preview-frame" style="height:240px;background:rgba(0,0,0,0.18);">
@@ -1368,6 +1372,96 @@
                         <div class="widget-preview-frame push-pull-preview">
                             <iframe id="push-pull-preview-frame" title="プッシュ＆プルプレビュー" loading="eager" allowtransparency="true"></iframe>
                         </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>字幕</h2>
+                            <p class="subtext">自分の声をリアルタイム字幕化します。Web Speech API（ブラウザ内認識）または Parakeet（ローカル高精度）を選択できます。翻訳を有効にすると元言語の下に指定言語の訳が表示されます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="caption-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="caption-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-caption-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-caption-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="caption-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="caption-font-size">文字サイズ (px)</label>
+                                <input id="caption-font-size" type="number" min="16" max="200" step="2" inputmode="numeric" placeholder="52">
+                            </div>
+                            <div class="field">
+                                <label for="caption-bg-style">背景スタイル</label>
+                                <select id="caption-bg-style">
+                                    <option value="transparent">透過（OBS クロマキー向け）</option>
+                                    <option value="semi">半透過ブラック</option>
+                                </select>
+                            </div>
+                            <div class="field full">
+                                <label>途中テキスト表示</label>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="caption-show-interim">
+                                    <label for="caption-show-interim">話し途中のテキストも表示する</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="border-top:1px solid var(--line);margin:12px 0 4px;padding-top:12px;">
+                            <div class="form-grid">
+                                <div class="field full">
+                                    <label>翻訳</label>
+                                    <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                        <input type="checkbox" id="caption-translation-enabled">
+                                        <label for="caption-translation-enabled">翻訳字幕を表示する</label>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label for="caption-translation-engine">翻訳エンジン</label>
+                                    <select id="caption-translation-engine">
+                                        <option value="mymemory">MyMemory（無料API・ネット必要）</option>
+                                        <option value="helsinki">Helsinki-NLP（ローカル・ja→en 推奨）</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="caption-target-lang">翻訳先言語</label>
+                                    <select id="caption-target-lang">
+                                        <option value="en">English（英語）</option>
+                                        <option value="zh">中文（中国語）</option>
+                                        <option value="ko">한국어（韓国語）</option>
+                                        <option value="fr">Français（フランス語）</option>
+                                        <option value="de">Deutsch（ドイツ語）</option>
+                                        <option value="es">Español（スペイン語）</option>
+                                        <option value="pt">Português（ポルトガル語）</option>
+                                        <option value="ru">Русский（ロシア語）</option>
+                                        <option value="th">ภาษาไทย（タイ語）</option>
+                                        <option value="vi">Tiếng Việt（ベトナム語）</option>
+                                        <option value="id">Bahasa Indonesia（インドネシア語）</option>
+                                        <option value="ar">العربية（アラビア語）</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="border-top:1px solid var(--line);margin-top:4px;padding-top:14px;">
+                        <p class="subtext" style="margin-bottom:10px;">音声認識エンジンを選んで起動してください。Web Speech API はこのウィンドウを開いたまま使用します。</p>
+                        <div class="action-row">
+                            <button type="button" class="ghost-button" id="caption-webspeech-start-btn">▶ Web Speech API 開始</button>
+                            <button type="button" class="ghost-button" id="caption-webspeech-stop-btn" disabled>■ Web Speech API 停止</button>
+                        </div>
+                        <div class="action-row" style="margin-top:8px;">
+                            <button type="button" class="ghost-button" id="caption-parakeet-start-btn">▶ Parakeet 開始</button>
+                            <button type="button" class="ghost-button" id="caption-parakeet-stop-btn" disabled>■ Parakeet 停止</button>
+                        </div>
+                        <div class="chip" id="caption-status-chip" style="margin-top:10px;">停止中</div>
                     </div>
                 </article>
             </div>
@@ -3729,6 +3823,10 @@
         tapListRowGapInput.addEventListener('change', () => {
             saveTapListSettingsImmediately().catch(() => {});
         });
+        document.getElementById('reset-tap-list-button').addEventListener('click', () => {
+            if (!confirm('本日のタップ数をリセットしますか？')) return;
+            fetch('/api/widgets/tap-list/reset', { method: 'POST' }).catch(() => {});
+        });
         document.getElementById('open-gift-jar-overlay-button').addEventListener('click', () => {
             const url = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
             openWindow(url, 'gift-jar-overlay-window', { width: 700, height: 560 });
@@ -4299,6 +4397,146 @@
 
         loadPushPullConfig().catch(() => {});
         refreshPushPullPreview();
+
+        // ---- 字幕ウィジェット ----
+        const captionUrlEl = document.getElementById('caption-url');
+        const captionStatusChip = document.getElementById('caption-status-chip');
+        const captionFontSizeInput = document.getElementById('caption-font-size');
+        const captionBgStyleSelect = document.getElementById('caption-bg-style');
+        const captionShowInterimCheck = document.getElementById('caption-show-interim');
+        const captionTranslationEnabledCheck = document.getElementById('caption-translation-enabled');
+        const captionTranslationEngineSelect = document.getElementById('caption-translation-engine');
+        const captionTargetLangSelect = document.getElementById('caption-target-lang');
+        const captionWebspeechStartBtn = document.getElementById('caption-webspeech-start-btn');
+        const captionWebspeechStopBtn = document.getElementById('caption-webspeech-stop-btn');
+        const captionParakeetStartBtn = document.getElementById('caption-parakeet-start-btn');
+        const captionParakeetStopBtn = document.getElementById('caption-parakeet-stop-btn');
+        const openCaptionOverlayBtn = document.getElementById('open-caption-overlay-button');
+        const copyCaptionUrlBtn = document.getElementById('copy-caption-url-button');
+
+        let webSpeechRecognition = null;
+
+        function setCaptionStatus(msg, isError) {
+            captionStatusChip.textContent = msg;
+            captionStatusChip.className = 'chip' + (isError ? ' error' : '');
+        }
+
+        function saveCaptionSettings() {
+            const body = {
+                fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
+                bgStyle: captionBgStyleSelect.value,
+                showInterim: captionShowInterimCheck.checked,
+                translationEnabled: captionTranslationEnabledCheck.checked,
+                translationEngine: captionTranslationEngineSelect.value,
+                targetLang: captionTargetLangSelect.value
+            };
+            fetch('/api/widgets/caption', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).catch(() => {});
+        }
+
+        [captionFontSizeInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
+            el.addEventListener('change', saveCaptionSettings);
+        });
+        [captionShowInterimCheck, captionTranslationEnabledCheck].forEach((el) => {
+            el.addEventListener('change', saveCaptionSettings);
+        });
+
+        function applyCaptionConfig(cfg) {
+            if (!cfg?.settings) return;
+            const s = cfg.settings;
+            if (captionUrlEl.textContent === '読み込み中' && cfg.captionOverlayUrl) {
+                captionUrlEl.textContent = cfg.captionOverlayUrl;
+            }
+            captionFontSizeInput.value = s.fontSize ?? 52;
+            captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
+            captionShowInterimCheck.checked = s.showInterim !== false;
+            captionTranslationEnabledCheck.checked = Boolean(s.translationEnabled);
+            captionTranslationEngineSelect.value = s.translationEngine ?? 'mymemory';
+            captionTargetLangSelect.value = s.targetLang ?? 'en';
+        }
+
+        fetch('/api/widgets/config').then((r) => r.json()).then((cfg) => {
+            if (cfg.captionOverlayUrl) captionUrlEl.textContent = cfg.captionOverlayUrl;
+        }).catch(() => {});
+
+        fetch('/api/widgets/caption/config').then((r) => r.json()).then(applyCaptionConfig).catch(() => {});
+
+        socket.on('widgets:caption:config', applyCaptionConfig);
+        socket.on('widgets:caption:status', ({ message, error }) => {
+            setCaptionStatus(message, Boolean(error));
+        });
+
+        openCaptionOverlayBtn.addEventListener('click', () => {
+            const url = captionUrlEl.textContent;
+            if (url && url !== '読み込み中') window.open(url, '_blank');
+        });
+
+        copyCaptionUrlBtn.addEventListener('click', () => {
+            const url = captionUrlEl.textContent;
+            if (url && url !== '読み込み中') navigator.clipboard.writeText(url).catch(() => {});
+        });
+
+        // Web Speech API
+        captionWebspeechStartBtn.addEventListener('click', () => {
+            if (webSpeechRecognition) return;
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) {
+                setCaptionStatus('Web Speech API はこのブラウザで利用できません', true);
+                return;
+            }
+            const rec = new SR();
+            rec.lang = 'ja-JP';
+            rec.continuous = true;
+            rec.interimResults = captionShowInterimCheck.checked;
+            rec.onresult = (event) => {
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const text = event.results[i][0].transcript;
+                    const isFinal = event.results[i].isFinal;
+                    socket.emit('caption:text', { text, isFinal, srcLang: 'ja' });
+                }
+            };
+            rec.onerror = (e) => { setCaptionStatus(`エラー: ${e.error}`, true); };
+            rec.onend = () => {
+                if (webSpeechRecognition) {
+                    try { rec.start(); } catch {}
+                }
+            };
+            rec.start();
+            webSpeechRecognition = rec;
+            captionWebspeechStartBtn.disabled = true;
+            captionWebspeechStopBtn.disabled = false;
+            setCaptionStatus('Web Speech API 認識中');
+        });
+
+        captionWebspeechStopBtn.addEventListener('click', () => {
+            if (webSpeechRecognition) {
+                webSpeechRecognition.onend = null;
+                webSpeechRecognition.stop();
+                webSpeechRecognition = null;
+            }
+            captionWebspeechStartBtn.disabled = false;
+            captionWebspeechStopBtn.disabled = true;
+            setCaptionStatus('停止中');
+        });
+
+        // Parakeet
+        captionParakeetStartBtn.addEventListener('click', () => {
+            socket.emit('caption:start-parakeet', {});
+            captionParakeetStartBtn.disabled = true;
+            captionParakeetStopBtn.disabled = false;
+            setCaptionStatus('Parakeet 起動中...');
+        });
+
+        captionParakeetStopBtn.addEventListener('click', () => {
+            socket.emit('caption:stop-parakeet');
+            captionParakeetStartBtn.disabled = false;
+            captionParakeetStopBtn.disabled = true;
+            setCaptionStatus('停止中');
+        });
+        // ---- /字幕ウィジェット ----
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>

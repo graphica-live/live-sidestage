@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>字幕</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%;
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+        }
+
+        #caption-wrap {
+            position: fixed;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 0 40px;
+            pointer-events: none;
+        }
+
+        .caption-line {
+            max-width: 1600px;
+            width: 100%;
+            text-align: center;
+            line-height: 1.3;
+            word-break: break-all;
+            transition: opacity 0.25s ease;
+        }
+
+        .caption-line.hidden {
+            opacity: 0;
+        }
+
+        #original-text {
+            font-size: var(--font-size, 52px);
+            font-weight: 900;
+            color: #ffffff;
+            -webkit-text-stroke: 6px rgba(10, 10, 20, 0.95);
+            paint-order: stroke fill;
+            text-shadow:
+                0 0 20px rgba(0, 0, 0, 0.7),
+                0 3px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        #original-text.interim {
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        #translated-text {
+            font-size: calc(var(--font-size, 52px) * 0.72);
+            font-weight: 800;
+            color: #fde68a;
+            -webkit-text-stroke: 5px rgba(10, 10, 20, 0.95);
+            paint-order: stroke fill;
+            text-shadow:
+                0 0 16px rgba(0, 0, 0, 0.7),
+                0 3px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        body.bg-semi .caption-line:not(.hidden) {
+            background: rgba(0, 0, 0, 0.54);
+            border-radius: 12px;
+            padding: 8px 24px;
+            backdrop-filter: blur(4px);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .caption-line.slide-in {
+            animation: slideIn 0.25s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="caption-wrap">
+        <div class="caption-line hidden" id="original-text"></div>
+        <div class="caption-line hidden" id="translated-text"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const params = new URLSearchParams(window.location.search);
+        const originalEl = document.getElementById('original-text');
+        const translatedEl = document.getElementById('translated-text');
+
+        let hideTimer = null;
+        let currentSettings = {};
+
+        function applySettings(settings) {
+            if (!settings) return;
+            currentSettings = settings;
+
+            if (typeof settings.fontSize === 'number') {
+                document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');
+            }
+
+            const bgParam = params.get('bg');
+            const effective = bgParam !== null ? bgParam : (settings.bgStyle || 'transparent');
+            document.body.classList.toggle('bg-semi', effective === 'semi');
+        }
+
+        function setText(el, text, extraClass) {
+            if (!text) {
+                el.classList.add('hidden');
+                el.textContent = '';
+                return;
+            }
+            el.textContent = text;
+            el.classList.remove('hidden', 'slide-in', 'interim');
+            if (extraClass) el.classList.add(extraClass);
+            void el.offsetWidth;
+            el.classList.add('slide-in');
+        }
+
+        function scheduleHide(isFinal) {
+            clearTimeout(hideTimer);
+            if (!isFinal) return;
+            hideTimer = setTimeout(() => {
+                originalEl.classList.add('hidden');
+                translatedEl.classList.add('hidden');
+            }, 6000);
+        }
+
+        socket.on('widgets:caption:updated', (payload) => {
+            if (!payload) return;
+
+            if (payload.settings) applySettings(payload.settings);
+
+            const showInterim = currentSettings.showInterim !== false;
+            const isFinal = Boolean(payload.isFinal);
+
+            if (!isFinal && !showInterim) return;
+
+            setText(originalEl, payload.original || '', isFinal ? '' : 'interim');
+
+            const showTranslation = currentSettings.translationEnabled && payload.translated;
+            setText(translatedEl, showTranslation ? payload.translated : '');
+
+            scheduleHide(isFinal);
+        });
+
+        socket.on('widgets:caption:config', (payload) => {
+            if (payload?.settings) applySettings(payload.settings);
+        });
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/caption/config')
+                .then((r) => r.json())
+                .then((p) => { if (p?.settings) applySettings(p.settings); })
+                .catch(() => {});
+        });
+    </script>
+</body>
+</html>

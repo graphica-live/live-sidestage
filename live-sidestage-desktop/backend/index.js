@@ -112,6 +112,7 @@ const WIDGET_LIKE_CONTRIBUTION_USER_TOTALS_STATE_KEY = 'widget_like_contribution
 const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribution_user_nicknames';
 const WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY = 'widget_like_contribution_user_avatars';
 const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
+const WIDGET_CAPTION_SETTINGS_STATE_KEY = 'widget_caption_settings';
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
 const DEFAULT_GOAL_COUNT = 10;
@@ -136,6 +137,14 @@ const DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS = {
     balloonDesignKey: 'dark-glass',
     countFontSize: 42,
     nameFontSize: 34
+};
+const DEFAULT_WIDGET_CAPTION_SETTINGS = {
+    translationEnabled: false,
+    translationEngine: 'mymemory',
+    targetLang: 'en',
+    fontSize: 52,
+    showInterim: true,
+    bgStyle: 'transparent'
 };
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
 // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
@@ -1367,7 +1376,8 @@ function buildWidgetUrls(req) {
         tapListOverlayUrl: `${origin}/overlays/tap-list`,
         tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`,
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
-        pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`
+        pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
+        captionOverlayUrl: `${origin}/overlays/caption`
     };
 }
 
@@ -1559,6 +1569,14 @@ app.get(['/overlays/tap-list', '/overlays/widgets/tap-list'], (req, res) => {
 
 app.get(['/overlays/tap-list/index.html', '/overlays/widgets/tap-list/index.html'], (req, res) => {
     return res.redirect('/overlays/tap-list');
+});
+
+app.get(['/overlays/caption', '/overlays/widgets/caption'], (req, res) => {
+    return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'caption.html'));
+});
+
+app.get(['/overlays/caption/index.html', '/overlays/widgets/caption/index.html'], (req, res) => {
+    return res.redirect('/overlays/caption');
 });
 
 app.get(['/overlays/goal-gifts', '/overlays/widgets/goal-gifts'], (req, res) => {
@@ -2798,6 +2816,179 @@ function setWidgetTapListSettings(settings) {
     setScopedStateValue(WIDGET_TAP_LIST_SETTINGS_STATE_KEY, JSON.stringify(normalized));
     return normalized;
 }
+
+// ---- 字幕ウィジェット ----
+
+const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki']);
+const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
+const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
+
+function normalizeWidgetCaptionSettings(raw) {
+    let parsed = raw;
+    if (typeof raw === 'string') {
+        try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+    }
+    const s = parsed || {};
+    return {
+        translationEnabled: Boolean(s.translationEnabled),
+        translationEngine: CAPTION_ALLOWED_ENGINES.has(s.translationEngine) ? s.translationEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.translationEngine,
+        targetLang: CAPTION_ALLOWED_LANGS.has(s.targetLang) ? s.targetLang : DEFAULT_WIDGET_CAPTION_SETTINGS.targetLang,
+        fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 16 && s.fontSize <= 200 ? s.fontSize : DEFAULT_WIDGET_CAPTION_SETTINGS.fontSize,
+        showInterim: s.showInterim !== false,
+        bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle
+    };
+}
+
+function getWidgetCaptionSettings() {
+    return normalizeWidgetCaptionSettings(getScopedStateValue(WIDGET_CAPTION_SETTINGS_STATE_KEY));
+}
+
+function setWidgetCaptionSettings(settings) {
+    const normalized = normalizeWidgetCaptionSettings(settings);
+    setScopedStateValue(WIDGET_CAPTION_SETTINGS_STATE_KEY, JSON.stringify(normalized));
+    return normalized;
+}
+
+function buildCaptionConfig() {
+    return { settings: getWidgetCaptionSettings() };
+}
+
+// MyMemory 翻訳（無料API、登録不要）
+async function translateWithMyMemory(text, srcLang, tgtLang) {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${srcLang}|${tgtLang}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const data = await resp.json();
+    if (data.responseStatus === 200) {
+        return data.responseData?.translatedText || null;
+    }
+    return null;
+}
+
+// Helsinki-NLP サブプロセス管理
+let helsinkiProc = null;
+let helsinkiReady = false;
+let helsinkiCallbacks = new Map();
+let helsinkiBuf = '';
+
+function ensureHelsinkiProcess() {
+    if (helsinkiProc && !helsinkiProc.killed) return;
+    helsinkiReady = false;
+    helsinkiCallbacks.clear();
+    helsinkiBuf = '';
+
+    const py = process.env.CAPTION_PYTHON_PATH || 'python';
+    const scriptPath = path.join(PROJECT_ROOT, 'caption_translate.py');
+    helsinkiProc = spawn(py, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    helsinkiProc.stdout.on('data', (chunk) => {
+        helsinkiBuf += chunk.toString();
+        const lines = helsinkiBuf.split('\n');
+        helsinkiBuf = lines.pop();
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const msg = JSON.parse(line);
+                if (msg.type === 'ready') { helsinkiReady = true; return; }
+                if (msg.id && helsinkiCallbacks.has(msg.id)) {
+                    const { resolve, reject } = helsinkiCallbacks.get(msg.id);
+                    helsinkiCallbacks.delete(msg.id);
+                    msg.error ? reject(new Error(msg.error)) : resolve(msg.text || '');
+                }
+            } catch {}
+        }
+    });
+
+    helsinkiProc.stderr.on('data', (d) => console.error('[Helsinki]', d.toString().trim()));
+    helsinkiProc.on('error', () => { helsinkiProc = null; helsinkiReady = false; });
+    helsinkiProc.on('exit', () => { helsinkiProc = null; helsinkiReady = false; });
+}
+
+async function translateWithHelsinki(text, srcLang, tgtLang) {
+    ensureHelsinkiProcess();
+    return new Promise((resolve, reject) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const timer = setTimeout(() => {
+            helsinkiCallbacks.delete(id);
+            reject(new Error('translation timeout'));
+        }, 15000);
+        helsinkiCallbacks.set(id, {
+            resolve: (t) => { clearTimeout(timer); resolve(t); },
+            reject: (e) => { clearTimeout(timer); reject(e); }
+        });
+        try {
+            helsinkiProc.stdin.write(JSON.stringify({ id, text, src: srcLang, tgt: tgtLang }) + '\n');
+        } catch (e) {
+            helsinkiCallbacks.delete(id);
+            clearTimeout(timer);
+            reject(e);
+        }
+    });
+}
+
+async function translateCaption(text, srcLang) {
+    const settings = getWidgetCaptionSettings();
+    if (!settings.translationEnabled || !text) return null;
+    try {
+        if (settings.translationEngine === 'helsinki') {
+            return await translateWithHelsinki(text, srcLang, settings.targetLang);
+        }
+        return await translateWithMyMemory(text, srcLang, settings.targetLang);
+    } catch (e) {
+        console.error('[Caption] Translation error:', e.message);
+        return null;
+    }
+}
+
+async function handleCaptionText(text, isFinal, srcLang) {
+    const settings = getWidgetCaptionSettings();
+    let translated = null;
+    if (isFinal && settings.translationEnabled) {
+        translated = await translateCaption(text, srcLang);
+    }
+    io.emit('widgets:caption:updated', { original: text, translated, isFinal, settings });
+}
+
+// Parakeet サブプロセス管理
+let parakeetProc = null;
+
+function startParakeetProcess(deviceIndex) {
+    if (parakeetProc && !parakeetProc.killed) return;
+    const py = process.env.CAPTION_PYTHON_PATH || 'python';
+    const scriptPath = path.join(PROJECT_ROOT, 'caption_server.py');
+    const args = [scriptPath, '--port', String(FIXED_PORT)];
+    if (typeof deviceIndex === 'number') args.push('--device', String(deviceIndex));
+    parakeetProc = spawn(py, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let buf = '';
+    parakeetProc.stdout.on('data', (chunk) => {
+        buf += chunk.toString();
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const msg = JSON.parse(line);
+                if (msg.type === 'status') io.emit('widgets:caption:status', { message: msg.message, engine: 'parakeet' });
+                else if (msg.type === 'error') io.emit('widgets:caption:status', { message: `エラー: ${msg.message}`, engine: 'parakeet', error: true });
+            } catch {}
+        }
+    });
+    parakeetProc.stderr.on('data', (d) => console.error('[Parakeet]', d.toString().trim()));
+    parakeetProc.on('exit', () => {
+        parakeetProc = null;
+        io.emit('widgets:caption:status', { message: '停止しました', engine: 'parakeet' });
+    });
+    parakeetProc.on('error', (e) => {
+        parakeetProc = null;
+        io.emit('widgets:caption:status', { message: `起動失敗: ${e.message}`, engine: 'parakeet', error: true });
+    });
+}
+
+function stopParakeetProcess() {
+    if (parakeetProc) { parakeetProc.kill(); parakeetProc = null; }
+}
+
+// ---- /字幕ウィジェット ----
 
 function buildTapListUserMap() {
     const nicknames = getLikeContributionUserNicknames();
@@ -6752,9 +6943,24 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('widgets:gift-jar:positions', data);
     });
     socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
+    socket.emit('widgets:caption:config', buildCaptionConfig());
     if (pendingUpdateInfo) {
         socket.emit('app:update-ready', { version: pendingUpdateInfo.version });
     }
+
+    // Web Speech API からのテキスト受信
+    socket.on('caption:text', ({ text, isFinal, srcLang } = {}) => {
+        if (!text || typeof text !== 'string') return;
+        handleCaptionText(text.slice(0, 500), Boolean(isFinal), srcLang || 'ja');
+    });
+
+    // Parakeet 起動・停止
+    socket.on('caption:start-parakeet', ({ deviceIndex } = {}) => {
+        startParakeetProcess(typeof deviceIndex === 'number' ? deviceIndex : undefined);
+    });
+    socket.on('caption:stop-parakeet', () => {
+        stopParakeetProcess();
+    });
 });
 
 app.get('/user-coins', (req, res) => {
@@ -7038,6 +7244,40 @@ app.patch('/api/widgets/tap-list', (req, res) => {
     io.emit('widgets:tap-list:updated', payload);
 
     res.json({ ok: true, settings, ...payload });
+});
+
+app.post('/api/widgets/tap-list/reset', (req, res) => {
+    const userTotalsState = getLikeContributionUserTotalsState();
+    const dayKey = getTodayDayKey();
+    const next = { ...userTotalsState };
+    delete next[dayKey];
+    setLikeContributionUserTotalsState(next);
+    const payload = buildTapListPayload();
+    io.emit('widgets:tap-list:updated', payload);
+    res.json({ ok: true, ...payload });
+});
+
+app.get('/api/widgets/caption/config', (req, res) => {
+    res.json(buildCaptionConfig());
+});
+
+app.patch('/api/widgets/caption', (req, res) => {
+    const settings = setWidgetCaptionSettings(req.body || {});
+    io.emit('widgets:caption:config', buildCaptionConfig());
+    res.json({ ok: true, settings });
+});
+
+// Parakeet Python サブプロセスからのテキスト受信（loopback のみ許可）
+app.post('/api/widgets/caption/asr-text', (req, res) => {
+    if (!isLoopbackRequest(req)) {
+        return res.status(403).json({ ok: false, error: 'loopback only' });
+    }
+    const { text, isFinal = true, srcLang = 'ja' } = req.body || {};
+    if (!text || typeof text !== 'string') {
+        return res.status(400).json({ ok: false });
+    }
+    handleCaptionText(text.slice(0, 500), Boolean(isFinal), srcLang);
+    res.json({ ok: true });
 });
 
 app.get('/api/widgets/gift-jar/catalog', (req, res) => {
