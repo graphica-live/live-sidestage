@@ -59,7 +59,10 @@ class WhisperEngine extends EventEmitter {
         if (!this.isBinaryReady()) await this._downloadBinary();
         if (!this.isModelReady(modelKey)) await this._downloadModel(modelKey);
         this._mainExe = this._findExe(this.binDir);
-        this.emit('status', 'Whisper 準備完了（CUDA/GPU）');
+        if (!this._mainExe) {
+            throw new Error(`実行ファイルが見つかりません (${this.binDir})。フォルダを確認してください。`);
+        }
+        this.emit('status', `Whisper 準備完了（${path.basename(this._mainExe)}）`);
     }
 
     // ── Start / Stop audio streaming ────────────────────────────────────────
@@ -277,6 +280,8 @@ class WhisperEngine extends EventEmitter {
 
     _findExe(dir) {
         if (!fs.existsSync(dir)) return null;
+        // whisper.cpp renamed main → whisper-cli in late 2024
+        const CANDIDATE_NAMES = new Set(['whisper-cli.exe', 'main.exe']);
         for (const entry of fs.readdirSync(dir)) {
             const p = path.join(dir, entry);
             try {
@@ -284,7 +289,7 @@ class WhisperEngine extends EventEmitter {
                 if (stat.isDirectory()) {
                     const found = this._findExe(p);
                     if (found) return found;
-                } else if (entry === 'main.exe') {
+                } else if (CANDIDATE_NAMES.has(entry)) {
                     return p;
                 }
             } catch {}

@@ -3069,13 +3069,9 @@ async function startNativeAsr(socketId, engine, modelKey) {
 
 function stopNativeAsr(engine) {
     activeAsrSocket = null;
-    if (engine === 'whisper-cpp' && whisperEngine) {
-        whisperEngine.stop();
-        io.emit('widgets:caption:status', { message: '停止しました', engine: 'whisper-cpp' });
-    } else if (engine === 'sherpa-parakeet' && sherpaEngine) {
-        sherpaEngine.stop();
-        io.emit('widgets:caption:status', { message: '停止しました', engine: 'sherpa-parakeet' });
-    }
+    if (engine === 'whisper-cpp' && whisperEngine) whisperEngine.stop();
+    else if (engine === 'sherpa-parakeet' && sherpaEngine) sherpaEngine.stop();
+    // フロントエンドがすでに「停止中」を表示するので、ここからは送信しない
 }
 
 function feedAudioToEngine(socketId, engine, buf) {

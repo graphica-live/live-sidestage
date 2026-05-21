@@ -4628,16 +4628,15 @@
 
         // ── ネイティブ ASR 音声ストリーミング ──────────────────────────────────────
 
-        async function startAsrStreaming(engine, deviceId) {
-            const constraints = deviceId ? { audio: { deviceId: { exact: deviceId }, sampleRate: 16000 } } : { audio: { sampleRate: 16000 } };
-            try {
-                asrStream = await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (e) {
-                asrStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            }
-            asrAudioCtx  = new AudioContext({ sampleRate: 16000 });
-            const source = asrAudioCtx.createMediaStreamSource(asrStream);
-            // ScriptProcessorNode: 100ms chunks (1600 samples @ 16kHz)
+        async function startAsrStreaming(engine) {
+            // Reuse the level-meter stream — avoids opening a second getUserMedia on the
+            // same device (causes exclusive-mode conflicts on some Windows drivers).
+            const sharedStream = levelStream;
+            if (!sharedStream) throw new Error('レベルメーターストリームが利用できません。デバイスを選択してください。');
+            asrStream = null;  // not owned — don't stop it on cleanup
+            asrAudioCtx = new AudioContext({ sampleRate: 16000 });
+            // Browser resamples from device native rate → 16 kHz automatically
+            const source = asrAudioCtx.createMediaStreamSource(sharedStream);
             asrProcessor = asrAudioCtx.createScriptProcessor(1600, 1, 1);
             source.connect(asrProcessor);
             asrProcessor.connect(asrAudioCtx.destination);
@@ -4655,7 +4654,8 @@
             asrActiveEngine = null;
             if (asrProcessor) { try { asrProcessor.disconnect(); } catch {} asrProcessor = null; }
             if (asrAudioCtx)  { asrAudioCtx.close().catch(() => {}); asrAudioCtx = null; }
-            if (asrStream)    { asrStream.getTracks().forEach(t => t.stop()); asrStream = null; }
+            // asrStream is null (shared with level meter) — never stop it here
+            asrStream = null;
         }
 
         // ── 開始ボタン ─────────────────────────────────────────────────────────
@@ -4703,7 +4703,7 @@
                 socket.emit('caption:start-asr', { engine, modelKey });
                 setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
                 try {
-                    await startAsrStreaming(engine, deviceId);
+                    await startAsrStreaming(engine);
                 } catch (err) {
                     setCaptionStatus(`マイクアクセス失敗: ${err.message}`, true);
                     socket.emit('caption:stop-asr', { engine });
