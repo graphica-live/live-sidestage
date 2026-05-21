@@ -1377,7 +1377,8 @@ function buildWidgetUrls(req) {
         tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`,
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
         pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
-        captionOverlayUrl: `${origin}/overlays/caption`
+        captionOverlayUrl: `${origin}/overlays/caption`,
+        captionLoaderUrl: `${loaderOrigin}/overlays/caption`
     };
 }
 
