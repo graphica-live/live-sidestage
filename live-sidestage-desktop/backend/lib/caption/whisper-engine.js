@@ -290,19 +290,25 @@ class WhisperEngine extends EventEmitter {
 
     _findExe(dir) {
         if (!fs.existsSync(dir)) return null;
-        // whisper.cpp renamed main → whisper-cli in late 2024
-        const CANDIDATE_NAMES = new Set(['whisper-cli.exe', 'main.exe']);
-        for (const entry of fs.readdirSync(dir)) {
+        // whisper.cpp renamed main → whisper-cli in late 2024; prefer new name
+        const PRIORITY = ['whisper-cli.exe', 'main.exe'];
+        const entries = fs.readdirSync(dir);
+        const subdirs = [];
+        const found = new Map();
+        for (const entry of entries) {
             const p = path.join(dir, entry);
             try {
                 const stat = fs.statSync(p);
-                if (stat.isDirectory()) {
-                    const found = this._findExe(p);
-                    if (found) return found;
-                } else if (CANDIDATE_NAMES.has(entry)) {
-                    return p;
-                }
+                if (stat.isDirectory()) subdirs.push(p);
+                else if (PRIORITY.includes(entry)) found.set(entry, p);
             } catch {}
+        }
+        for (const name of PRIORITY) {
+            if (found.has(name)) return found.get(name);
+        }
+        for (const sub of subdirs) {
+            const r = this._findExe(sub);
+            if (r) return r;
         }
         return null;
     }
