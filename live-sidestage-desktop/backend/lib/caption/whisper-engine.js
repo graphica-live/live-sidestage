@@ -82,7 +82,7 @@ class WhisperEngine extends EventEmitter {
         this._running = true;
         this._audioBufs = [];
         this._busy = false;
-        this._timer = setInterval(() => this._flush(), 4000);
+        this._timer = setInterval(() => this._flush(), 2000);
     }
 
     stop() {

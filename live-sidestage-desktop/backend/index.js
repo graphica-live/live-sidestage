@@ -149,6 +149,7 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     fontSize: 52,
     charsPerSec: 12,
     segmentDuration: 6,
+    maxCharsPerSegment: 20,
     showInterim: true,
     bgStyle: 'transparent',
     pythonPath: 'python'
@@ -2849,6 +2850,7 @@ function normalizeWidgetCaptionSettings(raw) {
         fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 16 && s.fontSize <= 200 ? s.fontSize : DEFAULT_WIDGET_CAPTION_SETTINGS.fontSize,
         charsPerSec: Number.isInteger(s.charsPerSec) && s.charsPerSec >= 1 && s.charsPerSec <= 60 ? s.charsPerSec : DEFAULT_WIDGET_CAPTION_SETTINGS.charsPerSec,
         segmentDuration: Number.isInteger(s.segmentDuration) && s.segmentDuration >= 2 && s.segmentDuration <= 30 ? s.segmentDuration : DEFAULT_WIDGET_CAPTION_SETTINGS.segmentDuration,
+        maxCharsPerSegment: Number.isInteger(s.maxCharsPerSegment) && s.maxCharsPerSegment >= 5 && s.maxCharsPerSegment <= 100 ? s.maxCharsPerSegment : DEFAULT_WIDGET_CAPTION_SETTINGS.maxCharsPerSegment,
         showInterim: s.showInterim !== false,
         bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle,
         pythonPath: rawPythonPath.length > 0 && rawPythonPath.length <= 512 ? rawPythonPath : DEFAULT_WIDGET_CAPTION_SETTINGS.pythonPath

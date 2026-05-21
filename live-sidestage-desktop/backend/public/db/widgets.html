@@ -1441,6 +1441,10 @@
                                 <input id="caption-segment-duration" type="number" min="2" max="30" step="1" inputmode="numeric" placeholder="6">
                             </div>
                             <div class="field">
+                                <label for="caption-max-chars">1字幕の最大文字数</label>
+                                <input id="caption-max-chars" type="number" min="5" max="100" step="1" inputmode="numeric" placeholder="20">
+                            </div>
+                            <div class="field">
                                 <label for="caption-bg-style">背景スタイル</label>
                                 <select id="caption-bg-style">
                                     <option value="transparent">透過（OBS クロマキー向け）</option>
@@ -4461,6 +4465,7 @@
         const captionFontSizeInput = document.getElementById('caption-font-size');
         const captionCharsPerSecInput = document.getElementById('caption-chars-per-sec');
         const captionSegmentDurationInput = document.getElementById('caption-segment-duration');
+        const captionMaxCharsInput = document.getElementById('caption-max-chars');
         const captionBgStyleSelect = document.getElementById('caption-bg-style');
         const captionShowInterimCheck = document.getElementById('caption-show-interim');
         const captionTranslationEnabledCheck = document.getElementById('caption-translation-enabled');
@@ -4505,6 +4510,7 @@
                 fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
                 charsPerSec: parseInt(captionCharsPerSecInput.value, 10) || 12,
                 segmentDuration: parseInt(captionSegmentDurationInput.value, 10) || 6,
+                maxCharsPerSegment: parseInt(captionMaxCharsInput.value, 10) || 20,
                 bgStyle: captionBgStyleSelect.value,
                 showInterim: captionShowInterimCheck.checked,
                 translationEnabled: captionTranslationEnabledCheck.checked,
@@ -4518,7 +4524,7 @@
             }).catch(() => {});
         }
 
-        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
+        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionMaxCharsInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
         captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
@@ -4536,6 +4542,7 @@
             captionFontSizeInput.value = s.fontSize ?? 52;
             captionCharsPerSecInput.value = s.charsPerSec ?? 12;
             captionSegmentDurationInput.value = s.segmentDuration ?? 6;
+            captionMaxCharsInput.value = s.maxCharsPerSegment ?? 20;
             captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
             captionShowInterimCheck.checked = s.showInterim !== false;
             captionTranslationEnabledCheck.checked = Boolean(s.translationEnabled);

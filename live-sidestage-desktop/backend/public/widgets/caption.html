@@ -100,7 +100,8 @@
         const translatedEl = document.getElementById('translated-text');
 
         let hideTimer = null;
-        let typewriterTimer = null;
+        // Separate timers per element — shared timer caused one to cancel the other
+        const twTimer = { original: null, translated: null };
         let currentSettings = {};
 
         function applySettings(settings) {
@@ -116,10 +117,15 @@
             document.body.classList.toggle('bg-semi', effective === 'semi');
         }
 
+        function elKey(el) {
+            return el === originalEl ? 'original' : 'translated';
+        }
+
         function showInstant(el, text, extraClass) {
+            const key = elKey(el);
+            clearInterval(twTimer[key]);
+            twTimer[key] = null;
             if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
-            clearInterval(typewriterTimer);
-            typewriterTimer = null;
             el.textContent = text;
             el.classList.remove('hidden', 'slide-in', 'interim');
             if (extraClass) el.classList.add(extraClass);
@@ -128,9 +134,10 @@
         }
 
         function showTypewriter(el, text, extraClass, charsPerSec) {
+            const key = elKey(el);
+            clearInterval(twTimer[key]);
+            twTimer[key] = null;
             if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
-            clearInterval(typewriterTimer);
-            typewriterTimer = null;
             el.textContent = '';
             el.classList.remove('hidden', 'slide-in', 'interim');
             if (extraClass) el.classList.add(extraClass);
@@ -138,10 +145,10 @@
             el.classList.add('slide-in');
             let i = 0;
             const interval = Math.max(16, Math.round(1000 / charsPerSec));
-            typewriterTimer = setInterval(() => {
+            twTimer[key] = setInterval(() => {
                 i++;
                 el.textContent = text.slice(0, i);
-                if (i >= text.length) { clearInterval(typewriterTimer); typewriterTimer = null; }
+                if (i >= text.length) { clearInterval(twTimer[key]); twTimer[key] = null; }
             }, interval);
         }
 
@@ -154,14 +161,42 @@
             }
         }
 
-        function scheduleHide(isFinal) {
+        let segmentQueue = [];
+
+        function hideAll() {
+            originalEl.classList.add('hidden');
+            translatedEl.classList.add('hidden');
+        }
+
+        function showSegment(origChunk, translatedText) {
+            setText(originalEl, origChunk, '');
+            setText(translatedEl, translatedText || '');
             clearTimeout(hideTimer);
-            if (!isFinal) return;
             const ms = (currentSettings.segmentDuration ?? 6) * 1000;
             hideTimer = setTimeout(() => {
-                originalEl.classList.add('hidden');
-                translatedEl.classList.add('hidden');
+                if (segmentQueue.length > 0) {
+                    const next = segmentQueue.shift();
+                    showSegment(next.orig, next.trans);
+                } else {
+                    hideAll();
+                }
             }, ms);
+        }
+
+        function enqueueSegments(originalText, translatedText) {
+            const maxChars = currentSettings.maxCharsPerSegment ?? 20;
+            clearTimeout(hideTimer);
+            segmentQueue = [];
+            const chunks = [];
+            for (let i = 0; i < originalText.length; i += maxChars) {
+                chunks.push(originalText.slice(i, i + maxChars));
+            }
+            if (chunks.length === 0) return;
+            // First segment shown immediately, rest queued
+            for (let i = 1; i < chunks.length; i++) {
+                segmentQueue.push({ orig: chunks[i], trans: i === 0 ? translatedText : null });
+            }
+            showSegment(chunks[0], translatedText);
         }
 
         socket.on('widgets:caption:updated', (payload) => {
@@ -174,12 +209,16 @@
 
             if (!isFinal && !showInterim) return;
 
-            setText(originalEl, payload.original || '', isFinal ? '' : 'interim');
+            if (!isFinal) {
+                // Interim: show directly, no segmentation
+                setText(originalEl, payload.original || '', 'interim');
+                setText(translatedEl, '');
+                clearTimeout(hideTimer);
+                return;
+            }
 
             const showTranslation = currentSettings.translationEnabled && payload.translated;
-            setText(translatedEl, showTranslation ? payload.translated : '');
-
-            scheduleHide(isFinal);
+            enqueueSegments(payload.original || '', showTranslation ? payload.translated : null);
         });
 
         socket.on('widgets:caption:config', (payload) => {
