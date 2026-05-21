@@ -145,7 +145,8 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     targetLang: 'en',
     fontSize: 52,
     showInterim: true,
-    bgStyle: 'transparent'
+    bgStyle: 'transparent',
+    pythonPath: 'python'
 };
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
 // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
@@ -2832,6 +2833,7 @@ function normalizeWidgetCaptionSettings(raw) {
         try { parsed = JSON.parse(raw); } catch { parsed = {}; }
     }
     const s = parsed || {};
+    const rawPythonPath = typeof s.pythonPath === 'string' ? s.pythonPath.trim() : '';
     return {
         recognitionEngine: CAPTION_ALLOWED_RECOGNITION_ENGINES.has(s.recognitionEngine) ? s.recognitionEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.recognitionEngine,
         translationEnabled: Boolean(s.translationEnabled),
@@ -2839,7 +2841,8 @@ function normalizeWidgetCaptionSettings(raw) {
         targetLang: CAPTION_ALLOWED_LANGS.has(s.targetLang) ? s.targetLang : DEFAULT_WIDGET_CAPTION_SETTINGS.targetLang,
         fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 16 && s.fontSize <= 200 ? s.fontSize : DEFAULT_WIDGET_CAPTION_SETTINGS.fontSize,
         showInterim: s.showInterim !== false,
-        bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle
+        bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle,
+        pythonPath: rawPythonPath.length > 0 && rawPythonPath.length <= 512 ? rawPythonPath : DEFAULT_WIDGET_CAPTION_SETTINGS.pythonPath
     };
 }
 
@@ -2957,7 +2960,8 @@ let parakeetProc = null;
 
 function startParakeetProcess(deviceIndex) {
     if (parakeetProc && !parakeetProc.killed) return;
-    const py = process.env.CAPTION_PYTHON_PATH || 'python';
+    const settings = getWidgetCaptionSettings();
+    const py = process.env.CAPTION_PYTHON_PATH || settings.pythonPath || 'python';
     const scriptPath = path.join(PROJECT_ROOT, 'caption_server.py');
     const args = [scriptPath, '--port', String(FIXED_PORT)];
     if (typeof deviceIndex === 'number') args.push('--device', String(deviceIndex));

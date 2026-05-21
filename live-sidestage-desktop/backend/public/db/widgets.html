@@ -1403,6 +1403,10 @@
                                 </select>
                             </div>
                             <div class="field full">
+                                <label for="caption-python-path">Python 実行ファイルパス（Parakeet 用）</label>
+                                <input id="caption-python-path" type="text" placeholder="python" style="font-family:monospace;">
+                            </div>
+                            <div class="field full">
                                 <label for="caption-device-select">入力デバイス</label>
                                 <select id="caption-device-select">
                                     <option value="">デフォルト</option>
@@ -4421,6 +4425,7 @@
         const captionUrlEl = document.getElementById('caption-url');
         const captionStatusChip = document.getElementById('caption-status-chip');
         const captionEngineSelect = document.getElementById('caption-engine-select');
+        const captionPythonPathInput = document.getElementById('caption-python-path');
         const captionDeviceSelect = document.getElementById('caption-device-select');
         const captionLevelBar = document.getElementById('caption-level-bar');
         const captionFontSizeInput = document.getElementById('caption-font-size');
@@ -4451,6 +4456,7 @@
         function saveCaptionSettings() {
             const body = {
                 recognitionEngine: captionEngineSelect.value,
+                pythonPath: captionPythonPathInput.value.trim() || 'python',
                 fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
                 bgStyle: captionBgStyleSelect.value,
                 showInterim: captionShowInterimCheck.checked,
@@ -4468,6 +4474,7 @@
         [captionEngineSelect, captionFontSizeInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
+        captionPythonPathInput.addEventListener('change', saveCaptionSettings);
         [captionShowInterimCheck, captionTranslationEnabledCheck].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
@@ -4476,6 +4483,7 @@
             if (!cfg?.settings) return;
             const s = cfg.settings;
             captionEngineSelect.value = s.recognitionEngine ?? 'parakeet';
+            captionPythonPathInput.value = s.pythonPath ?? 'python';
             captionFontSizeInput.value = s.fontSize ?? 52;
             captionBgStyleSelect.value = s.bgStyle ?? 'transparent';
             captionShowInterimCheck.checked = s.showInterim !== false;
