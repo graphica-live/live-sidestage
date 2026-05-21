@@ -139,6 +139,7 @@ const DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS = {
     nameFontSize: 34
 };
 const DEFAULT_WIDGET_CAPTION_SETTINGS = {
+    recognitionEngine: 'parakeet',
     translationEnabled: false,
     translationEngine: 'mymemory',
     targetLang: 'en',
@@ -2820,6 +2821,7 @@ function setWidgetTapListSettings(settings) {
 
 // ---- 字幕ウィジェット ----
 
+const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['webspeech', 'parakeet']);
 const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki']);
 const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
 const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
@@ -2831,6 +2833,7 @@ function normalizeWidgetCaptionSettings(raw) {
     }
     const s = parsed || {};
     return {
+        recognitionEngine: CAPTION_ALLOWED_RECOGNITION_ENGINES.has(s.recognitionEngine) ? s.recognitionEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.recognitionEngine,
         translationEnabled: Boolean(s.translationEnabled),
         translationEngine: CAPTION_ALLOWED_ENGINES.has(s.translationEngine) ? s.translationEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.translationEngine,
         targetLang: CAPTION_ALLOWED_LANGS.has(s.targetLang) ? s.targetLang : DEFAULT_WIDGET_CAPTION_SETTINGS.targetLang,
@@ -2961,6 +2964,9 @@ function startParakeetProcess(deviceIndex) {
     parakeetProc = spawn(py, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let buf = '';
+    let hadError = false;
+    let stderrLines = [];
+
     parakeetProc.stdout.on('data', (chunk) => {
         buf += chunk.toString();
         const lines = buf.split('\n');
@@ -2970,14 +2976,29 @@ function startParakeetProcess(deviceIndex) {
             try {
                 const msg = JSON.parse(line);
                 if (msg.type === 'status') io.emit('widgets:caption:status', { message: msg.message, engine: 'parakeet' });
-                else if (msg.type === 'error') io.emit('widgets:caption:status', { message: `エラー: ${msg.message}`, engine: 'parakeet', error: true });
+                else if (msg.type === 'error') {
+                    hadError = true;
+                    io.emit('widgets:caption:status', { message: `エラー: ${msg.message}`, engine: 'parakeet', error: true });
+                }
             } catch {}
         }
     });
-    parakeetProc.stderr.on('data', (d) => console.error('[Parakeet]', d.toString().trim()));
-    parakeetProc.on('exit', () => {
+    parakeetProc.stderr.on('data', (d) => {
+        const text = d.toString().trim();
+        console.error('[Parakeet]', text);
+        stderrLines.push(...text.split('\n').filter(Boolean));
+    });
+    // close fires after all I/O is flushed (exit fires before stdout is drained)
+    parakeetProc.on('close', (code) => {
         parakeetProc = null;
-        io.emit('widgets:caption:status', { message: '停止しました', engine: 'parakeet' });
+        if (hadError) return;
+        if (code !== 0 && code !== null) {
+            const useful = stderrLines.find((l) => !l.startsWith('  ') && !l.startsWith('Traceback')) || stderrLines.at(-1) || '';
+            const detail = useful ? `: ${useful.slice(0, 140)}` : ` (code ${code})`;
+            io.emit('widgets:caption:status', { message: `起動失敗${detail}`, engine: 'parakeet', error: true });
+        } else {
+            io.emit('widgets:caption:status', { message: '停止しました', engine: 'parakeet' });
+        }
     });
     parakeetProc.on('error', (e) => {
         parakeetProc = null;
