@@ -4629,24 +4629,30 @@
         // ── ネイティブ ASR 音声ストリーミング ──────────────────────────────────────
 
         async function startAsrStreaming(engine) {
-            // Reuse the level-meter stream — avoids opening a second getUserMedia on the
-            // same device (causes exclusive-mode conflicts on some Windows drivers).
-            const sharedStream = levelStream;
-            if (!sharedStream) throw new Error('レベルメーターストリームが利用できません。デバイスを選択してください。');
-            asrStream = null;  // not owned — don't stop it on cleanup
-            asrAudioCtx = new AudioContext({ sampleRate: 16000 });
-            await asrAudioCtx.resume(); // ensure not suspended (Electron autoplay policy)
-            // Browser resamples from device native rate → 16 kHz automatically
-            const source = asrAudioCtx.createMediaStreamSource(sharedStream);
-            asrProcessor = asrAudioCtx.createScriptProcessor(1600, 1, 1);
+            // Use the level-meter's AudioContext directly — it is confirmed active
+            // (ScriptProcessorNode in a separate AudioContext can silently fail to fire).
+            if (!levelAudioCtx || levelAudioCtx.state === 'closed') {
+                throw new Error('レベルメーターが未起動です。デバイスを選択してください。');
+            }
+            if (!levelStream) {
+                throw new Error('レベルメーターストリームが利用できません。デバイスを選択してください。');
+            }
+            const ctxRate = levelAudioCtx.sampleRate; // 44100 or 48000
+            const source  = levelAudioCtx.createMediaStreamSource(levelStream);
+            asrProcessor  = levelAudioCtx.createScriptProcessor(4096, 1, 1);
             source.connect(asrProcessor);
-            asrProcessor.connect(asrAudioCtx.destination);
+            asrProcessor.connect(levelAudioCtx.destination);
             asrActiveEngine = engine;
-            asrProcessor.onaudioprocess = (e) => {
+            asrProcessor.onaudioprocess = (evt) => {
                 if (!asrActiveEngine) return;
-                const f32 = e.inputBuffer.getChannelData(0);
-                const i16 = new Int16Array(f32.length);
-                for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32768));
+                const f32   = evt.inputBuffer.getChannelData(0);
+                // Downsample ctxRate → 16000 Hz (nearest-neighbour decimation)
+                const ratio  = ctxRate / 16000;
+                const outLen = Math.floor(f32.length / ratio);
+                const i16    = new Int16Array(outLen);
+                for (let i = 0; i < outLen; i++) {
+                    i16[i] = Math.max(-32768, Math.min(32767, f32[Math.floor(i * ratio)] * 32768));
+                }
                 socket.emit('caption:audio-chunk', i16.buffer, engine);
             };
         }
@@ -4654,9 +4660,7 @@
         function stopAsrStreaming() {
             asrActiveEngine = null;
             if (asrProcessor) { try { asrProcessor.disconnect(); } catch {} asrProcessor = null; }
-            if (asrAudioCtx)  { asrAudioCtx.close().catch(() => {}); asrAudioCtx = null; }
-            // asrStream is null (shared with level meter) — never stop it here
-            asrStream = null;
+            // levelAudioCtx is owned by level meter — never close it here
         }
 
         // ── 開始ボタン ─────────────────────────────────────────────────────────
