@@ -134,15 +134,18 @@ class WhisperEngine extends EventEmitter {
                 '-oj', '-of', prefix,
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
+            let stdoutBuf = '';
             let stderrBuf = '';
-            proc.stdout.on('data', () => {});
+            proc.stdout.on('data', d => { stdoutBuf += d.toString(); });
             proc.stderr.on('data', d => { stderrBuf += d.toString(); });
 
             proc.on('close', (code) => {
                 try { fs.unlinkSync(wavPath); } catch {}
                 if (code !== 0) {
                     try { fs.unlinkSync(jsonPath); } catch {}
-                    const detail = stderrBuf.trim().split('\n').at(-1)?.slice(0, 200) || `code ${code}`;
+                    const combined = (stderrBuf + stdoutBuf).trim();
+                    const detail = combined.split('\n').at(-1)?.slice(0, 300) || `code ${code}`;
+                    this.emit('status', `whisper stderr: ${combined.slice(0, 500) || '(empty)'}`);
                     return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
                 try {
