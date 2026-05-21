@@ -107,13 +107,13 @@ class WhisperEngine extends EventEmitter {
         const chunks = this._audioBufs.splice(0);
         const pcm = Buffer.concat(chunks);
 
-        // Silence gate (RMS < 0.003)
+        // Silence gate — 0.015 prevents noise hallucination (whisper outputs English junk on near-silence)
         const i16 = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length >> 1);
         let rms = 0;
         for (let i = 0; i < i16.length; i++) rms += (i16[i] / 32768) ** 2;
         rms = Math.sqrt(rms / (i16.length || 1));
         this.emit('status', `認識中... (RMS ${rms.toFixed(4)})`);
-        if (rms < 0.003) return;
+        if (rms < 0.015) return;
 
         this._busy = true;
         const t0 = Date.now();
@@ -148,7 +148,10 @@ class WhisperEngine extends EventEmitter {
             const proc = spawn(this._mainExe, [
                 '-m', modelPath,
                 '-f', wavPath,
-                '-l', 'ja',
+                '--language', 'ja',
+                '--task', 'transcribe',
+                '--threads', '4',
+                '--no-prints',
                 '-oj', '-of', prefix,
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
