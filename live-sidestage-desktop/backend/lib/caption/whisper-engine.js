@@ -62,6 +62,16 @@ class WhisperEngine extends EventEmitter {
         if (!this._mainExe) {
             throw new Error(`実行ファイルが見つかりません (${this.binDir})。フォルダを確認してください。`);
         }
+        // Probe the exe — CUDA builds fail with 0xC0000135 (STATUS_DLL_NOT_FOUND) when
+        // CUDA runtime is not installed. Auto-retry with a CPU-only build.
+        const probeOk = await this._probeExe(this._mainExe);
+        if (!probeOk) {
+            this.emit('status', 'DLL エラー検出（CUDA未インストール）— CPU ビルドで再取得中...');
+            try { fs.rmSync(this.binDir, { recursive: true, force: true }); } catch {}
+            await this._downloadBinary(true);
+            this._mainExe = this._findExe(this.binDir);
+            if (!this._mainExe) throw new Error('CPU ビルド取得後も実行ファイルが見つかりません。');
+        }
         this.emit('status', `Whisper 準備完了（${path.basename(this._mainExe)}）`);
     }
 
@@ -192,16 +202,21 @@ class WhisperEngine extends EventEmitter {
 
     // ── Private: binary download ─────────────────────────────────────────────
 
-    async _downloadBinary() {
+    async _downloadBinary(cpuOnly = false) {
         this.emit('status', 'GitHub から Whisper バイナリ情報を取得中...');
 
         let assetUrl, assetName;
         try {
             const info = await this._fetchJson('https://api.github.com/repos/ggerganov/whisper.cpp/releases/latest');
             const assets = info.assets || [];
-            // Prefer CUDA/cublas build for x64
-            let asset = assets.find(a => /cublas.*bin.*x64/i.test(a.name) && a.name.endsWith('.zip'));
-            // Fallback to any x64 Windows zip
+            let asset;
+            if (!cpuOnly) {
+                // Try CUDA/cublas build first (requires CUDA runtime on target machine)
+                asset = assets.find(a => /cublas.*bin.*x64/i.test(a.name) && a.name.endsWith('.zip'));
+            }
+            // CPU-only: prefer non-CUDA x64 build (self-contained, no runtime deps)
+            if (!asset) asset = assets.find(a => /bin.*x64/i.test(a.name) && !/cublas/i.test(a.name) && a.name.endsWith('.zip'));
+            // Last resort: any x64 zip
             if (!asset) asset = assets.find(a => /bin.*x64/i.test(a.name) && a.name.endsWith('.zip'));
             if (!asset) throw new Error('x64 ビルドが見つかりません');
             assetUrl  = asset.browser_download_url;
@@ -285,6 +300,22 @@ class WhisperEngine extends EventEmitter {
             ], { stdio: 'pipe' });
             proc.on('close', code => (code === 0 ? resolve() : reject(new Error(`Expand-Archive exit ${code}`))));
             proc.on('error', reject);
+        });
+    }
+
+    _probeExe(exe) {
+        // Quick sanity-test: Windows NTSTATUS >= 0xC0000000 means fatal DLL/crash error
+        return new Promise(resolve => {
+            const p = spawn(exe, ['--help'], {
+                stdio: 'ignore',
+                cwd: path.dirname(exe),
+                timeout: 6000,
+            });
+            p.on('close', code => {
+                const ntError = typeof code === 'number' && (code >>> 0) >= 0xC0000000;
+                resolve(!ntError);
+            });
+            p.on('error', () => resolve(false));
         });
     }
 
