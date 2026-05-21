@@ -1474,6 +1474,7 @@
                         <div class="action-row">
                             <button type="button" class="ghost-button" id="caption-start-btn">▶ 開始</button>
                             <button type="button" class="ghost-button" id="caption-stop-btn" disabled>■ 停止</button>
+                            <button type="button" class="ghost-button" id="caption-test-btn">テスト字幕</button>
                         </div>
                         <div class="chip" id="caption-status-chip" style="margin-top:10px;">停止中</div>
                     </div>
@@ -4429,6 +4430,7 @@
         const captionTargetLangSelect = document.getElementById('caption-target-lang');
         const captionStartBtn = document.getElementById('caption-start-btn');
         const captionStopBtn = document.getElementById('caption-stop-btn');
+        const captionTestBtn = document.getElementById('caption-test-btn');
         const openCaptionOverlayBtn = document.getElementById('open-caption-overlay-button');
         const copyCaptionUrlBtn = document.getElementById('copy-caption-url-button');
 
@@ -4604,6 +4606,10 @@
             captionStartBtn.disabled = false;
             captionStopBtn.disabled = true;
             setCaptionStatus('停止中');
+        });
+
+        captionTestBtn.addEventListener('click', () => {
+            socket.emit('caption:text', { text: 'テスト字幕です', isFinal: true, srcLang: 'ja' });
         });
         // ---- /字幕ウィジェット ----
     </script>
