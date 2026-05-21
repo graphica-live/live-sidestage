@@ -102,6 +102,7 @@ class WhisperEngine extends EventEmitter {
         let rms = 0;
         for (let i = 0; i < i16.length; i++) rms += (i16[i] / 32768) ** 2;
         rms = Math.sqrt(rms / (i16.length || 1));
+        this.emit('status', `認識中... (RMS ${rms.toFixed(4)})`);
         if (rms < 0.003) return;
 
         this._busy = true;
@@ -131,13 +132,18 @@ class WhisperEngine extends EventEmitter {
                 '-f', wavPath,
                 '-l', 'ja',
                 '-oj', '-of', prefix,
-            ], { cwd: exeDir, stdio: ['ignore', 'ignore', 'ignore'] });
+            ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
+
+            let stderrBuf = '';
+            proc.stdout.on('data', () => {});
+            proc.stderr.on('data', d => { stderrBuf += d.toString(); });
 
             proc.on('close', (code) => {
                 try { fs.unlinkSync(wavPath); } catch {}
                 if (code !== 0) {
                     try { fs.unlinkSync(jsonPath); } catch {}
-                    return reject(new Error(`whisper exit ${code}`));
+                    const detail = stderrBuf.trim().split('\n').at(-1)?.slice(0, 200) || `code ${code}`;
+                    return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
                 try {
                     const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
