@@ -7631,11 +7631,30 @@ app.post('/api/widgets/gift-jar/reset', (req, res) => {
     res.json({ ok: true });
 });
 
+function buildGiftJarFallbackImage() {
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f59e0b"/>' +
+        '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">🎁</text></svg>'
+    )}`;
+}
+
 app.post('/api/widgets/gift-jar/test-single', (req, res) => {
     const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
     const catalogWithImages = catalog.filter((g) => g.imageUrl);
     if (catalogWithImages.length === 0) {
-        return res.status(503).json({ ok: false, reason: 'no_catalog' });
+        const payload = {
+            giftId: 'demo-single',
+            giftName: 'デモギフト',
+            giftImage: buildGiftJarFallbackImage(),
+            diamondCount: 15,
+            repeatCount: 1,
+            uniqueId: '__test__',
+            nickname: 'テスト'
+        };
+        giftJarHistory.push({ ...payload });
+        while (giftJarHistory.length > GIFT_JAR_HISTORY_LIMIT) { giftJarHistory.shift(); }
+        io.emit('widgets:gift-jar:notify', payload);
+        return res.json({ ok: true, giftName: payload.giftName, diamondCount: payload.diamondCount, source: 'fallback' });
     }
     // Tier-weighted: pick a random tier then a random gift within it
     const TIERS = [
@@ -7712,10 +7731,7 @@ app.post('/api/widgets/gift-jar/test', (req, res) => {
 
     // Fallback when no catalog is cached (not yet connected to TikTok)
     const DEMO_COINS = [1, 5, 1, 15, 1, 50, 1, 5, 200];
-    const FALLBACK_IMAGE = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f59e0b"/>' +
-        '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">🎁</text></svg>'
-    )}`;
+    const FALLBACK_IMAGE = buildGiftJarFallbackImage();
 
     DEMO_COINS.forEach((diamondCount, index) => {
         setTimeout(() => {
