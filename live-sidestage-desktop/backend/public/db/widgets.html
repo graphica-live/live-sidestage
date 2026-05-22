@@ -1413,7 +1413,7 @@
                                 </select>
                             </div>
                             <div class="field full" id="caption-python-path-row">
-                                <label for="caption-python-path">Python 実行ファイルパス（Parakeet Python版 用）</label>
+                                <label for="caption-python-path">Python 実行ファイルパス（Parakeet・Helsinki 用）</label>
                                 <input id="caption-python-path" type="text" placeholder="python" style="font-family:monospace;">
                             </div>
                             <div id="caption-download-progress-row" style="display:none;margin-bottom:8px;">
@@ -4546,7 +4546,8 @@
         function updateCaptionEngineVisibility() {
             const e = captionEngineSelect.value;
             captionWhisperModelRow.style.display = (e === 'whisper-cpp') ? '' : 'none';
-            captionPythonPathRow.style.display   = (e === 'parakeet')    ? '' : 'none';
+            const needPython = (e === 'parakeet') || (captionTranslationEnabledCheck.checked && captionTranslationEngineSelect.value === 'helsinki');
+            captionPythonPathRow.style.display = needPython ? '' : 'none';
         }
 
         function saveCaptionSettings() {
@@ -4582,6 +4583,8 @@
             el.addEventListener('change', saveCaptionSettings);
         });
         captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
+        captionTranslationEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
+        captionTranslationEnabledCheck.addEventListener('change', updateCaptionEngineVisibility);
         captionPythonPathInput.addEventListener('change', saveCaptionSettings);
         [captionShowInterimCheck, captionTranslationEnabledCheck, captionDeduplicateDevicesCheck].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);

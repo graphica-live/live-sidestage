@@ -2902,13 +2902,42 @@ let helsinkiReady = false;
 let helsinkiCallbacks = new Map();
 let helsinkiBuf = '';
 
-function ensureHelsinkiProcess() {
+let helsinkiEnsurePromise = null;
+
+async function ensureHelsinkiProcess() {
     if (helsinkiProc && !helsinkiProc.killed) return;
+    if (helsinkiEnsurePromise) return helsinkiEnsurePromise;
+    helsinkiEnsurePromise = _doEnsureHelsinki().finally(() => { helsinkiEnsurePromise = null; });
+    return helsinkiEnsurePromise;
+}
+
+async function _doEnsureHelsinki() {
     helsinkiReady = false;
     helsinkiCallbacks.clear();
     helsinkiBuf = '';
 
-    const py = process.env.CAPTION_PYTHON_PATH || 'python';
+    const settings = getWidgetCaptionSettings();
+    const py = settings.pythonPath || 'python';
+
+    // Auto-install missing packages
+    const pkgsOk = await new Promise(resolve => {
+        const c = spawn(py, ['-c', 'import transformers, sentencepiece'], { stdio: 'ignore', shell: false });
+        c.on('close', code => resolve(code === 0));
+        c.on('error', () => resolve(false));
+    });
+    if (!pkgsOk) {
+        io.emit('caption:status', { message: 'Helsinki: パッケージインストール中 (初回のみ)...' });
+        await new Promise((resolve, reject) => {
+            const inst = spawn(py, ['-m', 'pip', 'install', 'transformers', 'sentencepiece', 'sacremoses'], {
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            inst.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
+            inst.stderr.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
+            inst.on('close', code => code === 0 ? resolve() : reject(new Error(`pip install exit ${code}`)));
+            inst.on('error', reject);
+        });
+    }
+
     const scriptPath = path.join(PROJECT_ROOT, 'caption_translate.py');
     helsinkiProc = spawn(py, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
 
@@ -2937,7 +2966,7 @@ function ensureHelsinkiProcess() {
 }
 
 async function translateWithHelsinki(text, srcLang, tgtLang) {
-    ensureHelsinkiProcess();
+    await ensureHelsinkiProcess();
     return new Promise((resolve, reject) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const timer = setTimeout(() => {
