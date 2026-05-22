@@ -6,7 +6,16 @@
     <title>字幕</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --caption-fill: #ffffff;
+            --caption-note: #fde68a;
+            --caption-stroke: rgba(10, 10, 20, 0.95);
+            --caption-shadow: rgba(0, 0, 0, 0.7);
+            --caption-stroke-width: 6px;
+        }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,7 +24,7 @@
             min-height: 100%;
             overflow: hidden;
             background: transparent;
-            font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
         }
 
         #caption-wrap {
@@ -47,11 +56,11 @@
         #original-text {
             font-size: var(--font-size, 52px);
             font-weight: 900;
-            color: #ffffff;
-            -webkit-text-stroke: 6px rgba(10, 10, 20, 0.95);
+            color: var(--caption-fill, #ffffff);
+            -webkit-text-stroke: var(--caption-stroke-width, 6px) var(--caption-stroke, rgba(10, 10, 20, 0.95));
             paint-order: stroke fill;
             text-shadow:
-                0 0 20px rgba(0, 0, 0, 0.7),
+                0 0 20px var(--caption-shadow, rgba(0, 0, 0, 0.7)),
                 0 3px 12px rgba(0, 0, 0, 0.5);
         }
 
@@ -62,11 +71,11 @@
         #translated-text {
             font-size: calc(var(--font-size, 52px) * 0.72);
             font-weight: 800;
-            color: #fde68a;
-            -webkit-text-stroke: 5px rgba(10, 10, 20, 0.95);
+            color: var(--caption-note, #fde68a);
+            -webkit-text-stroke: calc(var(--caption-stroke-width, 6px) - 1px) var(--caption-stroke, rgba(10, 10, 20, 0.95));
             paint-order: stroke fill;
             text-shadow:
-                0 0 16px rgba(0, 0, 0, 0.7),
+                0 0 16px var(--caption-shadow, rgba(0, 0, 0, 0.7)),
                 0 3px 10px rgba(0, 0, 0, 0.5);
         }
 
@@ -103,6 +112,66 @@
         // Separate timers per element — shared timer caused one to cancel the other
         const twTimer = { original: null, translated: null };
         let currentSettings = {};
+
+        const CAPTION_FONT_FAMILIES = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            'noto-serif': '"Noto Serif JP", sans-serif',
+            mincho: '"Zen Old Mincho", sans-serif',
+            klee: '"Klee One", sans-serif',
+            'maru-gothic': '"Zen Maru Gothic", sans-serif',
+            yuji: '"Yuji Syuku", sans-serif',
+            dela: '"Dela Gothic One", sans-serif',
+            dot: '"DotGothic16", sans-serif',
+            hachi: '"Hachi Maru Pop", sans-serif',
+            rocknroll: '"RocknRoll One", sans-serif',
+            yusei: '"Yusei Magic", sans-serif',
+            kaisei: '"Kaisei Decol", serif',
+            mochiy: '"Mochiy Pop One", sans-serif',
+            rampart: '"Rampart One", sans-serif',
+            shippori: '"Shippori Mincho B1", serif',
+            'zen-antique': '"Zen Antique", serif',
+            'yuji-mai': '"Yuji Mai", serif',
+            sawarabi: '"Sawarabi Mincho", serif',
+            potta: '"Potta One", cursive',
+            'murecho-thin': '"Murecho", sans-serif',
+            stick: '"Stick", sans-serif'
+        };
+        const CAPTION_TEXT_STYLES = {
+            'gold-night':    { fillColor: '#ffffff', noteColor: '#fde68a',  strokeColor: 'rgba(10,10,20,0.95)',   textShadow: 'rgba(0,0,0,0.7)' },
+            'ice-night':     { fillColor: '#dbeafe', noteColor: '#bfdbfe',  strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.6)' },
+            'candy-pop':     { fillColor: '#ffe4f1', noteColor: '#fbcfe8',  strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.6)' },
+            'mono-impact':   { fillColor: '#f8fafc', noteColor: '#e2e8f0',  strokeColor: 'rgba(2,6,23,0.97)',    textShadow: 'rgba(0,0,0,0.75)' },
+            'mint-lime':     { fillColor: '#d1fae5', noteColor: '#6ee7b7',  strokeColor: 'rgba(6,78,59,0.96)',   textShadow: 'rgba(6,78,59,0.6)' },
+            'fire-ember':    { fillColor: '#fed7aa', noteColor: '#fb923c',  strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.6)' },
+            'violet-dream':  { fillColor: '#e9d5ff', noteColor: '#c084fc',  strokeColor: 'rgba(59,7,100,0.96)',  textShadow: 'rgba(59,7,100,0.6)' },
+            'coral-sea':     { fillColor: '#ffe4e6', noteColor: '#fb7185',  strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.6)' },
+            'lemon-sky':     { fillColor: '#fef9c3', noteColor: '#fde047',  strokeColor: 'rgba(66,32,6,0.95)',   textShadow: 'rgba(66,32,6,0.6)' },
+            'neon-cyber':    { fillColor: '#bbf7d0', noteColor: '#4ade80',  strokeColor: 'rgba(0,0,0,0.97)',     textShadow: 'rgba(0,0,0,0.75)' },
+            'cherry-blossom':{ fillColor: '#ffe4e6', noteColor: '#fda4af',  strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.6)' },
+            'ocean-tide':    { fillColor: '#bae6fd', noteColor: '#38bdf8',  strokeColor: 'rgba(12,74,110,0.96)', textShadow: 'rgba(12,74,110,0.6)' },
+            'forest-mist':   { fillColor: '#bbf7d0', noteColor: '#86efac',  strokeColor: 'rgba(20,83,45,0.96)',  textShadow: 'rgba(20,83,45,0.6)' },
+            'sunset-glow':   { fillColor: '#ffedd5', noteColor: '#fdba74',  strokeColor: 'rgba(124,45,18,0.96)', textShadow: 'rgba(124,45,18,0.6)' },
+            'aurora':        { fillColor: '#ccfbf1', noteColor: '#5eead4',  strokeColor: 'rgba(19,78,74,0.96)',  textShadow: 'rgba(19,78,74,0.6)' },
+            'citrus-splash': { fillColor: '#ecfccb', noteColor: '#bef264',  strokeColor: 'rgba(54,83,20,0.96)',  textShadow: 'rgba(54,83,20,0.6)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 6));
+            const fontFamily = CAPTION_FONT_FAMILIES[fontKey] || CAPTION_FONT_FAMILIES.default;
+            const textStyle = CAPTION_TEXT_STYLES[textStyleKey] || CAPTION_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--caption-fill', textStyle.fillColor);
+            root.setProperty('--caption-note', textStyle.noteColor);
+            root.setProperty('--caption-stroke', textStyle.strokeColor);
+            root.setProperty('--caption-shadow', textStyle.textShadow);
+            root.setProperty('--caption-stroke-width', strokeWidth + 'px');
+        }
 
         function applySettings(settings) {
             if (!settings) return;
@@ -201,9 +270,14 @@
                         if (weakBreak.test(rem[i])) { cut = i + 1; break; }
                     }
                 }
+                if (cut < 0) {
+                    for (let i = maxChars - 1; i > 0; i--) {
+                        if (rem[i] === ' ') { cut = i; break; }
+                    }
+                }
                 if (cut < 0) cut = maxChars;
                 result.push(rem.slice(0, cut));
-                rem = rem.slice(cut);
+                rem = rem.slice(cut).trimStart();
             }
             // Merge punctuation-only chunks into previous
             const merged = [];
@@ -257,12 +331,13 @@
 
         socket.on('widgets:caption:config', (payload) => {
             if (payload?.settings) applySettings(payload.settings);
+            if (payload?.appearance) applyAppearance(payload.appearance);
         });
 
         socket.on('connect', () => {
             fetch('/api/widgets/caption/config')
                 .then((r) => r.json())
-                .then((p) => { if (p?.settings) applySettings(p.settings); })
+                .then((p) => { if (p?.settings) applySettings(p.settings); if (p?.appearance) applyAppearance(p.appearance); })
                 .catch(() => {});
         });
     </script>

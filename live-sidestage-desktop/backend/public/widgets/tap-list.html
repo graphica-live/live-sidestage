@@ -6,13 +6,15 @@
     <title>タップ数一覧</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
 
         :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
             --name-color: #f1f5f9;
             --count-color: #fbbf24;
             --stroke: rgba(15, 23, 42, 0.96);
             --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 5px;
             --avatar-size: 68px;
         }
 
@@ -22,7 +24,7 @@
             min-height: 100%;
             overflow: hidden;
             background: transparent;
-            font-family: "M PLUS Rounded 1c", sans-serif;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
         }
 
         .widget {
@@ -103,7 +105,7 @@
             font-size: 22px;
             font-weight: 800;
             color: var(--name-color);
-            -webkit-text-stroke: 5px var(--stroke);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
             paint-order: stroke fill;
             text-shadow: 0 4px 14px var(--shadow);
             white-space: nowrap;
@@ -136,7 +138,7 @@
             font-size: 24px;
             font-weight: 900;
             color: var(--count-color);
-            -webkit-text-stroke: 5px var(--stroke);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
             paint-order: stroke fill;
             text-shadow: 0 5px 16px var(--shadow);
             line-height: 1.15;
@@ -214,6 +216,66 @@
         function applyBgStyle(bgStyle) {
             const effective = bgParam !== null ? bgParam : bgStyle;
             document.body.classList.toggle('bg-semi', effective === 'semi');
+        }
+
+        const TAP_LIST_FONT_FAMILIES = {
+            default: '"M PLUS Rounded 1c", sans-serif',
+            gothic: '"Noto Sans JP", sans-serif',
+            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
+            'noto-serif': '"Noto Serif JP", sans-serif',
+            mincho: '"Zen Old Mincho", sans-serif',
+            klee: '"Klee One", sans-serif',
+            'maru-gothic': '"Zen Maru Gothic", sans-serif',
+            yuji: '"Yuji Syuku", sans-serif',
+            dela: '"Dela Gothic One", sans-serif',
+            dot: '"DotGothic16", sans-serif',
+            hachi: '"Hachi Maru Pop", sans-serif',
+            rocknroll: '"RocknRoll One", sans-serif',
+            yusei: '"Yusei Magic", sans-serif',
+            kaisei: '"Kaisei Decol", serif',
+            mochiy: '"Mochiy Pop One", sans-serif',
+            rampart: '"Rampart One", sans-serif',
+            shippori: '"Shippori Mincho B1", serif',
+            'zen-antique': '"Zen Antique", serif',
+            'yuji-mai': '"Yuji Mai", serif',
+            sawarabi: '"Sawarabi Mincho", serif',
+            potta: '"Potta One", cursive',
+            'murecho-thin': '"Murecho", sans-serif',
+            stick: '"Stick", sans-serif'
+        };
+        const TAP_LIST_TEXT_STYLES = {
+            'gold-night':    { nameColor: 'rgba(241,245,249,0.94)', countColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)',   textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':     { nameColor: 'rgba(191,219,254,0.94)', countColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':     { nameColor: 'rgba(251,207,232,0.94)', countColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
+            'mono-impact':   { nameColor: 'rgba(248,250,252,0.94)', countColor: '#f8fafc', strokeColor: 'rgba(2,6,23,0.97)',    textShadow: 'rgba(2,6,23,0.5)' },
+            'mint-lime':     { nameColor: 'rgba(209,250,229,0.94)', countColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)',   textShadow: 'rgba(6,78,59,0.38)' },
+            'fire-ember':    { nameColor: 'rgba(254,215,170,0.94)', countColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' },
+            'violet-dream':  { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(59,7,100,0.96)',  textShadow: 'rgba(59,7,100,0.38)' },
+            'coral-sea':     { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.38)' },
+            'lemon-sky':     { nameColor: 'rgba(254,249,195,0.94)', countColor: '#fde047', strokeColor: 'rgba(66,32,6,0.95)',   textShadow: 'rgba(66,32,6,0.38)' },
+            'neon-cyber':    { nameColor: 'rgba(187,247,208,0.94)', countColor: '#4ade80', strokeColor: 'rgba(0,0,0,0.97)',     textShadow: 'rgba(0,0,0,0.55)' },
+            'cherry-blossom':{ nameColor: 'rgba(255,228,230,0.94)', countColor: '#fda4af', strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.38)' },
+            'ocean-tide':    { nameColor: 'rgba(186,230,253,0.94)', countColor: '#38bdf8', strokeColor: 'rgba(12,74,110,0.96)', textShadow: 'rgba(12,74,110,0.38)' },
+            'forest-mist':   { nameColor: 'rgba(187,247,208,0.94)', countColor: '#86efac', strokeColor: 'rgba(20,83,45,0.96)',  textShadow: 'rgba(20,83,45,0.38)' },
+            'sunset-glow':   { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(124,45,18,0.96)', textShadow: 'rgba(124,45,18,0.38)' },
+            'aurora':        { nameColor: 'rgba(204,251,241,0.94)', countColor: '#5eead4', strokeColor: 'rgba(19,78,74,0.96)',  textShadow: 'rgba(19,78,74,0.38)' },
+            'citrus-splash': { nameColor: 'rgba(236,252,203,0.94)', countColor: '#bef264', strokeColor: 'rgba(54,83,20,0.96)',  textShadow: 'rgba(54,83,20,0.38)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 5));
+            const fontFamily = TAP_LIST_FONT_FAMILIES[fontKey] || TAP_LIST_FONT_FAMILIES.default;
+            const textStyle = TAP_LIST_TEXT_STYLES[textStyleKey] || TAP_LIST_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--name-color', textStyle.nameColor);
+            root.setProperty('--count-color', textStyle.countColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
         }
 
         function applyRowGap(rowGap) {
@@ -355,6 +417,9 @@
             if (payload.settings) {
                 applyBgStyle(payload.settings.bgStyle);
                 applyRowGap(payload.settings.rowGap);
+            }
+            if (payload.appearance) {
+                applyAppearance(payload.appearance);
             }
             if (Array.isArray(payload.entries)) {
                 targetEntries = payload.entries;

@@ -115,6 +115,27 @@ const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribut
 const WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY = 'widget_like_contribution_user_avatars';
 const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
 const WIDGET_CAPTION_SETTINGS_STATE_KEY = 'widget_caption_settings';
+const WIDGET_CONTRIBUTORS_FONT_STATE_KEY = 'widget_contributors_font';
+const WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY = 'widget_contributors_text_style';
+const WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY = 'widget_contributors_stroke_width';
+const WIDGET_TOP_GIFT_FONT_STATE_KEY = 'widget_top_gift_font';
+const WIDGET_TOP_GIFT_TEXT_STYLE_STATE_KEY = 'widget_top_gift_text_style';
+const WIDGET_TOP_GIFT_STROKE_WIDTH_STATE_KEY = 'widget_top_gift_stroke_width';
+const WIDGET_LIKE_CONTRIBUTION_FONT_STATE_KEY = 'widget_like_contribution_font';
+const WIDGET_LIKE_CONTRIBUTION_TEXT_STYLE_STATE_KEY = 'widget_like_contribution_text_style';
+const WIDGET_LIKE_CONTRIBUTION_STROKE_WIDTH_STATE_KEY = 'widget_like_contribution_stroke_width';
+const WIDGET_TAP_LIST_FONT_STATE_KEY = 'widget_tap_list_font';
+const WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY = 'widget_tap_list_text_style';
+const WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY = 'widget_tap_list_stroke_width';
+const WIDGET_GIFT_JAR_FONT_STATE_KEY = 'widget_gift_jar_font';
+const WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY = 'widget_gift_jar_text_style';
+const WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY = 'widget_gift_jar_stroke_width';
+const WIDGET_PUSH_PULL_FONT_STATE_KEY = 'widget_push_pull_font';
+const WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY = 'widget_push_pull_text_style';
+const WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY = 'widget_push_pull_stroke_width';
+const WIDGET_CAPTION_FONT_STATE_KEY = 'widget_caption_font';
+const WIDGET_CAPTION_TEXT_STYLE_STATE_KEY = 'widget_caption_text_style';
+const WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY = 'widget_caption_stroke_width';
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
 const DEFAULT_GOAL_COUNT = 10;
@@ -162,7 +183,7 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     deduplicateDevices: true,
     noiseGateThreshold: 0.003
 };
-const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['small', 'medium', 'large']);
+const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['tiny', 'base', 'small', 'medium', 'large', 'large-v3']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
 // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
 const ALLOWED_BALLOON_DESIGN_KEYS = new Set(['dark-glass', 'horizontal-pill', 'big-number', 'side-accent', 'compact-banner', 'stacked-center', 'wa-stamp', 'singer-stage', 'dance-floor', 'kitchen-chalk', 'paw-pop']);
@@ -640,6 +661,7 @@ function buildPushPullSnapshot() {
         pullGifts: pushPullConfig.pullGifts,
         pushPoints: pushPullState.pushPoints,
         pullPoints: pushPullState.pullPoints,
+        appearance: getPushPullWidgetTextAppearance()
     };
 }
 
@@ -2413,6 +2435,89 @@ function getSharedWidgetTextAppearance() {
     };
 }
 
+function getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey) {
+    const storedFont = getScopedStateValue(fontStateKey);
+    const storedStyle = getScopedStateValue(textStyleStateKey);
+    const storedWidth = getScopedStateValue(strokeWidthStateKey);
+    return {
+        fontKey: normalizeDisplayFontFamily(storedFont || getDisplayFontFamily()),
+        textStyleKey: normalizeDisplayColorTheme(storedStyle || getDisplayColorTheme()),
+        strokeWidth: normalizeDisplayStrokeWidth(storedWidth !== '' && storedWidth !== null && storedWidth !== undefined ? storedWidth : getDisplayStrokeWidth())
+    };
+}
+
+function setPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, appearance) {
+    if (!appearance || typeof appearance !== 'object') {
+        return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey);
+    }
+    if (appearance.fontKey !== undefined) {
+        setScopedStateValue(fontStateKey, normalizeDisplayFontFamily(appearance.fontKey));
+    }
+    if (appearance.textStyleKey !== undefined) {
+        setScopedStateValue(textStyleStateKey, normalizeDisplayColorTheme(appearance.textStyleKey));
+    }
+    if (appearance.strokeWidth !== undefined) {
+        setScopedStateValue(strokeWidthStateKey, normalizeDisplayStrokeWidth(appearance.strokeWidth));
+    }
+    return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey);
+}
+
+function getContributorsWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_CONTRIBUTORS_FONT_STATE_KEY, WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY, WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY);
+}
+function setContributorsWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_CONTRIBUTORS_FONT_STATE_KEY, WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY, WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getTopGiftWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_TOP_GIFT_FONT_STATE_KEY, WIDGET_TOP_GIFT_TEXT_STYLE_STATE_KEY, WIDGET_TOP_GIFT_STROKE_WIDTH_STATE_KEY);
+}
+function setTopGiftWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_TOP_GIFT_FONT_STATE_KEY, WIDGET_TOP_GIFT_TEXT_STYLE_STATE_KEY, WIDGET_TOP_GIFT_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getLikeContributionWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_LIKE_CONTRIBUTION_FONT_STATE_KEY, WIDGET_LIKE_CONTRIBUTION_TEXT_STYLE_STATE_KEY, WIDGET_LIKE_CONTRIBUTION_STROKE_WIDTH_STATE_KEY);
+}
+function setLikeContributionWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_LIKE_CONTRIBUTION_FONT_STATE_KEY, WIDGET_LIKE_CONTRIBUTION_TEXT_STYLE_STATE_KEY, WIDGET_LIKE_CONTRIBUTION_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getTapListWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_TAP_LIST_FONT_STATE_KEY, WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY, WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY);
+}
+function setTapListWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_TAP_LIST_FONT_STATE_KEY, WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY, WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getGiftJarWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_GIFT_JAR_FONT_STATE_KEY, WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY, WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY);
+}
+function setGiftJarWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_GIFT_JAR_FONT_STATE_KEY, WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY, WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getPushPullWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY);
+}
+function setPushPullWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getCaptionWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_CAPTION_FONT_STATE_KEY, WIDGET_CAPTION_TEXT_STYLE_STATE_KEY, WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY);
+}
+function setCaptionWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_CAPTION_FONT_STATE_KEY, WIDGET_CAPTION_TEXT_STYLE_STATE_KEY, WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY, a);
+}
+
+function getGoalGiftsWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY);
+}
+function setGoalGiftsWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, a);
+}
+
 function normalizeGoalGiftFontKey(value) {
     const normalizedValue = normalizeEffectText(value, 32).toLowerCase();
     const aliases = {
@@ -2837,7 +2942,7 @@ function setWidgetTapListSettings(settings) {
 
 // ---- 字幕ウィジェット ----
 
-const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['webspeech', 'parakeet', 'whisper-cpp', 'sherpa-parakeet']);
+const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp', 'sherpa-parakeet']);
 const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki', 'xenova', 'google']);
 const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
 const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
@@ -2884,7 +2989,7 @@ function setWidgetCaptionSettings(settings) {
 }
 
 function buildCaptionConfig() {
-    return { settings: getWidgetCaptionSettings() };
+    return { settings: getWidgetCaptionSettings(), appearance: getCaptionWidgetTextAppearance() };
 }
 
 // MyMemory 翻訳（無料API、登録不要）
@@ -3263,6 +3368,7 @@ function buildTapListPayload() {
     const settings = getWidgetTapListSettings();
     return {
         settings,
+        appearance: getTapListWidgetTextAppearance(),
         entries: buildTapListEntries(settings.maxEntries)
     };
 }
@@ -3584,9 +3690,9 @@ function getGoalGiftContributorKey(gift) {
 function buildGoalGiftProgressSnapshot(
     dayKey = getTodayDayKey(),
     goalItems = getGoalGiftWidgetItems(),
-    fontKey = getDisplayFontFamily(),
-    textStyleKey = getDisplayColorTheme(),
-    strokeWidth = getDisplayStrokeWidth(),
+    fontKey = getGoalGiftsWidgetTextAppearance().fontKey,
+    textStyleKey = getGoalGiftsWidgetTextAppearance().textStyleKey,
+    strokeWidth = getGoalGiftsWidgetTextAppearance().strokeWidth,
     noteFontSize = getGoalGiftWidgetNoteFontSize(),
     achievementBadgeSize = getGoalGiftWidgetAchievementBadgeSize(),
     achievementBadgeStyle = getGoalGiftWidgetAchievementBadgeStyle()
@@ -6066,7 +6172,7 @@ function buildTopGiftWidgetPayload(dayKey = getTodayDayKey()) {
     return {
         settings: {
             ...getWidgetTopGiftSettings(),
-            appearance: getSharedWidgetTextAppearance(),
+            appearance: getTopGiftWidgetTextAppearance(),
             feedback: getSharedWidgetFeedbackSettings()
         },
         snapshot: buildTopGiftSnapshot(dayKey)
@@ -6077,7 +6183,7 @@ function buildLikeContributionWidgetPayload(notification = null) {
     return {
         settings: {
             ...getWidgetLikeContributionSettings(),
-            appearance: getSharedWidgetTextAppearance(),
+            appearance: getLikeContributionWidgetTextAppearance(),
             feedback: getSharedWidgetFeedbackSettings()
         },
         notification: notification || null
@@ -7374,6 +7480,7 @@ app.get('/api/widgets/config', (req, res) => {
     const sharedWidgetAppearance = getSharedWidgetTextAppearance();
     const sharedWidgetFeedback = getSharedWidgetFeedbackSettings();
 
+    const contributorsAppearance = getContributorsWidgetTextAppearance();
     res.json({
         broadcasterId: getBroadcasterId(),
         displayDayKey: getDisplayDayKey(),
@@ -7385,19 +7492,26 @@ app.get('/api/widgets/config', (req, res) => {
         contributorsDisplayThreshold: getDisplayThreshold(),
         contributorsGoalCount: getDisplayGoalCount(),
         contributorsAvatarVisibility: getDisplayAvatarVisibility(),
-        contributorsFontKey: getDisplayFontFamily(),
-        contributorsColorTheme: getDisplayColorTheme(),
-        contributorsStrokeWidth: getDisplayStrokeWidth(),
+        contributorsFontKey: contributorsAppearance.fontKey,
+        contributorsColorTheme: contributorsAppearance.textStyleKey,
+        contributorsStrokeWidth: contributorsAppearance.strokeWidth,
         contributorsFeedback: sharedWidgetFeedback,
         sharedWidgetFeedback,
         sharedWidgetAppearance,
         topGiftSettings: getWidgetTopGiftSettings(),
+        topGiftAppearance: getTopGiftWidgetTextAppearance(),
         likeContributionSettings: getWidgetLikeContributionSettings(),
+        likeContributionAppearance: getLikeContributionWidgetTextAppearance(),
         tapListSettings: getWidgetTapListSettings(),
+        tapListAppearance: getTapListWidgetTextAppearance(),
+        giftJarAppearance: getGiftJarWidgetTextAppearance(),
+        pushPullAppearance: getPushPullWidgetTextAppearance(),
+        captionAppearance: getCaptionWidgetTextAppearance(),
         topGiftSnapshot: buildTopGiftSnapshot(getTodayDayKey()),
-        goalGiftFontKey: sharedWidgetAppearance.fontKey,
-        goalGiftTextStyleKey: sharedWidgetAppearance.textStyleKey,
-        goalGiftStrokeWidth: sharedWidgetAppearance.strokeWidth,
+        goalGiftAppearance: getGoalGiftsWidgetTextAppearance(),
+        goalGiftFontKey: getGoalGiftsWidgetTextAppearance().fontKey,
+        goalGiftTextStyleKey: getGoalGiftsWidgetTextAppearance().textStyleKey,
+        goalGiftStrokeWidth: getGoalGiftsWidgetTextAppearance().strokeWidth,
         goalGiftNoteFontSize: getGoalGiftWidgetNoteFontSize(),
         goalGiftAchievementBadgeSize: getGoalGiftWidgetAchievementBadgeSize(),
         goalGiftAchievementBadgeStyle: getGoalGiftWidgetAchievementBadgeStyle(),
@@ -7413,6 +7527,7 @@ app.get('/api/widgets/top-gift/snapshot', (req, res) => {
 
 app.patch('/api/widgets/top-gift', (req, res) => {
     setWidgetTopGiftSettings(req.body || {});
+    if (req.body?.appearance) setTopGiftWidgetTextAppearance(req.body.appearance);
     const payload = buildTopGiftWidgetPayload(getTodayDayKey());
 
     io.emit('widgets:top-gift:updated', payload);
@@ -7429,6 +7544,7 @@ app.get('/api/widgets/like-contribution/config', (req, res) => {
 
 app.patch('/api/widgets/like-contribution', (req, res) => {
     const settings = setWidgetLikeContributionSettings(req.body || {});
+    if (req.body?.appearance) setLikeContributionWidgetTextAppearance(req.body.appearance);
     const payload = buildLikeContributionWidgetPayload();
 
     io.emit('widgets:like-contribution:config', payload);
@@ -7488,6 +7604,7 @@ app.get('/api/widgets/tap-list/config', (req, res) => {
 
 app.patch('/api/widgets/tap-list', (req, res) => {
     const settings = setWidgetTapListSettings(req.body || {});
+    if (req.body?.appearance) setTapListWidgetTextAppearance(req.body.appearance);
     const payload = buildTapListPayload();
 
     io.emit('widgets:tap-list:updated', payload);
@@ -7527,10 +7644,11 @@ app.get('/api/widgets/caption/asr-status', (req, res) => {
 
 app.patch('/api/widgets/caption', (req, res) => {
     const settings = setWidgetCaptionSettings(req.body || {});
+    const captionAppearance = req.body?.appearance ? setCaptionWidgetTextAppearance(req.body.appearance) : getCaptionWidgetTextAppearance();
     if (whisperEngine) whisperEngine.noiseGateThreshold = settings.noiseGateThreshold;
     if (sherpaEngine) sherpaEngine.noiseGateThreshold = settings.noiseGateThreshold;
     io.emit('widgets:caption:config', buildCaptionConfig());
-    res.json({ ok: true, settings });
+    res.json({ ok: true, settings, appearance: captionAppearance });
 });
 
 // Parakeet Python サブプロセスからのテキスト受信（loopback のみ許可）
@@ -7555,7 +7673,7 @@ app.get('/api/widgets/gift-jar/catalog', (req, res) => {
 });
 
 app.get('/api/widgets/gift-jar/config', (req, res) => {
-    res.json({ ...giftJarConfig });
+    res.json({ ...giftJarConfig, appearance: getGiftJarWidgetTextAppearance() });
 });
 
 app.post('/api/widgets/gift-jar/config', (req, res) => {
@@ -7566,8 +7684,10 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
         jarTheme,
         customProfileTheme,
         customProfile,
-        clearCustomProfileTheme
+        clearCustomProfileTheme,
+        appearance
     } = req.body || {};
+    if (appearance) setGiftJarWidgetTextAppearance(appearance);
     if (typeof dropAboveJar === 'number' && Number.isFinite(dropAboveJar)) {
         giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(dropAboveJar), 2000));
         dbStore.setGlobalStateValue('gift_jar_drop_above_jar', giftJarConfig.dropAboveJar, Date.now());
@@ -7618,8 +7738,9 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
         try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
         io.emit('widgets:gift-jar:reset');
     }
-    io.emit('widgets:gift-jar:config', { ...giftJarConfig });
-    res.json({ ok: true, ...giftJarConfig });
+    const giftJarAppearance = getGiftJarWidgetTextAppearance();
+    io.emit('widgets:gift-jar:config', { ...giftJarConfig, appearance: giftJarAppearance });
+    res.json({ ok: true, ...giftJarConfig, appearance: giftJarAppearance });
 });
 
 app.post('/api/widgets/gift-jar/reset', (req, res) => {
@@ -7755,7 +7876,7 @@ app.get('/api/widgets/push-pull/snapshot', (req, res) => {
 });
 
 app.patch('/api/widgets/push-pull', (req, res) => {
-    const { pushLabel, pullLabel, pushGifts, pullGifts } = req.body || {};
+    const { pushLabel, pullLabel, pushGifts, pullGifts, appearance } = req.body || {};
     if (typeof pushLabel === 'string') {
         pushPullConfig.pushLabel = pushLabel.trim().slice(0, 30) || 'プッシュ';
     }
@@ -7764,6 +7885,7 @@ app.patch('/api/widgets/push-pull', (req, res) => {
     }
     if (Array.isArray(pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(pushGifts);
     if (Array.isArray(pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(pullGifts);
+    if (appearance) setPushPullWidgetTextAppearance(appearance);
     persistPushPullConfig();
     const snapshot = buildPushPullSnapshot();
     io.emit('widgets:push-pull:updated', snapshot);
@@ -7826,15 +7948,12 @@ app.patch('/api/widgets/goal-gifts', (req, res) => {
         return res.status(400).json({ ok: false, error: 'items must be an array' });
     }
 
-    const fontKey = req.body?.fontKey !== undefined
-        ? setDisplayFontFamily(req.body.fontKey)
-        : getDisplayFontFamily();
-    const textStyleKey = req.body?.textStyleKey !== undefined
-        ? setDisplayColorTheme(req.body.textStyleKey)
-        : getDisplayColorTheme();
-    const strokeWidth = req.body?.strokeWidth !== undefined
-        ? setDisplayStrokeWidth(req.body.strokeWidth)
-        : getDisplayStrokeWidth();
+    const goalGiftsAppearance = req.body?.appearance !== undefined
+        ? setGoalGiftsWidgetTextAppearance(req.body.appearance)
+        : getGoalGiftsWidgetTextAppearance();
+    const fontKey = goalGiftsAppearance.fontKey;
+    const textStyleKey = goalGiftsAppearance.textStyleKey;
+    const strokeWidth = goalGiftsAppearance.strokeWidth;
     const noteFontSize = req.body?.noteFontSize !== undefined
         ? setGoalGiftWidgetNoteFontSize(req.body.noteFontSize)
         : getGoalGiftWidgetNoteFontSize();
@@ -7858,7 +7977,8 @@ app.patch('/api/widgets/goal-gifts', (req, res) => {
         ok: true,
         items: snapshot.goals,
         feedback,
-        snapshot
+        snapshot,
+        appearance: goalGiftsAppearance
     });
 });
 
@@ -7877,33 +7997,28 @@ app.patch('/api/widgets/contributors-style', (req, res) => {
         ? normalizeDisplayAvatarVisibility(req.body.avatarVisibility)
         : getDisplayAvatarVisibility();
 
-    const fontFamily = setDisplayFontFamily(req.body?.fontFamily);
     const savedDisplayThreshold = req.body?.displayThreshold !== undefined ? setDisplayThreshold(displayThreshold) : getDisplayThreshold();
     const savedGoalCount = req.body?.goalCount !== undefined ? setDisplayGoalCount(goalCount) : getDisplayGoalCount();
     const savedAvatarVisibility = req.body?.avatarVisibility !== undefined ? setDisplayAvatarVisibility(avatarVisibility) : getDisplayAvatarVisibility();
-    const colorTheme = setDisplayColorTheme(req.body?.colorTheme);
-    const strokeWidth = setDisplayStrokeWidth(req.body?.strokeWidth);
     const feedback = req.body?.feedback !== undefined
         ? setContributorsFeedbackSettings(req.body.feedback)
         : getContributorsFeedbackSettings();
+    const contributorsAppearance = req.body?.appearance !== undefined
+        ? setContributorsWidgetTextAppearance(req.body.appearance)
+        : getContributorsWidgetTextAppearance();
 
     emitDisplayThresholdChanges();
 
-    io.emit('widgets:top-gift:updated', buildTopGiftWidgetPayload(getTodayDayKey()));
-    io.emit('widgets:like-contribution:config', buildLikeContributionWidgetPayload());
-    io.emit('widgets:goal-gifts:updated', {
-        snapshot: buildGoalGiftProgressSnapshot(getTodayDayKey())
-    });
-
     res.json({
         ok: true,
-        fontFamily,
+        fontFamily: contributorsAppearance.fontKey,
         displayRangeMode: getContributorsDisplayRange(),
         displayThreshold: savedDisplayThreshold,
         goalCount: savedGoalCount,
         avatarVisibility: savedAvatarVisibility,
-        colorTheme,
-        strokeWidth,
+        colorTheme: contributorsAppearance.textStyleKey,
+        strokeWidth: contributorsAppearance.strokeWidth,
+        appearance: contributorsAppearance,
         feedback,
         liveSession: getContributorsSessionState(),
         snapshot: buildOverlayContributorsSnapshot(getDisplayDayKey())

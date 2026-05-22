@@ -936,31 +936,6 @@
                 <article class="utility-card">
                     <div class="utility-card-head">
                         <div>
-                            <h3>共通テキスト設定</h3>
-                            <p class="subtext">全ウィジェットに横断で効く見た目設定です。</p>
-                        </div>
-                        <button type="button" class="settings-toggle-btn" data-panel-id="shared-text-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
-                    </div>
-                    <div class="widget-settings-panel" id="shared-text-settings-panel" hidden>
-                        <div class="form-grid" style="margin: 0;">
-                            <div class="field">
-                                <label for="contributors-font">共通フォント</label>
-                                <select id="contributors-font" aria-label="全ウィジェット共通フォント"></select>
-                            </div>
-                            <div class="field">
-                                <label for="contributors-text-style">共通文字色と縁取り</label>
-                                <select id="contributors-text-style" aria-label="全ウィジェット共通文字色と縁取り"></select>
-                            </div>
-                            <div class="field">
-                                <label for="contributors-stroke-width">共通縁取り太さ</label>
-                                <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="全ウィジェット共通縁取り太さ" />
-                            </div>
-                        </div>
-                    </div>
-                </article>
-                <article class="utility-card">
-                    <div class="utility-card-head">
-                        <div>
                             <h3>共通通知設定</h3>
                             <p class="subtext">通知音とエフェクトをまとめて調整します。</p>
                         </div>
@@ -1007,6 +982,20 @@
                     </div>
 
                     <div class="widget-settings-panel" id="contributors-settings-panel" hidden>
+                    <div class="form-grid" style="margin-bottom: 14px;">
+                        <div class="field">
+                            <label for="contributors-font">フォント</label>
+                            <select id="contributors-font" aria-label="フォント"></select>
+                        </div>
+                        <div class="field">
+                            <label for="contributors-text-style">文字色と縁取り</label>
+                            <select id="contributors-text-style" aria-label="文字色と縁取り"></select>
+                        </div>
+                        <div class="field">
+                            <label for="contributors-stroke-width">縁取り太さ</label>
+                            <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                        </div>
+                    </div>
                     <div class="field full">
                         <label for="contributors-range-mode">集計範囲</label>
                         <select id="contributors-range-mode" aria-label="集計範囲">
@@ -1072,6 +1061,18 @@
                     <div class="widget-settings-panel" id="top-gift-settings-panel" hidden>
                         <div class="form-grid">
                             <div class="field">
+                                <label for="top-gift-font">フォント</label>
+                                <select id="top-gift-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-text-style">文字色と縁取り</label>
+                                <select id="top-gift-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-stroke-width">縁取り太さ</label>
+                                <input id="top-gift-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
                                 <label for="top-gift-title">表示タイトル</label>
                                 <input id="top-gift-title" type="text" maxlength="40" placeholder="本日最高ギフト">
                             </div>
@@ -1106,7 +1107,7 @@
                     <div class="card-head">
                         <div>
                             <h2>Like貢献通知</h2>
-                            <p class="subtext">指定タップ数ごとに名前と総タップ数をバルーン表示します。文字装飾と通知演出は上部の共通ヘッダー設定が反映されます。</p>
+                            <p class="subtext">指定タップ数ごとに名前と総タップ数をバルーン表示します。</p>
                         </div>
                         <button type="button" class="settings-toggle-btn" data-panel-id="like-contribution-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
@@ -1122,6 +1123,18 @@
 
                     <div class="widget-settings-panel" id="like-contribution-settings-panel" hidden>
                         <div class="form-grid">
+                            <div class="field">
+                                <label for="like-contribution-font">フォント</label>
+                                <select id="like-contribution-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-text-style">文字色と縁取り</label>
+                                <select id="like-contribution-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-stroke-width">縁取り太さ</label>
+                                <input id="like-contribution-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
                             <div class="field">
                                 <label for="like-contribution-title">表示タイトル</label>
                                 <input id="like-contribution-title" type="text" maxlength="40" placeholder="Likeありがとう！">
@@ -1197,6 +1210,18 @@
                     <div class="widget-settings-panel" id="tap-list-settings-panel" hidden>
                         <div class="form-grid">
                             <div class="field">
+                                <label for="tap-list-font">フォント</label>
+                                <select id="tap-list-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-text-style">文字色と縁取り</label>
+                                <select id="tap-list-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-stroke-width">縁取り太さ</label>
+                                <input id="tap-list-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
                                 <label for="tap-list-bg-style">背景スタイル</label>
                                 <select id="tap-list-bg-style">
                                     <option value="transparent">透過（OBSクロマキー向け）</option>
@@ -1253,6 +1278,20 @@
                     </div>
 
                     <div class="widget-settings-panel" id="gift-jar-settings-panel" hidden>
+                    <div class="form-grid" style="margin-bottom: 14px;">
+                        <div class="field">
+                            <label for="gift-jar-font">フォント</label>
+                            <select id="gift-jar-font" aria-label="フォント"></select>
+                        </div>
+                        <div class="field">
+                            <label for="gift-jar-text-style">文字色と縁取り</label>
+                            <select id="gift-jar-text-style" aria-label="文字色と縁取り"></select>
+                        </div>
+                        <div class="field">
+                            <label for="gift-jar-stroke-width">縁取り太さ</label>
+                            <input id="gift-jar-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                        </div>
+                    </div>
                     <div class="field">
                         <label for="gift-jar-drop-height">落下開始高さ</label>
                         <input type="range" id="gift-jar-drop-height" min="0" max="1400" step="50" value="0" style="width:180px;vertical-align:middle;">
@@ -1340,6 +1379,18 @@
                     <div class="widget-settings-panel" id="push-pull-settings-panel" hidden>
                         <div class="form-grid" style="margin-bottom:14px;">
                             <div class="field">
+                                <label for="push-pull-font">フォント</label>
+                                <select id="push-pull-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-text-style">文字色と縁取り</label>
+                                <select id="push-pull-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-stroke-width">縁取り太さ</label>
+                                <input id="push-pull-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
                                 <label for="push-pull-push-label">プッシュ側ラベル</label>
                                 <input type="text" id="push-pull-push-label" maxlength="30" placeholder="プッシュ">
                             </div>
@@ -1395,21 +1446,34 @@
 
                     <div class="widget-settings-panel" id="caption-settings-panel" hidden>
                         <div class="form-grid">
+                            <div class="field">
+                                <label for="caption-font">フォント</label>
+                                <select id="caption-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="caption-text-style">文字色と縁取り</label>
+                                <select id="caption-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field full">
+                                <label for="caption-stroke-width">縁取り太さ</label>
+                                <input id="caption-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
                             <div class="field full">
                                 <label for="caption-engine-select">音声認識エンジン</label>
                                 <select id="caption-engine-select">
                                     <option value="whisper-cpp">Whisper（推奨）— CUDA GPU・初回DL ~900MB</option>
                                     <option value="sherpa-parakeet">Parakeet-JA — DirectML GPU・初回DL ~640MB</option>
-                                    <option value="webspeech">Web Speech API — インターネット必要</option>
-                                    <option value="parakeet">Parakeet Python版 — Python+NeMo 別途必要</option>
                                 </select>
                             </div>
                             <div class="field full" id="caption-whisper-model-row">
                                 <label for="caption-whisper-model">Whisper モデルサイズ</label>
                                 <select id="caption-whisper-model">
+                                    <option value="tiny">Tiny (~75MB) — 超軽量</option>
+                                    <option value="base">Base (~142MB) — 軽量</option>
                                     <option value="small">Small (~244MB) — 軽量・速め</option>
                                     <option value="medium" selected>Medium (~769MB) — バランス型（推奨）</option>
                                     <option value="large">Large-v3-turbo (~874MB) — 高精度</option>
+                                    <option value="large-v3">Large-v3 (~3.1GB) — 最高精度</option>
                                 </select>
                             </div>
                             <div class="field full" id="caption-python-path-row">
@@ -1563,13 +1627,25 @@
             <div class="card-head">
                 <div>
                     <h2>目標ギフト</h2>
-                    <p class="subtext">文字装飾と通知演出は上部の共通ヘッダー設定がそのまま反映されます。</p>
+                    <p class="subtext">ギフト目標の達成状況をオーバーレイ表示します。</p>
                 </div>
                 <button type="button" class="settings-toggle-btn" data-panel-id="goal-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
             </div>
 
             <div class="widget-settings-panel" id="goal-gift-settings-panel" hidden>
                 <div class="form-grid">
+                    <div class="field">
+                        <label for="goal-gift-font">フォント</label>
+                        <select id="goal-gift-font" aria-label="フォント"></select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-text-style">文字色と縁取り</label>
+                        <select id="goal-gift-text-style" aria-label="文字色と縁取り"></select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-stroke-width">縁取り太さ</label>
+                        <input id="goal-gift-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                    </div>
                     <div class="field">
                         <label for="goal-gift-note-font-size">備考文字サイズ</label>
                         <div class="action-row">
@@ -1658,6 +1734,27 @@
         const contributorsFontSelect = document.getElementById('contributors-font');
         const contributorsTextStyleSelect = document.getElementById('contributors-text-style');
         const contributorsStrokeWidthInput = document.getElementById('contributors-stroke-width');
+        const topGiftFontSelect = document.getElementById('top-gift-font');
+        const topGiftTextStyleSelect = document.getElementById('top-gift-text-style');
+        const topGiftStrokeWidthInput = document.getElementById('top-gift-stroke-width');
+        const likeContributionFontSelect = document.getElementById('like-contribution-font');
+        const likeContributionTextStyleSelect = document.getElementById('like-contribution-text-style');
+        const likeContributionStrokeWidthInput = document.getElementById('like-contribution-stroke-width');
+        const tapListFontSelect = document.getElementById('tap-list-font');
+        const tapListTextStyleSelect = document.getElementById('tap-list-text-style');
+        const tapListStrokeWidthInput = document.getElementById('tap-list-stroke-width');
+        const giftJarFontSelect = document.getElementById('gift-jar-font');
+        const giftJarTextStyleSelect = document.getElementById('gift-jar-text-style');
+        const giftJarStrokeWidthInput = document.getElementById('gift-jar-stroke-width');
+        const pushPullFontSelect = document.getElementById('push-pull-font');
+        const pushPullTextStyleSelect = document.getElementById('push-pull-text-style');
+        const pushPullStrokeWidthInput = document.getElementById('push-pull-stroke-width');
+        const captionFontSelect = document.getElementById('caption-font');
+        const captionTextStyleSelect = document.getElementById('caption-text-style');
+        const captionStrokeWidthInput = document.getElementById('caption-stroke-width');
+        const goalGiftFontSelect = document.getElementById('goal-gift-font');
+        const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
+        const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
         const goalGiftNoteFontSizeInput = document.getElementById('goal-gift-note-font-size');
         const goalGiftAchievementBadgeSizeInput = document.getElementById('goal-gift-achievement-badge-size');
         const goalGiftAchievementBadgeStyleSelect = document.getElementById('goal-gift-achievement-badge-style');
@@ -1768,6 +1865,14 @@
             contributorsFontKey: 'default',
             contributorsColorTheme: 'gold-night',
             contributorsStrokeWidth: 4,
+            contributorsAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            topGiftAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            likeContributionAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            tapListAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            giftJarAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            pushPullAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            captionAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            goalGiftAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
@@ -2481,6 +2586,26 @@
             return Math.min(normalizedValue, MAX_CONTRIBUTORS_STROKE_WIDTH);
         }
 
+        function normalizeDisplayFontKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return sharedFontOptionMap.has(normalizedValue) ? normalizedValue : 'default';
+        }
+
+        function normalizeDisplayTextStyleKey(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return goalGiftTextStyleOptionMap.has(normalizedValue) ? normalizedValue : 'gold-night';
+        }
+
+        function normalizeDisplayStrokeWidth(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < 0) return 4;
+            return Math.min(normalizedValue, 24);
+        }
+
+        function getWidgetFontFamily(value) {
+            return sharedFontOptionMap.get(normalizeDisplayFontKey(value))?.family || sharedFontOptions[0].family;
+        }
+
         function getContributorsFontOptionsMarkup(selectedKey) {
             const normalizedKey = normalizeContributorsFontKey(selectedKey);
             return contributorsFontOptions.map((option) => `
@@ -2525,6 +2650,57 @@
 
         function syncContributorsStrokeWidthControl() {
             contributorsStrokeWidthInput.value = String(normalizeContributorsStrokeWidth(state.contributorsStrokeWidth));
+        }
+
+        function getWidgetFontOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeDisplayFontKey(selectedKey);
+            return sharedFontOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" style="font-family: ${escapeHtml(option.family)};" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `).join('');
+        }
+
+        function getWidgetTextStyleOptionsMarkup(selectedKey) {
+            const normalizedKey = normalizeDisplayTextStyleKey(selectedKey);
+            return sharedTextStyleOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" style="${option.preview}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `).join('');
+        }
+
+        function syncWidgetAppearanceControls(fontSelect, textStyleSelect, strokeWidthInput, appearance) {
+            const fontKey = appearance?.fontKey || 'default';
+            const textStyleKey = appearance?.textStyleKey || 'gold-night';
+            const strokeWidth = appearance?.strokeWidth ?? 4;
+            fontSelect.innerHTML = getWidgetFontOptionsMarkup(fontKey);
+            fontSelect.value = normalizeDisplayFontKey(fontKey);
+            fontSelect.style.fontFamily = getWidgetFontFamily(fontKey);
+            textStyleSelect.innerHTML = getWidgetTextStyleOptionsMarkup(textStyleKey);
+            textStyleSelect.value = normalizeDisplayTextStyleKey(textStyleKey);
+            strokeWidthInput.value = String(normalizeDisplayStrokeWidth(strokeWidth));
+        }
+
+        function syncContributorsAppearanceControls() {
+            syncWidgetAppearanceControls(contributorsFontSelect, contributorsTextStyleSelect, contributorsStrokeWidthInput, state.contributorsAppearance);
+        }
+        function syncTopGiftAppearanceControls() {
+            syncWidgetAppearanceControls(topGiftFontSelect, topGiftTextStyleSelect, topGiftStrokeWidthInput, state.topGiftAppearance);
+        }
+        function syncLikeContributionAppearanceControls() {
+            syncWidgetAppearanceControls(likeContributionFontSelect, likeContributionTextStyleSelect, likeContributionStrokeWidthInput, state.likeContributionAppearance);
+        }
+        function syncTapListAppearanceControls() {
+            syncWidgetAppearanceControls(tapListFontSelect, tapListTextStyleSelect, tapListStrokeWidthInput, state.tapListAppearance);
+        }
+        function syncGiftJarAppearanceControls() {
+            syncWidgetAppearanceControls(giftJarFontSelect, giftJarTextStyleSelect, giftJarStrokeWidthInput, state.giftJarAppearance);
+        }
+        function syncPushPullAppearanceControls() {
+            syncWidgetAppearanceControls(pushPullFontSelect, pushPullTextStyleSelect, pushPullStrokeWidthInput, state.pushPullAppearance);
+        }
+        function syncCaptionAppearanceControls() {
+            syncWidgetAppearanceControls(captionFontSelect, captionTextStyleSelect, captionStrokeWidthInput, state.captionAppearance);
+        }
+        function syncGoalGiftAppearanceControls() {
+            syncWidgetAppearanceControls(goalGiftFontSelect, goalGiftTextStyleSelect, goalGiftStrokeWidthInput, state.goalGiftAppearance);
         }
 
         function syncGoalGiftNoteFontSizeControl() {
@@ -2929,7 +3105,12 @@
             return {
                 bgStyle: tapListBgStyleSelect ? tapListBgStyleSelect.value : 'transparent',
                 maxEntries: Number.parseInt(tapListMaxEntriesInput ? tapListMaxEntriesInput.value : '20', 10) || 20,
-                rowGap: Number.parseInt(tapListRowGapInput ? tapListRowGapInput.value : '8', 10)
+                rowGap: Number.parseInt(tapListRowGapInput ? tapListRowGapInput.value : '8', 10),
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(tapListFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(tapListTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(tapListStrokeWidthInput.value)
+                }
             };
         }
 
@@ -2944,7 +3125,9 @@
                 const payload = await response.json();
                 if (!payload.ok) throw new Error(payload.error || 'タップ一覧の保存に失敗しました。');
                 state.tapListSettings = payload.settings || state.tapListSettings;
+                state.tapListAppearance = payload.appearance || state.tapListAppearance;
                 applyTapListSettingsToForm(state.tapListSettings);
+                syncTapListAppearanceControls();
                 refreshTapListPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: タップ一覧を保存しました。', 'ok');
             } catch (err) {
@@ -2965,7 +3148,12 @@
             return {
                 title: titleInput.value,
                 senderDisplayMode: senderDisplayModeInput.value === 'all' ? 'all' : 'latest',
-                metalEffectKey: metalEffectEnabledInput.checked ? 'glow' : 'none'
+                metalEffectKey: metalEffectEnabledInput.checked ? 'glow' : 'none',
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(topGiftFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(topGiftTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(topGiftStrokeWidthInput.value)
+                }
             };
         }
 
@@ -2976,7 +3164,12 @@
                 soundVolume: normalizeLikeContributionSoundVolume(likeContributionVolumeInput.value),
                 balloonDesignKey: normalizeLikeContributionBalloonDesignKey(likeContributionBalloonDesignSelect.value),
                 countFontSize: normalizeLikeContributionCountFontSize(likeContributionCountFontSizeInput.value),
-                nameFontSize: normalizeLikeContributionNameFontSize(likeContributionNameFontSizeInput.value)
+                nameFontSize: normalizeLikeContributionNameFontSize(likeContributionNameFontSizeInput.value),
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(likeContributionFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(likeContributionTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(likeContributionStrokeWidthInput.value)
+                }
             };
         }
 
@@ -3480,9 +3673,14 @@
             state.contributorsDisplayThreshold = normalizeContributorsDisplayThreshold(payload.contributorsDisplayThreshold);
             state.contributorsGoalCount = normalizeContributorsGoalCount(payload.contributorsGoalCount);
             state.contributorsAvatarVisibility = normalizeContributorsAvatarVisibility(payload.contributorsAvatarVisibility);
-            state.contributorsFontKey = normalizeContributorsFontKey(payload.contributorsFontKey);
-            state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.contributorsColorTheme);
-            state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.contributorsStrokeWidth);
+            state.contributorsAppearance = payload.contributorsAppearance || { fontKey: payload.contributorsFontKey || 'default', textStyleKey: payload.contributorsColorTheme || 'gold-night', strokeWidth: payload.contributorsStrokeWidth ?? 4 };
+            state.topGiftAppearance = payload.topGiftAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.likeContributionAppearance = payload.likeContributionAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.tapListAppearance = payload.tapListAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.giftJarAppearance = payload.giftJarAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.pushPullAppearance = payload.pushPullAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.captionAppearance = payload.captionAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.goalGiftAppearance = payload.goalGiftAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.goalGiftNoteFontSize);
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
@@ -3497,9 +3695,14 @@
             syncContributorsThresholdControl();
             syncContributorsGoalCountControl();
             syncContributorsAvatarVisibilityControl();
-            syncContributorsFontControl();
-            syncContributorsTextStyleControl();
-            syncContributorsStrokeWidthControl();
+            syncContributorsAppearanceControls();
+            syncTopGiftAppearanceControls();
+            syncLikeContributionAppearanceControls();
+            syncTapListAppearanceControls();
+            syncGiftJarAppearanceControls();
+            syncPushPullAppearanceControls();
+            syncCaptionAppearanceControls();
+            syncGoalGiftAppearanceControls();
             syncGoalGiftNoteFontSizeControl();
             syncGoalGiftAchievementBadgeControls();
             syncSharedFeedbackControls();
@@ -3594,7 +3797,9 @@
                     throw new Error(payload.error || 'ウィジェット設定の保存に失敗しました。');
                 }
                 state.topGiftSettings = payload.settings;
+                state.topGiftAppearance = payload.settings?.appearance || state.topGiftAppearance;
                 applyTopGiftSettingsToForm(state.topGiftSettings);
+                syncTopGiftAppearanceControls();
                 refreshTopGiftPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: 本日最高ギフトを保存しました。', 'ok');
             } catch (error) {
@@ -3638,7 +3843,9 @@
                     throw new Error(payload.error || 'Like貢献通知の保存に失敗しました。');
                 }
                 state.likeContributionSettings = payload.settings || state.likeContributionSettings;
+                state.likeContributionAppearance = payload.settings?.appearance || state.likeContributionAppearance;
                 applyLikeContributionSettingsToForm(state.likeContributionSettings);
+                syncLikeContributionAppearanceControls();
                 refreshLikeContributionPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: Like貢献通知を保存しました。', 'ok');
             } catch (error) {
@@ -3703,9 +3910,11 @@
                         displayThreshold: normalizeContributorsDisplayThreshold(contributorsThresholdInput.value),
                         goalCount: normalizeContributorsGoalCount(contributorsGoalCountInput.value),
                         avatarVisibility: normalizeContributorsAvatarVisibility(contributorsAvatarVisibilitySelect.value),
-                        fontFamily: normalizeContributorsFontKey(contributorsFontSelect.value),
-                        colorTheme: normalizeContributorsTextStyleKey(contributorsTextStyleSelect.value),
-                        strokeWidth: normalizeContributorsStrokeWidth(contributorsStrokeWidthInput.value),
+                        appearance: {
+                            fontKey: normalizeContributorsFontKey(contributorsFontSelect.value),
+                            textStyleKey: normalizeContributorsTextStyleKey(contributorsTextStyleSelect.value),
+                            strokeWidth: normalizeContributorsStrokeWidth(contributorsStrokeWidthInput.value)
+                        },
                         feedback: {
                             soundEnabled: soundSelection.soundEnabled,
                             effectEnabled: effectSelection.effectEnabled,
@@ -3723,16 +3932,12 @@
                 state.contributorsDisplayThreshold = normalizeContributorsDisplayThreshold(payload.displayThreshold ?? contributorsThresholdInput.value);
                 state.contributorsGoalCount = normalizeContributorsGoalCount(payload.goalCount ?? contributorsGoalCountInput.value);
                 state.contributorsAvatarVisibility = normalizeContributorsAvatarVisibility(payload.avatarVisibility ?? contributorsAvatarVisibilitySelect.value);
-                state.contributorsFontKey = normalizeContributorsFontKey(payload.fontFamily ?? contributorsFontSelect.value);
-                state.contributorsColorTheme = normalizeContributorsTextStyleKey(payload.colorTheme ?? contributorsTextStyleSelect.value);
-                state.contributorsStrokeWidth = normalizeContributorsStrokeWidth(payload.strokeWidth ?? contributorsStrokeWidthInput.value);
+                state.contributorsAppearance = payload.appearance || state.contributorsAppearance;
                 state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.feedback);
                 syncContributorsThresholdControl();
                 syncContributorsGoalCountControl();
                 syncContributorsAvatarVisibilityControl();
-                syncContributorsFontControl();
-                syncContributorsTextStyleControl();
-                syncContributorsStrokeWidthControl();
+                syncContributorsAppearanceControls();
                 syncSharedFeedbackControls();
                 refreshContributorsPreview({ forceReload: true });
                 setStatus(saveStatus, '設定状態: ウィジェット共通設定を保存しました。', 'ok');
@@ -3793,6 +3998,11 @@
                         noteFontSize: normalizeGoalGiftNoteFontSize(goalGiftNoteFontSizeInput.value),
                         achievementBadgeSize: normalizeGoalGiftAchievementBadgeSize(goalGiftAchievementBadgeSizeInput.value),
                         achievementBadgeStyle: normalizeGoalGiftAchievementBadgeStyle(goalGiftAchievementBadgeStyleSelect.value),
+                        appearance: {
+                            fontKey: normalizeGoalGiftFontKey(goalGiftFontSelect.value),
+                            textStyleKey: normalizeGoalGiftTextStyleKey(goalGiftTextStyleSelect.value),
+                            strokeWidth: normalizeGoalGiftStrokeWidth(goalGiftStrokeWidthInput.value)
+                        },
                         items: getDraftGoalGiftItems()
                     })
                 });
@@ -3803,9 +4013,11 @@
                 state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.snapshot?.noteFontSize ?? goalGiftNoteFontSizeInput.value);
                 state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.snapshot?.achievementBadgeSize ?? goalGiftAchievementBadgeSizeInput.value);
                 state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.snapshot?.achievementBadgeStyle ?? goalGiftAchievementBadgeStyleSelect.value);
+                state.goalGiftAppearance = payload.appearance || state.goalGiftAppearance;
                 state.goalGiftItems = Array.isArray(payload.items) ? payload.items : [];
                 syncGoalGiftNoteFontSizeControl();
                 syncGoalGiftAchievementBadgeControls();
+                syncGoalGiftAppearanceControls();
                 renderGoalGiftRows();
                 refreshGoalGiftPreviews({ forceReload: true });
                 setStatus(saveStatus, `設定状態: 目標ギフトを${isAutosave ? '自動' : ''}保存しました。`, 'ok');
@@ -3865,6 +4077,47 @@
         goalGiftAchievementBadgeSizeInput.addEventListener('blur', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftAchievementBadgeSizeInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftAchievementBadgeStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftFontSelect.addEventListener('input', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); });
+        goalGiftFontSelect.addEventListener('change', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftTextStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftStrokeWidthInput.addEventListener('input', scheduleGoalGiftAutosave);
+        goalGiftStrokeWidthInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        topGiftFontSelect.addEventListener('input', () => { topGiftFontSelect.style.fontFamily = getWidgetFontFamily(topGiftFontSelect.value); });
+        topGiftFontSelect.addEventListener('change', () => { topGiftFontSelect.style.fontFamily = getWidgetFontFamily(topGiftFontSelect.value); saveTopGiftSettingsImmediately().catch(() => {}); });
+        topGiftTextStyleSelect.addEventListener('change', () => { saveTopGiftSettingsImmediately().catch(() => {}); });
+        topGiftStrokeWidthInput.addEventListener('input', () => { scheduleTopGiftSettingsAutosave(); });
+        topGiftStrokeWidthInput.addEventListener('change', () => { saveTopGiftSettingsImmediately().catch(() => {}); });
+        likeContributionFontSelect.addEventListener('input', () => { likeContributionFontSelect.style.fontFamily = getWidgetFontFamily(likeContributionFontSelect.value); });
+        likeContributionFontSelect.addEventListener('change', () => { likeContributionFontSelect.style.fontFamily = getWidgetFontFamily(likeContributionFontSelect.value); saveLikeContributionSettingsImmediately().catch(() => {}); });
+        likeContributionTextStyleSelect.addEventListener('change', () => { saveLikeContributionSettingsImmediately().catch(() => {}); });
+        likeContributionStrokeWidthInput.addEventListener('input', () => { scheduleLikeContributionSettingsAutosave(); });
+        likeContributionStrokeWidthInput.addEventListener('change', () => { saveLikeContributionSettingsImmediately().catch(() => {}); });
+        tapListFontSelect.addEventListener('input', () => { tapListFontSelect.style.fontFamily = getWidgetFontFamily(tapListFontSelect.value); });
+        tapListFontSelect.addEventListener('change', () => { tapListFontSelect.style.fontFamily = getWidgetFontFamily(tapListFontSelect.value); saveTapListSettingsImmediately().catch(() => {}); });
+        tapListTextStyleSelect.addEventListener('change', () => { saveTapListSettingsImmediately().catch(() => {}); });
+        tapListStrokeWidthInput.addEventListener('input', () => { saveTapListSettingsImmediately().catch(() => {}); });
+        tapListStrokeWidthInput.addEventListener('change', () => { saveTapListSettingsImmediately().catch(() => {}); });
+        giftJarFontSelect.addEventListener('input', () => { giftJarFontSelect.style.fontFamily = getWidgetFontFamily(giftJarFontSelect.value); });
+        giftJarFontSelect.addEventListener('change', () => {
+            giftJarFontSelect.style.fontFamily = getWidgetFontFamily(giftJarFontSelect.value);
+            fetch('/api/widgets/gift-jar/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: { fontKey: normalizeDisplayFontKey(giftJarFontSelect.value), textStyleKey: normalizeDisplayTextStyleKey(giftJarTextStyleSelect.value), strokeWidth: normalizeDisplayStrokeWidth(giftJarStrokeWidthInput.value) } }) }).catch(() => {});
+        });
+        giftJarTextStyleSelect.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: { fontKey: normalizeDisplayFontKey(giftJarFontSelect.value), textStyleKey: normalizeDisplayTextStyleKey(giftJarTextStyleSelect.value), strokeWidth: normalizeDisplayStrokeWidth(giftJarStrokeWidthInput.value) } }) }).catch(() => {});
+        });
+        giftJarStrokeWidthInput.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: { fontKey: normalizeDisplayFontKey(giftJarFontSelect.value), textStyleKey: normalizeDisplayTextStyleKey(giftJarTextStyleSelect.value), strokeWidth: normalizeDisplayStrokeWidth(giftJarStrokeWidthInput.value) } }) }).catch(() => {});
+        });
+        pushPullFontSelect.addEventListener('input', () => { pushPullFontSelect.style.fontFamily = getWidgetFontFamily(pushPullFontSelect.value); });
+        pushPullFontSelect.addEventListener('change', () => { pushPullFontSelect.style.fontFamily = getWidgetFontFamily(pushPullFontSelect.value); schedulePushPullSave(); });
+        pushPullTextStyleSelect.addEventListener('change', schedulePushPullSave);
+        pushPullStrokeWidthInput.addEventListener('input', schedulePushPullSave);
+        pushPullStrokeWidthInput.addEventListener('change', schedulePushPullSave);
+        captionFontSelect.addEventListener('input', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); });
+        captionFontSelect.addEventListener('change', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); saveCaptionSettings(); });
+        captionTextStyleSelect.addEventListener('change', saveCaptionSettings);
+        captionStrokeWidthInput.addEventListener('input', saveCaptionSettings);
+        captionStrokeWidthInput.addEventListener('change', saveCaptionSettings);
         contributorsRangeModeSelect.addEventListener('change', () => {
             setContributorsDisplayRangeMode(contributorsRangeModeSelect.value).catch((error) => {
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
@@ -4055,6 +4308,10 @@
             }
             if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
                 giftJarWallProfiles = cfg.customProfiles;
+            }
+            if (cfg.appearance) {
+                state.giftJarAppearance = cfg.appearance;
+                syncGiftJarAppearanceControls();
             }
             refreshGiftJarWallEditorThemeState();
         }).catch(() => {});
@@ -4418,7 +4675,14 @@
             const response = await fetch('/api/widgets/push-pull', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pushLabel, pullLabel, pushGifts, pullGifts })
+                body: JSON.stringify({
+                    pushLabel, pullLabel, pushGifts, pullGifts,
+                    appearance: {
+                        fontKey: normalizeDisplayFontKey(pushPullFontSelect.value),
+                        textStyleKey: normalizeDisplayTextStyleKey(pushPullTextStyleSelect.value),
+                        strokeWidth: normalizeDisplayStrokeWidth(pushPullStrokeWidthInput.value)
+                    }
+                })
             });
             if (!response.ok) throw new Error('プッシュ＆プル設定の保存に失敗しました');
         }
@@ -4430,6 +4694,10 @@
             pushPullPullLabel.value = data.pullLabel || 'プル';
             pushPullPushGifts = Array.isArray(data.pushGifts) ? data.pushGifts.slice(0, MAX_PUSH_PULL_GIFTS) : [];
             pushPullPullGifts = Array.isArray(data.pullGifts) ? data.pullGifts.slice(0, MAX_PUSH_PULL_GIFTS) : [];
+            if (data.appearance) {
+                state.pushPullAppearance = data.appearance;
+                syncPushPullAppearanceControls();
+            }
             renderPushPullRows();
         }
 
@@ -4532,7 +4800,6 @@
         const openCaptionOverlayBtn = document.getElementById('open-caption-overlay-button');
         const copyCaptionUrlBtn = document.getElementById('copy-caption-url-button');
 
-        let webSpeechRecognition = null;
         let levelAudioCtx = null;
         let levelSource = null;
         let levelAnalyser = null;
@@ -4553,7 +4820,7 @@
         function updateCaptionEngineVisibility() {
             const e = captionEngineSelect.value;
             captionWhisperModelRow.style.display = (e === 'whisper-cpp') ? '' : 'none';
-            const needPython = (e === 'parakeet') || (captionTranslationEnabledCheck.checked && captionTranslationEngineSelect.value === 'helsinki');
+            const needPython = captionTranslationEnabledCheck.checked && captionTranslationEngineSelect.value === 'helsinki';
             captionPythonPathRow.style.display = needPython ? '' : 'none';
         }
 
@@ -4600,7 +4867,12 @@
                 audioSampleRate: parseInt(captionAudioSampleRateSelect.value, 10) || 44100,
                 audioChunkSec: parseFloat(captionAudioChunkSecInput.value) || 0.15,
                 deduplicateDevices: captionDeduplicateDevicesCheck.checked,
-                noiseGateThreshold: captionNoiseGateThreshold
+                noiseGateThreshold: captionNoiseGateThreshold,
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(captionFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(captionTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(captionStrokeWidthInput.value)
+                }
             };
             fetch('/api/widgets/caption', {
                 method: 'PATCH',
@@ -4649,6 +4921,10 @@
             captionAudioChunkSecInput.value    = s.audioChunkSec ?? 0.15;
             captionDeduplicateDevicesCheck.checked = s.deduplicateDevices !== false;
             setNoiseGateHandle(typeof s.noiseGateThreshold === 'number' ? s.noiseGateThreshold : 0.003);
+            if (cfg.appearance) {
+                state.captionAppearance = cfg.appearance;
+                syncCaptionAppearanceControls();
+            }
             updateCaptionEngineVisibility();
         }
 
@@ -4809,36 +5085,7 @@
             captionStartBtn.disabled = true;
             captionStopBtn.disabled  = false;
 
-            if (engine === 'webspeech') {
-                const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SR) {
-                    setCaptionStatus('Web Speech API はこのブラウザで利用できません', true);
-                    captionStartBtn.disabled = false;
-                    captionStopBtn.disabled  = true;
-                    return;
-                }
-                const rec = new SR();
-                rec.lang = 'ja-JP';
-                rec.continuous = true;
-                rec.interimResults = captionShowInterimCheck.checked;
-                rec.onresult = (event) => {
-                    for (let i = event.resultIndex; i < event.results.length; i++) {
-                        const text = event.results[i][0].transcript;
-                        const isFinal = event.results[i].isFinal;
-                        socket.emit('caption:text', { text, isFinal, srcLang: 'ja' });
-                    }
-                };
-                rec.onerror = (e) => { setCaptionStatus(`エラー: ${e.error}`, true); };
-                rec.onend = () => { if (webSpeechRecognition) { try { rec.start(); } catch {} } };
-                rec.start();
-                webSpeechRecognition = rec;
-                setCaptionStatus('Web Speech API 認識中');
-
-            } else if (engine === 'parakeet') {
-                socket.emit('caption:start-parakeet', { deviceIndex: deviceIndex !== null ? deviceIndex : undefined });
-                setCaptionStatus('Parakeet (Python) 起動中...');
-
-            } else if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+            if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
                 const modelKey = captionWhisperModelSelect.value || 'medium';
                 socket.emit('caption:start-asr', { engine, modelKey });
                 setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
@@ -4856,15 +5103,8 @@
         // ── 停止ボタン ─────────────────────────────────────────────────────────
 
         captionStopBtn.addEventListener('click', () => {
-            if (webSpeechRecognition) {
-                webSpeechRecognition.onend = null;
-                webSpeechRecognition.stop();
-                webSpeechRecognition = null;
-            }
             const engine = captionEngineSelect.value;
-            if (engine === 'parakeet') {
-                socket.emit('caption:stop-parakeet');
-            } else if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+            if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
                 socket.emit('caption:stop-asr', { engine });
                 stopAsrStreaming();
             }
