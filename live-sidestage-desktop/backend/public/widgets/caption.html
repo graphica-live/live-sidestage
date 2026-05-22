@@ -155,7 +155,7 @@
         function setText(el, text, extraClass) {
             const cps = currentSettings.charsPerSec ?? 12;
             // showInterim=false means text waits for silence then appears all at once
-            if (cps >= 60 || currentSettings.showInterim === false) {
+            if (cps >= 60 || !currentSettings.showInterim) {
                 showInstant(el, text, extraClass);
             } else {
                 showTypewriter(el, text, extraClass, cps);
