@@ -3087,6 +3087,7 @@ async function handleCaptionText(text, isFinal, srcLang) {
             new Promise(r => setTimeout(() => r(null), 2000)),
         ]);
     }
+    io.emit('widgets:caption:status', { message: `dbg showInterim=${settings.showInterim}` });
     io.emit('widgets:caption:updated', { original: text, translated, isFinal, settings });
     // If translation didn't arrive in time, emit it as a patch when ready
     if (isFinal && settings.translationEnabled && !translated) {
