@@ -3083,6 +3083,7 @@ async function handleCaptionText(text, isFinal, srcLang) {
     io.emit('widgets:caption:updated', { original: text, translated: null, isFinal, settings });
     if (isFinal && settings.translationEnabled) {
         const translated = await translateCaption(text, srcLang);
+        io.emit('widgets:caption:status', { message: `翻訳: ${translated ? translated.slice(0, 40) : 'null'}` });
         if (translated) {
             io.emit('widgets:caption:translation', { translated });
         }

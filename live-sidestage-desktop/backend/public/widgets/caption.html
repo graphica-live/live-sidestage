@@ -222,9 +222,7 @@
         });
 
         socket.on('widgets:caption:translation', ({ translated } = {}) => {
-            if (translated && currentSettings.translationEnabled) {
-                setText(translatedEl, translated);
-            }
+            if (translated) setText(translatedEl, translated);
         });
 
         socket.on('widgets:caption:config', (payload) => {
