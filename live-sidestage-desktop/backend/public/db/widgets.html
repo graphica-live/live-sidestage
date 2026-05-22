@@ -1540,8 +1540,9 @@
                     <div style="border-top:1px solid var(--line);margin-top:4px;padding-top:14px;">
                         <div style="margin-bottom:10px;">
                             <div style="font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">入力レベル</div>
-                            <div style="height:10px;border-radius:5px;background:#dfe8f1;overflow:hidden;">
-                                <div id="caption-level-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e 0%,#eab308 72%,#ef4444 100%);border-radius:5px;will-change:width;"></div>
+                            <div id="caption-noise-gate-track" style="height:10px;border-radius:5px;background:#dfe8f1;position:relative;cursor:crosshair;">
+                                <div id="caption-level-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e 0%,#eab308 72%,#ef4444 100%);border-radius:5px;will-change:width;pointer-events:none;"></div>
+                                <div id="caption-noise-gate-handle" title="ノイズゲート閾値（ドラッグで設定）" style="position:absolute;top:-4px;width:4px;height:18px;background:#2563eb;border-radius:2px;cursor:ew-resize;left:1.8%;transform:translateX(-50%);box-shadow:0 0 0 2px rgba(37,99,235,0.25);z-index:1;pointer-events:all;"></div>
                             </div>
                         </div>
                         <div class="action-row">
@@ -4503,6 +4504,10 @@
         const captionDownloadLabel = document.getElementById('caption-download-label');
         const captionDeviceSelect = document.getElementById('caption-device-select');
         const captionLevelBar = document.getElementById('caption-level-bar');
+        const captionNoiseGateTrack  = document.getElementById('caption-noise-gate-track');
+        const captionNoiseGateHandle = document.getElementById('caption-noise-gate-handle');
+        const NOISE_GATE_SCALE = 600; // same scale as level meter: pct = rms * NOISE_GATE_SCALE
+        let captionNoiseGateThreshold = 0.003;
         const captionFontSizeInput = document.getElementById('caption-font-size');
         const captionCharsPerSecInput = document.getElementById('caption-chars-per-sec');
         const captionSegmentDurationInput = document.getElementById('caption-segment-duration');
@@ -4552,6 +4557,28 @@
             captionPythonPathRow.style.display = needPython ? '' : 'none';
         }
 
+        function setNoiseGateHandle(rmsValue) {
+            captionNoiseGateThreshold = rmsValue;
+            captionNoiseGateHandle.style.left = Math.min(100, rmsValue * NOISE_GATE_SCALE) + '%';
+        }
+
+        captionNoiseGateHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const rect = captionNoiseGateTrack.getBoundingClientRect();
+            function onMove(ev) {
+                const pct = Math.max(0, Math.min(100, (ev.clientX - rect.left) / rect.width * 100));
+                captionNoiseGateHandle.style.left = pct + '%';
+                captionNoiseGateThreshold = pct / NOISE_GATE_SCALE;
+            }
+            function onUp() {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                saveCaptionSettings();
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
         function saveCaptionSettings() {
             const body = {
                 recognitionEngine: captionEngineSelect.value,
@@ -4572,7 +4599,8 @@
                 vadSilenceMs: parseInt(captionVadSilenceInput.value, 10) || 150,
                 audioSampleRate: parseInt(captionAudioSampleRateSelect.value, 10) || 44100,
                 audioChunkSec: parseFloat(captionAudioChunkSecInput.value) || 0.15,
-                deduplicateDevices: captionDeduplicateDevicesCheck.checked
+                deduplicateDevices: captionDeduplicateDevicesCheck.checked,
+                noiseGateThreshold: captionNoiseGateThreshold
             };
             fetch('/api/widgets/caption', {
                 method: 'PATCH',
@@ -4620,6 +4648,7 @@
             captionAudioSampleRateSelect.value = s.audioSampleRate ?? 44100;
             captionAudioChunkSecInput.value    = s.audioChunkSec ?? 0.15;
             captionDeduplicateDevicesCheck.checked = s.deduplicateDevices !== false;
+            setNoiseGateHandle(typeof s.noiseGateThreshold === 'number' ? s.noiseGateThreshold : 0.003);
             updateCaptionEngineVisibility();
         }
 

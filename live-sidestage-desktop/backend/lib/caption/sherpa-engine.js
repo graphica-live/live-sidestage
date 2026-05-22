@@ -25,6 +25,7 @@ class SherpaEngine extends EventEmitter {
         this._timer      = null;
         this._busy       = false;
         this.SAMPLE_RATE = 16000;
+        this.noiseGateThreshold = 0.003;
     }
 
     // ── Status helpers ──────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ class SherpaEngine extends EventEmitter {
             rms += f32[i] * f32[i];
         }
         rms = Math.sqrt(rms / (i16.length || 1));
-        if (rms < 0.003) return;
+        if (rms < this.noiseGateThreshold) return;
 
         this._busy = true;
         try {

@@ -159,7 +159,8 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     vadSilenceMs: 150,
     audioSampleRate: 44100,
     audioChunkSec: 0.15,
-    deduplicateDevices: true
+    deduplicateDevices: true,
+    noiseGateThreshold: 0.003
 };
 const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['small', 'medium', 'large']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
@@ -2867,7 +2868,8 @@ function normalizeWidgetCaptionSettings(raw) {
         vadSilenceMs: Number.isInteger(s.vadSilenceMs) && s.vadSilenceMs >= 0 && s.vadSilenceMs <= 2000 ? s.vadSilenceMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadSilenceMs,
         audioSampleRate: s.audioSampleRate === 48000 ? 48000 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioSampleRate,
         audioChunkSec: typeof s.audioChunkSec === 'number' && s.audioChunkSec >= 0.05 && s.audioChunkSec <= 1.0 ? Math.round(s.audioChunkSec * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioChunkSec,
-        deduplicateDevices: s.deduplicateDevices !== false
+        deduplicateDevices: s.deduplicateDevices !== false,
+        noiseGateThreshold: typeof s.noiseGateThreshold === 'number' && s.noiseGateThreshold >= 0 && s.noiseGateThreshold <= 1 ? Math.round(s.noiseGateThreshold * 10000) / 10000 : DEFAULT_WIDGET_CAPTION_SETTINGS.noiseGateThreshold
     };
 }
 
@@ -7525,6 +7527,8 @@ app.get('/api/widgets/caption/asr-status', (req, res) => {
 
 app.patch('/api/widgets/caption', (req, res) => {
     const settings = setWidgetCaptionSettings(req.body || {});
+    if (whisperEngine) whisperEngine.noiseGateThreshold = settings.noiseGateThreshold;
+    if (sherpaEngine) sherpaEngine.noiseGateThreshold = settings.noiseGateThreshold;
     io.emit('widgets:caption:config', buildCaptionConfig());
     res.json({ ok: true, settings });
 });

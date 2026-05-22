@@ -31,6 +31,7 @@ class WhisperEngine extends EventEmitter {
         this._running = false;
         this._timer = null;
         this._busy = false;
+        this.noiseGateThreshold = 0.015;
     }
 
     // ── Status helpers ──────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ class WhisperEngine extends EventEmitter {
         for (let i = 0; i < i16.length; i++) rms += (i16[i] / 32768) ** 2;
         rms = Math.sqrt(rms / (i16.length || 1));
         this.emit('status', `認識中... (RMS ${rms.toFixed(4)})`);
-        if (rms < 0.015) return;
+        if (rms < this.noiseGateThreshold) return;
 
         this._busy = true;
         const t0 = Date.now();
