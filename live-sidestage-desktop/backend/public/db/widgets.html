@@ -1458,6 +1458,45 @@
                                     <label for="caption-show-interim">話し途中・認識処理中も字幕に表示する（WebSpeech: 途中テキスト / Whisper: 処理中インジケーター）</label>
                                 </div>
                             </div>
+                            <div class="field full" style="padding-top:10px;border-top:1px solid var(--line);">
+                                <div style="font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Voice Activity Detection (VAD) 設定</div>
+                            </div>
+                            <div class="field full">
+                                <label for="caption-vad-threshold" style="display:flex;justify-content:space-between;">VAD閾値 <span id="caption-vad-threshold-val">0.55</span></label>
+                                <input id="caption-vad-threshold" type="range" min="0" max="1" step="0.01" style="width:100%;margin:4px 0;">
+                            </div>
+                            <div class="field">
+                                <label for="caption-vad-min-speech">最小発話時間 (ms)</label>
+                                <input id="caption-vad-min-speech" type="number" min="0" max="2000" step="10" inputmode="numeric" placeholder="200">
+                            </div>
+                            <div class="field">
+                                <label for="caption-vad-padding">音声パディング (ms)</label>
+                                <input id="caption-vad-padding" type="number" min="0" max="2000" step="10" inputmode="numeric" placeholder="300">
+                            </div>
+                            <div class="field">
+                                <label for="caption-vad-silence">最小無音時間 (ms)</label>
+                                <input id="caption-vad-silence" type="number" min="0" max="2000" step="10" inputmode="numeric" placeholder="150">
+                            </div>
+                            <div class="field full" style="padding-top:10px;border-top:1px solid var(--line);">
+                                <div style="font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">音声処理</div>
+                            </div>
+                            <div class="field">
+                                <label for="caption-audio-sample-rate">サンプルレート (Hz)</label>
+                                <select id="caption-audio-sample-rate">
+                                    <option value="44100">44100</option>
+                                    <option value="48000">48000</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="caption-audio-chunk-sec">音声チャンクの長さ</label>
+                                <input id="caption-audio-chunk-sec" type="number" min="0.05" max="1.0" step="0.05" inputmode="decimal" placeholder="0.15">
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="caption-deduplicate-devices" checked>
+                                    <label for="caption-deduplicate-devices">デバイスの重複を除去</label>
+                                </div>
+                            </div>
                         </div>
                         <div style="border-top:1px solid var(--line);margin:12px 0 4px;padding-top:12px;">
                             <div class="form-grid">
@@ -4471,6 +4510,14 @@
         const captionTranslationEnabledCheck = document.getElementById('caption-translation-enabled');
         const captionTranslationEngineSelect = document.getElementById('caption-translation-engine');
         const captionTargetLangSelect = document.getElementById('caption-target-lang');
+        const captionVadThresholdInput = document.getElementById('caption-vad-threshold');
+        const captionVadThresholdVal   = document.getElementById('caption-vad-threshold-val');
+        const captionVadMinSpeechInput = document.getElementById('caption-vad-min-speech');
+        const captionVadPaddingInput   = document.getElementById('caption-vad-padding');
+        const captionVadSilenceInput   = document.getElementById('caption-vad-silence');
+        const captionAudioSampleRateSelect  = document.getElementById('caption-audio-sample-rate');
+        const captionAudioChunkSecInput     = document.getElementById('caption-audio-chunk-sec');
+        const captionDeduplicateDevicesCheck = document.getElementById('caption-deduplicate-devices');
         const captionStartBtn = document.getElementById('caption-start-btn');
         const captionStopBtn = document.getElementById('caption-stop-btn');
         const captionTestBtn = document.getElementById('caption-test-btn');
@@ -4515,7 +4562,14 @@
                 showInterim: captionShowInterimCheck.checked,
                 translationEnabled: captionTranslationEnabledCheck.checked,
                 translationEngine: captionTranslationEngineSelect.value,
-                targetLang: captionTargetLangSelect.value
+                targetLang: captionTargetLangSelect.value,
+                vadThreshold: parseFloat(captionVadThresholdInput.value) || 0.55,
+                vadMinSpeechMs: parseInt(captionVadMinSpeechInput.value, 10) || 200,
+                vadPaddingMs: parseInt(captionVadPaddingInput.value, 10) || 300,
+                vadSilenceMs: parseInt(captionVadSilenceInput.value, 10) || 150,
+                audioSampleRate: parseInt(captionAudioSampleRateSelect.value, 10) || 44100,
+                audioChunkSec: parseFloat(captionAudioChunkSecInput.value) || 0.15,
+                deduplicateDevices: captionDeduplicateDevicesCheck.checked
             };
             fetch('/api/widgets/caption', {
                 method: 'PATCH',
@@ -4524,13 +4578,17 @@
             }).catch(() => {});
         }
 
-        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionMaxCharsInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect].forEach((el) => {
+        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionMaxCharsInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect, captionVadMinSpeechInput, captionVadPaddingInput, captionVadSilenceInput, captionAudioSampleRateSelect, captionAudioChunkSecInput].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
         captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
         captionPythonPathInput.addEventListener('change', saveCaptionSettings);
-        [captionShowInterimCheck, captionTranslationEnabledCheck].forEach((el) => {
+        [captionShowInterimCheck, captionTranslationEnabledCheck, captionDeduplicateDevicesCheck].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
+        });
+        captionVadThresholdInput.addEventListener('input', () => {
+            captionVadThresholdVal.textContent = parseFloat(captionVadThresholdInput.value).toFixed(2);
+            saveCaptionSettings();
         });
 
         function applyCaptionConfig(cfg) {
@@ -4548,6 +4606,15 @@
             captionTranslationEnabledCheck.checked = Boolean(s.translationEnabled);
             captionTranslationEngineSelect.value = s.translationEngine ?? 'mymemory';
             captionTargetLangSelect.value = s.targetLang ?? 'en';
+            const vt = s.vadThreshold ?? 0.55;
+            captionVadThresholdInput.value = vt;
+            captionVadThresholdVal.textContent = parseFloat(vt).toFixed(2);
+            captionVadMinSpeechInput.value = s.vadMinSpeechMs ?? 200;
+            captionVadPaddingInput.value   = s.vadPaddingMs ?? 300;
+            captionVadSilenceInput.value   = s.vadSilenceMs ?? 150;
+            captionAudioSampleRateSelect.value = s.audioSampleRate ?? 44100;
+            captionAudioChunkSecInput.value    = s.audioChunkSec ?? 0.15;
+            captionDeduplicateDevicesCheck.checked = s.deduplicateDevices !== false;
             updateCaptionEngineVisibility();
         }
 
@@ -4558,7 +4625,16 @@
             } catch {}
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
-                const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+                let audioInputs = devices.filter((d) => d.kind === 'audioinput');
+                if (captionDeduplicateDevicesCheck.checked) {
+                    const seen = new Set();
+                    audioInputs = audioInputs.filter((d) => {
+                        const key = d.label || d.deviceId;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                }
                 while (captionDeviceSelect.options.length > 1) captionDeviceSelect.remove(1);
                 audioInputs.forEach((d, i) => {
                     const opt = document.createElement('option');
@@ -4660,7 +4736,11 @@
             }
             const ctxRate = levelAudioCtx.sampleRate; // 44100 or 48000
             const source  = levelAudioCtx.createMediaStreamSource(levelStream);
-            asrProcessor  = levelAudioCtx.createScriptProcessor(4096, 1, 1);
+            const chunkSec = parseFloat(captionAudioChunkSecInput.value) || 0.15;
+            const bufSizes  = [256, 512, 1024, 2048, 4096, 8192, 16384];
+            const idealBuf  = chunkSec * ctxRate;
+            const bufSize   = bufSizes.reduce((b, s) => Math.abs(s - idealBuf) < Math.abs(b - idealBuf) ? s : b);
+            asrProcessor  = levelAudioCtx.createScriptProcessor(bufSize, 1, 1);
             source.connect(asrProcessor);
             asrProcessor.connect(levelAudioCtx.destination);
             asrActiveEngine = engine;

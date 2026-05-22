@@ -152,7 +152,14 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     maxCharsPerSegment: 20,
     showInterim: true,
     bgStyle: 'semi',
-    pythonPath: 'python'
+    pythonPath: 'python',
+    vadThreshold: 0.55,
+    vadMinSpeechMs: 200,
+    vadPaddingMs: 300,
+    vadSilenceMs: 150,
+    audioSampleRate: 44100,
+    audioChunkSec: 0.15,
+    deduplicateDevices: true
 };
 const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['small', 'medium', 'large']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
@@ -2853,7 +2860,14 @@ function normalizeWidgetCaptionSettings(raw) {
         maxCharsPerSegment: Number.isInteger(s.maxCharsPerSegment) && s.maxCharsPerSegment >= 5 && s.maxCharsPerSegment <= 100 ? s.maxCharsPerSegment : DEFAULT_WIDGET_CAPTION_SETTINGS.maxCharsPerSegment,
         showInterim: s.showInterim !== false,
         bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle,
-        pythonPath: rawPythonPath.length > 0 && rawPythonPath.length <= 512 ? rawPythonPath : DEFAULT_WIDGET_CAPTION_SETTINGS.pythonPath
+        pythonPath: rawPythonPath.length > 0 && rawPythonPath.length <= 512 ? rawPythonPath : DEFAULT_WIDGET_CAPTION_SETTINGS.pythonPath,
+        vadThreshold: typeof s.vadThreshold === 'number' && s.vadThreshold >= 0 && s.vadThreshold <= 1 ? Math.round(s.vadThreshold * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.vadThreshold,
+        vadMinSpeechMs: Number.isInteger(s.vadMinSpeechMs) && s.vadMinSpeechMs >= 0 && s.vadMinSpeechMs <= 2000 ? s.vadMinSpeechMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadMinSpeechMs,
+        vadPaddingMs: Number.isInteger(s.vadPaddingMs) && s.vadPaddingMs >= 0 && s.vadPaddingMs <= 2000 ? s.vadPaddingMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadPaddingMs,
+        vadSilenceMs: Number.isInteger(s.vadSilenceMs) && s.vadSilenceMs >= 0 && s.vadSilenceMs <= 2000 ? s.vadSilenceMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadSilenceMs,
+        audioSampleRate: s.audioSampleRate === 48000 ? 48000 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioSampleRate,
+        audioChunkSec: typeof s.audioChunkSec === 'number' && s.audioChunkSec >= 0.05 && s.audioChunkSec <= 1.0 ? Math.round(s.audioChunkSec * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioChunkSec,
+        deduplicateDevices: s.deduplicateDevices !== false
     };
 }
 
