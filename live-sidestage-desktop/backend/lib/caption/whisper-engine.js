@@ -165,15 +165,16 @@ class WhisperEngine extends EventEmitter {
                     this.emit('status', `whisper stderr: ${combined.slice(0, 400) || '(empty)'}`);
                     return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
-                // Keep only timestamp lines, strip the timestamp prefix and ANSI escapes
-                const text = stdoutBuf
+                const extractText = (buf) => buf
                     .replace(/\x1b\[[0-9;]*m/g, '')
                     .split('\n')
                     .filter(l => /^\s*\[[\d:.,\s>-]+\]/.test(l))
                     .map(l => l.replace(/^\s*\[[\d:.,\s>-]+\]\s*/, '').trim())
                     .filter(l => l && l !== '[BLANK_AUDIO]' && l !== '[ BLANK_AUDIO ]')
                     .join('');
-                if (!text) this.emit('status', `whisper stdout: ${stdoutBuf.slice(0, 200) || '(empty)'}`);
+                // whisper-cli may write transcript to stdout or stderr depending on build
+                const text = extractText(stdoutBuf) || extractText(stderrBuf);
+                if (!text) this.emit('status', `出力なし stdout:「${stdoutBuf.slice(0, 120)}」 stderr:「${stderrBuf.slice(0, 120)}」`);
                 resolve(text || null);
             });
             proc.on('error', (e) => {
