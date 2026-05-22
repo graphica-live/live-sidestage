@@ -51,6 +51,9 @@ def translate(text, src, tgt):
 
 
 def main():
+    # Pre-warm ja-en model (most common pair) so first request doesn't block
+    print(json.dumps({'type': 'status', 'message': 'Helsinki モデル読み込み中...'}), flush=True)
+    get_pipeline('ja', 'en')
     print(json.dumps({'type': 'ready'}), flush=True)
 
     for raw in sys.stdin:

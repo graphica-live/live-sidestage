@@ -2920,7 +2920,8 @@ function ensureHelsinkiProcess() {
             if (!line.trim()) continue;
             try {
                 const msg = JSON.parse(line);
-                if (msg.type === 'ready') { helsinkiReady = true; return; }
+                if (msg.type === 'ready') { helsinkiReady = true; io.emit('caption:status', { message: 'Helsinki 準備完了' }); return; }
+                if (msg.type === 'status') { io.emit('caption:status', { message: msg.message }); return; }
                 if (msg.id && helsinkiCallbacks.has(msg.id)) {
                     const { resolve, reject } = helsinkiCallbacks.get(msg.id);
                     helsinkiCallbacks.delete(msg.id);
@@ -2942,7 +2943,7 @@ async function translateWithHelsinki(text, srcLang, tgtLang) {
         const timer = setTimeout(() => {
             helsinkiCallbacks.delete(id);
             reject(new Error('translation timeout'));
-        }, 15000);
+        }, 45000);
         helsinkiCallbacks.set(id, {
             resolve: (t) => { clearTimeout(timer); resolve(t); },
             reject: (e) => { clearTimeout(timer); reject(e); }
@@ -2973,11 +2974,14 @@ async function translateCaption(text, srcLang) {
 
 async function handleCaptionText(text, isFinal, srcLang) {
     const settings = getWidgetCaptionSettings();
-    let translated = null;
+    // Emit original immediately so caption appears without waiting for translation
+    io.emit('widgets:caption:updated', { original: text, translated: null, isFinal, settings });
     if (isFinal && settings.translationEnabled) {
-        translated = await translateCaption(text, srcLang);
+        const translated = await translateCaption(text, srcLang);
+        if (translated) {
+            io.emit('widgets:caption:updated', { original: text, translated, isFinal: true, settings });
+        }
     }
-    io.emit('widgets:caption:updated', { original: text, translated, isFinal, settings });
 }
 
 // Parakeet サブプロセス管理
