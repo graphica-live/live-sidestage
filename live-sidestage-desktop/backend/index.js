@@ -3079,14 +3079,20 @@ function bufferOrEmitCaption(text, isFinal, srcLang) {
 
 async function handleCaptionText(text, isFinal, srcLang) {
     const settings = getWidgetCaptionSettings();
-    // Emit original immediately so caption appears without waiting for translation
-    io.emit('widgets:caption:updated', { original: text, translated: null, isFinal, settings });
+    let translated = null;
     if (isFinal && settings.translationEnabled) {
-        const translated = await translateCaption(text, srcLang);
-        io.emit('widgets:caption:status', { message: `翻訳: ${translated ? translated.slice(0, 40) : 'null'}` });
-        if (translated) {
-            io.emit('widgets:caption:translation', { translated });
-        }
+        // Wait up to 2 s for translation; emit with it if ready, else emit now and update later
+        translated = await Promise.race([
+            translateCaption(text, srcLang).catch(() => null),
+            new Promise(r => setTimeout(() => r(null), 2000)),
+        ]);
+    }
+    io.emit('widgets:caption:updated', { original: text, translated, isFinal, settings });
+    // If translation didn't arrive in time, emit it as a patch when ready
+    if (isFinal && settings.translationEnabled && !translated) {
+        translateCaption(text, srcLang)
+            .then(t => { if (t) io.emit('widgets:caption:translation', { translated: t }); })
+            .catch(() => {});
     }
 }
 
