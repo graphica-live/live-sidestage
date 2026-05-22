@@ -119,13 +119,13 @@ class WhisperEngine extends EventEmitter {
         const t0 = Date.now();
         this.emit('status', `Whisper 処理中... (${(pcm.length / 32000).toFixed(1)}s 音声)`);
         try {
-            const text = await this._transcribe(pcm);
+            const { text, dbg } = await this._transcribe(pcm);
             const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
             if (text) {
                 this.emit('status', `認識完了 (${elapsed}s): ${text.slice(0, 40)}`);
                 this.emit('transcript', { text, isFinal: true });
             } else {
-                this.emit('status', `認識結果なし (${elapsed}s)`);
+                this.emit('status', `認識結果なし (${elapsed}s) ${dbg || ''}`);
             }
         } catch (e) {
             this.emit('error', `認識エラー: ${e.message}`);
@@ -174,8 +174,11 @@ class WhisperEngine extends EventEmitter {
                     .join('');
                 // whisper-cli may write transcript to stdout or stderr depending on build
                 const text = extractText(stdoutBuf) || extractText(stderrBuf);
-                if (!text) this.emit('status', `出力なし stdout:「${stdoutBuf.slice(0, 120)}」 stderr:「${stderrBuf.slice(0, 120)}」`);
-                resolve(text || null);
+                if (!text) {
+                    const dbg = `stdout:「${stdoutBuf.slice(0, 100)}」stderr:「${stderrBuf.slice(0, 100)}」`;
+                    return resolve({ text: null, dbg });
+                }
+                resolve({ text, dbg: null });
             });
             proc.on('error', (e) => {
                 try { fs.unlinkSync(wavPath); } catch {}
