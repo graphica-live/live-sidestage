@@ -3084,7 +3084,7 @@ async function handleCaptionText(text, isFinal, srcLang) {
     if (isFinal && settings.translationEnabled) {
         const translated = await translateCaption(text, srcLang);
         if (translated) {
-            io.emit('widgets:caption:updated', { original: text, translated, isFinal: true, settings });
+            io.emit('widgets:caption:updated', { original: text, translated, isFinal: true, translationUpdate: true, settings });
         }
     }
 }

@@ -204,6 +204,13 @@
 
             if (payload.settings) applySettings(payload.settings);
 
+            if (payload.translationUpdate) {
+                if (payload.translated && currentSettings.translationEnabled) {
+                    setText(translatedEl, payload.translated);
+                }
+                return;
+            }
+
             const showInterim = currentSettings.showInterim !== false;
             const isFinal = Boolean(payload.isFinal);
 
