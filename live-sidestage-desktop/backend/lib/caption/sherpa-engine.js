@@ -63,12 +63,12 @@ class SherpaEngine extends EventEmitter {
         };
 
         try {
-            this._recognizer = new sherpa.OfflineRecognizer(cfg);
+            this._recognizer = sherpa.createOfflineRecognizer(cfg);
             this.emit('status', 'Parakeet 準備完了（DirectML）');
         } catch {
             // DirectML unavailable – fall back to CPU
             cfg.modelConfig.provider = 'cpu';
-            this._recognizer = new sherpa.OfflineRecognizer(cfg);
+            this._recognizer = sherpa.createOfflineRecognizer(cfg);
             this.emit('status', 'Parakeet 準備完了（CPU）');
         }
     }
@@ -124,7 +124,7 @@ class SherpaEngine extends EventEmitter {
                     const stream = this._recognizer.createStream();
                     stream.acceptWaveform(this.SAMPLE_RATE, f32);
                     this._recognizer.decode(stream);
-                    const result = stream.getResult();
+                    const result = this._recognizer.getResult(stream);
                     resolve((result?.text || '').trim());
                 } catch { resolve(''); }
             }));
