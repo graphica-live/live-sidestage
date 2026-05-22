@@ -42,7 +42,7 @@ class SherpaEngine extends EventEmitter {
 
     async init() {
         if (!this.isSherpaAvailable()) {
-            throw new Error('sherpa-onnx モジュールが見つかりません。npm install sherpa-onnx を実行してください。');
+            await this._installSherpa();
         }
         if (!this.isModelReady()) await this._downloadModel();
 
@@ -132,6 +132,29 @@ class SherpaEngine extends EventEmitter {
         } finally {
             this._busy = false;
         }
+    }
+
+    // ── Private: npm install sherpa-onnx ────────────────────────────────────
+
+    _installSherpa() {
+        return new Promise((resolve, reject) => {
+            this.emit('status', 'sherpa-onnx をインストール中...');
+            const projectRoot = path.resolve(__dirname, '../../../');
+            const proc = spawn('npm', ['install', 'sherpa-onnx'], {
+                cwd: projectRoot,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                shell: true,
+            });
+            proc.stdout.on('data', d => this.emit('status', d.toString().trim().slice(0, 120)));
+            proc.stderr.on('data', d => this.emit('status', d.toString().trim().slice(0, 120)));
+            proc.on('close', code => {
+                if (code !== 0) return reject(new Error(`npm install sherpa-onnx exit ${code}`));
+                // Bust require cache so the newly installed module is found
+                try { delete require.cache[require.resolve('sherpa-onnx')]; } catch {}
+                resolve();
+            });
+            proc.on('error', reject);
+        });
     }
 
     // ── Private: model download ──────────────────────────────────────────────
