@@ -184,18 +184,47 @@
             }, ms);
         }
 
+        function splitIntoSegments(text, maxChars) {
+            const strongBreak = /[。！？]/;
+            const weakBreak   = /[、，,]/;
+            const punctOnly   = /^[\s。！？、，,・…〜～]+$/;
+            const result = [];
+            let rem = text;
+            while (rem.length > 0) {
+                if (rem.length <= maxChars) { result.push(rem); break; }
+                let cut = -1;
+                for (let i = maxChars - 1; i > 0; i--) {
+                    if (strongBreak.test(rem[i])) { cut = i + 1; break; }
+                }
+                if (cut < 0) {
+                    for (let i = maxChars - 1; i > 0; i--) {
+                        if (weakBreak.test(rem[i])) { cut = i + 1; break; }
+                    }
+                }
+                if (cut < 0) cut = maxChars;
+                result.push(rem.slice(0, cut));
+                rem = rem.slice(cut);
+            }
+            // Merge punctuation-only chunks into previous
+            const merged = [];
+            for (const chunk of result) {
+                if (merged.length > 0 && punctOnly.test(chunk)) {
+                    merged[merged.length - 1] += chunk;
+                } else {
+                    merged.push(chunk);
+                }
+            }
+            return merged.filter(c => c.trim().length > 0);
+        }
+
         function enqueueSegments(originalText, translatedText) {
-            const maxChars = currentSettings.maxCharsPerSegment ?? 20;
             clearTimeout(hideTimer);
             segmentQueue = [];
-            const chunks = [];
-            for (let i = 0; i < originalText.length; i += maxChars) {
-                chunks.push(originalText.slice(i, i + maxChars));
-            }
+            const maxChars = currentSettings.maxCharsPerSegment ?? 20;
+            const chunks = splitIntoSegments(originalText, maxChars);
             if (chunks.length === 0) return;
-            // First segment shown immediately, rest queued
             for (let i = 1; i < chunks.length; i++) {
-                segmentQueue.push({ orig: chunks[i], trans: i === 0 ? translatedText : null });
+                segmentQueue.push({ orig: chunks[i], trans: null });
             }
             showSegment(chunks[0], translatedText);
         }
