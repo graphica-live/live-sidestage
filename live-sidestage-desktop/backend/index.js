@@ -3039,6 +3039,10 @@ function getWhisperEngine() {
         whisperEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'whisper-cpp' }));
         whisperEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'whisper-cpp', error: true }));
         whisperEngine.on('transcript', ({ text, isFinal }) => handleCaptionText(text, isFinal, 'ja'));
+        whisperEngine.on('interim',  text => {
+            const s = getWidgetCaptionSettings();
+            if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
+        });
         whisperEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
     }
     return whisperEngine;

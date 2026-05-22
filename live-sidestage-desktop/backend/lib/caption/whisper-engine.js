@@ -118,6 +118,7 @@ class WhisperEngine extends EventEmitter {
         this._busy = true;
         const t0 = Date.now();
         this.emit('status', `Whisper 処理中... (${(pcm.length / 32000).toFixed(1)}s 音声)`);
+        this.emit('interim', '...');
         try {
             const { text, dbg } = await this._transcribe(pcm);
             const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
