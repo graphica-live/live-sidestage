@@ -135,9 +135,7 @@ class WhisperEngine extends EventEmitter {
     }
 
     async _transcribe(pcmBuf) {
-        const prefix  = path.join(os.tmpdir(), `caption_${Date.now()}`);
-        const wavPath  = prefix + '.wav';
-        const jsonPath = prefix + '.json';
+        const wavPath = path.join(os.tmpdir(), `caption_${Date.now()}.wav`);
 
         this._writePcmWav(wavPath, pcmBuf, 16000);
 
@@ -145,13 +143,14 @@ class WhisperEngine extends EventEmitter {
         const exeDir    = path.dirname(this._mainExe);
 
         return new Promise((resolve, reject) => {
+            // No -oj/-of: capture plain-text stdout, strip timestamps
             const proc = spawn(this._mainExe, [
                 '-m', modelPath,
                 '-f', wavPath,
                 '--language', 'ja',
                 '--task', 'transcribe',
                 '--threads', '4',
-                '-oj', '-of', prefix,
+                '--print-colors', 'false',
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
             let stdoutBuf = '';
@@ -162,32 +161,20 @@ class WhisperEngine extends EventEmitter {
             proc.on('close', (code) => {
                 try { fs.unlinkSync(wavPath); } catch {}
                 if (code !== 0) {
-                    try { fs.unlinkSync(jsonPath); } catch {}
                     const combined = (stderrBuf + stdoutBuf).trim();
                     const detail = combined.split('\n').at(-1)?.slice(0, 300) || `code ${code}`;
-                    this.emit('status', `whisper stderr: ${combined.slice(0, 500) || '(empty)'}`);
+                    this.emit('status', `whisper stderr: ${combined.slice(0, 400) || '(empty)'}`);
                     return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
-                const parseJson = (src) => {
-                    const raw = JSON.parse(src);
-                    return (raw.transcription || [])
-                        .map(s => (s.text || '').trim())
-                        .filter(t => t && t !== '[BLANK_AUDIO]' && t !== '[ BLANK_AUDIO ]')
-                        .join('') || null;
-                };
-                // Try file output first; fall back to stdout (some whisper-cli builds output JSON to stdout)
-                let fileJson = null;
-                try { fileJson = fs.readFileSync(jsonPath, 'utf8'); fs.unlinkSync(jsonPath); } catch {}
-                if (fileJson) {
-                    try { return resolve(parseJson(fileJson)); } catch (e) { return reject(e); }
-                }
-                // Stdout fallback
-                const jsonStart = stdoutBuf.indexOf('{');
-                if (jsonStart !== -1) {
-                    try { return resolve(parseJson(stdoutBuf.slice(jsonStart))); } catch {}
-                }
-                this.emit('status', `whisper JSON なし。stdout: ${stdoutBuf.slice(0, 200) || '(empty)'}`);
-                reject(new Error('whisper: JSON output not found in file or stdout'));
+                // Strip timestamp lines: [00:00:00.000 --> 00:00:02.000] and ANSI escapes
+                const text = stdoutBuf
+                    .replace(/\x1b\[[0-9;]*m/g, '')
+                    .split('\n')
+                    .map(l => l.replace(/^\[[\d:.,\s>-]+\]\s*/, '').trim())
+                    .filter(l => l && l !== '[BLANK_AUDIO]' && l !== '[ BLANK_AUDIO ]')
+                    .join('');
+                if (!text) this.emit('status', `whisper stdout: ${stdoutBuf.slice(0, 200) || '(empty)'}`);
+                resolve(text || null);
             });
             proc.on('error', (e) => {
                 try { fs.unlinkSync(wavPath); } catch {}

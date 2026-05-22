@@ -151,7 +151,7 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     segmentDuration: 6,
     maxCharsPerSegment: 20,
     showInterim: true,
-    bgStyle: 'transparent',
+    bgStyle: 'semi',
     pythonPath: 'python'
 };
 const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['small', 'medium', 'large']);
