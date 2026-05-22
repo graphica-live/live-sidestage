@@ -3057,6 +3057,26 @@ async function translateCaption(text, srcLang) {
     }
 }
 
+let _captionBuf = '';
+let _captionBufTimer = null;
+
+function bufferOrEmitCaption(text, isFinal, srcLang) {
+    const s = getWidgetCaptionSettings();
+    if (s.showInterim) {
+        // Interim enabled: emit each segment immediately as-is
+        handleCaptionText(text, isFinal, srcLang);
+        return;
+    }
+    // Interim disabled: accumulate segments, flush after 1.5 s of silence
+    _captionBuf += (_captionBuf ? '　' : '') + text;
+    clearTimeout(_captionBufTimer);
+    _captionBufTimer = setTimeout(() => {
+        const flushed = _captionBuf;
+        _captionBuf = '';
+        if (flushed) handleCaptionText(flushed, true, srcLang);
+    }, 1500);
+}
+
 async function handleCaptionText(text, isFinal, srcLang) {
     const settings = getWidgetCaptionSettings();
     // Emit original immediately so caption appears without waiting for translation
@@ -3141,7 +3161,7 @@ function getWhisperEngine() {
         whisperEngine = new WhisperEngine(ASR_DATA_DIR);
         whisperEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'whisper-cpp' }));
         whisperEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'whisper-cpp', error: true }));
-        whisperEngine.on('transcript', ({ text, isFinal }) => handleCaptionText(text, isFinal, 'ja'));
+        whisperEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
         whisperEngine.on('interim',  text => {
             const s = getWidgetCaptionSettings();
             if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
@@ -3156,7 +3176,7 @@ function getSherpaEngine() {
         sherpaEngine = new SherpaEngine(ASR_DATA_DIR);
         sherpaEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'sherpa-parakeet' }));
         sherpaEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'sherpa-parakeet', error: true }));
-        sherpaEngine.on('transcript', ({ text, isFinal }) => handleCaptionText(text, isFinal, 'ja'));
+        sherpaEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
         sherpaEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
     }
     return sherpaEngine;
@@ -7158,7 +7178,7 @@ io.on('connection', (socket) => {
     // Web Speech API からのテキスト受信
     socket.on('caption:text', ({ text, isFinal, srcLang } = {}) => {
         if (!text || typeof text !== 'string') return;
-        handleCaptionText(text.slice(0, 500), Boolean(isFinal), srcLang || 'ja');
+        bufferOrEmitCaption(text.slice(0, 500), Boolean(isFinal), srcLang || 'ja');
     });
 
     // Parakeet 起動・停止（Python サブプロセス）
