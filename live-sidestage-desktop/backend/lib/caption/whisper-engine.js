@@ -148,7 +148,6 @@ class WhisperEngine extends EventEmitter {
                 '-m', modelPath,
                 '-f', wavPath,
                 '--language', 'ja',
-                '--task', 'transcribe',
                 '--threads', '4',
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
