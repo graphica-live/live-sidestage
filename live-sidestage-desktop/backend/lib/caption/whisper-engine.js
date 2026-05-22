@@ -150,7 +150,6 @@ class WhisperEngine extends EventEmitter {
                 '--language', 'ja',
                 '--task', 'transcribe',
                 '--threads', '4',
-                '--print-colors', 'false',
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
             let stdoutBuf = '';
@@ -166,11 +165,12 @@ class WhisperEngine extends EventEmitter {
                     this.emit('status', `whisper stderr: ${combined.slice(0, 400) || '(empty)'}`);
                     return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
-                // Strip timestamp lines: [00:00:00.000 --> 00:00:02.000] and ANSI escapes
+                // Keep only timestamp lines, strip the timestamp prefix and ANSI escapes
                 const text = stdoutBuf
                     .replace(/\x1b\[[0-9;]*m/g, '')
                     .split('\n')
-                    .map(l => l.replace(/^\[[\d:.,\s>-]+\]\s*/, '').trim())
+                    .filter(l => /^\s*\[[\d:.,\s>-]+\]/.test(l))
+                    .map(l => l.replace(/^\s*\[[\d:.,\s>-]+\]\s*/, '').trim())
                     .filter(l => l && l !== '[BLANK_AUDIO]' && l !== '[ BLANK_AUDIO ]')
                     .join('');
                 if (!text) this.emit('status', `whisper stdout: ${stdoutBuf.slice(0, 200) || '(empty)'}`);
