@@ -151,7 +151,6 @@ class WhisperEngine extends EventEmitter {
                 '--language', 'ja',
                 '--task', 'transcribe',
                 '--threads', '4',
-                '--no-prints',
                 '-oj', '-of', prefix,
             ], { cwd: exeDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
