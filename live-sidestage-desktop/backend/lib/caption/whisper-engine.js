@@ -168,18 +168,26 @@ class WhisperEngine extends EventEmitter {
                     this.emit('status', `whisper stderr: ${combined.slice(0, 500) || '(empty)'}`);
                     return reject(new Error(`whisper exit ${code}: ${detail}`));
                 }
-                try {
-                    const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-                    fs.unlinkSync(jsonPath);
-                    const text = (raw.transcription || [])
+                const parseJson = (src) => {
+                    const raw = JSON.parse(src);
+                    return (raw.transcription || [])
                         .map(s => (s.text || '').trim())
                         .filter(t => t && t !== '[BLANK_AUDIO]' && t !== '[ BLANK_AUDIO ]')
-                        .join('');
-                    resolve(text || null);
-                } catch (e) {
-                    try { fs.unlinkSync(jsonPath); } catch {}
-                    reject(e);
+                        .join('') || null;
+                };
+                // Try file output first; fall back to stdout (some whisper-cli builds output JSON to stdout)
+                let fileJson = null;
+                try { fileJson = fs.readFileSync(jsonPath, 'utf8'); fs.unlinkSync(jsonPath); } catch {}
+                if (fileJson) {
+                    try { return resolve(parseJson(fileJson)); } catch (e) { return reject(e); }
                 }
+                // Stdout fallback
+                const jsonStart = stdoutBuf.indexOf('{');
+                if (jsonStart !== -1) {
+                    try { return resolve(parseJson(stdoutBuf.slice(jsonStart))); } catch {}
+                }
+                this.emit('status', `whisper JSON なし。stdout: ${stdoutBuf.slice(0, 200) || '(empty)'}`);
+                reject(new Error('whisper: JSON output not found in file or stdout'));
             });
             proc.on('error', (e) => {
                 try { fs.unlinkSync(wavPath); } catch {}
