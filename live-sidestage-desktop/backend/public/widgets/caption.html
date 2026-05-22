@@ -204,13 +204,6 @@
 
             if (payload.settings) applySettings(payload.settings);
 
-            if (payload.translationUpdate) {
-                if (payload.translated && currentSettings.translationEnabled) {
-                    setText(translatedEl, payload.translated);
-                }
-                return;
-            }
-
             const showInterim = currentSettings.showInterim !== false;
             const isFinal = Boolean(payload.isFinal);
 
@@ -226,6 +219,12 @@
 
             const showTranslation = currentSettings.translationEnabled && payload.translated;
             enqueueSegments(payload.original || '', showTranslation ? payload.translated : null);
+        });
+
+        socket.on('widgets:caption:translation', ({ translated } = {}) => {
+            if (translated && currentSettings.translationEnabled) {
+                setText(translatedEl, translated);
+            }
         });
 
         socket.on('widgets:caption:config', (payload) => {
