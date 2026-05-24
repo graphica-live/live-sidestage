@@ -12,6 +12,7 @@ const { createDbStore } = require('./lib/db/store');
 const { renderContributorsOverlayHtml } = require('../overlays/contributors/render');
 const { WhisperEngine, WHISPER_MODELS } = require('./lib/caption/whisper-engine');
 const { SherpaEngine } = require('./lib/caption/sherpa-engine');
+const { CaptionCorrector } = require('./lib/caption/caption-corrector');
 
 const APP_NAME = 'TikEffect';
 const APP_VERSION = require('../package.json').version;
@@ -115,6 +116,8 @@ const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribut
 const WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY = 'widget_like_contribution_user_avatars';
 const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
 const WIDGET_CAPTION_SETTINGS_STATE_KEY = 'widget_caption_settings';
+const CAPTION_CORRECTION_RULES_STATE_KEY = 'caption_correction_rules';
+const CAPTION_CORRECTION_MAX_RULES = 200;
 const WIDGET_CONTRIBUTORS_FONT_STATE_KEY = 'widget_contributors_font';
 const WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY = 'widget_contributors_text_style';
 const WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY = 'widget_contributors_stroke_width';
@@ -181,7 +184,8 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     audioSampleRate: 44100,
     audioChunkSec: 0.15,
     deduplicateDevices: true,
-    noiseGateThreshold: 0.003
+    noiseGateThreshold: 0.003,
+    verticalOffset: 120
 };
 const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['tiny', 'base', 'small', 'medium', 'large', 'large-v3']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
@@ -288,7 +292,7 @@ const TIKTOK_JA_LOCALE_HEADERS = {
 };
 // Electron ログインウィンドウと同じ UA を使用することでフィンガープリントの一致を保つ
 const TIKTOK_DESKTOP_USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome || '132.0.0.0'} Safari/537.36`;
-const RECONNECT_DELAY_MS = 30000;
+const RECONNECT_DELAY_MS = 10000;
 const OFFLINE_RECONNECT_DELAY_MS = 10000;
 const FIRST_CONNECT_RETRY_DELAY_MS = 3000;
 const RAW_EVENT_BATCH_SIZE = 100;
@@ -452,8 +456,8 @@ const activeComboTriggerMap = new Map();
 const pendingGiftsByComboKey = new Map();
 const giftJarConfig = {
     dropAboveJar: 0,
-    crushThreshold: 1000,
     sizeMultiplier: 1.0,
+    sizeRatioCoeff: 1.0,
     jarTheme: 'jar',
     customProfiles: {}
 };
@@ -603,13 +607,9 @@ function persistGiftJarCustomProfiles() {
     const saved = dbStore.getGlobalStateValue('gift_jar_drop_above_jar');
     if (saved !== null) {
         const v = Number(saved);
-        if (Number.isFinite(v)) giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(v), 2000));
+        if (Number.isFinite(v)) giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(v), 400));
     }
-    const savedCrush = dbStore.getGlobalStateValue('gift_jar_crush_threshold');
-    if (savedCrush !== null) {
-        const v = Number(savedCrush);
-        if (Number.isFinite(v)) giftJarConfig.crushThreshold = Math.max(0, Math.min(Math.round(v), 44999));
-    }
+
     const savedMult = dbStore.getGlobalStateValue('gift_jar_size_multiplier');
     if (savedMult !== null) {
         const v = Number(savedMult);
@@ -642,6 +642,78 @@ function persistGiftJarCustomProfiles() {
     // スリープボディを起こせず新ギフトが瓶に入らなくなる。
     // 再起動後は history replay (10x 速) で瓶を自然充填する。
 }
+
+// ======== オリジナル瓶詰めギフト（完全独立） ========
+const CUSTOM_JAR_IMAGES_DIR = path.join(PUBLIC_DIRECTORY, 'widgets', 'custom-jar-images');
+try { require('fs').mkdirSync(CUSTOM_JAR_IMAGES_DIR, { recursive: true }); } catch {}
+
+const customJarConfig = {
+    activeThemeId: null,
+    themes: [],          // [{ id, label, imageUrl, profile }]
+    dropAboveJar: 0,
+    sizeMultiplier: 0.4,
+    sizeRatioCoeff: 1.0
+};
+let customJarHistory = [];
+let customJarLastPositions = null;
+const CUSTOM_JAR_HISTORY_LIMIT = 300;
+
+function persistCustomJarConfig() {
+    const toSave = {
+        activeThemeId: customJarConfig.activeThemeId,
+        themes: customJarConfig.themes,
+        dropAboveJar: customJarConfig.dropAboveJar,
+        sizeMultiplier: customJarConfig.sizeMultiplier
+    };
+    dbStore.setGlobalStateValue('custom_jar_config', JSON.stringify(toSave), Date.now());
+}
+
+function buildCustomJarPayload() {
+    const active = customJarConfig.themes.find(t => t.id === customJarConfig.activeThemeId) || null;
+    return {
+        activeThemeId: customJarConfig.activeThemeId,
+        activeImageUrl: active?.imageUrl || null,
+        activeProfile: active?.profile || null,
+        dropAboveJar: customJarConfig.dropAboveJar,
+        sizeMultiplier: customJarConfig.sizeMultiplier,
+        sizeRatioCoeff: customJarConfig.sizeRatioCoeff,
+        themes: customJarConfig.themes.map(t => ({ id: t.id, label: t.label, imageUrl: t.imageUrl }))
+    };
+}
+
+function saveCustomJarImageFile(id, dataUrl) {
+    const m = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/s);
+    if (!m) throw new Error('invalid image data URL');
+    const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+    const filename = `${id}.${ext}`;
+    require('fs').writeFileSync(
+        path.join(CUSTOM_JAR_IMAGES_DIR, filename),
+        Buffer.from(m[2], 'base64')
+    );
+    return `/widgets/custom-jar-images/${filename}`;
+}
+
+function deleteCustomJarImageFile(id) {
+    const fs = require('fs');
+    for (const ext of ['png', 'jpg', 'jpeg', 'webp', 'gif']) {
+        try { fs.unlinkSync(path.join(CUSTOM_JAR_IMAGES_DIR, `${id}.${ext}`)); return; } catch {}
+    }
+}
+
+// Restore persisted custom jar config
+{
+    const saved = dbStore.getGlobalStateValue('custom_jar_config');
+    if (typeof saved === 'string' && saved.trim()) {
+        try {
+            const p = JSON.parse(saved);
+            if (Array.isArray(p.themes)) customJarConfig.themes = p.themes;
+            if (typeof p.activeThemeId === 'string') customJarConfig.activeThemeId = p.activeThemeId;
+            if (typeof p.dropAboveJar === 'number') customJarConfig.dropAboveJar = p.dropAboveJar;
+            if (typeof p.sizeMultiplier === 'number') customJarConfig.sizeMultiplier = p.sizeMultiplier;
+        } catch {}
+    }
+}
+// ======== /オリジナル瓶詰めギフト ========
 
 function normalizePushPullGifts(items) {
     if (!Array.isArray(items)) return [];
@@ -712,7 +784,7 @@ function persistPushPullState() {
     }
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 app.use('/api/overlay', (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1639,6 +1711,11 @@ app.get(['/overlays/gift-jar', '/overlays/widgets/gift-jar'], (req, res) => {
     return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'gift-jar.html'));
 });
 
+app.get('/overlays/custom-jar', (req, res) => {
+    if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+    return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'gift-jar.html'));
+});
+
 app.get(['/overlays/gift-jar/index.html', '/overlays/widgets/gift-jar/index.html'], (req, res) => {
     return res.redirect('/overlays/gift-jar');
 });
@@ -2435,23 +2512,25 @@ function getSharedWidgetTextAppearance() {
     };
 }
 
-function getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey) {
+function getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, fontNormalizer) {
+    const normFont = fontNormalizer || normalizeSharedWidgetFontKey;
     const storedFont = getScopedStateValue(fontStateKey);
     const storedStyle = getScopedStateValue(textStyleStateKey);
     const storedWidth = getScopedStateValue(strokeWidthStateKey);
     return {
-        fontKey: normalizeDisplayFontFamily(storedFont || getDisplayFontFamily()),
+        fontKey: normFont(storedFont || getDisplayFontFamily()),
         textStyleKey: normalizeDisplayColorTheme(storedStyle || getDisplayColorTheme()),
         strokeWidth: normalizeDisplayStrokeWidth(storedWidth !== '' && storedWidth !== null && storedWidth !== undefined ? storedWidth : getDisplayStrokeWidth())
     };
 }
 
-function setPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, appearance) {
+function setPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, appearance, fontNormalizer) {
+    const normFont = fontNormalizer || normalizeSharedWidgetFontKey;
     if (!appearance || typeof appearance !== 'object') {
-        return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey);
+        return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, fontNormalizer);
     }
     if (appearance.fontKey !== undefined) {
-        setScopedStateValue(fontStateKey, normalizeDisplayFontFamily(appearance.fontKey));
+        setScopedStateValue(fontStateKey, normFont(appearance.fontKey));
     }
     if (appearance.textStyleKey !== undefined) {
         setScopedStateValue(textStyleStateKey, normalizeDisplayColorTheme(appearance.textStyleKey));
@@ -2459,7 +2538,7 @@ function setPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidth
     if (appearance.strokeWidth !== undefined) {
         setScopedStateValue(strokeWidthStateKey, normalizeDisplayStrokeWidth(appearance.strokeWidth));
     }
-    return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey);
+    return getPerWidgetTextAppearance(fontStateKey, textStyleStateKey, strokeWidthStateKey, fontNormalizer);
 }
 
 function getContributorsWidgetTextAppearance() {
@@ -2512,10 +2591,22 @@ function setCaptionWidgetTextAppearance(a) {
 }
 
 function getGoalGiftsWidgetTextAppearance() {
-    return getPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY);
+    return getPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, normalizeGoalGiftFontKey);
 }
 function setGoalGiftsWidgetTextAppearance(a) {
-    return setPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, a);
+    return setPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, a, normalizeGoalGiftFontKey);
+}
+
+function normalizeSharedWidgetFontKey(value) {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    const allowedKeys = new Set([
+        'default', 'gothic', 'ui-gothic', 'mincho', 'ud-gothic', 'ud-mincho',
+        'meiryo', 'rounded', 'kyokasho', 'gyosho', 'togarie', 'ln-pop',
+        'comic-impact', 'pop-idol', 'entame', 'marker', 'retro-bold',
+        'luxury-mincho', 'antique-modern', 'atelier-brush', 'pixel-code',
+        'sawarabi-mincho', 'potta-one', 'murecho-thin', 'stick'
+    ]);
+    return allowedKeys.has(normalizedValue) ? normalizedValue : 'default';
 }
 
 function normalizeGoalGiftFontKey(value) {
@@ -2974,7 +3065,8 @@ function normalizeWidgetCaptionSettings(raw) {
         audioSampleRate: s.audioSampleRate === 48000 ? 48000 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioSampleRate,
         audioChunkSec: typeof s.audioChunkSec === 'number' && s.audioChunkSec >= 0.05 && s.audioChunkSec <= 1.0 ? Math.round(s.audioChunkSec * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioChunkSec,
         deduplicateDevices: s.deduplicateDevices !== false,
-        noiseGateThreshold: typeof s.noiseGateThreshold === 'number' && s.noiseGateThreshold >= 0 && s.noiseGateThreshold <= 1 ? Math.round(s.noiseGateThreshold * 10000) / 10000 : DEFAULT_WIDGET_CAPTION_SETTINGS.noiseGateThreshold
+        noiseGateThreshold: typeof s.noiseGateThreshold === 'number' && s.noiseGateThreshold >= 0 && s.noiseGateThreshold <= 1 ? Math.round(s.noiseGateThreshold * 10000) / 10000 : DEFAULT_WIDGET_CAPTION_SETTINGS.noiseGateThreshold,
+        verticalOffset: Number.isInteger(s.verticalOffset) && s.verticalOffset >= 0 && s.verticalOffset <= 1080 ? s.verticalOffset : DEFAULT_WIDGET_CAPTION_SETTINGS.verticalOffset
     };
 }
 
@@ -2990,6 +3082,34 @@ function setWidgetCaptionSettings(settings) {
 
 function buildCaptionConfig() {
     return { settings: getWidgetCaptionSettings(), appearance: getCaptionWidgetTextAppearance() };
+}
+
+// ── 字幕補正辞書 ────────────────────────────────────────────────────────────
+
+function normalizeCaptionCorrectionRules(raw) {
+    let arr;
+    try { arr = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { arr = []; }
+    if (!Array.isArray(arr)) return [];
+    return arr.slice(0, CAPTION_CORRECTION_MAX_RULES).filter(r =>
+        r && typeof r.from === 'string' && r.from.trim() &&
+        r.from.length <= 200 && typeof r.to === 'string' && r.to.length <= 200
+    ).map(r => ({
+        from: r.from.trim(),
+        to: r.to,
+        useRegex: Boolean(r.useRegex),
+        flags: typeof r.flags === 'string' && /^[gimsuy]*$/.test(r.flags) ? r.flags : 'g',
+    }));
+}
+
+function getCaptionCorrectionRules() {
+    return normalizeCaptionCorrectionRules(getScopedStateValue(CAPTION_CORRECTION_RULES_STATE_KEY));
+}
+
+function setCaptionCorrectionRules(rules) {
+    const normalized = normalizeCaptionCorrectionRules(rules);
+    setScopedStateValue(CAPTION_CORRECTION_RULES_STATE_KEY, JSON.stringify(normalized));
+    captionCorrector.setRules(normalized);
+    return normalized;
 }
 
 // MyMemory 翻訳（無料API、登録不要）
@@ -3184,20 +3304,12 @@ function bufferOrEmitCaption(text, isFinal, srcLang) {
     }, 1500);
 }
 
-async function handleCaptionText(text, isFinal, srcLang) {
+function handleCaptionText(text, isFinal, srcLang) {
+    const corrected = captionCorrector.apply(text);
     const settings = getWidgetCaptionSettings();
-    let translated = null;
+    io.emit('widgets:caption:updated', { original: corrected, translated: null, isFinal, settings });
     if (isFinal && settings.translationEnabled) {
-        // Wait up to 2 s for translation; emit with it if ready, else emit now and update later
-        translated = await Promise.race([
-            translateCaption(text, srcLang).catch(() => null),
-            new Promise(r => setTimeout(() => r(null), 2000)),
-        ]);
-    }
-    io.emit('widgets:caption:updated', { original: text, translated, isFinal, settings });
-    // If translation didn't arrive in time, emit it as a patch when ready
-    if (isFinal && settings.translationEnabled && !translated) {
-        translateCaption(text, srcLang)
+        translateCaption(corrected, srcLang)
             .then(t => { if (t) io.emit('widgets:caption:translation', { translated: t }); })
             .catch(() => {});
     }
@@ -3265,6 +3377,9 @@ function stopParakeetProcess() {
 // ── Node.js ネイティブ ASR エンジン（Whisper-cpp / Sherpa-Parakeet） ──────────
 
 const ASR_DATA_DIR = path.join(USER_DATA_DIRECTORY, 'asr');
+
+const captionCorrector = new CaptionCorrector();
+captionCorrector.setRules(getCaptionCorrectionRules());
 
 let whisperEngine = null;
 let sherpaEngine  = null;
@@ -5815,6 +5930,7 @@ function buildOverlayContributorsSnapshot(dayKey = getDisplayDayKey()) {
         : getAdminContributorsForDay(displayContext.dayKey);
     const contributors = sourceContributors
         .filter((contributor) => Number(contributor.total || 0) >= displayThreshold);
+    const contributorsAppearance = getContributorsWidgetTextAppearance();
 
     return {
         version: 1,
@@ -5831,9 +5947,9 @@ function buildOverlayContributorsSnapshot(dayKey = getDisplayDayKey()) {
             goalCount: getDisplayGoalCount(),
             sortOrder: DEFAULT_DISPLAY_SORT_ORDER,
             avatarVisibility: getDisplayAvatarVisibility(),
-            fontFamily: getDisplayFontFamily(),
-            colorTheme: getDisplayColorTheme(),
-            strokeWidth: getDisplayStrokeWidth()
+            fontFamily: contributorsAppearance.fontKey,
+            colorTheme: contributorsAppearance.textStyleKey,
+            strokeWidth: contributorsAppearance.strokeWidth
         },
         feedback: getContributorsFeedbackSettings(),
         session: {
@@ -6952,7 +7068,12 @@ function emitGiftJarFromRawData(rawData, deltaRepeat) {
         nickname: rawData.nickname || rawData.uniqueId
     };
     pushGiftJarHistoryEntries(payload, deltaRepeat);
-    io.emit('widgets:gift-jar:notify', payload);
+    io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
+    if (customJarConfig.activeThemeId) {
+        customJarHistory.push({ ...payload, repeatCount: 1 });
+        while (customJarHistory.length > CUSTOM_JAR_HISTORY_LIMIT) customJarHistory.shift();
+        io.to('custom-jar').emit('widgets:custom-jar:notify', payload);
+    }
 }
 
 function emitGiftJarFromNormalized(normalizedEvent, rawData, deltaRepeat) {
@@ -6966,7 +7087,12 @@ function emitGiftJarFromNormalized(normalizedEvent, rawData, deltaRepeat) {
         nickname: normalizedEvent.nickname
     };
     pushGiftJarHistoryEntries(payload, deltaRepeat);
-    io.emit('widgets:gift-jar:notify', payload);
+    io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
+    if (customJarConfig.activeThemeId) {
+        customJarHistory.push({ ...payload, repeatCount: 1 });
+        while (customJarHistory.length > CUSTOM_JAR_HISTORY_LIMIT) customJarHistory.shift();
+        io.to('custom-jar').emit('widgets:custom-jar:notify', payload);
+    }
 }
 
 const _wsLatencyLastLogAt = new Map();
@@ -7283,6 +7409,27 @@ io.on('connection', (socket) => {
             scheduleGiftJarPositionsPersist();
         }
         socket.broadcast.emit('widgets:gift-jar:positions', data);
+    });
+
+    // ---- オリジナル瓶詰めギフト ----
+    socket.emit('widgets:custom-jar:config', buildCustomJarPayload());
+    if (customJarHistory.length > 0) socket.emit('widgets:custom-jar:history', customJarHistory);
+    if (customJarLastPositions?.length > 0) socket.emit('widgets:custom-jar:positions', customJarLastPositions);
+    socket.on('widgets:custom-jar:positions', (data) => {
+        if (Array.isArray(data) && data.length > 0 && data[0]?.settled) {
+            customJarLastPositions = data;
+        }
+        socket.broadcast.emit('widgets:custom-jar:positions', data);
+    });
+    // ---- /オリジナル瓶詰めギフト ----
+    socket.on('overlay:join-room', (room) => {
+        if (room === 'gift-jar' || room === 'custom-jar') {
+            socket.join(room);
+            console.log('[overlay:join-room] socket', socket.id, '→ room:', room);
+        }
+    });
+    socket.on('debug:event-received', ({ event, mode, url }) => {
+        console.log('[debug:event-received] socket', socket.id, '| mode:', mode, '| url:', url, '| event:', event);
     });
     socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
     socket.emit('widgets:caption:config', buildCaptionConfig());
@@ -7627,6 +7774,15 @@ app.get('/api/widgets/caption/config', (req, res) => {
     res.json(buildCaptionConfig());
 });
 
+app.get('/api/caption/correction-rules', (_req, res) => {
+    res.json(getCaptionCorrectionRules());
+});
+
+app.post('/api/caption/correction-rules', express.json(), (req, res) => {
+    if (!Array.isArray(req.body)) return res.status(400).json({ error: 'array required' });
+    res.json(setCaptionCorrectionRules(req.body));
+});
+
 app.get('/api/widgets/caption/asr-status', (req, res) => {
     const w = whisperEngine || new WhisperEngine(ASR_DATA_DIR);
     const s = sherpaEngine  || new SherpaEngine(ASR_DATA_DIR);
@@ -7679,7 +7835,6 @@ app.get('/api/widgets/gift-jar/config', (req, res) => {
 app.post('/api/widgets/gift-jar/config', (req, res) => {
     const {
         dropAboveJar,
-        crushThreshold,
         sizeMultiplier,
         jarTheme,
         customProfileTheme,
@@ -7689,16 +7844,18 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
     } = req.body || {};
     if (appearance) setGiftJarWidgetTextAppearance(appearance);
     if (typeof dropAboveJar === 'number' && Number.isFinite(dropAboveJar)) {
-        giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(dropAboveJar), 2000));
+        giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(dropAboveJar), 400));
         dbStore.setGlobalStateValue('gift_jar_drop_above_jar', giftJarConfig.dropAboveJar, Date.now());
     }
-    if (typeof crushThreshold === 'number' && Number.isFinite(crushThreshold)) {
-        giftJarConfig.crushThreshold = Math.max(0, Math.min(Math.round(crushThreshold), 44999));
-        dbStore.setGlobalStateValue('gift_jar_crush_threshold', giftJarConfig.crushThreshold, Date.now());
-    }
+
     if (typeof sizeMultiplier === 'number' && Number.isFinite(sizeMultiplier)) {
         giftJarConfig.sizeMultiplier = Math.max(0.1, Math.min(sizeMultiplier, 5.0));
         dbStore.setGlobalStateValue('gift_jar_size_multiplier', giftJarConfig.sizeMultiplier, Date.now());
+    }
+    const { sizeRatioCoeff } = req.body || {};
+    if (typeof sizeRatioCoeff === 'number' && Number.isFinite(sizeRatioCoeff)) {
+        giftJarConfig.sizeRatioCoeff = Math.max(0, Math.min(sizeRatioCoeff, 5.0));
+        dbStore.setGlobalStateValue('gift_jar_size_ratio_coeff', giftJarConfig.sizeRatioCoeff, Date.now());
     }
     let jarThemeChanged = false;
     if (typeof jarTheme === 'string' && GIFT_JAR_THEMES.includes(jarTheme)) {
@@ -7736,10 +7893,10 @@ app.post('/api/widgets/gift-jar/config', (req, res) => {
         giftJarLastPositions = null;
         try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
         try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
-        io.emit('widgets:gift-jar:reset');
+        io.to('gift-jar').emit('widgets:gift-jar:reset');
     }
     const giftJarAppearance = getGiftJarWidgetTextAppearance();
-    io.emit('widgets:gift-jar:config', { ...giftJarConfig, appearance: giftJarAppearance });
+    io.to('gift-jar').emit('widgets:gift-jar:config', { ...giftJarConfig, appearance: giftJarAppearance });
     res.json({ ok: true, ...giftJarConfig, appearance: giftJarAppearance });
 });
 
@@ -7748,9 +7905,127 @@ app.post('/api/widgets/gift-jar/reset', (req, res) => {
     giftJarLastPositions = null;
     try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
     try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
-    io.emit('widgets:gift-jar:reset');
+    io.to('gift-jar').emit('widgets:gift-jar:reset');
     res.json({ ok: true });
 });
+
+// ======== オリジナル瓶詰めギフト API ========
+app.get('/api/widgets/custom-jar/config', (req, res) => {
+    res.json(buildCustomJarPayload());
+});
+
+app.post('/api/widgets/custom-jar/config', (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'ローカル管理端末からのみ操作できます' });
+    const { dropAboveJar, sizeMultiplier, sizeRatioCoeff } = req.body || {};
+    if (typeof dropAboveJar === 'number') customJarConfig.dropAboveJar = Math.max(0, Math.min(400, dropAboveJar));
+    if (typeof sizeMultiplier === 'number') customJarConfig.sizeMultiplier = Math.max(0.1, Math.min(5.0, sizeMultiplier));
+    if (typeof sizeRatioCoeff === 'number') customJarConfig.sizeRatioCoeff = Math.max(0, Math.min(5.0, sizeRatioCoeff));
+    persistCustomJarConfig();
+    io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
+    res.json({ ok: true });
+});
+
+app.post('/api/widgets/custom-jar/themes', (req, res) => {
+    if (!isLoopbackRequest(req)) {
+        return res.status(403).json({ ok: false, error: 'ローカル管理端末からのみ操作できます' });
+    }
+    const { action, id, label, imageDataUrl, profile } = req.body || {};
+    if (action === 'add') {
+        if (typeof label !== 'string' || !label.trim()) {
+            return res.status(400).json({ ok: false, error: 'テーマ名が必要です' });
+        }
+        if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+            return res.status(400).json({ ok: false, error: '画像データが無効です' });
+        }
+        const normalizedProfile = normalizeGiftJarProfile(profile);
+        if (!normalizedProfile) {
+            return res.status(400).json({ ok: false, error: '壁プロファイルが無効です（壁線が少なすぎます）' });
+        }
+        const newId = 'cjar-' + Date.now();
+        let imageUrl;
+        try {
+            imageUrl = saveCustomJarImageFile(newId, imageDataUrl);
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: '画像の保存に失敗しました: ' + e.message });
+        }
+        customJarConfig.themes.push({ id: newId, label: label.trim().slice(0, 40), imageUrl, profile: normalizedProfile });
+        if (!customJarConfig.activeThemeId) customJarConfig.activeThemeId = newId;
+        persistCustomJarConfig();
+        io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
+        return res.json({ ok: true, id: newId, themes: customJarConfig.themes.map(t => ({ id: t.id, label: t.label, imageUrl: t.imageUrl })) });
+    }
+    if (action === 'activate') {
+        if (typeof id !== 'string') return res.status(400).json({ ok: false, error: 'id が必要です' });
+        if (!customJarConfig.themes.find(t => t.id === id)) {
+            return res.status(404).json({ ok: false, error: 'テーマが見つかりません' });
+        }
+        customJarConfig.activeThemeId = id;
+        customJarHistory.length = 0;
+        customJarLastPositions = null;
+        persistCustomJarConfig();
+        io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
+        io.to('custom-jar').emit('widgets:custom-jar:reset');
+        return res.json({ ok: true });
+    }
+    if (action === 'delete') {
+        if (typeof id !== 'string') return res.status(400).json({ ok: false, error: 'id が必要です' });
+        const idx = customJarConfig.themes.findIndex(t => t.id === id);
+        if (idx !== -1) {
+            deleteCustomJarImageFile(id);
+            customJarConfig.themes.splice(idx, 1);
+            if (customJarConfig.activeThemeId === id) {
+                customJarConfig.activeThemeId = customJarConfig.themes[0]?.id || null;
+            }
+            persistCustomJarConfig();
+            io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
+            io.to('custom-jar').emit('widgets:custom-jar:reset');
+        }
+        return res.json({ ok: true, themes: customJarConfig.themes.map(t => ({ id: t.id, label: t.label, imageUrl: t.imageUrl })) });
+    }
+    return res.status(400).json({ ok: false, error: '不明なアクションです' });
+});
+
+app.post('/api/widgets/custom-jar/reset', (req, res) => {
+    customJarHistory.length = 0;
+    customJarLastPositions = null;
+    io.to('custom-jar').emit('widgets:custom-jar:reset');
+    res.json({ ok: true });
+});
+
+app.post('/api/widgets/custom-jar/test-single', (req, res) => {
+    if (!customJarConfig.activeThemeId) {
+        return res.status(400).json({ ok: false, error: 'アクティブなテーマがありません' });
+    }
+    const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
+    const catalogWithImages = catalog.filter((g) => g.imageUrl);
+    let payload;
+    if (catalogWithImages.length === 0) {
+        payload = {
+            giftId: 'demo-single', giftName: 'デモギフト',
+            giftImage: buildGiftJarFallbackImage(),
+            diamondCount: 15, repeatCount: 1, uniqueId: '__test__', nickname: 'テスト'
+        };
+    } else {
+        const TIERS = [
+            { min: 1, max: 1 }, { min: 2, max: 4 }, { min: 5, max: 14 },
+            { min: 15, max: 49 }, { min: 50, max: 199 }, { min: 200, max: 999 }, { min: 1000, max: Infinity }
+        ];
+        const buckets = TIERS.map((t) => catalogWithImages.filter((g) => g.diamondCount >= t.min && g.diamondCount <= t.max));
+        const nonEmpty = buckets.filter((b) => b.length > 0);
+        const bucket = nonEmpty[Math.floor(Math.random() * nonEmpty.length)];
+        const gift = bucket[Math.floor(Math.random() * bucket.length)];
+        payload = {
+            giftId: gift.id, giftName: gift.name, giftImage: gift.imageUrl,
+            diamondCount: gift.diamondCount, repeatCount: 1, uniqueId: '__test__', nickname: 'テスト'
+        };
+    }
+    const customJarRoom = io.sockets.adapter.rooms.get('custom-jar');
+    const giftJarRoom   = io.sockets.adapter.rooms.get('gift-jar');
+    console.log('[custom-jar test] rooms — custom-jar:', customJarRoom?.size ?? 0, 'gift-jar:', giftJarRoom?.size ?? 0);
+    io.to('custom-jar').emit('widgets:custom-jar:notify', payload);
+    res.json({ ok: true, giftName: payload.giftName, diamondCount: payload.diamondCount });
+});
+// ======== /オリジナル瓶詰めギフト API ========
 
 function buildGiftJarFallbackImage() {
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
@@ -7772,9 +8047,7 @@ app.post('/api/widgets/gift-jar/test-single', (req, res) => {
             uniqueId: '__test__',
             nickname: 'テスト'
         };
-        giftJarHistory.push({ ...payload });
-        while (giftJarHistory.length > GIFT_JAR_HISTORY_LIMIT) { giftJarHistory.shift(); }
-        io.emit('widgets:gift-jar:notify', payload);
+        io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
         return res.json({ ok: true, giftName: payload.giftName, diamondCount: payload.diamondCount, source: 'fallback' });
     }
     // Tier-weighted: pick a random tier then a random gift within it
@@ -7800,9 +8073,7 @@ app.post('/api/widgets/gift-jar/test-single', (req, res) => {
         uniqueId: '__test__',
         nickname: 'テスト'
     };
-    giftJarHistory.push({ ...payload });
-    while (giftJarHistory.length > GIFT_JAR_HISTORY_LIMIT) { giftJarHistory.shift(); }
-    io.emit('widgets:gift-jar:notify', payload);
+    io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
     res.json({ ok: true, giftName: gift.name, diamondCount: gift.diamondCount });
 });
 
@@ -7841,9 +8112,7 @@ app.post('/api/widgets/gift-jar/test', (req, res) => {
                     uniqueId: '__demo__',
                     nickname: 'デモ'
                 };
-                giftJarHistory.push({ ...payload });
-                while (giftJarHistory.length > GIFT_JAR_HISTORY_LIMIT) { giftJarHistory.shift(); }
-                io.emit('widgets:gift-jar:notify', payload);
+                io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
             }, index * 220);
         });
 
@@ -7856,7 +8125,7 @@ app.post('/api/widgets/gift-jar/test', (req, res) => {
 
     DEMO_COINS.forEach((diamondCount, index) => {
         setTimeout(() => {
-            io.emit('widgets:gift-jar:notify', {
+            io.to('gift-jar').emit('widgets:gift-jar:notify', {
                 giftId: `demo-${index}`,
                 giftName: 'デモギフト',
                 giftImage: FALLBACK_IMAGE,
@@ -8181,6 +8450,7 @@ app.post('/api/broadcaster/set', async (req, res) => {
     emitSnapshot(getDisplayDayKey());
     emitAdminDayUpdate(getDisplayDayKey());
 
+    autoReconnectEnabled = true;
     connectToTikTok().catch(() => {});
 
     res.json({ ok: true, broadcasterId: savedId });
@@ -8195,7 +8465,7 @@ app.post('/api/tiktok/connect', (req, res) => {
         return res.status(400).json({ ok: false, error: '配信ユーザーIDが設定されていません。' });
     }
 
-    autoReconnectEnabled = false;
+    autoReconnectEnabled = true;
     connectToTikTok().catch(() => {});
     res.json({ ok: true });
 });

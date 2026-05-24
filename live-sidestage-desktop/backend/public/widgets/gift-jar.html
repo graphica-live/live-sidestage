@@ -68,7 +68,7 @@
             width: 1120px;
             height: 746px;
             z-index: 3;
-            mix-blend-mode: screen;
+            mix-blend-mode: multiply;
             opacity: 0.98;
         }
 
@@ -80,6 +80,18 @@
             z-index: 3;
             mix-blend-mode: multiply;
             opacity: 0.98;
+        }
+
+        .jar-photo-custom-active {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1080px;
+            height: 1080px;
+            z-index: 3;
+            object-fit: contain;
+            pointer-events: none;
+            display: none;
         }
 
         #jar-mask-error {
@@ -106,6 +118,7 @@
     </style>
 </head>
 <body>
+    <div id="debug-mode-badge" style="position:fixed;top:8px;left:8px;z-index:9999;background:rgba(0,0,0,0.75);color:#0f0;font:bold 28px monospace;padding:6px 16px;border-radius:8px;pointer-events:none;"></div>
     <div class="widget" id="widget" data-jar-theme="jar">
         <div id="jar-mask-error"></div>
         <!-- Single canvas: all gifts composited here. OBS receives 1 texture regardless of gift count -->
@@ -114,6 +127,7 @@
         <!-- Front jar layer: rim, highlights and outer shell stay in front of gifts -->
         <img class="jar-photo jar-photo-pig" src="/widgets/pig.png" alt="piggy bank">
         <img class="jar-photo jar-photo-jar" src="/widgets/jar.png" alt="glass jar">
+        <img class="jar-photo-custom-active" id="jar-photo-custom-active" src="" alt="custom bottle">
     </div>
 
     <script>
@@ -156,7 +170,9 @@
             if (overlayRecoveryInFlight || sampleMode) return;
             overlayRecoveryInFlight = true;
             try {
-                const response = await fetch('/api/widgets/gift-jar/config', { cache: 'no-store' });
+                const _configApi = new URLSearchParams(location.search).get('jar') === 'custom'
+                    ? '/api/widgets/custom-jar/config' : '/api/widgets/gift-jar/config';
+                const response = await fetch(_configApi, { cache: 'no-store' });
                 if (!response.ok) return;
                 clearOverlayRecoveryTimer();
                 // If socket already reconnected on its own, a page reload is unnecessary
@@ -176,9 +192,17 @@
             probeBackendAvailability();
         }
 
+        socket.onAny((event) => {
+            if (event.startsWith('widgets:')) {
+                socket.emit('debug:event-received', { event, mode: isCustomJarMode ? 'custom-jar' : 'gift-jar', url: location.pathname + location.search });
+            }
+        });
         socket.on('connect', () => {
             clearOverlayRecoveryTimer();
             overlayWasDisconnected = false;
+            const room = isCustomJarMode ? 'custom-jar' : 'gift-jar';
+            console.log('[gift-jar widget] connect | url:', location.href, '| isCustomJarMode:', isCustomJarMode, '| joining room:', room, '| socket.id:', socket.id);
+            socket.emit('overlay:join-room', room);
         });
 
         socket.on('disconnect', () => {
@@ -281,7 +305,7 @@
         };
         const JAR_THEME_HARDCODED_PROFILES = {
             pig: {
-                dropSlot: { y: 163, left: 522, right: 629 },
+                dropSlot: { y: 260, left: 522, right: 629 },
                 widthStops: [
                     { y: 296, left: 470, right: 670 },
                     { y: 330, left: 360, right: 780 },
@@ -615,11 +639,30 @@
         }
 
         // Pixels above jar opening for gift spawn (0 = just above rim, updated via socket)
-        let dropAboveJar = 0;
-        let crushThreshold = 1000;
-        let sizeMultiplier = 0.4;
+        // custom-jar モード: URL param ?jar=custom で有効化
+        const isCustomJarMode = new URLSearchParams(location.search).get('jar') === 'custom';
+        const WS_PREFIX = isCustomJarMode ? 'widgets:custom-jar:' : 'widgets:gift-jar:';
+        const CONFIG_API = isCustomJarMode ? '/api/widgets/custom-jar/config' : '/api/widgets/gift-jar/config';
+        document.getElementById('debug-mode-badge').textContent = isCustomJarMode ? 'CUSTOM-JAR' : 'GIFT-JAR';
 
-        /** Map diamond count ?Eimage size in px (before multiplier) */
+        const customActivePhotoEl = document.getElementById('jar-photo-custom-active');
+
+        function setCustomActiveImage(url) {
+            if (url) {
+                customActivePhotoEl.src = url;
+                customActivePhotoEl.style.display = 'block';
+            } else {
+                customActivePhotoEl.style.display = 'none';
+                customActivePhotoEl.src = '';
+            }
+        }
+
+        let dropAboveJar = 0;
+
+        let sizeMultiplier = 0.4;
+        let sizeRatioCoeff = 1.0;
+        const SIZE_BASE_MIN = 76;
+
         function sizeFor(diamonds) {
             const d = Math.max(1, Math.round(diamonds));
             let base;
@@ -642,7 +685,8 @@
             else if (d <= 39999) base = 398;
             else if (d <= 44999) base = 420;
             else base = 420;
-            return Math.round(base * sizeMultiplier);
+            const adjusted = SIZE_BASE_MIN + (base - SIZE_BASE_MIN) * sizeRatioCoeff;
+            return Math.round(Math.max(adjusted, SIZE_BASE_MIN) * sizeMultiplier);
         }
 
         function getJarProfile(themeName) {
@@ -823,45 +867,15 @@
                     giftBodies.splice(i, 1);
                 }
             }
-            // Safety net: remove any gift that floated above the visible canvas area
+            // Safety net: remove any gift that floated above the visible canvas area.
+            // Skip recently spawned gifts — high dropAboveJar values intentionally place
+            // gifts far above the jar, so give them time to fall before applying this check.
             for (let i = giftBodies.length - 1; i >= 0; i--) {
                 const g = giftBodies[i];
+                if (now - g.spawnTime < 3000) continue;
                 if (g.body.position.y < -(g.size + 100)) {
                     World.remove(physWorld, g.body);
                     giftBodies.splice(i, 1);
-                }
-            }
-            // Overflow: cheap gift above jar mouth — either actively expelled (high upward velocity)
-            // or sleeping above the mouth (can never fall in on its own)
-            if (crushThreshold > 0) {
-                // Sleeping above the mouth = definitively stuck; remove immediately
-                const stuckAboveMouth = giftBodies.filter(
-                    g => g.diamonds < crushThreshold &&
-                         g.body.position.y < jarOpenY() &&
-                         g.body.isSleeping
-                );
-                // Gifts actively being expelled upward (velocity-based)
-                const velOverflow = giftBodies.some(
-                    g => g.diamonds < crushThreshold &&
-                         g.body.position.y < jarOpenY() &&
-                         g.body.velocity.y < -0.5
-                );
-                if ((stuckAboveMouth.length > 0 || velOverflow) && now - lastCrushTime >= 80) {
-                    let batch;
-                    if (stuckAboveMouth.length > 0) {
-                        // Remove the actual stuck gifts directly (highest above mouth first)
-                        batch = stuckAboveMouth
-                            .sort((a, b) => a.body.position.y - b.body.position.y)
-                            .slice(0, 2);
-                    } else {
-                        // Dynamic overflow: crush deepest cheap gifts to release upward pressure
-                        batch = giftBodies
-                            .filter(g => g.diamonds < crushThreshold)
-                            .sort((a, b) => b.body.position.y - a.body.position.y)
-                            .slice(0, 2);
-                    }
-                    batch.forEach(g => crushAndRemove(g));
-                    if (batch.length > 0) lastCrushTime = now;
                 }
             }
             // Mark canvas dirty only when at least one body is actually moving
@@ -871,7 +885,7 @@
                 allSleepingEmitted = false;
                 if (!isReplayingHistory) {
                     // volatile.emit: drops frame if socket is busy ?Eprevents queue backpressure
-                    socket.volatile.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    socket.volatile.emit(WS_PREFIX + 'positions', giftBodies.map(g => ({
                         src: g.imageUrl, size: g.size, diamonds: g.diamonds,
                         cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
                         x: g.body.position.x, y: g.body.position.y, a: g.body.angle
@@ -880,7 +894,7 @@
             } else if (!allSleepingEmitted) {
                 if (!isReplayingHistory) {
                     // All bodies just settled: send one reliable final-position update to slave
-                    socket.emit('widgets:gift-jar:positions', giftBodies.map(g => ({
+                    socket.emit(WS_PREFIX + 'positions', giftBodies.map(g => ({
                         src: g.imageUrl, size: g.size, diamonds: g.diamonds,
                         cls: g.diamonds >= 1000 ? 'mega-glow' : g.diamonds >= 200 ? 'glow' : '',
                         x: g.body.position.x, y: g.body.position.y, a: g.body.angle,
@@ -1092,7 +1106,7 @@ self.onmessage = async function(e) {
 
         // Replay full history silently on (re)connect — run physics at 10x speed until settled.
         // Skipped when restoreFromPositions already ran (server sent a settled-state snapshot).
-        socket.on('widgets:gift-jar:history', async (history) => {
+        socket.on(WS_PREFIX + 'history', async (history) => {
             if (isSlave || !Array.isArray(history) || history.length === 0) return;
             if (giftBodies.length > 0) return;
             const analyzed = await Promise.all(history.map(async (item) => {
@@ -1127,8 +1141,9 @@ self.onmessage = async function(e) {
             }, analyzed.length * 30 + 1200);
         });
 
-        socket.on('widgets:gift-jar:notify', (data) => {
+        socket.on(WS_PREFIX + 'notify', (data) => {
             if (isSlave || !data) return;
+            console.log('[gift-jar] notify fired | mode:', isCustomJarMode ? 'custom-jar' : 'gift-jar', '| event:', WS_PREFIX + 'notify');
 
             const imageUrl = data.giftImage || FALLBACK_GIFT_IMAGE;
             const diamonds = Math.max(1, Number(data.diamondCount || 1));
@@ -1141,37 +1156,62 @@ self.onmessage = async function(e) {
             }
         });
 
-        socket.on('widgets:gift-jar:config', (cfg) => {
+        function handleJarConfig(cfg) {
             let shouldRebuildWalls = false;
             if (cfg && typeof cfg.dropAboveJar === 'number') {
-                dropAboveJar = Math.max(0, Math.min(cfg.dropAboveJar, 2000));
+                dropAboveJar = Math.max(0, Math.min(cfg.dropAboveJar, 400));
             }
-            if (cfg && typeof cfg.crushThreshold === 'number') {
-                crushThreshold = Math.max(0, Math.min(cfg.crushThreshold, 44999));
+
+            if (cfg && typeof cfg.sizeRatioCoeff === 'number') {
+                sizeRatioCoeff = Math.max(0, Math.min(cfg.sizeRatioCoeff, 5.0));
             }
             if (cfg && typeof cfg.sizeMultiplier === 'number') {
                 sizeMultiplier = Math.max(0.1, Math.min(cfg.sizeMultiplier, 5.0));
             }
-            if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
-                customJarProfiles = normalizeCustomJarProfiles(cfg.customProfiles);
-                shouldRebuildWalls = true;
+
+            if (isCustomJarMode) {
+                // カスタム瓶モード: アクティブプロファイルを固定キーで注入
+                if (cfg && cfg.activeProfile) {
+                    const normalized = normalizeCustomJarProfiles({ __active__: cfg.activeProfile });
+                    if (normalized.__active__) {
+                        customJarProfiles = { ...customJarProfiles, __active__: normalized.__active__ };
+                        widgetEl.dataset.jarTheme = '__active__';
+                        shouldRebuildWalls = true;
+                    }
+                }
+                setCustomActiveImage(cfg?.activeImageUrl || null);
+            } else {
+                if (cfg && cfg.customProfiles && typeof cfg.customProfiles === 'object') {
+                    customJarProfiles = normalizeCustomJarProfiles(cfg.customProfiles);
+                    shouldRebuildWalls = true;
+                }
+                if (cfg && typeof cfg.jarTheme === 'string') {
+                    widgetEl.dataset.jarTheme = cfg.jarTheme;
+                    shouldRebuildWalls = true;
+                }
             }
-            if (cfg && typeof cfg.jarTheme === 'string') {
-                widgetEl.dataset.jarTheme = cfg.jarTheme;
-                shouldRebuildWalls = true;
-            }
+            return shouldRebuildWalls;
+        }
+
+        socket.on(WS_PREFIX + 'config', (cfg) => {
+            const shouldRebuildWalls = handleJarConfig(cfg);
             if (shouldRebuildWalls && !isSlave) {
                 const nextTheme = widgetEl.dataset.jarTheme || currentJarTheme;
-                loadMaskJarProfile(nextTheme, { forceReload: true }).then((profile) => {
-                    if (profile) {
-                        clearMaskError();
-                        rebuildJarWalls(nextTheme);
-                    } else {
+                if (isCustomJarMode) {
+                    clearMaskError();
+                    rebuildJarWalls(nextTheme);
+                } else {
+                    loadMaskJarProfile(nextTheme, { forceReload: true }).then((profile) => {
+                        if (profile) {
+                            clearMaskError();
+                            rebuildJarWalls(nextTheme);
+                        } else {
+                            showMaskError(nextTheme);
+                        }
+                    }).catch(() => {
                         showMaskError(nextTheme);
-                    }
-                }).catch(() => {
-                    showMaskError(nextTheme);
-                });
+                    });
+                }
             }
         });
 
@@ -1186,16 +1226,16 @@ self.onmessage = async function(e) {
         // True once restoreFromPositions succeeds: cancels any pending history replay timeouts.
         let restoredFromPositions = false;
 
-        socket.on('widgets:gift-jar:positions', (bodies) => {
+        socket.on(WS_PREFIX + 'positions', (bodies) => {
             if (isSlave) {
                 slaveState = bodies;
                 dirty = true;
                 for (const b of bodies) getCachedImage(b.src); // pre-warm cache
                 return;
             }
-            // Master: on initial connect the server sends the last settled snapshot.
-            // Restore bodies directly at those positions instead of doing a full physics replay.
-            if (Array.isArray(bodies) && bodies.length > 0) {
+            // Master: only restore from the initial server-sent snapshot (once).
+            // Ignore subsequent broadcast positions from slave widgets.
+            if (!restoredFromPositions && Array.isArray(bodies) && bodies.length > 0) {
                 restoreFromPositions(bodies);
             }
         });
@@ -1253,7 +1293,7 @@ self.onmessage = async function(e) {
             }
         })();
 
-        socket.on('widgets:gift-jar:reset', () => {
+        socket.on(WS_PREFIX + 'reset', () => {
             if (isSlave) {
                 slaveState = [];
                 ctx.clearRect(0, 0, WIDGET_W, WIDGET_H);
