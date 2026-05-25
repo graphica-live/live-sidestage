@@ -362,7 +362,10 @@
             width: 100%;
             height: 100%;
             border: 0;
-            background: transparent;
+            background:
+                radial-gradient(circle at top left, rgba(255, 210, 176, 0.42), transparent 34%),
+                linear-gradient(180deg, rgba(24, 37, 58, 0.08) 0%, rgba(24, 37, 58, 0.02) 100%),
+                #dfe8f1;
         }
 
         .widget-preview-frame.contributors-preview {
@@ -472,6 +475,169 @@
         .gift-jar-wall-editor-status {
             font-size: 12px;
             color: var(--muted);
+        }
+
+        /* ---- オリジナル瓶詰めモーダル ---- */
+        .cuj-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.62);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 16px;
+        }
+
+        .cuj-modal-overlay[hidden] { display: none; }
+
+        .cuj-modal-box {
+            width: min(680px, 100%);
+            max-height: 92vh;
+            overflow-y: auto;
+            background: var(--panel);
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            box-shadow: 0 28px 60px rgba(2, 6, 23, 0.28);
+            padding: 28px;
+            display: grid;
+            gap: 18px;
+        }
+
+        .cuj-modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .cuj-modal-head h2 { margin: 0; font-size: 20px; }
+
+        .cuj-step { display: grid; gap: 14px; }
+        .cuj-step[hidden] { display: none; }
+
+        .cuj-file-drop {
+            border: 2px dashed rgba(24, 37, 58, 0.28);
+            border-radius: 14px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: background .15s, border-color .15s;
+        }
+
+        .cuj-file-drop:hover, .cuj-file-drop.drag-over {
+            background: rgba(194, 65, 12, 0.06);
+            border-color: rgba(194, 65, 12, 0.45);
+        }
+
+        .cuj-preview-wrap {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .cuj-preview-img {
+            max-width: 160px;
+            max-height: 160px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            object-fit: contain;
+            background: #dde7f1;
+        }
+
+        .cuj-stage-outer {
+            position: relative;
+            width: min(520px, 100%);
+            aspect-ratio: 1 / 1;
+        }
+
+        .cuj-stage {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            border: 1px solid rgba(24, 37, 58, 0.18);
+            overflow: hidden;
+            background: #dde7f1;
+        }
+
+        .cuj-bg-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .cuj-wall-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .cuj-drop-marker {
+            position: absolute;
+            top: 0;
+            width: 22px;
+            height: 22px;
+            background: #2563eb;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.5);
+            cursor: ew-resize;
+            z-index: 10;
+            transform: translateX(-50%);
+            transition: box-shadow .1s;
+        }
+
+        .cuj-drop-marker:hover { box-shadow: 0 2px 14px rgba(37, 99, 235, 0.7); }
+
+        .cuj-drop-line {
+            position: absolute;
+            top: 22px;
+            bottom: 0;
+            width: 2px;
+            background: rgba(37, 99, 235, 0.35);
+            pointer-events: none;
+            z-index: 9;
+            transform: translateX(-50%);
+        }
+
+        .cuj-theme-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .cuj-theme-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--panel);
+        }
+
+        .cuj-theme-thumb {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: #dde7f1;
+            flex-shrink: 0;
+        }
+
+        .cuj-theme-label {
+            flex: 1;
+            font-weight: 700;
+            font-size: 15px;
         }
 
         .widget-preview-frame.goal-gift-preview {
@@ -981,6 +1147,12 @@
                         </div>
                     </div>
 
+                    <div class="day-picker-row" id="contributors-day-picker-row">
+                        <button type="button" class="ghost-button" id="contributors-prev-day-button">前日</button>
+                        <div class="day-pill" id="contributors-day-label">読み込み中</div>
+                        <button type="button" class="ghost-button" id="contributors-next-day-button">翌日</button>
+                    </div>
+
                     <div class="widget-settings-panel" id="contributors-settings-panel" hidden>
                     <div class="form-grid" style="margin-bottom: 14px;">
                         <div class="field">
@@ -1002,11 +1174,6 @@
                             <option value="today">0時～24時</option>
                             <option value="session">配信ごとにリセット</option>
                         </select>
-                        <div class="day-picker-row" id="contributors-day-picker-row">
-                            <button type="button" class="ghost-button" id="contributors-prev-day-button">前日</button>
-                            <div class="day-pill" id="contributors-day-label">読み込み中</div>
-                            <button type="button" class="ghost-button" id="contributors-next-day-button">翌日</button>
-                        </div>
                     </div>
 
                     <div class="form-grid" style="margin-bottom: 16px;">
@@ -1245,8 +1412,8 @@
 
                     <div class="widget-preview">
                         <div class="widget-preview-label">サンプルプレビュー</div>
-                        <div class="widget-preview-frame" style="height:240px;background:rgba(0,0,0,0.18);">
-                            <iframe id="tap-list-preview-frame" title="タップ数一覧プレビュー" loading="eager"></iframe>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="tap-list-preview-frame" title="タップ数一覧プレビュー" loading="eager" allowtransparency="true"></iframe>
                         </div>
                     </div>
                 </article>
@@ -1294,25 +1461,28 @@
                     </div>
                     <div class="field">
                         <label for="gift-jar-drop-height">落下開始高さ</label>
-                        <input type="range" id="gift-jar-drop-height" min="0" max="1400" step="50" value="0" style="width:180px;vertical-align:middle;">
+                        <input type="range" id="gift-jar-drop-height" min="0" max="400" step="50" value="0" style="width:180px;vertical-align:middle;">
                         <span id="gift-jar-drop-height-value" style="margin-left:8px;font-size:13px;">0 px</span>
                     </div>
 
                     <div class="field">
-                        <label for="gift-jar-crush-threshold">あふれ時に潰すしきい値（0で無効）</label>
-                        <input type="number" id="gift-jar-crush-threshold" min="0" max="44999" step="1" value="1000" style="width:100px;">
-                        <span style="margin-left:6px;font-size:13px;">コイン未満</span>
-                    </div>
-
                     <div class="field">
                         <label for="gift-jar-size-multiplier">ギフトサイズ係数</label>
                         <input type="number" id="gift-jar-size-multiplier" min="0.1" max="5" step="0.05" value="1" style="width:80px;">
                         <span style="margin-left:6px;font-size:13px;">倍（0.1〜5.0）</span>
                     </div>
+                    <div class="field">
+                        <label for="gift-jar-size-ratio-coeff">大きさ係数</label>
+                        <input type="range" id="gift-jar-size-ratio-coeff" min="0" max="3" step="0.1" value="1" style="width:180px;vertical-align:middle;">
+                        <span id="gift-jar-size-ratio-coeff-value" style="margin-left:8px;font-size:13px;">1.0</span>
+                        <span style="margin-left:4px;font-size:12px;color:var(--muted);">（1=そのまま、大きいほど差が広がる）</span>
+                    </div>
+                    </div>
                     </div><!-- /gift-jar-settings-panel -->
 
                     <div class="action-row">
                         <button type="button" class="ghost-button" id="test-gift-jar-single-button">テストギフト送信</button>
+                        <button type="button" class="ghost-button" id="shake-gift-jar-button">瓶をシェイク</button>
                         <button type="button" class="ghost-button" id="reset-gift-jar-button">瓶をリセット</button>
                     </div>
 
@@ -1356,6 +1526,63 @@
                         </div>
                     </div>
                     </div><!-- /gift-jar-wall-settings-panel -->
+                </article>
+
+                <!-- ====== オリジナル瓶詰めギフト ====== -->
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>オリジナル瓶詰めギフト</h2>
+                            <p class="subtext">自分で選んだ画像を瓶として使用します。画像を登録し、壁とギフト落下位置を設定してテーマに追加できます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="custom-jar-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="widget-settings-panel" id="custom-jar-settings-panel" hidden>
+                    <div class="field">
+                        <label for="custom-jar-drop-height">落下開始高さ</label>
+                        <input type="range" id="custom-jar-drop-height" min="0" max="400" step="50" value="0" style="width:180px;vertical-align:middle;">
+                        <span id="custom-jar-drop-height-value" style="margin-left:8px;font-size:13px;">0 px</span>
+                    </div>
+                    <div class="field">
+                    <div class="field">
+                        <label for="custom-jar-size-multiplier">ギフトサイズ係数</label>
+                        <input type="number" id="custom-jar-size-multiplier" min="0.1" max="5" step="0.05" value="0.4" style="width:80px;">
+                        <span style="margin-left:6px;font-size:13px;">倍（0.1〜5.0）</span>
+                    </div>
+                    <div class="field">
+                        <label for="custom-jar-size-ratio-coeff">大きさ係数</label>
+                        <input type="range" id="custom-jar-size-ratio-coeff" min="0" max="3" step="0.1" value="1" style="width:180px;vertical-align:middle;">
+                        <span id="custom-jar-size-ratio-coeff-value" style="margin-left:8px;font-size:13px;">1.0</span>
+                        <span style="margin-left:4px;font-size:12px;color:var(--muted);">（1=そのまま、大きいほど差が広がる）</span>
+                    </div>
+                    </div>
+                    </div><!-- /custom-jar-settings-panel -->
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="custom-jar-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-custom-jar-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-custom-jar-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="action-row" style="margin-bottom:4px;">
+                        <button type="button" class="primary" id="cuj-open-modal-btn">オリジナル画像を登録</button>
+                        <button type="button" class="ghost-button" id="test-custom-jar-single-button">テストギフト送信</button>
+                        <button type="button" class="ghost-button" id="shake-custom-jar-button">瓶をシェイク</button>
+                        <button type="button" class="ghost-button" id="reset-custom-jar-button">瓶をリセット</button>
+                    </div>
+
+                    <div id="cuj-theme-list" class="cuj-theme-list" style="margin-top:6px;"></div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame gift-jar-preview">
+                            <iframe id="custom-jar-preview-frame" title="オリジナル瓶詰めプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
                 </article>
 
                 <article class="card">
@@ -1497,6 +1724,10 @@
                                 <input id="caption-font-size" type="number" min="16" max="200" step="2" inputmode="numeric" placeholder="52">
                             </div>
                             <div class="field">
+                                <label for="caption-vertical-offset">縦位置・下からの距離 (px)</label>
+                                <input id="caption-vertical-offset" type="number" min="0" max="1080" step="4" inputmode="numeric" placeholder="120">
+                            </div>
+                            <div class="field">
                                 <label for="caption-chars-per-sec">1秒の文字数</label>
                                 <input id="caption-chars-per-sec" type="number" min="1" max="60" step="1" inputmode="numeric" placeholder="12">
                             </div>
@@ -1599,6 +1830,41 @@
                                 </div>
                             </div>
                         </div>
+                        <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px;">
+                            <details id="caption-correction-section">
+                                <summary style="cursor:pointer;font-weight:600;padding:4px 0;user-select:none;">補正辞書（誤認識の置き換えルール）</summary>
+                                <div style="margin-top:10px;">
+                                    <table id="caption-correction-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+                                        <thead>
+                                            <tr style="border-bottom:1px solid var(--line);">
+                                                <th style="text-align:left;padding:4px 6px;color:var(--muted);font-weight:500;">認識テキスト（from）</th>
+                                                <th style="text-align:left;padding:4px 6px;color:var(--muted);font-weight:500;">補正後（to）</th>
+                                                <th style="padding:4px 6px;color:var(--muted);font-weight:500;">正規表現</th>
+                                                <th style="padding:4px 6px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="caption-correction-body"></tbody>
+                                    </table>
+                                    <div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+                                        <input id="cr-from" placeholder="from（誤認識テキスト）" style="flex:1;min-width:120px;">
+                                        <input id="cr-to" placeholder="to（正しいテキスト）" style="flex:1;min-width:120px;">
+                                        <label style="white-space:nowrap;font-size:13px;display:flex;align-items:center;gap:4px;">
+                                            <input type="checkbox" id="cr-regex"> 正規表現
+                                        </label>
+                                        <input id="cr-flags" placeholder="フラグ" title="正規表現フラグ（gi など）" style="width:64px;" value="g">
+                                        <button type="button" id="cr-add-btn" class="ghost-button" style="white-space:nowrap;">追加</button>
+                                    </div>
+                                    <div style="margin-top:10px;">
+                                        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">テスト入力（補正後をリアルタイム確認）</div>
+                                        <div style="display:flex;gap:6px;align-items:center;">
+                                            <input id="cr-test-in" placeholder="テスト文字列" style="flex:1;">
+                                            <span style="color:var(--muted);">→</span>
+                                            <input id="cr-test-out" readonly style="flex:1;background:var(--bg2,#f0f0f0);color:var(--text);">
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </div>
 
                     <div style="border-top:1px solid var(--line);margin-top:4px;padding-top:14px;">
@@ -1617,6 +1883,7 @@
                         <div class="chip" id="caption-status-chip" style="margin-top:10px;">停止中</div>
                         <div id="caption-preview-text" style="margin-top:8px;font-size:13px;color:var(--text);min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#1a1a2e;color:#fff;word-break:break-all;line-height:1.5;">（未認識）</div>
                     </div>
+
                 </article>
             </div>
         </section>
@@ -1683,6 +1950,70 @@
             <div class="goal-list" id="goal-gift-list"></div>
             <div class="gift-suggestion-panel" id="goal-gift-suggestion-panel" hidden></div>
         </section>
+    </div>
+
+    <!-- ====== オリジナル瓶詰めテーマ登録モーダル ====== -->
+    <div class="cuj-modal-overlay" id="cuj-modal" hidden>
+        <div class="cuj-modal-box" role="dialog" aria-modal="true" aria-labelledby="cuj-modal-title">
+            <div class="cuj-modal-head">
+                <h2 id="cuj-modal-title">オリジナル瓶詰めテーマを登録</h2>
+                <button type="button" class="ghost-button" id="cuj-modal-close">✕ 閉じる</button>
+            </div>
+
+            <!-- Step 1: 画像選択 -->
+            <div class="cuj-step" id="cuj-step1">
+                <p style="margin:0;color:var(--muted);font-size:14px;">瓶の画像ファイルを選択してください。PNG・JPGなどの画像が使用できます。</p>
+                <input type="file" id="cuj-file-input" accept="image/*" style="display:none;">
+                <div class="cuj-file-drop" id="cuj-file-drop" tabindex="0" role="button" aria-label="画像を選択">
+                    <div style="font-size:36px;margin-bottom:8px;">🖼️</div>
+                    <div style="font-weight:700;font-size:15px;">クリックまたはドラッグ＆ドロップで画像を選択</div>
+                    <div style="font-size:13px;color:var(--muted);margin-top:4px;">PNG / JPG / WEBP</div>
+                </div>
+                <div id="cuj-step1-preview" style="display:none;" class="cuj-preview-wrap">
+                    <img id="cuj-step1-img" class="cuj-preview-img" src="" alt="プレビュー">
+                    <div style="flex:1;display:grid;gap:8px;align-content:start;">
+                        <p id="cuj-step1-filename" style="margin:0;font-size:13px;color:var(--muted);word-break:break-all;"></p>
+                        <button type="button" class="primary" id="cuj-step1-next-btn">次へ → 壁を設定する</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: 壁エディタ -->
+            <div class="cuj-step" id="cuj-step2" hidden>
+                <div class="field" style="max-width:320px;">
+                    <label for="cuj-theme-name">テーマ名</label>
+                    <input type="text" id="cuj-theme-name" maxlength="40" placeholder="例：マイボトル">
+                </div>
+
+                <p style="margin:0;font-size:13px;color:var(--muted);">
+                    青い点をドラッグしてギフト落下位置（横）を設定してください。次に瓶の内側と外側の壁をマウスでなぞって描きます。
+                </p>
+
+                <div class="gift-jar-wall-editor-toolbar">
+                    <button type="button" class="ghost-button is-active" id="cuj-paint-btn">描く</button>
+                    <button type="button" class="ghost-button" id="cuj-erase-btn">消す</button>
+                    <label for="cuj-brush-size" style="font-size:13px;">ブラシ</label>
+                    <input type="range" id="cuj-brush-size" min="4" max="48" step="2" value="18" style="width:140px;">
+                    <span id="cuj-brush-size-value" class="subtext" style="margin-top:0;">18 px</span>
+                </div>
+
+                <div class="cuj-stage-outer" id="cuj-stage-outer">
+                    <div class="cuj-stage" id="cuj-stage">
+                        <img class="cuj-bg-img" id="cuj-bg-img" src="" alt="瓶画像">
+                        <div class="cuj-drop-marker" id="cuj-drop-marker" title="ドラッグでギフト落下位置を変更"></div>
+                        <div class="cuj-drop-line" id="cuj-drop-line"></div>
+                        <canvas class="cuj-wall-canvas" id="cuj-wall-canvas" width="540" height="540"></canvas>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button type="button" class="ghost-button" id="cuj-back-btn">← 戻る</button>
+                    <button type="button" class="ghost-button" id="cuj-clear-btn">キャンバスをクリア</button>
+                    <button type="button" class="primary" id="cuj-save-btn">完了・テーマに追加</button>
+                </div>
+                <p id="cuj-error-msg" style="color:var(--error);font-size:13px;margin:0;display:none;"></p>
+            </div>
+        </div>
     </div>
 
     <div class="admin-settings-modal" id="widget-settings-modal" hidden>
@@ -1773,6 +2104,8 @@
         const tapListMaxEntriesInput = document.getElementById('tap-list-max-entries');
         const tapListRowGapInput = document.getElementById('tap-list-row-gap');
         const giftJarPreviewFrame = document.getElementById('gift-jar-preview-frame');
+        const customJarUrl = document.getElementById('custom-jar-url');
+        const customJarPreviewFrame = document.getElementById('custom-jar-preview-frame');
         const giftJarWallEditor = document.getElementById('gift-jar-wall-editor');
         const giftJarWallEditorNote = document.getElementById('gift-jar-wall-editor-note');
         const giftJarWallEditorStatus = document.getElementById('gift-jar-wall-editor-status');
@@ -1805,12 +2138,16 @@
         let giftJarWallEditorIsDrawing = false;
         let giftJarWallEditorLastPoint = null;
 
-        function resizeGiftJarPreview() {
-            const container = giftJarPreviewFrame && giftJarPreviewFrame.parentElement;
+        function resizeJarPreviewFrame(frame) {
+            const container = frame && frame.parentElement;
             if (!container) return;
             const s = container.clientWidth / 1080;
-            giftJarPreviewFrame.style.transform = `scale(${s})`;
+            frame.style.transform = `scale(${s})`;
             container.style.height = (1080 * s) + 'px';
+        }
+        function resizeGiftJarPreview() {
+            resizeJarPreviewFrame(giftJarPreviewFrame);
+            resizeJarPreviewFrame(customJarPreviewFrame);
         }
         resizeGiftJarPreview();
         window.addEventListener('resize', resizeGiftJarPreview);
@@ -2926,6 +3263,9 @@
         function refreshGiftJarPreview(options = {}) {
             updatePreviewFrame(giftJarPreviewFrame, buildGiftJarPreviewUrl(), options);
         }
+        function refreshCustomJarPreview(options = {}) {
+            updatePreviewFrame(customJarPreviewFrame, '/overlays/custom-jar?jar=custom&preview=1', options);
+        }
 
         function refreshGoalGiftPreviews(options = {}) {
             const slot1 = Array.isArray(state.goalGiftItems) ? state.goalGiftItems[0] : null;
@@ -3710,6 +4050,7 @@
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
+            if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
             pushPullUrl.textContent = state.widgetUrls.pushPullLoaderUrl || state.widgetUrls.pushPullOverlayUrl || '未取得';
             captionUrlEl.textContent = state.widgetUrls.captionLoaderUrl || state.widgetUrls.captionOverlayUrl || '未取得';
             broadcasterStatus.textContent = state.broadcasterId ? `配信ユーザーID: @${state.broadcasterId}` : '配信ユーザーID: 未設定';
@@ -3723,6 +4064,7 @@
             refreshTopGiftPreview();
             refreshLikeContributionPreview();
             refreshGiftJarPreview();
+            refreshCustomJarPreview();
             refreshPushPullPreview();
         }
 
@@ -4181,11 +4523,61 @@
             const url = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
             await copyText(url);
         });
+        document.getElementById('open-custom-jar-overlay-button').addEventListener('click', () => {
+            openWindow('/overlays/custom-jar?jar=custom', 'custom-jar-overlay-window', { width: 700, height: 560 });
+        });
+        document.getElementById('copy-custom-jar-url-button').addEventListener('click', async () => {
+            await copyText(window.location.origin + '/overlays/custom-jar?jar=custom');
+        });
+        document.getElementById('test-custom-jar-single-button').addEventListener('click', () => {
+            fetch('/api/widgets/custom-jar/test-single', { method: 'POST' }).catch(() => {});
+        });
+        document.getElementById('reset-custom-jar-button').addEventListener('click', () => {
+            fetch('/api/widgets/custom-jar/reset', { method: 'POST' }).catch(() => {});
+        });
+        document.getElementById('shake-custom-jar-button').addEventListener('click', () => {
+            fetch('/api/widgets/custom-jar/shake', { method: 'POST' }).catch(() => {});
+        });
+
+        const customJarDropHeightInput = document.getElementById('custom-jar-drop-height');
+        const customJarDropHeightValue = document.getElementById('custom-jar-drop-height-value');
+        const customJarSizeMultiplierInput = document.getElementById('custom-jar-size-multiplier');
+
+        customJarDropHeightInput.addEventListener('input', () => {
+            customJarDropHeightValue.textContent = `${customJarDropHeightInput.value} px`;
+        });
+        customJarDropHeightInput.addEventListener('change', () => {
+            fetch('/api/widgets/custom-jar/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dropAboveJar: Number(customJarDropHeightInput.value) })
+            }).catch(() => {});
+        });
+        customJarSizeMultiplierInput.addEventListener('change', () => {
+            fetch('/api/widgets/custom-jar/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sizeMultiplier: Number(customJarSizeMultiplierInput.value) })
+            }).catch(() => {});
+        });
+
+        const customJarSizeRatioCoeffInput = document.getElementById('custom-jar-size-ratio-coeff');
+        const customJarSizeRatioCoeffValue = document.getElementById('custom-jar-size-ratio-coeff-value');
+        customJarSizeRatioCoeffInput.addEventListener('input', () => {
+            customJarSizeRatioCoeffValue.textContent = Number(customJarSizeRatioCoeffInput.value).toFixed(1);
+        });
+        customJarSizeRatioCoeffInput.addEventListener('change', () => {
+            fetch('/api/widgets/custom-jar/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sizeRatioCoeff: Number(customJarSizeRatioCoeffInput.value) })
+            }).catch(() => {});
+        });
         document.getElementById('test-gift-jar-single-button').addEventListener('click', () => {
             fetch('/api/widgets/gift-jar/test-single', { method: 'POST' }).catch(() => {});
         });
         document.getElementById('reset-gift-jar-button').addEventListener('click', () => {
             fetch('/api/widgets/gift-jar/reset', { method: 'POST' }).catch(() => {});
+        });
+        document.getElementById('shake-gift-jar-button').addEventListener('click', () => {
+            fetch('/api/widgets/gift-jar/shake', { method: 'POST' }).catch(() => {});
         });
 
         giftJarWallBrushSizeInput.addEventListener('input', () => {
@@ -4251,15 +4643,6 @@
             }).catch(() => {});
         });
 
-        const giftJarCrushThresholdInput = document.getElementById('gift-jar-crush-threshold');
-
-        giftJarCrushThresholdInput.addEventListener('change', () => {
-            fetch('/api/widgets/gift-jar/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ crushThreshold: Number(giftJarCrushThresholdInput.value) })
-            }).catch(() => {});
-        });
 
         const giftJarSizeMultiplierInput = document.getElementById('gift-jar-size-multiplier');
         const DEFAULT_GIFT_JAR_SIZE_MULTIPLIER = 0.4;
@@ -4270,6 +4653,18 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sizeMultiplier: Number(giftJarSizeMultiplierInput.value) })
+            }).catch(() => {});
+        });
+
+        const giftJarSizeRatioCoeffInput = document.getElementById('gift-jar-size-ratio-coeff');
+        const giftJarSizeRatioCoeffValue = document.getElementById('gift-jar-size-ratio-coeff-value');
+        giftJarSizeRatioCoeffInput.addEventListener('input', () => {
+            giftJarSizeRatioCoeffValue.textContent = Number(giftJarSizeRatioCoeffInput.value).toFixed(1);
+        });
+        giftJarSizeRatioCoeffInput.addEventListener('change', () => {
+            fetch('/api/widgets/gift-jar/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sizeRatioCoeff: Number(giftJarSizeRatioCoeffInput.value) })
             }).catch(() => {});
         });
 
@@ -4297,11 +4692,13 @@
                 giftJarDropHeightInput.value = cfg.dropAboveJar;
                 giftJarDropHeightValue.textContent = `${cfg.dropAboveJar} px`;
             }
-            if (typeof cfg.crushThreshold === 'number') {
-                giftJarCrushThresholdInput.value = cfg.crushThreshold;
-            }
+
             if (typeof cfg.sizeMultiplier === 'number') {
                 giftJarSizeMultiplierInput.value = cfg.sizeMultiplier;
+            }
+            if (typeof cfg.sizeRatioCoeff === 'number') {
+                giftJarSizeRatioCoeffInput.value = cfg.sizeRatioCoeff;
+                giftJarSizeRatioCoeffValue.textContent = cfg.sizeRatioCoeff.toFixed(1);
             }
             if (typeof cfg.jarTheme === 'string') {
                 giftJarThemeSelect.value = cfg.jarTheme;
@@ -4777,6 +5174,7 @@
         const NOISE_GATE_SCALE = 600; // same scale as level meter: pct = rms * NOISE_GATE_SCALE
         let captionNoiseGateThreshold = 0.003;
         const captionFontSizeInput = document.getElementById('caption-font-size');
+        const captionVerticalOffsetInput = document.getElementById('caption-vertical-offset');
         const captionCharsPerSecInput = document.getElementById('caption-chars-per-sec');
         const captionSegmentDurationInput = document.getElementById('caption-segment-duration');
         const captionMaxCharsInput = document.getElementById('caption-max-chars');
@@ -4852,6 +5250,7 @@
                 whisperModel: captionWhisperModelSelect.value,
                 pythonPath: captionPythonPathInput.value.trim() || 'python',
                 fontSize: parseInt(captionFontSizeInput.value, 10) || 52,
+                verticalOffset: parseInt(captionVerticalOffsetInput.value, 10) || 120,
                 charsPerSec: parseInt(captionCharsPerSecInput.value, 10) || 12,
                 segmentDuration: parseInt(captionSegmentDurationInput.value, 10) || 6,
                 maxCharsPerSegment: parseInt(captionMaxCharsInput.value, 10) || 20,
@@ -4881,7 +5280,7 @@
             }).catch(() => {});
         }
 
-        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionCharsPerSecInput, captionSegmentDurationInput, captionMaxCharsInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect, captionVadMinSpeechInput, captionVadPaddingInput, captionVadSilenceInput, captionAudioSampleRateSelect, captionAudioChunkSecInput].forEach((el) => {
+        [captionEngineSelect, captionWhisperModelSelect, captionFontSizeInput, captionVerticalOffsetInput, captionCharsPerSecInput, captionSegmentDurationInput, captionMaxCharsInput, captionBgStyleSelect, captionTranslationEngineSelect, captionTargetLangSelect, captionVadMinSpeechInput, captionVadPaddingInput, captionVadSilenceInput, captionAudioSampleRateSelect, captionAudioChunkSecInput].forEach((el) => {
             el.addEventListener('change', saveCaptionSettings);
         });
         captionEngineSelect.addEventListener('change', updateCaptionEngineVisibility);
@@ -4903,6 +5302,7 @@
             captionWhisperModelSelect.value = s.whisperModel ?? 'medium';
             captionPythonPathInput.value = s.pythonPath ?? 'python';
             captionFontSizeInput.value = s.fontSize ?? 52;
+            captionVerticalOffsetInput.value = s.verticalOffset ?? 120;
             captionCharsPerSecInput.value = s.charsPerSec ?? 12;
             captionSegmentDurationInput.value = s.segmentDuration ?? 6;
             captionMaxCharsInput.value = s.maxCharsPerSegment ?? 20;
@@ -5005,7 +5405,9 @@
 
         fetch('/api/widgets/caption/config').then((r) => r.json()).then(applyCaptionConfig).catch(() => {});
         updateCaptionEngineVisibility();
-        loadCaptionDevices();
+        loadCaptionDevices().then(() => {
+            if (localStorage.getItem('caption-running') === 'true') captionStartBtn.click();
+        });
 
         socket.on('widgets:caption:config', applyCaptionConfig);
         socket.on('widgets:caption:status', ({ message, error }) => {
@@ -5091,11 +5493,13 @@
                 setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
                 try {
                     await startAsrStreaming(engine);
+                    localStorage.setItem('caption-running', 'true');
                 } catch (err) {
                     setCaptionStatus(`マイクアクセス失敗: ${err.message}`, true);
                     socket.emit('caption:stop-asr', { engine });
                     captionStartBtn.disabled = false;
                     captionStopBtn.disabled  = true;
+                    localStorage.setItem('caption-running', 'false');
                 }
             }
         });
@@ -5111,12 +5515,486 @@
             captionStartBtn.disabled = false;
             captionStopBtn.disabled  = true;
             setCaptionStatus('停止中');
+            localStorage.setItem('caption-running', 'false');
         });
 
         captionTestBtn.addEventListener('click', () => {
             socket.emit('caption:text', { text: 'テスト字幕です', isFinal: true, srcLang: 'ja' });
         });
+
+        // ── 補正辞書 ─────────────────────────────────────────────────────────
+        let _corrRules = [];
+
+        function crEscHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function crApplyClient(text) {
+            let r = text;
+            const sorted = [..._corrRules].sort((a, b) => b.from.length - a.from.length);
+            for (const rule of sorted) {
+                if (!rule.from) continue;
+                try {
+                    if (rule.useRegex) {
+                        r = r.replace(new RegExp(rule.from, rule.flags || 'g'), rule.to);
+                    } else {
+                        const esc = rule.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        r = r.replace(new RegExp(esc, 'g'), rule.to);
+                    }
+                } catch {}
+            }
+            return r;
+        }
+
+        function crRenderTable() {
+            const tbody = document.getElementById('caption-correction-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            _corrRules.forEach((rule, i) => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid var(--line)';
+                tr.innerHTML =
+                    `<td style="padding:4px 6px;font-family:monospace;word-break:break-all;">${crEscHtml(rule.from)}</td>` +
+                    `<td style="padding:4px 6px;font-family:monospace;word-break:break-all;">${crEscHtml(rule.to)}</td>` +
+                    `<td style="text-align:center;padding:4px 6px;">${rule.useRegex ? '✓' : ''}</td>` +
+                    `<td style="padding:4px 6px;"><button type="button" data-idx="${i}" class="cr-del ghost-button" style="padding:2px 8px;font-size:12px;">削除</button></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function crSave() {
+            fetch('/api/caption/correction-rules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_corrRules),
+            }).catch(() => {});
+        }
+
+        function crLoad() {
+            fetch('/api/caption/correction-rules')
+                .then(r => r.json())
+                .then(rules => { _corrRules = Array.isArray(rules) ? rules : []; crRenderTable(); })
+                .catch(() => {});
+        }
+
+        document.getElementById('cr-add-btn')?.addEventListener('click', () => {
+            const from = (document.getElementById('cr-from')?.value || '').trim();
+            const to   = document.getElementById('cr-to')?.value || '';
+            const useRegex = document.getElementById('cr-regex')?.checked || false;
+            const flags = (document.getElementById('cr-flags')?.value || 'g').replace(/[^gimsuy]/g, '') || 'g';
+            if (!from) return;
+            if (useRegex) {
+                try { new RegExp(from, flags); } catch (e) { alert('正規表現エラー: ' + e.message); return; }
+            }
+            _corrRules.push({ from, to, useRegex, flags });
+            crRenderTable();
+            crSave();
+            const fromEl = document.getElementById('cr-from');
+            const toEl   = document.getElementById('cr-to');
+            const reEl   = document.getElementById('cr-regex');
+            if (fromEl) fromEl.value = '';
+            if (toEl)   toEl.value   = '';
+            if (reEl)   reEl.checked = false;
+            const testIn = document.getElementById('cr-test-in');
+            if (testIn) document.getElementById('cr-test-out').value = crApplyClient(testIn.value);
+        });
+
+        document.getElementById('caption-correction-body')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.cr-del');
+            if (!btn) return;
+            const idx = parseInt(btn.dataset.idx, 10);
+            if (!isNaN(idx)) { _corrRules.splice(idx, 1); crRenderTable(); crSave(); }
+            const testIn = document.getElementById('cr-test-in');
+            if (testIn) document.getElementById('cr-test-out').value = crApplyClient(testIn.value);
+        });
+
+        document.getElementById('cr-test-in')?.addEventListener('input', (e) => {
+            const out = document.getElementById('cr-test-out');
+            if (out) out.value = crApplyClient(e.target.value);
+        });
+
+        crLoad();
+        // ── /補正辞書 ────────────────────────────────────────────────────────
         // ---- /字幕ウィジェット ----
+
+        // ======== オリジナル瓶詰めギフト ========
+        {
+            const CUJ_CANVAS_SIZE = 540;
+            const CUJ_WIDGET_SIZE = 1080;
+            const CUJ_SCALE = CUJ_WIDGET_SIZE / CUJ_CANVAS_SIZE;
+
+            const cujModal = document.getElementById('cuj-modal');
+            const cujModalClose = document.getElementById('cuj-modal-close');
+            const cujOpenModalBtn = document.getElementById('cuj-open-modal-btn');
+            const cujStep1 = document.getElementById('cuj-step1');
+            const cujStep2 = document.getElementById('cuj-step2');
+            const cujFileInput = document.getElementById('cuj-file-input');
+            const cujFileDrop = document.getElementById('cuj-file-drop');
+            const cujStep1Preview = document.getElementById('cuj-step1-preview');
+            const cujStep1Img = document.getElementById('cuj-step1-img');
+            const cujStep1Filename = document.getElementById('cuj-step1-filename');
+            const cujStep1NextBtn = document.getElementById('cuj-step1-next-btn');
+            const cujThemeName = document.getElementById('cuj-theme-name');
+            const cujBgImg = document.getElementById('cuj-bg-img');
+            const cujDropMarker = document.getElementById('cuj-drop-marker');
+            const cujDropLine = document.getElementById('cuj-drop-line');
+            const cujWallCanvas = document.getElementById('cuj-wall-canvas');
+            const cujWallCtx = cujWallCanvas.getContext('2d', { willReadFrequently: true });
+            const cujPaintBtn = document.getElementById('cuj-paint-btn');
+            const cujEraseBtn = document.getElementById('cuj-erase-btn');
+            const cujBrushSize = document.getElementById('cuj-brush-size');
+            const cujBrushSizeValue = document.getElementById('cuj-brush-size-value');
+            const cujBackBtn = document.getElementById('cuj-back-btn');
+            const cujClearBtn = document.getElementById('cuj-clear-btn');
+            const cujSaveBtn = document.getElementById('cuj-save-btn');
+            const cujErrorMsg = document.getElementById('cuj-error-msg');
+            const cujThemeListEl = document.getElementById('cuj-theme-list');
+
+            let cujSelectedDataUrl = null;
+            let cujTool = 'paint';
+            let cujIsDrawing = false;
+            let cujLastPoint = null;
+            let cujDropMarkerPct = 50; // 0-100 (%)
+            let cujCustomUserThemes = []; // { id, label, imageUrl } (from server)
+
+            function cujShowError(msg) {
+                cujErrorMsg.textContent = msg;
+                cujErrorMsg.style.display = msg ? '' : 'none';
+            }
+
+            function cujOpenModal() {
+                cujStep1.hidden = false;
+                cujStep2.hidden = true;
+                cujStep1Preview.style.display = 'none';
+                cujStep1Img.src = '';
+                cujStep1Filename.textContent = '';
+                cujSelectedDataUrl = null;
+                cujShowError('');
+                cujModal.hidden = false;
+                document.body.style.overflow = 'hidden';
+            }
+
+            function cujCloseModal() {
+                cujModal.hidden = true;
+                document.body.style.overflow = '';
+            }
+
+            cujOpenModalBtn.addEventListener('click', cujOpenModal);
+            cujModalClose.addEventListener('click', cujCloseModal);
+            cujModal.addEventListener('click', (e) => { if (e.target === cujModal) cujCloseModal(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !cujModal.hidden) cujCloseModal(); });
+
+            // ---- File picker ----
+            cujFileDrop.addEventListener('click', () => cujFileInput.click());
+            cujFileDrop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') cujFileInput.click(); });
+
+            cujFileDrop.addEventListener('dragover', (e) => { e.preventDefault(); cujFileDrop.classList.add('drag-over'); });
+            cujFileDrop.addEventListener('dragleave', () => cujFileDrop.classList.remove('drag-over'));
+            cujFileDrop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                cujFileDrop.classList.remove('drag-over');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) cujLoadFile(file);
+            });
+
+            cujFileInput.addEventListener('change', () => {
+                const file = cujFileInput.files[0];
+                if (file) cujLoadFile(file);
+                cujFileInput.value = '';
+            });
+
+            function cujLoadFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    cujSelectedDataUrl = e.target.result;
+                    cujStep1Img.src = cujSelectedDataUrl;
+                    cujStep1Filename.textContent = file.name;
+                    cujStep1Preview.style.display = '';
+                };
+                reader.readAsDataURL(file);
+            }
+
+            cujStep1NextBtn.addEventListener('click', () => {
+                if (!cujSelectedDataUrl) return;
+                cujStep1.hidden = true;
+                cujStep2.hidden = false;
+                cujBgImg.src = cujSelectedDataUrl;
+                cujWallCtx.clearRect(0, 0, CUJ_CANVAS_SIZE, CUJ_CANVAS_SIZE);
+                cujDropMarkerPct = 50;
+                cujUpdateDropMarker();
+                cujShowError('');
+                if (!cujThemeName.value.trim()) cujThemeName.value = 'マイボトル';
+            });
+
+            cujBackBtn.addEventListener('click', () => {
+                cujStep2.hidden = true;
+                cujStep1.hidden = false;
+            });
+
+            // ---- Drop marker drag ----
+            function cujUpdateDropMarker() {
+                cujDropMarker.style.left = cujDropMarkerPct + '%';
+                cujDropLine.style.left = cujDropMarkerPct + '%';
+            }
+
+            cujDropMarker.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                cujDropMarker.setPointerCapture(e.pointerId);
+
+                function onMove(ev) {
+                    const rect = document.getElementById('cuj-stage').getBoundingClientRect();
+                    const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+                    cujDropMarkerPct = (x / rect.width) * 100;
+                    cujUpdateDropMarker();
+                }
+                function onUp() {
+                    cujDropMarker.removeEventListener('pointermove', onMove);
+                    cujDropMarker.removeEventListener('pointerup', onUp);
+                }
+                cujDropMarker.addEventListener('pointermove', onMove);
+                cujDropMarker.addEventListener('pointerup', onUp);
+            });
+
+            // ---- Wall drawing ----
+            function cujSetTool(tool) {
+                cujTool = tool;
+                cujPaintBtn.classList.toggle('is-active', tool === 'paint');
+                cujEraseBtn.classList.toggle('is-active', tool === 'erase');
+            }
+            cujPaintBtn.addEventListener('click', () => cujSetTool('paint'));
+            cujEraseBtn.addEventListener('click', () => cujSetTool('erase'));
+
+            cujBrushSize.addEventListener('input', () => {
+                cujBrushSizeValue.textContent = cujBrushSize.value + ' px';
+            });
+
+            cujClearBtn.addEventListener('click', () => {
+                cujWallCtx.clearRect(0, 0, CUJ_CANVAS_SIZE, CUJ_CANVAS_SIZE);
+            });
+
+            function cujGetPoint(e) {
+                const rect = cujWallCanvas.getBoundingClientRect();
+                return {
+                    x: Math.max(0, Math.min(CUJ_CANVAS_SIZE - 1, (e.clientX - rect.left) * CUJ_CANVAS_SIZE / Math.max(rect.width, 1))),
+                    y: Math.max(0, Math.min(CUJ_CANVAS_SIZE - 1, (e.clientY - rect.top) * CUJ_CANVAS_SIZE / Math.max(rect.height, 1)))
+                };
+            }
+
+            function cujDrawStroke(from, to) {
+                cujWallCtx.save();
+                cujWallCtx.globalCompositeOperation = cujTool === 'erase' ? 'destination-out' : 'source-over';
+                cujWallCtx.strokeStyle = 'rgba(194, 65, 12, 0.55)';
+                cujWallCtx.lineWidth = Math.max(2, Number(cujBrushSize.value)) * 2;
+                cujWallCtx.lineCap = 'round';
+                cujWallCtx.lineJoin = 'round';
+                cujWallCtx.beginPath();
+                cujWallCtx.moveTo(from.x, from.y);
+                cujWallCtx.lineTo(to.x, to.y);
+                cujWallCtx.stroke();
+                cujWallCtx.restore();
+            }
+
+            cujWallCanvas.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                cujIsDrawing = true;
+                cujLastPoint = cujGetPoint(e);
+                cujWallCanvas.setPointerCapture(e.pointerId);
+            });
+            cujWallCanvas.addEventListener('pointermove', (e) => {
+                if (!cujIsDrawing) return;
+                const pt = cujGetPoint(e);
+                cujDrawStroke(cujLastPoint, pt);
+                cujLastPoint = pt;
+            });
+            cujWallCanvas.addEventListener('pointerup', () => { cujIsDrawing = false; cujLastPoint = null; });
+            cujWallCanvas.addEventListener('pointercancel', () => { cujIsDrawing = false; cujLastPoint = null; });
+
+            // ---- Build wall profile from canvas ----
+            function cujBuildProfile() {
+                const { data, width, height } = cujWallCtx.getImageData(0, 0, CUJ_CANVAS_SIZE, CUJ_CANVAS_SIZE);
+                const rows = [];
+                for (let y = 0; y < height; y++) {
+                    const runs = [];
+                    let runStart = -1;
+                    for (let x = 0; x < width; x++) {
+                        const alpha = data[(y * width + x) * 4 + 3];
+                        if (alpha > 20) {
+                            if (runStart === -1) runStart = x;
+                        } else if (runStart !== -1) {
+                            runs.push({ start: runStart, end: x - 1 });
+                            runStart = -1;
+                        }
+                    }
+                    if (runStart !== -1) runs.push({ start: runStart, end: width - 1 });
+                    if (runs.length >= 2) rows.push({ y, runs });
+                }
+
+                if (rows.length < 4) throw new Error('壁線が足りません。瓶の左右の内壁をマウスでなぞって描いてください。');
+
+                const passable = [];
+                for (const row of rows) {
+                    const leftRun = row.runs[0];
+                    const rightRun = row.runs[row.runs.length - 1];
+                    const left = leftRun.end + 1;
+                    const right = rightRun.start - 1;
+                    if (right - left < 3) continue;
+                    passable.push({
+                        y: Math.round((row.y + 0.5) * CUJ_SCALE),
+                        left: Math.round(left * CUJ_SCALE),
+                        right: Math.round((right + 1) * CUJ_SCALE)
+                    });
+                }
+
+                if (passable.length < 4) throw new Error('左右の壁が分かれている行が少なすぎます。もう少し長く壁を描いてください。');
+
+                // Simplify
+                const simplified = [passable[0]];
+                let last = passable[0];
+                for (let i = 1; i < passable.length - 1; i++) {
+                    const r = passable[i];
+                    if (r.y - last.y >= 14 || Math.abs(r.left - last.left) >= 10 || Math.abs(r.right - last.right) >= 10) {
+                        simplified.push(r);
+                        last = r;
+                    }
+                }
+                simplified.push(passable[passable.length - 1]);
+
+                // Offset wall centres outward by half WALL_T (=15) so collision surface
+                // aligns with the painted inner edge rather than 15px inside it.
+                const WALL_HALF = 15;
+                const leftPoints = simplified.map(r => [r.left - WALL_HALF, r.y]);
+                const rightPoints = simplified.map(r => [r.right + WALL_HALF, r.y]).reverse();
+
+                // Drop slot: use marker X, Y from first passable row
+                const firstRow = simplified[0];
+                const markerX = Math.round((cujDropMarkerPct / 100) * CUJ_WIDGET_SIZE);
+                const slotHalf = Math.max(40, Math.round((firstRow.right - firstRow.left) * 0.15));
+                const dropSlot = {
+                    y: firstRow.y,
+                    left: Math.max(firstRow.left, markerX - slotHalf),
+                    right: Math.min(firstRow.right, markerX + slotHalf)
+                };
+                if (dropSlot.right - dropSlot.left < 8) {
+                    dropSlot.left = markerX - slotHalf;
+                    dropSlot.right = markerX + slotHalf;
+                }
+
+                return { widthStops: simplified, wallPoints: leftPoints.concat(rightPoints), dropSlot };
+            }
+
+            // ---- Save ----
+            cujSaveBtn.addEventListener('click', async () => {
+                cujShowError('');
+                const label = cujThemeName.value.trim() || 'マイボトル';
+                let profile;
+                try {
+                    profile = cujBuildProfile();
+                } catch (err) {
+                    cujShowError(err.message);
+                    return;
+                }
+                cujSaveBtn.disabled = true;
+                cujSaveBtn.textContent = '保存中...';
+                try {
+                    const resp = await fetch('/api/widgets/custom-jar/themes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'add', label, imageDataUrl: cujSelectedDataUrl, profile })
+                    });
+                    const json = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(json.error || '保存に失敗しました。');
+                    cujCustomUserThemes = json.themes || [];
+                    cujRenderThemeList();
+                    cujCloseModal();
+                    refreshCustomJarPreview({ forceReload: true });
+                } catch (err) {
+                    cujShowError(err.message);
+                } finally {
+                    cujSaveBtn.disabled = false;
+                    cujSaveBtn.textContent = '完了・テーマに追加';
+                }
+            });
+
+            // ---- Theme list rendering ----
+            function cujRenderThemeList() {
+                cujThemeListEl.innerHTML = '';
+                if (cujCustomUserThemes.length === 0) {
+                    cujThemeListEl.innerHTML = '<p style="margin:0;font-size:13px;color:var(--muted);">登録済みのオリジナルテーマはありません。</p>';
+                    return;
+                }
+                for (const t of cujCustomUserThemes) {
+                    const row = document.createElement('div');
+                    row.className = 'cuj-theme-row';
+
+                    const thumb = document.createElement('img');
+                    thumb.className = 'cuj-theme-thumb';
+                    thumb.alt = t.label;
+                    thumb.src = t.imageUrl || '';
+
+                    const label = document.createElement('span');
+                    label.className = 'cuj-theme-label';
+                    label.textContent = t.label;
+
+                    const useBtn = document.createElement('button');
+                    useBtn.type = 'button';
+                    useBtn.className = 'ghost-button';
+                    useBtn.textContent = 'このテーマを使用';
+                    useBtn.addEventListener('click', () => {
+                        fetch('/api/widgets/custom-jar/themes', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'activate', id: t.id })
+                        }).then(() => refreshCustomJarPreview({ forceReload: true })).catch(() => {});
+                    });
+
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'ghost-button';
+                    delBtn.title = '削除';
+                    delBtn.textContent = '削除';
+                    delBtn.style.color = 'var(--error)';
+                    delBtn.addEventListener('click', async () => {
+                        if (!confirm(`「${t.label}」を削除しますか？`)) return;
+                        try {
+                            const resp = await fetch('/api/widgets/custom-jar/themes', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'delete', id: t.id })
+                            });
+                            const json = await resp.json().catch(() => ({}));
+                            if (!resp.ok) throw new Error(json.error || '削除に失敗しました。');
+                            cujCustomUserThemes = json.themes || [];
+                            cujRenderThemeList();
+                            refreshCustomJarPreview({ forceReload: true });
+                        } catch (err) {
+                            alert(err.message);
+                        }
+                    });
+
+                    row.append(thumb, label, useBtn, delBtn);
+                    cujThemeListEl.appendChild(row);
+                }
+            }
+
+            // ---- Load existing custom themes on page load ----
+            fetch('/api/widgets/custom-jar/config').then(r => r.json()).then(cfg => {
+                if (Array.isArray(cfg.themes)) {
+                    cujCustomUserThemes = cfg.themes;
+                }
+                cujRenderThemeList();
+                if (typeof cfg.dropAboveJar === 'number') {
+                    customJarDropHeightInput.value = cfg.dropAboveJar;
+                    customJarDropHeightValue.textContent = `${cfg.dropAboveJar} px`;
+                }
+
+                if (typeof cfg.sizeMultiplier === 'number') customJarSizeMultiplierInput.value = cfg.sizeMultiplier;
+                if (typeof cfg.sizeRatioCoeff === 'number') {
+                    customJarSizeRatioCoeffInput.value = cfg.sizeRatioCoeff;
+                    customJarSizeRatioCoeffValue.textContent = cfg.sizeRatioCoeff.toFixed(1);
+                }
+            }).catch(() => {});
+        }
+        // ======== /オリジナル瓶詰めギフト ========
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>

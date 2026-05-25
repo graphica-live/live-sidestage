@@ -208,6 +208,12 @@
         const bgParam = searchParams.get('bg');
         if (bgParam === 'semi') document.body.classList.add('bg-semi');
 
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
         // ソケットから受け取った最新データ
         let targetEntries = [];
         // 表示中行の管理: uniqueId -> { rowEl, countEl, heartEl, displayedCount }
@@ -219,47 +225,63 @@
         }
 
         const TAP_LIST_FONT_FAMILIES = {
-            default: '"M PLUS Rounded 1c", sans-serif',
-            gothic: '"Noto Sans JP", sans-serif',
-            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
-            'noto-serif': '"Noto Serif JP", sans-serif',
-            mincho: '"Zen Old Mincho", sans-serif',
-            klee: '"Klee One", sans-serif',
-            'maru-gothic': '"Zen Maru Gothic", sans-serif',
-            yuji: '"Yuji Syuku", sans-serif',
-            dela: '"Dela Gothic One", sans-serif',
-            dot: '"DotGothic16", sans-serif',
-            hachi: '"Hachi Maru Pop", sans-serif',
-            rocknroll: '"RocknRoll One", sans-serif',
-            yusei: '"Yusei Magic", sans-serif',
-            kaisei: '"Kaisei Decol", serif',
-            mochiy: '"Mochiy Pop One", sans-serif',
-            rampart: '"Rampart One", sans-serif',
-            shippori: '"Shippori Mincho B1", serif',
-            'zen-antique': '"Zen Antique", serif',
-            'yuji-mai': '"Yuji Mai", serif',
-            sawarabi: '"Sawarabi Mincho", serif',
-            potta: '"Potta One", cursive',
-            'murecho-thin': '"Murecho", sans-serif',
-            stick: '"Stick", sans-serif'
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
         };
         const TAP_LIST_TEXT_STYLES = {
-            'gold-night':    { nameColor: 'rgba(241,245,249,0.94)', countColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)',   textShadow: 'rgba(15,23,42,0.38)' },
-            'ice-night':     { nameColor: 'rgba(191,219,254,0.94)', countColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.38)' },
-            'candy-pop':     { nameColor: 'rgba(251,207,232,0.94)', countColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
-            'mono-impact':   { nameColor: 'rgba(248,250,252,0.94)', countColor: '#f8fafc', strokeColor: 'rgba(2,6,23,0.97)',    textShadow: 'rgba(2,6,23,0.5)' },
-            'mint-lime':     { nameColor: 'rgba(209,250,229,0.94)', countColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)',   textShadow: 'rgba(6,78,59,0.38)' },
-            'fire-ember':    { nameColor: 'rgba(254,215,170,0.94)', countColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' },
-            'violet-dream':  { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(59,7,100,0.96)',  textShadow: 'rgba(59,7,100,0.38)' },
-            'coral-sea':     { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.38)' },
-            'lemon-sky':     { nameColor: 'rgba(254,249,195,0.94)', countColor: '#fde047', strokeColor: 'rgba(66,32,6,0.95)',   textShadow: 'rgba(66,32,6,0.38)' },
-            'neon-cyber':    { nameColor: 'rgba(187,247,208,0.94)', countColor: '#4ade80', strokeColor: 'rgba(0,0,0,0.97)',     textShadow: 'rgba(0,0,0,0.55)' },
-            'cherry-blossom':{ nameColor: 'rgba(255,228,230,0.94)', countColor: '#fda4af', strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.38)' },
-            'ocean-tide':    { nameColor: 'rgba(186,230,253,0.94)', countColor: '#38bdf8', strokeColor: 'rgba(12,74,110,0.96)', textShadow: 'rgba(12,74,110,0.38)' },
-            'forest-mist':   { nameColor: 'rgba(187,247,208,0.94)', countColor: '#86efac', strokeColor: 'rgba(20,83,45,0.96)',  textShadow: 'rgba(20,83,45,0.38)' },
-            'sunset-glow':   { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(124,45,18,0.96)', textShadow: 'rgba(124,45,18,0.38)' },
-            'aurora':        { nameColor: 'rgba(204,251,241,0.94)', countColor: '#5eead4', strokeColor: 'rgba(19,78,74,0.96)',  textShadow: 'rgba(19,78,74,0.38)' },
-            'citrus-splash': { nameColor: 'rgba(236,252,203,0.94)', countColor: '#bef264', strokeColor: 'rgba(54,83,20,0.96)',  textShadow: 'rgba(54,83,20,0.38)' }
+            'gold-night':      { nameColor: 'rgba(241,245,249,0.94)', countColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)',   textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { nameColor: 'rgba(191,219,254,0.94)', countColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { nameColor: 'rgba(251,207,232,0.94)', countColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)',  textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { nameColor: 'rgba(209,250,229,0.94)', countColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)',    textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { nameColor: 'rgba(254,215,170,0.94)', countColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)',  textShadow: 'rgba(120,53,15,0.38)' },
+            'violet-flash':    { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(59,7,100,0.96)',   textShadow: 'rgba(59,7,100,0.38)' },
+            'mono-impact':     { nameColor: 'rgba(248,250,252,0.94)', countColor: '#f8fafc', strokeColor: 'rgba(2,6,23,0.97)',     textShadow: 'rgba(2,6,23,0.5)' },
+            'sakura-bloom':    { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fda4af', strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.38)' },
+            'ocean-glow':      { nameColor: 'rgba(186,230,253,0.94)', countColor: '#38bdf8', strokeColor: 'rgba(12,74,110,0.96)',  textShadow: 'rgba(12,74,110,0.38)' },
+            'emerald-city':    { nameColor: 'rgba(187,247,208,0.94)', countColor: '#86efac', strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.38)' },
+            'ruby-flare':      { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.38)' },
+            'lemon-pop':       { nameColor: 'rgba(254,249,195,0.94)', countColor: '#fde047', strokeColor: 'rgba(30,58,138,0.96)',  textShadow: 'rgba(30,58,138,0.38)' },
+            'midnight-aqua':   { nameColor: 'rgba(153,246,228,0.94)', countColor: '#2dd4bf', strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(15,23,42,0.5)' },
+            'peach-fizz':      { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(124,29,29,0.96)',  textShadow: 'rgba(124,29,29,0.38)' },
+            'festival-red':    { nameColor: 'rgba(252,165,165,0.94)', countColor: '#f87171', strokeColor: 'rgba(17,24,39,0.97)',   textShadow: 'rgba(17,24,39,0.5)' },
+            'rose-gold':       { nameColor: 'rgba(248,180,166,0.94)', countColor: '#fda4af', strokeColor: 'rgba(91,52,46,0.96)',   textShadow: 'rgba(91,52,46,0.38)' },
+            'cyber-teal':      { nameColor: 'rgba(204,251,241,0.94)', countColor: '#5eead4', strokeColor: 'rgba(15,39,64,0.97)',   textShadow: 'rgba(15,39,64,0.5)' },
+            'aurora-dream':    { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(76,29,149,0.97)',  textShadow: 'rgba(76,29,149,0.5)' },
+            'coral-soda':      { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.38)' },
+            'platinum-pop':    { nameColor: 'rgba(226,232,240,0.94)', countColor: '#cbd5e1', strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(15,23,42,0.5)' },
+            'champagne-shine': { nameColor: 'rgba(248,231,181,0.94)', countColor: '#fde68a', strokeColor: 'rgba(107,79,42,0.96)',  textShadow: 'rgba(107,79,42,0.38)' },
+            'royal-velvet':    { nameColor: 'rgba(216,180,254,0.94)', countColor: '#c084fc', strokeColor: 'rgba(49,46,129,0.97)',  textShadow: 'rgba(49,46,129,0.5)' },
+            'emerald-luxe':    { nameColor: 'rgba(209,250,229,0.94)', countColor: '#a7f3d0', strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.38)' },
+            'sunrise-opal':    { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(154,52,18,0.96)',  textShadow: 'rgba(154,52,18,0.38)' },
+            'prism-burst':     { nameColor: 'rgba(191,219,254,0.94)', countColor: '#7dd3fc', strokeColor: 'rgba(67,56,202,0.97)',  textShadow: 'rgba(67,56,202,0.5)' },
+            'tropical-punch':  { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.38)' },
+            'lagoon-shine':    { nameColor: 'rgba(204,251,241,0.94)', countColor: '#2dd4bf', strokeColor: 'rgba(21,94,117,0.96)',  textShadow: 'rgba(21,94,117,0.38)' },
+            'berry-mist':      { nameColor: 'rgba(252,231,243,0.94)', countColor: '#f472b6', strokeColor: 'rgba(112,26,117,0.96)', textShadow: 'rgba(112,26,117,0.38)' },
+            'polar-neon':      { nameColor: 'rgba(207,250,254,0.94)', countColor: '#67e8f9', strokeColor: 'rgba(30,41,59,0.97)',   textShadow: 'rgba(30,41,59,0.5)' },
+            'citrus-splash':   { nameColor: 'rgba(236,252,203,0.94)', countColor: '#bef264', strokeColor: 'rgba(54,83,20,0.96)',   textShadow: 'rgba(54,83,20,0.38)' }
         };
 
         function applyAppearance(appearance) {

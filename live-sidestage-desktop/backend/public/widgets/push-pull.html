@@ -154,6 +154,7 @@
 
         if (sampleMode) {
             document.body.style.overflow = 'hidden';
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
             const widget = document.querySelector('.widget');
             function applySampleScale() {
                 const scaleX = window.innerWidth / widget.offsetWidth;
@@ -178,29 +179,31 @@
         let lastPullPoints = -1;
 
         const PUSH_PULL_FONT_FAMILIES = {
-            default: '"M PLUS Rounded 1c", sans-serif',
-            gothic: '"Noto Sans JP", sans-serif',
-            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
-            'noto-serif': '"Noto Serif JP", sans-serif',
-            mincho: '"Zen Old Mincho", sans-serif',
-            klee: '"Klee One", sans-serif',
-            'maru-gothic': '"Zen Maru Gothic", sans-serif',
-            yuji: '"Yuji Syuku", sans-serif',
-            dela: '"Dela Gothic One", sans-serif',
-            dot: '"DotGothic16", sans-serif',
-            hachi: '"Hachi Maru Pop", sans-serif',
-            rocknroll: '"RocknRoll One", sans-serif',
-            yusei: '"Yusei Magic", sans-serif',
-            kaisei: '"Kaisei Decol", serif',
-            mochiy: '"Mochiy Pop One", sans-serif',
-            rampart: '"Rampart One", sans-serif',
-            shippori: '"Shippori Mincho B1", serif',
-            'zen-antique': '"Zen Antique", serif',
-            'yuji-mai': '"Yuji Mai", serif',
-            sawarabi: '"Sawarabi Mincho", serif',
-            potta: '"Potta One", cursive',
-            'murecho-thin': '"Murecho", sans-serif',
-            stick: '"Stick", sans-serif'
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
         };
 
         function applyAppearance(appearance) {
