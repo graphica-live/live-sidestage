@@ -5360,7 +5360,7 @@
                     }
                 }
             } catch {}
-            startLevelMeter(captionDeviceSelect.value);
+            await startLevelMeter(captionDeviceSelect.value);
         }
 
         captionDeviceSelect.addEventListener('change', () => {
@@ -5371,7 +5371,7 @@
         function startLevelMeter(deviceId) {
             stopLevelMeter();
             const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
-            navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+            return navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
                 levelStream = stream;
                 levelAudioCtx = new AudioContext();
                 levelSource = levelAudioCtx.createMediaStreamSource(stream);
