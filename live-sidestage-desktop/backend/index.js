@@ -505,6 +505,15 @@ const dbStore = createDbStore({
 });
 const DB_PATH = dbStore.dbPath;
 
+function loadPersistedJson(key) {
+    const raw = dbStore.getGlobalStateValue(key);
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    try { return JSON.parse(raw); } catch (e) {
+        console.warn(`[db] failed to parse persisted state "${key}":`, e.message);
+        return null;
+    }
+}
+
 const effectMediaUpload = multer({
     storage: multer.diskStorage({
         destination(req, file, callback) {
@@ -619,22 +628,13 @@ function persistGiftJarCustomProfiles() {
     if (savedTheme !== null && GIFT_JAR_THEMES.includes(savedTheme) && savedTheme !== 'glass') {
         giftJarConfig.jarTheme = savedTheme;
     }
-    const savedCustomProfiles = dbStore.getGlobalStateValue('gift_jar_custom_profiles');
-    if (typeof savedCustomProfiles === 'string' && savedCustomProfiles.trim()) {
-        try {
-            giftJarConfig.customProfiles = normalizeGiftJarCustomProfiles(JSON.parse(savedCustomProfiles));
-        } catch {
-            giftJarConfig.customProfiles = {};
-        }
+    const savedCustomProfiles = loadPersistedJson('gift_jar_custom_profiles');
+    if (savedCustomProfiles !== null) {
+        giftJarConfig.customProfiles = normalizeGiftJarCustomProfiles(savedCustomProfiles);
     }
-    const savedHistoryV2 = dbStore.getGlobalStateValue('gift_jar_history_v2');
-    if (typeof savedHistoryV2 === 'string' && savedHistoryV2.trim()) {
-        try {
-            const parsed = JSON.parse(savedHistoryV2);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                giftJarHistory.push(...parsed.slice(-GIFT_JAR_HISTORY_LIMIT));
-            }
-        } catch {}
+    const savedHistoryV2 = loadPersistedJson('gift_jar_history_v2');
+    if (Array.isArray(savedHistoryV2) && savedHistoryV2.length > 0) {
+        giftJarHistory.push(...savedHistoryV2.slice(-GIFT_JAR_HISTORY_LIMIT));
     }
     // giftJarLastPositions は起動時にはロードしない。
     // restoreFromPositions() は全ボディを Sleeping.set(body, true) で強制スリープするため、
@@ -702,15 +702,12 @@ function deleteCustomJarImageFile(id) {
 
 // Restore persisted custom jar config
 {
-    const saved = dbStore.getGlobalStateValue('custom_jar_config');
-    if (typeof saved === 'string' && saved.trim()) {
-        try {
-            const p = JSON.parse(saved);
-            if (Array.isArray(p.themes)) customJarConfig.themes = p.themes;
-            if (typeof p.activeThemeId === 'string') customJarConfig.activeThemeId = p.activeThemeId;
-            if (typeof p.dropAboveJar === 'number') customJarConfig.dropAboveJar = p.dropAboveJar;
-            if (typeof p.sizeMultiplier === 'number') customJarConfig.sizeMultiplier = p.sizeMultiplier;
-        } catch {}
+    const p = loadPersistedJson('custom_jar_config');
+    if (p !== null) {
+        if (Array.isArray(p.themes)) customJarConfig.themes = p.themes;
+        if (typeof p.activeThemeId === 'string') customJarConfig.activeThemeId = p.activeThemeId;
+        if (typeof p.dropAboveJar === 'number') customJarConfig.dropAboveJar = p.dropAboveJar;
+        if (typeof p.sizeMultiplier === 'number') customJarConfig.sizeMultiplier = p.sizeMultiplier;
     }
 }
 // ======== /オリジナル瓶詰めギフト ========
@@ -756,31 +753,25 @@ function persistPushPullState() {
 
 // Restore persisted push-pull config and state
 {
-    const savedCfg = dbStore.getGlobalStateValue('push_pull_config');
-    if (typeof savedCfg === 'string' && savedCfg.trim()) {
-        try {
-            const parsed = JSON.parse(savedCfg);
-            if (typeof parsed.pushLabel === 'string' && parsed.pushLabel.trim()) {
-                pushPullConfig.pushLabel = parsed.pushLabel.trim().slice(0, 30);
-            }
-            if (typeof parsed.pullLabel === 'string' && parsed.pullLabel.trim()) {
-                pushPullConfig.pullLabel = parsed.pullLabel.trim().slice(0, 30);
-            }
-            if (Array.isArray(parsed.pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(parsed.pushGifts);
-            if (Array.isArray(parsed.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(parsed.pullGifts);
-        } catch {}
+    const savedCfg = loadPersistedJson('push_pull_config');
+    if (savedCfg !== null) {
+        if (typeof savedCfg.pushLabel === 'string' && savedCfg.pushLabel.trim()) {
+            pushPullConfig.pushLabel = savedCfg.pushLabel.trim().slice(0, 30);
+        }
+        if (typeof savedCfg.pullLabel === 'string' && savedCfg.pullLabel.trim()) {
+            pushPullConfig.pullLabel = savedCfg.pullLabel.trim().slice(0, 30);
+        }
+        if (Array.isArray(savedCfg.pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(savedCfg.pushGifts);
+        if (Array.isArray(savedCfg.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(savedCfg.pullGifts);
     }
-    const savedState = dbStore.getGlobalStateValue('push_pull_state');
-    if (typeof savedState === 'string' && savedState.trim()) {
-        try {
-            const parsed = JSON.parse(savedState);
-            if (typeof parsed.pushPoints === 'number' && Number.isFinite(parsed.pushPoints)) {
-                pushPullState.pushPoints = Math.max(0, Math.round(parsed.pushPoints));
-            }
-            if (typeof parsed.pullPoints === 'number' && Number.isFinite(parsed.pullPoints)) {
-                pushPullState.pullPoints = Math.max(0, Math.round(parsed.pullPoints));
-            }
-        } catch {}
+    const savedState = loadPersistedJson('push_pull_state');
+    if (savedState !== null) {
+        if (typeof savedState.pushPoints === 'number' && Number.isFinite(savedState.pushPoints)) {
+            pushPullState.pushPoints = Math.max(0, Math.round(savedState.pushPoints));
+        }
+        if (typeof savedState.pullPoints === 'number' && Number.isFinite(savedState.pullPoints)) {
+            pushPullState.pullPoints = Math.max(0, Math.round(savedState.pullPoints));
+        }
     }
 }
 
@@ -802,7 +793,7 @@ function sendContributorsOverlayHtml(res) {
 }
 
 function escapeHtmlForOverlay(value) {
-    return String(value)
+    return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -1000,6 +991,12 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         const socket = io();
         const video = document.getElementById('effect-video');
         const audio = document.getElementById('effect-audio');
+        const _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const _audioSrc = _audioCtx.createMediaElementSource(audio);
+        const _audioPanner = _audioCtx.createStereoPanner();
+        _audioPanner.pan.value = 0;
+        _audioSrc.connect(_audioPanner);
+        _audioPanner.connect(_audioCtx.destination);
         const readAloudCredit = document.getElementById('read-aloud-credit');
         const readAloudWarning = document.getElementById('read-aloud-warning');
         const debugLog = document.getElementById('debug-log');
@@ -1337,6 +1334,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     audio.src = resolvedAudio;
                     audio.currentTime = 0;
                     audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume || 100) / 100));
+                    await _audioCtx.resume().catch(() => null);
                     await audio.play().catch(() => null);
                 }
             } catch (error) {
@@ -4044,6 +4042,7 @@ function createDefaultCommentFeedSettings() {
         readAloudEmojiReplacements: [],
         readAloudEmoteReplacements: [],
         readAloudVoiceMappings: [],
+        readAloudAudioOutput: 'overlay1',
         readAloudDefaultsVersion: COMMENT_READ_ALOUD_DEFAULT_FILTERS_VERSION
     };
 }
@@ -4462,6 +4461,9 @@ function normalizeCommentFeedSettings(value) {
     const readAloudEmojiReplacements = normalizeCommentReadAloudEmojiReplacements(source?.readAloudEmojiReplacements);
     const readAloudEmoteReplacements = normalizeCommentReadAloudEmoteReplacements(source?.readAloudEmoteReplacements);
     const readAloudVoiceMappings = normalizeCommentReadAloudVoiceMappings(source?.readAloudVoiceMappings);
+    const readAloudAudioOutput = typeof source?.readAloudAudioOutput === 'string' && source.readAloudAudioOutput
+        ? source.readAloudAudioOutput
+        : 'overlay1';
     const readAloudFilters = migrateCommentReadAloudFilters(storedReadAloudDefaultsVersion >= COMMENT_READ_ALOUD_DEFAULT_FILTERS_VERSION
         ? (hasReadAloudFilters ? normalizedStoredReadAloudFilters : [...defaults.readAloudFilters])
         : normalizeCommentReadAloudFilters([
@@ -4484,6 +4486,7 @@ function normalizeCommentFeedSettings(value) {
         readAloudEmojiReplacements,
         readAloudEmoteReplacements,
         readAloudVoiceMappings,
+        readAloudAudioOutput,
         readAloudDefaultsVersion: COMMENT_READ_ALOUD_DEFAULT_FILTERS_VERSION
     };
 }
@@ -4818,13 +4821,19 @@ async function emitCommentReadAloudToScreen(payload) {
         speed: Math.max(0.5, Math.min(2.0, Number(payload?.speed ?? settings?.readAloudSpeed ?? 1.0) || 1.0))
     };
 
+    const useDeviceOutput = settings.readAloudAudioOutput === 'device';
+
     if (commentReadAloudAudioProvider) {
         try {
             const cacheKey = getCommentReadAloudAudioCacheKey(effectivePayload);
             const cachedEntry = cacheKey ? getCommentReadAloudAudioCacheEntry(cacheKey) : null;
 
             if (cachedEntry?.url) {
-                io.emit('effects:playback', createCommentReadAloudPlaybackPayload(effectivePayload, cachedEntry.url));
+                if (useDeviceOutput) {
+                    io.emit('effects:read-aloud:device', { ...effectivePayload, audioUrl: cachedEntry.url });
+                } else {
+                    io.emit('effects:playback', createCommentReadAloudPlaybackPayload(effectivePayload, cachedEntry.url));
+                }
                 return;
             }
 
@@ -4845,7 +4854,11 @@ async function emitCommentReadAloudToScreen(payload) {
                 if (cacheKey) {
                     setCommentReadAloudAudioCacheEntry(cacheKey, asset);
                 }
-                io.emit('effects:playback', createCommentReadAloudPlaybackPayload(effectivePayload, asset.url));
+                if (useDeviceOutput) {
+                    io.emit('effects:read-aloud:device', { ...effectivePayload, audioUrl: asset.url });
+                } else {
+                    io.emit('effects:playback', createCommentReadAloudPlaybackPayload(effectivePayload, asset.url));
+                }
                 return;
             }
         } catch (error) {
@@ -4859,7 +4872,11 @@ async function emitCommentReadAloudToScreen(payload) {
         }
     }
 
-    io.emit('effects:tts', effectivePayload);
+    if (useDeviceOutput) {
+        io.emit('effects:read-aloud:device', { ...effectivePayload, audioUrl: null });
+    } else {
+        io.emit('effects:tts', effectivePayload);
+    }
 }
 
 function normalizeCommentEventSourceTimestamp(value) {
@@ -7909,6 +7926,11 @@ app.post('/api/widgets/gift-jar/reset', (req, res) => {
     res.json({ ok: true });
 });
 
+app.post('/api/widgets/gift-jar/shake', (req, res) => {
+    io.to('gift-jar').emit('widgets:gift-jar:shake');
+    res.json({ ok: true });
+});
+
 // ======== オリジナル瓶詰めギフト API ========
 app.get('/api/widgets/custom-jar/config', (req, res) => {
     res.json(buildCustomJarPayload());
@@ -7989,6 +8011,11 @@ app.post('/api/widgets/custom-jar/reset', (req, res) => {
     customJarHistory.length = 0;
     customJarLastPositions = null;
     io.to('custom-jar').emit('widgets:custom-jar:reset');
+    res.json({ ok: true });
+});
+
+app.post('/api/widgets/custom-jar/shake', (req, res) => {
+    io.to('custom-jar').emit('widgets:custom-jar:shake');
     res.json({ ok: true });
 });
 
@@ -8779,7 +8806,7 @@ if (hasConfiguredBroadcasterId()) {
 }
 
 if (hasConfiguredBroadcasterId()) {
-    setDisplayDaySelection(getDisplayDayKey(), getDisplayDayReference());
+    setDisplayDaySelection(getTodayDayKey(), 'today');
 }
 
 syncDisplayDayReference();
@@ -9249,7 +9276,7 @@ async function startHttpServer() {
     }
 
     if (hasConfiguredBroadcasterId()) {
-        autoReconnectEnabled = false;
+        autoReconnectEnabled = true;
         connectToTikTok().catch(() => {});
     } else {
         setTikTokConnectionState('not_configured', 'TikTok 配信ユーザーIDが未設定です。セットアップ画面で設定してください。', {

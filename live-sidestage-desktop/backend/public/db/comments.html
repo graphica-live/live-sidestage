@@ -1032,11 +1032,24 @@
                         </label>
                     </div>
                 </div>
+                <label class="voice-setting-row" for="comment-read-aloud-audio-output-select">
+                    <strong>音声出力先</strong>
+                    <select id="comment-read-aloud-audio-output-select">
+                        <option value="overlay1">オーバーレイ１</option>
+                    </select>
+                </label>
                 <label class="voice-setting-row" for="comment-read-aloud-volume-range">
                     <strong>音量</strong>
                     <div class="voice-setting-inline">
                         <input type="range" id="comment-read-aloud-volume-range" min="0" max="100" step="1" value="100">
                         <span id="comment-read-aloud-volume-value" class="voice-setting-value">100%</span>
+                    </div>
+                </label>
+                <label class="voice-setting-row" for="comment-read-aloud-speed-range">
+                    <strong>読み上げ速度</strong>
+                    <div class="voice-setting-inline">
+                        <input type="range" id="comment-read-aloud-speed-range" min="0.5" max="2.0" step="0.1" value="1.0">
+                        <span id="comment-read-aloud-speed-value" class="voice-setting-value">1.0x</span>
                     </div>
                 </label>
                 <div class="voice-setting-row">
@@ -1205,6 +1218,8 @@
         const commentReadAloudRandomVoiceRefreshButton = document.getElementById('comment-read-aloud-random-voice-refresh-button');
         const commentReadAloudVolumeRange = document.getElementById('comment-read-aloud-volume-range');
         const commentReadAloudVolumeValue = document.getElementById('comment-read-aloud-volume-value');
+        const commentReadAloudSpeedRange = document.getElementById('comment-read-aloud-speed-range');
+        const commentReadAloudSpeedValue = document.getElementById('comment-read-aloud-speed-value');
         const commentReadAloudVoiceModal = document.getElementById('comment-read-aloud-voice-modal');
         const commentReadAloudVoiceMappingModal = document.getElementById('comment-read-aloud-voice-mapping-modal');
         const commentReadAloudVoiceMappingUserIdInput = document.getElementById('comment-read-aloud-voice-mapping-user-id-input');
@@ -1219,6 +1234,7 @@
         const commentReadAloudVoiceMappingSave = document.getElementById('comment-read-aloud-voice-mapping-save');
         const commentReadAloudVoiceCancel = document.getElementById('comment-read-aloud-voice-cancel');
         const commentReadAloudVoiceSave = document.getElementById('comment-read-aloud-voice-save');
+        const commentReadAloudAudioOutputSelect = document.getElementById('comment-read-aloud-audio-output-select');
         const commentReadAloudVoiceMappingButton = document.getElementById('comment-read-aloud-voice-mapping-button');
         const commentSettingsButton = document.getElementById('comment-settings-button');
         const commentReadAloudSettingsButton = document.getElementById('comment-read-aloud-settings-button');
@@ -1285,11 +1301,13 @@
             readAloudVoiceCreditEnabled: false,
             readAloudRandomVoiceEnabled: false,
             readAloudVolume: 100,
+            readAloudSpeed: 1.0,
             readAloudFilters: [],
             readAloudTextReplacements: [],
             readAloudEmojiReplacements: [],
             readAloudEmoteReplacements: [],
-            readAloudVoiceMappings: []
+            readAloudVoiceMappings: [],
+            readAloudAudioOutput: 'overlay1'
         };
         let availableReadAloudVoices = [];
         let pendingReadAloudVoiceMappings = [];
@@ -2051,6 +2069,7 @@
                 ? settings.readAloudEnabledTypes.filter((type) => knownTypes.includes(type))
                 : enabledTypes;
             const readAloudVolume = Math.max(0, Math.min(100, Number(settings?.readAloudVolume ?? 100) || 0));
+            const readAloudSpeed = Math.max(0.5, Math.min(2.0, Number(settings?.readAloudSpeed ?? 1.0) || 1.0));
             const readAloudFilters = normalizeReadAloudFilters(settings?.readAloudFilters);
             const readAloudTextReplacements = normalizeReadAloudTextReplacements(settings?.readAloudTextReplacements);
             const readAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(settings?.readAloudEmojiReplacements);
@@ -2066,11 +2085,13 @@
                 readAloudVoiceCreditEnabled: settings?.readAloudVoiceCreditEnabled === true,
                 readAloudRandomVoiceEnabled: settings?.readAloudRandomVoiceEnabled === true,
                 readAloudVolume,
+                readAloudSpeed,
                 readAloudFilters,
                 readAloudTextReplacements,
                 readAloudEmojiReplacements,
                 readAloudEmoteReplacements,
-                readAloudVoiceMappings
+                readAloudVoiceMappings,
+                readAloudAudioOutput: (typeof settings?.readAloudAudioOutput === 'string' && settings.readAloudAudioOutput) ? settings.readAloudAudioOutput : 'overlay1'
             };
         }
 
@@ -2133,6 +2154,9 @@
                 commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
                 commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
                 commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+                commentReadAloudSpeedRange.value = String(currentSettings.readAloudSpeed ?? 1.0);
+                commentReadAloudSpeedValue.textContent = `${(currentSettings.readAloudSpeed ?? 1.0).toFixed(1)}x`;
+                commentReadAloudAudioOutputSelect.value = currentSettings.readAloudAudioOutput || 'overlay1';
             }
 
             commentReadAloudVoiceSelect.disabled = !availableReadAloudVoices.length;
@@ -2309,8 +2333,33 @@
             });
         }
 
+        async function loadAudioOutputDevices() {
+            commentReadAloudAudioOutputSelect.innerHTML = '<option value="overlay1">オーバーレイ１</option>';
+            if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const outputs = devices.filter((d) => d.kind === 'audiooutput');
+                if (outputs.length > 0) {
+                    const sep = document.createElement('option');
+                    sep.disabled = true;
+                    sep.textContent = '──────────';
+                    commentReadAloudAudioOutputSelect.appendChild(sep);
+                    for (const dev of outputs) {
+                        const opt = document.createElement('option');
+                        opt.value = dev.deviceId;
+                        opt.textContent = dev.label || (dev.deviceId === 'default' ? '既定の再生デバイス' : `デバイス (${dev.deviceId.slice(0, 8)})`);
+                        commentReadAloudAudioOutputSelect.appendChild(opt);
+                    }
+                }
+                const saved = currentSettings.readAloudAudioOutput || 'overlay1';
+                commentReadAloudAudioOutputSelect.value = saved;
+                if (!commentReadAloudAudioOutputSelect.value) commentReadAloudAudioOutputSelect.value = 'overlay1';
+            } catch (e) { /* ignore */ }
+        }
+
         async function openCommentReadAloudVoiceModal() {
             await loadAvailableReadAloudVoices();
+            await loadAudioOutputDevices();
             commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
             commentReadAloudVoiceSelect.disabled = !availableReadAloudVoices.length;
             syncReadAloudVoiceTermsLink(currentSettings.readAloudVoiceName || '');
@@ -2318,6 +2367,8 @@
             commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
             commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
             commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+            commentReadAloudSpeedRange.value = String(currentSettings.readAloudSpeed ?? 1.0);
+            commentReadAloudSpeedValue.textContent = `${(currentSettings.readAloudSpeed ?? 1.0).toFixed(1)}x`;
             commentReadAloudVoiceModal.classList.add('is-open');
             commentReadAloudVoiceModal.setAttribute('aria-hidden', 'false');
         }
@@ -2499,6 +2550,9 @@
                 commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
                 commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
                 commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
+                commentReadAloudSpeedRange.value = String(currentSettings.readAloudSpeed ?? 1.0);
+                commentReadAloudSpeedValue.textContent = `${(currentSettings.readAloudSpeed ?? 1.0).toFixed(1)}x`;
+                commentReadAloudAudioOutputSelect.value = currentSettings.readAloudAudioOutput || 'overlay1';
             }
             if (commentReadAloudVoiceMappingModal.classList.contains('is-open')) {
                 pendingReadAloudVoiceMappings = normalizeReadAloudVoiceMappings(currentSettings.readAloudVoiceMappings);
@@ -2643,6 +2697,35 @@
             ensureCommentExpirationTimer();
         }
 
+        socket.on('effects:read-aloud:device', async (payload) => {
+            if (!payload) return;
+            const deviceId = currentSettings.readAloudAudioOutput !== 'overlay1'
+                ? currentSettings.readAloudAudioOutput
+                : 'default';
+            if (payload.audioUrl) {
+                const a = new Audio(payload.audioUrl);
+                if (typeof a.setSinkId === 'function' && deviceId && deviceId !== 'default') {
+                    try { await a.setSinkId(deviceId); } catch (e) { /* ignore */ }
+                }
+                a.volume = Math.max(0, Math.min(1, Number(payload.volume || 100) / 100));
+                a.play().catch(() => null);
+            } else if (payload.text && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(payload.text);
+                utterance.lang = 'ja-JP';
+                utterance.volume = Math.max(0, Math.min(1, Number(payload.volume || 100) / 100));
+                const voiceName = typeof payload.voiceName === 'string'
+                    ? payload.voiceName.replace(/^(screen1:|browser:)/, '')
+                    : '';
+                if (voiceName) {
+                    const voices = window.speechSynthesis.getVoices();
+                    const voice = voices.find((v) => v.name === voiceName);
+                    if (voice) utterance.voice = voice;
+                }
+                window.speechSynthesis.speak(utterance);
+            }
+        });
+
         socket.on('admin_day_updated', () => {
         });
 
@@ -2715,7 +2798,8 @@
             try {
                 const payload = {
                     voiceName: String(commentReadAloudVoiceSelect?.value || ''),
-                    volume: Number(commentReadAloudVolumeRange?.value || currentSettings.readAloudVolume || 100)
+                    volume: Number(commentReadAloudVolumeRange?.value || currentSettings.readAloudVolume || 100),
+                    speed: Number(commentReadAloudSpeedRange?.value || currentSettings.readAloudSpeed || 1.0)
                 };
                 const response = await fetch('/api/comments/read-aloud-test', {
                     method: 'POST',
@@ -2750,6 +2834,10 @@
 
         commentReadAloudVolumeRange.addEventListener('input', () => {
             commentReadAloudVolumeValue.textContent = `${commentReadAloudVolumeRange.value}%`;
+        });
+
+        commentReadAloudSpeedRange.addEventListener('input', () => {
+            commentReadAloudSpeedValue.textContent = `${Number(commentReadAloudSpeedRange.value).toFixed(1)}x`;
         });
 
         commentReadAloudVoiceSelect.addEventListener('change', () => {
@@ -3199,7 +3287,9 @@
                     readAloudVoiceName: commentReadAloudVoiceSelect.value || '',
                     readAloudVoiceCreditEnabled: commentReadAloudVoiceCreditCheckbox.checked,
                     readAloudRandomVoiceEnabled: commentReadAloudRandomVoiceCheckbox.checked,
-                    readAloudVolume: Number(commentReadAloudVolumeRange.value || 100)
+                    readAloudVolume: Number(commentReadAloudVolumeRange.value || 100),
+                    readAloudSpeed: Number(commentReadAloudSpeedRange.value || 1.0),
+                    readAloudAudioOutput: commentReadAloudAudioOutputSelect.value || 'overlay1'
                 });
                 closeCommentReadAloudVoiceModal();
             } catch (error) {

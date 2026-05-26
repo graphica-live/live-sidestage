@@ -17,7 +17,13 @@ const DEFAULT_AUTO_UPDATE_URL = 'https://update.graphica-produce.com/tikeffect/w
 const AUTO_UPDATE_CHECK_DELAY_MS = 0;
 const AUTO_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const VOICEVOX_TERMS_FALLBACK_URL = 'https://voicevox.hiroshiba.jp/term/';
-const EXCLUDED_VOICEVOX_SPEAKERS = new Set(['青山龍星', 'ぞん子']);
+const EXCLUDED_VOICEVOX_SPEAKERS = new Set([
+    'ぞん子',
+    // 商用利用不可
+    'もち子さん', '東北ずん子', '東北きりたん', '東北イタコ',
+    'Voidoll', '櫻歌ミコ', '波音リツ', '小夜/SAYO',
+    'WhiteCUL', 'No.7', 'MANA', 'KANA', '栗田まろん'
+]);
 const VOICEVOX_PRODUCT_PATH_BY_SPEAKER = {
     '四国めたん': 'shikoku_metan',
     'ずんだもん': 'zundamon',
@@ -644,6 +650,7 @@ function enqueueReadAloud(payload) {
         return;
     }
 
+    if (readAloudQueue.length >= 50) return;
     readAloudQueue.push(payload);
     processReadAloudQueue();
 }
