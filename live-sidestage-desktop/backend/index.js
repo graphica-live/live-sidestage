@@ -1200,7 +1200,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             utterance.lang = 'ja-JP';
             utterance.rate = 1;
             utterance.pitch = 1;
-            utterance.volume = Math.max(0, Math.min(1, Number(payload.volume || 100) / 100));
+            utterance.volume = Math.max(0, Math.min(1, Number(payload.volume ?? 100) / 100));
 
             if (selectedVoice) {
                 utterance.voice = selectedVoice;
@@ -1323,7 +1323,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 if (resolvedVideo) {
                     video.src = resolvedVideo;
                     video.currentTime = 0;
-                    video.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume || 100) / 100));
+                    video.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     video.style.display = 'block';
                     await video.play().catch(() => null);
                 } else {
@@ -1333,7 +1333,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 if (resolvedAudio) {
                     audio.src = resolvedAudio;
                     audio.currentTime = 0;
-                    audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume || 100) / 100));
+                    audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     await _audioCtx.resume().catch(() => null);
                     await audio.play().catch(() => null);
                 }
@@ -4451,7 +4451,7 @@ function normalizeCommentFeedSettings(value) {
     const readAloudVoiceName = normalizeEffectText(source?.readAloudVoiceName, 120);
     const readAloudVoiceCreditEnabled = source?.readAloudVoiceCreditEnabled === true;
     const readAloudRandomVoiceEnabled = source?.readAloudRandomVoiceEnabled === true;
-    const readAloudVolume = Math.max(0, Math.min(100, normalizeWholeNumber(source?.readAloudVolume, defaults.readAloudVolume)));
+    const readAloudVolume = Math.max(0, Math.min(100, normalizeWholeNumber(source?.readAloudVolume) ?? defaults.readAloudVolume));
     const readAloudSpeedRaw = Number.isFinite(Number(source?.readAloudSpeed)) ? Number(source.readAloudSpeed) : defaults.readAloudSpeed;
     const readAloudSpeed = Math.round(Math.max(0.5, Math.min(2.0, readAloudSpeedRaw)) * 10) / 10;
     const normalizedStoredReadAloudFilters = hasReadAloudFilters
@@ -4769,7 +4769,7 @@ function createCommentReadAloudPlaybackPayload(payload, audioUrl) {
         screen: payload.screen || COMMENT_READ_ALOUD_EFFECT_SCREEN,
         videoUrl: '',
         audioUrl,
-        mediaVolume: Math.max(0, Math.min(100, Number(payload.volume || 100))),
+        mediaVolume: Math.max(0, Math.min(100, Number(payload.volume ?? 100))),
         playbackCount: 1,
         triggerId: 'comment-read-aloud',
         triggerName: 'Comment Read Aloud',

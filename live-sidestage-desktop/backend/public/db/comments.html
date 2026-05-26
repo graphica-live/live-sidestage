@@ -2707,13 +2707,13 @@
                 if (typeof a.setSinkId === 'function' && deviceId && deviceId !== 'default') {
                     try { await a.setSinkId(deviceId); } catch (e) { /* ignore */ }
                 }
-                a.volume = Math.max(0, Math.min(1, Number(payload.volume || 100) / 100));
+                a.volume = Math.max(0, Math.min(1, Number(payload.volume ?? 100) / 100));
                 a.play().catch(() => null);
             } else if (payload.text && window.speechSynthesis) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(payload.text);
                 utterance.lang = 'ja-JP';
-                utterance.volume = Math.max(0, Math.min(1, Number(payload.volume || 100) / 100));
+                utterance.volume = Math.max(0, Math.min(1, Number(payload.volume ?? 100) / 100));
                 const voiceName = typeof payload.voiceName === 'string'
                     ? payload.voiceName.replace(/^(screen1:|browser:)/, '')
                     : '';
