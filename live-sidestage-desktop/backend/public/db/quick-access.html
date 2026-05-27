@@ -274,7 +274,6 @@
                     </label>
                 </div>
                 <button type="button" class="ghost-button" id="reset-random-voice-button">🎲 ランダムボイス更新</button>
-                <button type="button" class="ghost-button" id="open-comments-button">コメント欄を開く</button>
             </div>
 
         </section>
@@ -323,7 +322,7 @@
         const socket = io({ transports: ['websocket'] });
         const readAloudCheckbox = document.getElementById('read-aloud-checkbox');
         const resetRandomVoiceButton = document.getElementById('reset-random-voice-button');
-        const openCommentsButton = document.getElementById('open-comments-button');
+
         const effectsPauseCheckbox = document.getElementById('effects-pause-checkbox');
         const effectsPauseChip = document.getElementById('effects-pause-chip');
 
@@ -457,9 +456,6 @@
             }
         });
 
-        openCommentsButton.addEventListener('click', () => {
-            window.location.assign('/comments');
-        });
 
         socket.on('admin_comments_updated', (payload) => {
             currentSettings = payload?.settings || currentSettings;
