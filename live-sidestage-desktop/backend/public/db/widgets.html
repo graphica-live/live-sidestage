@@ -5597,6 +5597,49 @@
             if (localStorage.getItem('caption-running') === 'true') captionStartBtn.click();
         });
 
+        navigator.mediaDevices.addEventListener('devicechange', async () => {
+            const currentDeviceId = captionDeviceSelect.value;
+            // Refresh dropdown list
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                let audioInputs = devices.filter((d) => d.kind === 'audioinput');
+                if (captionDeduplicateDevicesCheck.checked) {
+                    const seen = new Set();
+                    audioInputs = audioInputs.filter((d) => {
+                        const key = d.label || d.deviceId;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                }
+                while (captionDeviceSelect.options.length > 1) captionDeviceSelect.remove(1);
+                audioInputs.forEach((d, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = d.deviceId;
+                    opt.textContent = d.label || `マイク ${i + 1}`;
+                    opt.dataset.index = String(i);
+                    captionDeviceSelect.appendChild(opt);
+                });
+                const stillExists = currentDeviceId === '' || audioInputs.some((d) => d.deviceId === currentDeviceId);
+                if (!stillExists) {
+                    captionDeviceSelect.value = '';
+                    localStorage.removeItem('caption-device-id');
+                } else {
+                    captionDeviceSelect.value = currentDeviceId;
+                }
+            } catch {}
+
+            // Restart stream when default device changed or selected device disappeared
+            const needsRestart = captionDeviceSelect.value === '' || captionDeviceSelect.value !== currentDeviceId;
+            if (!needsRestart) return;
+            const wasStreaming = asrActiveEngine;
+            if (wasStreaming) stopAsrStreaming();
+            await startLevelMeter(captionDeviceSelect.value);
+            if (wasStreaming) {
+                try { await startAsrStreaming(wasStreaming); } catch {}
+            }
+        });
+
         socket.on('widgets:caption:config', applyCaptionConfig);
         socket.on('widgets:caption:status', ({ message, error }) => {
             setCaptionStatus(message, Boolean(error));
