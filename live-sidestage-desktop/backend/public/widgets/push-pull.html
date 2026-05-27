@@ -18,23 +18,30 @@
             font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
         }
 
-        .widget {
+        /* ── outer container (transparent) ── */
+        .overlay {
+            width: 1080px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* ── meter bar panel ── */
+        .meter-panel {
             display: flex;
             align-items: center;
-            padding: 14px 20px;
-            background: rgba(10, 12, 20, 0.80);
+            padding: 12px 20px;
+            background: rgba(10, 12, 20, 0.82);
             border-radius: 18px;
             border: 1px solid rgba(255, 255, 255, 0.10);
             backdrop-filter: blur(12px);
-            width: max-content;
-            min-width: 640px;
         }
 
         .side {
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-width: 112px;
+            min-width: 120px;
             gap: 2px;
             flex-shrink: 0;
         }
@@ -47,16 +54,15 @@
         }
 
         .side-points {
-            font-size: 38px;
+            font-size: 36px;
             font-weight: 900;
             line-height: 1;
             transition: transform 0.15s ease;
         }
 
-        .push-side .side-label { color: #fca5a5; }
+        .push-side .side-label  { color: #fca5a5; }
         .push-side .side-points { color: #f87171; text-shadow: 0 0 20px rgba(248, 113, 113, 0.55); }
-
-        .pull-side .side-label { color: #93c5fd; }
+        .pull-side .side-label  { color: #93c5fd; }
         .pull-side .side-points { color: #60a5fa; text-shadow: 0 0 20px rgba(96, 165, 250, 0.55); }
 
         .meter-wrap {
@@ -74,8 +80,7 @@
 
         .meter-fill-push {
             position: absolute;
-            left: 0;
-            top: 0;
+            left: 0; top: 0;
             height: 100%;
             background: linear-gradient(to right, #991b1b, #ef4444);
             transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
@@ -83,8 +88,7 @@
 
         .meter-fill-pull {
             position: absolute;
-            right: 0;
-            top: 0;
+            right: 0; top: 0;
             height: 100%;
             background: linear-gradient(to left, #1d4ed8, #60a5fa);
             transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
@@ -92,16 +96,87 @@
 
         .meter-center-line {
             position: absolute;
-            left: 50%;
-            top: 8%;
-            height: 84%;
-            width: 2px;
+            left: 50%; top: 8%;
+            height: 84%; width: 2px;
             background: rgba(255, 255, 255, 0.28);
             transform: translateX(-50%);
             z-index: 2;
             border-radius: 1px;
         }
 
+        /* ── gifts row: [push panel] [camera gap] [pull panel] ── */
+        .gifts-row {
+            display: flex;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .gifts-panel {
+            width: 290px;
+            flex-shrink: 0;
+            background: rgba(10, 12, 20, 0.78);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(10px);
+            padding: 10px 12px 14px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-content: flex-start;
+        }
+
+        /* camera space – fully transparent */
+        .gifts-gap { flex: 1; }
+
+        /* ── gift card ── */
+        .gift-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .gift-img-wrap {
+            position: relative;
+            width: 68px;
+            height: 68px;
+        }
+
+        .gift-img {
+            width: 68px;
+            height: 68px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .gift-pts {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-weight: 900;
+            line-height: 1;
+            padding: 3px 9px;
+            border-radius: 999px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .push-panel .gift-pts {
+            background: rgba(120, 20, 20, 0.90);
+            color: #fecaca;
+            border: 1px solid rgba(239, 68, 68, 0.55);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        .pull-panel .gift-pts {
+            background: rgba(26, 60, 180, 0.90);
+            color: #bfdbfe;
+            border: 1px solid rgba(96, 165, 250, 0.55);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        /* ── animations ── */
         @keyframes pulse-push {
             0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.55); }
             50%  { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0.18); }
@@ -127,23 +202,31 @@
     </style>
 </head>
 <body>
-    <div class="widget">
-        <div class="side push-side">
-            <div class="side-label" id="push-label">プッシュ</div>
-            <div class="side-points" id="push-points">0</div>
-        </div>
-
-        <div class="meter-wrap">
-            <div class="meter-track" id="meter-track">
-                <div class="meter-fill-push" id="meter-push" style="width:50%"></div>
-                <div class="meter-fill-pull" id="meter-pull" style="width:50%"></div>
-                <div class="meter-center-line"></div>
+    <div class="overlay">
+        <!-- meter bar -->
+        <div class="meter-panel">
+            <div class="side push-side">
+                <div class="side-label" id="push-label">プッシュ</div>
+                <div class="side-points" id="push-points">0</div>
+            </div>
+            <div class="meter-wrap">
+                <div class="meter-track" id="meter-track">
+                    <div class="meter-fill-push" id="meter-push" style="width:50%"></div>
+                    <div class="meter-fill-pull" id="meter-pull" style="width:50%"></div>
+                    <div class="meter-center-line"></div>
+                </div>
+            </div>
+            <div class="side pull-side">
+                <div class="side-points" id="pull-points">0</div>
+                <div class="side-label" id="pull-label">プル</div>
             </div>
         </div>
 
-        <div class="side pull-side">
-            <div class="side-label" id="pull-label">プル</div>
-            <div class="side-points" id="pull-points">0</div>
+        <!-- gifts row: push gifts | camera space | pull gifts -->
+        <div class="gifts-row" id="gifts-row" style="display:none">
+            <div class="gifts-panel push-panel" id="push-gifts-panel"></div>
+            <div class="gifts-gap"></div>
+            <div class="gifts-panel pull-panel" id="pull-gifts-panel"></div>
         </div>
     </div>
 
@@ -155,28 +238,32 @@
         if (sampleMode) {
             document.body.style.overflow = 'hidden';
             document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
-            const widget = document.querySelector('.widget');
+            const overlay = document.querySelector('.overlay');
             function applySampleScale() {
-                const scaleX = window.innerWidth / widget.offsetWidth;
-                const scaleY = window.innerHeight / widget.offsetHeight;
-                const scale = Math.min(scaleX, scaleY);
-                widget.style.transformOrigin = 'top left';
-                widget.style.transform = `scale(${scale})`;
+                const scaleX = window.innerWidth / overlay.offsetWidth;
+                const scaleY = window.innerHeight / overlay.offsetHeight;
+                const scale = Math.min(scaleX, scaleY, 1);
+                overlay.style.transformOrigin = 'top left';
+                overlay.style.transform = `scale(${scale})`;
             }
             document.fonts.ready.then(applySampleScale);
             window.addEventListener('resize', applySampleScale);
         }
 
-        const pushLabelEl = document.getElementById('push-label');
-        const pullLabelEl = document.getElementById('pull-label');
-        const pushPointsEl = document.getElementById('push-points');
-        const pullPointsEl = document.getElementById('pull-points');
-        const meterPush = document.getElementById('meter-push');
-        const meterPull = document.getElementById('meter-pull');
-        const meterTrack = document.getElementById('meter-track');
+        const pushLabelEl    = document.getElementById('push-label');
+        const pullLabelEl    = document.getElementById('pull-label');
+        const pushPointsEl   = document.getElementById('push-points');
+        const pullPointsEl   = document.getElementById('pull-points');
+        const meterPush      = document.getElementById('meter-push');
+        const meterPull      = document.getElementById('meter-pull');
+        const meterTrack     = document.getElementById('meter-track');
+        const giftsRow       = document.getElementById('gifts-row');
+        const pushGiftsPanel = document.getElementById('push-gifts-panel');
+        const pullGiftsPanel = document.getElementById('pull-gifts-panel');
 
         let lastPushPoints = -1;
         let lastPullPoints = -1;
+        let lastGiftsKey   = '';
 
         const PUSH_PULL_FONT_FAMILIES = {
             default:          '"M PLUS Rounded 1c", sans-serif',
@@ -206,6 +293,14 @@
             stick:            '"Stick", sans-serif'
         };
 
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
         function applyAppearance(appearance) {
             if (!appearance) return;
             const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
@@ -213,10 +308,40 @@
             document.documentElement.style.setProperty('--widget-font-family', fontFamily);
         }
 
+        function renderGiftsHtml(gifts) {
+            if (!Array.isArray(gifts) || gifts.length === 0) return '';
+            return gifts.map(g => {
+                const pts = '+' + Number(g.points).toLocaleString('ja-JP');
+                const src = g.giftImage || '';
+                return `<div class="gift-card">
+                    <div class="gift-img-wrap">
+                        ${src
+                            ? `<img class="gift-img" src="${escapeHtml(src)}" alt="">`
+                            : '<div class="gift-img" style="background:rgba(255,255,255,0.08);border-radius:8px;"></div>'}
+                        <div class="gift-pts">${escapeHtml(pts)}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function updateGifts(data) {
+            const pushGifts = Array.isArray(data.pushGifts) ? data.pushGifts : [];
+            const pullGifts = Array.isArray(data.pullGifts) ? data.pullGifts : [];
+            const key = JSON.stringify([pushGifts, pullGifts]);
+            if (key === lastGiftsKey) return;
+            lastGiftsKey = key;
+
+            const hasAny = pushGifts.length > 0 || pullGifts.length > 0;
+            giftsRow.style.display = hasAny ? 'flex' : 'none';
+            pushGiftsPanel.innerHTML = renderGiftsHtml(pushGifts);
+            pullGiftsPanel.innerHTML = renderGiftsHtml(pullGifts);
+        }
+
         function updateMeter(data) {
             if (data.appearance) applyAppearance(data.appearance);
-            const push = Math.max(0, Number(data.pushPoints) || 0);
-            const pull = Math.max(0, Number(data.pullPoints) || 0);
+
+            const push  = Math.max(0, Number(data.pushPoints) || 0);
+            const pull  = Math.max(0, Number(data.pullPoints) || 0);
             const total = push + pull;
 
             const pushChanged = push !== lastPushPoints;
@@ -246,6 +371,8 @@
 
             lastPushPoints = push;
             lastPullPoints = pull;
+
+            updateGifts(data);
         }
 
         function triggerPulse(side) {
@@ -260,11 +387,21 @@
             el.classList.add('pop');
         }
 
+        const _sampleImg = 'https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/adf6e9bd6219788151edb9fa026a0481.png~tplv-obj.webp';
         const sampleData = {
             pushLabel: 'プッシュ',
             pullLabel: 'プル',
             pushPoints: 350,
             pullPoints: 210,
+            pushGifts: [
+                { giftId: 's1', giftName: 'ローズ', giftImage: _sampleImg, points: 100 },
+                { giftId: 's2', giftName: 'ハート', giftImage: _sampleImg, points: 50 },
+                { giftId: 's3', giftName: 'リボン', giftImage: _sampleImg, points: 200 },
+            ],
+            pullGifts: [
+                { giftId: 's4', giftName: 'スター', giftImage: _sampleImg, points: 150 },
+                { giftId: 's5', giftName: 'クラウン', giftImage: _sampleImg, points: 500 },
+            ],
         };
 
         socket.on('widgets:push-pull:snapshot', (data) => {
@@ -277,7 +414,7 @@
 
         async function refresh() {
             try {
-                const res = await fetch('/api/widgets/push-pull/snapshot');
+                const res  = await fetch('/api/widgets/push-pull/snapshot');
                 const data = await res.json();
                 updateMeter(sampleMode ? sampleData : data);
             } catch {}
