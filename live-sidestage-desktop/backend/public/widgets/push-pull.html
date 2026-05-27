@@ -8,7 +8,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
 
-        :root { --widget-font-family: "M PLUS Rounded 1c", sans-serif; }
+        :root { --widget-font-family: "M PLUS Rounded 1c", sans-serif; --gift-img-size: 88px; --gift-pts-size: 15px; }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -136,13 +136,13 @@
 
         .gift-img-wrap {
             position: relative;
-            width: 88px;
-            height: 88px;
+            width: var(--gift-img-size);
+            height: var(--gift-img-size);
         }
 
         .gift-img {
-            width: 88px;
-            height: 88px;
+            width: var(--gift-img-size);
+            height: var(--gift-img-size);
             object-fit: contain;
             display: block;
         }
@@ -152,7 +152,7 @@
             bottom: -8px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 15px;
+            font-size: var(--gift-pts-size);
             font-weight: 900;
             line-height: 1;
             padding: 3px 9px;
@@ -305,6 +305,11 @@
             const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
             const fontFamily = PUSH_PULL_FONT_FAMILIES[fontKey] || PUSH_PULL_FONT_FAMILIES.default;
             document.documentElement.style.setProperty('--widget-font-family', fontFamily);
+            const giftSize = parseInt(appearance.giftSize, 10);
+            if (!isNaN(giftSize) && giftSize >= 40 && giftSize <= 160) {
+                document.documentElement.style.setProperty('--gift-img-size', giftSize + 'px');
+                document.documentElement.style.setProperty('--gift-pts-size', Math.round(giftSize * 15 / 88) + 'px');
+            }
         }
 
         function renderGiftsHtml(gifts) {

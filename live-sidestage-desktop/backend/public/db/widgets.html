@@ -1699,6 +1699,10 @@
                                 <input id="push-pull-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
                             </div>
                             <div class="field">
+                                <label for="push-pull-gift-size">ギフト画像サイズ (px)</label>
+                                <input id="push-pull-gift-size" type="number" min="40" max="160" step="4" inputmode="numeric" aria-label="ギフト画像サイズ" />
+                            </div>
+                            <div class="field">
                                 <label for="push-pull-push-label">プッシュ側ラベル</label>
                                 <input type="text" id="push-pull-push-label" maxlength="30" placeholder="プッシュ">
                             </div>
@@ -2168,6 +2172,7 @@
         const pushPullFontSelect = document.getElementById('push-pull-font');
         const pushPullTextStyleSelect = document.getElementById('push-pull-text-style');
         const pushPullStrokeWidthInput = document.getElementById('push-pull-stroke-width');
+        const pushPullGiftSizeInput = document.getElementById('push-pull-gift-size');
         const captionFontSelect = document.getElementById('caption-font');
         const captionTextStyleSelect = document.getElementById('caption-text-style');
         const captionStrokeWidthInput = document.getElementById('caption-stroke-width');
@@ -3139,6 +3144,7 @@
         }
         function syncPushPullAppearanceControls() {
             syncWidgetAppearanceControls(pushPullFontSelect, pushPullTextStyleSelect, pushPullStrokeWidthInput, state.pushPullAppearance);
+            pushPullGiftSizeInput.value = state.pushPullAppearance?.giftSize ?? 88;
         }
         function syncCaptionAppearanceControls() {
             syncWidgetAppearanceControls(captionFontSelect, captionTextStyleSelect, captionStrokeWidthInput, state.captionAppearance);
@@ -4643,6 +4649,8 @@
         pushPullTextStyleSelect.addEventListener('change', schedulePushPullSave);
         pushPullStrokeWidthInput.addEventListener('input', schedulePushPullSave);
         pushPullStrokeWidthInput.addEventListener('change', schedulePushPullSave);
+        pushPullGiftSizeInput.addEventListener('input', schedulePushPullSave);
+        pushPullGiftSizeInput.addEventListener('change', schedulePushPullSave);
         captionFontSelect.addEventListener('input', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); });
         captionFontSelect.addEventListener('change', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); saveCaptionSettings(); });
         captionTextStyleSelect.addEventListener('change', saveCaptionSettings);
@@ -5330,7 +5338,8 @@
                     appearance: {
                         fontKey: normalizeDisplayFontKey(pushPullFontSelect.value),
                         textStyleKey: normalizeDisplayTextStyleKey(pushPullTextStyleSelect.value),
-                        strokeWidth: normalizeDisplayStrokeWidth(pushPullStrokeWidthInput.value)
+                        strokeWidth: normalizeDisplayStrokeWidth(pushPullStrokeWidthInput.value),
+                        giftSize: parseInt(pushPullGiftSizeInput.value, 10) || 88
                     }
                 })
             });

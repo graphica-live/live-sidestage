@@ -471,6 +471,7 @@ const pushPullConfig = {
     pullLabel: 'プル',
     pushGifts: [],
     pullGifts: [],
+    giftSize: 88,
 };
 let pushPullState = {
     pushPoints: 0,
@@ -745,6 +746,7 @@ function persistPushPullConfig() {
             pullLabel: pushPullConfig.pullLabel,
             pushGifts: pushPullConfig.pushGifts,
             pullGifts: pushPullConfig.pullGifts,
+            giftSize: pushPullConfig.giftSize,
         }), Date.now());
     } catch {}
 }
@@ -767,6 +769,9 @@ function persistPushPullState() {
         }
         if (Array.isArray(savedCfg.pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(savedCfg.pushGifts);
         if (Array.isArray(savedCfg.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(savedCfg.pullGifts);
+        if (typeof savedCfg.giftSize === 'number' && savedCfg.giftSize >= 40 && savedCfg.giftSize <= 160) {
+            pushPullConfig.giftSize = savedCfg.giftSize;
+        }
     }
     const savedState = loadPersistedJson('push_pull_state');
     if (savedState !== null) {
@@ -2599,10 +2604,18 @@ function setGiftJarWidgetTextAppearance(a) {
 }
 
 function getPushPullWidgetTextAppearance() {
-    return getPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY);
+    const base = getPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY);
+    base.giftSize = pushPullConfig.giftSize;
+    return base;
 }
 function setPushPullWidgetTextAppearance(a) {
-    return setPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY, a);
+    const base = setPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY, a);
+    if (a && a.giftSize !== undefined) {
+        const n = parseInt(String(a.giftSize), 10);
+        pushPullConfig.giftSize = (!isNaN(n) && n >= 40 && n <= 160) ? n : 88;
+    }
+    base.giftSize = pushPullConfig.giftSize;
+    return base;
 }
 
 function getCaptionWidgetTextAppearance() {
