@@ -2352,7 +2352,6 @@
             commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
             commentReadAloudVoiceSelect.disabled = !availableReadAloudVoices.length;
             syncReadAloudVoiceTermsLink(currentSettings.readAloudVoiceName || '');
-            commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
             commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
             commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
             commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
