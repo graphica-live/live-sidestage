@@ -2,6 +2,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { Worker } = require('worker_threads');
 const { EventEmitter } = require('events');
 
 // sherpa-onnx nemo parakeet TDT-CTC-0.6b-ja INT8 quantised model
@@ -19,7 +20,7 @@ class SherpaEngine extends EventEmitter {
         super();
         this.dataDir  = dataDir;
         this.modelDir = path.join(dataDir, 'sherpa-models', MODEL_INFO.name);
-        this._recognizer = null;
+        this._worker  = null;
         this._audioBufs  = [];
         this._running    = false;
         this._timer      = null;
@@ -47,31 +48,48 @@ class SherpaEngine extends EventEmitter {
         }
         if (!this.isModelReady()) await this._downloadModel();
 
+        if (this._worker) return; // already initialised
+
         this.emit('status', 'Parakeet モデルを読み込み中...');
 
-        const sherpa = require('sherpa-onnx');
         const onnxPath   = path.join(this.modelDir, MODEL_INFO.onnxFile);
         const tokensPath = path.join(this.modelDir, MODEL_INFO.tokensFile);
         const cfg = {
             modelConfig: {
                 tokens: tokensPath,
                 nemoCtc: { model: onnxPath },
-                numThreads: 4,
-                provider: 'directml',   // GPU on Windows (NVIDIA / AMD / Intel)
+                numThreads: 2,
+                provider: 'directml',
                 debug: 0,
             },
             decodingConfig: { method: 'greedy_search' },
         };
 
-        try {
-            this._recognizer = sherpa.createOfflineRecognizer(cfg);
-            this.emit('status', 'Parakeet 準備完了（DirectML）');
-        } catch {
-            // DirectML unavailable – fall back to CPU
-            cfg.modelConfig.provider = 'cpu';
-            this._recognizer = sherpa.createOfflineRecognizer(cfg);
-            this.emit('status', 'Parakeet 準備完了（CPU）');
-        }
+        await new Promise((resolve, reject) => {
+            this._worker = new Worker(path.join(__dirname, 'sherpa-worker.js'));
+            this._worker.on('message', (msg) => {
+                if (msg.type === 'ready') {
+                    const label = msg.provider === 'directml' ? 'DirectML' : 'CPU';
+                    this.emit('status', `Parakeet 準備完了（${label}）`);
+                    resolve();
+                } else if (msg.type === 'result') {
+                    this._busy = false;
+                    if (msg.text) this.emit('transcript', { text: msg.text, isFinal: true });
+                } else if (msg.type === 'silence') {
+                    this._busy = false;
+                } else if (msg.type === 'error') {
+                    this._busy = false;
+                    this.emit('error', `認識エラー: ${msg.message}`);
+                }
+            });
+            this._worker.on('error', (e) => {
+                this._busy = false;
+                if (!this._worker) return;
+                this.emit('error', `Workerエラー: ${e.message}`);
+                reject(e);
+            });
+            this._worker.postMessage({ type: 'init', cfg });
+        });
     }
 
     // ── Start / Stop audio streaming ────────────────────────────────────────
@@ -87,9 +105,10 @@ class SherpaEngine extends EventEmitter {
     stop() {
         this._running = false;
         clearInterval(this._timer);
-        this._timer      = null;
-        this._audioBufs  = [];
-        this._busy       = false;
+        this._timer     = null;
+        this._audioBufs = [];
+        this._busy      = false;
+        if (this._worker) { this._worker.terminate(); this._worker = null; }
     }
 
     // Receives Int16 PCM at 16 kHz from the browser
@@ -100,39 +119,14 @@ class SherpaEngine extends EventEmitter {
 
     // ── Private: flush & transcribe ─────────────────────────────────────────
 
-    async _flush() {
-        if (!this._running || this._audioBufs.length === 0 || this._busy) return;
+    _flush() {
+        if (!this._running || this._audioBufs.length === 0 || this._busy || !this._worker) return;
 
-        const chunks = this._audioBufs.splice(0);
-        const pcm    = Buffer.concat(chunks);
-
-        // Convert Int16 to Float32 and check silence
-        const i16  = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length >> 1);
-        const f32  = new Float32Array(i16.length);
-        let rms = 0;
-        for (let i = 0; i < i16.length; i++) {
-            f32[i] = i16[i] / 32768.0;
-            rms += f32[i] * f32[i];
-        }
-        rms = Math.sqrt(rms / (i16.length || 1));
-        if (rms < this.noiseGateThreshold) return;
-
+        const pcm = Buffer.concat(this._audioBufs.splice(0));
+        // Zero-copy transfer: detach buffer ownership to worker thread
+        const ab = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
         this._busy = true;
-        try {
-            // Run synchronous decode on next event-loop tick to avoid blocking
-            const text = await new Promise(resolve => setImmediate(() => {
-                try {
-                    const stream = this._recognizer.createStream();
-                    stream.acceptWaveform(this.SAMPLE_RATE, f32);
-                    this._recognizer.decode(stream);
-                    const result = this._recognizer.getResult(stream);
-                    resolve((result?.text || '').trim());
-                } catch { resolve(''); }
-            }));
-            if (text) this.emit('transcript', { text, isFinal: true });
-        } finally {
-            this._busy = false;
-        }
+        this._worker.postMessage({ type: 'decode', buf: ab, threshold: this.noiseGateThreshold }, [ab]);
     }
 
     // ── Private: npm install sherpa-onnx ────────────────────────────────────
