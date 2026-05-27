@@ -312,7 +312,6 @@
                         字幕 ON
                     </label>
                 </div>
-                <button type="button" class="ghost-button" id="open-widgets-caption-button">字幕設定を開く</button>
             </div>
 
         </section>
@@ -473,7 +472,7 @@
 
         const captionCheckbox        = document.getElementById('caption-checkbox');
         const captionStateChip       = document.getElementById('caption-state-chip');
-        const openWidgetsCaptionBtn  = document.getElementById('open-widgets-caption-button');
+
 
         let captionSettings  = null;
         let asrEngine        = null;
@@ -571,9 +570,6 @@
             }
         });
 
-        openWidgetsCaptionBtn.addEventListener('click', () => {
-            window.open('/widgets', 'widgets-window', 'width=1280,height=940,resizable=yes,scrollbars=yes');
-        });
 
         loadCaptionConfig().then(() => {
             if (localStorage.getItem('caption-auto-start') === 'true') {
