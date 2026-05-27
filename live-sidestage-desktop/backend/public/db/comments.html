@@ -274,6 +274,32 @@
             padding: 22px;
             display: grid;
             gap: 16px;
+            position: relative;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--muted);
+            border-radius: 2px;
+            z-index: 1;
+            padding: 0;
+        }
+
+        .modal-close-btn:hover {
+            color: var(--text);
+            background: rgba(0, 0, 0, 0.06);
         }
 
         .modal.is-wide {
@@ -994,6 +1020,7 @@
 
     <div class="modal-shell" id="comment-read-aloud-voice-modal" aria-hidden="true">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-voice-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-voice-title">VOICE 設定</h2>
                 <p class="subtext">既定ボイス、ランダムボイス選択、音量をここで管理します。ユーザーIDごとのボイスマッピングは専用モーダルから編集します。</p>
@@ -1049,10 +1076,6 @@
                         <button type="button" id="comment-read-aloud-test-button">読み上げテスト</button>
                     </div>
                 </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-voice-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-voice-save">保存</button>
             </div>
         </div>
     </div>
@@ -1222,8 +1245,7 @@
         const commentReadAloudVoiceClear = document.getElementById('comment-read-aloud-voice-clear');
         const commentReadAloudVoiceMappingCancel = document.getElementById('comment-read-aloud-voice-mapping-cancel');
         const commentReadAloudVoiceMappingSave = document.getElementById('comment-read-aloud-voice-mapping-save');
-        const commentReadAloudVoiceCancel = document.getElementById('comment-read-aloud-voice-cancel');
-        const commentReadAloudVoiceSave = document.getElementById('comment-read-aloud-voice-save');
+        const commentReadAloudVoiceClose = document.getElementById('comment-read-aloud-voice-close');
         const commentReadAloudAudioOutputSelect = document.getElementById('comment-read-aloud-audio-output-select');
         const commentReadAloudVoiceMappingButton = document.getElementById('comment-read-aloud-voice-mapping-button');
         const commentSettingsButton = document.getElementById('comment-settings-button');
@@ -2445,6 +2467,22 @@
             commentReadAloudVoiceModal.setAttribute('aria-hidden', 'true');
         }
 
+        async function saveCommentReadAloudVoiceSettings() {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudVoiceName: commentReadAloudVoiceSelect.value || '',
+                    readAloudVoiceCreditEnabled: true,
+                    readAloudRandomVoiceEnabled: commentReadAloudRandomVoiceCheckbox.checked,
+                    readAloudVolume: Number(commentReadAloudVolumeRange.value || 100),
+                    readAloudSpeed: Number(commentReadAloudSpeedRange.value || 1.0),
+                    readAloudAudioOutput: commentReadAloudAudioOutputSelect.value || 'overlay1'
+                });
+            } catch (error) {
+                setCommentFeedback(error.message || 'VOICE 設定の保存に失敗しました。');
+            }
+        }
+
         function closeCommentReadAloudVoiceMappingModal() {
             commentReadAloudVoiceMappingModal.classList.remove('is-open');
             commentReadAloudVoiceMappingModal.setAttribute('aria-hidden', 'true');
@@ -2823,12 +2861,29 @@
             commentReadAloudVolumeValue.textContent = `${commentReadAloudVolumeRange.value}%`;
         });
 
+        commentReadAloudVolumeRange.addEventListener('change', async () => {
+            await saveCommentReadAloudVoiceSettings();
+        });
+
         commentReadAloudSpeedRange.addEventListener('input', () => {
             commentReadAloudSpeedValue.textContent = `${Number(commentReadAloudSpeedRange.value).toFixed(1)}x`;
         });
 
-        commentReadAloudVoiceSelect.addEventListener('change', () => {
+        commentReadAloudSpeedRange.addEventListener('change', async () => {
+            await saveCommentReadAloudVoiceSettings();
+        });
+
+        commentReadAloudVoiceSelect.addEventListener('change', async () => {
             syncReadAloudVoiceTermsLink(commentReadAloudVoiceSelect.value || '');
+            await saveCommentReadAloudVoiceSettings();
+        });
+
+        commentReadAloudRandomVoiceCheckbox.addEventListener('change', async () => {
+            await saveCommentReadAloudVoiceSettings();
+        });
+
+        commentReadAloudAudioOutputSelect.addEventListener('change', async () => {
+            await saveCommentReadAloudVoiceSettings();
         });
 
         commentSettingsButton.addEventListener('click', () => {
@@ -2839,7 +2894,7 @@
             openCommentReadAloudSettingsModal();
         });
 
-        commentReadAloudVoiceCancel.addEventListener('click', () => {
+        commentReadAloudVoiceClose.addEventListener('click', () => {
             closeCommentReadAloudVoiceModal();
         });
 
@@ -3264,23 +3319,6 @@
                 closeCommentReadAloudSettingsModal();
             } catch (error) {
                 setCommentFeedback(error.message || '読み上げ対象設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudVoiceSave.addEventListener('click', async () => {
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudVoiceName: commentReadAloudVoiceSelect.value || '',
-                    readAloudVoiceCreditEnabled: true,
-                    readAloudRandomVoiceEnabled: commentReadAloudRandomVoiceCheckbox.checked,
-                    readAloudVolume: Number(commentReadAloudVolumeRange.value || 100),
-                    readAloudSpeed: Number(commentReadAloudSpeedRange.value || 1.0),
-                    readAloudAudioOutput: commentReadAloudAudioOutputSelect.value || 'overlay1'
-                });
-                closeCommentReadAloudVoiceModal();
-            } catch (error) {
-                setCommentFeedback(error.message || 'VOICE 設定の保存に失敗しました。');
             }
         });
 
