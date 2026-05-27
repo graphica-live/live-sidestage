@@ -302,6 +302,22 @@
             background: rgba(0, 0, 0, 0.06);
         }
 
+        .modal.is-live {
+            padding: 0;
+            overflow: hidden;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-scroll-body {
+            overflow-y: auto;
+            padding: 40px 22px 22px;
+            display: grid;
+            gap: 16px;
+            flex: 1;
+        }
+
         .modal.is-wide {
             width: min(960px, 100%);
         }
@@ -1019,8 +1035,9 @@
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-voice-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-title">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-title">
             <button type="button" class="modal-close-btn" id="comment-read-aloud-voice-close" aria-label="閉じる">✕</button>
+            <div class="modal-scroll-body">
             <div class="modal-head">
                 <h2 id="comment-read-aloud-voice-title">VOICE 設定</h2>
                 <p class="subtext">既定ボイス、ランダムボイス選択、音量をここで管理します。ユーザーIDごとのボイスマッピングは専用モーダルから編集します。</p>
@@ -1076,6 +1093,7 @@
                         <button type="button" id="comment-read-aloud-test-button">読み上げテスト</button>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     </div>
