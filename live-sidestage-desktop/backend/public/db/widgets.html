@@ -1703,6 +1703,10 @@
                                 <input id="push-pull-gift-size" type="number" min="40" max="160" step="4" inputmode="numeric" aria-label="ギフト画像サイズ" />
                             </div>
                             <div class="field">
+                                <label for="push-pull-gift-pts-size">ポイント文字サイズ (px)</label>
+                                <input id="push-pull-gift-pts-size" type="number" min="8" max="40" step="1" inputmode="numeric" aria-label="ポイント文字サイズ" />
+                            </div>
+                            <div class="field">
                                 <label for="push-pull-score-mode">スコア表示</label>
                                 <select id="push-pull-score-mode" aria-label="スコア表示">
                                     <option value="absolute">累計ポイント（絶対値）</option>
@@ -2180,6 +2184,7 @@
         const pushPullTextStyleSelect = document.getElementById('push-pull-text-style');
         const pushPullStrokeWidthInput = document.getElementById('push-pull-stroke-width');
         const pushPullGiftSizeInput = document.getElementById('push-pull-gift-size');
+        const pushPullGiftPtsSizeInput = document.getElementById('push-pull-gift-pts-size');
         const pushPullScoreModeSelect = document.getElementById('push-pull-score-mode');
         const captionFontSelect = document.getElementById('caption-font');
         const captionTextStyleSelect = document.getElementById('caption-text-style');
@@ -3153,6 +3158,7 @@
         function syncPushPullAppearanceControls() {
             syncWidgetAppearanceControls(pushPullFontSelect, pushPullTextStyleSelect, pushPullStrokeWidthInput, state.pushPullAppearance);
             pushPullGiftSizeInput.value = state.pushPullAppearance?.giftSize ?? 88;
+            pushPullGiftPtsSizeInput.value = state.pushPullAppearance?.giftPtsSize ?? 15;
             pushPullScoreModeSelect.value = state.pushPullScoreMode || 'absolute';
         }
         function syncCaptionAppearanceControls() {
@@ -4660,6 +4666,8 @@
         pushPullStrokeWidthInput.addEventListener('change', schedulePushPullSave);
         pushPullGiftSizeInput.addEventListener('input', schedulePushPullSave);
         pushPullGiftSizeInput.addEventListener('change', schedulePushPullSave);
+        pushPullGiftPtsSizeInput.addEventListener('input', schedulePushPullSave);
+        pushPullGiftPtsSizeInput.addEventListener('change', schedulePushPullSave);
         pushPullScoreModeSelect.addEventListener('change', schedulePushPullSave);
         captionFontSelect.addEventListener('input', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); });
         captionFontSelect.addEventListener('change', () => { captionFontSelect.style.fontFamily = getWidgetFontFamily(captionFontSelect.value); saveCaptionSettings(); });
@@ -5350,7 +5358,8 @@
                         fontKey: normalizeDisplayFontKey(pushPullFontSelect.value),
                         textStyleKey: normalizeDisplayTextStyleKey(pushPullTextStyleSelect.value),
                         strokeWidth: normalizeDisplayStrokeWidth(pushPullStrokeWidthInput.value),
-                        giftSize: parseInt(pushPullGiftSizeInput.value, 10) || 88
+                        giftSize: parseInt(pushPullGiftSizeInput.value, 10) || 88,
+                        giftPtsSize: parseInt(pushPullGiftPtsSizeInput.value, 10) || 15
                     }
                 })
             });

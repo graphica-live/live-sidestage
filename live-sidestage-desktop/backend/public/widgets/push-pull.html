@@ -320,6 +320,11 @@
             const giftSize = parseInt(appearance.giftSize, 10);
             if (!isNaN(giftSize) && giftSize >= 40 && giftSize <= 160) {
                 document.documentElement.style.setProperty('--gift-img-size', giftSize + 'px');
+            }
+            const giftPtsSize = parseInt(appearance.giftPtsSize, 10);
+            if (!isNaN(giftPtsSize) && giftPtsSize >= 8 && giftPtsSize <= 40) {
+                document.documentElement.style.setProperty('--gift-pts-size', giftPtsSize + 'px');
+            } else if (!isNaN(giftSize) && giftSize >= 40 && giftSize <= 160) {
                 document.documentElement.style.setProperty('--gift-pts-size', Math.round(giftSize * 15 / 88) + 'px');
             }
         }

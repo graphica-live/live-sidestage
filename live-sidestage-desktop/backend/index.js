@@ -472,6 +472,7 @@ const pushPullConfig = {
     pushGifts: [],
     pullGifts: [],
     giftSize: 88,
+    giftPtsSize: 15,
     scoreMode: 'absolute',
 };
 let pushPullState = {
@@ -749,6 +750,7 @@ function persistPushPullConfig() {
             pushGifts: pushPullConfig.pushGifts,
             pullGifts: pushPullConfig.pullGifts,
             giftSize: pushPullConfig.giftSize,
+            giftPtsSize: pushPullConfig.giftPtsSize,
             scoreMode: pushPullConfig.scoreMode,
         }), Date.now());
     } catch {}
@@ -774,6 +776,9 @@ function persistPushPullState() {
         if (Array.isArray(savedCfg.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(savedCfg.pullGifts);
         if (typeof savedCfg.giftSize === 'number' && savedCfg.giftSize >= 40 && savedCfg.giftSize <= 160) {
             pushPullConfig.giftSize = savedCfg.giftSize;
+        }
+        if (typeof savedCfg.giftPtsSize === 'number' && savedCfg.giftPtsSize >= 8 && savedCfg.giftPtsSize <= 40) {
+            pushPullConfig.giftPtsSize = savedCfg.giftPtsSize;
         }
         if (savedCfg.scoreMode === 'relative' || savedCfg.scoreMode === 'absolute') {
             pushPullConfig.scoreMode = savedCfg.scoreMode;
@@ -2612,6 +2617,7 @@ function setGiftJarWidgetTextAppearance(a) {
 function getPushPullWidgetTextAppearance() {
     const base = getPerWidgetTextAppearance(WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY);
     base.giftSize = pushPullConfig.giftSize;
+    base.giftPtsSize = pushPullConfig.giftPtsSize;
     return base;
 }
 function setPushPullWidgetTextAppearance(a) {
@@ -2620,7 +2626,12 @@ function setPushPullWidgetTextAppearance(a) {
         const n = parseInt(String(a.giftSize), 10);
         pushPullConfig.giftSize = (!isNaN(n) && n >= 40 && n <= 160) ? n : 88;
     }
+    if (a && a.giftPtsSize !== undefined) {
+        const n = parseInt(String(a.giftPtsSize), 10);
+        pushPullConfig.giftPtsSize = (!isNaN(n) && n >= 8 && n <= 40) ? n : 15;
+    }
     base.giftSize = pushPullConfig.giftSize;
+    base.giftPtsSize = pushPullConfig.giftPtsSize;
     return base;
 }
 
