@@ -331,6 +331,7 @@
 
         function syncReadAloudUi() {
             readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
+            resetRandomVoiceButton.disabled = currentSettings?.readAloudRandomVoiceEnabled !== true;
         }
 
         function syncEffectsPauseUi(paused) {
