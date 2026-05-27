@@ -1827,6 +1827,13 @@
                                 </select>
                             </div>
                             <div class="field full">
+                                <label>起動時の動作</label>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="caption-auto-start">
+                                    <label for="caption-auto-start">起動時に自動ON</label>
+                                </div>
+                            </div>
+                            <div class="field full">
                                 <label>途中経過表示</label>
                                 <div class="toggle" style="width:100%;box-sizing:border-box;">
                                     <input type="checkbox" id="caption-show-interim">
@@ -5437,6 +5444,7 @@
         const captionStartBtn = document.getElementById('caption-start-btn');
         const captionStopBtn = document.getElementById('caption-stop-btn');
         const captionTestBtn = document.getElementById('caption-test-btn');
+        const captionAutoStartCheck = document.getElementById('caption-auto-start');
         const captionPreviewText = document.getElementById('caption-preview-text');
         const openCaptionOverlayBtn = document.getElementById('open-caption-overlay-button');
         const copyCaptionUrlBtn = document.getElementById('copy-caption-url-button');
@@ -5646,10 +5654,15 @@
             captionLevelBar.style.width = '0%';
         }
 
+        captionAutoStartCheck.checked = localStorage.getItem('caption-auto-start') === 'true';
+        captionAutoStartCheck.addEventListener('change', () => {
+            localStorage.setItem('caption-auto-start', captionAutoStartCheck.checked ? 'true' : 'false');
+        });
+
         fetch('/api/widgets/caption/config').then((r) => r.json()).then(applyCaptionConfig).catch(() => {});
         updateCaptionEngineVisibility();
         loadCaptionDevices().then(() => {
-            if (localStorage.getItem('caption-running') === 'true') captionStartBtn.click();
+            if (captionAutoStartCheck.checked) captionStartBtn.click();
         });
 
         navigator.mediaDevices.addEventListener('devicechange', async () => {
@@ -5779,13 +5792,11 @@
                 setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
                 try {
                     await startAsrStreaming(engine);
-                    localStorage.setItem('caption-running', 'true');
                 } catch (err) {
                     setCaptionStatus(`マイクアクセス失敗: ${err.message}`, true);
                     socket.emit('caption:stop-asr', { engine });
                     captionStartBtn.disabled = false;
                     captionStopBtn.disabled  = true;
-                    localStorage.setItem('caption-running', 'false');
                 }
             }
         });
@@ -5801,7 +5812,6 @@
             captionStartBtn.disabled = false;
             captionStopBtn.disabled  = true;
             setCaptionStatus('停止中');
-            localStorage.setItem('caption-running', 'false');
         });
 
         captionTestBtn.addEventListener('click', () => {
