@@ -112,6 +112,9 @@ function createDbStore(options) {
 
         CREATE INDEX IF NOT EXISTS idx_raw_gift_events_unprocessed
         ON raw_gift_events (broadcaster_id, processed_at, id);
+
+        CREATE INDEX IF NOT EXISTS idx_raw_gift_events_broadcaster_created
+        ON raw_gift_events (broadcaster_id, created_at);
     `);
 
     const dailyContributorColumns = new Set(
@@ -375,30 +378,21 @@ function createDbStore(options) {
           AND id = ?
     `);
 
+    // SQLite: when MAX() is the only aggregate, bare columns come from the same row as the max value
     const latestGiftNamesByIdStmt = db.prepare(`
         SELECT
-            latest.gift_id AS giftId,
-            latest.gift_name AS giftName,
-            latest.gift_image_url AS giftImage,
-            latest.created_at AS latestTimestamp
-        FROM raw_gift_events AS latest
-        INNER JOIN (
-            SELECT
-                gift_id,
-                MAX(created_at) AS latestTimestamp
-            FROM raw_gift_events
-            WHERE broadcaster_id = ?
-              AND gift_id IS NOT NULL
-              AND TRIM(gift_id) <> ''
-              AND gift_name IS NOT NULL
-              AND TRIM(gift_name) <> ''
-            GROUP BY gift_id
-        ) AS grouped
-            ON grouped.gift_id = latest.gift_id
-           AND grouped.latestTimestamp = latest.created_at
-        WHERE latest.broadcaster_id = ?
-        GROUP BY latest.gift_id
-        ORDER BY latest.created_at DESC
+            gift_id AS giftId,
+            gift_name AS giftName,
+            gift_image_url AS giftImage,
+            MAX(created_at) AS latestTimestamp
+        FROM raw_gift_events
+        WHERE broadcaster_id = ?
+          AND gift_id IS NOT NULL
+          AND TRIM(gift_id) <> ''
+          AND gift_name IS NOT NULL
+          AND TRIM(gift_name) <> ''
+        GROUP BY gift_id
+        ORDER BY latestTimestamp DESC
     `);
 
         const knownGiftNamesStmt = db.prepare(`
@@ -503,7 +497,7 @@ function createDbStore(options) {
             return rawGiftEventByIdStmt.get(broadcasterId, id) || null;
         },
         getLatestGiftNamesById(broadcasterId) {
-            return latestGiftNamesByIdStmt.all(broadcasterId, broadcasterId);
+            return latestGiftNamesByIdStmt.all(broadcasterId);
         },
         getKnownGiftNames(broadcasterId, limit = 100) {
             return knownGiftNamesStmt.all(broadcasterId, Number(limit) || 100);
