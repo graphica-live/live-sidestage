@@ -5,11 +5,16 @@
     'use strict';
 
     function initUpdateBanner() {
-        // パッケージ版 Electron でなければ（開発環境・ブラウザ起動）何もしない
+        // iframe 内では表示しない（トップレベルウィンドウのみ）
+        if (window.self !== window.top) {
+            return;
+        }
+        const isTestMode = new URLSearchParams(window.location.search).get('testUpdateBanner') === '1';
+        // パッケージ版 Electron、またはテストモードの場合にバナーを初期化する
         fetch('/api/state')
             .then((res) => res.ok ? res.json() : null)
             .then((state) => {
-                if (state && state.isPackagedElectron) {
+                if ((state && state.isPackagedElectron) || isTestMode) {
                     setupBanner();
                 }
             })
