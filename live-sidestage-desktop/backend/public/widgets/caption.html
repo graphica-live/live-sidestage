@@ -29,13 +29,12 @@
 
         #caption-wrap {
             position: fixed;
-            bottom: 40px;
+            bottom: var(--caption-bottom, 120px);
             left: 0;
             right: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 6px;
             padding: 0 40px;
             pointer-events: none;
         }
@@ -69,6 +68,11 @@
         }
 
         #translated-text {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin: 6px auto 0;
             font-size: calc(var(--font-size, 52px) * 0.72);
             font-weight: 800;
             color: var(--caption-note, #fde68a);
@@ -87,12 +91,12 @@
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; }
+            to   { opacity: 1; }
         }
 
         .caption-line.slide-in {
-            animation: slideIn 0.25s ease-out forwards;
+            animation: slideIn 0.2s ease-out forwards;
         }
     </style>
 </head>
@@ -114,47 +118,63 @@
         let currentSettings = {};
 
         const CAPTION_FONT_FAMILIES = {
-            default: '"M PLUS Rounded 1c", sans-serif',
-            gothic: '"Noto Sans JP", sans-serif',
-            'ui-gothic': '"Zen Kaku Gothic New", sans-serif',
-            'noto-serif': '"Noto Serif JP", sans-serif',
-            mincho: '"Zen Old Mincho", sans-serif',
-            klee: '"Klee One", sans-serif',
-            'maru-gothic': '"Zen Maru Gothic", sans-serif',
-            yuji: '"Yuji Syuku", sans-serif',
-            dela: '"Dela Gothic One", sans-serif',
-            dot: '"DotGothic16", sans-serif',
-            hachi: '"Hachi Maru Pop", sans-serif',
-            rocknroll: '"RocknRoll One", sans-serif',
-            yusei: '"Yusei Magic", sans-serif',
-            kaisei: '"Kaisei Decol", serif',
-            mochiy: '"Mochiy Pop One", sans-serif',
-            rampart: '"Rampart One", sans-serif',
-            shippori: '"Shippori Mincho B1", serif',
-            'zen-antique': '"Zen Antique", serif',
-            'yuji-mai': '"Yuji Mai", serif',
-            sawarabi: '"Sawarabi Mincho", serif',
-            potta: '"Potta One", cursive',
-            'murecho-thin': '"Murecho", sans-serif',
-            stick: '"Stick", sans-serif'
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
         };
         const CAPTION_TEXT_STYLES = {
-            'gold-night':    { fillColor: '#ffffff', noteColor: '#fde68a',  strokeColor: 'rgba(10,10,20,0.95)',   textShadow: 'rgba(0,0,0,0.7)' },
-            'ice-night':     { fillColor: '#dbeafe', noteColor: '#bfdbfe',  strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.6)' },
-            'candy-pop':     { fillColor: '#ffe4f1', noteColor: '#fbcfe8',  strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.6)' },
-            'mono-impact':   { fillColor: '#f8fafc', noteColor: '#e2e8f0',  strokeColor: 'rgba(2,6,23,0.97)',    textShadow: 'rgba(0,0,0,0.75)' },
-            'mint-lime':     { fillColor: '#d1fae5', noteColor: '#6ee7b7',  strokeColor: 'rgba(6,78,59,0.96)',   textShadow: 'rgba(6,78,59,0.6)' },
-            'fire-ember':    { fillColor: '#fed7aa', noteColor: '#fb923c',  strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.6)' },
-            'violet-dream':  { fillColor: '#e9d5ff', noteColor: '#c084fc',  strokeColor: 'rgba(59,7,100,0.96)',  textShadow: 'rgba(59,7,100,0.6)' },
-            'coral-sea':     { fillColor: '#ffe4e6', noteColor: '#fb7185',  strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.6)' },
-            'lemon-sky':     { fillColor: '#fef9c3', noteColor: '#fde047',  strokeColor: 'rgba(66,32,6,0.95)',   textShadow: 'rgba(66,32,6,0.6)' },
-            'neon-cyber':    { fillColor: '#bbf7d0', noteColor: '#4ade80',  strokeColor: 'rgba(0,0,0,0.97)',     textShadow: 'rgba(0,0,0,0.75)' },
-            'cherry-blossom':{ fillColor: '#ffe4e6', noteColor: '#fda4af',  strokeColor: 'rgba(136,19,55,0.95)', textShadow: 'rgba(136,19,55,0.6)' },
-            'ocean-tide':    { fillColor: '#bae6fd', noteColor: '#38bdf8',  strokeColor: 'rgba(12,74,110,0.96)', textShadow: 'rgba(12,74,110,0.6)' },
-            'forest-mist':   { fillColor: '#bbf7d0', noteColor: '#86efac',  strokeColor: 'rgba(20,83,45,0.96)',  textShadow: 'rgba(20,83,45,0.6)' },
-            'sunset-glow':   { fillColor: '#ffedd5', noteColor: '#fdba74',  strokeColor: 'rgba(124,45,18,0.96)', textShadow: 'rgba(124,45,18,0.6)' },
-            'aurora':        { fillColor: '#ccfbf1', noteColor: '#5eead4',  strokeColor: 'rgba(19,78,74,0.96)',  textShadow: 'rgba(19,78,74,0.6)' },
-            'citrus-splash': { fillColor: '#ecfccb', noteColor: '#bef264',  strokeColor: 'rgba(54,83,20,0.96)',  textShadow: 'rgba(54,83,20,0.6)' }
+            'gold-night':       { fillColor: '#ffffff',  noteColor: '#fde68a',  strokeColor: 'rgba(10,10,20,0.95)',   textShadow: 'rgba(0,0,0,0.7)' },
+            'ice-night':        { fillColor: '#dbeafe',  noteColor: '#bfdbfe',  strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.6)' },
+            'candy-pop':        { fillColor: '#ffe4f1',  noteColor: '#fbcfe8',  strokeColor: 'rgba(131,24,67,0.95)',  textShadow: 'rgba(131,24,67,0.6)' },
+            'mint-lime':        { fillColor: '#d1fae5',  noteColor: '#6ee7b7',  strokeColor: 'rgba(6,78,59,0.96)',    textShadow: 'rgba(6,78,59,0.6)' },
+            'sunset-party':     { fillColor: '#fed7aa',  noteColor: '#fb923c',  strokeColor: 'rgba(120,53,15,0.96)',  textShadow: 'rgba(120,53,15,0.6)' },
+            'violet-flash':     { fillColor: '#e9d5ff',  noteColor: '#c084fc',  strokeColor: 'rgba(59,7,100,0.96)',   textShadow: 'rgba(59,7,100,0.6)' },
+            'mono-impact':      { fillColor: '#f8fafc',  noteColor: '#e2e8f0',  strokeColor: 'rgba(2,6,23,0.97)',     textShadow: 'rgba(0,0,0,0.75)' },
+            'sakura-bloom':     { fillColor: '#ffe4e6',  noteColor: '#fda4af',  strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.6)' },
+            'ocean-glow':       { fillColor: '#bae6fd',  noteColor: '#38bdf8',  strokeColor: 'rgba(12,74,110,0.96)',  textShadow: 'rgba(12,74,110,0.6)' },
+            'emerald-city':     { fillColor: '#bbf7d0',  noteColor: '#86efac',  strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.6)' },
+            'ruby-flare':       { fillColor: '#ffe4e6',  noteColor: '#fb7185',  strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.6)' },
+            'lemon-pop':        { fillColor: '#fef9c3',  noteColor: '#fde047',  strokeColor: 'rgba(30,58,138,0.96)',  textShadow: 'rgba(30,58,138,0.6)' },
+            'midnight-aqua':    { fillColor: '#99f6e4',  noteColor: '#2dd4bf',  strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(0,0,0,0.75)' },
+            'peach-fizz':       { fillColor: '#ffedd5',  noteColor: '#fdba74',  strokeColor: 'rgba(124,29,29,0.96)',  textShadow: 'rgba(124,29,29,0.6)' },
+            'festival-red':     { fillColor: '#fca5a5',  noteColor: '#f87171',  strokeColor: 'rgba(17,24,39,0.97)',   textShadow: 'rgba(17,24,39,0.7)' },
+            'rose-gold':        { fillColor: '#f8b4a6',  noteColor: '#fda4af',  strokeColor: 'rgba(91,52,46,0.96)',   textShadow: 'rgba(91,52,46,0.6)' },
+            'cyber-teal':       { fillColor: '#ccfbf1',  noteColor: '#5eead4',  strokeColor: 'rgba(15,39,64,0.97)',   textShadow: 'rgba(15,39,64,0.7)' },
+            'aurora-dream':     { fillColor: '#e9d5ff',  noteColor: '#c084fc',  strokeColor: 'rgba(76,29,149,0.97)',  textShadow: 'rgba(76,29,149,0.7)' },
+            'coral-soda':       { fillColor: '#ffe4e6',  noteColor: '#fb7185',  strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.6)' },
+            'platinum-pop':     { fillColor: '#e2e8f0',  noteColor: '#cbd5e1',  strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(0,0,0,0.75)' },
+            'champagne-shine':  { fillColor: '#f8e7b5',  noteColor: '#fde68a',  strokeColor: 'rgba(107,79,42,0.96)',  textShadow: 'rgba(107,79,42,0.6)' },
+            'royal-velvet':     { fillColor: '#d8b4fe',  noteColor: '#c084fc',  strokeColor: 'rgba(49,46,129,0.97)',  textShadow: 'rgba(49,46,129,0.7)' },
+            'emerald-luxe':     { fillColor: '#d1fae5',  noteColor: '#a7f3d0',  strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.6)' },
+            'sunrise-opal':     { fillColor: '#ffedd5',  noteColor: '#fdba74',  strokeColor: 'rgba(154,52,18,0.96)',  textShadow: 'rgba(154,52,18,0.6)' },
+            'prism-burst':      { fillColor: '#bfdbfe',  noteColor: '#7dd3fc',  strokeColor: 'rgba(67,56,202,0.97)',  textShadow: 'rgba(67,56,202,0.7)' },
+            'tropical-punch':   { fillColor: '#ffe4e6',  noteColor: '#fb7185',  strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.6)' },
+            'lagoon-shine':     { fillColor: '#ccfbf1',  noteColor: '#2dd4bf',  strokeColor: 'rgba(21,94,117,0.96)',  textShadow: 'rgba(21,94,117,0.6)' },
+            'berry-mist':       { fillColor: '#fce7f3',  noteColor: '#f472b6',  strokeColor: 'rgba(112,26,117,0.96)', textShadow: 'rgba(112,26,117,0.6)' },
+            'polar-neon':       { fillColor: '#cffafe',  noteColor: '#67e8f9',  strokeColor: 'rgba(30,41,59,0.97)',   textShadow: 'rgba(30,41,59,0.7)' },
+            'citrus-splash':    { fillColor: '#ecfccb',  noteColor: '#bef264',  strokeColor: 'rgba(54,83,20,0.96)',   textShadow: 'rgba(54,83,20,0.6)' }
         };
 
         function applyAppearance(appearance) {
@@ -180,6 +200,9 @@
             if (typeof settings.fontSize === 'number') {
                 document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');
             }
+            if (typeof settings.verticalOffset === 'number') {
+                document.documentElement.style.setProperty('--caption-bottom', settings.verticalOffset + 'px');
+            }
 
             const bgParam = params.get('bg');
             const effective = bgParam !== null ? bgParam : (settings.bgStyle || 'transparent');
@@ -194,7 +217,7 @@
             const key = elKey(el);
             clearInterval(twTimer[key]);
             twTimer[key] = null;
-            if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
+            if (!text) { el.classList.remove('slide-in'); el.classList.add('hidden'); el.textContent = ''; return; }
             el.textContent = text;
             el.classList.remove('hidden', 'slide-in', 'interim');
             if (extraClass) el.classList.add(extraClass);
@@ -206,14 +229,14 @@
             const key = elKey(el);
             clearInterval(twTimer[key]);
             twTimer[key] = null;
-            if (!text) { el.classList.add('hidden'); el.textContent = ''; return; }
+            if (!text) { el.classList.remove('slide-in'); el.classList.add('hidden'); el.textContent = ''; return; }
             el.textContent = '';
             el.classList.remove('hidden', 'slide-in', 'interim');
             if (extraClass) el.classList.add(extraClass);
             void el.offsetWidth;
             el.classList.add('slide-in');
             let i = 0;
-            const interval = Math.max(16, Math.round(1000 / charsPerSec));
+            const interval = Math.max(17, Math.round(1000 / charsPerSec));
             twTimer[key] = setInterval(() => {
                 i++;
                 el.textContent = text.slice(0, i);
@@ -234,6 +257,8 @@
         let segmentQueue = [];
 
         function hideAll() {
+            originalEl.classList.remove('slide-in');
+            translatedEl.classList.remove('slide-in');
             originalEl.classList.add('hidden');
             translatedEl.classList.add('hidden');
         }
@@ -318,6 +343,7 @@
                 setText(originalEl, payload.original || '', 'interim');
                 setText(translatedEl, '');
                 clearTimeout(hideTimer);
+                hideTimer = setTimeout(hideAll, (currentSettings.segmentDuration ?? 6) * 1000);
                 return;
             }
 
