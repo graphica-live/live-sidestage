@@ -152,6 +152,7 @@
     <script>
         const isSlave = new URLSearchParams(location.search).get('slave') === '1';
         const isPreview = new URLSearchParams(location.search).get('preview') === '1';
+        const sampleMode = isPreview;
         if (isPreview) document.body.classList.add('preview-card');
 
         // Scale widget to fit window and center horizontally.
