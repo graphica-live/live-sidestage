@@ -351,8 +351,14 @@
             const pushChanged = push !== lastPushPoints;
             const pullChanged = pull !== lastPullPoints;
 
-            pushPointsEl.textContent = push.toLocaleString('ja-JP');
-            pullPointsEl.textContent = pull.toLocaleString('ja-JP');
+            if (data.scoreMode === 'relative') {
+                const net = push - pull;
+                pushPointsEl.textContent = (net > 0 ? '+' : '') + net.toLocaleString('ja-JP');
+                pullPointsEl.textContent = (net < 0 ? '+' : '') + (-net).toLocaleString('ja-JP');
+            } else {
+                pushPointsEl.textContent = push.toLocaleString('ja-JP');
+                pullPointsEl.textContent = pull.toLocaleString('ja-JP');
+            }
 
             if (typeof data.pushLabel === 'string' && data.pushLabel) pushLabelEl.textContent = data.pushLabel;
             if (typeof data.pullLabel === 'string' && data.pullLabel) pullLabelEl.textContent = data.pullLabel;

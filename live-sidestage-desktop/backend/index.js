@@ -472,6 +472,7 @@ const pushPullConfig = {
     pushGifts: [],
     pullGifts: [],
     giftSize: 88,
+    scoreMode: 'absolute',
 };
 let pushPullState = {
     pushPoints: 0,
@@ -735,6 +736,7 @@ function buildPushPullSnapshot() {
         pullGifts: pushPullConfig.pullGifts,
         pushPoints: pushPullState.pushPoints,
         pullPoints: pushPullState.pullPoints,
+        scoreMode: pushPullConfig.scoreMode,
         appearance: getPushPullWidgetTextAppearance()
     };
 }
@@ -747,6 +749,7 @@ function persistPushPullConfig() {
             pushGifts: pushPullConfig.pushGifts,
             pullGifts: pushPullConfig.pullGifts,
             giftSize: pushPullConfig.giftSize,
+            scoreMode: pushPullConfig.scoreMode,
         }), Date.now());
     } catch {}
 }
@@ -771,6 +774,9 @@ function persistPushPullState() {
         if (Array.isArray(savedCfg.pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(savedCfg.pullGifts);
         if (typeof savedCfg.giftSize === 'number' && savedCfg.giftSize >= 40 && savedCfg.giftSize <= 160) {
             pushPullConfig.giftSize = savedCfg.giftSize;
+        }
+        if (savedCfg.scoreMode === 'relative' || savedCfg.scoreMode === 'absolute') {
+            pushPullConfig.scoreMode = savedCfg.scoreMode;
         }
     }
     const savedState = loadPersistedJson('push_pull_state');
@@ -8282,7 +8288,8 @@ app.get('/api/widgets/push-pull/snapshot', (req, res) => {
 });
 
 app.patch('/api/widgets/push-pull', (req, res) => {
-    const { pushLabel, pullLabel, pushGifts, pullGifts, appearance } = req.body || {};
+    const { pushLabel, pullLabel, pushGifts, pullGifts, scoreMode, appearance } = req.body || {};
+    if (scoreMode === 'relative' || scoreMode === 'absolute') pushPullConfig.scoreMode = scoreMode;
     if (typeof pushLabel === 'string') {
         pushPullConfig.pushLabel = pushLabel.trim().slice(0, 30) || 'プッシュ';
     }
