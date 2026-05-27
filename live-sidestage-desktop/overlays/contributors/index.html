@@ -225,6 +225,9 @@
                 0 0 8px rgba(255, 255, 255, 0.58),
                 var(--display-name-shadow);
         }
+        body.display-count-only #list {
+            display: none;
+        }
         body.preview-card {
             padding: 10px;
             min-height: 100vh;
@@ -560,7 +563,9 @@
         }
 
         function normalizeAvatarVisibility(avatarVisibility) {
-            return avatarVisibility === 'hide' ? 'hide' : 'show';
+            if (avatarVisibility === 'count-only') return 'count-only';
+            if (avatarVisibility === 'name-only' || avatarVisibility === 'hide') return 'name-only';
+            return 'avatar-and-name';
         }
 
         function normalizeFontFamily(fontFamily) {
@@ -654,7 +659,8 @@
             rootStyle.setProperty('--display-date-shadow', activeTheme.dateShadow || '0 2px 8px rgba(0, 0, 0, 0.5)');
             rootStyle.setProperty('--display-summary-shadow', activeTheme.summaryShadow || `0 0 8px ${activeTheme.glow}, 0 2px 6px rgba(0, 0, 0, 0.45)`);
 
-            document.body.classList.toggle('display-hide-avatar', currentAvatarVisibility === 'hide');
+            document.body.classList.toggle('display-hide-avatar', currentAvatarVisibility === 'name-only' || currentAvatarVisibility === 'count-only');
+            document.body.classList.toggle('display-count-only', currentAvatarVisibility === 'count-only');
         }
 
         function buildDayLabel(dayKey, contributorCount, goalCount, displayThreshold) {
@@ -730,7 +736,7 @@
                     threshold: 1000,
                     goalCount: 5,
                     sortOrder: 'qualified_at_asc',
-                    avatarVisibility: 'show',
+                    avatarVisibility: 'avatar-and-name',
                     fontFamily: 'default',
                     colorTheme: 'gold-night',
                     strokeWidth: 4

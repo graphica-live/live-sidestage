@@ -1196,10 +1196,11 @@
                             <input id="contributors-goal-count" type="number" min="0" step="1" inputmode="numeric" aria-label="目標達成人数" />
                         </div>
                         <div class="field">
-                            <label for="contributors-avatar-visibility">プロフ画表示</label>
-                            <select id="contributors-avatar-visibility" aria-label="プロフ画表示">
-                                <option value="show">表示</option>
-                                <option value="hide">非表示</option>
+                            <label for="contributors-avatar-visibility">表示形式</label>
+                            <select id="contributors-avatar-visibility" aria-label="表示形式">
+                                <option value="avatar-and-name">プロフ画像と名前</option>
+                                <option value="name-only">名前</option>
+                                <option value="count-only">人数のみ</option>
                             </select>
                         </div>
                     </div>
@@ -2296,7 +2297,7 @@
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
-            contributorsAvatarVisibility: 'show',
+            contributorsAvatarVisibility: 'avatar-and-name',
             contributorsFontKey: 'default',
             contributorsColorTheme: 'gold-night',
             contributorsStrokeWidth: 4,
@@ -2860,7 +2861,9 @@
         }
 
         function normalizeContributorsAvatarVisibility(value) {
-            return value === 'hide' ? 'hide' : 'show';
+            if (value === 'count-only') return 'count-only';
+            if (value === 'name-only' || value === 'hide') return 'name-only';
+            return 'avatar-and-name';
         }
 
         function normalizeContributorsDisplayRangeMode(value) {
