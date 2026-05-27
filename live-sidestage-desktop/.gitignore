@@ -21,3 +21,18 @@ yarn-error.log*
 Thumbs.db
 # Added by code-review-graph
 .code-review-graph/
+
+# AI tool configs (personal/local)
+.agents/
+.cursorrules
+.gemini/
+.kiro/
+.mcp.json
+.opencode.json
+.qoder/
+.windsurfrules
+AGENTS.md
+GEMINI.md
+QODER.md
+skills-lock.json
+test-results/
