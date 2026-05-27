@@ -20,7 +20,12 @@
     "electron:dev": "chcp 65001>nul & nodemon --legacy-watch --exec \"electron .\" backend/index.js electron/main.js",
     "build:windows": "electron-builder --win --x64 --config electron-builder.config.js",
     "publish:r2": "powershell -ExecutionPolicy Bypass -File .\\scripts\\publish-r2.ps1",
-    "build:publish": "npm run build:windows && npm run publish:r2"
+    "build:publish": "npm run build:windows && npm run publish:r2",
+    "pretest": "npm rebuild better-sqlite3",
+    "test": "jest",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
+    "test:all": "npm run test && npm run test:visual"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
@@ -33,8 +38,10 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
+    "@playwright/test": "^1.60.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "jest": "^30.4.2",
     "nodemon": "^3.0.1"
   }
 }
