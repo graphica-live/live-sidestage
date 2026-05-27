@@ -130,6 +130,10 @@ const WIDGET_LIKE_CONTRIBUTION_STROKE_WIDTH_STATE_KEY = 'widget_like_contributio
 const WIDGET_TAP_LIST_FONT_STATE_KEY = 'widget_tap_list_font';
 const WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY = 'widget_tap_list_text_style';
 const WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY = 'widget_tap_list_stroke_width';
+const WIDGET_COIN_LIST_SETTINGS_STATE_KEY = 'widget_coin_list_settings';
+const WIDGET_COIN_LIST_FONT_STATE_KEY = 'widget_coin_list_font';
+const WIDGET_COIN_LIST_TEXT_STYLE_STATE_KEY = 'widget_coin_list_text_style';
+const WIDGET_COIN_LIST_STROKE_WIDTH_STATE_KEY = 'widget_coin_list_stroke_width';
 const WIDGET_GIFT_JAR_FONT_STATE_KEY = 'widget_gift_jar_font';
 const WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY = 'widget_gift_jar_text_style';
 const WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY = 'widget_gift_jar_stroke_width';
@@ -1484,6 +1488,8 @@ function buildWidgetUrls(req) {
         giftJarLoaderUrl: `${loaderOrigin}/overlays/gift-jar?slave=1`,
         tapListOverlayUrl: `${origin}/overlays/tap-list`,
         tapListLoaderUrl: `${loaderOrigin}/overlays/tap-list`,
+        coinListOverlayUrl: `${origin}/overlays/coin-list`,
+        coinListLoaderUrl: `${loaderOrigin}/overlays/coin-list`,
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
         pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
         captionOverlayUrl: `${origin}/overlays/caption`,
@@ -1679,6 +1685,17 @@ app.get(['/overlays/tap-list', '/overlays/widgets/tap-list'], (req, res) => {
 
 app.get(['/overlays/tap-list/index.html', '/overlays/widgets/tap-list/index.html'], (req, res) => {
     return res.redirect('/overlays/tap-list');
+});
+
+app.get(['/overlays/coin-list', '/overlays/widgets/coin-list'], (req, res) => {
+    if (!hasConfiguredBroadcasterId()) {
+        return res.redirect('/setup');
+    }
+    return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'coin-list.html'));
+});
+
+app.get(['/overlays/coin-list/index.html', '/overlays/widgets/coin-list/index.html'], (req, res) => {
+    return res.redirect('/overlays/coin-list');
 });
 
 app.get(['/overlays/caption', '/overlays/widgets/caption'], (req, res) => {
@@ -2567,6 +2584,13 @@ function setTapListWidgetTextAppearance(a) {
     return setPerWidgetTextAppearance(WIDGET_TAP_LIST_FONT_STATE_KEY, WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY, WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY, a);
 }
 
+function getCoinListWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_COIN_LIST_FONT_STATE_KEY, WIDGET_COIN_LIST_TEXT_STYLE_STATE_KEY, WIDGET_COIN_LIST_STROKE_WIDTH_STATE_KEY);
+}
+function setCoinListWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_COIN_LIST_FONT_STATE_KEY, WIDGET_COIN_LIST_TEXT_STYLE_STATE_KEY, WIDGET_COIN_LIST_STROKE_WIDTH_STATE_KEY, a);
+}
+
 function getGiftJarWidgetTextAppearance() {
     return getPerWidgetTextAppearance(WIDGET_GIFT_JAR_FONT_STATE_KEY, WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY, WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY);
 }
@@ -3029,6 +3053,36 @@ function setWidgetTapListSettings(settings) {
     return normalized;
 }
 
+// ---- コイン数一覧ウィジェット ----
+
+function normalizeWidgetCoinListSettings(value) {
+    let source = value;
+    if (typeof source === 'string') {
+        try { source = JSON.parse(source); } catch { source = null; }
+    }
+    if (!source || typeof source !== 'object') source = {};
+    const bgStyle = String(source.bgStyle || '').trim();
+    const maxEntries = Number.parseInt(String(source.maxEntries ?? '20'), 10);
+    const rowGap = Number.parseInt(String(source.rowGap ?? '8'), 10);
+    const sortOrder = String(source.sortOrder || '').trim();
+    return {
+        bgStyle: bgStyle === 'semi' ? 'semi' : 'transparent',
+        maxEntries: Number.isInteger(maxEntries) && maxEntries >= 1 ? Math.min(maxEntries, 100) : 20,
+        rowGap: Number.isInteger(rowGap) && rowGap >= -30 ? Math.min(rowGap, 80) : 8,
+        sortOrder: sortOrder === 'asc' ? 'asc' : 'desc'
+    };
+}
+
+function getWidgetCoinListSettings() {
+    return normalizeWidgetCoinListSettings(getScopedStateValue(WIDGET_COIN_LIST_SETTINGS_STATE_KEY));
+}
+
+function setWidgetCoinListSettings(settings) {
+    const normalized = normalizeWidgetCoinListSettings(settings);
+    setScopedStateValue(WIDGET_COIN_LIST_SETTINGS_STATE_KEY, JSON.stringify(normalized));
+    return normalized;
+}
+
 // ---- 字幕ウィジェット ----
 
 const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp', 'sherpa-parakeet']);
@@ -3483,6 +3537,35 @@ function buildTapListPayload() {
         settings,
         appearance: getTapListWidgetTextAppearance(),
         entries: buildTapListEntries(settings.maxEntries)
+    };
+}
+
+function buildCoinListEntries(maxEntries = 20, sortOrder = 'desc') {
+    if (!hasConfiguredBroadcasterId()) return [];
+    try {
+        const contributors = dbStore.getAdminContributorsByDay(getTodayDayKey(), getBroadcasterId());
+        return contributors
+            .filter((c) => Number(c.total) > 0)
+            .sort((a, b) => sortOrder === 'asc' ? Number(a.total) - Number(b.total) : Number(b.total) - Number(a.total))
+            .slice(0, maxEntries)
+            .map((c, i) => ({
+                rank: i + 1,
+                uniqueId: c.uniqueId,
+                nickname: c.nickname || c.uniqueId,
+                avatarUrl: c.image || '',
+                coinCount: Number(c.total) || 0
+            }));
+    } catch {
+        return [];
+    }
+}
+
+function buildCoinListPayload() {
+    const settings = getWidgetCoinListSettings();
+    return {
+        settings,
+        appearance: getCoinListWidgetTextAppearance(),
+        entries: buildCoinListEntries(settings.maxEntries, settings.sortOrder)
     };
 }
 
@@ -7668,6 +7751,8 @@ app.get('/api/widgets/config', (req, res) => {
         likeContributionAppearance: getLikeContributionWidgetTextAppearance(),
         tapListSettings: getWidgetTapListSettings(),
         tapListAppearance: getTapListWidgetTextAppearance(),
+        coinListSettings: getWidgetCoinListSettings(),
+        coinListAppearance: getCoinListWidgetTextAppearance(),
         giftJarAppearance: getGiftJarWidgetTextAppearance(),
         pushPullAppearance: getPushPullWidgetTextAppearance(),
         captionAppearance: getCaptionWidgetTextAppearance(),
@@ -7785,6 +7870,18 @@ app.post('/api/widgets/tap-list/reset', (req, res) => {
     const payload = buildTapListPayload();
     io.emit('widgets:tap-list:updated', payload);
     res.json({ ok: true, ...payload });
+});
+
+app.get('/api/widgets/coin-list/config', (req, res) => {
+    res.json(buildCoinListPayload());
+});
+
+app.patch('/api/widgets/coin-list', (req, res) => {
+    const settings = setWidgetCoinListSettings(req.body || {});
+    if (req.body?.appearance) setCoinListWidgetTextAppearance(req.body.appearance);
+    const payload = buildCoinListPayload();
+    io.emit('widgets:coin-list:updated', payload);
+    res.json({ ok: true, settings, ...payload });
 });
 
 app.get('/api/widgets/caption/config', (req, res) => {
@@ -9019,6 +9116,7 @@ function ensureTikTokConnection() {
         io.emit('widgets:goal-gifts:updated', {
             snapshot: buildGoalGiftProgressSnapshot(getTodayDayKey())
         });
+        io.emit('widgets:coin-list:updated', buildCoinListPayload());
 
         if (duplicateSlots.length) {
             io.emit('widgets:goal-gifts:duplicate-feedback', { slots: duplicateSlots });

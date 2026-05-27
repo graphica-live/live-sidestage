@@ -1421,6 +1421,71 @@
                 <article class="card">
                     <div class="card-head">
                         <div>
+                            <h2>貢献コイン数一覧</h2>
+                            <p class="subtext">ユーザーごとのギフトコイン合計を縦に並べて表示するオーバーレイです。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="coin-list-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="coin-list-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-coin-list-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-coin-list-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="coin-list-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="coin-list-font">フォント</label>
+                                <select id="coin-list-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-text-style">文字色と縁取り</label>
+                                <select id="coin-list-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-stroke-width">縁取り太さ</label>
+                                <input id="coin-list-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-bg-style">背景スタイル</label>
+                                <select id="coin-list-bg-style">
+                                    <option value="transparent">透過（OBSクロマキー向け）</option>
+                                    <option value="semi">半透過ブラック</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-sort-order">並び順</label>
+                                <select id="coin-list-sort-order">
+                                    <option value="desc">降順（コインが多い順）</option>
+                                    <option value="asc">昇順（コインが少ない順）</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-max-entries">最大表示件数</label>
+                                <input id="coin-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-row-gap">ユーザー間の間隔 (px)</label>
+                                <input id="coin-list-row-gap" type="number" min="-30" max="80" step="1" inputmode="numeric" placeholder="8">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="coin-list-preview-frame" title="貢献コイン数一覧プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
                             <h2>瓶詰めギフト</h2>
                             <p class="subtext">ギフトが飛ぶとそのギフト画像が瓶に落下して貯まっていきます。コイン数が多いほど画像が大きくなります。</p>
                         </div>
@@ -2103,6 +2168,15 @@
         const tapListBgStyleSelect = document.getElementById('tap-list-bg-style');
         const tapListMaxEntriesInput = document.getElementById('tap-list-max-entries');
         const tapListRowGapInput = document.getElementById('tap-list-row-gap');
+        const coinListFontSelect = document.getElementById('coin-list-font');
+        const coinListTextStyleSelect = document.getElementById('coin-list-text-style');
+        const coinListStrokeWidthInput = document.getElementById('coin-list-stroke-width');
+        const coinListUrl = document.getElementById('coin-list-url');
+        const coinListPreviewFrame = document.getElementById('coin-list-preview-frame');
+        const coinListBgStyleSelect = document.getElementById('coin-list-bg-style');
+        const coinListSortOrderSelect = document.getElementById('coin-list-sort-order');
+        const coinListMaxEntriesInput = document.getElementById('coin-list-max-entries');
+        const coinListRowGapInput = document.getElementById('coin-list-row-gap');
         const giftJarPreviewFrame = document.getElementById('gift-jar-preview-frame');
         const customJarUrl = document.getElementById('custom-jar-url');
         const customJarPreviewFrame = document.getElementById('custom-jar-preview-frame');
@@ -2191,6 +2265,8 @@
                 giftJarLoaderUrl: '',
                 tapListOverlayUrl: '',
                 tapListLoaderUrl: '',
+                coinListOverlayUrl: '',
+                coinListLoaderUrl: '',
                 pushPullOverlayUrl: '',
                 pushPullLoaderUrl: '',
                 captionOverlayUrl: '',
@@ -2222,6 +2298,7 @@
             topGiftSettings: null,
             likeContributionSettings: null,
             tapListSettings: null,
+            coinListSettings: null,
             goalGiftItems: [],
             giftCatalog: [],
             giftCatalogByName: new Map()
@@ -2304,6 +2381,8 @@
         let likeContributionAutosavePromise = null;
         let tapListAutosaveTimer = null;
         let tapListAutosavePromise = null;
+        let coinListAutosaveTimer = null;
+        let coinListAutosavePromise = null;
         let goalGiftAutosaveTimer = null;
         let goalGiftAutosavePromise = null;
         let pendingTopGiftSettings = null;
@@ -3027,6 +3106,9 @@
         function syncTapListAppearanceControls() {
             syncWidgetAppearanceControls(tapListFontSelect, tapListTextStyleSelect, tapListStrokeWidthInput, state.tapListAppearance);
         }
+        function syncCoinListAppearanceControls() {
+            syncWidgetAppearanceControls(coinListFontSelect, coinListTextStyleSelect, coinListStrokeWidthInput, state.coinListAppearance);
+        }
         function syncGiftJarAppearanceControls() {
             syncWidgetAppearanceControls(giftJarFontSelect, giftJarTextStyleSelect, giftJarStrokeWidthInput, state.giftJarAppearance);
         }
@@ -3482,6 +3564,76 @@
             }
             tapListAutosavePromise = saveTapListSettings();
             return tapListAutosavePromise;
+        }
+
+        function applyCoinListSettingsToForm(settings) {
+            if (!settings) return;
+            coinListBgStyleSelect.value = settings.bgStyle === 'semi' ? 'semi' : 'transparent';
+            coinListSortOrderSelect.value = settings.sortOrder === 'asc' ? 'asc' : 'desc';
+            coinListMaxEntriesInput.value = String(Number.parseInt(String(settings.maxEntries ?? 20), 10) || 20);
+            coinListRowGapInput.value = String(Number.parseInt(String(settings.rowGap ?? 8), 10));
+            refreshCoinListPreview();
+        }
+
+        function buildCoinListPreviewUrl() {
+            const baseUrl = state.widgetUrls.coinListOverlayUrl || '/overlays/coin-list';
+            const bgStyle = coinListBgStyleSelect ? coinListBgStyleSelect.value : 'semi';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('bg', bgStyle);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?bg=${bgStyle}&preview=1`;
+            }
+        }
+
+        function refreshCoinListPreview(options = {}) {
+            updatePreviewFrame(coinListPreviewFrame, buildCoinListPreviewUrl(), options);
+        }
+
+        function getDraftCoinListSettings() {
+            return {
+                bgStyle: coinListBgStyleSelect ? coinListBgStyleSelect.value : 'transparent',
+                sortOrder: coinListSortOrderSelect ? coinListSortOrderSelect.value : 'desc',
+                maxEntries: Number.parseInt(coinListMaxEntriesInput ? coinListMaxEntriesInput.value : '20', 10) || 20,
+                rowGap: Number.parseInt(coinListRowGapInput ? coinListRowGapInput.value : '8', 10),
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(coinListFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(coinListTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(coinListStrokeWidthInput.value)
+                }
+            };
+        }
+
+        async function saveCoinListSettings() {
+            setStatus(saveStatus, '設定状態: コイン一覧を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/coin-list', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftCoinListSettings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'コイン一覧の保存に失敗しました。');
+                state.coinListSettings = payload.settings || state.coinListSettings;
+                state.coinListAppearance = payload.appearance || state.coinListAppearance;
+                applyCoinListSettingsToForm(state.coinListSettings);
+                syncCoinListAppearanceControls();
+                refreshCoinListPreview({ forceReload: true });
+                setStatus(saveStatus, '設定状態: コイン一覧を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function saveCoinListSettingsImmediately() {
+            if (coinListAutosaveTimer) {
+                window.clearTimeout(coinListAutosaveTimer);
+                coinListAutosaveTimer = null;
+            }
+            coinListAutosavePromise = saveCoinListSettings();
+            return coinListAutosavePromise;
         }
 
         function getDraftTopGiftSettings() {
@@ -4017,6 +4169,7 @@
             state.topGiftAppearance = payload.topGiftAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.likeContributionAppearance = payload.likeContributionAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.tapListAppearance = payload.tapListAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.coinListAppearance = payload.coinListAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.giftJarAppearance = payload.giftJarAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.pushPullAppearance = payload.pushPullAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.captionAppearance = payload.captionAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
@@ -4028,6 +4181,7 @@
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
             state.tapListSettings = payload.tapListSettings || state.tapListSettings;
+            state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
             refreshContributorsOverlayControls();
@@ -4039,6 +4193,7 @@
             syncTopGiftAppearanceControls();
             syncLikeContributionAppearanceControls();
             syncTapListAppearanceControls();
+            syncCoinListAppearanceControls();
             syncGiftJarAppearanceControls();
             syncPushPullAppearanceControls();
             syncCaptionAppearanceControls();
@@ -4049,6 +4204,7 @@
             topGiftUrl.textContent = state.widgetUrls.topGiftLoaderUrl || state.widgetUrls.topGiftOverlayUrl || '未取得';
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
+            coinListUrl.textContent = state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
             pushPullUrl.textContent = state.widgetUrls.pushPullLoaderUrl || state.widgetUrls.pushPullOverlayUrl || '未取得';
@@ -4059,6 +4215,7 @@
             applyTopGiftSettingsToForm(state.topGiftSettings);
             applyLikeContributionSettingsToForm(state.likeContributionSettings);
             applyTapListSettingsToForm(state.tapListSettings);
+            applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();
             refreshTopGiftPreview();
@@ -4066,6 +4223,7 @@
             refreshGiftJarPreview();
             refreshCustomJarPreview();
             refreshPushPullPreview();
+            refreshCoinListPreview();
         }
 
         async function refreshGoalGiftSnapshot() {
@@ -4439,6 +4597,11 @@
         tapListTextStyleSelect.addEventListener('change', () => { saveTapListSettingsImmediately().catch(() => {}); });
         tapListStrokeWidthInput.addEventListener('input', () => { saveTapListSettingsImmediately().catch(() => {}); });
         tapListStrokeWidthInput.addEventListener('change', () => { saveTapListSettingsImmediately().catch(() => {}); });
+        coinListFontSelect.addEventListener('input', () => { coinListFontSelect.style.fontFamily = getWidgetFontFamily(coinListFontSelect.value); });
+        coinListFontSelect.addEventListener('change', () => { coinListFontSelect.style.fontFamily = getWidgetFontFamily(coinListFontSelect.value); saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListTextStyleSelect.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListStrokeWidthInput.addEventListener('input', () => { saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListStrokeWidthInput.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
         giftJarFontSelect.addEventListener('input', () => { giftJarFontSelect.style.fontFamily = getWidgetFontFamily(giftJarFontSelect.value); });
         giftJarFontSelect.addEventListener('change', () => {
             giftJarFontSelect.style.fontFamily = getWidgetFontFamily(giftJarFontSelect.value);
@@ -4515,6 +4678,17 @@
             if (!confirm('本日のタップ数をリセットしますか？')) return;
             fetch('/api/widgets/tap-list/reset', { method: 'POST' }).catch(() => {});
         });
+        document.getElementById('open-coin-list-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.coinListOverlayUrl || '/overlays/coin-list';
+            openWindow(url, 'coin-list-overlay-window', { width: 420, height: 560 });
+        });
+        document.getElementById('copy-coin-list-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '');
+        });
+        coinListBgStyleSelect.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListSortOrderSelect.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListMaxEntriesInput.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
+        coinListRowGapInput.addEventListener('change', () => { saveCoinListSettingsImmediately().catch(() => {}); });
         document.getElementById('open-gift-jar-overlay-button').addEventListener('click', () => {
             const url = state.widgetUrls.giftJarOverlayUrl || '/overlays/gift-jar';
             openWindow(url, 'gift-jar-overlay-window', { width: 700, height: 560 });
