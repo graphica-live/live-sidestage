@@ -58,6 +58,22 @@ test.describe('comments.html: モーダルが開ける', () => {
     });
 });
 
+// ── comments.html VOICE モーダル: モーダル外クリックで閉じない ────────────────
+
+test.describe('comments.html: VOICE モーダルはモーダル外クリックで閉じない', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/comments.html`);
+        await waitForCommentsReady(page);
+        await page.click('#comment-read-aloud-voice-button');
+        await expect(page.locator('#comment-read-aloud-voice-modal')).toHaveClass(/is-open/);
+    });
+
+    test('モーダルシェル（背景）クリックで閉じない', async ({ page }) => {
+        await page.locator('#comment-read-aloud-voice-modal').click({ position: { x: 5, y: 5 } });
+        await expect(page.locator('#comment-read-aloud-voice-modal')).toHaveClass(/is-open/);
+    });
+});
+
 // ── quick-access.html スモークテスト ─────────────────────────────────────────
 
 test.describe('quick-access.html: 初期状態', () => {
