@@ -4146,7 +4146,7 @@ function createDefaultCommentFeedSettings() {
         readAloudEnabledTypes: COMMENT_FEED_EVENT_DEFINITIONS.map((item) => item.type),
         readAloudEnabled: false,
         readAloudVoiceName: '',
-        readAloudVoiceCreditEnabled: false,
+        readAloudVoiceCreditEnabled: true,
         readAloudRandomVoiceEnabled: false,
         readAloudVolume: 100,
         readAloudSpeed: 1.0,
@@ -4562,7 +4562,7 @@ function normalizeCommentFeedSettings(value) {
     const hasReadAloudFilters = Array.isArray(source?.readAloudFilters) || typeof source?.readAloudFilters === 'string';
     const storedReadAloudDefaultsVersion = Math.max(0, normalizeWholeNumber(source?.readAloudDefaultsVersion, 0));
     const readAloudVoiceName = normalizeEffectText(source?.readAloudVoiceName, 120);
-    const readAloudVoiceCreditEnabled = source?.readAloudVoiceCreditEnabled === true;
+    const readAloudVoiceCreditEnabled = true;
     const readAloudRandomVoiceEnabled = source?.readAloudRandomVoiceEnabled === true;
     const readAloudVolume = Math.max(0, Math.min(100, normalizeWholeNumber(source?.readAloudVolume) ?? defaults.readAloudVolume));
     const readAloudSpeedRaw = Number.isFinite(Number(source?.readAloudSpeed)) ? Number(source.readAloudSpeed) : defaults.readAloudSpeed;
@@ -4895,10 +4895,6 @@ function createCommentReadAloudPlaybackPayload(payload, audioUrl) {
 }
 
 async function resolveCommentReadAloudVoiceCreditText(voiceName, settings = getCommentFeedSettings()) {
-    if (settings?.readAloudVoiceCreditEnabled !== true) {
-        return '';
-    }
-
     const normalizedVoiceName = normalizeEffectText(voiceName, 200);
 
     if (!normalizedVoiceName.startsWith('voicevox:')) {

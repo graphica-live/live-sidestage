@@ -1023,15 +1023,6 @@
                         </button>
                     </div>
                 </div>
-                <div class="voice-setting-row">
-                    <strong>VOICEVOX クレジット表記</strong>
-                    <div class="voice-setting-inline">
-                        <label class="checkbox-control" for="comment-read-aloud-voice-credit-checkbox">
-                            <input type="checkbox" id="comment-read-aloud-voice-credit-checkbox">
-                            <span>VOICEVOX 音声の読み上げ開始時に、screen1 の右下へクレジット表記を表示する</span>
-                        </label>
-                    </div>
-                </div>
                 <label class="voice-setting-row" for="comment-read-aloud-audio-output-select">
                     <strong>音声出力先</strong>
                     <select id="comment-read-aloud-audio-output-select">
@@ -1214,7 +1205,6 @@
         const commentReadAloudVoiceSelect = document.getElementById('comment-read-aloud-voice-select');
         const commentReadAloudVoiceTermsLink = document.getElementById('comment-read-aloud-voice-terms-link');
         const commentReadAloudRandomVoiceCheckbox = document.getElementById('comment-read-aloud-random-voice-checkbox');
-        const commentReadAloudVoiceCreditCheckbox = document.getElementById('comment-read-aloud-voice-credit-checkbox');
         const commentReadAloudRandomVoiceRefreshButton = document.getElementById('comment-read-aloud-random-voice-refresh-button');
         const commentReadAloudVolumeRange = document.getElementById('comment-read-aloud-volume-range');
         const commentReadAloudVolumeValue = document.getElementById('comment-read-aloud-volume-value');
@@ -2082,7 +2072,7 @@
                 readAloudEnabledTypes: hasReadAloudEnabledTypes ? readAloudEnabledTypes : enabledTypes,
                 readAloudEnabled: settings?.readAloudEnabled === true,
                 readAloudVoiceName: typeof settings?.readAloudVoiceName === 'string' ? settings.readAloudVoiceName : '',
-                readAloudVoiceCreditEnabled: settings?.readAloudVoiceCreditEnabled === true,
+                readAloudVoiceCreditEnabled: true,
                 readAloudRandomVoiceEnabled: settings?.readAloudRandomVoiceEnabled === true,
                 readAloudVolume,
                 readAloudSpeed,
@@ -2150,7 +2140,6 @@
             if (!isVoiceModalOpen) {
                 const selectedVoiceName = currentSettings.readAloudVoiceName || '';
                 commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(selectedVoiceName);
-                commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
                 commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
                 commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
                 commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
@@ -2546,7 +2535,6 @@
             if (commentReadAloudVoiceModal.classList.contains('is-open')) {
                 commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
                 syncReadAloudVoiceTermsLink(currentSettings.readAloudVoiceName || '');
-                commentReadAloudVoiceCreditCheckbox.checked = currentSettings.readAloudVoiceCreditEnabled;
                 commentReadAloudRandomVoiceCheckbox.checked = currentSettings.readAloudRandomVoiceEnabled;
                 commentReadAloudVolumeRange.value = String(currentSettings.readAloudVolume);
                 commentReadAloudVolumeValue.textContent = `${currentSettings.readAloudVolume}%`;
@@ -3285,7 +3273,7 @@
                 await saveCommentSettings({
                     ...currentSettings,
                     readAloudVoiceName: commentReadAloudVoiceSelect.value || '',
-                    readAloudVoiceCreditEnabled: commentReadAloudVoiceCreditCheckbox.checked,
+                    readAloudVoiceCreditEnabled: true,
                     readAloudRandomVoiceEnabled: commentReadAloudRandomVoiceCheckbox.checked,
                     readAloudVolume: Number(commentReadAloudVolumeRange.value || 100),
                     readAloudSpeed: Number(commentReadAloudSpeedRange.value || 1.0),
