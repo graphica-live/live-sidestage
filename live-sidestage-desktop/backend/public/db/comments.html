@@ -302,6 +302,11 @@
             background: rgba(0, 0, 0, 0.06);
         }
 
+        .modal-action-row {
+            display: flex;
+            gap: 8px;
+        }
+
         .modal.is-live {
             padding: 0;
             overflow: hidden;
@@ -1013,33 +1018,35 @@
     </div>
 
     <div class="modal-shell" id="comment-settings-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-settings-title">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-settings-title">
+            <button type="button" class="modal-close-btn" id="comment-settings-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-settings-title">コメント表示設定</h2>
                 <p class="subtext">表示したいコメント種別だけを有効にします。取得自体は継続し、ここでは表示だけをフィルタします。</p>
             </div>
-            <div class="filter-list" id="comment-filter-list"></div>
-            <div class="modal-actions">
-                <button type="button" id="comment-settings-select-all">すべて表示</button>
-                <button type="button" id="comment-settings-clear-all">すべて非表示</button>
-                <button type="button" id="comment-settings-cancel">キャンセル</button>
-                <button type="button" id="comment-settings-save">保存</button>
+            <div class="modal-scroll-body">
+                <div class="modal-action-row">
+                    <button type="button" id="comment-settings-select-all">すべて表示</button>
+                    <button type="button" id="comment-settings-clear-all">すべて非表示</button>
+                </div>
+                <div class="filter-list" id="comment-filter-list"></div>
             </div>
         </div>
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-settings-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-settings-title">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-settings-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-settings-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-settings-title">コメント読み上げ対象設定</h2>
                 <p class="subtext">読み上げたいコメント種別だけを有効にします。表示設定とは別に管理されます。</p>
             </div>
-            <div class="filter-list" id="comment-read-aloud-filter-list"></div>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-settings-select-all">すべて読み上げ</button>
-                <button type="button" id="comment-read-aloud-settings-clear-all">すべて読み上げ停止</button>
-                <button type="button" id="comment-read-aloud-settings-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-settings-save">保存</button>
+            <div class="modal-scroll-body">
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-settings-select-all">すべて読み上げ</button>
+                    <button type="button" id="comment-read-aloud-settings-clear-all">すべて読み上げ停止</button>
+                </div>
+                <div class="filter-list" id="comment-read-aloud-filter-list"></div>
             </div>
         </div>
     </div>
@@ -1109,11 +1116,13 @@
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-voice-mapping-modal" aria-hidden="true">
-        <div class="modal is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-mapping-title">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-mapping-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-voice-mapping-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-voice-mapping-title">ボイスマッピング設定</h2>
                 <p class="subtext">ユーザーIDごとに固定の音声を割り当てます。件数が増えても検索しながら追加・編集できる専用モーダルです。ここで設定した内容はランダムボイスより優先されます。</p>
             </div>
+            <div class="modal-scroll-body">
             <div class="voice-mapping-modal-grid">
                 <div class="voice-mapping-toolbar">
                     <label class="voice-mapping-search" for="comment-read-aloud-voice-mapping-search-input">
@@ -1149,98 +1158,102 @@
                     <div id="comment-read-aloud-voice-mapping-list" class="voice-mapping-list"></div>
                 </div>
             </div>
-            <div class="modal-actions">
+            </div>
+            <div class="modal-action-row">
                 <button type="button" id="comment-read-aloud-voice-clear">マッピング全削除</button>
-                <button type="button" id="comment-read-aloud-voice-mapping-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-voice-mapping-save">保存</button>
+            </div>
             </div>
         </div>
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-filter-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-filter-title">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-filter-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-filter-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-filter-title">コメント読み上げフィルタ</h2>
                 <p class="subtext">1行に1つずつ登録します。コメント本文に登録済みの文字列が含まれる場合、そのコメントは読み上げしません。</p>
             </div>
-            <textarea id="comment-read-aloud-filter-textarea" class="filter-textarea" placeholder="例\nNGワード\n読み上げ不要"></textarea>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-filter-clear">すべて削除</button>
-                <button type="button" id="comment-read-aloud-filter-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-filter-save">保存</button>
+            <div class="modal-scroll-body">
+                <textarea id="comment-read-aloud-filter-textarea" class="filter-textarea" placeholder="例\nNGワード\n読み上げ不要"></textarea>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-filter-clear">すべて削除</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-emoji-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emoji-title">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emoji-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-emoji-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-emoji-title">コメント読み上げ絵文字変換</h2>
                 <p class="subtext">最近受信した絵文字画像を選んで読み上げ文字を登録します。登録済みの絵文字だけ文字列に変換して読み上げ、未登録の絵文字は従来どおり読み飛ばします。</p>
             </div>
-            <div class="emote-picker-section">
-                <div id="comment-read-aloud-emoji-picker" class="emote-picker-grid"></div>
-                <div class="emote-editor">
-                    <div id="comment-read-aloud-emoji-preview" class="emote-editor-preview">
-                        <span class="emote-editor-placeholder">未選択</span>
+            <div class="modal-scroll-body">
+                <div class="emote-picker-section">
+                    <div id="comment-read-aloud-emoji-picker" class="emote-picker-grid"></div>
+                    <div class="emote-editor">
+                        <div id="comment-read-aloud-emoji-preview" class="emote-editor-preview">
+                            <span class="emote-editor-placeholder">未選択</span>
+                        </div>
+                        <label class="emote-editor-copy" for="comment-read-aloud-emoji-text-input">
+                            <strong>読み上げ文字</strong>
+                            <span id="comment-read-aloud-emoji-selected-value">絵文字画像を選んでください</span>
+                            <input id="comment-read-aloud-emoji-text-input" type="text" maxlength="120" placeholder="例: えがお">
+                        </label>
+                        <button type="button" id="comment-read-aloud-emoji-apply">追加 / 更新</button>
                     </div>
-                    <label class="emote-editor-copy" for="comment-read-aloud-emoji-text-input">
-                        <strong>読み上げ文字</strong>
-                        <span id="comment-read-aloud-emoji-selected-value">絵文字画像を選んでください</span>
-                        <input id="comment-read-aloud-emoji-text-input" type="text" maxlength="120" placeholder="例: えがお">
-                    </label>
-                    <button type="button" id="comment-read-aloud-emoji-apply">追加 / 更新</button>
+                    <div id="comment-read-aloud-emoji-mapping-list" class="emote-mapping-list"></div>
                 </div>
-                <div id="comment-read-aloud-emoji-mapping-list" class="emote-mapping-list"></div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-emoji-clear">すべて削除</button>
-                <button type="button" id="comment-read-aloud-emoji-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-emoji-save">保存</button>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-emoji-clear">すべて削除</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-text-replacement-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-text-replacement-title">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-text-replacement-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-text-replacement-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-text-replacement-title">コメント読み上げ変換フィルタ</h2>
                 <p class="subtext">1行に1つずつ「変換前=変換後」で登録します。読み上げ時だけ文字列を置き換え、元のコメント表示は変えません。</p>
             </div>
-            <textarea id="comment-read-aloud-text-replacement-textarea" class="filter-textarea" placeholder="例\nwww=わらわら\nTikTok＝ティックトック"></textarea>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-text-replacement-clear">すべて削除</button>
-                <button type="button" id="comment-read-aloud-text-replacement-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-text-replacement-save">保存</button>
+            <div class="modal-scroll-body">
+                <textarea id="comment-read-aloud-text-replacement-textarea" class="filter-textarea" placeholder="例\nwww=わらわら\nTikTok＝ティックトック"></textarea>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-text-replacement-clear">すべて削除</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="modal-shell" id="comment-read-aloud-emote-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emote-title">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emote-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-emote-close" aria-label="閉じる">✕</button>
             <div class="modal-head">
                 <h2 id="comment-read-aloud-emote-title">コメント読み上げエモート変換</h2>
                 <p class="subtext">最近受信したエモート画像を選んで読み上げ文字を登録します。登録済みの emote だけ文字列に変換して読み上げ、未登録の emote は読み上げません。</p>
             </div>
-            <div class="emote-picker-section">
-                <div id="comment-read-aloud-emote-picker" class="emote-picker-grid"></div>
-                <div class="emote-editor">
-                    <div id="comment-read-aloud-emote-preview" class="emote-editor-preview">
-                        <span class="emote-editor-placeholder">未選択</span>
+            <div class="modal-scroll-body">
+                <div class="emote-picker-section">
+                    <div id="comment-read-aloud-emote-picker" class="emote-picker-grid"></div>
+                    <div class="emote-editor">
+                        <div id="comment-read-aloud-emote-preview" class="emote-editor-preview">
+                            <span class="emote-editor-placeholder">未選択</span>
+                        </div>
+                        <label class="emote-editor-copy" for="comment-read-aloud-emote-text-input">
+                            <strong>読み上げ文字</strong>
+                            <span id="comment-read-aloud-emote-selected-id">エモート画像を選んでください</span>
+                            <input id="comment-read-aloud-emote-text-input" type="text" maxlength="120" placeholder="例: はくしゅ">
+                        </label>
+                        <button type="button" id="comment-read-aloud-emote-apply">追加 / 更新</button>
                     </div>
-                    <label class="emote-editor-copy" for="comment-read-aloud-emote-text-input">
-                        <strong>読み上げ文字</strong>
-                        <span id="comment-read-aloud-emote-selected-id">エモート画像を選んでください</span>
-                        <input id="comment-read-aloud-emote-text-input" type="text" maxlength="120" placeholder="例: はくしゅ">
-                    </label>
-                    <button type="button" id="comment-read-aloud-emote-apply">追加 / 更新</button>
+                    <div id="comment-read-aloud-emote-mapping-list" class="emote-mapping-list"></div>
                 </div>
-                <div id="comment-read-aloud-emote-mapping-list" class="emote-mapping-list"></div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" id="comment-read-aloud-emote-clear">すべて削除</button>
-                <button type="button" id="comment-read-aloud-emote-cancel">キャンセル</button>
-                <button type="button" id="comment-read-aloud-emote-save">保存</button>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-emote-clear">すべて削除</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1271,8 +1284,7 @@
         const commentReadAloudVoiceMappingSearchInput = document.getElementById('comment-read-aloud-voice-mapping-search-input');
         const commentReadAloudVoiceMappingSummary = document.getElementById('comment-read-aloud-voice-mapping-summary');
         const commentReadAloudVoiceClear = document.getElementById('comment-read-aloud-voice-clear');
-        const commentReadAloudVoiceMappingCancel = document.getElementById('comment-read-aloud-voice-mapping-cancel');
-        const commentReadAloudVoiceMappingSave = document.getElementById('comment-read-aloud-voice-mapping-save');
+        const commentReadAloudVoiceMappingClose = document.getElementById('comment-read-aloud-voice-mapping-close');
         const commentReadAloudVoiceClose = document.getElementById('comment-read-aloud-voice-close');
         const commentReadAloudAudioOutputSelect = document.getElementById('comment-read-aloud-audio-output-select');
         const commentReadAloudVoiceMappingButton = document.getElementById('comment-read-aloud-voice-mapping-button');
@@ -1287,24 +1299,20 @@
         const commentFilterList = document.getElementById('comment-filter-list');
         const commentSettingsSelectAll = document.getElementById('comment-settings-select-all');
         const commentSettingsClearAll = document.getElementById('comment-settings-clear-all');
-        const commentSettingsCancel = document.getElementById('comment-settings-cancel');
-        const commentSettingsSave = document.getElementById('comment-settings-save');
+        const commentSettingsClose = document.getElementById('comment-settings-close');
         const commentReadAloudSettingsModal = document.getElementById('comment-read-aloud-settings-modal');
         const commentReadAloudFilterList = document.getElementById('comment-read-aloud-filter-list');
         const commentReadAloudSettingsSelectAll = document.getElementById('comment-read-aloud-settings-select-all');
         const commentReadAloudSettingsClearAll = document.getElementById('comment-read-aloud-settings-clear-all');
-        const commentReadAloudSettingsCancel = document.getElementById('comment-read-aloud-settings-cancel');
-        const commentReadAloudSettingsSave = document.getElementById('comment-read-aloud-settings-save');
+        const commentReadAloudSettingsClose = document.getElementById('comment-read-aloud-settings-close');
         const commentReadAloudFilterModal = document.getElementById('comment-read-aloud-filter-modal');
         const commentReadAloudFilterTextarea = document.getElementById('comment-read-aloud-filter-textarea');
         const commentReadAloudFilterClear = document.getElementById('comment-read-aloud-filter-clear');
-        const commentReadAloudFilterCancel = document.getElementById('comment-read-aloud-filter-cancel');
-        const commentReadAloudFilterSave = document.getElementById('comment-read-aloud-filter-save');
+        const commentReadAloudFilterClose = document.getElementById('comment-read-aloud-filter-close');
         const commentReadAloudTextReplacementModal = document.getElementById('comment-read-aloud-text-replacement-modal');
         const commentReadAloudTextReplacementTextarea = document.getElementById('comment-read-aloud-text-replacement-textarea');
         const commentReadAloudTextReplacementClear = document.getElementById('comment-read-aloud-text-replacement-clear');
-        const commentReadAloudTextReplacementCancel = document.getElementById('comment-read-aloud-text-replacement-cancel');
-        const commentReadAloudTextReplacementSave = document.getElementById('comment-read-aloud-text-replacement-save');
+        const commentReadAloudTextReplacementClose = document.getElementById('comment-read-aloud-text-replacement-close');
         const commentReadAloudEmojiModal = document.getElementById('comment-read-aloud-emoji-modal');
         const commentReadAloudEmojiPicker = document.getElementById('comment-read-aloud-emoji-picker');
         const commentReadAloudEmojiPreview = document.getElementById('comment-read-aloud-emoji-preview');
@@ -1313,8 +1321,7 @@
         const commentReadAloudEmojiApply = document.getElementById('comment-read-aloud-emoji-apply');
         const commentReadAloudEmojiMappingList = document.getElementById('comment-read-aloud-emoji-mapping-list');
         const commentReadAloudEmojiClear = document.getElementById('comment-read-aloud-emoji-clear');
-        const commentReadAloudEmojiCancel = document.getElementById('comment-read-aloud-emoji-cancel');
-        const commentReadAloudEmojiSave = document.getElementById('comment-read-aloud-emoji-save');
+        const commentReadAloudEmojiClose = document.getElementById('comment-read-aloud-emoji-close');
         const commentReadAloudEmoteModal = document.getElementById('comment-read-aloud-emote-modal');
         const commentReadAloudEmotePicker = document.getElementById('comment-read-aloud-emote-picker');
         const commentReadAloudEmotePreview = document.getElementById('comment-read-aloud-emote-preview');
@@ -1323,8 +1330,7 @@
         const commentReadAloudEmoteApply = document.getElementById('comment-read-aloud-emote-apply');
         const commentReadAloudEmoteMappingList = document.getElementById('comment-read-aloud-emote-mapping-list');
         const commentReadAloudEmoteClear = document.getElementById('comment-read-aloud-emote-clear');
-        const commentReadAloudEmoteCancel = document.getElementById('comment-read-aloud-emote-cancel');
-        const commentReadAloudEmoteSave = document.getElementById('comment-read-aloud-emote-save');
+        const commentReadAloudEmoteClose = document.getElementById('comment-read-aloud-emote-close');
 
         let currentComments = [];
         let currentCommentTypes = [];
@@ -2511,6 +2517,87 @@
             }
         }
 
+        function createDebounce(fn, ms) {
+            let timer;
+            return (...args) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), ms);
+            };
+        }
+
+        async function saveCommentDisplaySettings() {
+            const enabledTypes = [...commentFilterList.querySelectorAll('input[type="checkbox"]:checked')]
+                .map((input) => input.dataset.type)
+                .filter(Boolean);
+            try {
+                await saveCommentSettings({ ...currentSettings, enabledTypes });
+            } catch (error) {
+                setCommentFeedback(error.message || 'コメント設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveCommentReadAloudTypeSettings() {
+            const readAloudEnabledTypes = [...commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]:checked')]
+                .map((input) => input.dataset.type)
+                .filter(Boolean);
+            try {
+                await saveCommentSettings({ ...currentSettings, readAloudEnabledTypes });
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げ対象設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveReadAloudVoiceMappingSettings() {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudVoiceMappings: normalizeReadAloudVoiceMappings(pendingReadAloudVoiceMappings)
+                });
+            } catch (error) {
+                setCommentFeedback(error.message || 'ボイスマッピング設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveReadAloudFilterSettings() {
+            const readAloudFilters = normalizeReadAloudFilters(commentReadAloudFilterTextarea.value);
+            try {
+                await saveCommentSettings({ ...currentSettings, readAloudFilters });
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げフィルタ設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveReadAloudTextReplacementSettings() {
+            const readAloudTextReplacements = normalizeReadAloudTextReplacements(commentReadAloudTextReplacementTextarea.value);
+            try {
+                await saveCommentSettings({ ...currentSettings, readAloudTextReplacements });
+            } catch (error) {
+                setCommentFeedback(error.message || '読み上げ変換設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveReadAloudEmojiSettings() {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEmojiReplacements: normalizeReadAloudEmojiReplacements(pendingReadAloudEmojiReplacements)
+                });
+            } catch (error) {
+                setCommentFeedback(error.message || '絵文字変換設定の保存に失敗しました。');
+            }
+        }
+
+        async function saveReadAloudEmoteSettings() {
+            try {
+                await saveCommentSettings({
+                    ...currentSettings,
+                    readAloudEmoteReplacements: normalizeReadAloudEmoteReplacements(pendingReadAloudEmoteReplacements)
+                });
+            } catch (error) {
+                setCommentFeedback(error.message || 'エモート変換設定の保存に失敗しました。');
+            }
+        }
+
         function closeCommentReadAloudVoiceMappingModal() {
             commentReadAloudVoiceMappingModal.classList.remove('is-open');
             commentReadAloudVoiceMappingModal.setAttribute('aria-hidden', 'true');
@@ -2926,20 +3013,15 @@
             closeCommentReadAloudVoiceModal();
         });
 
-        commentReadAloudVoiceMappingCancel.addEventListener('click', () => {
+        commentReadAloudVoiceMappingClose.addEventListener('click', () => {
             closeCommentReadAloudVoiceMappingModal();
         });
 
-        commentReadAloudVoiceClear.addEventListener('click', () => {
+        commentReadAloudVoiceClear.addEventListener('click', async () => {
             pendingReadAloudVoiceMappings = [];
             populateReadAloudVoiceMappingEditor();
             renderReadAloudVoiceMappings();
-        });
-
-        commentReadAloudVoiceMappingModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudVoiceMappingModal) {
-                closeCommentReadAloudVoiceMappingModal();
-            }
+            await saveReadAloudVoiceMappingSettings();
         });
 
         commentReadAloudRandomVoiceRefreshButton.addEventListener('click', async () => {
@@ -2983,7 +3065,7 @@
             if (!voiceMappingUserSuggestionPanel.hidden) positionVoiceMappingUserSuggestionPanel();
         });
 
-        commentReadAloudVoiceMappingApply.addEventListener('click', () => {
+        commentReadAloudVoiceMappingApply.addEventListener('click', async () => {
             const uniqueId = normalizeReadAloudUserId(commentReadAloudVoiceMappingUserIdInput.value);
             const voiceName = String(commentReadAloudVoiceMappingVoiceSelect.value || '').trim();
 
@@ -3004,9 +3086,10 @@
             populateReadAloudVoiceMappingEditor();
             renderReadAloudVoiceMappings();
             setCommentFeedback(`@${uniqueId} のボイスマッピングを更新しました。`);
+            await saveReadAloudVoiceMappingSettings();
         });
 
-        commentReadAloudVoiceMappingList.addEventListener('click', (event) => {
+        commentReadAloudVoiceMappingList.addEventListener('click', async (event) => {
             const trigger = event.target.closest('[data-action][data-unique-id]');
 
             if (!trigger) {
@@ -3025,6 +3108,7 @@
                     populateReadAloudVoiceMappingEditor();
                 }
                 renderReadAloudVoiceMappings();
+                await saveReadAloudVoiceMappingSettings();
                 return;
             }
 
@@ -3052,68 +3136,52 @@
             openCommentReadAloudEmoteModal();
         });
 
-        commentSettingsCancel.addEventListener('click', () => {
+        commentSettingsClose.addEventListener('click', () => {
             closeCommentSettingsModal();
         });
 
-        commentSettingsModal.addEventListener('click', (event) => {
-            if (event.target === commentSettingsModal) {
-                closeCommentSettingsModal();
-            }
-        });
-
-        commentReadAloudSettingsCancel.addEventListener('click', () => {
+        commentReadAloudSettingsClose.addEventListener('click', () => {
             closeCommentReadAloudSettingsModal();
         });
 
-        commentReadAloudSettingsModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudSettingsModal) {
-                closeCommentReadAloudSettingsModal();
-            }
-        });
+        const debouncedSaveFilterSettings = createDebounce(saveReadAloudFilterSettings, 800);
+        const debouncedSaveTextReplacementSettings = createDebounce(saveReadAloudTextReplacementSettings, 800);
 
-        commentReadAloudFilterCancel.addEventListener('click', () => {
+        commentReadAloudFilterClose.addEventListener('click', () => {
             closeCommentReadAloudFilterModal();
         });
 
-        commentReadAloudFilterClear.addEventListener('click', () => {
+        commentReadAloudFilterClear.addEventListener('click', async () => {
             commentReadAloudFilterTextarea.value = '';
+            await saveReadAloudFilterSettings();
         });
 
-        commentReadAloudFilterModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudFilterModal) {
-                closeCommentReadAloudFilterModal();
-            }
+        commentReadAloudFilterTextarea.addEventListener('input', () => {
+            debouncedSaveFilterSettings();
         });
 
-        commentReadAloudTextReplacementCancel.addEventListener('click', () => {
+        commentReadAloudTextReplacementClose.addEventListener('click', () => {
             closeCommentReadAloudTextReplacementModal();
         });
 
-        commentReadAloudTextReplacementClear.addEventListener('click', () => {
+        commentReadAloudTextReplacementClear.addEventListener('click', async () => {
             commentReadAloudTextReplacementTextarea.value = '';
+            await saveReadAloudTextReplacementSettings();
         });
 
-        commentReadAloudTextReplacementModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudTextReplacementModal) {
-                closeCommentReadAloudTextReplacementModal();
-            }
+        commentReadAloudTextReplacementTextarea.addEventListener('input', () => {
+            debouncedSaveTextReplacementSettings();
         });
 
-        commentReadAloudEmojiCancel.addEventListener('click', () => {
+        commentReadAloudEmojiClose.addEventListener('click', () => {
             closeCommentReadAloudEmojiModal();
         });
 
-        commentReadAloudEmojiClear.addEventListener('click', () => {
+        commentReadAloudEmojiClear.addEventListener('click', async () => {
             pendingReadAloudEmojiReplacements = [];
             selectedReadAloudEmoji = '';
             syncReadAloudEmojiEditorFromSelection();
-        });
-
-        commentReadAloudEmojiModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudEmojiModal) {
-                closeCommentReadAloudEmojiModal();
-            }
+            await saveReadAloudEmojiSettings();
         });
 
         commentReadAloudEmojiPicker.addEventListener('click', (event) => {
@@ -3126,7 +3194,7 @@
             selectReadAloudEmoji(trigger.dataset.emoji || '');
         });
 
-        commentReadAloudEmojiMappingList.addEventListener('click', (event) => {
+        commentReadAloudEmojiMappingList.addEventListener('click', async (event) => {
             const trigger = event.target.closest('[data-action][data-emoji]');
 
             if (!trigger) {
@@ -3145,6 +3213,7 @@
                     selectedReadAloudEmoji = '';
                 }
                 syncReadAloudEmojiEditorFromSelection();
+                await saveReadAloudEmojiSettings();
                 return;
             }
 
@@ -3153,7 +3222,7 @@
             }
         });
 
-        commentReadAloudEmojiApply.addEventListener('click', () => {
+        commentReadAloudEmojiApply.addEventListener('click', async () => {
             const emoji = String(selectedReadAloudEmoji || '').trim();
             const text = String(commentReadAloudEmojiTextInput.value || '').trim().slice(0, 120);
 
@@ -3173,22 +3242,18 @@
             ]);
             syncReadAloudEmojiEditorFromSelection();
             setCommentFeedback(`絵文字 ${emoji} の読み上げを更新しました。`);
+            await saveReadAloudEmojiSettings();
         });
 
-        commentReadAloudEmoteCancel.addEventListener('click', () => {
+        commentReadAloudEmoteClose.addEventListener('click', () => {
             closeCommentReadAloudEmoteModal();
         });
 
-        commentReadAloudEmoteClear.addEventListener('click', () => {
+        commentReadAloudEmoteClear.addEventListener('click', async () => {
             pendingReadAloudEmoteReplacements = [];
             selectedReadAloudEmoteId = '';
             syncReadAloudEmoteEditorFromSelection();
-        });
-
-        commentReadAloudEmoteModal.addEventListener('click', (event) => {
-            if (event.target === commentReadAloudEmoteModal) {
-                closeCommentReadAloudEmoteModal();
-            }
+            await saveReadAloudEmoteSettings();
         });
 
         commentReadAloudEmotePicker.addEventListener('click', (event) => {
@@ -3201,7 +3266,7 @@
             selectReadAloudEmote(trigger.dataset.emoteId || '');
         });
 
-        commentReadAloudEmoteMappingList.addEventListener('click', (event) => {
+        commentReadAloudEmoteMappingList.addEventListener('click', async (event) => {
             const trigger = event.target.closest('[data-action][data-emote-id]');
 
             if (!trigger) {
@@ -3220,6 +3285,7 @@
                     selectedReadAloudEmoteId = '';
                 }
                 syncReadAloudEmoteEditorFromSelection();
+                await saveReadAloudEmoteSettings();
                 return;
             }
 
@@ -3228,7 +3294,7 @@
             }
         });
 
-        commentReadAloudEmoteApply.addEventListener('click', () => {
+        commentReadAloudEmoteApply.addEventListener('click', async () => {
             const emoteId = normalizeReadAloudEmoteKey(selectedReadAloudEmoteId);
             const text = String(commentReadAloudEmoteTextInput.value || '').trim().slice(0, 120);
 
@@ -3248,6 +3314,7 @@
             ]);
             syncReadAloudEmoteEditorFromSelection();
             setCommentFeedback(`エモート ${emoteId} の読み上げを更新しました。`);
+            await saveReadAloudEmoteSettings();
         });
 
         document.addEventListener('keydown', (event) => {
@@ -3288,127 +3355,43 @@
             }
         });
 
-        commentSettingsSelectAll.addEventListener('click', () => {
+        commentSettingsSelectAll.addEventListener('click', async () => {
             commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 input.checked = true;
             });
+            await saveCommentDisplaySettings();
         });
 
-        commentSettingsClearAll.addEventListener('click', () => {
+        commentSettingsClearAll.addEventListener('click', async () => {
             commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 input.checked = false;
             });
+            await saveCommentDisplaySettings();
         });
 
-        commentReadAloudSettingsSelectAll.addEventListener('click', () => {
+        commentFilterList.addEventListener('change', async (event) => {
+            if (event.target.matches('input[type="checkbox"]')) {
+                await saveCommentDisplaySettings();
+            }
+        });
+
+        commentReadAloudSettingsSelectAll.addEventListener('click', async () => {
             commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 input.checked = true;
             });
+            await saveCommentReadAloudTypeSettings();
         });
 
-        commentReadAloudSettingsClearAll.addEventListener('click', () => {
+        commentReadAloudSettingsClearAll.addEventListener('click', async () => {
             commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 input.checked = false;
             });
+            await saveCommentReadAloudTypeSettings();
         });
 
-        commentSettingsSave.addEventListener('click', async () => {
-            const enabledTypes = [...commentFilterList.querySelectorAll('input[type="checkbox"]:checked')]
-                .map((input) => input.dataset.type)
-                .filter(Boolean);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    enabledTypes
-                });
-                closeCommentSettingsModal();
-            } catch (error) {
-                setCommentFeedback(error.message || 'コメント設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudSettingsSave.addEventListener('click', async () => {
-            const readAloudEnabledTypes = [...commentReadAloudFilterList.querySelectorAll('input[type="checkbox"]:checked')]
-                .map((input) => input.dataset.type)
-                .filter(Boolean);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudEnabledTypes
-                });
-                closeCommentReadAloudSettingsModal();
-            } catch (error) {
-                setCommentFeedback(error.message || '読み上げ対象設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudVoiceMappingSave.addEventListener('click', async () => {
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudVoiceMappings: normalizeReadAloudVoiceMappings(pendingReadAloudVoiceMappings)
-                });
-                closeCommentReadAloudVoiceMappingModal();
-            } catch (error) {
-                setCommentFeedback(error.message || 'ボイスマッピング設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudFilterSave.addEventListener('click', async () => {
-            const readAloudFilters = normalizeReadAloudFilters(commentReadAloudFilterTextarea.value);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudFilters
-                });
-                closeCommentReadAloudFilterModal();
-            } catch (error) {
-                setCommentFeedback(error.message || '読み上げフィルタ設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudTextReplacementSave.addEventListener('click', async () => {
-            const readAloudTextReplacements = normalizeReadAloudTextReplacements(commentReadAloudTextReplacementTextarea.value);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudTextReplacements
-                });
-                closeCommentReadAloudTextReplacementModal();
-            } catch (error) {
-                setCommentFeedback(error.message || '読み上げ変換設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudEmojiSave.addEventListener('click', async () => {
-            const readAloudEmojiReplacements = normalizeReadAloudEmojiReplacements(pendingReadAloudEmojiReplacements);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudEmojiReplacements
-                });
-                closeCommentReadAloudEmojiModal();
-            } catch (error) {
-                setCommentFeedback(error.message || '絵文字変換設定の保存に失敗しました。');
-            }
-        });
-
-        commentReadAloudEmoteSave.addEventListener('click', async () => {
-            const readAloudEmoteReplacements = normalizeReadAloudEmoteReplacements(pendingReadAloudEmoteReplacements);
-
-            try {
-                await saveCommentSettings({
-                    ...currentSettings,
-                    readAloudEmoteReplacements
-                });
-                closeCommentReadAloudEmoteModal();
-            } catch (error) {
-                setCommentFeedback(error.message || 'エモート変換設定の保存に失敗しました。');
+        commentReadAloudFilterList.addEventListener('change', async (event) => {
+            if (event.target.matches('input[type="checkbox"]')) {
+                await saveCommentReadAloudTypeSettings();
             }
         });
 

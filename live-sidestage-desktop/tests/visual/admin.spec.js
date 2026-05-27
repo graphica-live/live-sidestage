@@ -58,20 +58,45 @@ test.describe('comments.html: モーダルが開ける', () => {
     });
 });
 
-// ── comments.html VOICE モーダル: モーダル外クリックで閉じない ────────────────
+// ── comments.html ✕ ボタンでモーダルが閉じる ─────────────────────────────────
 
-test.describe('comments.html: VOICE モーダルはモーダル外クリックで閉じない', () => {
-    test.beforeEach(async ({ page }) => {
-        await page.goto(`${BASE_URL}/db/comments.html`);
-        await waitForCommentsReady(page);
-        await page.click('#comment-read-aloud-voice-button');
-        await expect(page.locator('#comment-read-aloud-voice-modal')).toHaveClass(/is-open/);
-    });
+const MODAL_CONFIGS = [
+    { name: 'VOICE 設定',         openBtn: '#comment-read-aloud-voice-button',            modal: '#comment-read-aloud-voice-modal',            closeBtn: '#comment-read-aloud-voice-close' },
+    { name: 'ボイスマッピング',   openBtn: '#comment-read-aloud-voice-mapping-button',    modal: '#comment-read-aloud-voice-mapping-modal',    closeBtn: '#comment-read-aloud-voice-mapping-close' },
+    { name: '表示設定',           openBtn: '#comment-settings-button',                    modal: '#comment-settings-modal',                    closeBtn: '#comment-settings-close' },
+    { name: '読み上げ対象設定',   openBtn: '#comment-read-aloud-settings-button',         modal: '#comment-read-aloud-settings-modal',         closeBtn: '#comment-read-aloud-settings-close' },
+    { name: '読み上げフィルタ',   openBtn: '#comment-read-aloud-filter-button',           modal: '#comment-read-aloud-filter-modal',           closeBtn: '#comment-read-aloud-filter-close' },
+    { name: '読み上げ変換',       openBtn: '#comment-read-aloud-text-replacement-button', modal: '#comment-read-aloud-text-replacement-modal', closeBtn: '#comment-read-aloud-text-replacement-close' },
+    { name: '絵文字変換',         openBtn: '#comment-read-aloud-emoji-button',            modal: '#comment-read-aloud-emoji-modal',            closeBtn: '#comment-read-aloud-emoji-close' },
+    { name: 'エモート変換',       openBtn: '#comment-read-aloud-emote-button',            modal: '#comment-read-aloud-emote-modal',            closeBtn: '#comment-read-aloud-emote-close' },
+];
 
-    test('モーダルシェル（背景）クリックで閉じない', async ({ page }) => {
-        await page.locator('#comment-read-aloud-voice-modal').click({ position: { x: 5, y: 5 } });
-        await expect(page.locator('#comment-read-aloud-voice-modal')).toHaveClass(/is-open/);
-    });
+test.describe('comments.html: ✕ ボタンでモーダルが閉じる', () => {
+    for (const cfg of MODAL_CONFIGS) {
+        test(cfg.name, async ({ page }) => {
+            await page.goto(`${BASE_URL}/db/comments.html`);
+            await waitForCommentsReady(page);
+            await page.click(cfg.openBtn);
+            await expect(page.locator(cfg.modal)).toHaveClass(/is-open/);
+            await page.click(cfg.closeBtn);
+            await expect(page.locator(cfg.modal)).not.toHaveClass(/is-open/);
+        });
+    }
+});
+
+// ── comments.html モーダル外クリックで閉じない ────────────────────────────────
+
+test.describe('comments.html: モーダル外クリックで閉じない', () => {
+    for (const cfg of MODAL_CONFIGS) {
+        test(cfg.name, async ({ page }) => {
+            await page.goto(`${BASE_URL}/db/comments.html`);
+            await waitForCommentsReady(page);
+            await page.click(cfg.openBtn);
+            await expect(page.locator(cfg.modal)).toHaveClass(/is-open/);
+            await page.locator(cfg.modal).click({ position: { x: 5, y: 5 } });
+            await expect(page.locator(cfg.modal)).toHaveClass(/is-open/);
+        });
+    }
 });
 
 // ── quick-access.html スモークテスト ─────────────────────────────────────────
