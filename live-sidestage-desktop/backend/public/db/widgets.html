@@ -1008,6 +1008,7 @@
         }
 
         .push-pull-gift-name {
+            font: inherit;
             font-size: 13px;
             padding: 5px 8px;
             border: 1px solid var(--line);
@@ -1015,13 +1016,13 @@
             background: #fff;
             color: var(--text);
             width: 100%;
-            cursor: pointer;
-            white-space: nowrap;
+            cursor: text;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .push-pull-gift-name.empty { color: var(--muted); }
+        .push-pull-gift-name::placeholder { color: var(--muted); }
 
         .push-pull-points-input {
             width: 80px;
@@ -5097,7 +5098,9 @@
         const MAX_PUSH_PULL_GIFTS = 5;
         let pushPullPushGifts = [];
         let pushPullPullGifts = [];
-        let pushPullActivePicker = null; // {side, index, inputEl}
+        let pushPullActivePicker = null; // {side, index, anchorEl}
+        let pushPullActiveSuggestionIndex = -1;
+        let visiblePushPullSuggestions = [];
         let pushPullSaveTimer = null;
 
         function buildPushPullPreviewUrl() {
@@ -5140,15 +5143,40 @@
                 } else {
                     imgEl.textContent = '+';
                 }
-                imgEl.addEventListener('click', () => openPushPullPicker(side, i, nameEl));
-                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPushPullPicker(side, i, nameEl); } });
+                imgEl.addEventListener('click', () => nameEl.focus());
+                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nameEl.focus(); } });
 
-                const nameEl = document.createElement('button');
-                nameEl.type = 'button';
+                const nameEl = document.createElement('input');
+                nameEl.type = 'text';
                 nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
-                nameEl.textContent = gift ? gift.giftName : 'ギフトを選ぶ';
-                nameEl.title = 'ギフトを選ぶ';
-                nameEl.addEventListener('click', () => openPushPullPicker(side, i, nameEl));
+                nameEl.value = gift ? gift.giftName : '';
+                nameEl.placeholder = 'ギフトを選ぶ';
+                nameEl.autocomplete = 'off';
+                nameEl.maxLength = 80;
+                nameEl.addEventListener('focus', () => {
+                    if (!state.giftCatalog.length) return;
+                    pushPullActivePicker = { side, index: i, anchorEl: nameEl };
+                    renderPushPullSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('input', () => {
+                    if (!pushPullActivePicker) pushPullActivePicker = { side, index: i, anchorEl: nameEl };
+                    renderPushPullSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('keydown', (e) => {
+                    if (pushPullSuggestPanel.hidden) {
+                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); pushPullActivePicker = { side, index: i, anchorEl: nameEl }; renderPushPullSuggestItems(nameEl.value); }
+                        return;
+                    }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); updatePushPullActiveSuggestion(pushPullActiveSuggestionIndex + 1); }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); updatePushPullActiveSuggestion(pushPullActiveSuggestionIndex - 1); }
+                    else if (e.key === 'Enter') { e.preventDefault(); if (pushPullActiveSuggestionIndex >= 0 && visiblePushPullSuggestions[pushPullActiveSuggestionIndex]) selectPushPullGift(visiblePushPullSuggestions[pushPullActiveSuggestionIndex]); }
+                    else if (e.key === 'Escape') { closePushPullSuggestPanel(); }
+                });
+                nameEl.addEventListener('blur', () => {
+                    window.setTimeout(() => {
+                        if (!pushPullSuggestPanel.contains(document.activeElement)) closePushPullSuggestPanel();
+                    }, 100);
+                });
 
                 const pointsEl = document.createElement('input');
                 pointsEl.type = 'number';
@@ -5178,21 +5206,29 @@
             renderPushPullGiftRows('pull');
         }
 
-        function openPushPullPicker(side, index, anchorEl) {
-            const catalog = state.giftCatalog || [];
-            if (catalog.length === 0) { alert('ギフトカタログを取得できませんでした。TikTokに接続してからお試しください。'); return; }
+        function getFilteredPushPullSuggestions(query) {
+            const catalog = (state.giftCatalog || []).filter((g) => g.imageUrl);
+            const normalizedQuery = String(query || '').trim().toLowerCase();
+            if (!normalizedQuery) return catalog;
+            const coinFilter = parseCoinFilter(normalizedQuery);
+            if (coinFilter) return catalog.filter((g) => Number.isFinite(g.diamondCount) && coinFilter(g.diamondCount));
+            return catalog.filter((g) => String(g.name || '').toLowerCase().includes(normalizedQuery));
+        }
 
-            pushPullActivePicker = { side, index, anchorEl };
+        function renderPushPullSuggestItems(query) {
+            if (!pushPullActivePicker) return;
+            const { side, index, anchorEl } = pushPullActivePicker;
             const gifts = side === 'push' ? pushPullPushGifts : pushPullPullGifts;
             const current = gifts[index];
-
-            const filteredCatalog = catalog.filter((g) => g.imageUrl);
-
+            visiblePushPullSuggestions = getFilteredPushPullSuggestions(query).slice(0, 80);
+            if (!visiblePushPullSuggestions.length) { closePushPullSuggestPanel(); return; }
+            pushPullActiveSuggestionIndex = 0;
             pushPullSuggestPanel.innerHTML = '';
-            for (const gift of filteredCatalog.slice(0, 80)) {
+            for (const [idx, gift] of visiblePushPullSuggestions.entries()) {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'push-pull-suggest-item' + (current && current.giftId === String(gift.id || '') ? ' is-active' : '');
+                const isCurrentGift = current && current.giftId === String(gift.id || '');
+                btn.className = 'push-pull-suggest-item' + (isCurrentGift || idx === 0 ? ' is-active' : '');
                 const img = document.createElement('img');
                 img.src = gift.imageUrl;
                 img.className = 'push-pull-suggest-img';
@@ -5206,12 +5242,29 @@
                 btn.appendChild(img);
                 btn.appendChild(nameSpan);
                 btn.appendChild(costSpan);
+                btn.addEventListener('mousedown', (e) => e.preventDefault());
                 btn.addEventListener('click', () => selectPushPullGift(gift));
                 pushPullSuggestPanel.appendChild(btn);
             }
-
+            if (current) {
+                const activeIdx = visiblePushPullSuggestions.findIndex((g) => String(g.id || '') === current.giftId);
+                if (activeIdx >= 0) {
+                    pushPullActiveSuggestionIndex = activeIdx;
+                    const items = pushPullSuggestPanel.querySelectorAll('.push-pull-suggest-item');
+                    items.forEach((btn, i) => btn.classList.toggle('is-active', i === activeIdx));
+                }
+            }
             pushPullSuggestPanel.hidden = false;
             positionPushPullSuggestPanel(anchorEl);
+        }
+
+        function updatePushPullActiveSuggestion(nextIndex) {
+            const items = [...pushPullSuggestPanel.querySelectorAll('.push-pull-suggest-item')];
+            if (!items.length) return;
+            const clampedIndex = Math.max(0, Math.min(nextIndex, items.length - 1));
+            items.forEach((btn, i) => btn.classList.toggle('is-active', i === clampedIndex));
+            pushPullActiveSuggestionIndex = clampedIndex;
+            items[clampedIndex]?.scrollIntoView({ block: 'nearest' });
         }
 
         function positionPushPullSuggestPanel(anchorEl) {
@@ -5244,6 +5297,8 @@
         function closePushPullSuggestPanel() {
             pushPullSuggestPanel.hidden = true;
             pushPullActivePicker = null;
+            pushPullActiveSuggestionIndex = -1;
+            visiblePushPullSuggestions = [];
         }
 
         function schedulePushPullSave() {
