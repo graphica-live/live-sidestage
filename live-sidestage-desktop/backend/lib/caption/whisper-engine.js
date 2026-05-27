@@ -6,17 +6,23 @@ const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 
 const WHISPER_MODELS = {
-    small:  { name: 'ggml-small.bin',  size: 244000000, label: 'Small  (~244MB)' },
-    medium: { name: 'ggml-medium.bin', size: 769000000, label: 'Medium (~769MB)' },
-    large:  { name: 'ggml-large-v3-turbo.bin', size: 874000000, label: 'Large-v3-turbo (~874MB)' },
+    tiny:      { name: 'ggml-tiny.bin',           size:  75000000, label: 'Tiny  (~75MB)' },
+    base:      { name: 'ggml-base.bin',            size: 142000000, label: 'Base  (~142MB)' },
+    small:     { name: 'ggml-small.bin',           size: 244000000, label: 'Small  (~244MB)' },
+    medium:    { name: 'ggml-medium.bin',          size: 769000000, label: 'Medium (~769MB)' },
+    large:     { name: 'ggml-large-v3-turbo.bin',  size: 874000000, label: 'Large-v3-turbo (~874MB)' },
+    'large-v3':{ name: 'ggml-large-v3.bin',        size: 3100000000, label: 'Large-v3 (~3.1GB)' },
 };
 
 // HuggingFace model URLs (ggerganov/whisper.cpp repo)
 const HF_BASE = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
 const MODEL_URLS = {
-    small:  HF_BASE + 'ggml-small.bin',
-    medium: HF_BASE + 'ggml-medium.bin',
-    large:  HF_BASE + 'ggml-large-v3-turbo.bin',
+    tiny:      HF_BASE + 'ggml-tiny.bin',
+    base:      HF_BASE + 'ggml-base.bin',
+    small:     HF_BASE + 'ggml-small.bin',
+    medium:    HF_BASE + 'ggml-medium.bin',
+    large:     HF_BASE + 'ggml-large-v3-turbo.bin',
+    'large-v3':HF_BASE + 'ggml-large-v3.bin',
 };
 
 class WhisperEngine extends EventEmitter {
@@ -98,6 +104,11 @@ class WhisperEngine extends EventEmitter {
     feedAudio(buf) {
         if (!this._running) return;
         this._audioBufs.push(Buffer.isBuffer(buf) ? buf : Buffer.from(buf));
+        // Drop oldest audio if buffering while flush is blocked (prevents unbounded growth)
+        const MAX_BYTES = 16000 * 2 * 6;
+        while (this._audioBufs.reduce((s, b) => s + b.byteLength, 0) > MAX_BYTES * 2) {
+            this._audioBufs.shift();
+        }
     }
 
     // ── Private: flush & transcribe ─────────────────────────────────────────
@@ -105,8 +116,10 @@ class WhisperEngine extends EventEmitter {
     async _flush() {
         if (!this._running || this._audioBufs.length === 0 || this._busy) return;
 
+        const MAX_BYTES = 16000 * 2 * 6; // 6s max at 16kHz int16 — prevents cascade delay
         const chunks = this._audioBufs.splice(0);
-        const pcm = Buffer.concat(chunks);
+        let pcm = Buffer.concat(chunks);
+        if (pcm.length > MAX_BYTES) pcm = pcm.slice(pcm.length - MAX_BYTES);
 
         // Silence gate — 0.015 prevents noise hallucination (whisper outputs English junk on near-silence)
         const i16 = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length >> 1);
