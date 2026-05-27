@@ -1,0 +1,17 @@
+#!/bin/bash
+# pre-commit: モーダルテスト同期 → playwright 実行
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# admin HTML が staged にある場合、不足テストを自動追加
+CHANGED_HTML=$(git diff --cached --name-only | grep -E '^backend/public/db/.+\.html$' || true)
+if [ -n "$CHANGED_HTML" ]; then
+    echo "[pre-commit] admin HTML 変更検出 → モーダルテスト同期中..."
+    node "$ROOT/scripts/sync-modal-tests.js"
+fi
+
+# playwright admin テストを実行
+echo "[pre-commit] playwright admin テスト実行中..."
+cd "$ROOT"
+npx playwright test tests/visual/admin.spec.js --reporter=line
