@@ -120,6 +120,29 @@
             font-size: 12px;
             padding: 5px 10px;
         }
+
+        .hero {
+            display: grid;
+            gap: 6px;
+            padding: 18px 20px 16px;
+        }
+
+        .eyebrow {
+            width: fit-content;
+            padding: 4px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.7);
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .hero h1 {
+            font-size: 24px;
+            line-height: 1.1;
+        }
     </style>
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
@@ -128,6 +151,11 @@
 </head>
 <body data-admin-settings-root="true">
     <main class="layout">
+        <div class="panel hero">
+            <div class="eyebrow">Quick Access</div>
+            <h1>よく触る設定だけを先頭に出す</h1>
+        </div>
+
         <div class="panel">
             <!-- 読み上げ -->
             <div class="ctrl-row">
