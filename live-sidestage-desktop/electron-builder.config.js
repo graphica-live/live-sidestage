@@ -4,6 +4,7 @@ const DEFAULT_AUTO_UPDATE_URL = 'https://update.graphica-produce.com/tikeffect/w
 const updateUrl = (process.env.TIKEFFECT_AUTO_UPDATE_URL || DEFAULT_AUTO_UPDATE_URL).trim().replace(/\/+$/u, '');
 
 const config = {
+    buildDependenciesFromSource: true,
     appId: 'com.tikeffect',
     productName: 'TikEffect',
     copyright: 'Copyright © 2025',
