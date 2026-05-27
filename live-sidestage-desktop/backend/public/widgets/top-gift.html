@@ -263,69 +263,22 @@
         }
 
         @keyframes topGiftSenderGlow {
-            0%,
-            100% {
-                filter: brightness(1) drop-shadow(0 0 0 rgba(255, 248, 196, 0));
-                text-shadow:
-                    0 6px 18px rgba(15, 23, 42, 0.52),
-                    0 0 0 rgba(255, 244, 180, 0);
-            }
-
-            50% {
-                filter: brightness(1.18) drop-shadow(0 0 12px rgba(255, 244, 180, 0.5));
-                text-shadow:
-                    0 6px 18px rgba(15, 23, 42, 0.52),
-                    0 0 14px rgba(255, 244, 180, 0.72),
-                    0 0 28px rgba(255, 214, 102, 0.46);
-            }
+            0%, 100% { opacity: 0.75; }
+            50% { opacity: 1; }
         }
 
         /* Metallic ambient glow effect (glow) */
+        /* drop-shadow は静的（値を変えない）→ 初回のみ repaint、その後は opacity を GPU で合成 */
         .gift-stage.has-metallic-glow .gift-image {
-            animation: topGiftMetallicGlow 2.6s ease-in-out infinite;
+            filter: drop-shadow(0 0 8px rgba(255, 218, 80, 0.72))
+                    drop-shadow(0 0 22px rgba(220, 180, 40, 0.42));
+            animation: topGiftMetallicBreath 2.6s ease-in-out infinite;
+            will-change: opacity;
         }
 
-        .gift-stage.has-metallic-glow:not(.is-celebrating)::before {
-            content: '';
-            position: absolute;
-            inset: 6% 10% 12%;
-            border-radius: 50%;
-            background: radial-gradient(
-                ellipse at 50% 40%,
-                rgba(255, 228, 110, 0.24) 0%,
-                rgba(255, 196, 50, 0.10) 52%,
-                transparent 74%
-            );
-            animation: topGiftMetallicAura 2.6s ease-in-out infinite;
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        @keyframes topGiftMetallicGlow {
-            0%, 100% {
-                filter: drop-shadow(0 0 6px rgba(255, 218, 80, 0.55))
-                        drop-shadow(0 0 16px rgba(220, 180, 40, 0.30))
-                        brightness(1);
-            }
-
-            50% {
-                filter: drop-shadow(0 0 14px rgba(255, 238, 140, 0.92))
-                        drop-shadow(0 0 32px rgba(255, 205, 55, 0.62))
-                        drop-shadow(0 0 52px rgba(200, 162, 30, 0.36))
-                        brightness(1.14);
-            }
-        }
-
-        @keyframes topGiftMetallicAura {
-            0%, 100% {
-                opacity: 0.55;
-                transform: scale(0.94);
-            }
-
-            50% {
-                opacity: 1;
-                transform: scale(1.06);
-            }
+        @keyframes topGiftMetallicBreath {
+            0%, 100% { opacity: 0.78; }
+            50%       { opacity: 1;    }
         }
 
         .gift-image {
