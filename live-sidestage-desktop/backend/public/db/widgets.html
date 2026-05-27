@@ -130,6 +130,13 @@
             gap: 18px;
         }
 
+        .jar-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            grid-column: 1 / -1;
+        }
+
         .card {
             border: 1px solid rgba(24, 37, 58, 0.22);
             border-radius: 14px;
@@ -138,6 +145,7 @@
             padding: 20px;
             display: grid;
             gap: 14px;
+            align-content: start;
         }
 
         .card-head {
@@ -1483,6 +1491,7 @@
                     </div>
                 </article>
 
+                <div class="jar-pair">
                 <article class="card">
                     <div class="card-head">
                         <div>
@@ -1649,6 +1658,7 @@
                         </div>
                     </div>
                 </article>
+                </div><!-- /jar-pair -->
 
                 <article class="card">
                     <div class="card-head">
