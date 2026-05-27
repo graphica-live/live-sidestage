@@ -175,6 +175,16 @@
             text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
         }
 
+        .net-score {
+            display: none;
+            text-align: center;
+            margin-top: 6px;
+            font-size: 34px;
+            font-weight: 900;
+            line-height: 1;
+            transition: color 0.4s ease;
+        }
+
         /* ── animations ── */
         @keyframes pulse-push {
             0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.55); }
@@ -214,6 +224,7 @@
                     <div class="meter-fill-pull" id="meter-pull" style="width:50%"></div>
                     <div class="meter-center-line"></div>
                 </div>
+                <div class="net-score" id="net-score"></div>
             </div>
             <div class="side pull-side">
                 <div class="side-points" id="pull-points">0</div>
@@ -259,6 +270,7 @@
         const giftsRow       = document.getElementById('gifts-row');
         const pushGiftsPanel = document.getElementById('push-gifts-panel');
         const pullGiftsPanel = document.getElementById('pull-gifts-panel');
+        const netScoreEl     = document.getElementById('net-score');
 
         let lastPushPoints = -1;
         let lastPullPoints = -1;
@@ -352,10 +364,19 @@
             const pullChanged = pull !== lastPullPoints;
 
             if (data.scoreMode === 'relative') {
+                pushPointsEl.style.display = 'none';
+                pullPointsEl.style.display = 'none';
+                netScoreEl.style.display = 'block';
                 const net = push - pull;
-                pushPointsEl.textContent = (net > 0 ? '+' : '') + net.toLocaleString('ja-JP');
-                pullPointsEl.textContent = (net < 0 ? '+' : '') + (-net).toLocaleString('ja-JP');
+                netScoreEl.textContent = (net > 0 ? '+' : '') + net.toLocaleString('ja-JP');
+                netScoreEl.style.color = net > 0 ? '#f87171' : net < 0 ? '#60a5fa' : '#ffffff';
+                netScoreEl.style.textShadow = net > 0
+                    ? '0 0 20px rgba(248,113,113,0.55)'
+                    : net < 0 ? '0 0 20px rgba(96,165,250,0.55)' : 'none';
             } else {
+                pushPointsEl.style.display = '';
+                pullPointsEl.style.display = '';
+                netScoreEl.style.display = 'none';
                 pushPointsEl.textContent = push.toLocaleString('ja-JP');
                 pullPointsEl.textContent = pull.toLocaleString('ja-JP');
             }
@@ -370,12 +391,13 @@
             meterPull.style.width = pullPct.toFixed(3) + '%';
 
             if (lastPushPoints >= 0 || lastPullPoints >= 0) {
+                const relative = data.scoreMode === 'relative';
                 if (pushChanged && push > lastPushPoints) {
                     triggerPulse('push');
-                    triggerPop(pushPointsEl);
+                    triggerPop(relative ? netScoreEl : pushPointsEl);
                 } else if (pullChanged && pull > lastPullPoints) {
                     triggerPulse('pull');
-                    triggerPop(pullPointsEl);
+                    triggerPop(relative ? netScoreEl : pullPointsEl);
                 }
             }
 
