@@ -405,18 +405,18 @@
         };
 
         socket.on('widgets:push-pull:snapshot', (data) => {
-            updateMeter(sampleMode ? sampleData : data);
+            updateMeter(data);
         });
 
         socket.on('widgets:push-pull:updated', (data) => {
-            if (!sampleMode) updateMeter(data);
+            updateMeter(data);
         });
 
         async function refresh() {
             try {
                 const res  = await fetch('/api/widgets/push-pull/snapshot');
                 const data = await res.json();
-                updateMeter(sampleMode ? sampleData : data);
+                updateMeter(data);
             } catch {}
         }
 
