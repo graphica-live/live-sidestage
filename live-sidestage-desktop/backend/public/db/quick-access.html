@@ -257,14 +257,12 @@
         <section class="panel hero">
             <div class="eyebrow">Quick Access</div>
             <h1>よく触る設定だけを先頭に出す</h1>
-            <p class="subtext">起動直後に必要な操作だけをまとめています。まずはコメント読み上げの ON/OFF をここから切り替えられるようにしています。</p>
         </section>
 
         <section class="panel quick-card">
             <div class="quick-card-head">
                 <div class="quick-card-copy">
                     <h2>コメント読み上げ</h2>
-                    <p class="subtext">コメント欄の詳細設定を開かなくても、screen1 への読み上げをすぐに切り替えます。</p>
                 </div>
             </div>
 
@@ -279,17 +277,12 @@
                 <button type="button" class="ghost-button" id="open-comments-button">コメント欄を開く</button>
             </div>
 
-            <div class="quick-meta">
-                <p id="read-aloud-summary">設定を読み込み中です。</p>
-                <div class="status" id="feedback-message">コメント設定を確認しています。</div>
-            </div>
         </section>
 
         <section class="panel quick-card">
             <div class="quick-card-head">
                 <div class="quick-card-copy">
                     <h2>エフェクト制御</h2>
-                    <p class="subtext">チェックを入れると全エフェクト再生を停止します。外すと再開します。</p>
                 </div>
                 <div class="state-chip" id="effects-pause-chip">再生中</div>
             </div>
@@ -303,9 +296,26 @@
                 </div>
             </div>
 
-            <div class="quick-meta">
-                <div class="status" id="effects-feedback-message">エフェクト状態を確認しています。</div>
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>字幕</h2>
+                </div>
+                <div class="state-chip" id="caption-state-chip">停止中</div>
             </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label">
+                        <input type="checkbox" id="caption-checkbox">
+                        字幕 ON
+                    </label>
+                </div>
+                <button type="button" class="ghost-button" id="open-widgets-caption-button">字幕設定を開く</button>
+            </div>
+
         </section>
     </main>
 
@@ -314,32 +324,15 @@
         const readAloudCheckbox = document.getElementById('read-aloud-checkbox');
         const resetRandomVoiceButton = document.getElementById('reset-random-voice-button');
         const openCommentsButton = document.getElementById('open-comments-button');
-        const readAloudSummary = document.getElementById('read-aloud-summary');
-        const feedbackMessage = document.getElementById('feedback-message');
         const effectsPauseCheckbox = document.getElementById('effects-pause-checkbox');
         const effectsPauseChip = document.getElementById('effects-pause-chip');
-        const effectsFeedbackMessage = document.getElementById('effects-feedback-message');
 
         let currentSettings = null;
         let updatingReadAloud = false;
         let updatingEffectsPause = false;
 
-        function setFeedback(message, isError = false) {
-            feedbackMessage.textContent = message || '準備完了';
-            feedbackMessage.classList.toggle('is-error', isError);
-        }
-
-        function setEffectsFeedback(message, isError = false) {
-            effectsFeedbackMessage.textContent = message || '準備完了';
-            effectsFeedbackMessage.classList.toggle('is-error', isError);
-        }
-
         function syncReadAloudUi() {
-            const isEnabled = currentSettings?.readAloudEnabled === true;
-            readAloudCheckbox.checked = isEnabled;
-            readAloudSummary.textContent = isEnabled
-                ? '現在はコメント読み上げが有効です。'
-                : '現在はコメント読み上げが停止しています。';
+            readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
         }
 
         function syncEffectsPauseUi(paused) {
@@ -358,7 +351,6 @@
             const payload = await response.json();
             currentSettings = payload?.settings || {};
             syncReadAloudUi();
-            setFeedback('クイックアクセスからコメント読み上げを切り替えられます。');
         }
 
         async function saveCommentConfig(nextSettings) {
@@ -414,10 +406,8 @@
                 }
 
                 await saveCommentConfig({ ...currentSettings, readAloudEnabled: nextEnabled });
-                setFeedback(nextEnabled ? 'コメント読み上げを ON にしました。' : 'コメント読み上げを OFF にしました。');
             } catch (error) {
                 readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
-                setFeedback(error?.message || 'コメント読み上げの切り替えに失敗しました。', true);
             } finally {
                 updatingReadAloud = false;
             }
@@ -433,10 +423,7 @@
                     throw new Error('ランダムボイスのリセットに失敗しました。');
                 }
 
-                const payload = await response.json();
-                setFeedback(`ランダムボイスをリセットしました（${payload.clearedCount ?? 0} 件）。`);
             } catch (error) {
-                setFeedback(error?.message || 'ランダムボイスのリセットに失敗しました。', true);
             } finally {
                 resetRandomVoiceButton.disabled = false;
             }
@@ -463,10 +450,8 @@
 
                 const payload = await response.json();
                 syncEffectsPauseUi(payload.paused === true);
-                setEffectsFeedback(payload.paused ? '全エフェクトを停止しました。' : '全エフェクトの再生を再開しました。');
             } catch (error) {
                 effectsPauseCheckbox.checked = !nextPaused;
-                setEffectsFeedback(error?.message || 'エフェクト停止の切り替えに失敗しました。', true);
             } finally {
                 updatingEffectsPause = false;
             }
@@ -485,13 +470,121 @@
             syncEffectsPauseUi(payload?.paused === true);
         });
 
-        loadCommentConfig().catch((error) => {
-            setFeedback(error?.message || 'コメント設定の取得に失敗しました。', true);
+        loadCommentConfig().catch(() => {});
+        loadEffectsGlobalPause().catch(() => {});
+
+        // ── 字幕 ──────────────────────────────────────────────────────────────
+
+        const captionCheckbox        = document.getElementById('caption-checkbox');
+        const captionStateChip       = document.getElementById('caption-state-chip');
+        const openWidgetsCaptionBtn  = document.getElementById('open-widgets-caption-button');
+
+        let captionSettings  = null;
+        let asrEngine        = null;
+        let asrProcessor     = null;
+        let asrStream        = null;
+        let asrAudioCtx      = null;
+        let updatingCaption  = false;
+
+        function syncCaptionUi(running) {
+            captionCheckbox.checked = running;
+            captionStateChip.textContent = running ? '認識中' : '停止中';
+            captionStateChip.classList.toggle('is-on', running);
+        }
+
+        async function loadCaptionConfig() {
+            const res = await fetch('/api/widgets/caption/config');
+            if (!res.ok) throw new Error('字幕設定の取得に失敗しました。');
+            const p = await res.json();
+            captionSettings = p?.settings || {};
+        }
+
+        async function startCaption() {
+            if (!captionSettings) await loadCaptionConfig();
+            const engine   = captionSettings?.recognitionEngine || 'whisper-cpp';
+            const modelKey = captionSettings?.whisperModel || 'medium';
+
+            asrStream   = await navigator.mediaDevices.getUserMedia({ audio: true });
+            asrAudioCtx = new AudioContext();
+            await asrAudioCtx.resume();
+
+            const ctxRate  = asrAudioCtx.sampleRate;
+            const chunkSec = captionSettings?.audioChunkSec || 0.15;
+            const bufSizes = [256, 512, 1024, 2048, 4096, 8192, 16384];
+            const idealBuf = chunkSec * ctxRate;
+            const bufSize  = bufSizes.reduce((b, s) => Math.abs(s - idealBuf) < Math.abs(b - idealBuf) ? s : b);
+            const source   = asrAudioCtx.createMediaStreamSource(asrStream);
+            asrProcessor   = asrAudioCtx.createScriptProcessor(bufSize, 1, 1);
+            source.connect(asrProcessor);
+            asrProcessor.connect(asrAudioCtx.destination);
+            asrEngine = engine;
+
+            asrProcessor.onaudioprocess = (evt) => {
+                if (!asrEngine) return;
+                const f32   = evt.inputBuffer.getChannelData(0);
+                const ratio  = ctxRate / 16000;
+                const outLen = Math.floor(f32.length / ratio);
+                const i16    = new Int16Array(outLen);
+                for (let i = 0; i < outLen; i++) {
+                    i16[i] = Math.max(-32768, Math.min(32767, f32[Math.floor(i * ratio)] * 32768));
+                }
+                socket.emit('caption:audio-chunk', i16.buffer, engine);
+            };
+
+            socket.emit('caption:start-asr', { engine, modelKey });
+        }
+
+        function stopCaption() {
+            const engine = asrEngine;
+            asrEngine = null;
+            if (asrProcessor) { try { asrProcessor.disconnect(); } catch {} asrProcessor = null; }
+            if (asrStream)    { asrStream.getTracks().forEach(t => t.stop()); asrStream = null; }
+            if (asrAudioCtx)  { try { asrAudioCtx.close(); } catch {} asrAudioCtx = null; }
+            if (engine) socket.emit('caption:stop-asr', { engine });
+        }
+
+        captionCheckbox.addEventListener('change', async () => {
+            if (updatingCaption) { captionCheckbox.checked = !captionCheckbox.checked; return; }
+            updatingCaption = true;
+            const next = captionCheckbox.checked;
+            try {
+                if (next) {
+                    await startCaption();
+                    syncCaptionUi(true);
+                } else {
+                    stopCaption();
+                    syncCaptionUi(false);
+                }
+                localStorage.setItem('caption-auto-start', next ? 'true' : 'false');
+            } catch (err) {
+                stopCaption();
+                syncCaptionUi(false);
+            } finally {
+                updatingCaption = false;
+            }
         });
 
-        loadEffectsGlobalPause().catch((error) => {
-            setEffectsFeedback(error?.message || 'エフェクト状態の取得に失敗しました。', true);
+        // widgets画面など外部からエンジンが停止された場合に同期
+        socket.on('widgets:caption:status', (p) => {
+            const msg = p?.message || '';
+            if ((msg.includes('停止') || p?.error) && captionCheckbox.checked) {
+                stopCaption();
+                syncCaptionUi(false);
+            } else if (msg.includes('認識中') && !captionCheckbox.checked) {
+                syncCaptionUi(true);
+            }
         });
+
+        openWidgetsCaptionBtn.addEventListener('click', () => {
+            window.open('/widgets', 'widgets-window', 'width=1280,height=940,resizable=yes,scrollbars=yes');
+        });
+
+        loadCaptionConfig().then(() => {
+            if (localStorage.getItem('caption-auto-start') === 'true') {
+                captionCheckbox.checked = true;
+                captionCheckbox.dispatchEvent(new Event('change'));
+            }
+        }).catch(() => {});
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>
