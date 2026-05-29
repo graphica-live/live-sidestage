@@ -1123,7 +1123,11 @@
 
         setCurrentRoute('/quick-access');
 
-        refreshState().catch(() => {
+        refreshState().then(() => {
+            if (!currentBroadcasterId) {
+                openBroadcasterEditModal();
+            }
+        }).catch(() => {
             syncUi();
             setCurrentRoute('/quick-access');
         });

@@ -1514,9 +1514,6 @@ function buildWidgetUrls(req) {
 }
 
 app.get('/', (req, res) => {
-    if (!hasConfiguredBroadcasterId()) {
-        return res.redirect('/setup');
-    }
     return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'home.html'));
 });
 
