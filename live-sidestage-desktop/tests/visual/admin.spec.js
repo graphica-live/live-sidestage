@@ -103,3 +103,25 @@ test.describe('quick-access.html: 初期状態', () => {
         await expect(page.locator('#reset-random-voice-button')).toBeEnabled();
     });
 });
+
+// ── effects.html モーダル開閉テスト (自動生成) ──────────────────────────
+test.describe('effects.html: モーダルが開ける', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/effects.html`);
+    await page.waitForLoadState('networkidle');
+    });
+
+    test('event-modal', async ({ page }) => {
+        await page.click('#add-event-button');
+        await expect(page.locator('#event-modal')).toHaveClass(/is-open/);
+    });
+
+    test('trigger-modal', async ({ page }) => {
+        await page.click('#add-trigger-button');
+        await expect(page.locator('#trigger-modal')).toHaveClass(/is-open/);
+    });
+
+    test('confirm-dialog', async ({ page }) => {
+        await expect(page.locator('#confirm-dialog')).toHaveAttribute('aria-hidden', 'true');
+    });
+});

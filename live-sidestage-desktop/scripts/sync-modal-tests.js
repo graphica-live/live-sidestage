@@ -34,11 +34,11 @@ function getModalIds(htmlFile) {
 
 function getTestedModalIds(specContent) {
     const ids = [];
-    // '#some-modal' パターンを検索
+    // '#some-id' パターンをすべて収集（modal-shell IDと比較するため絞り込まない）
     const re = /'(#[^']+)'/g;
     let m;
     while ((m = re.exec(specContent)) !== null) {
-        if (m[1].endsWith('-modal') || m[1].includes('-modal')) ids.push(m[1].slice(1));
+        ids.push(m[1].slice(1));
     }
     return [...new Set(ids)];
 }

@@ -1911,15 +1911,10 @@
 
         function positionGiftSuggestionPanel() {
             const rect = triggerModalGiftName.getBoundingClientRect();
-            const panelHeight = 260;
-            const spaceBelow = window.innerHeight - rect.bottom - 8;
-            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
-                triggerGiftSuggestionPanel.style.top = `${rect.bottom + 6}px`;
-                triggerGiftSuggestionPanel.style.bottom = '';
-            } else {
-                triggerGiftSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-                triggerGiftSuggestionPanel.style.top = '';
-            }
+            const spaceAbove = rect.top - 8;
+            triggerGiftSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+            triggerGiftSuggestionPanel.style.top = '';
+            triggerGiftSuggestionPanel.style.maxHeight = `${Math.min(260, spaceAbove)}px`;
             triggerGiftSuggestionPanel.style.left = `${rect.left}px`;
             triggerGiftSuggestionPanel.style.width = `${rect.width}px`;
         }
@@ -2041,15 +2036,10 @@
 
         function positionEventSuggestionPanel() {
             const rect = triggerModalEvent.getBoundingClientRect();
-            const panelHeight = 260;
-            const spaceBelow = window.innerHeight - rect.bottom - 8;
-            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
-                triggerEventSuggestionPanel.style.top = `${rect.bottom + 6}px`;
-                triggerEventSuggestionPanel.style.bottom = '';
-            } else {
-                triggerEventSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-                triggerEventSuggestionPanel.style.top = '';
-            }
+            const spaceAbove = rect.top - 8;
+            triggerEventSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+            triggerEventSuggestionPanel.style.top = '';
+            triggerEventSuggestionPanel.style.maxHeight = `${Math.min(260, spaceAbove)}px`;
             triggerEventSuggestionPanel.style.left = `${rect.left}px`;
             triggerEventSuggestionPanel.style.width = `${rect.width}px`;
         }
@@ -2126,15 +2116,10 @@
 
         function positionUserSuggestionPanel() {
             const rect = triggerModalUserIds.getBoundingClientRect();
-            const panelHeight = 260;
-            const spaceBelow = window.innerHeight - rect.bottom - 8;
-            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
-                triggerUserSuggestionPanel.style.top = `${rect.bottom + 6}px`;
-                triggerUserSuggestionPanel.style.bottom = '';
-            } else {
-                triggerUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-                triggerUserSuggestionPanel.style.top = '';
-            }
+            const spaceAbove = rect.top - 8;
+            triggerUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+            triggerUserSuggestionPanel.style.top = '';
+            triggerUserSuggestionPanel.style.maxHeight = `${Math.min(260, spaceAbove)}px`;
             triggerUserSuggestionPanel.style.left = `${rect.left}px`;
             triggerUserSuggestionPanel.style.width = `${rect.width}px`;
         }
