@@ -13,6 +13,7 @@ const { renderContributorsOverlayHtml } = require('../overlays/contributors/rend
 const { WhisperEngine, WHISPER_MODELS } = require('./lib/caption/whisper-engine');
 const { SherpaEngine } = require('./lib/caption/sherpa-engine');
 const { CaptionCorrector } = require('./lib/caption/caption-corrector');
+const tiktokState = require('./lib/tiktok-state');
 
 const APP_NAME = 'TikEffect';
 const APP_VERSION = require('../package.json').version;
@@ -222,17 +223,9 @@ const LEGACY_VIDEO_ROOT_DIRECTORY = path.join(LEGACY_EFFECT_BASE_DIRECTORY, 'vid
 const LEGACY_SOUND_ROOT_DIRECTORY = path.join(LEGACY_EFFECT_BASE_DIRECTORY, 'sound');
 
 let currentBroadcasterId = null;
-let tiktokLiveConnection = null;
 let pendingUpdateInfo = null;
 function getPendingUpdateInfo() { return pendingUpdateInfo; }
 function setPendingUpdateInfo(val) { pendingUpdateInfo = val; }
-let activeTikTokUsername = null;
-let cachedTikTokGiftCatalog = {
-    broadcasterId: null,
-    fetchedAt: 0,
-    gifts: []
-};
-let activeTikTokGiftCatalogPromise = null;
 const GIFT_JAR_HISTORY_LIMIT = 150;
 const giftJarHistory = [];
 let giftJarLastPositions = null;
@@ -286,19 +279,6 @@ const pushPullConfig = {
 let pushPullState = {
     pushPoints: 0,
     pullPoints: 0,
-};
-let tiktokConnectionState = {
-    status: 'idle',
-    message: 'TikTok接続はまだ開始していません。',
-    transportMethod: 'unknown',
-    websocketReasonCode: null,
-    websocketReasonLabel: null,
-    websocketReasonDetail: null,
-    retryScheduled: false,
-    retryReason: null,
-    retryDelayMs: null,
-    broadcasterId: null,
-    updatedAt: new Date().toISOString()
 };
 
 const app = express();
@@ -5548,7 +5528,7 @@ function setTikTokConnectionState(status, message, options = {}) {
         broadcasterId: getBroadcasterId(),
         updatedAt: new Date().toISOString()
     };
-    const previousState = tiktokConnectionState;
+    const previousState = tiktokState.connectionState;
 
     if (
         previousState
@@ -5563,21 +5543,21 @@ function setTikTokConnectionState(status, message, options = {}) {
         && previousState.retryDelayMs === nextState.retryDelayMs
         && previousState.broadcasterId === nextState.broadcasterId
     ) {
-        return tiktokConnectionState;
+        return tiktokState.connectionState;
     }
 
-    tiktokConnectionState = nextState;
+    tiktokState.connectionState = nextState;
 
     if (httpServer.listening) {
         emitAdminDayUpdate(getDisplayDayKey());
     }
 
-    return tiktokConnectionState;
+    return tiktokState.connectionState;
 }
 
 function getTikTokConnectionState() {
     return {
-        ...tiktokConnectionState,
+        ...tiktokState.connectionState,
         broadcasterId: getBroadcasterId()
     };
 }
@@ -6278,21 +6258,21 @@ async function fetchTikTokGiftCatalog(options = {}) {
     const now = Date.now();
 
     if (!forceRefresh
-        && cachedTikTokGiftCatalog.broadcasterId === broadcasterId
-        && Array.isArray(cachedTikTokGiftCatalog.gifts)
-        && cachedTikTokGiftCatalog.gifts.length > 0
-        && now - cachedTikTokGiftCatalog.fetchedAt < TIKTOK_GIFT_CACHE_TTL_MS) {
-        return cachedTikTokGiftCatalog.gifts;
+        && tiktokState.giftCatalog.broadcasterId === broadcasterId
+        && Array.isArray(tiktokState.giftCatalog.gifts)
+        && tiktokState.giftCatalog.gifts.length > 0
+        && now - tiktokState.giftCatalog.fetchedAt < TIKTOK_GIFT_CACHE_TTL_MS) {
+        return tiktokState.giftCatalog.gifts;
     }
 
-    if (activeTikTokGiftCatalogPromise && !forceRefresh) {
-        return activeTikTokGiftCatalogPromise;
+    if (tiktokState.giftCatalogPromise && !forceRefresh) {
+        return tiktokState.giftCatalogPromise;
     }
 
-    activeTikTokGiftCatalogPromise = (async () => {
-        const shouldReuseConnection = tiktokLiveConnection && activeTikTokUsername === broadcasterId;
+    tiktokState.giftCatalogPromise = (async () => {
+        const shouldReuseConnection = tiktokState.liveConnection && tiktokState.activeUsername === broadcasterId;
         const connection = shouldReuseConnection
-            ? tiktokLiveConnection
+            ? tiktokState.liveConnection
             : new WebcastPushConnection(broadcasterId, buildTikTokGiftCatalogConnectionOptions());
         const observedGiftNamesById = buildObservedGiftNameMap(broadcasterId);
 
@@ -6301,7 +6281,7 @@ async function fetchTikTokGiftCatalog(options = {}) {
                 observedGiftNamesById
             });
 
-            cachedTikTokGiftCatalog = {
+            tiktokState.giftCatalog = {
                 broadcasterId,
                 fetchedAt: Date.now(),
                 gifts
@@ -6313,11 +6293,11 @@ async function fetchTikTokGiftCatalog(options = {}) {
                 await connection.disconnect().catch(() => {});
             }
 
-            activeTikTokGiftCatalogPromise = null;
+            tiktokState.giftCatalogPromise = null;
         }
     })();
 
-    return activeTikTokGiftCatalogPromise;
+    return tiktokState.giftCatalogPromise;
 }
 
 function buildGiftEventKey(data) {
@@ -6705,12 +6685,8 @@ function deleteGiftEvent(dayKey, giftEventId) {
 
 let rawEventFlushTimer = null;
 let isProcessingRawEvents = false;
-let reconnectTimer = null;
-let autoReconnectEnabled = false;
-function getAutoReconnectEnabled() { return autoReconnectEnabled; }
-function setAutoReconnectEnabled(val) { autoReconnectEnabled = val; }
-let activeConnectPromise = null;
-let tikTokConnectAttempts = 0;
+function getAutoReconnectEnabled() { return tiktokState.autoReconnect; }
+function setAutoReconnectEnabled(val) { tiktokState.autoReconnect = val; }
 let isShuttingDown = false;
 let shutdownPromise = null;
 let recentTikTokComments = [];
@@ -6952,11 +6928,11 @@ function flushRawGiftEvents() {
 }
 
 function scheduleReconnect(reason, errorDetail = null, overrideDelayMs = null, retryMessageOverride = null) {
-    if (isShuttingDown || reconnectTimer || !hasConfiguredBroadcasterId()) {
+    if (isShuttingDown || tiktokState.reconnectTimer || !hasConfiguredBroadcasterId()) {
         return;
     }
 
-    if (!autoReconnectEnabled) {
+    if (!tiktokState.autoReconnect) {
         const isOfflineWait = reason === 'user_offline';
         const stateMessage = isOfflineWait
             ? '配信がオフラインです。接続ボタンを押して再試行できます。'
@@ -7005,8 +6981,8 @@ function scheduleReconnect(reason, errorDetail = null, overrideDelayMs = null, r
         }
     );
     console.warn(`⚠️ TikTok connection retry scheduled (${reason}) in ${delayMs}ms${errorDetail ? ` — ${errorDetail}` : ''}`);
-    reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
+    tiktokState.reconnectTimer = setTimeout(() => {
+        tiktokState.reconnectTimer = null;
         setTikTokConnectionState('connecting', 'TikTokへ再接続しています...', {
             transportMethod: 'unknown',
             websocketReasonCode: 'reconnecting',
@@ -7023,22 +6999,22 @@ async function resetTikTokConnection() {
     recentTikTokComments = [];
     emitAdminCommentsUpdate();
 
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+    if (tiktokState.reconnectTimer) {
+        clearTimeout(tiktokState.reconnectTimer);
+        tiktokState.reconnectTimer = null;
     }
 
-    activeConnectPromise = null;
-    tikTokConnectAttempts = 0;
+    tiktokState.connectPromise = null;
+    tiktokState.connectAttempts = 0;
 
-    if (!tiktokLiveConnection) {
-        activeTikTokUsername = null;
+    if (!tiktokState.liveConnection) {
+        tiktokState.activeUsername = null;
         return;
     }
 
-    const connection = tiktokLiveConnection;
-    tiktokLiveConnection = null;
-    activeTikTokUsername = null;
+    const connection = tiktokState.liveConnection;
+    tiktokState.liveConnection = null;
+    tiktokState.activeUsername = null;
 
     finishContributorsSession();
 
@@ -7074,9 +7050,9 @@ async function shutdownApplication(reason = 'manual') {
             rawEventFlushTimer = null;
         }
 
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
+        if (tiktokState.reconnectTimer) {
+            clearTimeout(tiktokState.reconnectTimer);
+            tiktokState.reconnectTimer = null;
         }
 
         clearDisplayDayRolloverTimer();
@@ -7263,7 +7239,7 @@ require('./lib/routes/widgets/caption')({
 
 require('./lib/routes/widgets/gift-jar')({
     app, io, dbStore,
-    cachedTikTokGiftCatalog,
+    cachedTikTokGiftCatalog: tiktokState.giftCatalog,
     giftJarConfig, giftJarHistory,
     getGiftJarLastPositions, setGiftJarLastPositions,
     customJarConfig, customJarHistory,
@@ -7347,7 +7323,7 @@ require('./lib/routes/data')({
     app,
     dbStore,
     pendingGiftsByComboKey,
-    cachedTikTokGiftCatalog,
+    cachedTikTokGiftCatalog: tiktokState.giftCatalog,
     getAvailableDays,
     getDisplayDayKey,
     getBroadcasterId,
@@ -7456,19 +7432,19 @@ function ensureTikTokConnection() {
         return null;
     }
 
-    if (tiktokLiveConnection && activeTikTokUsername === broadcasterId) {
-        return tiktokLiveConnection;
+    if (tiktokState.liveConnection && tiktokState.activeUsername === broadcasterId) {
+        return tiktokState.liveConnection;
     }
 
     recentTikTokComments = [];
     emitAdminCommentsUpdate();
 
-    tiktokLiveConnection = new WebcastPushConnection(broadcasterId, tiktokConnectionOptions);
-    activeTikTokUsername = broadcasterId;
+    tiktokState.liveConnection = new WebcastPushConnection(broadcasterId, tiktokConnectionOptions);
+    tiktokState.activeUsername = broadcasterId;
 
-    tiktokLiveConnection.on('disconnected', () => {
+    tiktokState.liveConnection.on('disconnected', () => {
         // connect() の実行中は catch ブロックが処理を担う。
-        if (activeConnectPromise) {
+        if (tiktokState.connectPromise) {
             return;
         }
         finishContributorsSession();
@@ -7477,9 +7453,9 @@ function ensureTikTokConnection() {
         scheduleReconnect('disconnected');
     });
 
-    tiktokLiveConnection.on('streamEnd', () => {
+    tiktokState.liveConnection.on('streamEnd', () => {
         // connect() の実行中は catch ブロックが処理を担う。
-        if (activeConnectPromise) {
+        if (tiktokState.connectPromise) {
             return;
         }
         finishContributorsSession();
@@ -7488,10 +7464,10 @@ function ensureTikTokConnection() {
         scheduleReconnect('stream_end');
     });
 
-    tiktokLiveConnection.on('error', (err) => {
+    tiktokState.liveConnection.on('error', (err) => {
         // connect() の実行中は catch ブロックが処理を担う。
         // connect() 成功後のランタイムエラー（WebSocket切断等）のみここで処理する。
-        if (activeConnectPromise) {
+        if (tiktokState.connectPromise) {
             return;
         }
 
@@ -7511,7 +7487,7 @@ function ensureTikTokConnection() {
         scheduleReconnect(err?.name || 'runtime_error', err?.message);
     });
 
-    tiktokLiveConnection.on('gift', (data) => {
+    tiktokState.liveConnection.on('gift', (data) => {
         logWsEventLatency('gift', data);
 
         const isCombo = data.giftType === 1;
@@ -7638,7 +7614,7 @@ function ensureTikTokConnection() {
     });
 
     COMMENT_FEED_EVENT_DEFINITIONS.forEach(({ type }) => {
-        tiktokLiveConnection.on(type, (data) => {
+        tiktokState.liveConnection.on(type, (data) => {
             logWsEventLatency(type, data);
             const normalizedComment = normalizeTikTokCommentEvent(type, data);
 
@@ -7678,22 +7654,22 @@ function ensureTikTokConnection() {
         });
     });
 
-    return tiktokLiveConnection;
+    return tiktokState.liveConnection;
 }
 
 async function connectToTikTok() {
-    if (activeConnectPromise) {
-        return activeConnectPromise;
+    if (tiktokState.connectPromise) {
+        return tiktokState.connectPromise;
     }
 
     // ペンディング中の自動再接続タイマーをキャンセルする。
-    // タイマーが残ったまま connect() が成功しても、後続の「reconnectTimer が設定されている場合は
+    // タイマーが残ったまま connect() が成功しても、後続の「tiktokState.reconnectTimer が設定されている場合は
     // connected 状態への遷移をスキップする」ガードに引っかかり、接続済みにならない。
-    // ※ タイマーコールバック自体が呼び出した場合は、コールバック冒頭で reconnectTimer = null
+    // ※ タイマーコールバック自体が呼び出した場合は、コールバック冒頭で tiktokState.reconnectTimer = null
     //   を代入済みなので、ここでは何も起こらない（二重キャンセルにはならない）。
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+    if (tiktokState.reconnectTimer) {
+        clearTimeout(tiktokState.reconnectTimer);
+        tiktokState.reconnectTimer = null;
     }
 
     const broadcasterId = getBroadcasterId();
@@ -7709,12 +7685,12 @@ async function connectToTikTok() {
     }
 
     const connection = ensureTikTokConnection();
-    if (tiktokLiveConnection === connection && activeTikTokUsername === broadcasterId && tiktokConnectionState.status === 'connected') {
+    if (tiktokState.liveConnection === connection && tiktokState.activeUsername === broadcasterId && tiktokState.connectionState.status === 'connected') {
         return connection;
     }
 
-    tikTokConnectAttempts++;
-    const isFirstConnectAttempt = tikTokConnectAttempts === 1;
+    tiktokState.connectAttempts++;
+    const isFirstConnectAttempt = tiktokState.connectAttempts === 1;
 
     setTikTokConnectionState('connecting', `@${broadcasterId} に接続しています...`, {
         transportMethod: 'unknown',
@@ -7723,7 +7699,7 @@ async function connectToTikTok() {
         websocketReasonDetail: 'WebSocket upgrade を試し、その結果に応じて request polling へフォールバックするかを判定しています。'
     });
 
-    activeConnectPromise = (async () => {
+    tiktokState.connectPromise = (async () => {
         try {
             // キャッシュされたルームIDをクリアして毎回 fetchRoomId() を呼び直す。
             // TikTok は配信開始時に新しいルームIDを割り当てる場合があるため、
@@ -7736,8 +7712,8 @@ async function connectToTikTok() {
             const state = await connection.connect();
         // v2.x は常に WebSocket で接続する（Electron では signedWebSocketProvider でも同様）
             // streamEnd / disconnected / error が connect() の処理中に非同期で発火した場合、
-            // reconnectTimer が既に設定されている。その場合は connected 状態への遷移をスキップする。
-            if (reconnectTimer) {
+            // tiktokState.reconnectTimer が既に設定されている。その場合は connected 状態への遷移をスキップする。
+            if (tiktokState.reconnectTimer) {
                 console.warn(`⚠️ connect() resolved but reconnect is already scheduled. Skipping connected state for ${broadcasterId}.`);
                 return state;
             }
@@ -7766,8 +7742,8 @@ async function connectToTikTok() {
             }
 
             if (isTikTokUserOfflineError(err)) {
-                // error イベントは activeConnectPromise ガードによりスキップ済みのため、
-                // ここで reconnectTimer は未設定。直接スケジュールする。
+                // error イベントは tiktokState.connectPromise ガードによりスキップ済みのため、
+                // ここで tiktokState.reconnectTimer は未設定。直接スケジュールする。
                 console.warn(`⚠️ TikTok broadcaster @${broadcasterId} is offline. Retrying in the background.`);
                 scheduleReconnect('user_offline');
                 return null;
@@ -7803,9 +7779,9 @@ async function connectToTikTok() {
                 // 最初の接続試行失敗は一時的なエラーの可能性が高い。
                 // error イベントが先に発火して 30 秒タイマーが既にセットされていればキャンセルし、
                 // 短い遅延（3 秒）で素早く再試行する。
-                if (reconnectTimer) {
-                    clearTimeout(reconnectTimer);
-                    reconnectTimer = null;
+                if (tiktokState.reconnectTimer) {
+                    clearTimeout(tiktokState.reconnectTimer);
+                    tiktokState.reconnectTimer = null;
                 }
                 console.error('❌ Connection Failed (first attempt, fast retry):', err);
                 scheduleReconnect(
@@ -7816,7 +7792,7 @@ async function connectToTikTok() {
                 );
             } else {
                 // error イベントが先に発火して 'retrying' 状態をセット済みの場合は上書きしない。
-                if (!reconnectTimer) {
+                if (!tiktokState.reconnectTimer) {
                     setTikTokConnectionState('error', 'TikTok接続に失敗しました。自動再接続を待機しています。', {
                         transportMethod: 'unknown',
                         websocketReasonCode: 'connect_failed',
@@ -7831,11 +7807,11 @@ async function connectToTikTok() {
             }
             throw err;
         } finally {
-            activeConnectPromise = null;
+            tiktokState.connectPromise = null;
         }
     })();
 
-    return activeConnectPromise;
+    return tiktokState.connectPromise;
 }
 
 async function startHttpServer() {
@@ -7869,7 +7845,7 @@ async function startHttpServer() {
     }
 
     if (hasConfiguredBroadcasterId()) {
-        autoReconnectEnabled = true;
+        tiktokState.autoReconnect = true;
         connectToTikTok().catch(() => {});
     } else {
         setTikTokConnectionState('not_configured', 'TikTok 配信ユーザーIDが未設定です。セットアップ画面で設定してください。', {
