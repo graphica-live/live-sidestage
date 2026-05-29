@@ -1622,6 +1622,22 @@
             return codepointKey ? `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${codepointKey}.svg` : '';
         }
 
+        function handleEmojiImgError(img) {
+            if (!img.dataset.fallbackDone) {
+                img.dataset.fallbackDone = '1';
+                const stripped = img.src.replace(/-fe0f/g, '').replace(/--+/g, '-').replace(/-\.svg$/, '.svg');
+                if (stripped !== img.src) {
+                    img.src = stripped;
+                    return;
+                }
+            }
+            img.style.display = 'none';
+            const span = document.createElement('span');
+            span.textContent = img.alt.replace(/^emoji\s+/, '');
+            span.style.cssText = 'font-size:24px;line-height:1;';
+            img.before(span);
+        }
+
         function getObservedEmojiCatalog() {
             const cachedItems = Array.isArray(observedEmojiCatalog) ? observedEmojiCatalog : [];
             const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
@@ -1688,7 +1704,7 @@
             const imageUrl = getObservedEmojiImageUrl(selectedReadAloudEmoji);
 
             if (selectedReadAloudEmoji && imageUrl) {
-                commentReadAloudEmojiPreview.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(selectedReadAloudEmoji)}">`;
+                commentReadAloudEmojiPreview.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(selectedReadAloudEmoji)}" onerror="handleEmojiImgError(this)">`;
             } else {
                 commentReadAloudEmojiPreview.innerHTML = '<span class="emote-editor-placeholder">未選択</span>';
             }
@@ -1716,7 +1732,7 @@
                         class="emote-picker-item${isSelected ? ' is-selected' : ''}${isMapped ? ' is-mapped' : ''}"
                         data-emoji="${escapeHtml(item.emoji)}"
                     >
-                        <img src="${escapeHtml(item.imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}">
+                        <img src="${escapeHtml(item.imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}" onerror="handleEmojiImgError(this)">
                         <span class="emote-picker-id">${escapeHtml(item.emoji)}</span>
                     </button>
                 `;
@@ -1736,7 +1752,7 @@
                 return `
                     <div class="emote-mapping-item">
                         ${imageUrl
-                            ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}">`
+                            ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(item.emoji)}" onerror="handleEmojiImgError(this)">`
                             : `<div class="emote-editor-preview"><span class="emote-editor-placeholder">絵文字</span></div>`}
                         <div class="emote-mapping-copy">
                             <strong>${escapeHtml(item.text)}</strong>
