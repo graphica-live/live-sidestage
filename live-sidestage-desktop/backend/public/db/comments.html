@@ -2669,7 +2669,7 @@
                     commentStream.firstElementChild?.remove();
                 }
                 requestAnimationFrame(() => {
-                    commentStream.scrollTop = commentStream.scrollHeight;
+                    card.scrollIntoView({ block: 'end' });
                 });
             } else {
                 commentStream.insertBefore(card, commentStream.firstChild);
