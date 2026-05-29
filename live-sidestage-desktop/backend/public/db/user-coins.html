@@ -742,7 +742,6 @@
                 <button type="button" id="sort-order-button-coins">並び順: コイン数降順</button>
                 <button type="button" id="add-test-contributors-button">テストデータを追加</button>
                 <button type="button" class="danger" id="reset-day-button">選択日の全件削除</button>
-                <div class="status status-message" id="message-box" hidden>操作待ち</div>
             </div>
 
             <table>
@@ -951,6 +950,7 @@
         }
 
         function setMessage(message, isError = false) {
+            if (!messageBox) return;
             messageBox.hidden = !message;
             messageBox.textContent = message;
             messageBox.style.color = isError ? '#a12d2f' : 'var(--muted)';

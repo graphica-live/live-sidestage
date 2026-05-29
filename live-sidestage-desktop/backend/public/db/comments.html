@@ -911,13 +911,13 @@
             border: none;
             border-bottom: 1px solid rgba(58, 44, 29, 0.08);
             background: #ffffff;
-            padding: 9px 12px;
+            padding: 10px 12px;
             display: grid;
-            grid-template-columns: 24px minmax(0, 1fr);
-            gap: 8px;
+            grid-template-columns: 42px minmax(0, 1fr);
+            gap: 10px;
             align-items: center;
             text-align: left;
-            cursor: pointer;
+            transform: none;
         }
 
         .user-suggestion-item:last-child {
@@ -930,37 +930,43 @@
         }
 
         .user-suggestion-avatar {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            border: 1px solid rgba(58, 44, 29, 0.12);
+            background: #f9fbfd;
             object-fit: cover;
-            flex-shrink: 0;
         }
 
         .user-suggestion-avatar.is-empty {
-            background: #d9e2ec;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 9px;
-            color: #596b80;
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .user-suggestion-meta {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .user-suggestion-name,
+        .user-suggestion-id {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .user-suggestion-name {
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 14px;
             color: var(--text);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
         .user-suggestion-id {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--muted);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
     </style>
     <script>
@@ -2362,7 +2368,7 @@
                 const imgMarkup = user.image
                     ? `<img class="user-suggestion-avatar" src="${escapeHtml(user.image)}" alt="">`
                     : `<div class="user-suggestion-avatar is-empty">?</div>`;
-                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
+                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div class="user-suggestion-meta"><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
             }).join('');
             voiceMappingUserSuggestionPanel.hidden = false;
             positionVoiceMappingUserSuggestionPanel();
