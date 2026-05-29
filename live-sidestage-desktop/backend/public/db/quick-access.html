@@ -256,6 +256,64 @@
     <main class="layout">
         <section class="panel hero">
             <div class="eyebrow">Quick Access</div>
+            <h1>よく触る設定だけを先頭に出す</h1>
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>コメント読み上げ</h2>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label">
+                        <input type="checkbox" id="read-aloud-checkbox">
+                        読み上げ ON
+                    </label>
+                </div>
+                <button type="button" class="ghost-button" id="reset-random-voice-button">🎲 ランダムボイス更新</button>
+            </div>
+
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>エフェクト制御</h2>
+                </div>
+                <div class="state-chip" id="effects-pause-chip">再生中</div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label" data-stop>
+                        <input type="checkbox" id="effects-pause-checkbox">
+                        全エフェクト停止
+                    </label>
+                </div>
+            </div>
+
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>字幕</h2>
+                </div>
+                <div class="state-chip" id="caption-state-chip">停止中</div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label">
+                        <input type="checkbox" id="caption-checkbox">
+                        字幕 ON
+                    </label>
+                </div>
+            </div>
+
         </section>
     </main>
 
