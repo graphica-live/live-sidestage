@@ -682,7 +682,6 @@
         const broadcasterEditSave = document.getElementById('broadcaster-edit-save');
         const broadcasterEditCancel = document.getElementById('broadcaster-edit-cancel');
         const tiktokConnectionStatus = document.getElementById('tiktok-connection-status');
-        const connectTikTokButton = document.getElementById('connect-tiktok-button');
         const sidebarFootnote = document.getElementById('sidebar-footnote');
         const contentFrame = document.getElementById('content-frame');
         const navButtons = Array.from(document.querySelectorAll('.nav-link'));
@@ -799,13 +798,6 @@
 
             sidebarFootnote.textContent = '接続設定済みです。左のリンクで右側コンテンツを切り替えられます。';
 
-            const isConnected = connection.status === 'connected';
-            const isConnecting = connection.status === 'connecting';
-            const canConnect = !!currentBroadcasterId && !isConnected && !isConnecting;
-            const canDisconnect = isConnected;
-            connectTikTokButton.disabled = !canConnect && !canDisconnect;
-            connectTikTokButton.textContent = isConnected ? 'TikTok切断' : 'TikTok接続';
-            connectTikTokButton.dataset.mode = isConnected ? 'disconnect' : 'connect';
             updateNavState();
         }
 
@@ -924,21 +916,6 @@
             }
         });
 
-        connectTikTokButton.addEventListener('click', async () => {
-            const mode = connectTikTokButton.dataset.mode || 'connect';
-            connectTikTokButton.disabled = true;
-            connectTikTokButton.textContent = mode === 'disconnect' ? '切断中...' : '接続中...';
-
-            try {
-                if (mode === 'disconnect') {
-                    await fetch('/api/tiktok/disconnect', { method: 'POST' });
-                } else {
-                    await fetch('/api/tiktok/connect', { method: 'POST' });
-                }
-            } finally {
-                // ボタン状態は次の syncUi() で再評価される
-            }
-        });
 
 
         socket.on('admin_day_updated', (payload) => {
