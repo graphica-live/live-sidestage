@@ -16,6 +16,11 @@ module.exports = function registerEffectsRoutes({
     USER_VIDEO_MIME_TYPES,
     getEffectsGloballyPaused,
     setEffectsGloballyPaused,
+    setEffectEvents,
+    setEffectTriggers,
+    normalizeEffectTriggerEventIds,
+    resolveEffectAssetFilePath,
+    fs,
 }) {
     app.get('/api/effects/global-pause', (req, res) => {
         res.json({ paused: getEffectsGloballyPaused() });
@@ -108,5 +113,44 @@ module.exports = function registerEffectsRoutes({
 
         res.setHeader('Content-Type', mimeType);
         return res.sendFile(videoInfo.filePath);
+    });
+
+    app.patch('/api/effects/config', (req, res) => {
+        if (!Array.isArray(req.body?.events) || !Array.isArray(req.body?.triggers)) {
+            return res.status(400).json({ ok: false, error: 'events and triggers must be arrays' });
+        }
+
+        const oldEvents = getEffectEvents();
+        const events = setEffectEvents(req.body.events);
+        const eventIds = new Set(events.map((item) => item.id));
+        const triggers = setEffectTriggers(req.body.triggers.map((item) => {
+            // eventIds 内の存在しないイベントIDを除去（旧 eventId フォーマットも考慮）
+            const normalizedEventIds = normalizeEffectTriggerEventIds(item).filter((id) => eventIds.has(id));
+            return { ...item, eventIds: normalizedEventIds, eventId: undefined };
+        }));
+
+        // 旧イベントにあって新イベントに存在しない（または差し替えられた）アセットを削除
+        const newAssetUrls = new Set();
+        for (const ev of events) {
+            if (ev.videoAssetUrl) newAssetUrls.add(ev.videoAssetUrl);
+            if (ev.audioAssetUrl) newAssetUrls.add(ev.audioAssetUrl);
+        }
+        for (const oldEv of oldEvents) {
+            for (const url of [oldEv.videoAssetUrl, oldEv.audioAssetUrl]) {
+                if (url && !newAssetUrls.has(url)) {
+                    const filePath = resolveEffectAssetFilePath(url);
+                    if (filePath) {
+                        fs.unlink(filePath, () => {});
+                    }
+                }
+            }
+        }
+
+        return res.json({
+            ok: true,
+            events,
+            triggers,
+            screenUrls: buildEffectOverlayUrls(req)
+        });
     });
 };

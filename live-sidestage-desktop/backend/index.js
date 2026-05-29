@@ -236,6 +236,8 @@ let activeTikTokGiftCatalogPromise = null;
 const GIFT_JAR_HISTORY_LIMIT = 150;
 const giftJarHistory = [];
 let giftJarLastPositions = null;
+function getGiftJarLastPositions() { return giftJarLastPositions; }
+function setGiftJarLastPositions(val) { giftJarLastPositions = val; }
 let giftJarHistoryPersistTimer = null;
 let giftJarPositionsPersistTimer = null;
 
@@ -469,6 +471,8 @@ const customJarConfig = {
 };
 let customJarHistory = [];
 let customJarLastPositions = null;
+function getCustomJarLastPositions() { return customJarLastPositions; }
+function setCustomJarLastPositions(val) { customJarLastPositions = val; }
 const CUSTOM_JAR_HISTORY_LIMIT = 300;
 
 function persistCustomJarConfig() {
@@ -7500,756 +7504,129 @@ require('./lib/routes/effects')({
     USER_VIDEO_MIME_TYPES,
     getEffectsGloballyPaused,
     setEffectsGloballyPaused,
+    setEffectEvents,
+    setEffectTriggers,
+    normalizeEffectTriggerEventIds,
+    resolveEffectAssetFilePath,
+    fs,
 });
 
-app.get('/api/widgets/config', (req, res) => {
-    const sharedWidgetAppearance = getSharedWidgetTextAppearance();
-    const sharedWidgetFeedback = getSharedWidgetFeedbackSettings();
-
-    const contributorsAppearance = getContributorsWidgetTextAppearance();
-    res.json({
-        broadcasterId: getBroadcasterId(),
-        displayDayKey: getDisplayDayKey(),
-        todayDayKey: getTodayDayKey(),
-        giftJarWallEditorEnabled: GIFT_JAR_WALL_EDITOR_ENABLED,
-        contributorsDisplayRangeMode: getContributorsDisplayRange(),
-        liveSession: getContributorsSessionState(),
-        widgetUrls: buildWidgetUrls(req),
-        contributorsDisplayThreshold: getDisplayThreshold(),
-        contributorsGoalCount: getDisplayGoalCount(),
-        contributorsAvatarVisibility: getDisplayAvatarVisibility(),
-        contributorsFontKey: contributorsAppearance.fontKey,
-        contributorsColorTheme: contributorsAppearance.textStyleKey,
-        contributorsStrokeWidth: contributorsAppearance.strokeWidth,
-        contributorsFeedback: sharedWidgetFeedback,
-        sharedWidgetFeedback,
-        sharedWidgetAppearance,
-        topGiftSettings: getWidgetTopGiftSettings(),
-        topGiftAppearance: getTopGiftWidgetTextAppearance(),
-        likeContributionSettings: getWidgetLikeContributionSettings(),
-        likeContributionAppearance: getLikeContributionWidgetTextAppearance(),
-        tapListSettings: getWidgetTapListSettings(),
-        tapListAppearance: getTapListWidgetTextAppearance(),
-        coinListSettings: getWidgetCoinListSettings(),
-        coinListAppearance: getCoinListWidgetTextAppearance(),
-        giftJarAppearance: getGiftJarWidgetTextAppearance(),
-        pushPullAppearance: getPushPullWidgetTextAppearance(),
-        captionAppearance: getCaptionWidgetTextAppearance(),
-        topGiftSnapshot: buildTopGiftSnapshot(getTodayDayKey()),
-        goalGiftAppearance: getGoalGiftsWidgetTextAppearance(),
-        goalGiftFontKey: getGoalGiftsWidgetTextAppearance().fontKey,
-        goalGiftTextStyleKey: getGoalGiftsWidgetTextAppearance().textStyleKey,
-        goalGiftStrokeWidth: getGoalGiftsWidgetTextAppearance().strokeWidth,
-        goalGiftNoteFontSize: getGoalGiftWidgetNoteFontSize(),
-        goalGiftAchievementBadgeSize: getGoalGiftWidgetAchievementBadgeSize(),
-        goalGiftAchievementBadgeStyle: getGoalGiftWidgetAchievementBadgeStyle(),
-        goalGiftFeedback: sharedWidgetFeedback,
-        goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals
-    });
+require('./lib/routes/widgets/config')({
+    app,
+    GIFT_JAR_WALL_EDITOR_ENABLED,
+    getBroadcasterId, getDisplayDayKey, getTodayDayKey,
+    getContributorsDisplayRange, getContributorsSessionState, buildWidgetUrls,
+    getDisplayThreshold, getDisplayGoalCount, getDisplayAvatarVisibility,
+    getSharedWidgetTextAppearance, getSharedWidgetFeedbackSettings,
+    getContributorsWidgetTextAppearance,
+    getWidgetTopGiftSettings, getTopGiftWidgetTextAppearance, buildTopGiftSnapshot,
+    getWidgetLikeContributionSettings, getLikeContributionWidgetTextAppearance,
+    getWidgetTapListSettings, getTapListWidgetTextAppearance,
+    getWidgetCoinListSettings, getCoinListWidgetTextAppearance,
+    getGiftJarWidgetTextAppearance, getPushPullWidgetTextAppearance, getCaptionWidgetTextAppearance,
+    getGoalGiftsWidgetTextAppearance, getGoalGiftWidgetNoteFontSize,
+    getGoalGiftWidgetAchievementBadgeSize, getGoalGiftWidgetAchievementBadgeStyle,
+    buildGoalGiftProgressSnapshot,
 });
 
-app.get('/api/widgets/top-gift/snapshot', (req, res) => {
-    const requestedDayKey = normalizeDayKey(req.query.dayKey) || getTodayDayKey();
-    res.json(buildTopGiftWidgetPayload(requestedDayKey));
+require('./lib/routes/widgets/top-gift')({
+    app, io, normalizeDayKey, getTodayDayKey,
+    buildTopGiftWidgetPayload,
+    setWidgetTopGiftSettings, setTopGiftWidgetTextAppearance,
 });
 
-app.patch('/api/widgets/top-gift', (req, res) => {
-    setWidgetTopGiftSettings(req.body || {});
-    if (req.body?.appearance) setTopGiftWidgetTextAppearance(req.body.appearance);
-    const payload = buildTopGiftWidgetPayload(getTodayDayKey());
-
-    io.emit('widgets:top-gift:updated', payload);
-
-    res.json({
-        ok: true,
-        ...payload
-    });
+require('./lib/routes/widgets/like-contribution')({
+    app, io,
+    buildLikeContributionWidgetPayload,
+    buildLikeContributionTestNotification,
+    setWidgetLikeContributionSettings,
+    setLikeContributionWidgetTextAppearance,
 });
 
-app.get('/api/widgets/like-contribution/config', (req, res) => {
-    res.json(buildLikeContributionWidgetPayload());
+require('./lib/routes/widgets/tap-list')({
+    app, io, getTodayDayKey,
+    buildTapListPayload,
+    setWidgetTapListSettings, setTapListWidgetTextAppearance,
+    getLikeContributionUserTotalsState, setLikeContributionUserTotalsState,
 });
 
-app.patch('/api/widgets/like-contribution', (req, res) => {
-    const settings = setWidgetLikeContributionSettings(req.body || {});
-    if (req.body?.appearance) setLikeContributionWidgetTextAppearance(req.body.appearance);
-    const payload = buildLikeContributionWidgetPayload();
-
-    io.emit('widgets:like-contribution:config', payload);
-
-    res.json({
-        ok: true,
-        settings,
-        ...payload
-    });
+require('./lib/routes/widgets/coin-list')({
+    app, io,
+    buildCoinListPayload,
+    setWidgetCoinListSettings, setCoinListWidgetTextAppearance,
 });
 
-app.post('/api/widgets/like-contribution/test-notification', (req, res) => {
-    const payload = buildLikeContributionTestNotification();
-
-    io.emit('widgets:like-contribution:test-notification', payload);
-
-    res.json({
-        ok: true,
-        ...payload
-    });
+require('./lib/routes/widgets/caption')({
+    app, io,
+    WhisperEngine, SherpaEngine, ASR_DATA_DIR,
+    buildCaptionConfig,
+    setWidgetCaptionSettings, setCaptionWidgetTextAppearance, getCaptionWidgetTextAppearance,
+    getCaptionCorrectionRules, setCaptionCorrectionRules,
+    handleCaptionText, isLoopbackRequest,
+    getWhisperEngine, getSherpaEngine,
 });
 
-// p16-sign-va.tiktokcdn.com, p19-common-sign.tiktokcdn.com など各種 TikTok CDN ホストを許可
-const ALLOWED_AVATAR_HOST_RE = /^p\d+(?:-[a-z0-9]+)*\.(?:tiktokcdn(?:-us)?\.com|ibyteimg\.com)$/;
-
-app.get('/api/proxy/avatar', async (req, res) => {
-    const url = String(req.query.url || '');
-    let parsedUrl;
-    try {
-        parsedUrl = new URL(url);
-    } catch {
-        return res.status(400).end();
-    }
-    if (parsedUrl.protocol !== 'https:' || !ALLOWED_AVATAR_HOST_RE.test(parsedUrl.hostname)) {
-        return res.status(400).end();
-    }
-    try {
-        const upstream = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': '' },
-            signal: AbortSignal.timeout(6000)
-        });
-        if (!upstream.ok) return res.status(upstream.status).end();
-        const ct = upstream.headers.get('content-type') || 'image/jpeg';
-        if (!ct.startsWith('image/')) return res.status(400).end();
-        res.setHeader('Content-Type', ct);
-        res.setHeader('Cache-Control', 'public, max-age=600');
-        const buf = await upstream.arrayBuffer();
-        res.end(Buffer.from(buf));
-    } catch {
-        res.status(502).end();
-    }
+require('./lib/routes/widgets/gift-jar')({
+    app, io, dbStore,
+    cachedTikTokGiftCatalog,
+    giftJarConfig, giftJarHistory,
+    getGiftJarLastPositions, setGiftJarLastPositions,
+    customJarConfig, customJarHistory,
+    getCustomJarLastPositions, setCustomJarLastPositions,
+    GIFT_JAR_THEMES, GIFT_JAR_WALL_EDITOR_ENABLED,
+    getGiftJarWidgetTextAppearance, setGiftJarWidgetTextAppearance,
+    normalizeGiftJarProfile,
+    persistGiftJarCustomProfiles, persistCustomJarConfig,
+    saveCustomJarImageFile, deleteCustomJarImageFile,
+    buildCustomJarPayload,
+    isLoopbackRequest,
 });
 
-app.get('/api/widgets/tap-list/config', (req, res) => {
-    res.json(buildTapListPayload());
+
+
+
+
+
+
+
+require('./lib/routes/widgets/push-pull')({
+    app, io,
+    pushPullConfig, pushPullState,
+    buildPushPullSnapshot,
+    normalizePushPullGifts,
+    setPushPullWidgetTextAppearance,
+    persistPushPullConfig, persistPushPullState,
 });
 
-app.patch('/api/widgets/tap-list', (req, res) => {
-    const settings = setWidgetTapListSettings(req.body || {});
-    if (req.body?.appearance) setTapListWidgetTextAppearance(req.body.appearance);
-    const payload = buildTapListPayload();
-
-    io.emit('widgets:tap-list:updated', payload);
-
-    res.json({ ok: true, settings, ...payload });
+require('./lib/routes/widgets/goal-gifts')({
+    app, io,
+    normalizeDayKey, getTodayDayKey, getTimestamp,
+    normalizeWholeNumber, normalizeWidgetFeedbackSettings,
+    buildGoalGiftProgressSnapshot,
+    getGoalGiftFeedbackSettings, setGoalGiftFeedbackSettings,
+    getGoalGiftsWidgetTextAppearance, setGoalGiftsWidgetTextAppearance,
+    getGoalGiftWidgetNoteFontSize, setGoalGiftWidgetNoteFontSize,
+    getGoalGiftWidgetAchievementBadgeSize, setGoalGiftWidgetAchievementBadgeSize,
+    getGoalGiftWidgetAchievementBadgeStyle, setGoalGiftWidgetAchievementBadgeStyle,
+    setGoalGiftWidgetItems,
 });
 
-app.post('/api/widgets/tap-list/reset', (req, res) => {
-    const userTotalsState = getLikeContributionUserTotalsState();
-    const dayKey = getTodayDayKey();
-    const next = { ...userTotalsState };
-    delete next[dayKey];
-    setLikeContributionUserTotalsState(next);
-    const payload = buildTapListPayload();
-    io.emit('widgets:tap-list:updated', payload);
-    res.json({ ok: true, ...payload });
+require('./lib/routes/widgets/contributors')({
+    app,
+    normalizePositiveHundreds, normalizeWholeNumber, normalizeDisplayAvatarVisibility,
+    getDisplayThreshold, setDisplayThreshold,
+    getDisplayGoalCount, setDisplayGoalCount,
+    getDisplayAvatarVisibility, setDisplayAvatarVisibility,
+    getContributorsFeedbackSettings, setContributorsFeedbackSettings,
+    getContributorsWidgetTextAppearance, setContributorsWidgetTextAppearance,
+    getContributorsDisplayRange, setContributorsDisplayRange,
+    getContributorsSessionState,
+    getDisplayDayKey,
+    buildOverlayContributorsSnapshot,
+    emitDisplayThresholdChanges,
+    emitSnapshot, emitAdminDayUpdate,
 });
 
-app.get('/api/widgets/coin-list/config', (req, res) => {
-    res.json(buildCoinListPayload());
-});
-
-app.patch('/api/widgets/coin-list', (req, res) => {
-    const settings = setWidgetCoinListSettings(req.body || {});
-    if (req.body?.appearance) setCoinListWidgetTextAppearance(req.body.appearance);
-    const payload = buildCoinListPayload();
-    io.emit('widgets:coin-list:updated', payload);
-    res.json({ ok: true, settings, ...payload });
-});
-
-app.get('/api/widgets/caption/config', (req, res) => {
-    res.json(buildCaptionConfig());
-});
-
-app.get('/api/caption/correction-rules', (_req, res) => {
-    res.json(getCaptionCorrectionRules());
-});
-
-app.post('/api/caption/correction-rules', express.json(), (req, res) => {
-    if (!Array.isArray(req.body)) return res.status(400).json({ error: 'array required' });
-    res.json(setCaptionCorrectionRules(req.body));
-});
-
-app.get('/api/widgets/caption/asr-status', (req, res) => {
-    const w = whisperEngine || new WhisperEngine(ASR_DATA_DIR);
-    const s = sherpaEngine  || new SherpaEngine(ASR_DATA_DIR);
-    res.json({
-        whisper: {
-            binaryReady: w.isBinaryReady(),
-            models: w.modelList(),
-        },
-        sherpa: {
-            moduleAvailable: s.isSherpaAvailable(),
-            modelReady: s.isModelReady(),
-        },
-    });
-});
-
-app.patch('/api/widgets/caption', (req, res) => {
-    const settings = setWidgetCaptionSettings(req.body || {});
-    const captionAppearance = req.body?.appearance ? setCaptionWidgetTextAppearance(req.body.appearance) : getCaptionWidgetTextAppearance();
-    if (whisperEngine) whisperEngine.noiseGateThreshold = settings.noiseGateThreshold;
-    if (sherpaEngine) sherpaEngine.noiseGateThreshold = settings.noiseGateThreshold;
-    io.emit('widgets:caption:config', buildCaptionConfig());
-    res.json({ ok: true, settings, appearance: captionAppearance });
-});
-
-// Parakeet Python サブプロセスからのテキスト受信（loopback のみ許可）
-app.post('/api/widgets/caption/asr-text', (req, res) => {
-    if (!isLoopbackRequest(req)) {
-        return res.status(403).json({ ok: false, error: 'loopback only' });
-    }
-    const { text, isFinal = true, srcLang = 'ja' } = req.body || {};
-    if (!text || typeof text !== 'string') {
-        return res.status(400).json({ ok: false });
-    }
-    handleCaptionText(text.slice(0, 500), Boolean(isFinal), srcLang);
-    res.json({ ok: true });
-});
-
-app.get('/api/widgets/gift-jar/catalog', (req, res) => {
-    const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
-    const gifts = catalog
-        .filter((g) => g.imageUrl)
-        .map((g) => ({ imageUrl: g.imageUrl, diamondCount: g.diamondCount, name: g.name || '' }));
-    res.json({ gifts });
-});
-
-app.get('/api/widgets/gift-jar/config', (req, res) => {
-    res.json({ ...giftJarConfig, appearance: getGiftJarWidgetTextAppearance() });
-});
-
-app.post('/api/widgets/gift-jar/config', (req, res) => {
-    const {
-        dropAboveJar,
-        sizeMultiplier,
-        jarTheme,
-        customProfileTheme,
-        customProfile,
-        clearCustomProfileTheme,
-        appearance
-    } = req.body || {};
-    if (appearance) setGiftJarWidgetTextAppearance(appearance);
-    if (typeof dropAboveJar === 'number' && Number.isFinite(dropAboveJar)) {
-        giftJarConfig.dropAboveJar = Math.max(0, Math.min(Math.round(dropAboveJar), 400));
-        dbStore.setGlobalStateValue('gift_jar_drop_above_jar', giftJarConfig.dropAboveJar, Date.now());
-    }
-
-    if (typeof sizeMultiplier === 'number' && Number.isFinite(sizeMultiplier)) {
-        giftJarConfig.sizeMultiplier = Math.max(0.1, Math.min(sizeMultiplier, 5.0));
-        dbStore.setGlobalStateValue('gift_jar_size_multiplier', giftJarConfig.sizeMultiplier, Date.now());
-    }
-    const { sizeRatioCoeff } = req.body || {};
-    if (typeof sizeRatioCoeff === 'number' && Number.isFinite(sizeRatioCoeff)) {
-        giftJarConfig.sizeRatioCoeff = Math.max(0, Math.min(sizeRatioCoeff, 5.0));
-        dbStore.setGlobalStateValue('gift_jar_size_ratio_coeff', giftJarConfig.sizeRatioCoeff, Date.now());
-    }
-    let jarThemeChanged = false;
-    if (typeof jarTheme === 'string' && GIFT_JAR_THEMES.includes(jarTheme)) {
-        if (giftJarConfig.jarTheme !== jarTheme) jarThemeChanged = true;
-        giftJarConfig.jarTheme = jarTheme;
-        dbStore.setGlobalStateValue('gift_jar_theme', giftJarConfig.jarTheme, Date.now());
-    }
-    if (typeof customProfileTheme === 'string' || typeof clearCustomProfileTheme === 'string') {
-        if (!GIFT_JAR_WALL_EDITOR_ENABLED) {
-            return res.status(403).json({ ok: false, error: 'gift jar wall editor is disabled in packaged builds' });
-        }
-        if (!isLoopbackRequest(req)) {
-            return res.status(403).json({ ok: false, error: 'custom gift jar wall editing is only available from the local admin machine' });
-        }
-    }
-    if (typeof customProfileTheme === 'string' && GIFT_JAR_THEMES.includes(customProfileTheme)) {
-        const normalizedProfile = normalizeGiftJarProfile(customProfile);
-        if (!normalizedProfile) {
-            return res.status(400).json({ ok: false, error: 'invalid gift jar wall profile' });
-        }
-        giftJarConfig.customProfiles = {
-            ...giftJarConfig.customProfiles,
-            [customProfileTheme]: normalizedProfile
-        };
-        persistGiftJarCustomProfiles();
-    }
-    if (typeof clearCustomProfileTheme === 'string' && GIFT_JAR_THEMES.includes(clearCustomProfileTheme)) {
-        if (giftJarConfig.customProfiles[clearCustomProfileTheme]) {
-            delete giftJarConfig.customProfiles[clearCustomProfileTheme];
-            persistGiftJarCustomProfiles();
-        }
-    }
-    if (jarThemeChanged) {
-        giftJarHistory.length = 0;
-        giftJarLastPositions = null;
-        try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
-        try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
-        io.to('gift-jar').emit('widgets:gift-jar:reset');
-    }
-    const giftJarAppearance = getGiftJarWidgetTextAppearance();
-    io.to('gift-jar').emit('widgets:gift-jar:config', { ...giftJarConfig, appearance: giftJarAppearance });
-    res.json({ ok: true, ...giftJarConfig, appearance: giftJarAppearance });
-});
-
-app.post('/api/widgets/gift-jar/reset', (req, res) => {
-    giftJarHistory.length = 0;
-    giftJarLastPositions = null;
-    try { dbStore.setGlobalStateValue('gift_jar_history_v2', '[]', new Date().toISOString()); } catch {}
-    try { dbStore.setGlobalStateValue('gift_jar_last_positions', '[]', new Date().toISOString()); } catch {}
-    io.to('gift-jar').emit('widgets:gift-jar:reset');
-    res.json({ ok: true });
-});
-
-app.post('/api/widgets/gift-jar/shake', (req, res) => {
-    io.to('gift-jar').emit('widgets:gift-jar:shake');
-    res.json({ ok: true });
-});
-
-// ======== オリジナル瓶詰めギフト API ========
-app.get('/api/widgets/custom-jar/config', (req, res) => {
-    res.json(buildCustomJarPayload());
-});
-
-app.post('/api/widgets/custom-jar/config', (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'ローカル管理端末からのみ操作できます' });
-    const { dropAboveJar, sizeMultiplier, sizeRatioCoeff } = req.body || {};
-    if (typeof dropAboveJar === 'number') customJarConfig.dropAboveJar = Math.max(0, Math.min(400, dropAboveJar));
-    if (typeof sizeMultiplier === 'number') customJarConfig.sizeMultiplier = Math.max(0.1, Math.min(5.0, sizeMultiplier));
-    if (typeof sizeRatioCoeff === 'number') customJarConfig.sizeRatioCoeff = Math.max(0, Math.min(5.0, sizeRatioCoeff));
-    persistCustomJarConfig();
-    io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
-    res.json({ ok: true });
-});
-
-app.post('/api/widgets/custom-jar/themes', (req, res) => {
-    if (!isLoopbackRequest(req)) {
-        return res.status(403).json({ ok: false, error: 'ローカル管理端末からのみ操作できます' });
-    }
-    const { action, id, label, imageDataUrl, profile } = req.body || {};
-    if (action === 'add') {
-        if (typeof label !== 'string' || !label.trim()) {
-            return res.status(400).json({ ok: false, error: 'テーマ名が必要です' });
-        }
-        if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
-            return res.status(400).json({ ok: false, error: '画像データが無効です' });
-        }
-        const normalizedProfile = normalizeGiftJarProfile(profile);
-        if (!normalizedProfile) {
-            return res.status(400).json({ ok: false, error: '壁プロファイルが無効です（壁線が少なすぎます）' });
-        }
-        const newId = 'cjar-' + Date.now();
-        let imageUrl;
-        try {
-            imageUrl = saveCustomJarImageFile(newId, imageDataUrl);
-        } catch (e) {
-            return res.status(500).json({ ok: false, error: '画像の保存に失敗しました: ' + e.message });
-        }
-        customJarConfig.themes.push({ id: newId, label: label.trim().slice(0, 40), imageUrl, profile: normalizedProfile });
-        if (!customJarConfig.activeThemeId) customJarConfig.activeThemeId = newId;
-        persistCustomJarConfig();
-        io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
-        return res.json({ ok: true, id: newId, themes: customJarConfig.themes.map(t => ({ id: t.id, label: t.label, imageUrl: t.imageUrl })) });
-    }
-    if (action === 'activate') {
-        if (typeof id !== 'string') return res.status(400).json({ ok: false, error: 'id が必要です' });
-        if (!customJarConfig.themes.find(t => t.id === id)) {
-            return res.status(404).json({ ok: false, error: 'テーマが見つかりません' });
-        }
-        customJarConfig.activeThemeId = id;
-        customJarHistory.length = 0;
-        customJarLastPositions = null;
-        persistCustomJarConfig();
-        io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
-        io.to('custom-jar').emit('widgets:custom-jar:reset');
-        return res.json({ ok: true });
-    }
-    if (action === 'delete') {
-        if (typeof id !== 'string') return res.status(400).json({ ok: false, error: 'id が必要です' });
-        const idx = customJarConfig.themes.findIndex(t => t.id === id);
-        if (idx !== -1) {
-            deleteCustomJarImageFile(id);
-            customJarConfig.themes.splice(idx, 1);
-            if (customJarConfig.activeThemeId === id) {
-                customJarConfig.activeThemeId = customJarConfig.themes[0]?.id || null;
-            }
-            persistCustomJarConfig();
-            io.to('custom-jar').emit('widgets:custom-jar:config', buildCustomJarPayload());
-            io.to('custom-jar').emit('widgets:custom-jar:reset');
-        }
-        return res.json({ ok: true, themes: customJarConfig.themes.map(t => ({ id: t.id, label: t.label, imageUrl: t.imageUrl })) });
-    }
-    return res.status(400).json({ ok: false, error: '不明なアクションです' });
-});
-
-app.post('/api/widgets/custom-jar/reset', (req, res) => {
-    customJarHistory.length = 0;
-    customJarLastPositions = null;
-    io.to('custom-jar').emit('widgets:custom-jar:reset');
-    res.json({ ok: true });
-});
-
-app.post('/api/widgets/custom-jar/shake', (req, res) => {
-    io.to('custom-jar').emit('widgets:custom-jar:shake');
-    res.json({ ok: true });
-});
-
-app.post('/api/widgets/custom-jar/test-single', (req, res) => {
-    if (!customJarConfig.activeThemeId) {
-        return res.status(400).json({ ok: false, error: 'アクティブなテーマがありません' });
-    }
-    const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
-    const catalogWithImages = catalog.filter((g) => g.imageUrl);
-    let payload;
-    if (catalogWithImages.length === 0) {
-        payload = {
-            giftId: 'demo-single', giftName: 'デモギフト',
-            giftImage: buildGiftJarFallbackImage(),
-            diamondCount: 15, repeatCount: 1, uniqueId: '__test__', nickname: 'テスト'
-        };
-    } else {
-        const TIERS = [
-            { min: 1, max: 1 }, { min: 2, max: 4 }, { min: 5, max: 14 },
-            { min: 15, max: 49 }, { min: 50, max: 199 }, { min: 200, max: 999 }, { min: 1000, max: Infinity }
-        ];
-        const buckets = TIERS.map((t) => catalogWithImages.filter((g) => g.diamondCount >= t.min && g.diamondCount <= t.max));
-        const nonEmpty = buckets.filter((b) => b.length > 0);
-        const bucket = nonEmpty[Math.floor(Math.random() * nonEmpty.length)];
-        const gift = bucket[Math.floor(Math.random() * bucket.length)];
-        payload = {
-            giftId: gift.id, giftName: gift.name, giftImage: gift.imageUrl,
-            diamondCount: gift.diamondCount, repeatCount: 1, uniqueId: '__test__', nickname: 'テスト'
-        };
-    }
-    const customJarRoom = io.sockets.adapter.rooms.get('custom-jar');
-    const giftJarRoom   = io.sockets.adapter.rooms.get('gift-jar');
-    console.log('[custom-jar test] rooms — custom-jar:', customJarRoom?.size ?? 0, 'gift-jar:', giftJarRoom?.size ?? 0);
-    io.to('custom-jar').emit('widgets:custom-jar:notify', payload);
-    res.json({ ok: true, giftName: payload.giftName, diamondCount: payload.diamondCount });
-});
-// ======== /オリジナル瓶詰めギフト API ========
-
-function buildGiftJarFallbackImage() {
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f59e0b"/>' +
-        '<text y="44" x="32" text-anchor="middle" font-size="36" font-family="sans-serif">🎁</text></svg>'
-    )}`;
-}
-
-app.post('/api/widgets/gift-jar/test-single', (req, res) => {
-    const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
-    const catalogWithImages = catalog.filter((g) => g.imageUrl);
-    if (catalogWithImages.length === 0) {
-        const payload = {
-            giftId: 'demo-single',
-            giftName: 'デモギフト',
-            giftImage: buildGiftJarFallbackImage(),
-            diamondCount: 15,
-            repeatCount: 1,
-            uniqueId: '__test__',
-            nickname: 'テスト'
-        };
-        io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
-        return res.json({ ok: true, giftName: payload.giftName, diamondCount: payload.diamondCount, source: 'fallback' });
-    }
-    // Tier-weighted: pick a random tier then a random gift within it
-    const TIERS = [
-        { min: 1,    max: 1 },
-        { min: 2,    max: 4 },
-        { min: 5,    max: 14 },
-        { min: 15,   max: 49 },
-        { min: 50,   max: 199 },
-        { min: 200,  max: 999 },
-        { min: 1000, max: Infinity }
-    ];
-    const buckets = TIERS.map((t) => catalogWithImages.filter((g) => g.diamondCount >= t.min && g.diamondCount <= t.max));
-    const nonEmpty = buckets.filter((b) => b.length > 0);
-    const bucket = nonEmpty[Math.floor(Math.random() * nonEmpty.length)];
-    const gift = bucket[Math.floor(Math.random() * bucket.length)];
-    const payload = {
-        giftId: gift.id,
-        giftName: gift.name,
-        giftImage: gift.imageUrl,
-        diamondCount: gift.diamondCount,
-        repeatCount: 1,
-        uniqueId: '__test__',
-        nickname: 'テスト'
-    };
-    io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
-    res.json({ ok: true, giftName: gift.name, diamondCount: gift.diamondCount });
-});
-
-app.post('/api/widgets/gift-jar/test', (req, res) => {
-    const catalog = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
-    const catalogWithImages = catalog.filter((g) => g.imageUrl);
-
-    if (catalogWithImages.length > 0) {
-        // Pick one random gift per tier (tier-weighted), up to 10 total
-        const DEMO_TIERS = [
-            { min: 1,    max: 1 },
-            { min: 2,    max: 4 },
-            { min: 5,    max: 14 },
-            { min: 15,   max: 49 },
-            { min: 50,   max: 199 },
-            { min: 200,  max: 999 },
-            { min: 1000, max: Infinity }
-        ];
-        const picks = [];
-        for (const tier of DEMO_TIERS) {
-            const bucket = catalogWithImages.filter((g) => g.diamondCount >= tier.min && g.diamondCount <= tier.max);
-            if (bucket.length > 0) {
-                const pick = bucket[Math.floor(Math.random() * bucket.length)];
-                if (!picks.some((p) => p.id === pick.id)) picks.push(pick);
-            }
-        }
-
-        picks.slice(0, 10).forEach((gift, index) => {
-            setTimeout(() => {
-                const payload = {
-                    giftId: gift.id,
-                    giftName: gift.name,
-                    giftImage: gift.imageUrl,
-                    diamondCount: gift.diamondCount,
-                    repeatCount: 1,
-                    uniqueId: '__demo__',
-                    nickname: 'デモ'
-                };
-                io.to('gift-jar').emit('widgets:gift-jar:notify', payload);
-            }, index * 220);
-        });
-
-        return res.json({ ok: true, count: Math.min(picks.length, 10), source: 'catalog' });
-    }
-
-    // Fallback when no catalog is cached (not yet connected to TikTok)
-    const DEMO_COINS = [1, 5, 1, 15, 1, 50, 1, 5, 200];
-    const FALLBACK_IMAGE = buildGiftJarFallbackImage();
-
-    DEMO_COINS.forEach((diamondCount, index) => {
-        setTimeout(() => {
-            io.to('gift-jar').emit('widgets:gift-jar:notify', {
-                giftId: `demo-${index}`,
-                giftName: 'デモギフト',
-                giftImage: FALLBACK_IMAGE,
-                diamondCount,
-                repeatCount: 1,
-                uniqueId: '__demo__',
-                nickname: 'デモ'
-            });
-        }, index * 180);
-    });
-
-    res.json({ ok: true, count: DEMO_COINS.length, source: 'fallback' });
-});
-
-app.get('/api/widgets/push-pull/snapshot', (req, res) => {
-    res.json(buildPushPullSnapshot());
-});
-
-app.patch('/api/widgets/push-pull', (req, res) => {
-    const { pushLabel, pullLabel, pushGifts, pullGifts, scoreMode, appearance } = req.body || {};
-    if (scoreMode === 'relative' || scoreMode === 'absolute') pushPullConfig.scoreMode = scoreMode;
-    if (typeof pushLabel === 'string') {
-        pushPullConfig.pushLabel = pushLabel.trim().slice(0, 30) || 'プッシュ';
-    }
-    if (typeof pullLabel === 'string') {
-        pushPullConfig.pullLabel = pullLabel.trim().slice(0, 30) || 'プル';
-    }
-    if (Array.isArray(pushGifts)) pushPullConfig.pushGifts = normalizePushPullGifts(pushGifts);
-    if (Array.isArray(pullGifts)) pushPullConfig.pullGifts = normalizePushPullGifts(pullGifts);
-    if (appearance) setPushPullWidgetTextAppearance(appearance);
-    persistPushPullConfig();
-    const snapshot = buildPushPullSnapshot();
-    io.emit('widgets:push-pull:updated', snapshot);
-    res.json({ ok: true, ...snapshot });
-});
-
-app.post('/api/widgets/push-pull/reset', (req, res) => {
-    pushPullState.pushPoints = 0;
-    pushPullState.pullPoints = 0;
-    persistPushPullState();
-    const snapshot = buildPushPullSnapshot();
-    io.emit('widgets:push-pull:updated', snapshot);
-    res.json({ ok: true, ...snapshot });
-});
-
-app.post('/api/widgets/push-pull/test', (req, res) => {
-    const side = String(req.body?.side || 'push').trim();
-    const points = Math.max(1, Math.min(9999, Math.round(Number(req.body?.points) || 10)));
-    if (side === 'pull') {
-        pushPullState.pullPoints += points;
-    } else {
-        pushPullState.pushPoints += points;
-    }
-    persistPushPullState();
-    const snapshot = buildPushPullSnapshot();
-    io.emit('widgets:push-pull:updated', snapshot);
-    res.json({ ok: true, ...snapshot });
-});
-
-app.get('/api/widgets/goal-gifts/snapshot', (req, res) => {
-    const requestedDayKey = normalizeDayKey(req.query.dayKey) || getTodayDayKey();
-    res.json({
-        snapshot: buildGoalGiftProgressSnapshot(requestedDayKey)
-    });
-});
-
-app.post('/api/widgets/goal-gifts/test-feedback', (req, res) => {
-    const requestedSlot = normalizeWholeNumber(req.body?.slot) || 1;
-    const feedback = normalizeWidgetFeedbackSettings(req.body?.feedback || getGoalGiftFeedbackSettings());
-
-    if (requestedSlot <= 0) {
-        return res.status(400).json({ ok: false, error: 'slot must be a positive integer' });
-    }
-
-    io.emit('widgets:goal-gifts:test-feedback', {
-        slot: requestedSlot,
-        feedback,
-        requestedAt: getTimestamp()
-    });
-
-    return res.json({
-        ok: true,
-        slot: requestedSlot,
-        feedback
-    });
-});
-
-app.patch('/api/widgets/goal-gifts', (req, res) => {
-    if (!Array.isArray(req.body?.items)) {
-        return res.status(400).json({ ok: false, error: 'items must be an array' });
-    }
-
-    const goalGiftsAppearance = req.body?.appearance !== undefined
-        ? setGoalGiftsWidgetTextAppearance(req.body.appearance)
-        : getGoalGiftsWidgetTextAppearance();
-    const fontKey = goalGiftsAppearance.fontKey;
-    const textStyleKey = goalGiftsAppearance.textStyleKey;
-    const strokeWidth = goalGiftsAppearance.strokeWidth;
-    const noteFontSize = req.body?.noteFontSize !== undefined
-        ? setGoalGiftWidgetNoteFontSize(req.body.noteFontSize)
-        : getGoalGiftWidgetNoteFontSize();
-    const achievementBadgeSize = req.body?.achievementBadgeSize !== undefined
-        ? setGoalGiftWidgetAchievementBadgeSize(req.body.achievementBadgeSize)
-        : getGoalGiftWidgetAchievementBadgeSize();
-    const achievementBadgeStyle = req.body?.achievementBadgeStyle !== undefined
-        ? setGoalGiftWidgetAchievementBadgeStyle(req.body.achievementBadgeStyle)
-        : getGoalGiftWidgetAchievementBadgeStyle();
-    const feedback = req.body?.feedback !== undefined
-        ? setGoalGiftFeedbackSettings(req.body.feedback)
-        : getGoalGiftFeedbackSettings();
-    const items = setGoalGiftWidgetItems(req.body.items);
-    const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth, noteFontSize, achievementBadgeSize, achievementBadgeStyle);
-
-    io.emit('widgets:goal-gifts:updated', {
-        snapshot
-    });
-
-    res.json({
-        ok: true,
-        items: snapshot.goals,
-        feedback,
-        snapshot,
-        appearance: goalGiftsAppearance
-    });
-});
-
-app.patch('/api/widgets/contributors-style', (req, res) => {
-    const displayThreshold = normalizePositiveHundreds(req.body?.displayThreshold);
-    if (req.body?.displayThreshold !== undefined && displayThreshold === null) {
-        return res.status(400).json({ ok: false, error: 'displayThreshold must be a positive multiple of 100' });
-    }
-
-    const goalCount = normalizeWholeNumber(req.body?.goalCount);
-    if (req.body?.goalCount !== undefined && goalCount === null) {
-        return res.status(400).json({ ok: false, error: 'goalCount must be a non-negative integer' });
-    }
-
-    const avatarVisibility = req.body?.avatarVisibility !== undefined
-        ? normalizeDisplayAvatarVisibility(req.body.avatarVisibility)
-        : getDisplayAvatarVisibility();
-
-    const savedDisplayThreshold = req.body?.displayThreshold !== undefined ? setDisplayThreshold(displayThreshold) : getDisplayThreshold();
-    const savedGoalCount = req.body?.goalCount !== undefined ? setDisplayGoalCount(goalCount) : getDisplayGoalCount();
-    const savedAvatarVisibility = req.body?.avatarVisibility !== undefined ? setDisplayAvatarVisibility(avatarVisibility) : getDisplayAvatarVisibility();
-    const feedback = req.body?.feedback !== undefined
-        ? setContributorsFeedbackSettings(req.body.feedback)
-        : getContributorsFeedbackSettings();
-    const contributorsAppearance = req.body?.appearance !== undefined
-        ? setContributorsWidgetTextAppearance(req.body.appearance)
-        : getContributorsWidgetTextAppearance();
-
-    emitDisplayThresholdChanges();
-
-    res.json({
-        ok: true,
-        fontFamily: contributorsAppearance.fontKey,
-        displayRangeMode: getContributorsDisplayRange(),
-        displayThreshold: savedDisplayThreshold,
-        goalCount: savedGoalCount,
-        avatarVisibility: savedAvatarVisibility,
-        colorTheme: contributorsAppearance.textStyleKey,
-        strokeWidth: contributorsAppearance.strokeWidth,
-        appearance: contributorsAppearance,
-        feedback,
-        liveSession: getContributorsSessionState(),
-        snapshot: buildOverlayContributorsSnapshot(getDisplayDayKey())
-    });
-});
-
-app.patch('/api/widgets/contributors-range', (req, res) => {
-    const displayRangeMode = setContributorsDisplayRange(req.body?.displayRangeMode);
-    const snapshot = buildOverlayContributorsSnapshot();
-    emitSnapshot(getDisplayDayKey());
-    emitAdminDayUpdate(getDisplayDayKey());
-
-    res.json({
-        ok: true,
-        displayRangeMode,
-        liveSession: getContributorsSessionState(),
-        snapshot
-    });
-});
-
-app.patch('/api/effects/config', (req, res) => {
-    if (!Array.isArray(req.body?.events) || !Array.isArray(req.body?.triggers)) {
-        return res.status(400).json({ ok: false, error: 'events and triggers must be arrays' });
-    }
-
-    const oldEvents = getEffectEvents();
-    const events = setEffectEvents(req.body.events);
-    const eventIds = new Set(events.map((item) => item.id));
-    const triggers = setEffectTriggers(req.body.triggers.map((item) => {
-        // eventIds 内の存在しないイベントIDを除去（旧 eventId フォーマットも考慮）
-        const normalizedEventIds = normalizeEffectTriggerEventIds(item).filter((id) => eventIds.has(id));
-        return { ...item, eventIds: normalizedEventIds, eventId: undefined };
-    }));
-
-    // 旧イベントにあって新イベントに存在しない（または差し替えられた）アセットを削除
-    const newAssetUrls = new Set();
-    for (const ev of events) {
-        if (ev.videoAssetUrl) newAssetUrls.add(ev.videoAssetUrl);
-        if (ev.audioAssetUrl) newAssetUrls.add(ev.audioAssetUrl);
-    }
-    for (const oldEv of oldEvents) {
-        for (const url of [oldEv.videoAssetUrl, oldEv.audioAssetUrl]) {
-            if (url && !newAssetUrls.has(url)) {
-                const filePath = resolveEffectAssetFilePath(url);
-                if (filePath) {
-                    fs.unlink(filePath, () => {});
-                }
-            }
-        }
-    }
-
-    return res.json({
-        ok: true,
-        events,
-        triggers,
-        screenUrls: buildEffectOverlayUrls(req)
-    });
-});
 
 
 app.post('/api/electron/pick-directory', async (req, res) => {
