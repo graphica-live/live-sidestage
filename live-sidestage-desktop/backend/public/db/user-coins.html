@@ -739,6 +739,7 @@
 
         <main class="panel content db-panel">
             <div class="danger-row">
+                <button type="button" id="sort-order-button-coins">並び順: コイン数降順</button>
                 <button type="button" id="add-test-contributors-button">テストデータを追加</button>
                 <button type="button" class="danger" id="reset-day-button">選択日の全件削除</button>
                 <div class="status status-message" id="message-box" hidden>操作待ち</div>
@@ -841,6 +842,7 @@
 
         const socket = io();
 
+        const sortOrderButtonCoins = document.getElementById('sort-order-button-coins');
         const selectedDayStatus = document.getElementById('selected-day-status');
         const totalCoins = document.getElementById('total-coins');
         const tableBody = document.getElementById('table-body');
@@ -869,6 +871,15 @@
         const contributorModalCoinsInput = document.getElementById('contributor-modal-coins');
         const contributorRecentUserNameList = document.getElementById('contributor-recent-user-name-list');
         const contributorUserSuggestionPanel = document.getElementById('admin-user-suggestion-panel');
+
+        const COIN_SORT_CYCLE = ['coin_desc', 'coin_asc', 'name_asc', 'name_desc'];
+        const COIN_SORT_LABELS = {
+            coin_desc: '並び順: コイン数降順',
+            coin_asc: '並び順: コイン数昇順',
+            name_asc: '並び順: 名前昇順',
+            name_desc: '並び順: 名前降順',
+        };
+        let currentCoinSortOrder = localStorage.getItem('tikeffect-user-coins-sort') || 'coin_desc';
 
         let currentDisplayDayKey = null;
         let currentBroadcasterId = null;
@@ -1154,12 +1165,24 @@
             return Array.from(tableBody.querySelectorAll('[data-name-input]')).some((input) => hasUnsavedValue(input));
         }
 
-        function renderTable(contributors) {
-            currentContributors = [...contributors].sort((a, b) => {
-                const aVal = a.firstSeenAt || '';
-                const bVal = b.firstSeenAt || '';
-                return aVal !== bVal ? aVal.localeCompare(bVal) : a.uniqueId.localeCompare(b.uniqueId);
+        function updateCoinSortButton() {
+            sortOrderButtonCoins.textContent = COIN_SORT_LABELS[currentCoinSortOrder] || COIN_SORT_LABELS.coin_desc;
+        }
+
+        function getSortedContributors(contributors) {
+            return [...contributors].sort((a, b) => {
+                switch (currentCoinSortOrder) {
+                    case 'coin_asc': return (a.total - b.total) || a.uniqueId.localeCompare(b.uniqueId);
+                    case 'coin_desc': return (b.total - a.total) || a.uniqueId.localeCompare(b.uniqueId);
+                    case 'name_asc': return (a.nickname || a.uniqueId).localeCompare(b.nickname || b.uniqueId);
+                    case 'name_desc': return (b.nickname || b.uniqueId).localeCompare(a.nickname || a.uniqueId);
+                    default: return (b.total - a.total) || a.uniqueId.localeCompare(b.uniqueId);
+                }
             });
+        }
+
+        function renderTable(contributors) {
+            currentContributors = getSortedContributors(contributors);
             tableBody.innerHTML = '';
             emptyState.hidden = currentContributors.length > 0;
 
@@ -1758,6 +1781,16 @@
             }
         }
 
+        sortOrderButtonCoins.addEventListener('click', () => {
+            const currentIndex = COIN_SORT_CYCLE.indexOf(currentCoinSortOrder);
+            currentCoinSortOrder = COIN_SORT_CYCLE[(currentIndex + 1) % COIN_SORT_CYCLE.length];
+            localStorage.setItem('tikeffect-user-coins-sort', currentCoinSortOrder);
+            updateCoinSortButton();
+            if (currentContributors.length > 0) {
+                renderTable(currentContributors);
+            }
+        });
+
         todayButton.addEventListener('click', () => {
             moveSelectedDay(-1);
         });
@@ -1842,6 +1875,7 @@
         });
 
         async function init() {
+            updateCoinSortButton();
             await Promise.all([refreshDays(), loadContributorRecentUsers()]);
             await loadDay(todayDayKey || currentDisplayDayKey || dayInput.value);
             startAutoRefresh();
