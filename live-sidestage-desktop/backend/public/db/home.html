@@ -302,21 +302,7 @@
             line-height: 1.2;
         }
 
-        .nav-link-lock {
-            flex: 0 0 auto;
-            font-size: 10px;
-            opacity: 0.45;
-        }
 
-        .nav-link[aria-current="page"] .nav-link-lock {
-            opacity: 0;
-        }
-
-        .nav-link:disabled {
-            opacity: 0.45;
-            cursor: not-allowed;
-            transform: none;
-        }
 
         .nav-footnote {
             color: rgba(236, 243, 255, 0.62);
@@ -415,73 +401,6 @@
             background: #ffffff;
         }
 
-        .frame-placeholder {
-            position: absolute;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            padding: 28px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(241, 245, 249, 0.95) 100%);
-        }
-
-        .frame-placeholder[hidden] {
-            display: none;
-        }
-
-        .placeholder-card {
-            width: min(720px, 100%);
-            display: grid;
-            gap: 18px;
-            padding: 28px;
-            border-radius: 24px;
-            border: 1px solid var(--line);
-            background: var(--panel-strong);
-            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
-        }
-
-        .placeholder-chip {
-            width: fit-content;
-            padding: 7px 11px;
-            border-radius: 999px;
-            background: var(--accent-soft);
-            color: var(--accent-strong);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .placeholder-title {
-            font-size: 30px;
-            line-height: 1.14;
-        }
-
-        .placeholder-copy {
-            color: var(--muted);
-            font-size: 15px;
-            line-height: 1.8;
-        }
-
-        .placeholder-points {
-            display: grid;
-            gap: 10px;
-        }
-
-        .placeholder-point {
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.68);
-            color: var(--text);
-            font-size: 14px;
-            line-height: 1.7;
-        }
-
-        .placeholder-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
 
         .admin-settings-modal {
             position: fixed;
@@ -676,30 +595,25 @@
                         <span class="nav-link-icon">⚡</span>
                         <span class="nav-link-title">ホーム</span>
                     </button>
-                    <button type="button" class="nav-link" data-view-path="/widgets" data-name="widgets-window" data-requires-auth="true">
+                    <button type="button" class="nav-link" data-view-path="/widgets" data-name="widgets-window">
                         <span class="nav-link-icon">🎛</span>
                         <span class="nav-link-title">ウィジェット</span>
-                        <span class="nav-link-lock">🔒</span>
                     </button>
-                    <button type="button" class="nav-link" data-view-path="/effects" data-name="video-audio-effects-window" data-requires-auth="true">
+                    <button type="button" class="nav-link" data-view-path="/effects" data-name="video-audio-effects-window">
                         <span class="nav-link-icon">✨</span>
                         <span class="nav-link-title">映像&amp;音声エフェクト</span>
-                        <span class="nav-link-lock">🔒</span>
                     </button>
-                    <button type="button" class="nav-link" data-view-path="/comments" data-name="comments-window" data-requires-auth="true">
+                    <button type="button" class="nav-link" data-view-path="/comments" data-name="comments-window">
                         <span class="nav-link-icon">💬</span>
                         <span class="nav-link-title">コメント欄</span>
-                        <span class="nav-link-lock">🔒</span>
                     </button>
-                    <button type="button" class="nav-link" data-view-path="/gifts" data-name="gift-history-window" data-requires-auth="true">
+                    <button type="button" class="nav-link" data-view-path="/gifts" data-name="gift-history-window">
                         <span class="nav-link-icon">🎁</span>
                         <span class="nav-link-title">ギフト履歴</span>
-                        <span class="nav-link-lock">🔒</span>
                     </button>
-                    <button type="button" class="nav-link" data-view-path="/user-coins" data-name="user-coins-window" data-requires-auth="true">
+                    <button type="button" class="nav-link" data-view-path="/user-coins" data-name="user-coins-window">
                         <span class="nav-link-icon">🪙</span>
                         <span class="nav-link-title">ユーザーコイン数</span>
-                        <span class="nav-link-lock">🔒</span>
                     </button>
                 </nav>
             </section>
@@ -711,21 +625,7 @@
                 <section class="content-frame-card">
                     <div class="frame-shell">
                         <iframe class="content-frame" id="content-frame" title="TikEffect Admin Content"></iframe>
-                        <div class="frame-placeholder" id="frame-placeholder" hidden>
-                            <div class="placeholder-card">
-                                <div class="placeholder-chip">Access Locked</div>
-                                <h2 class="placeholder-title">先に TikTok 認証を完了してください</h2>
-                                <p class="placeholder-copy">右側の領域には各管理画面を埋め込み表示します。まだ認証がないため、ユーザーコイン数やウィジェット設定などはロックされています。</p>
-                                <div class="placeholder-points">
-                                    <div class="placeholder-point">下のボタンからログインを開始すると、このレイアウトのまま各機能に移動できます。</div>
-                                    <div class="placeholder-point">認証が済むとギフト履歴、コメント欄、映像&音声エフェクト、ウィジェットが有効になります。</div>
-                                </div>
-                                <div class="placeholder-actions">
-                                    <button type="button" class="primary" id="placeholder-auth-button">TikTok認証を開く</button>
-                                    <button type="button" class="ghost-button" id="placeholder-setup-button">認証画面を表示</button>
-                                </div>
-                            </div>
-                        </div>
+
                     </div>
                 </section>
             </div>
@@ -783,11 +683,8 @@
         const broadcasterEditCancel = document.getElementById('broadcaster-edit-cancel');
         const tiktokConnectionStatus = document.getElementById('tiktok-connection-status');
         const connectTikTokButton = document.getElementById('connect-tiktok-button');
-        const placeholderAuthButton = document.getElementById('placeholder-auth-button');
-        const placeholderSetupButton = document.getElementById('placeholder-setup-button');
         const sidebarFootnote = document.getElementById('sidebar-footnote');
         const contentFrame = document.getElementById('content-frame');
-        const framePlaceholder = document.getElementById('frame-placeholder');
         const navButtons = Array.from(document.querySelectorAll('.nav-link'));
 
         const pageMeta = {
@@ -825,22 +722,6 @@
         let currentTikTokConnection = null;
         let currentRoute = '/quick-access';
 
-        function hasWorkspaceAccess() {
-            if (!currentBroadcasterId) {
-                return false;
-            }
-
-            if (!currentTikTokConnection) {
-                return false;
-            }
-
-            return currentTikTokConnection.status !== 'not_configured';
-        }
-
-        function requiresAuth(path) {
-            const target = navButtons.find((button) => button.dataset.viewPath === path);
-            return target?.dataset.requiresAuth !== 'false';
-        }
 
         function getTikTokConnectionTone(connection) {
             if (!connection) {
@@ -880,36 +761,15 @@
         function updateNavState() {
             navButtons.forEach((button) => {
                 const path = button.dataset.viewPath;
-                const locked = requiresAuth(path) && !hasWorkspaceAccess();
-                button.disabled = locked;
                 button.setAttribute('aria-current', path === currentRoute ? 'page' : 'false');
             });
         }
 
-        function showPlaceholder() {
-            framePlaceholder.hidden = false;
-            contentFrame.setAttribute('aria-hidden', 'true');
-        }
-
-        function hidePlaceholder() {
-            framePlaceholder.hidden = true;
-            contentFrame.removeAttribute('aria-hidden');
-        }
-
         function setCurrentRoute(path, options = {}) {
             const nextPath = pageMeta[path] ? path : '/quick-access';
-            const locked = requiresAuth(nextPath) && !hasWorkspaceAccess();
 
             currentRoute = nextPath;
             updateContentHeader(currentRoute);
-
-            if (locked) {
-                showPlaceholder();
-                updateNavState();
-                return;
-            }
-
-            hidePlaceholder();
 
             if (options.forceReload || contentFrame.dataset.currentPath !== currentRoute) {
                 contentFrame.src = currentRoute;
@@ -930,8 +790,6 @@
             const connection = currentTikTokConnection || {
                 message: 'TikTok接続状態を読み込み中です。'
             };
-            const hasAccess = hasWorkspaceAccess();
-
             syncStatusCard(
                 tiktokConnectionStatus,
                 'TikTok接続',
@@ -939,9 +797,7 @@
                 getTikTokConnectionTone(connection)
             );
 
-            sidebarFootnote.textContent = hasAccess
-                ? '接続設定済みです。左のリンクで右側コンテンツを切り替えられます。'
-                : '接続設定前はホームを利用できます。セットアップ後に他の機能へ移動できます。';
+            sidebarFootnote.textContent = '接続設定済みです。左のリンクで右側コンテンツを切り替えられます。';
 
             const isConnected = connection.status === 'connected';
             const isConnecting = connection.status === 'connecting';
@@ -951,15 +807,6 @@
             connectTikTokButton.textContent = isConnected ? 'TikTok切断' : 'TikTok接続';
             connectTikTokButton.dataset.mode = isConnected ? 'disconnect' : 'connect';
             updateNavState();
-
-            if (!hasAccess && requiresAuth(currentRoute)) {
-                showPlaceholder();
-                return;
-            }
-
-            if (contentFrame.dataset.currentPath) {
-                hidePlaceholder();
-            }
         }
 
         function openWindow(path, name) {
@@ -1019,16 +866,6 @@
                 if (versionEl && !versionEl.textContent) versionEl.textContent = 'v' + payload.appVersion;
             }
             syncUi();
-
-            if (hasWorkspaceAccess() && currentRoute === '/setup') {
-                setCurrentRoute('/user-coins');
-                return;
-            }
-
-            if (!hasWorkspaceAccess() && requiresAuth(currentRoute)) {
-                showPlaceholder();
-                return;
-            }
 
             if (!contentFrame.dataset.currentPath) {
                 setCurrentRoute(currentRoute);
@@ -1103,19 +940,6 @@
             }
         });
 
-        placeholderSetupButton.addEventListener('click', () => {
-            setCurrentRoute('/setup');
-        });
-
-        placeholderAuthButton.addEventListener('click', async () => {
-            placeholderAuthButton.disabled = true;
-
-            try {
-                await openTikTokAuthWindow(false);
-            } finally {
-                placeholderAuthButton.disabled = false;
-            }
-        });
 
         socket.on('admin_day_updated', (payload) => {
             currentBroadcasterId = payload?.broadcasterId || null;
