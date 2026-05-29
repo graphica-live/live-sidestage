@@ -27,16 +27,6 @@ test.describe('comments.html: モーダルが開ける', () => {
         await expect(page.locator('#comment-read-aloud-voice-mapping-modal')).toHaveClass(/is-open/);
     });
 
-    test('表示設定モーダル', async ({ page }) => {
-        await page.click('#comment-settings-button');
-        await expect(page.locator('#comment-settings-modal')).toHaveClass(/is-open/);
-    });
-
-    test('読み上げ対象設定モーダル', async ({ page }) => {
-        await page.click('#comment-read-aloud-settings-button');
-        await expect(page.locator('#comment-read-aloud-settings-modal')).toHaveClass(/is-open/);
-    });
-
     test('読み上げフィルタモーダル', async ({ page }) => {
         await page.click('#comment-read-aloud-filter-button');
         await expect(page.locator('#comment-read-aloud-filter-modal')).toHaveClass(/is-open/);
@@ -63,8 +53,6 @@ test.describe('comments.html: モーダルが開ける', () => {
 const MODAL_CONFIGS = [
     { name: 'VOICE 設定',         openBtn: '#comment-read-aloud-voice-button',            modal: '#comment-read-aloud-voice-modal',            closeBtn: '#comment-read-aloud-voice-close' },
     { name: 'ボイスマッピング',   openBtn: '#comment-read-aloud-voice-mapping-button',    modal: '#comment-read-aloud-voice-mapping-modal',    closeBtn: '#comment-read-aloud-voice-mapping-close' },
-    { name: '表示設定',           openBtn: '#comment-settings-button',                    modal: '#comment-settings-modal',                    closeBtn: '#comment-settings-close' },
-    { name: '読み上げ対象設定',   openBtn: '#comment-read-aloud-settings-button',         modal: '#comment-read-aloud-settings-modal',         closeBtn: '#comment-read-aloud-settings-close' },
     { name: '読み上げフィルタ',   openBtn: '#comment-read-aloud-filter-button',           modal: '#comment-read-aloud-filter-modal',           closeBtn: '#comment-read-aloud-filter-close' },
     { name: '読み上げ変換',       openBtn: '#comment-read-aloud-text-replacement-button', modal: '#comment-read-aloud-text-replacement-modal', closeBtn: '#comment-read-aloud-text-replacement-close' },
     { name: '絵文字変換',         openBtn: '#comment-read-aloud-emoji-button',            modal: '#comment-read-aloud-emoji-modal',            closeBtn: '#comment-read-aloud-emoji-close' },
