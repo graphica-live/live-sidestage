@@ -143,6 +143,69 @@ const WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY = 'widget_push_pull_stroke_width';
 const WIDGET_CAPTION_FONT_STATE_KEY = 'widget_caption_font';
 const WIDGET_CAPTION_TEXT_STYLE_STATE_KEY = 'widget_caption_text_style';
 const WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY = 'widget_caption_stroke_width';
+
+const EXPORTABLE_SCOPED_SETTINGS_KEYS = [
+    CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,
+    GOAL_COUNT_STATE_KEY,
+    DISPLAY_THRESHOLD_STATE_KEY,
+    DISPLAY_AVATAR_VISIBILITY_STATE_KEY,
+    DISPLAY_COLOR_THEME_STATE_KEY,
+    DISPLAY_STROKE_WIDTH_STATE_KEY,
+    DISPLAY_FONT_FAMILY_STATE_KEY,
+    WIDGET_TOP_GIFT_SETTINGS_STATE_KEY,
+    WIDGET_LIKE_CONTRIBUTION_SETTINGS_STATE_KEY,
+    SHARED_WIDGET_FEEDBACK_SETTINGS_STATE_KEY,
+    CONTRIBUTORS_FEEDBACK_SETTINGS_STATE_KEY,
+    WIDGET_GOAL_GIFT_FEEDBACK_SETTINGS_STATE_KEY,
+    WIDGET_GOAL_GIFTS_FONT_STATE_KEY,
+    WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY,
+    WIDGET_GOAL_GIFTS_NOTE_FONT_SIZE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_SIZE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_STYLE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_STATE_KEY,
+    WIDGET_TAP_LIST_SETTINGS_STATE_KEY,
+    WIDGET_COIN_LIST_SETTINGS_STATE_KEY,
+    WIDGET_CAPTION_SETTINGS_STATE_KEY,
+    CAPTION_CORRECTION_RULES_STATE_KEY,
+    COMMENT_SETTINGS_STATE_KEY,
+    COMMENT_OBSERVED_EMOTES_STATE_KEY,
+    COMMENT_OBSERVED_EMOJIS_STATE_KEY,
+    EFFECT_EVENTS_STATE_KEY,
+    EFFECT_TRIGGERS_STATE_KEY,
+    WIDGET_CONTRIBUTORS_FONT_STATE_KEY,
+    WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY,
+    WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY,
+    WIDGET_TOP_GIFT_FONT_STATE_KEY,
+    WIDGET_TOP_GIFT_TEXT_STYLE_STATE_KEY,
+    WIDGET_TOP_GIFT_STROKE_WIDTH_STATE_KEY,
+    WIDGET_LIKE_CONTRIBUTION_FONT_STATE_KEY,
+    WIDGET_LIKE_CONTRIBUTION_TEXT_STYLE_STATE_KEY,
+    WIDGET_LIKE_CONTRIBUTION_STROKE_WIDTH_STATE_KEY,
+    WIDGET_TAP_LIST_FONT_STATE_KEY,
+    WIDGET_TAP_LIST_TEXT_STYLE_STATE_KEY,
+    WIDGET_TAP_LIST_STROKE_WIDTH_STATE_KEY,
+    WIDGET_COIN_LIST_FONT_STATE_KEY,
+    WIDGET_COIN_LIST_TEXT_STYLE_STATE_KEY,
+    WIDGET_COIN_LIST_STROKE_WIDTH_STATE_KEY,
+    WIDGET_GIFT_JAR_FONT_STATE_KEY,
+    WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY,
+    WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY,
+    WIDGET_PUSH_PULL_FONT_STATE_KEY,
+    WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY,
+    WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
+    WIDGET_CAPTION_FONT_STATE_KEY,
+    WIDGET_CAPTION_TEXT_STYLE_STATE_KEY,
+    WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY,
+];
+
+const EXPORTABLE_GLOBAL_SETTINGS_KEYS = [
+    'gift_jar_drop_above_jar',
+    'gift_jar_size_multiplier',
+    'gift_jar_size_ratio_coeff',
+    'gift_jar_theme',
+];
+
 const EFFECT_SCREEN_COUNT = 10;
 const DEFAULT_DISPLAY_THRESHOLD = 1000;
 const DEFAULT_GOAL_COUNT = 10;
@@ -8916,6 +8979,48 @@ app.delete('/api/contributors/day', (req, res) => {
     return res.json({ ok: true, deletedCount: changes });
 });
 
+app.get('/api/settings/export', (req, res) => {
+    const broadcasterId = getBroadcasterId();
+    const settings = {};
+    for (const key of EXPORTABLE_SCOPED_SETTINGS_KEYS) {
+        const value = getScopedStateValue(key);
+        if (value != null) settings[key] = value;
+    }
+    const globalSettings = {};
+    for (const key of EXPORTABLE_GLOBAL_SETTINGS_KEYS) {
+        const value = dbStore.getGlobalStateValue(key);
+        if (value != null) globalSettings[key] = value;
+    }
+    res.json({
+        version: 1,
+        broadcasterId: broadcasterId || null,
+        exportedAt: new Date().toISOString(),
+        settings,
+        globalSettings
+    });
+});
+
+app.post('/api/settings/import', express.json({ limit: '4mb' }), (req, res) => {
+    const { settings, globalSettings } = req.body || {};
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return res.status(400).json({ ok: false, error: 'invalid payload: settings must be an object' });
+    }
+    const allowedScoped = new Set(EXPORTABLE_SCOPED_SETTINGS_KEYS);
+    const allowedGlobal = new Set(EXPORTABLE_GLOBAL_SETTINGS_KEYS);
+    for (const [key, value] of Object.entries(settings)) {
+        if (!allowedScoped.has(key) || value == null) continue;
+        setScopedStateValue(key, typeof value === 'string' ? value : JSON.stringify(value));
+    }
+    if (globalSettings && typeof globalSettings === 'object' && !Array.isArray(globalSettings)) {
+        for (const [key, value] of Object.entries(globalSettings)) {
+            if (!allowedGlobal.has(key) || value == null) continue;
+            dbStore.setGlobalStateValue(key, String(value), getTimestamp());
+        }
+    }
+    io.emit('settings:imported', { broadcasterId: getBroadcasterId() });
+    res.json({ ok: true });
+});
+
 app.post('/api/display/day', (req, res) => {
     const requestedDayKey = normalizeDayKey(req.body.dayKey);
 
@@ -9314,7 +9419,7 @@ async function connectToTikTok() {
                 websocketReasonDetail: 'この配信は WebSocket で受信中です。追加の対応は不要です。'
             };
             const transport = 'websocket';
-            setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。受信方式: ${transport}`, connectedStateOptions);
+            setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。`, connectedStateOptions);
             startContributorsSession();
             emitSnapshot(getDisplayDayKey());
             emitAdminDayUpdate(getDisplayDayKey());
@@ -9322,7 +9427,7 @@ async function connectToTikTok() {
             return state;
         } catch (err) {
             if (isTikTokAlreadyConnectedError(err)) {
-                setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。受信方式: websocket`, {
+                setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。`, {
                     transportMethod: 'websocket',
                     websocketReasonCode: 'websocket_active',
                     websocketReasonLabel: '現在は WebSocket で受信できています。',

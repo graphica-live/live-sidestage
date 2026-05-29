@@ -475,6 +475,16 @@
             justify-content: flex-end;
         }
 
+        .admin-settings-data-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .admin-settings-data-row button {
+            flex: 1;
+            justify-content: center;
+        }
+
         @media (max-width: 1079px) {
             body {
                 height: auto;
@@ -661,10 +671,15 @@
                 <div class="admin-settings-label">Appearance</div>
                 <select id="admin-theme-select" class="admin-settings-select" aria-label="管理画面テーマ切替"></select>
             </section>
-            <div class="admin-settings-note">
-                <strong>今後追加予定の置き場</strong>
-                <p>表示密度、既定の起動画面、サイドバーの表示方式などの共通設定をここに集約できます。</p>
-            </div>
+            <section class="admin-settings-section">
+                <div class="admin-settings-label">データ管理</div>
+                <div class="admin-settings-data-row">
+                    <button type="button" class="ghost-button" id="export-settings-btn">📤 エクスポート</button>
+                    <button type="button" class="ghost-button" id="import-settings-btn">📥 インポート</button>
+                </div>
+                <input type="file" id="import-settings-file" accept=".json" hidden>
+                <p id="settings-io-status" class="nav-footnote" hidden></p>
+            </section>
             <div class="admin-settings-actions">
                 <button type="button" class="primary" data-admin-settings-close>閉じる</button>
             </div>
@@ -936,5 +951,88 @@
         });
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
+    <script>
+        (function () {
+            const exportBtn = document.getElementById('export-settings-btn');
+            const importBtn = document.getElementById('import-settings-btn');
+            const importFile = document.getElementById('import-settings-file');
+            const ioStatus = document.getElementById('settings-io-status');
+
+            function showStatus(msg, isError) {
+                ioStatus.textContent = msg;
+                ioStatus.hidden = false;
+                ioStatus.style.color = isError ? 'var(--accent)' : '';
+            }
+
+            exportBtn.addEventListener('click', async () => {
+                exportBtn.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/export');
+                    if (!res.ok) throw new Error('サーバーエラー');
+                    const data = await res.json();
+                    data.adminTheme = localStorage.getItem('tikeffect-admin-theme') || null;
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const id = data.broadcasterId || 'unknown';
+                    const ts = new Date().toISOString().slice(0, 10);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `tikeffect-settings-${id}-${ts}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showStatus('エクスポート完了');
+                } catch (e) {
+                    showStatus('エクスポート失敗: ' + e.message, true);
+                } finally {
+                    exportBtn.disabled = false;
+                }
+            });
+
+            importBtn.addEventListener('click', () => {
+                importFile.value = '';
+                importFile.click();
+            });
+
+            importFile.addEventListener('change', async () => {
+                const file = importFile.files[0];
+                if (!file) return;
+                let data;
+                try {
+                    data = JSON.parse(await file.text());
+                } catch {
+                    showStatus('JSONの読み込みに失敗しました', true);
+                    return;
+                }
+                if (!data || typeof data.settings !== 'object') {
+                    showStatus('設定ファイルの形式が正しくありません', true);
+                    return;
+                }
+                const srcId = data.broadcasterId || '不明';
+                if (!confirm(`「${srcId}」の設定をインポートします。\n現在の設定は上書きされます。続行しますか？`)) return;
+
+                importBtn.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ settings: data.settings, globalSettings: data.globalSettings || {} })
+                    });
+                    if (!res.ok) {
+                        const payload = await res.json().catch(() => ({}));
+                        throw new Error(payload.error || 'サーバーエラー');
+                    }
+                    if (data.adminTheme) {
+                        localStorage.setItem('tikeffect-admin-theme', data.adminTheme);
+                    }
+                    showStatus('インポート完了。ページを再読み込みします...');
+                    setTimeout(() => window.location.reload(), 800);
+                } catch (e) {
+                    showStatus('インポート失敗: ' + e.message, true);
+                } finally {
+                    importBtn.disabled = false;
+                }
+            });
+        }());
+    </script>
 </body>
 </html>
