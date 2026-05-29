@@ -2668,7 +2668,9 @@
                 while (commentStream.children.length > 100) {
                     commentStream.firstElementChild?.remove();
                 }
-                commentStream.scrollTop = commentStream.scrollHeight;
+                requestAnimationFrame(() => {
+                    commentStream.scrollTop = commentStream.scrollHeight;
+                });
             } else {
                 commentStream.insertBefore(card, commentStream.firstChild);
                 while (commentStream.children.length > 100) {
