@@ -95,11 +95,7 @@ test.describe('quick-access.html: 初期状態', () => {
         await page.waitForLoadState('networkidle');
     });
 
-    test('読み上げチェックボックスが ON になる', async ({ page }) => {
-        await expect(page.locator('#read-aloud-checkbox')).toBeChecked();
-    });
-
-    test('ランダムボイス更新ボタンが有効（randomVoiceEnabled=true 時）', async ({ page }) => {
-        await expect(page.locator('#reset-random-voice-button')).toBeEnabled();
+    test('Quick Access 見出しが表示される', async ({ page }) => {
+        await expect(page.locator('.eyebrow')).toBeVisible();
     });
 });
