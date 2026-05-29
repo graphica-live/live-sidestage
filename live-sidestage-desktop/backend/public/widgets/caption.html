@@ -278,6 +278,10 @@
             }, ms);
         }
 
+        const jaSegmenter = typeof Intl?.Segmenter === 'function'
+            ? new Intl.Segmenter('ja', { granularity: 'word' })
+            : null;
+
         function splitIntoSegments(text, maxChars) {
             const strongBreak = /[。！？]/;
             const weakBreak   = /[、，,]/;
@@ -299,6 +303,18 @@
                     for (let i = maxChars - 1; i > 0; i--) {
                         if (rem[i] === ' ') { cut = i; break; }
                     }
+                }
+                // 単語境界でカット（カタカナ語・漢語がmaxChars付近でぶつ切りになるのを防ぐ）
+                if (cut < 0 && jaSegmenter) {
+                    const probe = rem.slice(0, maxChars + 10);
+                    let pos = 0;
+                    let lastBound = -1;
+                    for (const seg of jaSegmenter.segment(probe)) {
+                        pos += seg.segment.length;
+                        if (pos <= maxChars) lastBound = pos;
+                        else break;
+                    }
+                    if (lastBound > 1) cut = lastBound;
                 }
                 if (cut < 0) cut = maxChars;
                 result.push(rem.slice(0, cut));
