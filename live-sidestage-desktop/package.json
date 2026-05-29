@@ -1,6 +1,6 @@
 {
   "name": "tikeffect",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "main": "electron/main.js",
   "scripts": {
     "predev": "npm rebuild better-sqlite3 sherpa-onnx",
