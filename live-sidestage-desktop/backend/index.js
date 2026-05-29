@@ -23,6 +23,9 @@ const {
     isTikTokAlreadyConnectedError,
     getTikTokErrorDetailText,
     isTikTokRecoverableRoomInfoError,
+    scheduleReconnect,
+    resetTikTokConnection,
+    switchBroadcasterId,
 } = tikTokHelpers;
 
 const APP_NAME = 'TikEffect';
@@ -302,6 +305,14 @@ tikTokHelpers.init({
     emitAdminDayUpdate: (...args) => emitAdminDayUpdate(...args),
     getDisplayDayKey: () => getDisplayDayKey(),
     httpServer,
+    connectToTikTok: (...args) => connectToTikTok(...args),
+    hasConfiguredBroadcasterId: () => hasConfiguredBroadcasterId(),
+    isShuttingDown: () => getIsShuttingDown(),
+    getRecentTikTokComments: () => recentTikTokComments,
+    emitAdminCommentsUpdate: () => emitAdminCommentsUpdate(),
+    finishContributorsSession: () => finishContributorsSession(),
+    normalizeBroadcasterId: (v) => normalizeBroadcasterId(v),
+    setBroadcasterId: (v) => setBroadcasterId(v),
 });
 
 // keep-alive 接続を追跡して closeHttpServer で強制破棄できるようにする
@@ -6594,6 +6605,7 @@ let isProcessingRawEvents = false;
 function getAutoReconnectEnabled() { return tiktokState.autoReconnect; }
 function setAutoReconnectEnabled(val) { tiktokState.autoReconnect = val; }
 let isShuttingDown = false;
+function getIsShuttingDown() { return isShuttingDown; }
 let shutdownPromise = null;
 let recentTikTokComments = [];
 
@@ -6833,112 +6845,7 @@ function flushRawGiftEvents() {
     });
 }
 
-function scheduleReconnect(reason, errorDetail = null, overrideDelayMs = null, retryMessageOverride = null) {
-    if (isShuttingDown || tiktokState.reconnectTimer || !hasConfiguredBroadcasterId()) {
-        return;
-    }
 
-    if (!tiktokState.autoReconnect) {
-        const isOfflineWait = reason === 'user_offline';
-        const stateMessage = isOfflineWait
-            ? '配信がオフラインです。接続ボタンを押して再試行できます。'
-            : '接続が切れました。接続ボタンを押して再接続できます。';
-        console.info(`ℹ️ Auto-reconnect disabled. Manual reconnect required (reason: ${reason}).`);
-        setTikTokConnectionState(
-            'error',
-            stateMessage,
-            {
-                transportMethod: 'unknown',
-                retryScheduled: false,
-                retryReason: reason,
-                websocketReasonCode: 'manual_reconnect',
-                websocketReasonLabel: '手動接続が必要です。',
-                websocketReasonDetail: stateMessage
-            }
-        );
-        return;
-    }
-
-    // 配信がオフライン（配信前待機）の場合は短い間隔で再試行して開始を素早く検知する
-    const isOfflineWait = reason === 'user_offline';
-    const delayMs = overrideDelayMs ?? (isOfflineWait ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS);
-
-    const retryDetail = errorDetail
-        ? `切断後の再接続待機中です。再接続が成功すると受信方式が更新されます。\n直前のエラー: ${errorDetail}`
-        : isOfflineWait
-            ? '配信開始を待機しています。配信が始まると自動的に接続します。'
-            : '切断後の再接続待機中です。再接続が成功すると受信方式が更新されます。';
-
-    const retryMessage = retryMessageOverride ?? (isOfflineWait
-        ? `配信がオフラインです。${Math.round(delayMs / 1000)}秒後に再確認します。`
-        : `TikTok接続が切れました。${Math.round(delayMs / 1000)}秒後に再接続します。`);
-
-    setTikTokConnectionState(
-        'retrying',
-        retryMessage,
-        {
-            transportMethod: 'unknown',
-            retryScheduled: true,
-            retryReason: reason,
-            retryDelayMs: delayMs,
-            websocketReasonCode: 'reconnecting',
-            websocketReasonLabel: isOfflineWait ? '配信開始を待機しています。' : '再接続を待機しています。',
-            websocketReasonDetail: retryDetail
-        }
-    );
-    console.warn(`⚠️ TikTok connection retry scheduled (${reason}) in ${delayMs}ms${errorDetail ? ` — ${errorDetail}` : ''}`);
-    tiktokState.reconnectTimer = setTimeout(() => {
-        tiktokState.reconnectTimer = null;
-        setTikTokConnectionState('connecting', 'TikTokへ再接続しています...', {
-            transportMethod: 'unknown',
-            websocketReasonCode: 'reconnecting',
-            websocketReasonLabel: '再接続を試行しています。',
-            websocketReasonDetail: '接続先の状態を再確認しているため、受信方式はまだ確定していません。'
-        });
-        connectToTikTok().catch(() => {
-            // connectToTikTok logs concrete failures.
-        });
-    }, delayMs);
-}
-
-async function resetTikTokConnection() {
-    recentTikTokComments = [];
-    emitAdminCommentsUpdate();
-
-    if (tiktokState.reconnectTimer) {
-        clearTimeout(tiktokState.reconnectTimer);
-        tiktokState.reconnectTimer = null;
-    }
-
-    tiktokState.connectPromise = null;
-    tiktokState.connectAttempts = 0;
-
-    if (!tiktokState.liveConnection) {
-        tiktokState.activeUsername = null;
-        return;
-    }
-
-    const connection = tiktokState.liveConnection;
-    tiktokState.liveConnection = null;
-    tiktokState.activeUsername = null;
-
-    finishContributorsSession();
-
-    connection.removeAllListeners?.();
-
-    try {
-        await Promise.resolve(connection.disconnect?.());
-    } catch (error) {
-        console.warn('⚠️ Failed to disconnect previous TikTok connection cleanly:', error);
-    }
-
-    setTikTokConnectionState('idle', 'TikTok接続をリセットしました。', {
-        transportMethod: 'unknown',
-        websocketReasonCode: 'connection_reset',
-        websocketReasonLabel: '接続はリセット済みです。',
-        websocketReasonDetail: '次回接続時にあらためて WebSocket か request polling かを判定します。'
-    });
-}
 
 async function shutdownApplication(reason = 'manual') {
     if (shutdownPromise) {
@@ -6992,26 +6899,6 @@ async function shutdownApplication(reason = 'manual') {
     return shutdownPromise;
 }
 
-async function switchBroadcasterId(broadcasterId) {
-    const normalizedBroadcasterId = normalizeBroadcasterId(broadcasterId);
-
-    if (!normalizedBroadcasterId) {
-        return null;
-    }
-
-    if (getBroadcasterId() !== normalizedBroadcasterId) {
-        await resetTikTokConnection();
-    }
-
-    const savedBroadcasterId = setBroadcasterId(normalizedBroadcasterId);
-    setTikTokConnectionState('idle', `@${savedBroadcasterId} への接続準備ができました。`, {
-        transportMethod: 'unknown',
-        websocketReasonCode: 'pending_connection',
-        websocketReasonLabel: '接続前の待機状態です。',
-        websocketReasonDetail: '接続が始まると、その配信で WebSocket が使えるかどうかを判定します。'
-    });
-    return savedBroadcasterId;
-}
 
 require('./lib/socket-handlers')({
     io,
