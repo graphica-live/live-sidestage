@@ -291,11 +291,13 @@
             while (rem.length > 0) {
                 if (rem.length <= maxChars) { result.push(rem); break; }
                 let cut = -1;
-                for (let i = maxChars - 1; i > 0; i--) {
+                // 後半50%の範囲のみ検索 — 前半の孤立した句読点で短い塊を生まない
+                const minPunct = Math.ceil(maxChars * 0.5);
+                for (let i = maxChars - 1; i >= minPunct; i--) {
                     if (strongBreak.test(rem[i])) { cut = i + 1; break; }
                 }
                 if (cut < 0) {
-                    for (let i = maxChars - 1; i > 0; i--) {
+                    for (let i = maxChars - 1; i >= minPunct; i--) {
                         if (weakBreak.test(rem[i])) { cut = i + 1; break; }
                     }
                 }
