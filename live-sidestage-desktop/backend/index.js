@@ -224,6 +224,8 @@ const LEGACY_SOUND_ROOT_DIRECTORY = path.join(LEGACY_EFFECT_BASE_DIRECTORY, 'sou
 let currentBroadcasterId = null;
 let tiktokLiveConnection = null;
 let pendingUpdateInfo = null;
+function getPendingUpdateInfo() { return pendingUpdateInfo; }
+function setPendingUpdateInfo(val) { pendingUpdateInfo = val; }
 let activeTikTokUsername = null;
 let cachedTikTokGiftCatalog = {
     broadcasterId: null,
@@ -7449,41 +7451,7 @@ app.get('/admin.html', (req, res) => {
     return res.redirect('/');
 });
 
-app.get('/api/update/status', (req, res) => {
-    if (pendingUpdateInfo) {
-        res.json({ available: true, version: pendingUpdateInfo.version });
-    } else {
-        res.json({ available: false });
-    }
-});
-
-app.post('/api/update/install', (req, res) => {
-    if (!pendingUpdateInfo) {
-        return res.status(409).json({ error: 'no_pending_update' });
-    }
-    res.json({ ok: true });
-    serverEvents.emit('install-update-requested');
-});
-
-// 開発用: アップデートバナーの表示をシミュレートする（本番環境では無効）
-app.post('/api/debug/simulate-update', (req, res) => {
-    if (IS_PACKAGED_ELECTRON) {
-        return res.status(403).json({ error: 'not_available_in_production' });
-    }
-    const version = String(req.body?.version || '9.9.9');
-    pendingUpdateInfo = { version };
-    io.emit('app:update-ready', { version });
-    res.json({ ok: true, version });
-});
-
-// 開発用: シミュレートしたアップデートをリセットする（本番環境では無効）
-app.post('/api/debug/reset-update', (req, res) => {
-    if (IS_PACKAGED_ELECTRON) {
-        return res.status(403).json({ error: 'not_available_in_production' });
-    }
-    pendingUpdateInfo = null;
-    res.json({ ok: true });
-});
+require('./lib/routes/update')({ app, io, serverEvents, IS_PACKAGED_ELECTRON, getPendingUpdateInfo, setPendingUpdateInfo });
 
 app.get('/api/state', (req, res) => {
     res.json({
