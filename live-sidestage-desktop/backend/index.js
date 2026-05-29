@@ -188,7 +188,7 @@ const DEFAULT_WIDGET_CAPTION_SETTINGS = {
     audioSampleRate: 44100,
     audioChunkSec: 0.15,
     deduplicateDevices: true,
-    noiseGateThreshold: 0.003,
+    noiseGateThreshold: 0.033,
     verticalOffset: 120
 };
 const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['tiny', 'base', 'small', 'medium', 'large', 'large-v3']);

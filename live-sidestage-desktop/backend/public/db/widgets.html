@@ -1975,7 +1975,7 @@
                             <div style="font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">入力レベル</div>
                             <div id="caption-noise-gate-track" style="height:10px;border-radius:5px;background:#dfe8f1;position:relative;cursor:crosshair;">
                                 <div id="caption-level-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e 0%,#eab308 72%,#ef4444 100%);border-radius:5px;will-change:width;pointer-events:none;"></div>
-                                <div id="caption-noise-gate-handle" title="ノイズゲート閾値（ドラッグで設定）" style="position:absolute;top:-4px;width:4px;height:18px;background:#2563eb;border-radius:2px;cursor:ew-resize;left:1.8%;transform:translateX(-50%);box-shadow:0 0 0 2px rgba(37,99,235,0.25);z-index:1;pointer-events:all;"></div>
+                                <div id="caption-noise-gate-handle" title="ノイズゲート閾値（ドラッグで設定）" style="position:absolute;top:-4px;width:4px;height:18px;background:#2563eb;border-radius:2px;cursor:ew-resize;left:20%;transform:translateX(-50%);box-shadow:0 0 0 2px rgba(37,99,235,0.25);z-index:1;pointer-events:all;"></div>
                             </div>
                         </div>
                         <div class="action-row">
@@ -5455,7 +5455,7 @@
         const captionNoiseGateTrack  = document.getElementById('caption-noise-gate-track');
         const captionNoiseGateHandle = document.getElementById('caption-noise-gate-handle');
         const NOISE_GATE_SCALE = 600; // same scale as level meter: pct = rms * NOISE_GATE_SCALE
-        let captionNoiseGateThreshold = 0.003;
+        let captionNoiseGateThreshold = 0.033;
         const captionFontSizeInput = document.getElementById('caption-font-size');
         const captionVerticalOffsetInput = document.getElementById('caption-vertical-offset');
         const captionCharsPerSecInput = document.getElementById('caption-chars-per-sec');
@@ -5604,7 +5604,7 @@
             captionAudioSampleRateSelect.value = s.audioSampleRate ?? 44100;
             captionAudioChunkSecInput.value    = s.audioChunkSec ?? 0.15;
             captionDeduplicateDevicesCheck.checked = s.deduplicateDevices !== false;
-            setNoiseGateHandle(typeof s.noiseGateThreshold === 'number' ? s.noiseGateThreshold : 0.003);
+            setNoiseGateHandle(typeof s.noiseGateThreshold === 'number' ? s.noiseGateThreshold : 0.033);
             if (cfg.appearance) {
                 state.captionAppearance = cfg.appearance;
                 syncCaptionAppearanceControls();
