@@ -1784,8 +1784,10 @@
                             <div class="field full">
                                 <label for="caption-engine-select">音声認識エンジン</label>
                                 <select id="caption-engine-select">
-                                    <option value="whisper-cpp">Whisper（推奨）— CUDA GPU・初回DL ~900MB</option>
-                                    <option value="sherpa-parakeet">Parakeet-JA — DirectML GPU・初回DL ~640MB</option>
+                                    <option value="sherpa-parakeet-gpu" selected>Parakeet-JA GPU（推奨）— DirectML・初回DL ~640MB</option>
+                                    <option value="sherpa-parakeet-cpu">Parakeet-JA CPU — GPU不要・初回DL ~640MB</option>
+                                    <option value="whisper-cpp-cuda">Whisper CUDA GPU — NVIDIA必須・初回DL ~900MB</option>
+                                    <option value="whisper-cpp-cpu">Whisper CPU — GPU不要・初回DL ~900MB</option>
                                 </select>
                             </div>
                             <div class="field full" id="caption-whisper-model-row">
@@ -5501,7 +5503,7 @@
 
         function updateCaptionEngineVisibility() {
             const e = captionEngineSelect.value;
-            captionWhisperModelRow.style.display = (e === 'whisper-cpp') ? '' : 'none';
+            captionWhisperModelRow.style.display = (e === 'whisper-cpp-cuda' || e === 'whisper-cpp-cpu') ? '' : 'none';
             const needPython = captionTranslationEnabledCheck.checked && captionTranslationEngineSelect.value === 'helsinki';
             captionPythonPathRow.style.display = needPython ? '' : 'none';
         }
@@ -5582,7 +5584,7 @@
         function applyCaptionConfig(cfg) {
             if (!cfg?.settings) return;
             const s = cfg.settings;
-            captionEngineSelect.value = s.recognitionEngine ?? 'whisper-cpp';
+            captionEngineSelect.value = s.recognitionEngine ?? 'sherpa-parakeet-gpu';
             captionWhisperModelSelect.value = s.whisperModel ?? 'medium';
             captionPythonPathInput.value = s.pythonPath ?? 'python';
             captionFontSizeInput.value = s.fontSize ?? 52;

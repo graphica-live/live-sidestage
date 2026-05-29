@@ -26,10 +26,11 @@ const MODEL_URLS = {
 };
 
 class WhisperEngine extends EventEmitter {
-    constructor(dataDir) {
+    constructor(dataDir, cpuOnly = false) {
         super();
         this.dataDir  = dataDir;
-        this.binDir   = path.join(dataDir, 'whisper-bin');
+        this._cpuOnly = cpuOnly;
+        this.binDir   = path.join(dataDir, cpuOnly ? 'whisper-bin-cpu' : 'whisper-bin');
         this.modelDir = path.join(dataDir, 'whisper-models');
         this._mainExe = null;
         this._modelKey = 'medium';
@@ -63,7 +64,7 @@ class WhisperEngine extends EventEmitter {
 
     async init(modelKey = 'medium') {
         this._modelKey = modelKey;
-        if (!this.isBinaryReady()) await this._downloadBinary();
+        if (!this.isBinaryReady()) await this._downloadBinary(this._cpuOnly);
         if (!this.isModelReady(modelKey)) await this._downloadModel(modelKey);
         this._mainExe = this._findExe(this.binDir);
         if (!this._mainExe) {

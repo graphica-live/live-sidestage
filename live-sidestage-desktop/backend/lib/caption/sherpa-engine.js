@@ -16,9 +16,10 @@ const MODEL_INFO = {
 };
 
 class SherpaEngine extends EventEmitter {
-    constructor(dataDir) {
+    constructor(dataDir, provider = 'directml') {
         super();
         this.dataDir  = dataDir;
+        this.provider = provider;
         this.modelDir = path.join(dataDir, 'sherpa-models', MODEL_INFO.name);
         this._worker  = null;
         this._audioBufs  = [];
@@ -59,7 +60,7 @@ class SherpaEngine extends EventEmitter {
                 tokens: tokensPath,
                 nemoCtc: { model: onnxPath },
                 numThreads: 2,
-                provider: 'directml',
+                provider: this.provider,
                 debug: 0,
             },
             decodingConfig: { method: 'greedy_search' },

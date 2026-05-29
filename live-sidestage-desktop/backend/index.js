@@ -169,7 +169,7 @@ const DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS = {
     nameFontSize: 34
 };
 const DEFAULT_WIDGET_CAPTION_SETTINGS = {
-    recognitionEngine: 'whisper-cpp',
+    recognitionEngine: 'sherpa-parakeet-gpu',
     whisperModel: 'medium',
     translationEnabled: false,
     translationEngine: 'google',
@@ -3115,7 +3115,7 @@ function setWidgetCoinListSettings(settings) {
 
 // ---- 字幕ウィジェット ----
 
-const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp', 'sherpa-parakeet']);
+const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp-cuda', 'whisper-cpp-cpu', 'sherpa-parakeet-gpu', 'sherpa-parakeet-cpu']);
 const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki', 'xenova', 'google']);
 const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
 const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
@@ -3463,49 +3463,79 @@ const ASR_DATA_DIR = path.join(USER_DATA_DIRECTORY, 'asr');
 const captionCorrector = new CaptionCorrector();
 captionCorrector.setRules(getCaptionCorrectionRules());
 
-let whisperEngine = null;
-let sherpaEngine  = null;
+let whisperCudaEngine = null;
+let whisperCpuEngine  = null;
+let sherpaGpuEngine   = null;
+let sherpaCpuEngine   = null;
 let activeAsrSocket = null;   // socket that owns the current streaming session
 
-function getWhisperEngine() {
-    if (!whisperEngine) {
-        whisperEngine = new WhisperEngine(ASR_DATA_DIR);
-        whisperEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'whisper-cpp' }));
-        whisperEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'whisper-cpp', error: true }));
-        whisperEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-        whisperEngine.on('interim',  text => {
-            const s = getWidgetCaptionSettings();
-            if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
-        });
-        whisperEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+function getWhisperEngine(cpuOnly = false) {
+    const engineId = cpuOnly ? 'whisper-cpp-cpu' : 'whisper-cpp-cuda';
+    if (cpuOnly) {
+        if (!whisperCpuEngine) {
+            whisperCpuEngine = new WhisperEngine(ASR_DATA_DIR, true);
+            whisperCpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
+            whisperCpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
+            whisperCpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
+            whisperCpuEngine.on('interim',  text => {
+                const s = getWidgetCaptionSettings();
+                if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
+            });
+            whisperCpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+        }
+        return whisperCpuEngine;
+    } else {
+        if (!whisperCudaEngine) {
+            whisperCudaEngine = new WhisperEngine(ASR_DATA_DIR, false);
+            whisperCudaEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
+            whisperCudaEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
+            whisperCudaEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
+            whisperCudaEngine.on('interim',  text => {
+                const s = getWidgetCaptionSettings();
+                if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
+            });
+            whisperCudaEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+        }
+        return whisperCudaEngine;
     }
-    return whisperEngine;
 }
 
-function getSherpaEngine() {
-    if (!sherpaEngine) {
-        sherpaEngine = new SherpaEngine(ASR_DATA_DIR);
-        sherpaEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: 'sherpa-parakeet' }));
-        sherpaEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: 'sherpa-parakeet', error: true }));
-        sherpaEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-        sherpaEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+function getSherpaEngine(gpu = true) {
+    const engineId = gpu ? 'sherpa-parakeet-gpu' : 'sherpa-parakeet-cpu';
+    if (gpu) {
+        if (!sherpaGpuEngine) {
+            sherpaGpuEngine = new SherpaEngine(ASR_DATA_DIR, 'directml');
+            sherpaGpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
+            sherpaGpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
+            sherpaGpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
+            sherpaGpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+        }
+        return sherpaGpuEngine;
+    } else {
+        if (!sherpaCpuEngine) {
+            sherpaCpuEngine = new SherpaEngine(ASR_DATA_DIR, 'cpu');
+            sherpaCpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
+            sherpaCpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
+            sherpaCpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
+            sherpaCpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
+        }
+        return sherpaCpuEngine;
     }
-    return sherpaEngine;
 }
 
 async function startNativeAsr(socketId, engine, modelKey) {
     activeAsrSocket = socketId;
     try {
-        if (engine === 'whisper-cpp') {
-            const e = getWhisperEngine();
+        if (engine === 'whisper-cpp-cuda' || engine === 'whisper-cpp-cpu') {
+            const e = getWhisperEngine(engine === 'whisper-cpp-cpu');
             await e.init(modelKey || 'medium');
             e.start();
-            io.emit('widgets:caption:status', { message: '認識中...', engine: 'whisper-cpp' });
-        } else if (engine === 'sherpa-parakeet') {
-            const e = getSherpaEngine();
+            io.emit('widgets:caption:status', { message: '認識中...', engine });
+        } else if (engine === 'sherpa-parakeet-gpu' || engine === 'sherpa-parakeet-cpu') {
+            const e = getSherpaEngine(engine === 'sherpa-parakeet-gpu');
             await e.init();
             e.start();
-            io.emit('widgets:caption:status', { message: '認識中...', engine: 'sherpa-parakeet' });
+            io.emit('widgets:caption:status', { message: '認識中...', engine });
         }
     } catch (err) {
         activeAsrSocket = null;
@@ -3515,15 +3545,19 @@ async function startNativeAsr(socketId, engine, modelKey) {
 
 function stopNativeAsr(engine) {
     activeAsrSocket = null;
-    if (engine === 'whisper-cpp' && whisperEngine) whisperEngine.stop();
-    else if (engine === 'sherpa-parakeet' && sherpaEngine) sherpaEngine.stop();
+    if (engine === 'whisper-cpp-cuda' && whisperCudaEngine) whisperCudaEngine.stop();
+    else if (engine === 'whisper-cpp-cpu' && whisperCpuEngine) whisperCpuEngine.stop();
+    else if (engine === 'sherpa-parakeet-gpu' && sherpaGpuEngine) sherpaGpuEngine.stop();
+    else if (engine === 'sherpa-parakeet-cpu' && sherpaCpuEngine) sherpaCpuEngine.stop();
     // フロントエンドがすでに「停止中」を表示するので、ここからは送信しない
 }
 
 function feedAudioToEngine(socketId, engine, buf) {
     if (socketId !== activeAsrSocket) return;
-    if (engine === 'whisper-cpp' && whisperEngine) whisperEngine.feedAudio(buf);
-    else if (engine === 'sherpa-parakeet' && sherpaEngine) sherpaEngine.feedAudio(buf);
+    if (engine === 'whisper-cpp-cuda' && whisperCudaEngine) whisperCudaEngine.feedAudio(buf);
+    else if (engine === 'whisper-cpp-cpu' && whisperCpuEngine) whisperCpuEngine.feedAudio(buf);
+    else if (engine === 'sherpa-parakeet-gpu' && sherpaGpuEngine) sherpaGpuEngine.feedAudio(buf);
+    else if (engine === 'sherpa-parakeet-cpu' && sherpaCpuEngine) sherpaCpuEngine.feedAudio(buf);
 }
 
 // ---- /字幕ウィジェット ----
