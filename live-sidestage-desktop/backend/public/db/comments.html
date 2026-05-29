@@ -1940,7 +1940,7 @@
 
                 const imageUrl = getEmojiImageUrl(grapheme);
                 return imageUrl
-                    ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(grapheme)}">`
+                    ? `<img src="${escapeHtml(imageUrl)}" alt="emoji ${escapeHtml(grapheme)}" onerror="handleEmojiImgError(this)">`
                     : escapeHtml(grapheme);
             }).join('');
         }
