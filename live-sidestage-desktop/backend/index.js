@@ -27,6 +27,7 @@ const {
     resetTikTokConnection,
     switchBroadcasterId,
 } = tikTokHelpers;
+const { firstDefinedString, normalizeBooleanInput, normalizeHexColor, normalizeEffectText, hasJapaneseText } = require('./lib/utils');
 
 const APP_NAME = 'TikEffect';
 const APP_VERSION = require('../package.json').version;
@@ -51,17 +52,6 @@ const REQUESTED_PORT = FIXED_PORT;
 function buildPortInUseMessage(port) {
     return `ポート ${port} は既に使用中です。該当アプリを終了してから TikEffect を再起動してください。`;
 }
-
-function firstDefinedString(values) {
-    for (const value of values) {
-        if (typeof value === 'string' && value.trim()) {
-            return value.trim();
-        }
-    }
-
-    return null;
-}
-
 
 function extractAuthenticatedBroadcasterId(accountInfo) {
     const data = accountInfo?.data || accountInfo || {};
@@ -1394,37 +1384,6 @@ function normalizePositiveHundreds(value) {
 
 function normalizeDisplayAvatarVisibility(value) {
     return value === 'hide' ? 'hide' : 'show';
-}
-
-function normalizeBooleanInput(value, fallback = false) {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-
-    if (typeof value === 'number') {
-        return value !== 0;
-    }
-
-    if (typeof value !== 'string') {
-        return fallback;
-    }
-
-    const normalized = value.trim().toLowerCase();
-
-    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
-        return true;
-    }
-
-    if (['0', 'false', 'no', 'off'].includes(normalized)) {
-        return false;
-    }
-
-    return fallback;
-}
-
-function normalizeHexColor(value, fallback) {
-    const normalized = typeof value === 'string' ? value.trim() : '';
-    return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toLowerCase() : fallback;
 }
 
 function normalizeSignedWholeNumber(value, fallback = 0) {
@@ -3872,13 +3831,6 @@ function normalizeCommentReadAloudVoices(value) {
         .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ja'));
 }
 
-function normalizeEffectText(value, maxLength = 120) {
-    if (typeof value !== 'string') {
-        return '';
-    }
-
-    return value.trim().slice(0, maxLength);
-}
 
 function normalizeCommentFeedType(value) {
     const normalized = normalizeEffectText(value, 80);
@@ -6059,10 +6011,6 @@ function getTikTokGiftLocalizationInfo(gift) {
         rawGiftSkinName: firstDefinedString([gift?.giftSkinName]),
         rawDescribe: firstDefinedString([gift?.describe, gift?.description])
     };
-}
-
-function hasJapaneseText(value) {
-    return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(String(value || ''));
 }
 
 function buildObservedGiftNameMap(broadcasterId) {
