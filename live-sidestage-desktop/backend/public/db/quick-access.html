@@ -494,7 +494,7 @@
 
         async function startCaption() {
             if (!captionSettings) await loadCaptionConfig();
-            const engine   = captionSettings?.recognitionEngine || 'whisper-cpp';
+            const engine   = captionSettings?.recognitionEngine || 'sherpa-parakeet-gpu';
             const modelKey = captionSettings?.whisperModel || 'medium';
 
             asrStream   = await navigator.mediaDevices.getUserMedia({ audio: true });

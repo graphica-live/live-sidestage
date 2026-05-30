@@ -5821,10 +5821,11 @@
             captionStartBtn.disabled = true;
             captionStopBtn.disabled  = false;
 
-            if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+            if (engine === 'whisper-cpp-cuda' || engine === 'whisper-cpp-cpu' || engine === 'sherpa-parakeet-gpu' || engine === 'sherpa-parakeet-cpu') {
                 const modelKey = captionWhisperModelSelect.value || 'medium';
                 socket.emit('caption:start-asr', { engine, modelKey });
-                setCaptionStatus(`${engine === 'whisper-cpp' ? 'Whisper' : 'Parakeet-JA'} 初期化中...`);
+                const engineLabel = engine.startsWith('whisper') ? 'Whisper' : 'Parakeet-JA';
+                setCaptionStatus(`${engineLabel} 初期化中...`);
                 try {
                     await startAsrStreaming(engine);
                 } catch (err) {
@@ -5840,7 +5841,7 @@
 
         captionStopBtn.addEventListener('click', () => {
             const engine = captionEngineSelect.value;
-            if (engine === 'whisper-cpp' || engine === 'sherpa-parakeet') {
+            if (engine === 'whisper-cpp-cuda' || engine === 'whisper-cpp-cpu' || engine === 'sherpa-parakeet-gpu' || engine === 'sherpa-parakeet-cpu') {
                 socket.emit('caption:stop-asr', { engine });
                 stopAsrStreaming();
             }
