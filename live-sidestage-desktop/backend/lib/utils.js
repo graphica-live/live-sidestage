@@ -52,10 +52,28 @@ function hasJapaneseText(value) {
     return /[぀-ヿ㐀-䶿一-鿿]/.test(String(value || ''));
 }
 
+function normalizeWholeNumber(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeBroadcasterId(value) {
+    const trimmedValue = typeof value === 'string' ? value.trim() : '';
+    const normalizedValue = trimmedValue.replace(/^@+/, '');
+
+    if (!normalizedValue || /\s/.test(normalizedValue)) {
+        return null;
+    }
+
+    return normalizedValue;
+}
+
 module.exports = {
     firstDefinedString,
     normalizeBooleanInput,
     normalizeHexColor,
     normalizeEffectText,
     hasJapaneseText,
+    normalizeWholeNumber,
+    normalizeBroadcasterId,
 };
