@@ -5479,7 +5479,7 @@ require('./lib/routes/comments')({
     getObservedCommentEmojiCatalog,
     getCommentFeedTypes,
     normalizeCommentReadAloudVoices,
-    commentReadAloudVoiceProvider,
+    commentReadAloudVoiceProvider: commentFeedModule.callCommentReadAloudVoiceProvider,
     clearCommentReadAloudRandomVoiceAssignments,
     stopCommentReadAloud,
     setCommentFeedSettings,

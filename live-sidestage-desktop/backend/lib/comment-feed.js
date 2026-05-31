@@ -116,6 +116,10 @@ function setCommentReadAloudAudioProvider(provider) {
     commentReadAloudAudioProvider = typeof provider === 'function' ? provider : null;
 }
 
+function callCommentReadAloudVoiceProvider(...args) {
+    return commentReadAloudVoiceProvider(...args);
+}
+
 function clearCommentReadAloudRandomVoiceAssignments() {
     const clearedCount = commentReadAloudRandomVoiceAssignments.size;
     commentReadAloudRandomVoiceAssignments.clear();
@@ -1030,9 +1034,10 @@ function emitAdminCommentAppended(commentEvent) {
 
 module.exports = {
     initCommentFeed,
-    // provider setters
+    // provider setters / callers
     setCommentReadAloudVoiceProvider,
     setCommentReadAloudAudioProvider,
+    callCommentReadAloudVoiceProvider,
     clearCommentReadAloudRandomVoiceAssignments,
     // cache
     invalidateCommentFeedCaches,
