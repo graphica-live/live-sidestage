@@ -4165,7 +4165,7 @@ function createEffectPlaybackPayload(effectEvent, trigger, sourceEvent) {
 }
 
 function emitEffectPlayback(effectEvent, trigger, sourceEvent) {
-    if (effectsGloballyPaused) return;
+    if (getEffectsGloballyPaused()) return;
     io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent));
 }
 
@@ -4257,7 +4257,7 @@ function tryRunEffectTriggers(context, sourceEvent) {
                 payload.videoUrl = effectEvent.videoEnabled
                     ? `/api/effects/user-video/${encodeURIComponent(trigger.id)}/${encodeURIComponent(normalizedUserId)}`
                     : '';
-                if (!effectsGloballyPaused) {
+                if (!getEffectsGloballyPaused()) {
                     io.emit('effects:playback', payload);
                 }
             } else {
