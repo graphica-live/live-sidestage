@@ -371,7 +371,7 @@ tikTokHelpers.init({
     connectToTikTok: (...args) => connectToTikTok(...args),
     hasConfiguredBroadcasterId: () => hasConfiguredBroadcasterId(),
     isShuttingDown: () => getIsShuttingDown(),
-    getRecentTikTokComments: () => recentTikTokComments,
+    getRecentTikTokComments: () => commentFeedModule.getRecentTikTokComments(),
     emitAdminCommentsUpdate: () => emitAdminCommentsUpdate(),
     finishContributorsSession: () => finishContributorsSession(),
     normalizeBroadcasterId: (v) => normalizeBroadcasterId(v),
