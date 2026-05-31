@@ -45,6 +45,43 @@ const {
     normalizeCommentFeedSettings,
     getCommentFeedTypes,
 } = require('./lib/comment-normalizers');
+const commentFeedModule = require('./lib/comment-feed');
+const {
+    setCommentReadAloudVoiceProvider,
+    setCommentReadAloudAudioProvider,
+    clearCommentReadAloudRandomVoiceAssignments,
+    invalidateCommentFeedCaches,
+    getCommentFeedSettings,
+    setCommentFeedSettings,
+    getObservedCommentEmoteCatalog,
+    setObservedCommentEmoteCatalog,
+    getObservedCommentEmojiCatalog,
+    setObservedCommentEmojiCatalog,
+    buildCommentReadAloudText,
+    createCommentReadAloudPayload,
+    createCommentReadAloudPlaybackPayload,
+    emitCommentReadAloud,
+    stopCommentReadAloud,
+    emitCommentReadAloudTest,
+    getCommentFeedTypeMeta,
+    buildCommentFeedEmoteToken,
+    getCommentFeedEmoteId,
+    getCommentFeedEmoteImageUrl,
+    buildCommentFeedEmoteItems,
+    buildCommentFeedTextWithInlineEmotes,
+    buildCommentFeedEmoteText,
+    getCommentFeedDisplayText,
+    extractCommentFeedActor,
+    buildCommentFeedMessage,
+    updateObservedCommentAssetCaches,
+    normalizeTikTokCommentEvent,
+    getRecentTikTokComments,
+    clearRecentTikTokComments,
+    createAdminCommentsPayload,
+    emitAdminCommentsUpdate,
+    pushTikTokComment,
+    emitAdminCommentAppended,
+} = commentFeedModule;
 
 const APP_NAME = 'TikEffect';
 const APP_VERSION = require('../package.json').version;
@@ -320,6 +357,20 @@ tikTokHelpers.init({
     finishContributorsSession: () => finishContributorsSession(),
     normalizeBroadcasterId: (v) => normalizeBroadcasterId(v),
     setBroadcasterId: (v) => setBroadcasterId(v),
+});
+
+commentFeedModule.initCommentFeed({
+    io,
+    serverEvents,
+    getBroadcasterId,
+    getScopedStateValue,
+    setScopedStateValue,
+    getEffectMediaDirectory,
+    buildEffectMediaUrl,
+    getTimestamp,
+    getTodayDayKey,
+    path,
+    fs,
 });
 
 // keep-alive 接続を追跡して closeHttpServer で強制破棄できるようにする
@@ -3718,169 +3769,11 @@ function createDefaultEffectEvent(slot = 1) {
     };
 }
 
-let commentReadAloudVoiceProvider = async () => [];
-let commentReadAloudAudioProvider = null;
-const commentReadAloudRandomVoiceAssignments = new Map();
-let commentReadAloudVoicevoxRetryAt = 0;
 let effectsGloballyPaused = false;
 function getEffectsGloballyPaused() { return effectsGloballyPaused; }
 function setEffectsGloballyPaused(val) { effectsGloballyPaused = val; }
 
-// 同一ボイス×同一テキストの音声合成結果を再利用するLRUキャッシュ。
-// 「ありがとう」「草」「👍」のような繰り返しコメントで合成全体（1〜3秒）をスキップする。
-const COMMENT_READ_ALOUD_AUDIO_CACHE_LIMIT = 100;
-const commentReadAloudAudioCache = new Map();
-
-function getCommentReadAloudAudioCacheKey(payload) {
-    const voice = String(payload?.voiceName || '');
-    const volume = Number.isFinite(Number(payload?.volume)) ? Number(payload.volume) : 100;
-    const speed = Number.isFinite(Number(payload?.speed)) ? Number(payload.speed) : 1.0;
-    const text = String(payload?.text || '');
-    if (!voice || !text) {
-        return '';
-    }
-    return `${voice}|${volume}|${speed}|${text}`;
-}
-
-function getCommentReadAloudAudioCacheEntry(key) {
-    if (!key) return null;
-    const entry = commentReadAloudAudioCache.get(key);
-    if (!entry) return null;
-    // LRU: 末尾に詰め直す
-    commentReadAloudAudioCache.delete(key);
-    commentReadAloudAudioCache.set(key, entry);
-    return entry;
-}
-
-function setCommentReadAloudAudioCacheEntry(key, asset) {
-    if (!key || !asset?.url) return;
-    if (commentReadAloudAudioCache.size >= COMMENT_READ_ALOUD_AUDIO_CACHE_LIMIT) {
-        const oldestKey = commentReadAloudAudioCache.keys().next().value;
-        if (oldestKey !== undefined) {
-            commentReadAloudAudioCache.delete(oldestKey);
-        }
-    }
-    commentReadAloudAudioCache.set(key, { url: asset.url, mimeType: asset.mimeType });
-}
-
-let commentReadAloudAudioDirectoryReady = false;
-
-function setCommentReadAloudVoiceProvider(provider) {
-    if (typeof provider === 'function') {
-        commentReadAloudVoiceProvider = provider;
-        return;
-    }
-
-    commentReadAloudVoiceProvider = async () => [];
-}
-
-function setCommentReadAloudAudioProvider(provider) {
-    commentReadAloudAudioProvider = typeof provider === 'function' ? provider : null;
-}
-
-function clearCommentReadAloudRandomVoiceAssignments() {
-    const clearedCount = commentReadAloudRandomVoiceAssignments.size;
-    commentReadAloudRandomVoiceAssignments.clear();
-    return clearedCount;
-}
-
-// ホットパス上で同じ設定・カタログを何度も DB 読みしてたのをメモリキャッシュする。
-// ブロードキャスター切り替えと set 系 API 経由で無効化し、それ以外はメモリヒットしたオブジェクトをそのまま返す。
-let _commentFeedSettingsCache = null;
-let _commentFeedSettingsCacheBroadcaster = '__uninitialized__';
-let _observedCommentEmoteCatalogCache = null;
-let _observedCommentEmoteCatalogCacheBroadcaster = '__uninitialized__';
-let _observedCommentEmojiCatalogCache = null;
-let _observedCommentEmojiCatalogCacheBroadcaster = '__uninitialized__';
-
-function invalidateCommentFeedCaches() {
-    _commentFeedSettingsCache = null;
-    _commentFeedSettingsCacheBroadcaster = '__uninitialized__';
-    _observedCommentEmoteCatalogCache = null;
-    _observedCommentEmoteCatalogCacheBroadcaster = '__uninitialized__';
-    _observedCommentEmojiCatalogCache = null;
-    _observedCommentEmojiCatalogCacheBroadcaster = '__uninitialized__';
-}
-
-function getCommentFeedSettings() {
-    const broadcasterCacheKey = String(getBroadcasterId() || '');
-    if (_commentFeedSettingsCache && _commentFeedSettingsCacheBroadcaster === broadcasterCacheKey) {
-        return _commentFeedSettingsCache;
-    }
-
-    const storedValue = getScopedStateValue(COMMENT_SETTINGS_STATE_KEY);
-    const normalizedSettings = normalizeCommentFeedSettings(storedValue);
-
-    let source = storedValue;
-
-    if (typeof source === 'string') {
-        try {
-            source = JSON.parse(source);
-        } catch {
-            source = null;
-        }
-    }
-
-    const storedReadAloudDefaultsVersion = Math.max(0, normalizeWholeNumber(source?.readAloudDefaultsVersion, 0));
-
-    if (storedReadAloudDefaultsVersion < COMMENT_READ_ALOUD_DEFAULT_FILTERS_VERSION) {
-        setScopedStateValue(COMMENT_SETTINGS_STATE_KEY, JSON.stringify(normalizedSettings));
-    }
-
-    _commentFeedSettingsCache = normalizedSettings;
-    _commentFeedSettingsCacheBroadcaster = broadcasterCacheKey;
-    return normalizedSettings;
-}
-
-function setCommentFeedSettings(settings) {
-    const normalizedSettings = normalizeCommentFeedSettings(settings);
-    setScopedStateValue(COMMENT_SETTINGS_STATE_KEY, JSON.stringify(normalizedSettings));
-    _commentFeedSettingsCache = normalizedSettings;
-    _commentFeedSettingsCacheBroadcaster = String(getBroadcasterId() || '');
-    return normalizedSettings;
-}
-
-function getObservedCommentEmoteCatalog() {
-    const broadcasterCacheKey = String(getBroadcasterId() || '');
-    if (_observedCommentEmoteCatalogCache && _observedCommentEmoteCatalogCacheBroadcaster === broadcasterCacheKey) {
-        return _observedCommentEmoteCatalogCache;
-    }
-
-    const normalized = normalizeCommentObservedEmoteCatalog(getScopedStateValue(COMMENT_OBSERVED_EMOTES_STATE_KEY));
-    _observedCommentEmoteCatalogCache = normalized;
-    _observedCommentEmoteCatalogCacheBroadcaster = broadcasterCacheKey;
-    return normalized;
-}
-
-function setObservedCommentEmoteCatalog(catalog) {
-    const normalizedCatalog = normalizeCommentObservedEmoteCatalog(catalog);
-    setScopedStateValue(COMMENT_OBSERVED_EMOTES_STATE_KEY, JSON.stringify(normalizedCatalog));
-    _observedCommentEmoteCatalogCache = normalizedCatalog;
-    _observedCommentEmoteCatalogCacheBroadcaster = String(getBroadcasterId() || '');
-    return normalizedCatalog;
-}
-
-function getObservedCommentEmojiCatalog() {
-    const broadcasterCacheKey = String(getBroadcasterId() || '');
-    if (_observedCommentEmojiCatalogCache && _observedCommentEmojiCatalogCacheBroadcaster === broadcasterCacheKey) {
-        return _observedCommentEmojiCatalogCache;
-    }
-
-    const normalized = normalizeCommentObservedEmojiCatalog(getScopedStateValue(COMMENT_OBSERVED_EMOJIS_STATE_KEY));
-    _observedCommentEmojiCatalogCache = normalized;
-    _observedCommentEmojiCatalogCacheBroadcaster = broadcasterCacheKey;
-    return normalized;
-}
-
-function setObservedCommentEmojiCatalog(catalog) {
-    const normalizedCatalog = normalizeCommentObservedEmojiCatalog(catalog);
-    setScopedStateValue(COMMENT_OBSERVED_EMOJIS_STATE_KEY, JSON.stringify(normalizedCatalog));
-    _observedCommentEmojiCatalogCache = normalizedCatalog;
-    _observedCommentEmojiCatalogCacheBroadcaster = String(getBroadcasterId() || '');
-    return normalizedCatalog;
-}
-
-function stripCommentReadAloudEmoji(value) {
+function _stripCommentReadAloudEmoji_PLACEHOLDER(value) {
     if (typeof value !== 'string') {
         return '';
     }
@@ -3960,39 +3853,6 @@ function applyCommentReadAloudEmoteReplacements(value, replacements) {
     });
 }
 
-function buildCommentReadAloudText(commentEvent, settings = getCommentFeedSettings()) {
-    const replacedComment = applyCommentReadAloudEmojiReplacements(commentEvent?.comment, settings?.readAloudEmojiReplacements);
-    const replacedEmoteComment = applyCommentReadAloudEmoteReplacements(replacedComment, settings?.readAloudEmoteReplacements);
-    const replacedTextComment = applyCommentReadAloudTextReplacements(replacedEmoteComment, settings?.readAloudTextReplacements);
-    const message = normalizeEffectText(stripCommentReadAloudEmoji(replacedTextComment), 240);
-
-    if (!message) {
-        return '';
-    }
-
-    return message;
-}
-
-function createCommentReadAloudPayload(commentEvent) {
-    const settings = getCommentFeedSettings();
-    const normalizedUniqueId = normalizeBroadcasterId(commentEvent?.uniqueId) || '';
-    const mappedVoiceName = (Array.isArray(settings.readAloudVoiceMappings) ? settings.readAloudVoiceMappings : [])
-        .find((item) => item.uniqueId === normalizedUniqueId)?.voiceName || '';
-
-    return {
-        playbackId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-        screen: COMMENT_READ_ALOUD_EFFECT_SCREEN,
-        text: buildCommentReadAloudText(commentEvent, settings),
-        type: commentEvent?.type || 'chat',
-        uniqueId: normalizedUniqueId || commentEvent?.uniqueId || '',
-        nickname: commentEvent?.nickname || '',
-        voiceName: mappedVoiceName || settings.readAloudVoiceName || '',
-        volume: settings.readAloudVolume,
-        speed: settings.readAloudSpeed ?? 1.0,
-        timestamp: getTimestamp()
-    };
-}
-
 async function resolveCommentReadAloudVoiceName(payload, settings = getCommentFeedSettings()) {
     const normalizedUniqueId = normalizeBroadcasterId(payload?.uniqueId) || '';
     const voiceMappings = Array.isArray(settings?.readAloudVoiceMappings) ? settings.readAloudVoiceMappings : [];
@@ -4048,26 +3908,6 @@ async function resolveCommentReadAloudVoiceName(payload, settings = getCommentFe
     }
 
     return settings?.readAloudVoiceName || payload?.voiceName || '';
-}
-
-function createCommentReadAloudPlaybackPayload(payload, audioUrl) {
-    return {
-        playbackId: payload.playbackId || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-        eventId: 'comment-read-aloud',
-        eventName: 'Comment Read Aloud',
-        screen: payload.screen || COMMENT_READ_ALOUD_EFFECT_SCREEN,
-        videoUrl: '',
-        audioUrl,
-        mediaVolume: Math.max(0, Math.min(100, Number(payload.volume ?? 100))),
-        playbackCount: 1,
-        triggerId: 'comment-read-aloud',
-        triggerName: 'Comment Read Aloud',
-        giftName: '',
-        uniqueId: payload.uniqueId || '',
-        nickname: payload.nickname || '',
-        readAloudCreditText: normalizeEffectText(payload.readAloudCreditText, 160),
-        timestamp: payload.timestamp || getTimestamp()
-    };
 }
 
 async function resolveCommentReadAloudVoiceCreditText(voiceName, settings = getCommentFeedSettings()) {
@@ -4223,131 +4063,7 @@ function isCommentReadAloudEligible(commentEvent, settings = getCommentFeedSetti
     return receivedAt - sourceTimestamp <= COMMENT_READ_ALOUD_MAX_AGE_MS;
 }
 
-function emitCommentReadAloud(commentEvent) {
-    const settings = getCommentFeedSettings();
 
-    if (!isCommentReadAloudEligible(commentEvent, settings)) {
-        return;
-    }
-
-    const payload = createCommentReadAloudPayload(commentEvent);
-
-    if (!payload.text) {
-        return;
-    }
-
-    serverEvents.emit('comment-read-aloud', payload);
-    void emitCommentReadAloudToScreen(payload);
-}
-
-function stopCommentReadAloud() {
-    const payload = {
-        screen: COMMENT_READ_ALOUD_EFFECT_SCREEN,
-        timestamp: getTimestamp()
-    };
-
-    io.emit('effects:playback:stop', {
-        ...payload,
-        eventId: 'comment-read-aloud'
-    });
-    io.emit('effects:tts:stop', payload);
-    serverEvents.emit('comment-read-aloud-stop', payload);
-    return payload;
-}
-
-function emitCommentReadAloudTest(overrides = null) {
-    const settings = getCommentFeedSettings();
-    const source = overrides && typeof overrides === 'object' ? overrides : null;
-    const voiceName = typeof source?.voiceName === 'string'
-        ? normalizeEffectText(source.voiceName, 160)
-        : '';
-    const text = typeof source?.text === 'string'
-        ? normalizeEffectText(source.text, 240)
-        : '';
-    const volume = Number.isFinite(Number(source?.volume))
-        ? Math.max(0, Math.min(100, Number(source.volume)))
-        : settings.readAloudVolume;
-    const speed = Number.isFinite(Number(source?.speed))
-        ? Math.max(0.5, Math.min(2.0, Number(source.speed)))
-        : (settings.readAloudSpeed ?? 1.0);
-    const payload = {
-        playbackId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-        screen: COMMENT_READ_ALOUD_EFFECT_SCREEN,
-        text: text || 'コメント読み上げテストです。screen1 で音声が聞こえれば設定は正常です。',
-        type: 'system',
-        uniqueId: '',
-        nickname: 'TikEffect',
-        voiceName: voiceName || settings.readAloudVoiceName || '',
-        forceVoiceName: Boolean(voiceName),
-        volume,
-        speed,
-        timestamp: getTimestamp()
-    };
-
-    serverEvents.emit('comment-read-aloud', payload);
-    void emitCommentReadAloudToScreen(payload);
-    return payload;
-}
-
-function getCommentFeedTypeMeta(type) {
-    return COMMENT_FEED_EVENT_DEFINITIONS.find((item) => item.type === type)
-        || COMMENT_FEED_EVENT_DEFINITIONS[0];
-}
-
-function buildCommentFeedEmoteToken(emote) {
-    const emoteId = firstDefinedString([
-        emote?.emoteId,
-        emote?.emote?.emoteId
-    ]);
-
-    if (emoteId) {
-        return `[emote:${emoteId}]`;
-    }
-
-    return '[emote]';
-}
-
-function getCommentFeedEmoteId(emote) {
-    return firstDefinedString([
-        emote?.emoteId,
-        emote?.emote?.emoteId
-    ]);
-}
-
-function getCommentFeedEmoteImageUrl(emote) {
-    return firstDefinedString([
-        emote?.emoteImageUrl,
-        emote?.image?.imageUrl,
-        emote?.emote?.image?.imageUrl,
-        emote?.image?.url?.[0],
-        emote?.image?.urlList?.[0],
-        emote?.emote?.image?.url?.[0],
-        emote?.emote?.image?.urlList?.[0]
-    ]);
-}
-
-function buildCommentFeedEmoteItems(data) {
-    const emoteSource = Array.isArray(data?.emotes)
-        ? data.emotes
-        : (Array.isArray(data?.emoteList) ? data.emoteList : []);
-
-    return emoteSource
-        .map((item) => {
-            const emoteId = getCommentFeedEmoteId(item);
-            const imageUrl = getCommentFeedEmoteImageUrl(item);
-
-            if (!emoteId || !imageUrl) {
-                return null;
-            }
-
-            return {
-                emoteId,
-                imageUrl,
-                placeInComment: normalizeWholeNumber(item?.placeInComment) ?? null
-            };
-        })
-        .filter(Boolean);
-}
 
 function extractObservedEmojiEntries(comment) {
     const source = typeof comment === 'string'
@@ -4368,243 +4084,6 @@ function extractObservedEmojiEntries(comment) {
     return graphemes
         .filter((item) => /[\p{Extended_Pictographic}\p{Regional_Indicator}]|[0-9#*]\uFE0F?\u20E3/gu.test(item))
         .map((emoji) => ({ emoji, observedAt: Date.now() }));
-}
-
-function updateObservedCommentAssetCaches(commentEvent) {
-    if (!commentEvent || typeof commentEvent !== 'object') {
-        return;
-    }
-
-    const observedAt = Date.now();
-    const nextEmotes = normalizeCommentObservedEmoteCatalog([
-        ...(Array.isArray(commentEvent.emotes)
-            ? commentEvent.emotes.map((item) => ({
-                emoteId: item?.emoteId,
-                imageUrl: item?.imageUrl,
-                observedAt
-            }))
-            : []),
-        ...getObservedCommentEmoteCatalog()
-    ]);
-    const nextEmojis = normalizeCommentObservedEmojiCatalog([
-        ...extractObservedEmojiEntries(commentEvent.comment).map((item) => ({
-            emoji: item.emoji,
-            observedAt
-        })),
-        ...getObservedCommentEmojiCatalog()
-    ]);
-
-    setObservedCommentEmoteCatalog(nextEmotes);
-    setObservedCommentEmojiCatalog(nextEmojis);
-}
-
-function buildCommentFeedTextWithInlineEmotes(comment, emotes) {
-    const baseComment = typeof comment === 'string' ? comment : '';
-    const normalizedEmotes = Array.isArray(emotes)
-        ? emotes
-            .map((item) => ({
-                placeInComment: normalizeWholeNumber(item?.placeInComment) ?? null,
-                token: buildCommentFeedEmoteToken(item)
-            }))
-            .filter((item) => item.token)
-        : [];
-
-    if (!normalizedEmotes.length) {
-        return baseComment.trim();
-    }
-
-    const inlineEmotes = normalizedEmotes
-        .filter((item) => item.placeInComment !== null)
-        .sort((left, right) => left.placeInComment - right.placeInComment);
-    const trailingEmotes = normalizedEmotes
-        .filter((item) => item.placeInComment === null)
-        .map((item) => item.token);
-
-    let cursor = 0;
-    let result = '';
-
-    inlineEmotes.forEach((item) => {
-        const safeIndex = Math.max(0, Math.min(baseComment.length, item.placeInComment));
-
-        result += baseComment.slice(cursor, safeIndex);
-        result += item.token;
-        cursor = safeIndex;
-    });
-
-    result += baseComment.slice(cursor);
-
-    if (trailingEmotes.length) {
-        result += `${result ? ' ' : ''}${trailingEmotes.join(' ')}`;
-    }
-
-    return result.trim();
-}
-
-function buildCommentFeedEmoteText(data) {
-    const inlineCommentText = buildCommentFeedTextWithInlineEmotes(data?.comment, data?.emotes);
-
-    if (inlineCommentText) {
-        return inlineCommentText;
-    }
-
-    const emoteList = Array.isArray(data?.emoteList)
-        ? data.emoteList
-        : (Array.isArray(data?.emotes) ? data.emotes : []);
-    const tokens = emoteList
-        .map((item) => buildCommentFeedEmoteToken(item))
-        .filter(Boolean);
-
-    return tokens.join(' ').trim();
-}
-
-function getCommentFeedDisplayText(data) {
-    const emoteText = buildCommentFeedEmoteText(data);
-
-    const directText = firstDefinedString([
-        emoteText,
-        data?.questionText,
-        data?.content,
-        data?.text,
-        data?.description,
-        data?.title,
-        data?.common?.displayText?.defaultPattern,
-        data?.common?.displayText?.key
-    ]);
-
-    if (directText) {
-        return directText;
-    }
-
-    const pieces = Array.isArray(data?.common?.displayText?.pieces)
-        ? data.common.displayText.pieces
-        : [];
-
-    return pieces
-        .map((piece) => firstDefinedString([
-            piece?.stringValue,
-            piece?.text,
-            piece?.userValue?.nickname,
-            piece?.userValue?.uniqueId,
-            piece?.userValue?.unique_id
-        ]))
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-}
-
-function extractCommentFeedActor(data) {
-    const uniqueId = normalizeBroadcasterId(firstDefinedString([
-        data?.uniqueId,
-        data?.user?.uniqueId,
-        data?.user?.unique_id,
-        data?.fromUser?.uniqueId,
-        data?.fromUser?.unique_id
-    ]));
-    const nickname = firstDefinedString([
-        data?.nickname,
-        data?.user?.nickname,
-        data?.fromUser?.nickname,
-        uniqueId,
-        'システム'
-    ]) || 'システム';
-    const image = firstDefinedString([
-        data?.profilePictureUrl,
-        data?.user?.profilePictureUrl,
-        data?.fromUser?.profilePictureUrl,
-        Array.isArray(data?.user?.profilePicture?.url) ? data.user.profilePicture.url[0] : '',
-        data?.user?.profilePicture?.mUri,
-        Array.isArray(data?.fromUser?.profilePicture?.url) ? data.fromUser.profilePicture.url[0] : '',
-        Array.isArray(data?.avatarThumb?.urlList) ? data.avatarThumb.urlList[0] : '',
-        Array.isArray(data?.avatarThumb?.url) ? data.avatarThumb.url[0] : ''
-    ]) || '';
-
-    return {
-        uniqueId: uniqueId || '',
-        nickname,
-        image
-    };
-}
-
-function buildCommentFeedMessage(type, data, actor) {
-    const displayName = actor.nickname || actor.uniqueId || 'システム';
-    const displayText = getCommentFeedDisplayText(data);
-    const viewerCount = normalizeWholeNumber(data?.viewerCount);
-    const likeCount = normalizeWholeNumber(data?.likeCount);
-    const totalLikeCount = normalizeWholeNumber(data?.totalLikeCount);
-    const displayType = normalizeEffectText(data?.common?.displayText?.displayType, 80).toLowerCase();
-
-    switch (type) {
-        case 'chat':
-            return displayText;
-        case 'member':
-            return `${displayName} が入室しました。`;
-        case 'like':
-            if (likeCount && totalLikeCount) {
-                return `${displayName} が ${likeCount} 件のいいねを送りました。合計 ${totalLikeCount} 件です。`;
-            }
-
-            if (likeCount) {
-                return `${displayName} が ${likeCount} 件のいいねを送りました。`;
-            }
-
-            return `${displayName} がいいねを送りました。`;
-        case 'social':
-            if (displayType.includes('follow') || displayType.includes('share')) {
-                return '';
-            }
-
-            return displayText || `${displayName} のソーシャル通知です。`;
-        case 'follow':
-            return `${displayName} がフォローしました。`;
-        case 'share':
-            return `${displayName} が配信をシェアしました。`;
-        case 'questionNew':
-            return displayText ? `${displayName} の質問: ${displayText}` : `${displayName} が質問しました。`;
-        case 'roomUser':
-            return viewerCount ? `視聴者数が ${viewerCount} 人になりました。` : (displayText || '視聴者数が更新されました。');
-        case 'subscribe':
-            return `${displayName} がサブスクライブしました。`;
-        case 'emote':
-            return displayText ? `${displayName} がエモートを送信しました: ${displayText}` : `${displayName} がエモートを送信しました。`;
-        case 'envelope':
-            return `${displayName} が宝箱を送信しました。`;
-        case 'liveIntro':
-            return displayText || 'ライブ紹介メッセージを受信しました。';
-        case 'streamEnd':
-            return '配信が終了しました。';
-        case 'goalUpdate':
-            return displayText || '配信ゴールが更新されました。';
-        case 'roomMessage':
-            return displayText || 'ルームメッセージを受信しました。';
-        case 'captionMessage':
-            return displayText || '字幕メッセージを受信しました。';
-        case 'imDelete':
-            return displayText || `${displayName} のメッセージが削除されました。`;
-        case 'unauthorizedMember':
-            return displayText || `${displayName} の制限対象アクションを検知しました。`;
-        case 'inRoomBanner':
-            return displayText || 'ルームバナーを受信しました。';
-        case 'rankUpdate':
-            return displayText || 'ランキングが更新されました。';
-        case 'pollMessage':
-            return displayText || '投票メッセージを受信しました。';
-        case 'rankText':
-            return displayText || 'ランキング表示を受信しました。';
-        case 'oecLiveShopping':
-            return displayText || 'ライブショッピング通知を受信しました。';
-        case 'msgDetect':
-            return displayText || 'システムメッセージ検知通知を受信しました。';
-        case 'linkMessage':
-            return displayText || 'リンクメッセージを受信しました。';
-        case 'roomVerify':
-            return displayText || 'ルーム認証通知を受信しました。';
-        case 'linkLayer':
-            return displayText || 'リンクレイヤー更新を受信しました。';
-        case 'roomPin':
-            return displayText || '固定メッセージを受信しました。';
-        default:
-            return displayText || `${getCommentFeedTypeMeta(type).label} を受信しました。`;
-    }
 }
 
 function createDefaultEffectTrigger() {
@@ -5973,79 +5452,6 @@ function setAutoReconnectEnabled(val) { tiktokState.autoReconnect = val; }
 let isShuttingDown = false;
 function getIsShuttingDown() { return isShuttingDown; }
 let shutdownPromise = null;
-let recentTikTokComments = [];
-
-function normalizeTikTokCommentEvent(type, data) {
-    const normalizedType = normalizeCommentFeedType(type);
-    const actor = extractCommentFeedActor(data);
-    const comment = buildCommentFeedMessage(normalizedType, data, actor);
-    const receivedAt = Date.now();
-    const sourceTimestamp = normalizeCommentEventSourceTimestamp(data?.createTime);
-
-    if (!comment) {
-        return null;
-    }
-
-    const typeMeta = getCommentFeedTypeMeta(normalizedType);
-
-    return {
-        id: [
-            getBroadcasterId() || 'broadcaster:none',
-            normalizedType,
-            data?.msgId || data?.eventId || actor.uniqueId || typeMeta.label,
-            data?.createTime || Date.now()
-        ].join(':'),
-        type: normalizedType,
-        typeLabel: typeMeta.label,
-        system: typeMeta.system,
-        uniqueId: actor.uniqueId,
-        nickname: actor.nickname,
-        comment,
-        emotes: buildCommentFeedEmoteItems(data),
-        image: actor.image,
-        timestamp: getTimestamp(),
-        receivedAt,
-        sourceTimestamp,
-        dayKey: getTodayDayKey()
-    };
-}
-
-function getRecentTikTokComments() {
-    if (!Number.isFinite(COMMENT_DISPLAY_TTL_MS) || COMMENT_DISPLAY_TTL_MS <= 0) {
-        return recentTikTokComments;
-    }
-
-    const now = Date.now();
-
-    recentTikTokComments = recentTikTokComments.filter((commentEvent) => {
-        const receivedAt = Number(commentEvent?.receivedAt);
-
-        if (!Number.isFinite(receivedAt) || receivedAt <= 0) {
-            return true;
-        }
-
-        return now - receivedAt < COMMENT_DISPLAY_TTL_MS;
-    });
-
-    return recentTikTokComments;
-}
-
-function createAdminCommentsPayload() {
-    return {
-        broadcasterId: getBroadcasterId(),
-        comments: getRecentTikTokComments(),
-        settings: getCommentFeedSettings(),
-        observedEmotes: getObservedCommentEmoteCatalog(),
-        observedEmojis: getObservedCommentEmojiCatalog(),
-        commentTypes: getCommentFeedTypes(),
-        updatedAt: getTimestamp()
-    };
-}
-
-function emitAdminCommentsUpdate() {
-    io.emit('admin_comments_updated', createAdminCommentsPayload());
-}
-
 function pushGiftJarHistoryEntries(payload, deltaRepeat) {
     const clamped = Math.min(Math.max(1, Number(deltaRepeat) || 1), 10);
     for (let i = 0; i < clamped; i++) {
@@ -6131,27 +5537,6 @@ function logWsEventLatency(eventType, data) {
     } catch {
         // ignore
     }
-}
-
-function pushTikTokComment(commentEvent) {
-    const activeComments = getRecentTikTokComments();
-    recentTikTokComments = [commentEvent, ...activeComments].slice(0, LIVE_COMMENT_HISTORY_LIMIT);
-    updateObservedCommentAssetCaches(commentEvent);
-    emitAdminCommentsUpdate();
-    emitCommentReadAloud(commentEvent);
-}
-
-// 1コメントごとの軽量デルタイベント。
-// admin / quick-access 画面はこれを受けて追加描画し、100件全体の再描画を避ける。
-function emitAdminCommentAppended(commentEvent) {
-    if (!commentEvent) {
-        return;
-    }
-    io.emit('admin_comments_appended', {
-        broadcasterId: getBroadcasterId(),
-        comment: commentEvent,
-        updatedAt: getTimestamp()
-    });
 }
 
 function scheduleRawEventFlush(delayMs = RAW_EVENT_FLUSH_DELAY_MS) {
@@ -6609,7 +5994,7 @@ function ensureTikTokConnection() {
         return tiktokState.liveConnection;
     }
 
-    recentTikTokComments = [];
+    clearRecentTikTokComments();
     emitAdminCommentsUpdate();
 
     tiktokState.liveConnection = new WebcastPushConnection(broadcasterId, tiktokConnectionOptions);
