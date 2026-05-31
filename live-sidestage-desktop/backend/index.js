@@ -30,6 +30,14 @@ const {
 const { firstDefinedString, normalizeBooleanInput, normalizeHexColor, normalizeEffectText, hasJapaneseText, normalizeWholeNumber, normalizeBroadcasterId } = require('./lib/utils');
 const giftCatalogModule = require('./lib/tiktok-gift-catalog');
 const {
+    getTikTokGiftImageUrl,
+    getTikTokGiftLocalizationInfo,
+    buildObservedGiftNameMap,
+    normalizeTikTokGiftCatalog,
+    buildTikTokGiftCatalogConnectionOptions,
+    fetchTikTokGiftCatalog,
+} = giftCatalogModule;
+const {
     createDefaultCommentFeedSettings,
     normalizeCommentReadAloudVoices,
     normalizeCommentFeedType,
@@ -5758,14 +5766,6 @@ giftCatalogModule.initGiftCatalog({
     getBroadcasterId,
     getConnectionOptions: () => tiktokConnectionOptions,
 });
-const {
-    getTikTokGiftImageUrl,
-    getTikTokGiftLocalizationInfo,
-    buildObservedGiftNameMap,
-    normalizeTikTokGiftCatalog,
-    buildTikTokGiftCatalogConnectionOptions,
-    fetchTikTokGiftCatalog,
-} = giftCatalogModule;
 
 function ensureTikTokConnection() {
     const broadcasterId = getBroadcasterId();
