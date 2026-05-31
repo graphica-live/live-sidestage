@@ -46,6 +46,17 @@ const {
     getCommentFeedTypes,
 } = require('./lib/comment-normalizers');
 const commentFeedModule = require('./lib/comment-feed');
+const effectHelpers = require('./lib/effect-helpers');
+const {
+    getEffectsGloballyPaused, setEffectsGloballyPaused,
+    createDefaultEffectEvent, createDefaultEffectTrigger,
+    normalizeEffectTriggerCommentMode, normalizeEffectScreen, normalizeEffectId,
+    normalizeAssetUrl, normalizeUserIdList,
+    normalizeEffectEvent, normalizeEffectEvents,
+    normalizeEffectTriggerEventIds, normalizeEffectTrigger, normalizeEffectTriggers,
+    getEffectEvents, setEffectEvents, getEffectTriggers, setEffectTriggers,
+    normalizeEffectMediaKind, getEffectMediaDirectory, buildEffectMediaUrl, resolveEffectAssetFilePath,
+} = effectHelpers;
 const {
     setCommentReadAloudVoiceProvider,
     setCommentReadAloudAudioProvider,
@@ -357,6 +368,14 @@ tikTokHelpers.init({
     finishContributorsSession: () => finishContributorsSession(),
     normalizeBroadcasterId: (v) => normalizeBroadcasterId(v),
     setBroadcasterId: (v) => setBroadcasterId(v),
+});
+
+effectHelpers.initEffectHelpers({
+    getScopedStateValue,
+    setScopedStateValue,
+    path,
+    effectVideoRootDirectory: EFFECT_VIDEO_ROOT_DIRECTORY,
+    effectSoundRootDirectory: EFFECT_SOUND_ROOT_DIRECTORY,
 });
 
 commentFeedModule.initCommentFeed({
@@ -3754,25 +3773,6 @@ function setGoalGiftWidgetItems(items) {
     return normalizeGoalGiftWidgetItems(normalizedItemsText);
 }
 
-function createDefaultEffectEvent(slot = 1) {
-    return {
-        id: `event-${slot}`,
-        name: `エフェクト ${slot}`,
-        screen: slot,
-        videoEnabled: false,
-        videoAssetUrl: '',
-        videoAssetName: '',
-        audioEnabled: false,
-        audioAssetUrl: '',
-        audioAssetName: '',
-        mediaVolume: 100
-    };
-}
-
-let effectsGloballyPaused = false;
-function getEffectsGloballyPaused() { return effectsGloballyPaused; }
-function setEffectsGloballyPaused(val) { effectsGloballyPaused = val; }
-
 function _stripCommentReadAloudEmoji_PLACEHOLDER(value) {
     if (typeof value !== 'string') {
         return '';
@@ -4084,222 +4084,6 @@ function extractObservedEmojiEntries(comment) {
     return graphemes
         .filter((item) => /[\p{Extended_Pictographic}\p{Regional_Indicator}]|[0-9#*]\uFE0F?\u20E3/gu.test(item))
         .map((emoji) => ({ emoji, observedAt: Date.now() }));
-}
-
-function createDefaultEffectTrigger() {
-    return {
-        id: `trigger-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-        name: '',
-        enabled: true,
-        eventIds: [],
-        eventPlayMode: 'sequential',
-        giftName: '',
-        minCoins: 0,
-        commentMode: 'disabled',
-        commentText: '',
-        userIds: [],
-        treatGiftComboAsSingle: true,
-        userTargetMode: 'list',
-        userIdToFileDir: ''
-    };
-}
-
-function normalizeEffectTriggerCommentMode(value) {
-    const normalized = normalizeEffectText(value, 16).toLowerCase();
-    return normalized === 'any' || normalized === 'exact' ? normalized : 'disabled';
-}
-
-function normalizeEffectScreen(value) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= EFFECT_SCREEN_COUNT ? parsed : 1;
-}
-
-function normalizeEffectId(value, fallbackPrefix) {
-    const normalized = normalizeEffectText(value, 60).replace(/[^a-zA-Z0-9_-]/g, '');
-    return normalized || `${fallbackPrefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function normalizeAssetUrl(value) {
-    const url = normalizeEffectText(value, 240);
-    if (url.startsWith('/video/') || url.startsWith('/sound/') || url.startsWith('/media/effects/')) {
-        return url;
-    }
-
-    return '';
-}
-
-function normalizeUserIdList(value) {
-    const values = Array.isArray(value)
-        ? value
-        : String(value || '').split(/[\s,\n\r]+/u);
-
-    return [...new Set(values.map((item) => normalizeBroadcasterId(item)).filter(Boolean))];
-}
-
-function normalizeEffectEvent(value, index) {
-    const fallback = createDefaultEffectEvent(index + 1);
-    const mediaVolume = Number.isFinite(Number(value?.mediaVolume))
-        ? Math.max(0, Math.min(100, Math.round(Number(value.mediaVolume))))
-        : fallback.mediaVolume;
-
-    return {
-        id: normalizeEffectId(value?.id, 'event'),
-        name: normalizeEffectText(value?.name, 80) || fallback.name,
-        screen: normalizeEffectScreen(value?.screen),
-        videoEnabled: Boolean(value?.videoEnabled),
-        videoAssetUrl: normalizeAssetUrl(value?.videoAssetUrl),
-        videoAssetName: normalizeEffectText(value?.videoAssetName, 160),
-        audioEnabled: Boolean(value?.audioEnabled),
-        audioAssetUrl: normalizeAssetUrl(value?.audioAssetUrl),
-        audioAssetName: normalizeEffectText(value?.audioAssetName, 160),
-        mediaVolume
-    };
-}
-
-function normalizeEffectEvents(value) {
-    let source = value;
-
-    if (typeof source === 'string') {
-        try {
-            source = JSON.parse(source);
-        } catch {
-            source = null;
-        }
-    }
-
-    if (!Array.isArray(source)) {
-        return [];
-    }
-
-    return source.map((item, index) => normalizeEffectEvent(item, index));
-}
-
-function normalizeEffectTriggerEventIds(value) {
-    // 旧フォーマット (eventId: string) との後方互換
-    const legacyId = normalizeEffectText(value?.eventId, 80);
-    let ids;
-
-    if (Array.isArray(value?.eventIds)) {
-        ids = value.eventIds.map((id) => normalizeEffectText(id, 80)).filter(Boolean);
-    } else if (legacyId) {
-        ids = [legacyId];
-    } else {
-        ids = [];
-    }
-
-    return [...new Set(ids)];
-}
-
-function normalizeEffectTrigger(value) {
-    const fallback = createDefaultEffectTrigger();
-    const commentText = normalizeEffectText(value?.commentText, 160).toLowerCase();
-    const commentMode = normalizeEffectTriggerCommentMode(value?.commentMode);
-    const userTargetMode = String(value?.userTargetMode || '').trim() === 'file-map' ? 'file-map' : 'list';
-    const rawPlayMode = String(value?.eventPlayMode || '').trim().toLowerCase();
-    const eventPlayMode = rawPlayMode === 'random' ? 'random' : 'sequential';
-    return {
-        id: normalizeEffectId(value?.id, 'trigger'),
-        name: normalizeEffectText(value?.name, 80),
-        enabled: Boolean(value?.enabled),
-        eventIds: normalizeEffectTriggerEventIds(value),
-        eventPlayMode,
-        giftName: normalizeEffectText(value?.giftName, 80).toLowerCase(),
-        minCoins: normalizeWholeNumber(value?.minCoins) ?? 0,
-        commentMode: commentMode === 'exact' && !commentText ? fallback.commentMode : commentMode,
-        commentText,
-        userIds: normalizeUserIdList(value?.userIds),
-        treatGiftComboAsSingle: value?.treatGiftComboAsSingle !== false,
-        userTargetMode,
-        userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : ''
-    };
-}
-
-function normalizeEffectTriggers(value) {
-    let source = value;
-
-    if (typeof source === 'string') {
-        try {
-            source = JSON.parse(source);
-        } catch {
-            source = null;
-        }
-    }
-
-    if (!Array.isArray(source)) {
-        return [];
-    }
-
-    return source.map((item) => normalizeEffectTrigger(item));
-}
-
-function getEffectEvents() {
-    return normalizeEffectEvents(getScopedStateValue(EFFECT_EVENTS_STATE_KEY));
-}
-
-function setEffectEvents(events) {
-    const normalizedEvents = normalizeEffectEvents(events);
-    setScopedStateValue(EFFECT_EVENTS_STATE_KEY, JSON.stringify(normalizedEvents));
-    return normalizedEvents;
-}
-
-function getEffectTriggers() {
-    return normalizeEffectTriggers(getScopedStateValue(EFFECT_TRIGGERS_STATE_KEY));
-}
-
-function setEffectTriggers(triggers) {
-    const normalizedTriggers = normalizeEffectTriggers(triggers);
-    setScopedStateValue(EFFECT_TRIGGERS_STATE_KEY, JSON.stringify(normalizedTriggers));
-    return normalizedTriggers;
-}
-
-function sanitizePathSegment(value) {
-    return String(value || 'global').replace(/[^a-zA-Z0-9._-]/g, '_');
-}
-
-function normalizeEffectMediaKind(value) {
-    if (typeof value === 'string') {
-        return value.toLowerCase() === 'video' ? 'video' : 'audio';
-    }
-
-    const mimeType = String(value?.mimetype || '').toLowerCase();
-    return mimeType.startsWith('video/') ? 'video' : 'audio';
-}
-
-function getEffectMediaDirectory(kind = 'audio') {
-    return normalizeEffectMediaKind(kind) === 'video'
-        ? EFFECT_VIDEO_ROOT_DIRECTORY
-        : EFFECT_SOUND_ROOT_DIRECTORY;
-}
-
-function buildEffectMediaUrl(kind, fileName) {
-    const normalizedKind = normalizeEffectMediaKind(kind);
-    const basePath = normalizedKind === 'video' ? '/video' : '/sound';
-    return `${basePath}/${encodeURIComponent(fileName)}`;
-}
-
-function resolveEffectAssetFilePath(assetUrl) {
-    if (!assetUrl) return null;
-    try {
-        const pathname = new URL(assetUrl, 'http://localhost').pathname;
-        let dir, prefix;
-        if (pathname.startsWith('/video/')) {
-            dir = EFFECT_VIDEO_ROOT_DIRECTORY;
-            prefix = '/video/';
-        } else if (pathname.startsWith('/sound/')) {
-            dir = EFFECT_SOUND_ROOT_DIRECTORY;
-            prefix = '/sound/';
-        } else {
-            return null;
-        }
-        const filename = decodeURIComponent(pathname.slice(prefix.length));
-        // パストラバーサル防止
-        if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
-            return null;
-        }
-        return path.join(dir, filename);
-    } catch {
-        return null;
-    }
 }
 
 const USER_VIDEO_EXTENSIONS = ['mp4', 'vp9', 'mov'];
