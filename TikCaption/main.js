@@ -95,7 +95,7 @@ function findPython() {
       return exe;
     } catch (_) {}
   }
-  for (const bin of ['python', 'py', 'python3']) {
+  for (const bin of ['python3.12', 'python3.11', 'python3.10', 'python', 'py', 'python3']) {
     try {
       execSync(`${bin} --version`, { stdio: 'ignore' });
       return bin;
