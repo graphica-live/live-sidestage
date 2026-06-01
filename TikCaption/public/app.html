@@ -412,7 +412,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <table class="caption-monitor">
       <tr>
         <td class="cap-lang">日本語</td>
-        <td id="mon-original" class="cap-text muted">(解析中...)</td>
+        <td id="mon-original" class="cap-text muted">(停止中)</td>
       </tr>
       <tr id="mon-trans-row" style="display:none">
         <td class="cap-lang" id="mon-lang-label">翻訳</td>
@@ -1070,6 +1070,10 @@ init();
       if (silenceTimer) clearTimeout(silenceTimer);
       setText(elOrig, '(停止中)', true);
       setText(elTrans, '(停止中)', true);
+    } else if (data.status === 'loading') {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      setText(elOrig, '(ロード中...)', true);
+      setText(elTrans, '(ロード中...)', true);
     }
   });
 

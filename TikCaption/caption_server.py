@@ -77,7 +77,7 @@ def main():
 
     device_idx = find_device_index(args.device_label)
 
-    log({'type': 'status', 'message': 'モデルをロード中...'})
+    log({'type': 'loading', 'message': 'モデルをロード中...'})
 
     try:
         vad_model, _ = load_vad()
