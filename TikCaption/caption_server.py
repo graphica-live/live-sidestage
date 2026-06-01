@@ -48,7 +48,6 @@ def load_asr():
     model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(
         'nvidia/parakeet-tdt_ctc-0.6b-ja'
     )
-    model.freeze()
     try:
         decoding_cfg = OmegaConf.create({
             'strategy': 'beam',
@@ -58,6 +57,7 @@ def load_asr():
         log({'type': 'loading', 'message': 'ビーム探索デコーディング有効'})
     except Exception as e:
         log({'type': 'loading', 'message': f'ビーム探索不可、greedy使用: {e}'})
+    model.freeze()
     return model
 
 
