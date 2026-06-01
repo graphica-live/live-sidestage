@@ -2853,14 +2853,14 @@ async function _doEnsureHelsinki() {
 
     // Auto-install missing packages
     const pkgsOk = await new Promise(resolve => {
-        const c = spawn(py, ['-c', 'import transformers, sentencepiece'], { stdio: 'ignore', shell: false });
+        const c = spawn(py, ['-c', 'import transformers, sentencepiece, torch'], { stdio: 'ignore', shell: false });
         c.on('close', code => resolve(code === 0));
         c.on('error', () => resolve(false));
     });
     if (!pkgsOk) {
         io.emit('caption:status', { message: 'Helsinki: パッケージインストール中 (初回のみ)...' });
         await new Promise((resolve, reject) => {
-            const inst = spawn(py, ['-m', 'pip', 'install', 'transformers', 'sentencepiece', 'sacremoses'], {
+            const inst = spawn(py, ['-m', 'pip', 'install', 'transformers', 'sentencepiece', 'sacremoses', 'torch'], {
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
             inst.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
@@ -2895,6 +2895,7 @@ async function _doEnsureHelsinki() {
                         continue;
                     }
                     if (msg.type === 'status') { io.emit('caption:status', { message: msg.message }); continue; }
+                    if (msg.type === 'error') { io.emit('caption:status', { message: `Helsinki エラー: ${msg.message}`, error: true }); continue; }
                     if (msg.id && helsinkiCallbacks.has(msg.id)) {
                         const { resolve: res, reject: rej } = helsinkiCallbacks.get(msg.id);
                         helsinkiCallbacks.delete(msg.id);
@@ -2985,6 +2986,7 @@ async function translateCaption(text, srcLang) {
         return await translateWithMyMemory(text, srcLang, settings.targetLang);
     } catch (e) {
         console.error('[Caption] Translation error:', e.message);
+        io.emit('caption:status', { message: `翻訳エラー (${settings.translationEngine}): ${e.message}`, error: true });
         return null;
     }
 }
