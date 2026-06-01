@@ -68,7 +68,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=38200)
     parser.add_argument('--device-label', type=str, default='')
-    parser.add_argument('--max-chunk', type=float, default=8.0)
+    parser.add_argument('--max-chunk', type=float, default=4.0)
     parser.add_argument('--silence-dur', type=float, default=0.8)
     parser.add_argument('--vad-threshold', type=float, default=0.5)
     parser.add_argument('--min-speech-dur', type=float, default=0.5)
@@ -101,7 +101,7 @@ def main():
     padding_frames = int(args.padding_dur * SAMPLE_RATE / BLOCK_SIZE)
     pre_buffer = []
 
-    def flush_buffer():
+    def flush_buffer(keep_speech=False):
         nonlocal speech_buffer, is_speech, silence_frames, pre_buffer
         if len(speech_buffer) < min_speech_frames:
             speech_buffer = []
@@ -109,9 +109,15 @@ def main():
             silence_frames = 0
             return
         audio_np = np.concatenate(speech_buffer, axis=0).astype(np.float32)
-        speech_buffer = []
-        is_speech = False
-        silence_frames = 0
+        if keep_speech:
+            # rolling flush mid-speech: keep overlap for context
+            speech_buffer = list(speech_buffer[-padding_frames:])
+            silence_frames = 0
+            # is_speech stays True
+        else:
+            speech_buffer = []
+            is_speech = False
+            silence_frames = 0
         threading.Thread(target=send_transcription, args=(audio_np,), daemon=True).start()
 
     def send_transcription(audio_np):
@@ -155,7 +161,7 @@ def main():
                 if silence_frames >= silence_threshold_frames:
                     flush_buffer()
                 elif len(speech_buffer) >= max_frames:
-                    flush_buffer()
+                    flush_buffer(keep_speech=True)
             else:
                 pre_buffer.append(chunk)
                 if len(pre_buffer) > padding_frames * 2:
