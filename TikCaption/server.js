@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS = {
   correctionRules: [],
   autoStartCaption: true,
   launchOnBoot: false,
+  translationProvider: 'google',
 };
 
 const TRANSLATION_MODELS = {
@@ -70,6 +71,14 @@ const TRANSLATION_MODELS = {
   ko: 'Xenova/opus-mt-ja-ko',
   fr: 'Xenova/opus-mt-ja-fr',
   de: 'Xenova/opus-mt-ja-de',
+};
+
+const GOOGLE_LANG_MAP = {
+  en: 'en',
+  zh: 'zh-CN',
+  ko: 'ko',
+  fr: 'fr',
+  de: 'de',
 };
 
 function getIO() {
@@ -101,6 +110,16 @@ class CaptionCorrector {
   }
 }
 
+async function translateWithGoogle(text, srcLang, targetLang) {
+  const tl = GOOGLE_LANG_MAP[targetLang] || targetLang;
+  const sl = srcLang || 'ja';
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data[0]?.map(chunk => chunk[0]).filter(Boolean).join('') || null;
+}
+
 async function translateWithXenova(text, targetLang) {
   const modelId = TRANSLATION_MODELS[targetLang];
   if (!modelId) return null;
@@ -129,7 +148,10 @@ async function handleCaptionText(text, isFinal, srcLang) {
 
   if (settings.translationEnabled && isFinal && corrected.trim()) {
     try {
-      const translated = await translateWithXenova(corrected, settings.targetLang);
+      const provider = settings.translationProvider || 'google';
+      const translated = provider === 'xenova'
+        ? await translateWithXenova(corrected, settings.targetLang)
+        : await translateWithGoogle(corrected, srcLang || 'ja', settings.targetLang);
       if (translated) {
         io.emit('caption:translation', { translated });
       }
