@@ -3,4 +3,5 @@ requests
 sounddevice
 soundfile
 torch
+torchaudio
 nemo_toolkit[asr]
