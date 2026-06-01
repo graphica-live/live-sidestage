@@ -121,8 +121,7 @@ def translate(text, src, tgt):
 
 def main():
     label = 'CTranslate2' if BACKEND == 'ctranslate2' else ('Helsinki-CUDA' if DEVICE == 'cuda' else 'Helsinki')
-    print(json.dumps({'type': 'status', 'message': f'{label} モデル読み込み中...'}), flush=True)
-    translate('テスト', 'ja', 'en')
+    print(json.dumps({'type': 'status', 'message': f'{label} 起動完了 (初回翻訳でモデル自動DL)'}), flush=True)
     print(json.dumps({'type': 'ready'}), flush=True)
 
     for raw in sys.stdin:

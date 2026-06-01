@@ -2876,7 +2876,7 @@ async function _doEnsurePyEngine(engineKey) {
     return new Promise((resolve, reject) => {
         let settled = false;
         const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-        const readyTimer = setTimeout(() => settle(reject, new Error(`${engineKey} ready timeout`)), 180000);
+        const readyTimer = setTimeout(() => settle(reject, new Error(`${engineKey} ready timeout`)), 30000);
 
         const scriptPath = path.join(PROJECT_ROOT, 'caption_translate.py');
         s.proc = spawn(py, [scriptPath, ...cfg.args], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -2921,7 +2921,7 @@ async function translateWithPyEngine(text, srcLang, tgtLang, engineKey) {
         const timer = setTimeout(() => {
             s.callbacks.delete(id);
             reject(new Error('translation timeout'));
-        }, 45000);
+        }, 600000);
         s.callbacks.set(id, {
             resolve: (t) => { clearTimeout(timer); resolve(t); },
             reject: (e) => { clearTimeout(timer); reject(e); }
