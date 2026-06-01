@@ -112,6 +112,7 @@ let settings = {
 
 let fadeTimer = null;
 let typeTimer = null;
+let processTimer = null;
 let captionQueue = [];
 let isTyping = false;
 
@@ -155,6 +156,7 @@ function splitText(text) {
 function clearFade() {
   if (fadeTimer) { clearTimeout(fadeTimer); fadeTimer = null; }
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+  if (processTimer) { clearTimeout(processTimer); processTimer = null; }
 }
 
 function startFadeTimer() {
@@ -192,11 +194,11 @@ function processQueue() {
   if (settings.charsPerSec >= 60) {
     elOriginal.textContent = seg;
     startFadeTimer();
-    setTimeout(processQueue, settings.segmentDuration * 1000);
+    processTimer = setTimeout(processQueue, settings.segmentDuration * 1000);
   } else {
     typewriterDisplay(seg, () => {
       startFadeTimer();
-      setTimeout(processQueue, settings.segmentDuration * 1000);
+      processTimer = setTimeout(processQueue, settings.segmentDuration * 1000);
     });
   }
 }
@@ -213,14 +215,11 @@ function showText(original, translated, isFinal) {
 
   // final — queue segments
   clearFade();
-  if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+  isTyping = false;
 
   const segs = splitText(original);
   captionQueue.push(...segs);
-
-  if (!isTyping) {
-    processQueue();
-  }
+  processQueue();
 }
 
 const socket = io('http://localhost:38200');
