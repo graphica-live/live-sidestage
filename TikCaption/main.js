@@ -140,14 +140,16 @@ function ensurePythonDeps(python) {
       'sys.exit(1 if missing else 0)',
     ].join(';');
 
+    console.log('[ASR] using python:', python);
     const check = spawn(python, ['-c', checkCode], { stdio: 'ignore' });
     check.on('exit', (code) => {
       if (code === 0) { resolve(true); return; }
 
-      asrStatus = { status: 'installing', message: 'Pythonパッケージをインストール中...' };
+      asrStatus = { status: 'installing', message: `インストール中... (${python})` };
       if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
 
       const reqPath = path.join(__dirname, 'requirements.txt');
+      const lastLines = [];
       const inst = spawn(python, ['-m', 'pip', 'install', '-r', reqPath, '--progress-bar', 'off'], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -155,6 +157,8 @@ function ensurePythonDeps(python) {
       const onLine = (data) => {
         const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
         if (line) {
+          lastLines.push(line);
+          if (lastLines.length > 10) lastLines.shift();
           asrStatus = { status: 'installing', message: `インストール中: ${line.slice(0, 60)}` };
           if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
         }
@@ -166,7 +170,13 @@ function ensurePythonDeps(python) {
         if (c === 0) {
           asrStatus = { status: 'ready', message: 'パッケージインストール完了' };
         } else {
-          asrStatus = { status: 'error', message: 'パッケージのインストールに失敗しました' };
+          const detail = lastLines.filter(l => /error|Error|failed/i.test(l)).pop()
+            || lastLines.pop() || '';
+          console.error('[ASR] pip failed. Last lines:\n', lastLines.join('\n'));
+          asrStatus = {
+            status: 'error',
+            message: `インストール失敗 (${python}): ${detail.slice(0, 80)}`,
+          };
         }
         if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
         resolve(c === 0);
