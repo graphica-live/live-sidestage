@@ -89,8 +89,8 @@ def get_ct2_pipeline(src, tgt):
         if not os.path.exists(os.path.join(model_dir, 'model.bin')):
             print(json.dumps({'type': 'status', 'message': f'CTranslate2 モデル変換中 ({key})...'}), flush=True)
             os.makedirs(CT2_CACHE_DIR, exist_ok=True)
-            from ctranslate2.converters import OpusMTConverter
-            converter = OpusMTConverter(model_name)
+            from ctranslate2.converters import TransformersConverter
+            converter = TransformersConverter(model_name)
             converter.convert(model_dir, quantization='int8', force=True)
         translator = ctranslate2.Translator(model_dir, device='cpu', inter_threads=2, intra_threads=4)
         tokenizer = MarianTokenizer.from_pretrained(model_name)
