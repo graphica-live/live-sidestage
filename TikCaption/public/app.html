@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=480">
+<title>TikCaption</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&family=Noto+Sans+JP:wght@900&family=Noto+Serif+JP:wght@900&family=Zen+Kaku+Gothic+New:wght@900&family=Kosugi&family=Klee+One:wght@600&family=Zen+Maru+Gothic:wght@900&family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=RocknRoll+One&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --card: #16213e;
+  --accent: #4f8ef7;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --panel: #1e293b;
+  --border: #334155;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+
+select, input[type=text], input[type=number] {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+select { cursor: pointer; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meter-wrap {
+  position: relative;
+  width: 380px;
+  height: 24px;
+}
+#meter-canvas { border-radius: 4px; display: block; }
+#threshold-marker {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: rgba(255,255,100,0.9);
+  pointer-events: none;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+input[type=range] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.val-display {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 48px;
+  text-align: right;
+}
+
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.url-text {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.15); }
+button.secondary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.checks-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.check-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.check-group input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+.translate-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.translate-col select { width: 120px; }
+
+.status-bar {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+#status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-right: 4px;
+}
+
+/* ── Modal ─────────────────────────────────────── */
+dialog {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  width: 520px;
+  max-width: 95vw;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+dialog::backdrop { background: rgba(0,0,0,0.6); }
+
+.modal-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.modal-body {
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* font select with custom font display */
+.font-option { font-weight: 900; }
+
+/* theme swatch */
+.theme-swatch {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin-left: 6px;
+}
+.swatch-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* caption preview */
+#caption-preview {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#preview-text {
+  font-weight: 900;
+  paint-order: stroke fill;
+}
+
+/* correction rules table */
+.rules-table { width: 100%; border-collapse: collapse; }
+.rules-table th {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.rules-table td { padding: 4px; vertical-align: middle; }
+.rules-table input[type=text] { padding: 4px 6px; font-size: 12px; }
+.rules-table input[type=checkbox] { accent-color: var(--accent); }
+.del-btn {
+  background: #ef4444;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.vad-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Device select -->
+  <div>
+    <label>録音デバイス</label>
+    <select id="device-select"></select>
+  </div>
+
+  <!-- Level meter -->
+  <div>
+    <div class="meter-wrap">
+      <canvas id="meter-canvas" width="380" height="24"></canvas>
+      <div id="threshold-marker"></div>
+    </div>
+    <div class="slider-row" style="margin-top:6px;">
+      <span style="font-size:11px;color:var(--muted);">閾値:</span>
+      <input type="range" id="threshold-slider" min="0" max="1" step="0.001">
+      <span class="val-display" id="threshold-val">0.030</span>
+    </div>
+  </div>
+
+  <!-- OBS URL -->
+  <div class="url-row">
+    <span style="font-size:11px;color:var(--muted);white-space:nowrap;">OBS URL:</span>
+    <div class="url-text">http://localhost:38201/overlay.html</div>
+    <button id="copy-btn">コピー</button>
+  </div>
+
+  <!-- Checkboxes / translation -->
+  <div class="checks-row">
+    <div class="check-group">
+      <input type="checkbox" id="show-original">
+      <label for="show-original" style="margin:0;font-size:13px;color:var(--text);">日本語表示</label>
+    </div>
+    <div class="translate-col">
+      <div class="check-group">
+        <input type="checkbox" id="show-translation">
+        <label for="show-translation" style="margin:0;font-size:13px;color:var(--text);">外国語表示</label>
+      </div>
+      <select id="target-lang">
+        <option value="en">英語</option>
+        <option value="zh">中国語</option>
+        <option value="ko">韓国語</option>
+        <option value="fr">フランス語</option>
+        <option value="de">ドイツ語</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Detail settings button -->
+  <div style="text-align:right;">
+    <button id="open-modal" class="secondary">詳細設定</button>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-msg">接続待機中...</span>
+  </div>
+</div>
+
+<!-- ─────────── Detail modal ─────────── -->
+<dialog id="detail-modal">
+  <div class="modal-header">
+    <span>詳細設定</span>
+    <button id="close-modal" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body">
+
+    <!-- Section 1: 字幕表示 -->
+    <section>
+      <div class="section-title">字幕表示</div>
+      <div class="grid2">
+        <div>
+          <label>文字サイズ</label>
+          <div class="slider-row">
+            <input type="range" id="font-size" min="16" max="200" step="1">
+            <span class="val-display" id="font-size-val">52</span>
+          </div>
+        </div>
+        <div>
+          <label>縦位置オフセット</label>
+          <div class="slider-row">
+            <input type="range" id="vert-offset" min="0" max="1080" step="1">
+            <span class="val-display" id="vert-offset-val">120</span>
+          </div>
+        </div>
+        <div>
+          <label>表示時間 (秒)</label>
+          <div class="slider-row">
+            <input type="range" id="seg-duration" min="2" max="30" step="1">
+            <span class="val-display" id="seg-duration-val">6</span>
+          </div>
+        </div>
+        <div>
+          <label>最大文字数/セグメント</label>
+          <div class="slider-row">
+            <input type="range" id="max-chars" min="5" max="100" step="1">
+            <span class="val-display" id="max-chars-val">20</span>
+          </div>
+        </div>
+        <div>
+          <label>タイプライター速度 (字/秒)</label>
+          <div class="slider-row">
+            <input type="range" id="chars-per-sec" min="1" max="60" step="1">
+            <span class="val-display" id="chars-per-sec-val">12</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding-top:16px;">
+          <input type="checkbox" id="show-interim">
+          <label for="show-interim" style="margin:0;color:var(--text);">途中経過を表示</label>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <label>背景</label>
+        <div class="row">
+          <label class="check-group" style="margin:0;">
+            <input type="radio" name="bg-style" value="transparent"> 透明
+          </label>
+          <label class="check-group" style="margin:0;">
+            <input type="radio" name="bg-style" value="semi"> 半透明
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: 外観 -->
+    <section>
+      <div class="section-title">外観</div>
+      <div class="grid2">
+        <div>
+          <label>フォント</label>
+          <select id="font-family"></select>
+        </div>
+        <div>
+          <label>カラーテーマ</label>
+          <select id="text-style-key"></select>
+        </div>
+        <div>
+          <label>アウトライン幅</label>
+          <div class="slider-row">
+            <input type="range" id="stroke-width" min="0" max="24" step="1">
+            <span class="val-display" id="stroke-width-val">6</span>
+          </div>
+        </div>
+      </div>
+      <!-- Preview -->
+      <div style="margin-top:12px;">
+        <label>プレビュー</label>
+        <div id="caption-preview">
+          <span id="preview-text">あいうえお ABC 123</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: 補正ルール -->
+    <section>
+      <div class="section-title">補正ルール</div>
+      <table class="rules-table">
+        <thead>
+          <tr>
+            <th>変換前</th>
+            <th>変換後</th>
+            <th>正規表現</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rules-body"></tbody>
+      </table>
+      <button id="add-rule" class="secondary" style="margin-top:8px;font-size:12px;">＋ 追加</button>
+    </section>
+
+    <!-- Section 4: VAD -->
+    <section>
+      <div class="section-title">詳細オーディオ設定</div>
+      <p class="vad-note">VAD 設定変更時は ASR プロセスが自動再起動されます。</p>
+      <div class="grid2" style="margin-top:8px;">
+        <div>
+          <label>VAD 閾値</label>
+          <div class="slider-row">
+            <input type="range" id="vad-threshold" min="0" max="1" step="0.01">
+            <span class="val-display" id="vad-threshold-val">0.50</span>
+          </div>
+        </div>
+        <div>
+          <label>無音判定時間 (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-silence" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-silence-val">800 ms</span>
+          </div>
+        </div>
+        <div>
+          <label>最小発話時間 (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-minspeech" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-minspeech-val">500 ms</span>
+          </div>
+        </div>
+        <div>
+          <label>パディング (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-padding" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-padding-val">200 ms</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</dialog>
+
+<script>
+const TEXT_STYLES = {
+  'gold-night':   { label: 'Gold Night',    fill: '#ffffff', note: '#fde68a', stroke: 'rgba(10,10,20,.95)' },
+  'ice-night':    { label: 'Ice Night',     fill: '#dbeafe', note: '#bfdbfe', stroke: 'rgba(23,37,84,.95)' },
+  'candy-pop':    { label: 'Candy Pop',     fill: '#ffe4f1', note: '#fbcfe8', stroke: 'rgba(131,24,67,.95)' },
+  'mint-lime':    { label: 'Mint Lime',     fill: '#d1fae5', note: '#6ee7b7', stroke: 'rgba(6,78,59,.96)' },
+  'sunset-party': { label: 'Sunset Party',  fill: '#fed7aa', note: '#fb923c', stroke: 'rgba(120,53,15,.96)' },
+  'violet-flash': { label: 'Violet Flash',  fill: '#e9d5ff', note: '#c084fc', stroke: 'rgba(59,7,100,.96)' },
+  'mono-impact':  { label: 'Mono Impact',   fill: '#f8fafc', note: '#e2e8f0', stroke: 'rgba(2,6,23,.97)' },
+  'sakura-bloom': { label: 'Sakura Bloom',  fill: '#ffe4e6', note: '#fda4af', stroke: 'rgba(136,19,55,.95)' },
+};
+
+const FONTS = [
+  'M PLUS Rounded 1c', 'Noto Sans JP', 'Noto Serif JP',
+  'Zen Kaku Gothic New', 'Kosugi', 'Klee One',
+  'Zen Maru Gothic', 'Dela Gothic One', 'Hachi Maru Pop', 'RocknRoll One',
+];
+
+// populate font select
+const fontSel = document.getElementById('font-family');
+for (const f of FONTS) {
+  const opt = document.createElement('option');
+  opt.value = f;
+  opt.textContent = f;
+  opt.style.fontFamily = `"${f}", sans-serif`;
+  opt.className = 'font-option';
+  fontSel.appendChild(opt);
+}
+
+// populate theme select
+const themeSel = document.getElementById('text-style-key');
+for (const [key, t] of Object.entries(TEXT_STYLES)) {
+  const opt = document.createElement('option');
+  opt.value = key;
+  opt.textContent = t.label;
+  themeSel.appendChild(opt);
+}
+
+// ── state ─────────────────────────────────────────
+let settings = {};
+let audioCtx = null;
+let analyser = null;
+let animFrame = null;
+let mediaStream = null;
+let debounceTimers = {};
+
+function debounce(key, fn, ms = 300) {
+  if (debounceTimers[key]) clearTimeout(debounceTimers[key]);
+  debounceTimers[key] = setTimeout(fn, ms);
+}
+
+// ── meter ─────────────────────────────────────────
+const canvas = document.getElementById('meter-canvas');
+const ctx = canvas.getContext('2d');
+const marker = document.getElementById('threshold-marker');
+
+function drawMeter(rms) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const w = Math.min(rms, 1) * canvas.width;
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  grad.addColorStop(0, '#22c55e');
+  grad.addColorStop(0.6, '#eab308');
+  grad.addColorStop(1, '#ef4444');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, canvas.height);
+}
+
+function drawIdle() {
+  drawMeter(0);
+}
+
+async function startMeter(deviceId) {
+  stopMeter();
+  const constraints = {
+    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+    video: false,
+  };
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    function tick() {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += v * v;
+      const rms = Math.sqrt(sum / buf.length);
+      drawMeter(rms);
+      animFrame = requestAnimationFrame(tick);
+    }
+    tick();
+  } catch (e) {
+    drawIdle();
+  }
+}
+
+function stopMeter() {
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  analyser = null;
+  drawIdle();
+}
+
+function updateMarker(val) {
+  marker.style.left = (val * canvas.width) + 'px';
+}
+
+// ── save helper ───────────────────────────────────
+function save(data) {
+  window.api.saveSettings(data).catch(() => {});
+}
+
+// ── apply settings to UI ──────────────────────────
+function applyToUI(s) {
+  settings = { ...settings, ...s };
+
+  // threshold slider
+  const ts = document.getElementById('threshold-slider');
+  ts.value = s.noiseGateThreshold ?? ts.value;
+  document.getElementById('threshold-val').textContent = parseFloat(ts.value).toFixed(3);
+  updateMarker(parseFloat(ts.value));
+
+  // checkboxes
+  if ('showOriginal' in s) document.getElementById('show-original').checked = s.showOriginal;
+  if ('translationEnabled' in s) {
+    document.getElementById('show-translation').checked = s.translationEnabled;
+    document.getElementById('target-lang').disabled = !s.translationEnabled;
+  }
+  if ('targetLang' in s) document.getElementById('target-lang').value = s.targetLang;
+
+  // modal sliders
+  bindSliderVal('font-size', 'font-size-val', s.fontSize, '');
+  bindSliderVal('vert-offset', 'vert-offset-val', s.verticalOffset, '');
+  bindSliderVal('seg-duration', 'seg-duration-val', s.segmentDuration, '');
+  bindSliderVal('max-chars', 'max-chars-val', s.maxCharsPerSegment, '');
+  bindSliderVal('chars-per-sec', 'chars-per-sec-val', s.charsPerSec, '');
+  if ('showInterim' in s) document.getElementById('show-interim').checked = s.showInterim;
+
+  if ('bgStyle' in s) {
+    document.querySelectorAll('input[name=bg-style]').forEach(r => {
+      r.checked = r.value === s.bgStyle;
+    });
+  }
+
+  if ('fontFamily' in s) fontSel.value = s.fontFamily;
+  if ('textStyleKey' in s) themeSel.value = s.textStyleKey;
+  bindSliderVal('stroke-width', 'stroke-width-val', s.strokeWidth, '');
+
+  bindSliderVal('vad-threshold', 'vad-threshold-val', s.vadThreshold, '', 2);
+  bindSliderVal('vad-silence', 'vad-silence-val', s.vadSilenceMs, ' ms');
+  bindSliderVal('vad-minspeech', 'vad-minspeech-val', s.vadMinSpeechMs, ' ms');
+  bindSliderVal('vad-padding', 'vad-padding-val', s.vadPaddingMs, ' ms');
+
+  if (s.correctionRules) renderRules(s.correctionRules);
+
+  updatePreview();
+}
+
+function bindSliderVal(sliderId, valId, newVal, suffix, decimals) {
+  if (newVal === undefined || newVal === null) return;
+  const el = document.getElementById(sliderId);
+  if (!el) return;
+  el.value = newVal;
+  const d = decimals !== undefined ? decimals : 0;
+  document.getElementById(valId).textContent = parseFloat(newVal).toFixed(d) + (suffix || '');
+}
+
+// ── preview ───────────────────────────────────────
+function updatePreview() {
+  const pt = document.getElementById('preview-text');
+  const fontSize = parseInt(document.getElementById('font-size').value) || 52;
+  const fontFamily = fontSel.value || 'M PLUS Rounded 1c';
+  const themeKey = themeSel.value || 'gold-night';
+  const strokeWidth = parseInt(document.getElementById('stroke-width').value) || 6;
+  const theme = TEXT_STYLES[themeKey] || TEXT_STYLES['gold-night'];
+
+  pt.style.fontFamily = `"${fontFamily}", sans-serif`;
+  pt.style.fontSize = Math.min(fontSize, 60) + 'px';
+  pt.style.color = theme.fill;
+  pt.style.webkitTextStroke = `${strokeWidth}px ${theme.stroke}`;
+}
+
+// ── correction rules ──────────────────────────────
+function renderRules(rules) {
+  const tbody = document.getElementById('rules-body');
+  tbody.innerHTML = '';
+  rules.forEach((rule, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escHtml(rule.from || '')}" data-i="${i}" data-field="from"></td>
+      <td><input type="text" value="${escHtml(rule.to || '')}" data-i="${i}" data-field="to"></td>
+      <td style="text-align:center;"><input type="checkbox" ${rule.useRegex ? 'checked' : ''} data-i="${i}" data-field="useRegex"></td>
+      <td><button class="del-btn" data-i="${i}">削除</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getRules() {
+  const rows = document.querySelectorAll('#rules-body tr');
+  return Array.from(rows).map(tr => ({
+    from: tr.querySelector('[data-field=from]').value,
+    to: tr.querySelector('[data-field=to]').value,
+    useRegex: tr.querySelector('[data-field=useRegex]').checked,
+  }));
+}
+
+document.getElementById('rules-body').addEventListener('input', () => {
+  debounce('rules', () => save({ correctionRules: getRules() }));
+});
+
+document.getElementById('rules-body').addEventListener('click', (e) => {
+  if (e.target.classList.contains('del-btn')) {
+    const i = parseInt(e.target.dataset.i);
+    const rules = getRules();
+    rules.splice(i, 1);
+    renderRules(rules);
+    save({ correctionRules: rules });
+  }
+});
+
+document.getElementById('add-rule').addEventListener('click', () => {
+  const rules = getRules();
+  rules.push({ from: '', to: '', useRegex: false });
+  renderRules(rules);
+});
+
+// ── wire up controls ──────────────────────────────
+document.getElementById('threshold-slider').addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  document.getElementById('threshold-val').textContent = val.toFixed(3);
+  updateMarker(val);
+  debounce('threshold', () => save({ noiseGateThreshold: val }));
+});
+
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  await navigator.clipboard.writeText('http://localhost:38201/overlay.html');
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = 'コピーしました ✓';
+  setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+});
+
+document.getElementById('show-original').addEventListener('change', (e) => {
+  save({ showOriginal: e.target.checked });
+});
+
+document.getElementById('show-translation').addEventListener('change', (e) => {
+  const val = e.target.checked;
+  document.getElementById('target-lang').disabled = !val;
+  save({ translationEnabled: val });
+});
+
+document.getElementById('target-lang').addEventListener('change', (e) => {
+  save({ targetLang: e.target.value });
+});
+
+document.getElementById('device-select').addEventListener('change', async (e) => {
+  save({ deviceId: e.target.value });
+  await startMeter(e.target.value || undefined);
+});
+
+document.getElementById('open-modal').addEventListener('click', () => {
+  document.getElementById('detail-modal').showModal();
+});
+document.getElementById('close-modal').addEventListener('click', () => {
+  document.getElementById('detail-modal').close();
+});
+document.getElementById('detail-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.close();
+});
+
+// modal sliders
+[
+  ['font-size', 'font-size-val', '', 'fontSize', 0],
+  ['vert-offset', 'vert-offset-val', '', 'verticalOffset', 0],
+  ['seg-duration', 'seg-duration-val', '', 'segmentDuration', 0],
+  ['max-chars', 'max-chars-val', '', 'maxCharsPerSegment', 0],
+  ['chars-per-sec', 'chars-per-sec-val', '', 'charsPerSec', 0],
+  ['stroke-width', 'stroke-width-val', '', 'strokeWidth', 0],
+  ['vad-threshold', 'vad-threshold-val', '', 'vadThreshold', 2],
+  ['vad-silence', 'vad-silence-val', ' ms', 'vadSilenceMs', 0],
+  ['vad-minspeech', 'vad-minspeech-val', ' ms', 'vadMinSpeechMs', 0],
+  ['vad-padding', 'vad-padding-val', ' ms', 'vadPaddingMs', 0],
+].forEach(([sid, vid, suffix, key, dec]) => {
+  const el = document.getElementById(sid);
+  if (!el) return;
+  el.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    document.getElementById(vid).textContent = val.toFixed(dec) + suffix;
+    if (['fontSize','strokeWidth','fontFamily','textStyleKey'].includes(key)) updatePreview();
+    debounce(key, () => save({ [key]: val }));
+  });
+});
+
+document.getElementById('show-interim').addEventListener('change', (e) => {
+  save({ showInterim: e.target.checked });
+});
+
+document.querySelectorAll('input[name=bg-style]').forEach(r => {
+  r.addEventListener('change', (e) => {
+    save({ bgStyle: e.target.value });
+  });
+});
+
+fontSel.addEventListener('change', (e) => {
+  updatePreview();
+  debounce('fontFamily', () => save({ fontFamily: e.target.value }));
+});
+
+themeSel.addEventListener('change', (e) => {
+  updatePreview();
+  debounce('textStyleKey', () => save({ textStyleKey: e.target.value }));
+});
+
+// ── ASR status ────────────────────────────────────
+function updateStatus({ status, message }) {
+  const dot = document.getElementById('status-dot');
+  const msg = document.getElementById('status-msg');
+  msg.textContent = message || status;
+  dot.style.background = status === 'error' ? '#ef4444' : status === 'stopped' ? '#f59e0b' : '#22c55e';
+}
+
+window.api.onASRStatus(updateStatus);
+
+// ── init ──────────────────────────────────────────
+async function init() {
+  const s = await window.api.getSettings();
+  applyToUI(s);
+
+  const devices = await window.api.getDevices();
+  const sel = document.getElementById('device-select');
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'システムデフォルト';
+  sel.appendChild(defaultOpt);
+  for (const d of devices) {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name;
+    sel.appendChild(opt);
+  }
+  if (s.deviceId) sel.value = s.deviceId;
+
+  await startMeter(s.deviceId || undefined);
+
+  const status = await window.api.getASRStatus();
+  updateStatus(status);
+}
+
+init();
+</script>
+</body>
+</html>
