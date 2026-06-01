@@ -161,6 +161,49 @@ button.secondary {
   margin-right: 4px;
 }
 
+.install-progress {
+  display: none;
+  margin-top: 6px;
+  flex-direction: column;
+  gap: 4px;
+}
+.install-progress.active { display: flex; }
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, #7dd3fc 50%, var(--accent) 100%);
+  background-size: 200% 100%;
+  border-radius: 3px;
+  animation: shimmer 1.4s linear infinite;
+  width: 100%;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.install-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+}
+#install-pkg {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+#install-elapsed { white-space: nowrap; margin-left: 8px; }
+
 /* ── Modal ─────────────────────────────────────── */
 dialog[open] {
   background: var(--card);
@@ -354,6 +397,13 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <div class="status-bar">
     <span id="status-dot"></span>
     <span id="status-msg">接続待機中...</span>
+    <div class="install-progress" id="install-progress">
+      <div class="progress-track"><div class="progress-bar"></div></div>
+      <div class="install-meta">
+        <span id="install-pkg"></span>
+        <span id="install-elapsed">0s</span>
+      </div>
+    </div>
   </div>
 
   <!-- Caption monitor -->
@@ -910,11 +960,39 @@ document.getElementById('launch-on-boot').addEventListener('change', (e) => {
 });
 
 // ── ASR status ────────────────────────────────────
+let _installStart = null;
+let _elapsedTimer = null;
+
 function updateStatus({ status, message }) {
   const dot = document.getElementById('status-dot');
   const msg = document.getElementById('status-msg');
-  msg.textContent = message || status;
-  dot.style.background = status === 'error' ? '#ef4444' : status === 'stopped' ? '#f59e0b' : '#22c55e';
+  const prog = document.getElementById('install-progress');
+  const pkgEl = document.getElementById('install-pkg');
+
+  const installing = status === 'installing';
+
+  if (installing) {
+    msg.textContent = 'インストール中...';
+    dot.style.background = '#f59e0b';
+    prog.classList.add('active');
+    pkgEl.textContent = message || '';
+    if (!_installStart) {
+      _installStart = Date.now();
+      _elapsedTimer = setInterval(() => {
+        const s = Math.floor((Date.now() - _installStart) / 1000);
+        const m = Math.floor(s / 60);
+        document.getElementById('install-elapsed').textContent =
+          m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+      }, 1000);
+    }
+  } else {
+    msg.textContent = message || status;
+    dot.style.background = status === 'error' ? '#ef4444' : status === 'stopped' ? '#f59e0b' : '#22c55e';
+    prog.classList.remove('active');
+    if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+    _installStart = null;
+    document.getElementById('install-elapsed').textContent = '0s';
+  }
 
   const running = status !== 'stopped' && status !== 'idle' && status !== 'error';
   document.getElementById('start-btn').disabled = running;
