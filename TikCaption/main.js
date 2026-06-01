@@ -434,7 +434,6 @@ app.whenReady().then(async () => {
   await startServer(CAPTION_PORT);
 
   createMainWindow();
-  createOverlayWindow();
   createTray();
   registerIPC();
 
