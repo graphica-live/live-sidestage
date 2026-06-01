@@ -2739,7 +2739,7 @@ function setWidgetCoinListSettings(settings) {
 // ---- 字幕ウィジェット ----
 
 const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp-cuda', 'whisper-cpp-cpu', 'sherpa-parakeet-gpu', 'sherpa-parakeet-cpu']);
-const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki', 'xenova', 'google']);
+const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki', 'helsinki-cuda', 'ctranslate2', 'xenova', 'google']);
 const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
 const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
 
@@ -2828,41 +2828,44 @@ async function translateWithMyMemory(text, srcLang, tgtLang) {
     return null;
 }
 
-// Helsinki-NLP サブプロセス管理
-let helsinkiProc = null;
-let helsinkiReady = false;
-let helsinkiCallbacks = new Map();
-let helsinkiBuf = '';
+// ── Python翻訳エンジン共通サブプロセス管理 ──────────────────────────────────
+const PY_ENGINE_CONFIG = {
+    'helsinki':      { args: ['--backend', 'transformers', '--device', 'auto'], check: 'import transformers, sentencepiece, torch', pkgs: ['transformers', 'sentencepiece', 'sacremoses', 'torch'] },
+    'helsinki-cuda': { args: ['--backend', 'transformers', '--device', 'cuda'], check: 'import transformers, sentencepiece, torch', pkgs: ['transformers', 'sentencepiece', 'sacremoses', 'torch'] },
+    'ctranslate2':   { args: ['--backend', 'ctranslate2'],                      check: 'import ctranslate2, sentencepiece',          pkgs: ['ctranslate2', 'transformers', 'sentencepiece'] },
+};
 
-let helsinkiEnsurePromise = null;
+const _pyState = Object.fromEntries(
+    Object.keys(PY_ENGINE_CONFIG).map(k => [k, { proc: null, ready: false, callbacks: new Map(), buf: '', ensurePromise: null }])
+);
 
-function ensureHelsinkiProcess() {
-    if (helsinkiProc && !helsinkiProc.killed && helsinkiReady) return Promise.resolve();
-    if (helsinkiEnsurePromise) return helsinkiEnsurePromise;
-    helsinkiEnsurePromise = _doEnsureHelsinki().finally(() => { helsinkiEnsurePromise = null; });
-    return helsinkiEnsurePromise;
+function ensurePyEngine(engineKey) {
+    const s = _pyState[engineKey];
+    if (s.proc && !s.proc.killed && s.ready) return Promise.resolve();
+    if (s.ensurePromise) return s.ensurePromise;
+    s.ensurePromise = _doEnsurePyEngine(engineKey).finally(() => { s.ensurePromise = null; });
+    return s.ensurePromise;
 }
 
-async function _doEnsureHelsinki() {
-    helsinkiReady = false;
-    helsinkiCallbacks.clear();
-    helsinkiBuf = '';
+async function _doEnsurePyEngine(engineKey) {
+    const s = _pyState[engineKey];
+    const cfg = PY_ENGINE_CONFIG[engineKey];
+    s.ready = false;
+    s.callbacks.clear();
+    s.buf = '';
 
     const settings = getWidgetCaptionSettings();
     const py = settings.pythonPath || 'python';
 
-    // Auto-install missing packages
     const pkgsOk = await new Promise(resolve => {
-        const c = spawn(py, ['-c', 'import transformers, sentencepiece, torch'], { stdio: 'ignore', shell: false });
+        const c = spawn(py, ['-c', cfg.check], { stdio: 'ignore', shell: false });
         c.on('close', code => resolve(code === 0));
         c.on('error', () => resolve(false));
     });
     if (!pkgsOk) {
-        io.emit('caption:status', { message: 'Helsinki: パッケージインストール中 (初回のみ)...' });
+        io.emit('caption:status', { message: `${engineKey}: パッケージインストール中 (初回のみ)...` });
         await new Promise((resolve, reject) => {
-            const inst = spawn(py, ['-m', 'pip', 'install', 'transformers', 'sentencepiece', 'sacremoses', 'torch'], {
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
+            const inst = spawn(py, ['-m', 'pip', 'install', ...cfg.pkgs], { stdio: ['ignore', 'pipe', 'pipe'] });
             inst.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
             inst.stderr.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
             inst.on('close', code => code === 0 ? resolve() : reject(new Error(`pip install exit ${code}`)));
@@ -2870,44 +2873,66 @@ async function _doEnsureHelsinki() {
         });
     }
 
-    // Spawn and wait for 'ready' before resolving
     return new Promise((resolve, reject) => {
         let settled = false;
         const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-        const readyTimer = setTimeout(() => settle(reject, new Error('Helsinki ready timeout')), 180000);
+        const readyTimer = setTimeout(() => settle(reject, new Error(`${engineKey} ready timeout`)), 180000);
 
         const scriptPath = path.join(PROJECT_ROOT, 'caption_translate.py');
-        helsinkiProc = spawn(py, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+        s.proc = spawn(py, [scriptPath, ...cfg.args], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-        helsinkiProc.stdout.on('data', (chunk) => {
-            helsinkiBuf += chunk.toString();
-            const lines = helsinkiBuf.split('\n');
-            helsinkiBuf = lines.pop();
+        s.proc.stdout.on('data', (chunk) => {
+            s.buf += chunk.toString();
+            const lines = s.buf.split('\n');
+            s.buf = lines.pop();
             for (const line of lines) {
                 if (!line.trim()) continue;
                 try {
                     const msg = JSON.parse(line);
                     if (msg.type === 'ready') {
-                        helsinkiReady = true;
+                        s.ready = true;
                         clearTimeout(readyTimer);
                         settle(resolve);
-                        io.emit('caption:status', { message: 'Helsinki 準備完了' });
+                        io.emit('caption:status', { message: `${engineKey} 準備完了` });
                         continue;
                     }
                     if (msg.type === 'status') { io.emit('caption:status', { message: msg.message }); continue; }
-                    if (msg.type === 'error') { io.emit('caption:status', { message: `Helsinki エラー: ${msg.message}`, error: true }); continue; }
-                    if (msg.id && helsinkiCallbacks.has(msg.id)) {
-                        const { resolve: res, reject: rej } = helsinkiCallbacks.get(msg.id);
-                        helsinkiCallbacks.delete(msg.id);
+                    if (msg.type === 'error')  { io.emit('caption:status', { message: `${engineKey} エラー: ${msg.message}`, error: true }); continue; }
+                    if (msg.id && s.callbacks.has(msg.id)) {
+                        const { resolve: res, reject: rej } = s.callbacks.get(msg.id);
+                        s.callbacks.delete(msg.id);
                         msg.error ? rej(new Error(msg.error)) : res(msg.text || '');
                     }
                 } catch {}
             }
         });
 
-        helsinkiProc.stderr.on('data', (d) => console.error('[Helsinki]', d.toString().trim()));
-        helsinkiProc.on('error', (e) => { clearTimeout(readyTimer); helsinkiProc = null; helsinkiReady = false; settle(reject, e); });
-        helsinkiProc.on('exit', (code) => { clearTimeout(readyTimer); helsinkiProc = null; helsinkiReady = false; settle(reject, new Error(`Helsinki exit ${code}`)); });
+        s.proc.stderr.on('data', (d) => console.error(`[${engineKey}]`, d.toString().trim()));
+        s.proc.on('error', (e) => { clearTimeout(readyTimer); s.proc = null; s.ready = false; settle(reject, e); });
+        s.proc.on('exit', (code) => { clearTimeout(readyTimer); s.proc = null; s.ready = false; settle(reject, new Error(`${engineKey} exit ${code}`)); });
+    });
+}
+
+async function translateWithPyEngine(text, srcLang, tgtLang, engineKey) {
+    await ensurePyEngine(engineKey);
+    const s = _pyState[engineKey];
+    return new Promise((resolve, reject) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const timer = setTimeout(() => {
+            s.callbacks.delete(id);
+            reject(new Error('translation timeout'));
+        }, 45000);
+        s.callbacks.set(id, {
+            resolve: (t) => { clearTimeout(timer); resolve(t); },
+            reject: (e) => { clearTimeout(timer); reject(e); }
+        });
+        try {
+            s.proc.stdin.write(JSON.stringify({ id, text, src: srcLang, tgt: tgtLang }) + '\n');
+        } catch (e) {
+            s.callbacks.delete(id);
+            clearTimeout(timer);
+            reject(e);
+        }
     });
 }
 
@@ -2954,34 +2979,14 @@ async function translateWithGoogle(text, srcLang, tgtLang) {
     return data?.[0]?.map(s => s?.[0]).filter(Boolean).join('') || null;
 }
 
-async function translateWithHelsinki(text, srcLang, tgtLang) {
-    await ensureHelsinkiProcess();
-    return new Promise((resolve, reject) => {
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => {
-            helsinkiCallbacks.delete(id);
-            reject(new Error('translation timeout'));
-        }, 45000);
-        helsinkiCallbacks.set(id, {
-            resolve: (t) => { clearTimeout(timer); resolve(t); },
-            reject: (e) => { clearTimeout(timer); reject(e); }
-        });
-        try {
-            helsinkiProc.stdin.write(JSON.stringify({ id, text, src: srcLang, tgt: tgtLang }) + '\n');
-        } catch (e) {
-            helsinkiCallbacks.delete(id);
-            clearTimeout(timer);
-            reject(e);
-        }
-    });
-}
-
 async function translateCaption(text, srcLang) {
     const settings = getWidgetCaptionSettings();
     if (!settings.translationEnabled || !text) return null;
     try {
-        if (settings.translationEngine === 'helsinki') return await translateWithHelsinki(text, srcLang, settings.targetLang);
-        if (settings.translationEngine === 'xenova')   return await translateWithXenova(text, srcLang, settings.targetLang);
+        if (settings.translationEngine === 'helsinki')      return await translateWithPyEngine(text, srcLang, settings.targetLang, 'helsinki');
+        if (settings.translationEngine === 'helsinki-cuda') return await translateWithPyEngine(text, srcLang, settings.targetLang, 'helsinki-cuda');
+        if (settings.translationEngine === 'ctranslate2')   return await translateWithPyEngine(text, srcLang, settings.targetLang, 'ctranslate2');
+        if (settings.translationEngine === 'xenova')        return await translateWithXenova(text, srcLang, settings.targetLang);
         if (settings.translationEngine === 'google')   return await translateWithGoogle(text, srcLang, settings.targetLang);
         return await translateWithMyMemory(text, srcLang, settings.targetLang);
     } catch (e) {
