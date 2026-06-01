@@ -326,7 +326,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 <dialog id="detail-modal">
   <div class="modal-header">
     <span>詳細設定</span>
-    <button id="close-modal" class="secondary" style="padding:4px 10px;">✕</button>
+    <button id="close-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
   </div>
   <div class="modal-body">
 
@@ -773,7 +773,8 @@ document.getElementById('device-select').addEventListener('change', async (e) =>
 document.getElementById('open-modal').addEventListener('click', () => {
   document.getElementById('detail-modal').showModal();
 });
-document.getElementById('close-modal').addEventListener('click', () => {
+document.getElementById('close-modal').addEventListener('click', (e) => {
+  e.stopPropagation();
   document.getElementById('detail-modal').close();
 });
 document.getElementById('detail-modal').addEventListener('click', (e) => {
