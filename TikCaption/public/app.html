@@ -260,6 +260,34 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   color: var(--muted);
   margin-top: 4px;
 }
+
+/* caption monitor */
+.caption-monitor {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.caption-monitor td {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.cap-lang {
+  width: 52px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel);
+  white-space: nowrap;
+}
+.cap-text {
+  font-size: 13px;
+  min-height: 20px;
+  word-break: break-all;
+}
+.cap-text.muted {
+  color: var(--muted);
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -321,6 +349,21 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <div class="status-bar">
     <span id="status-dot"></span>
     <span id="status-msg">接続待機中...</span>
+  </div>
+
+  <!-- Caption monitor -->
+  <div>
+    <label>字幕モニター</label>
+    <table class="caption-monitor">
+      <tr>
+        <td class="cap-lang">日本語</td>
+        <td id="mon-original" class="cap-text muted">(解析中...)</td>
+      </tr>
+      <tr id="mon-trans-row" style="display:none">
+        <td class="cap-lang" id="mon-lang-label">翻訳</td>
+        <td id="mon-translated" class="cap-text muted">(翻訳待ち...)</td>
+      </tr>
+    </table>
   </div>
 </div>
 
@@ -901,6 +944,77 @@ async function init() {
 }
 
 init();
+
+// ── Caption monitor ───────────────────────────────
+(function () {
+  const elOrig = document.getElementById('mon-original');
+  const elTrans = document.getElementById('mon-translated');
+  const elTransRow = document.getElementById('mon-trans-row');
+  const elLangLabel = document.getElementById('mon-lang-label');
+  const LANG_NAMES = { en:'英語', zh:'中国語', ko:'韓国語', fr:'フランス語', de:'ドイツ語' };
+
+  let silenceTimer = null;
+
+  function setText(el, text, isMuted) {
+    el.textContent = text;
+    el.classList.toggle('muted', isMuted);
+  }
+
+  function resetToSilence() {
+    setText(elOrig, '(解析中...)', true);
+    setText(elTrans, '(翻訳待ち...)', true);
+  }
+
+  function scheduleReset(durationMs) {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(resetToSilence, durationMs);
+  }
+
+  // sync translation row visibility from settings
+  function applyMonitorSettings(s) {
+    if (!s) return;
+    const show = s.translationEnabled;
+    elTransRow.style.display = show ? '' : 'none';
+    if (show && s.targetLang) {
+      elLangLabel.textContent = LANG_NAMES[s.targetLang] || s.targetLang;
+    }
+  }
+
+  // hook into existing ASR status to show stopped state
+  const origUpdateStatus = window._updateStatus;
+  window.api.onASRStatus((data) => {
+    if (data.status === 'stopped' || data.status === 'idle' || data.status === 'error') {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      setText(elOrig, '(停止中)', true);
+      setText(elTrans, '(停止中)', true);
+    }
+  });
+
+  // try to connect to socket.io for live caption feed
+  function connectMonitor() {
+    const script = document.createElement('script');
+    script.src = 'http://localhost:38200/socket.io/socket.io.js';
+    script.onload = () => {
+      const sock = io('http://localhost:38200');  // eslint-disable-line no-undef
+
+      sock.on('caption:updated', ({ original, isFinal, settings: s }) => {
+        if (s) applyMonitorSettings(s);
+        if (original) setText(elOrig, original, false);
+        const dur = ((s && s.segmentDuration) || 6) * 1000 + 1500;
+        scheduleReset(dur);
+      });
+
+      sock.on('caption:translation', ({ translated }) => {
+        if (translated) setText(elTrans, translated, false);
+      });
+
+      sock.on('caption:config', applyMonitorSettings);
+    };
+    document.head.appendChild(script);
+  }
+
+  connectMonitor();
+}());
 </script>
 </body>
 </html>
