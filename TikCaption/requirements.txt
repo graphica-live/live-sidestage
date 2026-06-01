@@ -1,0 +1,6 @@
+numpy
+requests
+sounddevice
+soundfile
+torch
+nemo_toolkit[asr]

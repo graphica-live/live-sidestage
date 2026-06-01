@@ -89,12 +89,60 @@ function findPython() {
   return null;
 }
 
-function spawnASR(settings) {
+function ensurePythonDeps(python) {
+  return new Promise((resolve) => {
+    const checkCode = [
+      'import importlib.util, sys',
+      'pkgs = ["numpy","requests","sounddevice","soundfile","torch","nemo"]',
+      'missing = [p for p in pkgs if importlib.util.find_spec(p) is None]',
+      'sys.exit(1 if missing else 0)',
+    ].join(';');
+
+    const check = spawn(python, ['-c', checkCode], { stdio: 'ignore' });
+    check.on('exit', (code) => {
+      if (code === 0) { resolve(true); return; }
+
+      asrStatus = { status: 'installing', message: 'Pythonパッケージをインストール中...' };
+      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+
+      const reqPath = path.join(__dirname, 'requirements.txt');
+      const inst = spawn(python, ['-m', 'pip', 'install', '-r', reqPath, '--progress-bar', 'off'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const onLine = (data) => {
+        const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
+        if (line) {
+          asrStatus = { status: 'installing', message: `インストール中: ${line.slice(0, 60)}` };
+          if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        }
+      };
+      inst.stdout.on('data', onLine);
+      inst.stderr.on('data', onLine);
+
+      inst.on('exit', (c) => {
+        if (c === 0) {
+          asrStatus = { status: 'ready', message: 'パッケージインストール完了' };
+        } else {
+          asrStatus = { status: 'error', message: 'パッケージのインストールに失敗しました' };
+        }
+        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        resolve(c === 0);
+      });
+    });
+  });
+}
+
+async function spawnASR(settings) {
   const python = findPython();
   if (!python) {
-    console.error('Python not found');
+    asrStatus = { status: 'error', message: 'Pythonが見つかりません' };
+    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     return;
   }
+
+  const ok = await ensurePythonDeps(python);
+  if (!ok) return;
 
   const scriptPath = path.join(__dirname, 'caption_server.py');
   const args = [
