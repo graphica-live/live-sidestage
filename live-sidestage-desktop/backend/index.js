@@ -2863,11 +2863,11 @@ async function _doEnsurePyEngine(engineKey) {
         c.on('error', () => resolve(false));
     });
     if (!pkgsOk) {
-        io.emit('caption:status', { message: `${engineKey}: パッケージインストール中 (初回のみ)...` });
+        io.emit('widgets:caption:status', { message: `${engineKey}: パッケージインストール中 (初回のみ)...` });
         await new Promise((resolve, reject) => {
             const inst = spawn(py, ['-m', 'pip', 'install', ...cfg.pkgs], { stdio: ['ignore', 'pipe', 'pipe'] });
-            inst.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
-            inst.stderr.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
+            inst.stdout.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
+            inst.stderr.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
             inst.on('close', code => code === 0 ? resolve() : reject(new Error(`pip install exit ${code}`)));
             inst.on('error', reject);
         });
@@ -2893,11 +2893,11 @@ async function _doEnsurePyEngine(engineKey) {
                         s.ready = true;
                         clearTimeout(readyTimer);
                         settle(resolve);
-                        io.emit('caption:status', { message: `${engineKey} 準備完了` });
+                        io.emit('widgets:caption:status', { message: `${engineKey} 準備完了` });
                         continue;
                     }
-                    if (msg.type === 'status') { io.emit('caption:status', { message: msg.message }); continue; }
-                    if (msg.type === 'error')  { io.emit('caption:status', { message: `${engineKey} エラー: ${msg.message}`, error: true }); continue; }
+                    if (msg.type === 'status') { io.emit('widgets:caption:status', { message: msg.message }); continue; }
+                    if (msg.type === 'error')  { io.emit('widgets:caption:status', { message: `${engineKey} エラー: ${msg.message}`, error: true }); continue; }
                     if (msg.id && s.callbacks.has(msg.id)) {
                         const { resolve: res, reject: rej } = s.callbacks.get(msg.id);
                         s.callbacks.delete(msg.id);
@@ -2946,25 +2946,25 @@ async function translateWithXenova(text, srcLang, tgtLang) {
         try {
             lib = await import('@huggingface/transformers');
         } catch {
-            io.emit('caption:status', { message: '@huggingface/transformers インストール中...' });
+            io.emit('widgets:caption:status', { message: '@huggingface/transformers インストール中...' });
             await new Promise((resolve, reject) => {
                 const proc = spawn('npm', ['install', '@huggingface/transformers', 'onnxruntime-node'], { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
-                proc.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
+                proc.stdout.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
                 proc.on('close', code => code === 0 ? resolve() : reject(new Error(`npm install exit ${code}`)));
                 proc.on('error', reject);
             });
             lib = await import('@huggingface/transformers');
         }
         const modelId = `Xenova/opus-mt-${srcLang}-${tgtLang}`;
-        io.emit('caption:status', { message: `Transformers.js モデル読み込み中... (${modelId})` });
+        io.emit('widgets:caption:status', { message: `Transformers.js モデル読み込み中... (${modelId})` });
         xenovaCache[key] = await lib.pipeline('translation', modelId, {
             progress_callback: (info) => {
                 if (info.status === 'downloading' && info.total) {
-                    io.emit('caption:download-progress', { pct: Math.round(info.loaded / info.total * 100), label: `Xenova (${key})`, received: info.loaded, total: info.total });
+                    io.emit('widgets:caption:download-progress', { pct: Math.round(info.loaded / info.total * 100), label: `Xenova (${key})`, received: info.loaded, total: info.total });
                 }
             },
         });
-        io.emit('caption:status', { message: `Transformers.js 準備完了 (${key})` });
+        io.emit('widgets:caption:status', { message: `Transformers.js 準備完了 (${key})` });
     }
     const result = await xenovaCache[key](text, { max_new_tokens: 256 });
     return result?.[0]?.translation_text || null;
@@ -2991,7 +2991,7 @@ async function translateCaption(text, srcLang) {
         return await translateWithMyMemory(text, srcLang, settings.targetLang);
     } catch (e) {
         console.error('[Caption] Translation error:', e.message);
-        io.emit('caption:status', { message: `翻訳エラー (${settings.translationEngine}): ${e.message}`, error: true });
+        io.emit('widgets:caption:status', { message: `翻訳エラー (${settings.translationEngine}): ${e.message}`, error: true });
         return null;
     }
 }
