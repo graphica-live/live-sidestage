@@ -169,8 +169,10 @@ function startFadeTimer() {
 
 function typewriterDisplay(text, onDone) {
   elOriginal.style.opacity = '1';
-  elOriginal.textContent = '';
-  let i = 0;
+  const current = elOriginal.textContent || '';
+  let i = (text.startsWith(current) && current.length > 0) ? current.length : 0;
+  if (i === 0) elOriginal.textContent = '';
+  if (i >= text.length) { if (onDone) onDone(); return; }
   const delay = settings.charsPerSec > 0 ? 1000 / settings.charsPerSec : 16;
   typeTimer = setInterval(() => {
     elOriginal.textContent = text.slice(0, ++i);
@@ -210,6 +212,7 @@ function showText(original, translated, isFinal) {
     if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
     elOriginal.style.opacity = '0.5';
     elOriginal.textContent = original;
+    if (settings.translationEnabled) elTranslated.style.opacity = '1';
     return;
   }
 
@@ -239,8 +242,10 @@ socket.on('caption:updated', ({ original, translated, isFinal, settings: s }) =>
 
 socket.on('caption:translation', ({ translated }) => {
   if (!settings.translationEnabled) return;
+  elOriginal.style.opacity = '1';
   elTranslated.style.opacity = '1';
   elTranslated.textContent = translated;
+  startFadeTimer();
 });
 
 socket.on('caption:config', (s) => {
