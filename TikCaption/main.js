@@ -131,7 +131,15 @@ function installPython() {
   });
 }
 
+const DEPS_CACHE_PATH = path.join(os.homedir(), '.tikcaption-deps-ok');
+
 function ensurePythonDeps(python) {
+  // Skip check if already verified in a previous run
+  if (fs.existsSync(DEPS_CACHE_PATH)) {
+    console.log('[ASR] deps cache hit, skipping check');
+    return Promise.resolve(true);
+  }
+
   return new Promise((resolve) => {
     const checkCode = [
       'import importlib.util, sys',
@@ -143,7 +151,11 @@ function ensurePythonDeps(python) {
     console.log('[ASR] using python:', python);
     const check = spawn(python, ['-c', checkCode], { stdio: 'ignore' });
     check.on('exit', (code) => {
-      if (code === 0) { resolve(true); return; }
+      if (code === 0) {
+        try { fs.writeFileSync(DEPS_CACHE_PATH, python, 'utf8'); } catch (_) {}
+        resolve(true);
+        return;
+      }
 
       asrStatus = { status: 'installing', message: `インストール中... (${python})` };
       if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
@@ -168,6 +180,7 @@ function ensurePythonDeps(python) {
 
       inst.on('exit', (c) => {
         if (c === 0) {
+          try { fs.writeFileSync(DEPS_CACHE_PATH, python, 'utf8'); } catch (_) {}
           asrStatus = { status: 'ready', message: 'パッケージインストール完了' };
         } else {
           const detail = lastLines.filter(l => /error|Error|failed/i.test(l)).pop()

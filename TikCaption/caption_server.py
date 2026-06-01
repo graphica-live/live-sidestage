@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Parakeet + silero-VAD ASR server for TikCaption."""
 
-import argparse
 import json
 import sys
+
+# Log immediately before any heavy imports so UI shows feedback right away
+def log(obj):
+    print(json.dumps(obj, ensure_ascii=False), flush=True)
+
+log({'type': 'loading', 'message': '起動中...'})
+
+import argparse
 import threading
 import time
 import numpy as np
@@ -13,10 +20,6 @@ import torch
 
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 512  # 32ms per block
-
-
-def log(obj):
-    print(json.dumps(obj, ensure_ascii=False), flush=True)
 
 
 def find_device_index(label):
@@ -77,13 +80,15 @@ def main():
 
     device_idx = find_device_index(args.device_label)
 
-    log({'type': 'loading', 'message': 'モデルをロード中...'})
+    log({'type': 'loading', 'message': 'VAD モデルをロード中...'})
 
     try:
         vad_model, _ = load_vad()
     except Exception as e:
         log({'type': 'error', 'message': f'VAD ロード失敗: {e}'})
         sys.exit(1)
+
+    log({'type': 'loading', 'message': 'Parakeet ASR モデルをロード中...'})
 
     try:
         asr_model = load_asr()
