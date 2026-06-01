@@ -378,19 +378,6 @@ function registerIPC() {
     return { ok: true };
   });
 
-  ipcMain.handle('start-asr', () => {
-    if (asrProc) return { ok: false, reason: 'already running' };
-    spawnASR(serverModule.loadSettings());
-    return { ok: true };
-  });
-
-  ipcMain.handle('stop-asr', () => {
-    killASR();
-    asrStatus = { status: 'stopped', message: '停止しました' };
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
-    return { ok: true };
-  });
-
   ipcMain.handle('get-devices', async () => {
     const python = findPython();
     if (!python) return [];
