@@ -219,10 +219,13 @@ async function spawnASR(settings) {
     args.push('--device-label', settings.deviceId);
   }
 
-  asrProc = spawn(python, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  asrProc = spawn(python, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
 
   asrProc.stdout.on('data', (data) => {
-    const lines = data.toString().split('\n').filter(Boolean);
+    const lines = data.toString('utf8').split('\n').filter(Boolean);
     for (const line of lines) {
       try {
         const msg = JSON.parse(line);

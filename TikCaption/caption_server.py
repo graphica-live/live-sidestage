@@ -57,6 +57,8 @@ def transcribe(asr_model, audio_np):
     try:
         result = asr_model.transcribe([tmp_path])
         text = result[0] if result else ''
+        if not isinstance(text, str):
+            text = getattr(text, 'text', str(text))
     finally:
         os.unlink(tmp_path)
     return text.strip()
