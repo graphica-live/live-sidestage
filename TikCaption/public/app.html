@@ -560,15 +560,19 @@ async function startMeter(deviceId) {
     analyser.fftSize = 256;
     source.connect(analyser);
     const buf = new Float32Array(analyser.fftSize);
+    let smoothed = 0;
     function tick() {
       analyser.getFloatTimeDomainData(buf);
       let sum = 0;
       for (const v of buf) sum += v * v;
       const rms = Math.sqrt(sum / buf.length);
-      // dB スケール: -60dB(無音)〜0dB(フルスケール) → 0〜1
       const db = 20 * Math.log10(Math.max(rms, 1e-6));
       const level = Math.max(0, Math.min(1, (db + 60) / 60));
-      drawMeter(level);
+      // 上がり速い・下がりゆっくり
+      smoothed = level > smoothed
+        ? smoothed + (level - smoothed) * 0.8
+        : smoothed + (level - smoothed) * 0.06;
+      drawMeter(smoothed);
       animFrame = requestAnimationFrame(tick);
     }
     tick();
