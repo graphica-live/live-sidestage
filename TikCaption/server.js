@@ -173,4 +173,4 @@ function startServer(port) {
   });
 }
 
-module.exports = { loadSettings, saveSettings, getIO, handleCaptionText, startServer };
+module.exports = { loadSettings, saveSettings, getIO, handleCaptionText, startServer, CaptionCorrector, app, DEFAULT_SETTINGS };
