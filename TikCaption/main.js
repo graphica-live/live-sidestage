@@ -156,9 +156,11 @@ function restartASR() {
 
 function createMainWindow() {
   mainWin = new BrowserWindow({
-    width: 480,
-    height: 400,
-    resizable: false,
+    width: 560,
+    height: 680,
+    resizable: true,
+    minWidth: 480,
+    minHeight: 500,
     title: 'TikCaption',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
