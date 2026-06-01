@@ -4,6 +4,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,8 +14,29 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-let Store;
-let store;
+// シンプル JSON ストア（electron-store v10 が ESM-only のため代替）
+const SETTINGS_PATH = path.join(os.homedir(), '.tikcaption-settings.json');
+let _settings = null;
+
+function loadSettings() {
+  if (_settings) return { ..._settings };
+  try {
+    const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
+    _settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch (_) {
+    _settings = { ...DEFAULT_SETTINGS };
+  }
+  return { ..._settings };
+}
+
+function saveSettings(data) {
+  if (!_settings) loadSettings();
+  for (const [key, val] of Object.entries(data)) {
+    if (key in DEFAULT_SETTINGS) _settings[key] = val;
+  }
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(_settings, null, 2), 'utf8');
+}
+
 let translatePipelines = {};
 
 const DEFAULT_SETTINGS = {
@@ -46,31 +69,6 @@ const TRANSLATION_MODELS = {
   fr: 'Xenova/opus-mt-ja-fr',
   de: 'Xenova/opus-mt-ja-de',
 };
-
-function initStore() {
-  if (!Store) {
-    Store = require('electron-store');
-    store = new Store({ defaults: DEFAULT_SETTINGS });
-  }
-}
-
-function loadSettings() {
-  initStore();
-  const s = {};
-  for (const key of Object.keys(DEFAULT_SETTINGS)) {
-    s[key] = store.get(key);
-  }
-  return s;
-}
-
-function saveSettings(data) {
-  initStore();
-  for (const [key, val] of Object.entries(data)) {
-    if (key in DEFAULT_SETTINGS) {
-      store.set(key, val);
-    }
-  }
-}
 
 function getIO() {
   return io;
