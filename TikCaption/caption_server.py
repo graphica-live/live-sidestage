@@ -44,16 +44,34 @@ def load_vad():
 
 def load_asr():
     import nemo.collections.asr as nemo_asr
+    from omegaconf import OmegaConf
     model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(
         'nvidia/parakeet-tdt_ctc-0.6b-ja'
     )
     model.freeze()
+    try:
+        decoding_cfg = OmegaConf.create({
+            'strategy': 'beam',
+            'beam': {'beam_size': 10, 'return_best_hypothesis': True, 'score_norm': True},
+        })
+        model.change_decoding_strategy(decoding_cfg)
+        log({'type': 'loading', 'message': 'ビーム探索デコーディング有効'})
+    except Exception as e:
+        log({'type': 'loading', 'message': f'ビーム探索不可、greedy使用: {e}'})
     return model
+
+
+def normalize_audio(audio_np):
+    peak = np.max(np.abs(audio_np))
+    if peak > 0.01:
+        return audio_np / peak * 0.95
+    return audio_np
 
 
 def transcribe(asr_model, audio_np):
     """Transcribe numpy float32 array at 16kHz mono."""
     import tempfile, soundfile as sf, os
+    audio_np = normalize_audio(audio_np)
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
         tmp_path = f.name
     sf.write(tmp_path, audio_np, SAMPLE_RATE)
@@ -76,6 +94,7 @@ def main():
     parser.add_argument('--vad-threshold', type=float, default=0.5)
     parser.add_argument('--min-speech-dur', type=float, default=0.5)
     parser.add_argument('--padding-dur', type=float, default=0.2)
+    parser.add_argument('--overlap-dur', type=float, default=1.0)
     args = parser.parse_args()
 
     device_idx = find_device_index(args.device_label)
@@ -104,6 +123,7 @@ def main():
     max_frames = int(args.max_chunk * SAMPLE_RATE / BLOCK_SIZE)
     min_speech_frames = int(args.min_speech_dur * SAMPLE_RATE / BLOCK_SIZE)
     padding_frames = int(args.padding_dur * SAMPLE_RATE / BLOCK_SIZE)
+    overlap_frames = int(args.overlap_dur * SAMPLE_RATE / BLOCK_SIZE)
     pre_buffer = []
 
     def flush_buffer(keep_speech=False):
@@ -116,7 +136,7 @@ def main():
         audio_np = np.concatenate(speech_buffer, axis=0).astype(np.float32)
         if keep_speech:
             # rolling flush mid-speech: keep overlap for context
-            speech_buffer = list(speech_buffer[-padding_frames:])
+            speech_buffer = list(speech_buffer[-overlap_frames:])
             silence_frames = 0
             # is_speech stays True
         else:
