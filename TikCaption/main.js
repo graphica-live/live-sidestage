@@ -5,6 +5,8 @@ const path = require('path');
 const net = require('net');
 const http = require('http');
 const { spawn, execSync } = require('child_process');
+const os = require('os');
+const fs = require('fs');
 
 const CAPTION_PORT = 38200;
 const LOADER_PORT = 38201;
@@ -80,6 +82,19 @@ function startLoaderServer() {
 // ── ASR process ──────────────────────────────────────────────────────────────
 
 function findPython() {
+  const local = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python');
+  const candidates = [];
+  if (fs.existsSync(local)) {
+    for (const dir of fs.readdirSync(local)) {
+      candidates.push(path.join(local, dir, 'python.exe'));
+    }
+  }
+  for (const exe of candidates) {
+    try {
+      execSync(`"${exe}" --version`, { stdio: 'ignore' });
+      return exe;
+    } catch (_) {}
+  }
   for (const bin of ['python', 'py', 'python3']) {
     try {
       execSync(`${bin} --version`, { stdio: 'ignore' });
@@ -87,6 +102,33 @@ function findPython() {
     } catch (_) {}
   }
   return null;
+}
+
+function installPython() {
+  return new Promise((resolve) => {
+    asrStatus = { status: 'installing', message: 'Pythonをインストール中 (数分かかります)...' };
+    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+
+    const proc = spawn('winget', [
+      'install', 'Python.Python.3.12',
+      '--silent',
+      '--accept-package-agreements',
+      '--accept-source-agreements',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const onLine = (data) => {
+      const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
+      if (line) {
+        asrStatus = { status: 'installing', message: `Python: ${line.slice(0, 60)}` };
+        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      }
+    };
+    proc.stdout.on('data', onLine);
+    proc.stderr.on('data', onLine);
+
+    proc.on('exit', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
 }
 
 function ensurePythonDeps(python) {
@@ -134,11 +176,20 @@ function ensurePythonDeps(python) {
 }
 
 async function spawnASR(settings) {
-  const python = findPython();
+  let python = findPython();
   if (!python) {
-    asrStatus = { status: 'error', message: 'Pythonが見つかりません' };
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
-    return;
+    const installed = await installPython();
+    if (!installed) {
+      asrStatus = { status: 'error', message: 'Pythonのインストールに失敗しました。python.orgから手動インストールしてください' };
+      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      return;
+    }
+    python = findPython();
+    if (!python) {
+      asrStatus = { status: 'error', message: 'Pythonが見つかりません。再起動してください' };
+      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      return;
+    }
   }
 
   const ok = await ensurePythonDeps(python);
