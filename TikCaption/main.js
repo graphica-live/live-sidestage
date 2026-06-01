@@ -185,6 +185,8 @@ function createOverlayWindow() {
     y: 0,
     transparent: true,
     frame: false,
+    backgroundColor: '#00000000',
+    show: false,
     alwaysOnTop: true,
     focusable: false,
     skipTaskbar: true,
@@ -194,6 +196,7 @@ function createOverlayWindow() {
     },
   });
 
+  overlayWin.once('ready-to-show', () => overlayWin.show());
   overlayWin.setIgnoreMouseEvents(true);
   overlayWin.loadFile(path.join(__dirname, 'public', 'overlay.html'));
 }
