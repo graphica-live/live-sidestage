@@ -5,10 +5,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$out = git -C 'c:/dev/TikCaption' status --porcelain; if ($out) { git -C 'c:/dev/TikCaption' add -A; git -C 'c:/dev/TikCaption' commit -m 'chore: auto-save'; git -C 'c:/dev/TikCaption' push }",
+            "command": "cd c:/dev/TikCaption; npm test; if ($LASTEXITCODE -eq 0) { $out = git status --porcelain; if ($out) { git add -A; git commit -m 'chore: auto-save'; git push } }",
             "shell": "powershell",
-            "timeout": 60,
-            "statusMessage": "Auto-commit & push..."
+            "timeout": 120,
+            "statusMessage": "Testing → commit → push..."
           }
         ]
       }
