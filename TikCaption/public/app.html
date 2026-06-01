@@ -310,8 +310,10 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     </div>
   </div>
 
-  <!-- Detail settings button -->
-  <div style="text-align:right;">
+  <!-- Start/Stop + Detail settings -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button id="start-btn" style="flex:1;">▶ 開始</button>
+    <button id="stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
     <button id="open-modal" class="secondary">詳細設定</button>
   </div>
 
@@ -433,7 +435,22 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
       <button id="add-rule" class="secondary" style="margin-top:8px;font-size:12px;">＋ 追加</button>
     </section>
 
-    <!-- Section 4: VAD -->
+    <!-- Section 4: 起動動作 -->
+    <section>
+      <div class="section-title">起動動作</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="check-group">
+          <input type="checkbox" id="auto-start-caption">
+          <label for="auto-start-caption" style="margin:0;color:var(--text);">起動時に自動で字幕を開始</label>
+        </div>
+        <div class="check-group">
+          <input type="checkbox" id="launch-on-boot">
+          <label for="launch-on-boot" style="margin:0;color:var(--text);">PC起動時にTikCaptionを起動</label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: VAD -->
     <section>
       <div class="section-title">詳細オーディオ設定</div>
       <p class="vad-note">VAD 設定変更時は ASR プロセスが自動再起動されます。</p>
@@ -643,6 +660,9 @@ function applyToUI(s) {
 
   if (s.correctionRules) renderRules(s.correctionRules);
 
+  if ('autoStartCaption' in s) document.getElementById('auto-start-caption').checked = s.autoStartCaption;
+  if ('launchOnBoot' in s) document.getElementById('launch-on-boot').checked = s.launchOnBoot;
+
   updatePreview();
 }
 
@@ -824,12 +844,33 @@ themeSel.addEventListener('change', (e) => {
   debounce('textStyleKey', () => save({ textStyleKey: e.target.value }));
 });
 
+// ── Start / Stop buttons ──────────────────────────
+document.getElementById('start-btn').addEventListener('click', async () => {
+  await window.api.startASR();
+});
+
+document.getElementById('stop-btn').addEventListener('click', async () => {
+  await window.api.stopASR();
+});
+
+document.getElementById('auto-start-caption').addEventListener('change', (e) => {
+  save({ autoStartCaption: e.target.checked });
+});
+
+document.getElementById('launch-on-boot').addEventListener('change', (e) => {
+  save({ launchOnBoot: e.target.checked });
+});
+
 // ── ASR status ────────────────────────────────────
 function updateStatus({ status, message }) {
   const dot = document.getElementById('status-dot');
   const msg = document.getElementById('status-msg');
   msg.textContent = message || status;
   dot.style.background = status === 'error' ? '#ef4444' : status === 'stopped' ? '#f59e0b' : '#22c55e';
+
+  const running = status !== 'stopped' && status !== 'idle' && status !== 'error';
+  document.getElementById('start-btn').disabled = running;
+  document.getElementById('stop-btn').disabled = !running;
 }
 
 window.api.onASRStatus(updateStatus);

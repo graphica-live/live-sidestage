@@ -354,6 +354,8 @@ function registerIPC() {
     const needRestart = vadKeys.some((k) => k in data && data[k] !== prev[k]);
     if (needRestart) restartASR();
 
+    if ('launchOnBoot' in data) updateLoginItem(data.launchOnBoot);
+
     return next;
   });
 
@@ -361,6 +363,19 @@ function registerIPC() {
 
   ipcMain.handle('restart-asr', () => {
     restartASR();
+    return { ok: true };
+  });
+
+  ipcMain.handle('start-asr', () => {
+    if (asrProc) return { ok: false, reason: 'already running' };
+    spawnASR(serverModule.loadSettings());
+    return { ok: true };
+  });
+
+  ipcMain.handle('stop-asr', () => {
+    killASR();
+    asrStatus = { status: 'stopped', message: '停止しました' };
+    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     return { ok: true };
   });
 
@@ -387,10 +402,10 @@ print(json.dumps(result))
 
 // ── Startup registration ─────────────────────────────────────────────────────
 
-function registerStartup() {
+function updateLoginItem(enabled) {
   if (!app.isPackaged) return;
   app.setLoginItemSettings({
-    openAtLogin: true,
+    openAtLogin: !!enabled,
     name: 'TikCaptionLoader',
     args: ['--loader-only'],
   });
@@ -400,7 +415,6 @@ function registerStartup() {
 
 app.whenReady().then(async () => {
   startLoaderServer();
-  registerStartup();
 
   if (isLoaderOnly) return;
 
@@ -411,7 +425,10 @@ app.whenReady().then(async () => {
   createOverlayWindow();
   createTray();
   registerIPC();
-  spawnASR(loadSettings());
+
+  const s = loadSettings();
+  updateLoginItem(s.launchOnBoot);
+  if (s.autoStartCaption) spawnASR(s);
 });
 
 app.on('before-quit', () => {

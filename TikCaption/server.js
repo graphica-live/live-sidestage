@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS = {
   vadMinSpeechMs: 500,
   vadPaddingMs: 200,
   correctionRules: [],
+  autoStartCaption: true,
+  launchOnBoot: false,
 };
 
 const TRANSLATION_MODELS = {
