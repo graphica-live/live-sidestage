@@ -76,6 +76,7 @@ def transcribe(asr_model, audio_np):
         tmp_path = f.name
     sf.write(tmp_path, audio_np, SAMPLE_RATE)
     try:
+        asr_model.freeze()
         result = asr_model.transcribe([tmp_path])
         text = result[0] if result else ''
         if not isinstance(text, str):
