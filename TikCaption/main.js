@@ -229,10 +229,7 @@ async function spawnASR(settings) {
     for (const line of lines) {
       try {
         const msg = JSON.parse(line);
-        if (msg.type === 'transcript') {
-          const { loadSettings, handleCaptionText } = require('./server');
-          handleCaptionText(msg.text, msg.isFinal, 'ja').catch(() => {});
-        } else if (msg.type === 'status' || msg.type === 'loading' || msg.type === 'error') {
+        if (msg.type === 'status' || msg.type === 'loading' || msg.type === 'error') {
           asrStatus = { status: msg.type, message: msg.message };
           if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
         }
