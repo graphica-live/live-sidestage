@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$out = git -C 'c:/dev/TikCaption' status --porcelain; if ($out) { git -C 'c:/dev/TikCaption' add -A; git -C 'c:/dev/TikCaption' commit -m 'chore: auto-save'; git -C 'c:/dev/TikCaption' push }",
+            "shell": "powershell",
+            "timeout": 60,
+            "statusMessage": "Auto-commit & push..."
+          }
+        ]
+      }
+    ]
+  }
+}
