@@ -41,7 +41,7 @@ let translatePipelines = {};
 
 const DEFAULT_SETTINGS = {
   deviceId: '',
-  noiseGateThreshold: 0.03,
+  noiseGateThreshold: 0.2,
   showOriginal: true,
   translationEnabled: false,
   targetLang: 'en',
