@@ -2944,16 +2944,16 @@ async function translateWithXenova(text, srcLang, tgtLang) {
     if (!xenovaCache[key]) {
         let lib;
         try {
-            lib = await import('@xenova/transformers');
+            lib = await import('@huggingface/transformers');
         } catch {
-            io.emit('caption:status', { message: '@xenova/transformers インストール中...' });
+            io.emit('caption:status', { message: '@huggingface/transformers インストール中...' });
             await new Promise((resolve, reject) => {
-                const proc = spawn('npm', ['install', '@xenova/transformers'], { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
+                const proc = spawn('npm', ['install', '@huggingface/transformers', 'onnxruntime-node'], { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
                 proc.stdout.on('data', d => io.emit('caption:status', { message: d.toString().trim().slice(0, 120) }));
                 proc.on('close', code => code === 0 ? resolve() : reject(new Error(`npm install exit ${code}`)));
                 proc.on('error', reject);
             });
-            lib = await import('@xenova/transformers');
+            lib = await import('@huggingface/transformers');
         }
         const modelId = `Xenova/opus-mt-${srcLang}-${tgtLang}`;
         io.emit('caption:status', { message: `Transformers.js モデル読み込み中... (${modelId})` });
