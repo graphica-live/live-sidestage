@@ -44,7 +44,7 @@ def load_asr():
     model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(
         'nvidia/parakeet-tdt_ctc-0.6b-ja'
     )
-    model.eval()
+    model.freeze()
     return model
 
 
