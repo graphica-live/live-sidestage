@@ -1,5 +1,19 @@
 {
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Edit(c:/dev/TikCaption/*.js)",
+            "prompt": "A source file in c:/dev/TikCaption was just edited. Hook input: $ARGUMENTS\n\nExtract the file_path from tool_input. If the file is a test file (path contains 'test'), do nothing and exit.\n\nOtherwise:\n1. Read the edited source file\n2. Read c:/dev/TikCaption/tests/server.test.js\n3. Find any newly exported functions, classes, or methods that have NO corresponding test coverage in the test file\n4. If found, append minimal unit tests to tests/server.test.js — one describe block per new export, testing the happy path and one edge case\n5. If nothing new to test, do nothing\n\nNever modify or delete existing tests. Only append.",
+            "timeout": 60,
+            "statusMessage": "Checking for new tests..."
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
