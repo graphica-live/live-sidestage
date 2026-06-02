@@ -183,8 +183,6 @@ const TIKTOK_BUILTIN_VOCAB = [
   // 人名・配信者名
   { from: 'ぷりんすこうや',             to: 'プリンスこうや' },
   { from: 'ぷりんすこーや',             to: 'プリンスこうや' },
-  { from: 'プリンスコーヤ',             to: 'プリンスこうや' },
-  { from: 'プリンスコウヤ',             to: 'プリンスこうや' },
   { from: 'ぷりこう',                   to: 'プリこう' },
   { from: 'むげん',                     to: '夢幻' },
   { from: 'あつねぇ',                   to: '圧ねぇ' },
@@ -235,9 +233,18 @@ function getIO() {
   return io;
 }
 
+function hiraganaToKatakana(str) {
+  return str.replace(/[ぁ-ゖ]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) + 0x60));
+}
+
 class CaptionCorrector {
   constructor(rules) {
-    this.rules = rules || [];
+    this.rules = (rules || []).flatMap(rule => {
+      if (!rule.from) return [rule];
+      const kata = hiraganaToKatakana(rule.from);
+      return kata !== rule.from ? [rule, { ...rule, from: kata }] : [rule];
+    });
   }
 
   apply(text) {
