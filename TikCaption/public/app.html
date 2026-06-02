@@ -453,6 +453,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <div style="display:flex;align-items:center;gap:8px;">
     <button id="start-btn" style="flex:1;">▶ 開始</button>
     <button id="stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
+    <button id="open-rules-modal" class="secondary">補正ルール (<span id="rules-count">0</span>)</button>
     <button id="open-modal" class="secondary">詳細設定</button>
   </div>
 
@@ -589,13 +590,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
       </div>
     </section>
 
-    <!-- Section 3: 補正ルール -->
-    <section>
-      <div class="section-title">補正ルール</div>
-      <button id="open-rules-modal" class="secondary" style="font-size:12px;">補正ルールを編集 (<span id="rules-count">0</span>件)</button>
-    </section>
-
-    <!-- Section 4: 起動動作 -->
+    <!-- Section 3: 起動動作 -->
     <section>
       <div class="section-title">起動動作</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
