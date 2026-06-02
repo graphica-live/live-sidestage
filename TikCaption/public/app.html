@@ -597,7 +597,6 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
           <tr>
             <th>変換前</th>
             <th>変換後</th>
-            <th>正規表現</th>
             <th></th>
           </tr>
         </thead>
@@ -873,7 +872,6 @@ function renderRules(rules) {
     tr.innerHTML = `
       <td><input type="text" value="${escHtml(rule.from || '')}" data-i="${i}" data-field="from"></td>
       <td><input type="text" value="${escHtml(rule.to || '')}" data-i="${i}" data-field="to"></td>
-      <td style="text-align:center;"><input type="checkbox" ${rule.useRegex ? 'checked' : ''} data-i="${i}" data-field="useRegex"></td>
       <td><button class="del-btn" data-i="${i}">削除</button></td>
     `;
     tbody.appendChild(tr);
@@ -889,7 +887,6 @@ function getRules() {
   return Array.from(rows).map(tr => ({
     from: tr.querySelector('[data-field=from]').value,
     to: tr.querySelector('[data-field=to]').value,
-    useRegex: tr.querySelector('[data-field=useRegex]').checked,
   }));
 }
 
@@ -910,7 +907,7 @@ document.getElementById('rules-body').addEventListener('click', (e) => {
 
 document.getElementById('add-rule').addEventListener('click', () => {
   const rules = getRules();
-  rules.push({ from: '', to: '', useRegex: false });
+  rules.push({ from: '', to: '' });
   renderRules(rules);
 });
 

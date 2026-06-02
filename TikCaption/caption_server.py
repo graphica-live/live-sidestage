@@ -13,6 +13,11 @@ log({'type': 'loading', 'message': '起動中...'})
 import argparse
 import threading
 import time
+import unicodedata
+
+
+def normalize_text(text):
+    return unicodedata.normalize('NFKC', text)
 
 _transcribe_lock = threading.Lock()
 import numpy as np
@@ -150,7 +155,7 @@ def main():
 
     def send_transcription(audio_np, is_interim=False):
         try:
-            text = transcribe(asr_model, audio_np)
+            text = normalize_text(transcribe(asr_model, audio_np))
             if text:
                 is_final = not is_interim
                 log({'type': 'transcript', 'text': text, 'isFinal': is_final})

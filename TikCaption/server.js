@@ -62,6 +62,21 @@ const DEFAULT_SETTINGS = {
   launchOnBoot: false,
 };
 
+const TIKTOK_BUILTIN_VOCAB = [
+  { from: 'てぃっくとっく',        to: 'TikTok' },
+  { from: 'てぃくとく',            to: 'TikTok' },
+  { from: 'てぃっくとっくらいぶ',  to: 'TikTok Live' },
+  { from: 'てぃくとくらいぶ',      to: 'TikTok Live' },
+  { from: 'ふぉろー',              to: 'フォロー' },
+  { from: 'ふぉろわー',            to: 'フォロワー' },
+  { from: 'らいぶはいしん',        to: 'ライブ配信' },
+  { from: 'ぎふと',                to: 'ギフト' },
+  { from: 'こめんと',              to: 'コメント' },
+  { from: 'すきー',                to: 'スキー' },
+  { from: 'らいく',                to: 'ライク' },
+  { from: 'しぇあ',                to: 'シェア' },
+];
+
 const GOOGLE_LANG_MAP = {
   en: 'en',
   zh: 'zh-CN',
@@ -93,17 +108,8 @@ class CaptionCorrector {
     let result = text;
     for (const rule of this.rules) {
       if (!rule.from) continue;
-      if (rule.useRegex) {
-        try {
-          const re = new RegExp(rule.from, rule.flags || 'g');
-          result = result.replace(re, rule.to || '');
-        } catch (e) {
-          // invalid regex — skip
-        }
-      } else {
-        const escaped = rule.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        result = result.replace(new RegExp(escaped, 'g'), rule.to || '');
-      }
+      const escaped = rule.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(escaped, 'g'), rule.to || '');
     }
     return result;
   }
@@ -121,8 +127,8 @@ async function translateWithGoogle(text, srcLang, targetLang) {
 
 async function handleCaptionText(text, isFinal, srcLang) {
   const settings = loadSettings();
-  const corrector = new CaptionCorrector(settings.correctionRules);
-  const corrected = corrector.apply(text);
+  let corrected = new CaptionCorrector(TIKTOK_BUILTIN_VOCAB).apply(text);
+  corrected = new CaptionCorrector(settings.correctionRules).apply(corrected);
 
   io.emit('caption:updated', {
     original: corrected,
