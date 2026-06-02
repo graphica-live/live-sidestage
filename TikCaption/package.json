@@ -43,7 +43,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://update.graphica-produce.com/tikcaption"
+      "url": "https://update.graphica-produce.com/tikcaption/win"
     }
   }
 }
