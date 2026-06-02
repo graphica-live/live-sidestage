@@ -34,6 +34,7 @@ let ttsUserId = '';
 let ttsReconnectTimer = null;
 let ttsStopped = false; // true = user explicitly stopped, no auto-reconnect
 let ttsAcceptingComments = false;
+let ttsConnecting = false; // true while connect() promise is pending — suppress event-driven reconnects
 
 function emitTtsStatus(s) {
   ttsStatus = s;
@@ -113,15 +114,15 @@ async function connectTikTokLive(userId) {
   });
 
   ttsConn.on('disconnected', () => {
-    if (!ttsStopped) scheduleTtsReconnect('disconnected');
+    if (!ttsStopped && !ttsConnecting) scheduleTtsReconnect('disconnected');
   });
 
   ttsConn.on('streamEnd', () => {
-    if (!ttsStopped) scheduleTtsReconnect('stream_end');
+    if (!ttsStopped && !ttsConnecting) scheduleTtsReconnect('stream_end');
   });
 
   ttsConn.on('error', (err) => {
-    if (ttsStopped) return;
+    if (ttsStopped || ttsConnecting) return;
     scheduleTtsReconnect(isUserOfflineError(err) ? 'user_offline' : 'error');
   });
 
@@ -145,11 +146,14 @@ async function connectTikTokLive(userId) {
 
   emitTtsStatus({ status: 'connecting', message: `接続中: @${userId}` });
 
+  ttsConnecting = true;
   try {
     await ttsConn.connect();
+    ttsConnecting = false;
     ttsAcceptingComments = true;
     emitTtsStatus({ status: 'connected', message: `接続済み: @${userId}` });
   } catch (err) {
+    ttsConnecting = false;
     ttsConn = null;
     if (ttsStopped) return;
     if (isUserOfflineError(err)) {
