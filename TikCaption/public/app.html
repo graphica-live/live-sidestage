@@ -1528,11 +1528,13 @@ window.addEventListener('beforeunload', () => {
   function setTtsStatusUI({ status, message }) {
     const dot = document.getElementById('tts-status-dot');
     dot.className = '';
-    dot.classList.add(status === 'connected' ? 'connected' : status === 'error' ? 'error' : 'connecting');
+    if (status === 'connected') dot.classList.add('connected');
+    else if (status === 'error') dot.classList.add('error');
+    else dot.classList.add('connecting'); // connecting / retrying / stopped all use amber
     document.getElementById('tts-status-msg').textContent = message || status;
-    const running = status === 'connected';
-    document.getElementById('tts-start-btn').disabled = running || status === 'connecting';
-    document.getElementById('tts-stop-btn').disabled = !running && status !== 'connecting';
+    const active = status === 'connected' || status === 'connecting' || status === 'retrying';
+    document.getElementById('tts-start-btn').disabled = active;
+    document.getElementById('tts-stop-btn').disabled = !active;
   }
 
   // ── Audio queue / synthesis ────────────────────────────────────────────────

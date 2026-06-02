@@ -25,8 +25,137 @@ let asrProc = null;
 let asrStatus = { status: 'idle', message: '' };
 
 // ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
+const RECONNECT_DELAY_MS = 10000;
+const OFFLINE_RECONNECT_DELAY_MS = 30000;
+
 let ttsConn = null;
 let ttsStatus = { status: 'stopped', message: '停止中' };
+let ttsUserId = '';
+let ttsReconnectTimer = null;
+let ttsStopped = false; // true = user explicitly stopped, no auto-reconnect
+
+function emitTtsStatus(s) {
+  ttsStatus = s;
+  if (mainWin) mainWin.webContents.send('tts-status', s);
+}
+
+function isUserOfflineError(error) {
+  const candidates = [error, error?.exception, error?.cause, error?.response?.data, error?.error].filter(Boolean);
+  const detailText = candidates.map((c) =>
+    typeof c?.message === 'string' ? c.message : typeof c?.info === 'string' ? c.info : String(c || '')
+  ).join('\n');
+  const hasOfflineName = candidates.some((c) => c?.name === 'UserOfflineError');
+  return hasOfflineName || /isn't online|user.+offline|requested user.+online/i.test(detailText);
+}
+
+function isRecoverableRoomInfoError(error) {
+  const text = [error?.message, error?.info, error?.exception?.message, error?.cause?.message]
+    .filter(Boolean).join('\n');
+  return /Failed to retrieve Room ID from main page|SIGI_STATE|falling back to API source|blocked by TikTok/i.test(text);
+}
+
+function scheduleTtsReconnect(reason) {
+  if (ttsStopped || ttsReconnectTimer) return;
+  const delay = reason === 'user_offline' ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
+  const msg = reason === 'user_offline'
+    ? `配信開始待ち — ${delay / 1000}秒後に再試行`
+    : `切断 (${reason}) — ${delay / 1000}秒後に再接続`;
+  emitTtsStatus({ status: 'retrying', message: msg });
+  ttsReconnectTimer = setTimeout(() => {
+    ttsReconnectTimer = null;
+    if (!ttsStopped) connectTikTokLive(ttsUserId);
+  }, delay);
+}
+
+async function connectTikTokLive(userId) {
+  if (!userId) return;
+
+  // Tear down previous connection
+  if (ttsConn) {
+    ttsConn.removeAllListeners?.();
+    try { await Promise.resolve(ttsConn.disconnect?.()); } catch (_) {}
+    ttsConn = null;
+  }
+
+  const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
+
+  ttsConn = new WebcastPushConnection(userId, {
+    processInitialData: false,
+    fetchRoomInfoOnConnect: true,
+    enableExtendedGiftInfo: false,
+    enableWebsocketUpgrade: true,
+    enableRequestPolling: false,
+    disableEulerFallbacks: true,
+    sessionId: undefined,
+    authenticateWs: false,
+    webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
+    webClientHeaders: {
+      'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    wsClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
+    wsClientHeaders: {
+      'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    signedWebSocketProvider: async (params) => {
+      const webClient = new TikTokWebClient({
+        customHeaders: { 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8' },
+        axiosOptions: {},
+        clientParams: { app_language: 'ja' },
+        authenticateWs: false,
+      });
+      return webClient.fetchSignedWebSocketFromEuler(params);
+    },
+  });
+
+  ttsConn.on('disconnected', () => {
+    if (!ttsStopped) scheduleTtsReconnect('disconnected');
+  });
+
+  ttsConn.on('streamEnd', () => {
+    if (!ttsStopped) scheduleTtsReconnect('stream_end');
+  });
+
+  ttsConn.on('error', (err) => {
+    if (ttsStopped) return;
+    scheduleTtsReconnect(isUserOfflineError(err) ? 'user_offline' : 'error');
+  });
+
+  ttsConn.on('chat', (data) => {
+    if (mainWin) {
+      mainWin.webContents.send('tts-comment', {
+        uniqueId: data.uniqueId || '',
+        nickname: data.nickname || data.uniqueId || '',
+        comment: data.comment || '',
+      });
+    }
+  });
+
+  // Reset room params so each connect gets a fresh room ID
+  if (ttsConn.clientParams) {
+    ttsConn.clientParams.room_id = '';
+    ttsConn.clientParams.cursor = '';
+    ttsConn.clientParams.internal_ext = '';
+  }
+
+  emitTtsStatus({ status: 'connecting', message: `接続中: @${userId}` });
+
+  try {
+    await ttsConn.connect();
+    emitTtsStatus({ status: 'connected', message: `接続済み: @${userId}` });
+  } catch (err) {
+    ttsConn = null;
+    if (ttsStopped) return;
+    if (isUserOfflineError(err)) {
+      scheduleTtsReconnect('user_offline');
+    } else if (isRecoverableRoomInfoError(err)) {
+      scheduleTtsReconnect('room_info_error');
+    } else {
+      emitTtsStatus({ status: 'error', message: `接続失敗: ${err?.message || err}` });
+    }
+  }
+}
 
 // ── Loader server ────────────────────────────────────────────────────────────
 
@@ -447,66 +576,27 @@ function registerIPC() {
   ipcMain.handle('tts-get-status', () => ttsStatus);
 
   ipcMain.handle('tts-start', async (_e, userId) => {
-    if (ttsConn) {
-      try { ttsConn.disconnect(); } catch (_) {}
-      ttsConn = null;
-    }
-    if (!userId || !userId.trim()) {
-      ttsStatus = { status: 'error', message: 'ユーザーIDを設定してください' };
-      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+    const uid = (userId || '').trim().replace(/^@/, '');
+    if (!uid) {
+      emitTtsStatus({ status: 'error', message: 'ユーザーIDを設定してください' });
       return { ok: false };
     }
-
-    let WebcastPushConnection;
-    try {
-      ({ WebcastPushConnection } = require('tiktok-live-connector'));
-    } catch (e) {
-      ttsStatus = { status: 'error', message: 'tiktok-live-connector が見つかりません' };
-      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
-      return { ok: false };
-    }
-
-    ttsStatus = { status: 'connecting', message: `接続中: @${userId}` };
-    if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
-
-    ttsConn = new WebcastPushConnection(userId.trim(), { enableExtendedGiftInfo: false });
-
-    ttsConn.on('chat', (data) => {
-      if (mainWin) {
-        mainWin.webContents.send('tts-comment', {
-          uniqueId: data.uniqueId || '',
-          nickname: data.nickname || data.uniqueId || '',
-          comment: data.comment || '',
-        });
-      }
-    });
-
-    ttsConn.on('disconnected', () => {
-      ttsStatus = { status: 'stopped', message: '切断されました' };
-      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
-      ttsConn = null;
-    });
-
-    try {
-      await ttsConn.connect();
-      ttsStatus = { status: 'connected', message: `接続済み: @${userId}` };
-      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
-      return { ok: true };
-    } catch (err) {
-      ttsStatus = { status: 'error', message: `接続失敗: ${err.message || err}` };
-      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
-      ttsConn = null;
-      return { ok: false };
-    }
+    ttsUserId = uid;
+    ttsStopped = false;
+    if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+    await connectTikTokLive(uid);
+    return { ok: true };
   });
 
-  ipcMain.handle('tts-stop', () => {
+  ipcMain.handle('tts-stop', async () => {
+    ttsStopped = true;
+    if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
     if (ttsConn) {
-      try { ttsConn.disconnect(); } catch (_) {}
+      ttsConn.removeAllListeners?.();
+      try { await Promise.resolve(ttsConn.disconnect?.()); } catch (_) {}
       ttsConn = null;
     }
-    ttsStatus = { status: 'stopped', message: '停止中' };
-    if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+    emitTtsStatus({ status: 'stopped', message: '停止中' });
     return { ok: true };
   });
 
@@ -573,6 +663,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   killASR();
+  ttsStopped = true;
+  if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+  if (ttsConn) { try { ttsConn.disconnect?.(); } catch (_) {} ttsConn = null; }
 });
 
 app.on('window-all-closed', (e) => {
