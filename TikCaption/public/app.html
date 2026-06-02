@@ -1195,10 +1195,8 @@ init();
       const sock = io('http://localhost:38200');  // eslint-disable-line no-undef
 
       sock.on('caption:updated', ({ original, isFinal }) => {
-        if (original && (isFinal || monShowInterim)) setText(elOrig, original, false);
-        if (isFinal || monShowInterim) {
-          scheduleReset(monSegmentDuration * 1000 + 1500);
-        }
+        if (original) setText(elOrig, original, false);
+        if (original) scheduleReset(monSegmentDuration * 1000 + 1500);
       });
 
       sock.on('caption:translation', ({ translated }) => {
