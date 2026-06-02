@@ -154,6 +154,7 @@ async function connectTikTokLive(userId) {
       uniqueId: data.uniqueId || '',
       nickname: data.nickname || data.uniqueId || '',
       comment: data.comment || '',
+      profilePictureUrl: data.profilePictureUrl || '',
     };
     if (mainWin) mainWin.webContents.send('tts-comment', comment);
     require('./server').getIO().emit('tts:comment', comment);

@@ -407,6 +407,13 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 .tts-log-comment { color: var(--text); flex: 1; word-break: break-all; }
 .tts-log-muted { color: var(--muted); font-style: italic; font-size: 11px; }
 #tts-status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:4px; }
+#tts-user-suggest { position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.4);min-width:240px;max-height:220px;overflow-y:auto;display:none; }
+.tus-item { display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;font-size:12px; }
+.tus-item:hover,.tus-item.active { background:var(--accent);color:#fff; }
+.tus-avatar { width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--border); }
+.tus-uid { font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tus-nick { color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tus-item:hover .tus-nick,.tus-item.active .tus-nick { color:rgba(255,255,255,.75); }
 #tts-status-dot.connected { background: #22c55e; }
 #tts-status-dot.error { background: #ef4444; }
 #tts-status-dot.connecting { background: #f59e0b; animation: pulse-ring 1s ease-out infinite; }
@@ -1474,6 +1481,7 @@ window.addEventListener('beforeunload', () => {
 (function () {
   let ttsS = {};        // TTS-related settings cache
   const ttsUserVoiceCache = new Map(); // uniqueId → voiceId (session-only)
+  const viewerCache = new Map(); // uniqueId → { nickname, profilePictureUrl }
   let voiceList = [];   // [{id, name, styles:[{id,name}]}]
   let audioCtx = null;
   let audioQueue = [];
@@ -1692,6 +1700,7 @@ window.addEventListener('beforeunload', () => {
         <td><select data-i="${i}" data-field="voiceId" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px;font-size:11px;">${voiceOpts}</select></td>
         <td><button class="del-btn" data-i="${i}" data-table="ttsVoiceMapping">削除</button></td>`;
       tbody.appendChild(tr);
+      wireUserSuggest(tr.querySelector('input[data-field="userId"]'));
     });
     document.getElementById('tts-mapping-count').textContent = (rules || []).length;
   }
@@ -1709,6 +1718,59 @@ window.addEventListener('beforeunload', () => {
     });
     const countId = { 'tts-conv-body': 'tts-conv-count', 'tts-emoji-body': 'tts-emoji-count', 'tts-emote-body': 'tts-emote-count' }[tbodyId];
     if (countId) document.getElementById(countId).textContent = (rules || []).length;
+  }
+
+  // ── Viewer suggest ─────────────────────────────────────────────────────────
+  const suggestEl = document.getElementById('tts-user-suggest');
+  let suggestTarget = null;
+
+  function showUserSuggest(input) {
+    const q = input.value.trim().toLowerCase();
+    const results = [];
+    for (const [uid, u] of viewerCache) {
+      if (!q || uid.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q)) {
+        results.push({ uid, ...u });
+      }
+      if (results.length >= 8) break;
+    }
+    if (results.length === 0) { hideSuggest(); return; }
+    suggestTarget = input;
+    suggestEl.innerHTML = results.map(r => `
+      <div class="tus-item" data-uid="${escHtml(r.uid)}">
+        <img class="tus-avatar" src="${escHtml(r.profilePictureUrl || '')}" onerror="this.style.visibility='hidden'">
+        <div style="min-width:0">
+          <div class="tus-uid">${escHtml(r.uid)}</div>
+          ${r.nickname && r.nickname !== r.uid ? `<div class="tus-nick">${escHtml(r.nickname)}</div>` : ''}
+        </div>
+      </div>`).join('');
+    const rect = input.getBoundingClientRect();
+    suggestEl.style.left = rect.left + 'px';
+    suggestEl.style.top = (rect.bottom + 2) + 'px';
+    suggestEl.style.width = Math.max(rect.width, 240) + 'px';
+    suggestEl.style.display = 'block';
+  }
+
+  function hideSuggest() {
+    suggestEl.style.display = 'none';
+    suggestTarget = null;
+  }
+
+  suggestEl.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.tus-item');
+    if (!item || !suggestTarget) return;
+    e.preventDefault();
+    suggestTarget.value = item.dataset.uid;
+    suggestTarget.dispatchEvent(new Event('change', { bubbles: true }));
+    hideSuggest();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    if (e.target !== suggestTarget && !suggestEl.contains(e.target)) hideSuggest();
+  });
+
+  function wireUserSuggest(input) {
+    input.addEventListener('focus', () => showUserSuggest(input));
+    input.addEventListener('input', () => showUserSuggest(input));
   }
 
   function getTtsTableData(key) {
@@ -1884,6 +1946,9 @@ window.addEventListener('beforeunload', () => {
   });
 
   window.api.onTtsComment((data) => {
+    if (data.uniqueId) {
+      viewerCache.set(data.uniqueId, { nickname: data.nickname || '', profilePictureUrl: data.profilePictureUrl || '' });
+    }
     enqueue(data);
   });
 
@@ -1923,5 +1988,6 @@ if (window.api.onUpdateAvailable) {
   });
 }
 </script>
+<div id="tts-user-suggest"></div>
 </body>
 </html>
