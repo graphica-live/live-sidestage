@@ -88,7 +88,7 @@ async function connectTikTokLive(userId) {
     enableExtendedGiftInfo: false,
     enableWebsocketUpgrade: true,
     enableRequestPolling: false,
-    disableEulerFallbacks: true,
+    disableEulerFallbacks: false,
     sessionId: undefined,
     authenticateWs: false,
     webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
