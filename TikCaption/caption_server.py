@@ -13,6 +13,8 @@ log({'type': 'loading', 'message': '起動中...'})
 import argparse
 import threading
 import time
+
+_transcribe_lock = threading.Lock()
 import numpy as np
 import requests
 import sounddevice as sd
@@ -76,7 +78,8 @@ def transcribe(asr_model, audio_np):
         tmp_path = f.name
     sf.write(tmp_path, audio_np, SAMPLE_RATE)
     try:
-        result = asr_model.transcribe([tmp_path])
+        with _transcribe_lock:
+            result = asr_model.transcribe([tmp_path])
         text = result[0] if result else ''
         if not isinstance(text, str):
             text = getattr(text, 'text', str(text))
