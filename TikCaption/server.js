@@ -282,7 +282,7 @@ async function handleCaptionText(text, isFinal, srcLang) {
     isFinal,
   });
 
-  if (settings.translationEnabled && isFinal && corrected.trim()) {
+  if (settings.translationEnabled && corrected.trim()) {
     try {
       const translated = await translateWithGoogle(corrected, srcLang || 'ja', settings.targetLang);
       if (translated) {
