@@ -9,54 +9,6 @@ html, body {
   overflow: hidden;
 }
 
-#feed {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  width: 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  pointer-events: none;
-}
-
-.entry {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.62);
-  border-radius: 8px;
-  padding: 6px 12px;
-  backdrop-filter: blur(4px);
-  animation: slide-in 0.18s ease-out;
-  transition: opacity 0.4s;
-}
-.entry.fade { opacity: 0; }
-
-@keyframes slide-in {
-  from { transform: translateX(24px); opacity: 0; }
-  to   { transform: translateX(0);   opacity: 1; }
-}
-
-.uid {
-  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: #60a5fa;
-  white-space: nowrap;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
-}
-.comment {
-  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
-  font-size: 14px;
-  color: #f1f5f9;
-  word-break: break-all;
-  line-height: 1.4;
-}
-
 #voicevox-credit {
   position: fixed;
   bottom: 12px;
@@ -75,45 +27,10 @@ html, body {
 </style>
 </head>
 <body>
-<div id="feed"></div>
 <div id="voicevox-credit"></div>
 <script src="http://localhost:38200/socket.io/socket.io.js"></script>
 <script>
-const feed = document.getElementById('feed');
-const MAX_ENTRIES = 20;
-const DISPLAY_MS = 7000;
-
-function addComment(nickname, comment) {
-  const entry = document.createElement('div');
-  entry.className = 'entry';
-
-  const uidEl = document.createElement('span');
-  uidEl.className = 'uid';
-  uidEl.textContent = nickname;
-
-  const commentEl = document.createElement('span');
-  commentEl.className = 'comment';
-  commentEl.textContent = comment;
-
-  entry.appendChild(uidEl);
-  entry.appendChild(commentEl);
-  feed.appendChild(entry);
-
-  while (feed.children.length > MAX_ENTRIES) {
-    feed.removeChild(feed.firstChild);
-  }
-
-  setTimeout(() => {
-    entry.classList.add('fade');
-    setTimeout(() => { if (entry.parentNode) entry.remove(); }, 400);
-  }, DISPLAY_MS);
-}
-
 const socket = io('http://localhost:38200');
-socket.on('tts:comment', ({ nickname, uniqueId, comment }) => {
-  addComment(nickname || uniqueId || '?', comment || '');
-});
-
 const credit = document.getElementById('voicevox-credit');
 let creditTimer = null;
 socket.on('tts:playing', ({ voiceName }) => {
