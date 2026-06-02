@@ -608,11 +608,11 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         <td>
           <div class="row" style="flex-wrap:wrap;gap:5px;padding:4px 0;">
             <button id="tts-test-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げテスト</button>
-            <button id="tts-filter-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げフィルタ</button>
-            <button id="tts-mapping-btn" class="secondary" style="font-size:11px;padding:5px 10px;">ボイスマッピング</button>
-            <button id="tts-conv-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げ変換</button>
-            <button id="tts-emoji-btn" class="secondary" style="font-size:11px;padding:5px 10px;">絵文字変換</button>
-            <button id="tts-emote-btn" class="secondary" style="font-size:11px;padding:5px 10px;">エモート変換</button>
+            <button id="tts-filter-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げフィルタ (<span id="tts-filter-count">0</span>)</button>
+            <button id="tts-mapping-btn" class="secondary" style="font-size:11px;padding:5px 10px;">ボイスマッピング (<span id="tts-mapping-count">0</span>)</button>
+            <button id="tts-conv-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げ変換 (<span id="tts-conv-count">0</span>)</button>
+            <button id="tts-emoji-btn" class="secondary" style="font-size:11px;padding:5px 10px;">絵文字変換 (<span id="tts-emoji-count">0</span>)</button>
+            <button id="tts-emote-btn" class="secondary" style="font-size:11px;padding:5px 10px;">エモート変換 (<span id="tts-emote-count">0</span>)</button>
           </div>
         </td>
       </tr>
@@ -1676,6 +1676,7 @@ window.addEventListener('beforeunload', () => {
         <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
       tbody.appendChild(tr);
     });
+    document.getElementById('tts-filter-count').textContent = (rules || []).length;
   }
 
   function renderTtsMapping(rules) {
@@ -1692,6 +1693,7 @@ window.addEventListener('beforeunload', () => {
         <td><button class="del-btn" data-i="${i}" data-table="ttsVoiceMapping">削除</button></td>`;
       tbody.appendChild(tr);
     });
+    document.getElementById('tts-mapping-count').textContent = (rules || []).length;
   }
 
   function renderTtsSimpleTable(tbodyId, rules, fields) {
@@ -1705,6 +1707,8 @@ window.addEventListener('beforeunload', () => {
       ).join('') + `<td><button class="del-btn" data-i="${i}" data-table="${tableKey}">削除</button></td>`;
       tbody.appendChild(tr);
     });
+    const countId = { 'tts-conv-body': 'tts-conv-count', 'tts-emoji-body': 'tts-emoji-count', 'tts-emote-body': 'tts-emote-count' }[tbodyId];
+    if (countId) document.getElementById(countId).textContent = (rules || []).length;
   }
 
   function getTtsTableData(key) {
