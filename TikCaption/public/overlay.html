@@ -142,17 +142,49 @@ function splitText(text) {
   const maxLen = settings.maxCharsPerSegment;
   if (text.length <= maxLen) return [text];
 
-  const segments = [];
-  let cur = '';
-  for (let i = 0; i < text.length; i++) {
-    cur += text[i];
-    const isPunct = '。！？、，'.includes(text[i]);
-    if (cur.length >= maxLen || (isPunct && cur.length > 0)) {
-      segments.push(cur);
-      cur = '';
-    }
+  const isHira  = c => c >= '぀' && c <= 'ゟ';
+  const isKata  = c => c >= '゠' && c <= 'ヿ';
+  const isKanji = c => (c >= '一' && c <= '鿿') || (c >= '㐀' && c <= '䶿');
+
+  function breakScore(i) {
+    const c = text[i], next = text[i + 1];
+    if (!next) return 0;
+    if ('。！？'.includes(c)) return 10;
+    if ('、，'.includes(c)) return 7;
+    if (isHira(c) && isKata(next)) return 5;
+    if (isKata(c) && isHira(next)) return 4;
+    if (isKanji(c) && isHira(next)) return 3;
+    return 0;
   }
-  if (cur) segments.push(cur);
+
+  const segments = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const remaining = text.length - start;
+    if (remaining <= maxLen) { segments.push(text.slice(start)); break; }
+
+    const numSegs = Math.ceil(remaining / maxLen);
+    const idealLen = Math.ceil(remaining / numSegs);
+    const idealEnd = start + idealLen;
+    const margin = Math.floor(idealLen * 0.4);
+    const searchStart = Math.max(start + 1, idealEnd - margin);
+    const searchEnd   = Math.min(start + maxLen, idealEnd + margin);
+
+    let bestPos = idealEnd, bestScore = -1, bestDist = Infinity;
+    for (let i = searchStart; i <= searchEnd; i++) {
+      const score = breakScore(i - 1);
+      const dist  = Math.abs(i - idealEnd);
+      if (score > bestScore || (score === bestScore && dist < bestDist)) {
+        bestScore = score; bestDist = dist; bestPos = i;
+      }
+    }
+    if (bestScore <= 0) bestPos = start + maxLen;
+
+    segments.push(text.slice(start, bestPos));
+    start = bestPos;
+  }
+
   return segments;
 }
 
