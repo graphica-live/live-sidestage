@@ -80,7 +80,7 @@ async function connectTikTokLive(userId) {
     ttsConn = null;
   }
 
-  const { WebcastPushConnection } = require('tiktok-live-connector');
+  const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
 
   ttsConn = new WebcastPushConnection(userId, {
     processInitialData: false,
@@ -88,7 +88,7 @@ async function connectTikTokLive(userId) {
     enableExtendedGiftInfo: false,
     enableWebsocketUpgrade: true,
     enableRequestPolling: false,
-    disableEulerFallbacks: true,
+    disableEulerFallbacks: false,
     sessionId: undefined,
     authenticateWs: false,
     webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
@@ -100,6 +100,15 @@ async function connectTikTokLive(userId) {
     wsClientHeaders: {
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    signedWebSocketProvider: async (params) => {
+      const webClient = new TikTokWebClient({
+        customHeaders: { 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8' },
+        axiosOptions: {},
+        clientParams: { app_language: 'ja' },
+        authenticateWs: false,
+      });
+      return webClient.fetchSignedWebSocketFromEuler(params);
     },
   });
 
