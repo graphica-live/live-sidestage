@@ -1620,6 +1620,7 @@ window.addEventListener('beforeunload', () => {
     try {
       const text = applyConversions(item.comment);
       if (text && shouldRead(item.comment)) {
+        addLogEntry(item.nickname || item.uniqueId, item.comment);
         const spId = getEffectiveSpeakerId(item.uniqueId);
         await synthesizeAndPlay(text, spId);
       }
@@ -1631,7 +1632,6 @@ window.addEventListener('beforeunload', () => {
   }
 
   function enqueue(item) {
-    addLogEntry(item.nickname || item.uniqueId, item.comment);
     audioQueue.push(item);
     processQueue();
   }

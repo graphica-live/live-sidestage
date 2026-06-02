@@ -33,6 +33,7 @@ let ttsStatus = { status: 'stopped', message: '停止中' };
 let ttsUserId = '';
 let ttsReconnectTimer = null;
 let ttsStopped = false; // true = user explicitly stopped, no auto-reconnect
+let ttsAcceptingComments = false;
 
 function emitTtsStatus(s) {
   ttsStatus = s;
@@ -69,6 +70,8 @@ function scheduleTtsReconnect(reason) {
 
 async function connectTikTokLive(userId) {
   if (!userId) return;
+
+  ttsAcceptingComments = false;
 
   // Tear down previous connection
   if (ttsConn) {
@@ -123,6 +126,7 @@ async function connectTikTokLive(userId) {
   });
 
   ttsConn.on('chat', (data) => {
+    if (!ttsAcceptingComments) return;
     const comment = {
       uniqueId: data.uniqueId || '',
       nickname: data.nickname || data.uniqueId || '',
@@ -143,6 +147,7 @@ async function connectTikTokLive(userId) {
 
   try {
     await ttsConn.connect();
+    ttsAcceptingComments = true;
     emitTtsStatus({ status: 'connected', message: `接続済み: @${userId}` });
   } catch (err) {
     ttsConn = null;
