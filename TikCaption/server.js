@@ -58,7 +58,7 @@ const DEFAULT_SETTINGS = {
   vadMinSpeechMs: 500,
   vadPaddingMs: 200,
   correctionRules: [],
-  autoStartCaption: true,
+  autoStartCaption: false,
   launchOnBoot: false,
 };
 
