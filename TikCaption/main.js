@@ -288,6 +288,7 @@ function createMainWindow() {
     minWidth: 480,
     minHeight: 600,
     title: 'TikCaption',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
