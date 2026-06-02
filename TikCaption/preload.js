@@ -14,4 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   onASRStatus: (cb) => {
     ipcRenderer.on('asr-status', (_e, data) => cb(data));
   },
+  onUpdateAvailable: (cb) => {
+    ipcRenderer.on('update-available', (_e, info) => cb(info));
+  },
+  onUpdateDownloaded: (cb) => {
+    ipcRenderer.on('update-downloaded', (_e, info) => cb(info));
+  },
+  installUpdate: () => ipcRenderer.invoke('install-update'),
 });

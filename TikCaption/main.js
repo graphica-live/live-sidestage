@@ -1,6 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const net = require('net');
 const http = require('http');
@@ -365,6 +366,29 @@ function createTray() {
   });
 }
 
+// ── Auto updater ─────────────────────────────────────────────────────────────
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    if (mainWin) mainWin.webContents.send('update-available', info);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    if (mainWin) mainWin.webContents.send('update-downloaded', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[updater]', err.message);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.error('[updater] check failed:', err.message);
+  });
+}
+
 // ── IPC ──────────────────────────────────────────────────────────────────────
 
 function registerIPC() {
@@ -409,6 +433,10 @@ function registerIPC() {
     asrStatus = { status: 'stopped', message: '停止しました' };
     if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     return { ok: true };
+  });
+
+  ipcMain.handle('install-update', () => {
+    autoUpdater.quitAndInstall();
   });
 
   ipcMain.handle('get-devices', async () => {
@@ -460,6 +488,8 @@ app.whenReady().then(async () => {
   createMainWindow();
   createTray();
   registerIPC();
+
+  if (app.isPackaged) setupAutoUpdater();
 
   const s = loadSettings();
   if (isFirstRun) {
