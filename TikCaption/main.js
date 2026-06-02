@@ -12,6 +12,24 @@ const fs = require('fs');
 const CAPTION_PORT = 38200;
 const LOADER_PORT = 38201;
 
+const DEVICE_ID_PATH = path.join(process.env.APPDATA || os.homedir(), '.tikcaption', 'device.env');
+
+function loadOrCreateDeviceId() {
+  try {
+    const content = fs.readFileSync(DEVICE_ID_PATH, 'utf8');
+    const match = content.match(/TIKTOK_DEVICE_ID=(\d{19})/);
+    if (match) return match[1];
+  } catch {}
+  const id = Array.from({ length: 19 }, () => Math.floor(Math.random() * 10)).join('');
+  try {
+    fs.mkdirSync(path.dirname(DEVICE_ID_PATH), { recursive: true });
+    fs.writeFileSync(DEVICE_ID_PATH, `TIKTOK_DEVICE_ID=${id}\n`, 'utf8');
+  } catch {}
+  return id;
+}
+
+const DEVICE_ID = loadOrCreateDeviceId();
+
 const isLoaderOnly = process.argv.includes('--loader-only');
 
 // Ctrl+C in terminal → graceful shutdown (triggers before-quit + renderer beforeunload)
@@ -96,12 +114,12 @@ async function connectTikTokLive(userId) {
     disableEulerFallbacks: false,
     sessionId: undefined,
     authenticateWs: false,
-    webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
+    webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja', device_id: DEVICE_ID },
     webClientHeaders: {
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     },
-    wsClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja' },
+    wsClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja', device_id: DEVICE_ID },
     wsClientHeaders: {
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
