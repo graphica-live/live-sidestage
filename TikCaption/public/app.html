@@ -827,10 +827,10 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <button id="close-tts-filter-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
   </div>
   <div class="modal-body" style="min-width:440px;">
-    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">ブロック: パターンに一致するコメントを読まない。許可: 一致するもののみ読む（許可ルールがある場合）。</p>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">パターンに一致するコメントを読み上げない。</p>
     <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
-      <thead><tr><th>パターン</th><th>種別</th><th>有効</th><th></th></tr></thead>
+      <thead><tr><th>パターン</th><th>有効</th><th></th></tr></thead>
       <tbody id="tts-filter-body"></tbody>
     </table>
   </div>
@@ -1548,13 +1548,10 @@ window.addEventListener('beforeunload', () => {
     const rules = (ttsS.ttsFilterRules || []).filter(r => r.enabled);
     for (const r of rules) {
       try {
-        const re = new RegExp(escapeRe(r.pattern), 'i');
-        if (r.type === 'block' && re.test(text)) return false;
+        if (new RegExp(escapeRe(r.pattern), 'i').test(text)) return false;
       } catch (_) {}
     }
-    const allowRules = rules.filter(r => r.type === 'allow');
-    if (allowRules.length === 0) return true;
-    return allowRules.some(r => { try { return new RegExp(escapeRe(r.pattern), 'i').test(text); } catch(_) { return false; } });
+    return true;
   }
 
   function applyConversions(text) {
@@ -1657,13 +1654,7 @@ window.addEventListener('beforeunload', () => {
     (rules || []).forEach((r, i) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:160px;font-size:12px;padding:3px 6px;"></td>
-        <td>
-          <select data-i="${i}" data-field="type" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px;font-size:12px;">
-            <option value="block" ${r.type==='block'?'selected':''}>ブロック</option>
-            <option value="allow" ${r.type==='allow'?'selected':''}>許可</option>
-          </select>
-        </td>
+        <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:220px;font-size:12px;padding:3px 6px;"></td>
         <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
         <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
       tbody.appendChild(tr);
@@ -1830,7 +1821,7 @@ window.addEventListener('beforeunload', () => {
     ];
     for (const [btnId, key, rerender] of addMap) {
       document.getElementById(btnId).addEventListener('click', () => {
-        const defaultRow = { ttsFilterRules: { pattern:'', type:'block', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
+        const defaultRow = { ttsFilterRules: { pattern:'', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
         window.api.saveSettings({ [key]: ttsS[key] }).catch(() => {});
