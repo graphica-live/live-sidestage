@@ -591,9 +591,7 @@ export default function Home({ user }: HomeProps) {
       autoFittingRef.current = false;
       return;
     }
-
-    void runAutoFit(frameImage);
-  }, [frameImage, runAutoFit, showAutoFitNotice]);
+  }, [frameImage, showAutoFitNotice]);
 
   useEffect(() => {
     if (!frameImage || shareUrl) {
