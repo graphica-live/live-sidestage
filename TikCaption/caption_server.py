@@ -188,6 +188,8 @@ def main():
             else:
                 speech_buffer.append(chunk)
             silence_frames = 0
+            if len(speech_buffer) >= max_frames:
+                flush_buffer(keep_speech=True)
         else:
             if is_speech:
                 speech_buffer.append(chunk)
