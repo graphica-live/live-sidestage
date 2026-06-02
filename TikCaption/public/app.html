@@ -837,7 +837,7 @@ function applyToUI(s) {
   bindSliderVal('vad-minspeech', 'vad-minspeech-val', s.vadMinSpeechMs, ' ms');
   bindSliderVal('vad-padding', 'vad-padding-val', s.vadPaddingMs, ' ms');
 
-  if (s.correctionRules) renderRules(s.correctionRules);
+  if (Array.isArray(s.correctionRules)) renderRules(s.correctionRules);
 
   if ('autoStartCaption' in s) document.getElementById('auto-start-caption').checked = s.autoStartCaption;
   if ('launchOnBoot' in s) document.getElementById('launch-on-boot').checked = s.launchOnBoot;
@@ -921,6 +921,7 @@ document.getElementById('add-rule').addEventListener('click', () => {
   const rules = getRules();
   rules.unshift({ from: '', to: '' });
   renderRules(rules);
+  save({ correctionRules: rules });
 });
 
 // ── threshold marker drag ─────────────────────────

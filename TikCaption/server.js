@@ -23,6 +23,7 @@ function loadSettings() {
   try {
     const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
     _settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (!Array.isArray(_settings.correctionRules)) _settings.correctionRules = [];
   } catch (_) {
     _settings = { ...DEFAULT_SETTINGS };
   }
