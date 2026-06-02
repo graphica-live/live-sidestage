@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('update-downloaded', (_e, info) => cb(info));
   },
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  // TTS
+  startTts: (userId) => ipcRenderer.invoke('tts-start', userId),
+  stopTts: () => ipcRenderer.invoke('tts-stop'),
+  getTtsStatus: () => ipcRenderer.invoke('tts-get-status'),
+  onTtsStatus: (cb) => { ipcRenderer.on('tts-status', (_e, data) => cb(data)); },
+  onTtsComment: (cb) => { ipcRenderer.on('tts-comment', (_e, data) => cb(data)); },
 });

@@ -63,6 +63,17 @@ const DEFAULT_SETTINGS = {
   correctionRules: [],
   autoStartCaption: false,
   launchOnBoot: false,
+  // TTS settings
+  ttsUserId: '',
+  ttsVoiceId: 1,
+  ttsVolume: 0.8,
+  ttsRandomVoice: false,
+  ttsRandomVoiceHistory: [],
+  ttsFilterRules: [],
+  ttsVoiceMapping: [],
+  ttsConversionRules: [],
+  ttsEmojiRules: [],
+  ttsEmoteRules: [],
 };
 
 const TIKTOK_BUILTIN_VOCAB = [

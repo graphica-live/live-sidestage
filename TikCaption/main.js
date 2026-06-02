@@ -24,6 +24,10 @@ let tray = null;
 let asrProc = null;
 let asrStatus = { status: 'idle', message: '' };
 
+// ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
+let ttsConn = null;
+let ttsStatus = { status: 'stopped', message: '停止中' };
+
 // ── Loader server ────────────────────────────────────────────────────────────
 
 const POLLING_HTML = `<!DOCTYPE html>
@@ -437,6 +441,73 @@ function registerIPC() {
 
   ipcMain.handle('install-update', () => {
     autoUpdater.quitAndInstall();
+  });
+
+  // ── TTS IPC ────────────────────────────────────────────────────────────────
+  ipcMain.handle('tts-get-status', () => ttsStatus);
+
+  ipcMain.handle('tts-start', async (_e, userId) => {
+    if (ttsConn) {
+      try { ttsConn.disconnect(); } catch (_) {}
+      ttsConn = null;
+    }
+    if (!userId || !userId.trim()) {
+      ttsStatus = { status: 'error', message: 'ユーザーIDを設定してください' };
+      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+      return { ok: false };
+    }
+
+    let WebcastPushConnection;
+    try {
+      ({ WebcastPushConnection } = require('tiktok-live-connector'));
+    } catch (e) {
+      ttsStatus = { status: 'error', message: 'tiktok-live-connector が見つかりません' };
+      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+      return { ok: false };
+    }
+
+    ttsStatus = { status: 'connecting', message: `接続中: @${userId}` };
+    if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+
+    ttsConn = new WebcastPushConnection(userId.trim(), { enableExtendedGiftInfo: false });
+
+    ttsConn.on('chat', (data) => {
+      if (mainWin) {
+        mainWin.webContents.send('tts-comment', {
+          uniqueId: data.uniqueId || '',
+          nickname: data.nickname || data.uniqueId || '',
+          comment: data.comment || '',
+        });
+      }
+    });
+
+    ttsConn.on('disconnected', () => {
+      ttsStatus = { status: 'stopped', message: '切断されました' };
+      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+      ttsConn = null;
+    });
+
+    try {
+      await ttsConn.connect();
+      ttsStatus = { status: 'connected', message: `接続済み: @${userId}` };
+      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+      return { ok: true };
+    } catch (err) {
+      ttsStatus = { status: 'error', message: `接続失敗: ${err.message || err}` };
+      if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+      ttsConn = null;
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('tts-stop', () => {
+    if (ttsConn) {
+      try { ttsConn.disconnect(); } catch (_) {}
+      ttsConn = null;
+    }
+    ttsStatus = { status: 'stopped', message: '停止中' };
+    if (mainWin) mainWin.webContents.send('tts-status', ttsStatus);
+    return { ok: true };
   });
 
   ipcMain.handle('get-devices', async () => {

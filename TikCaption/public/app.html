@@ -382,6 +382,32 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   font-style: italic;
 }
 
+/* ── TTS tab ─────────────────────────────────────── */
+.tts-table { width: 100%; border-collapse: collapse; }
+.tts-table tr { border-bottom: 1px solid var(--border); }
+.tts-table td { padding: 7px 0; vertical-align: middle; }
+.tts-label { width: 110px; font-size: 11px; color: var(--muted); padding-right: 10px; white-space: nowrap; }
+.icon-btn { padding: 5px 8px; min-width: unset; font-size: 14px; line-height: 1; }
+.tts-log {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 130px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tts-log-entry { display: flex; gap: 6px; font-size: 11px; }
+.tts-log-uid { color: var(--accent); min-width: 70px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.tts-log-comment { color: var(--text); flex: 1; word-break: break-all; }
+.tts-log-muted { color: var(--muted); font-style: italic; font-size: 11px; }
+#tts-status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:4px; }
+#tts-status-dot.connected { background: #22c55e; }
+#tts-status-dot.error { background: #ef4444; }
+#tts-status-dot.connecting { background: #f59e0b; animation: pulse-ring 1s ease-out infinite; }
+
 /* ── Update banner ───────────────────────────────── */
 #update-banner {
   display: none;
@@ -530,9 +556,82 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 <!-- Tab: 読み上げ -->
 <div class="tab-panel" id="tab-tts">
   <div class="container">
-    <div style="color:var(--muted);font-size:13px;text-align:center;padding:40px 0;">
-      読み上げ機能（準備中）
+
+    <table class="tts-table">
+      <tr>
+        <td class="tts-label">配信ユーザーID</td>
+        <td>
+          <div class="row">
+            <span id="tts-user-display" class="url-text">未設定</span>
+            <button id="tts-edit-user" class="secondary icon-btn" title="編集">✏️</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label">オーバーレイURL</td>
+        <td>
+          <div class="row">
+            <span class="url-text">http://localhost:38201/overlay.html</span>
+            <button id="tts-copy-url" class="secondary">コピー</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label">ボイス選択</td>
+        <td>
+          <select id="tts-voice-select" style="width:100%;"></select>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label">音量</td>
+        <td>
+          <div class="slider-row">
+            <input type="range" id="tts-volume" min="0" max="1" step="0.05">
+            <span class="val-display" id="tts-volume-val">80%</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label">ランダムボイス</td>
+        <td>
+          <div class="row" style="gap:10px;">
+            <input type="checkbox" id="tts-random-voice" style="accent-color:var(--accent);width:14px;height:14px;">
+            <button id="tts-random-reset" class="secondary icon-btn" title="ランダム履歴リセット">🔄</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label"></td>
+        <td>
+          <div class="row" style="flex-wrap:wrap;gap:5px;padding:4px 0;">
+            <button id="tts-test-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げテスト</button>
+            <button id="tts-filter-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げフィルタ</button>
+            <button id="tts-mapping-btn" class="secondary" style="font-size:11px;padding:5px 10px;">ボイスマッピング</button>
+            <button id="tts-conv-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げ変換</button>
+            <button id="tts-emoji-btn" class="secondary" style="font-size:11px;padding:5px 10px;">絵文字変換</button>
+            <button id="tts-emote-btn" class="secondary" style="font-size:11px;padding:5px 10px;">エモート変換</button>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button id="tts-start-btn" style="flex:1;">▶ 接続開始</button>
+      <button id="tts-stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
     </div>
+
+    <div class="status-bar">
+      <span id="tts-status-dot"></span>
+      <span id="tts-status-msg">停止中</span>
+    </div>
+
+    <div>
+      <label>コメントログ</label>
+      <div class="tts-log" id="tts-log">
+        <span class="tts-log-muted">(接続待機中)</span>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -701,6 +800,95 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         </tr>
       </thead>
       <tbody id="rules-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── User ID edit modal ─────────── -->
+<dialog id="tts-user-modal">
+  <div class="modal-header">
+    <span>配信ユーザーID</span>
+    <button id="close-tts-user-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:320px;">
+    <label>TikTokユーザーID（@なし）</label>
+    <input type="text" id="tts-user-input" placeholder="例: username123" style="margin-top:4px;">
+    <button id="tts-user-save" style="margin-top:12px;width:100%;">保存</button>
+  </div>
+</dialog>
+
+<!-- ── 読み上げフィルタ modal ────── -->
+<dialog id="tts-filter-modal">
+  <div class="modal-header">
+    <span>読み上げフィルタ</span>
+    <button id="close-tts-filter-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:440px;">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">ブロック: パターンに一致するコメントを読まない。許可: 一致するもののみ読む（許可ルールがある場合）。</p>
+    <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>パターン</th><th>種別</th><th>有効</th><th></th></tr></thead>
+      <tbody id="tts-filter-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── ボイスマッピング modal ───── -->
+<dialog id="tts-mapping-modal">
+  <div class="modal-header">
+    <span>ボイスマッピング</span>
+    <button id="close-tts-mapping-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:400px;">
+    <button id="add-tts-mapping" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>ユーザーID</th><th>ボイス</th><th></th></tr></thead>
+      <tbody id="tts-mapping-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── 読み上げ変換 modal ─────── -->
+<dialog id="tts-conv-modal">
+  <div class="modal-header">
+    <span>読み上げ変換</span>
+    <button id="close-tts-conv-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:380px;">
+    <button id="add-tts-conv" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>変換前</th><th>変換後</th><th></th></tr></thead>
+      <tbody id="tts-conv-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── 絵文字変換 modal ──────── -->
+<dialog id="tts-emoji-modal">
+  <div class="modal-header">
+    <span>絵文字変換</span>
+    <button id="close-tts-emoji-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:340px;">
+    <button id="add-tts-emoji" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>絵文字</th><th>読み</th><th></th></tr></thead>
+      <tbody id="tts-emoji-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── エモート変換 modal ─────── -->
+<dialog id="tts-emote-modal">
+  <div class="modal-header">
+    <span>エモート変換</span>
+    <button id="close-tts-emote-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:340px;">
+    <button id="add-tts-emote" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>エモート名</th><th>読み</th><th></th></tr></thead>
+      <tbody id="tts-emote-body"></tbody>
     </table>
   </div>
 </dialog>
@@ -1169,6 +1357,8 @@ async function init() {
 
   const status = await window.api.getASRStatus();
   updateStatus(status);
+
+  if (window._ttsInit) await window._ttsInit(s);
 }
 
 init();
@@ -1276,6 +1466,423 @@ window.addEventListener('beforeunload', () => {
     pendingData = {};
   }
 });
+
+// ── TTS Tab ───────────────────────────────────────────────────────────────────
+(function () {
+  let ttsS = {};        // TTS-related settings cache
+  let voiceList = [];   // [{id, name, styles:[{id,name}]}]
+  let audioCtx = null;
+  let audioQueue = [];
+  let isPlaying = false;
+
+  // ── Voice select population ────────────────────────────────────────────────
+  async function loadVoices() {
+    const sel = document.getElementById('tts-voice-select');
+    try {
+      const res = await fetch('http://localhost:50021/speakers');
+      if (!res.ok) throw new Error();
+      voiceList = await res.json();
+      sel.innerHTML = '';
+      for (const sp of voiceList) {
+        for (const st of sp.styles) {
+          const opt = document.createElement('option');
+          opt.value = st.id;
+          opt.textContent = `${sp.name} (${st.name})`;
+          sel.appendChild(opt);
+        }
+      }
+      if (ttsS.ttsVoiceId) sel.value = ttsS.ttsVoiceId;
+    } catch (_) {
+      sel.innerHTML = '<option value="">VOICEVOXが起動していません</option>';
+    }
+    // Retry if VOICEVOX not ready
+    if (voiceList.length === 0) setTimeout(loadVoices, 5000);
+  }
+
+  // ── Apply TTS settings to UI ───────────────────────────────────────────────
+  function applyTtsToUI(s) {
+    ttsS = { ...ttsS, ...s };
+    if ('ttsUserId' in s) {
+      document.getElementById('tts-user-display').textContent = s.ttsUserId || '未設定';
+    }
+    if ('ttsVoiceId' in s) {
+      const sel = document.getElementById('tts-voice-select');
+      if (sel.querySelector(`option[value="${s.ttsVoiceId}"]`)) sel.value = s.ttsVoiceId;
+    }
+    if ('ttsVolume' in s) {
+      const v = s.ttsVolume;
+      document.getElementById('tts-volume').value = v;
+      document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
+    }
+    if ('ttsRandomVoice' in s) {
+      document.getElementById('tts-random-voice').checked = s.ttsRandomVoice;
+    }
+    if ('ttsFilterRules' in s) renderTtsFilterRules(s.ttsFilterRules);
+    if ('ttsVoiceMapping' in s) renderTtsMapping(s.ttsVoiceMapping);
+    if ('ttsConversionRules' in s) renderTtsSimpleTable('tts-conv-body', s.ttsConversionRules, ['from', 'to']);
+    if ('ttsEmojiRules' in s) renderTtsSimpleTable('tts-emoji-body', s.ttsEmojiRules, ['emoji', 'reading']);
+    if ('ttsEmoteRules' in s) renderTtsSimpleTable('tts-emote-body', s.ttsEmoteRules, ['emote', 'reading']);
+  }
+
+  // ── Status UI ──────────────────────────────────────────────────────────────
+  function setTtsStatusUI({ status, message }) {
+    const dot = document.getElementById('tts-status-dot');
+    dot.className = '';
+    dot.classList.add(status === 'connected' ? 'connected' : status === 'error' ? 'error' : 'connecting');
+    document.getElementById('tts-status-msg').textContent = message || status;
+    const running = status === 'connected';
+    document.getElementById('tts-start-btn').disabled = running || status === 'connecting';
+    document.getElementById('tts-stop-btn').disabled = !running && status !== 'connecting';
+  }
+
+  // ── Audio queue / synthesis ────────────────────────────────────────────────
+  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  function shouldRead(text) {
+    const rules = (ttsS.ttsFilterRules || []).filter(r => r.enabled);
+    for (const r of rules) {
+      try {
+        const re = new RegExp(escapeRe(r.pattern), 'i');
+        if (r.type === 'block' && re.test(text)) return false;
+      } catch (_) {}
+    }
+    const allowRules = rules.filter(r => r.type === 'allow');
+    if (allowRules.length === 0) return true;
+    return allowRules.some(r => { try { return new RegExp(escapeRe(r.pattern), 'i').test(text); } catch(_) { return false; } });
+  }
+
+  function applyConversions(text) {
+    let t = text;
+    for (const r of (ttsS.ttsEmojiRules || [])) {
+      if (r.emoji) t = t.replaceAll(r.emoji, r.reading || '');
+    }
+    for (const r of (ttsS.ttsEmoteRules || [])) {
+      if (r.emote) try { t = t.replace(new RegExp(escapeRe(r.emote), 'g'), r.reading || ''); } catch(_) {}
+    }
+    for (const r of (ttsS.ttsConversionRules || [])) {
+      if (r.from) try { t = t.replace(new RegExp(escapeRe(r.from), 'g'), r.to || ''); } catch(_) {}
+    }
+    return t.trim();
+  }
+
+  function getEffectiveSpeakerId(uniqueId) {
+    if (uniqueId) {
+      const m = (ttsS.ttsVoiceMapping || []).find(x => x.userId === uniqueId);
+      if (m && m.voiceId) return Number(m.voiceId);
+    }
+    if (ttsS.ttsRandomVoice && voiceList.length > 0) {
+      const allIds = voiceList.flatMap(sp => sp.styles.map(s => s.id));
+      const history = ttsS.ttsRandomVoiceHistory || [];
+      const unused = allIds.filter(id => !history.includes(id));
+      const pool = unused.length > 0 ? unused : allIds;
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      const newHistory = history.length >= allIds.length - 1 ? [] : [...history, chosen];
+      ttsS.ttsRandomVoiceHistory = newHistory;
+      window.api.saveSettings({ ttsRandomVoiceHistory: newHistory }).catch(() => {});
+      return chosen;
+    }
+    return Number(ttsS.ttsVoiceId) || 1;
+  }
+
+  async function synthesizeAndPlay(text, speakerId) {
+    const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
+    const qRes = await fetch(
+      `http://localhost:50021/audio_query?speaker=${speakerId}&text=${encodeURIComponent(text)}`,
+      { method: 'POST' }
+    );
+    if (!qRes.ok) throw new Error('audio_query failed');
+    const query = await qRes.json();
+    query.volumeScale = vol;
+    const aRes = await fetch(
+      `http://localhost:50021/synthesis?speaker=${speakerId}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) }
+    );
+    if (!aRes.ok) throw new Error('synthesis failed');
+    const buf = await aRes.arrayBuffer();
+    if (!audioCtx) audioCtx = new AudioContext();
+    const decoded = await audioCtx.decodeAudioData(buf);
+    return new Promise(resolve => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(audioCtx.destination);
+      src.onended = resolve;
+      src.start();
+    });
+  }
+
+  async function processQueue() {
+    if (isPlaying || audioQueue.length === 0) return;
+    isPlaying = true;
+    const item = audioQueue.shift();
+    try {
+      const text = applyConversions(item.comment);
+      if (text && shouldRead(item.comment)) {
+        const spId = getEffectiveSpeakerId(item.uniqueId);
+        await synthesizeAndPlay(text, spId);
+      }
+    } catch (e) {
+      console.warn('[TTS]', e.message);
+    }
+    isPlaying = false;
+    processQueue();
+  }
+
+  function enqueue(item) {
+    addLogEntry(item.nickname || item.uniqueId, item.comment);
+    audioQueue.push(item);
+    processQueue();
+  }
+
+  // ── Log ───────────────────────────────────────────────────────────────────
+  function addLogEntry(uid, comment) {
+    const log = document.getElementById('tts-log');
+    const placeholder = log.querySelector('.tts-log-muted');
+    if (placeholder) placeholder.remove();
+    const entry = document.createElement('div');
+    entry.className = 'tts-log-entry';
+    entry.innerHTML = `<span class="tts-log-uid">${escHtml(uid)}</span><span class="tts-log-comment">${escHtml(comment)}</span>`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+    // Keep max 100 entries
+    while (log.children.length > 100) log.removeChild(log.firstChild);
+  }
+
+  // ── Modal render helpers ────────────────────────────────────────────────────
+  function renderTtsFilterRules(rules) {
+    const tbody = document.getElementById('tts-filter-body');
+    tbody.innerHTML = '';
+    (rules || []).forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:160px;font-size:12px;padding:3px 6px;"></td>
+        <td>
+          <select data-i="${i}" data-field="type" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px;font-size:12px;">
+            <option value="block" ${r.type==='block'?'selected':''}>ブロック</option>
+            <option value="allow" ${r.type==='allow'?'selected':''}>許可</option>
+          </select>
+        </td>
+        <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
+        <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderTtsMapping(rules) {
+    const tbody = document.getElementById('tts-mapping-body');
+    tbody.innerHTML = '';
+    (rules || []).forEach((r, i) => {
+      const voiceOpts = voiceList.flatMap(sp => sp.styles.map(st =>
+        `<option value="${st.id}" ${Number(r.voiceId)===st.id?'selected':''}>${escHtml(sp.name)} (${escHtml(st.name)})</option>`
+      )).join('');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" value="${escHtml(r.userId||'')}" data-i="${i}" data-field="userId" style="width:120px;font-size:12px;padding:3px 6px;"></td>
+        <td><select data-i="${i}" data-field="voiceId" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px;font-size:11px;">${voiceOpts}</select></td>
+        <td><button class="del-btn" data-i="${i}" data-table="ttsVoiceMapping">削除</button></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderTtsSimpleTable(tbodyId, rules, fields) {
+    const tbody = document.getElementById(tbodyId);
+    const tableKey = { 'tts-conv-body': 'ttsConversionRules', 'tts-emoji-body': 'ttsEmojiRules', 'tts-emote-body': 'ttsEmoteRules' }[tbodyId];
+    tbody.innerHTML = '';
+    (rules || []).forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = fields.map(f =>
+        `<td><input type="text" value="${escHtml(r[f]||'')}" data-i="${i}" data-field="${f}" style="width:120px;font-size:12px;padding:3px 6px;"></td>`
+      ).join('') + `<td><button class="del-btn" data-i="${i}" data-table="${tableKey}">削除</button></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function getTtsTableData(key) {
+    const tbodyMap = {
+      ttsFilterRules: 'tts-filter-body',
+      ttsVoiceMapping: 'tts-mapping-body',
+      ttsConversionRules: 'tts-conv-body',
+      ttsEmojiRules: 'tts-emoji-body',
+      ttsEmoteRules: 'tts-emote-body',
+    };
+    const tbody = document.getElementById(tbodyMap[key]);
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr')).map(tr => {
+      const row = {};
+      tr.querySelectorAll('[data-field]').forEach(el => {
+        row[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
+      });
+      return row;
+    });
+  }
+
+  function saveTtsTable(key) {
+    const data = getTtsTableData(key);
+    ttsS[key] = data;
+    window.api.saveSettings({ [key]: data }).catch(() => {});
+  }
+
+  // ── Wire table events (input + delete) ────────────────────────────────────
+  function wireTableEvents(tbodyId, key) {
+    const tbody = document.getElementById(tbodyId);
+    tbody.addEventListener('input', () => { debounce('tts-' + key, () => saveTtsTable(key)); });
+    tbody.addEventListener('change', () => { debounce('tts-' + key, () => saveTtsTable(key)); });
+    tbody.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del-btn')) {
+        const i = parseInt(e.target.dataset.i);
+        const rows = getTtsTableData(key);
+        rows.splice(i, 1);
+        ttsS[key] = rows;
+        window.api.saveSettings({ [key]: rows }).then(() => {
+          const rerender = { ttsFilterRules: () => renderTtsFilterRules(ttsS.ttsFilterRules), ttsVoiceMapping: () => renderTtsMapping(ttsS.ttsVoiceMapping), ttsConversionRules: () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']), ttsEmojiRules: () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']), ttsEmoteRules: () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']) };
+          if (rerender[key]) rerender[key]();
+        }).catch(() => {});
+      }
+    });
+  }
+
+  // ── Wire controls ──────────────────────────────────────────────────────────
+  function wireControls() {
+    // User ID modal
+    document.getElementById('tts-edit-user').addEventListener('click', () => {
+      document.getElementById('tts-user-input').value = ttsS.ttsUserId || '';
+      document.getElementById('tts-user-modal').showModal();
+    });
+    document.getElementById('close-tts-user-modal').addEventListener('click', () => { document.getElementById('tts-user-modal').close(); });
+    document.getElementById('tts-user-save').addEventListener('click', () => {
+      const val = document.getElementById('tts-user-input').value.trim().replace(/^@/, '');
+      ttsS.ttsUserId = val;
+      document.getElementById('tts-user-display').textContent = val || '未設定';
+      window.api.saveSettings({ ttsUserId: val }).catch(() => {});
+      document.getElementById('tts-user-modal').close();
+    });
+
+    // Copy URL
+    document.getElementById('tts-copy-url').addEventListener('click', async () => {
+      await navigator.clipboard.writeText('http://localhost:38201/overlay.html');
+      const btn = document.getElementById('tts-copy-url');
+      btn.textContent = 'コピーしました ✓';
+      setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+    });
+
+    // Voice select
+    document.getElementById('tts-voice-select').addEventListener('change', (e) => {
+      ttsS.ttsVoiceId = Number(e.target.value);
+      window.api.saveSettings({ ttsVoiceId: ttsS.ttsVoiceId }).catch(() => {});
+    });
+
+    // Volume
+    document.getElementById('tts-volume').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
+      debounce('tts-volume', () => { ttsS.ttsVolume = v; window.api.saveSettings({ ttsVolume: v }).catch(() => {}); });
+    });
+
+    // Random voice checkbox
+    document.getElementById('tts-random-voice').addEventListener('change', (e) => {
+      ttsS.ttsRandomVoice = e.target.checked;
+      window.api.saveSettings({ ttsRandomVoice: e.target.checked }).catch(() => {});
+    });
+
+    // Random voice reset
+    document.getElementById('tts-random-reset').addEventListener('click', () => {
+      ttsS.ttsRandomVoiceHistory = [];
+      window.api.saveSettings({ ttsRandomVoiceHistory: [] }).catch(() => {});
+    });
+
+    // Test button
+    document.getElementById('tts-test-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('tts-test-btn');
+      btn.disabled = true;
+      try {
+        await synthesizeAndPlay('これはVOICEVOXの読み上げテストです', getEffectiveSpeakerId(''));
+      } catch (e) {
+        alert('読み上げテスト失敗: ' + e.message + '\nVOICEVOXが起動しているか確認してください。');
+      }
+      btn.disabled = false;
+    });
+
+    // Modal open buttons
+    const modalMap = {
+      'tts-filter-btn': 'tts-filter-modal',
+      'tts-mapping-btn': 'tts-mapping-modal',
+      'tts-conv-btn': 'tts-conv-modal',
+      'tts-emoji-btn': 'tts-emoji-modal',
+      'tts-emote-btn': 'tts-emote-modal',
+    };
+    for (const [btnId, modalId] of Object.entries(modalMap)) {
+      document.getElementById(btnId).addEventListener('click', () => {
+        document.getElementById(modalId).showModal();
+      });
+      document.getElementById('close-' + modalId).addEventListener('click', () => {
+        document.getElementById(modalId).close();
+      });
+    }
+
+    // Add-row buttons
+    const addMap = [
+      ['add-tts-filter', 'ttsFilterRules', () => renderTtsFilterRules(ttsS.ttsFilterRules)],
+      ['add-tts-mapping', 'ttsVoiceMapping', () => renderTtsMapping(ttsS.ttsVoiceMapping)],
+      ['add-tts-conv', 'ttsConversionRules', () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to'])],
+      ['add-tts-emoji', 'ttsEmojiRules', () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading'])],
+      ['add-tts-emote', 'ttsEmoteRules', () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading'])],
+    ];
+    for (const [btnId, key, rerender] of addMap) {
+      document.getElementById(btnId).addEventListener('click', () => {
+        const defaultRow = { ttsFilterRules: { pattern:'', type:'block', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
+        ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
+        rerender();
+        window.api.saveSettings({ [key]: ttsS[key] }).catch(() => {});
+      });
+    }
+
+    // Wire table input/delete events
+    wireTableEvents('tts-filter-body', 'ttsFilterRules');
+    wireTableEvents('tts-mapping-body', 'ttsVoiceMapping');
+    wireTableEvents('tts-conv-body', 'ttsConversionRules');
+    wireTableEvents('tts-emoji-body', 'ttsEmojiRules');
+    wireTableEvents('tts-emote-body', 'ttsEmoteRules');
+
+    // Start/Stop
+    document.getElementById('tts-start-btn').addEventListener('click', async () => {
+      const userId = ttsS.ttsUserId || '';
+      if (!userId) {
+        alert('配信ユーザーIDを設定してください。✏️ボタンから入力できます。');
+        return;
+      }
+      setTtsStatusUI({ status: 'connecting', message: `接続中: @${userId}` });
+      await window.api.startTts(userId);
+    });
+    document.getElementById('tts-stop-btn').addEventListener('click', async () => {
+      await window.api.stopTts();
+    });
+  }
+
+  // ── IPC listeners ─────────────────────────────────────────────────────────
+  window.api.onTtsStatus((data) => {
+    setTtsStatusUI(data);
+    if (data.status === 'stopped' || data.status === 'error') {
+      audioQueue.length = 0;
+      isPlaying = false;
+    }
+  });
+
+  window.api.onTtsComment((data) => {
+    enqueue(data);
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function initTts(s) {
+    applyTtsToUI(s);
+    const status = await window.api.getTtsStatus();
+    setTtsStatusUI(status);
+    wireControls();
+    await loadVoices();
+  }
+
+  // Piggyback on existing init()
+  const _origInit = init;
+  window._ttsInit = initTts;
+}());
 
 // ── Auto update ───────────────────────────────────────────────────────────────
 if (window.api.onUpdateAvailable) {
