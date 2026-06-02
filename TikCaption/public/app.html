@@ -791,7 +791,7 @@ function updateMarker(val) {
 function save(data) {
   window.api.saveSettings(data).then(() => {
     for (const k of Object.keys(data)) delete pendingData[k];
-  }).catch(() => {});
+  }).catch((err) => console.error('[save]', err));
 }
 
 // ── apply settings to UI ──────────────────────────
@@ -1012,6 +1012,13 @@ document.getElementById('close-rules-modal').addEventListener('click', (e) => {
     if (['fontSize','strokeWidth','fontFamily','textStyleKey'].includes(key)) updatePreview();
     pendingData[key] = val;
     debounce(key, () => save({ [key]: val }));
+  });
+  el.addEventListener('change', (e) => {
+    const val = parseFloat(e.target.value);
+    clearTimeout(debounceTimers[key]);
+    delete debounceTimers[key];
+    delete pendingData[key];
+    save({ [key]: val });
   });
 });
 

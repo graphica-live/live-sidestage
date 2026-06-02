@@ -35,7 +35,9 @@ function saveSettings(data) {
   for (const [key, val] of Object.entries(data)) {
     if (key in DEFAULT_SETTINGS) _settings[key] = val;
   }
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(_settings, null, 2), 'utf8');
+  const tmp = SETTINGS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(_settings, null, 2), 'utf8');
+  fs.renameSync(tmp, SETTINGS_PATH);
 }
 
 const DEFAULT_SETTINGS = {
