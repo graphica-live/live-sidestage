@@ -651,6 +651,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <button id="close-rules-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
   </div>
   <div class="modal-body" style="min-width:400px;">
+    <button id="add-rule" class="secondary" style="font-size:12px;align-self:flex-start;">＋ 追加</button>
     <table class="rules-table">
       <thead>
         <tr>
@@ -661,7 +662,6 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
       </thead>
       <tbody id="rules-body"></tbody>
     </table>
-    <button id="add-rule" class="secondary" style="margin-top:8px;font-size:12px;">＋ 追加</button>
   </div>
 </dialog>
 
@@ -919,7 +919,7 @@ document.getElementById('rules-body').addEventListener('click', (e) => {
 
 document.getElementById('add-rule').addEventListener('click', () => {
   const rules = getRules();
-  rules.push({ from: '', to: '' });
+  rules.unshift({ from: '', to: '' });
   renderRules(rules);
 });
 
