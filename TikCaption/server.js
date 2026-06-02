@@ -197,6 +197,16 @@ const TIKTOK_BUILTIN_VOCAB = [
   { from: 'のだぞうり',                 to: '野田草履' },
   { from: 'あしたのゆきのじょう',       to: 'あしたの雪之丞' },
   { from: 'ゆきのじょう',               to: 'ゆきのじょー' },
+  { from: 'ぜろわん',                   to: 'ゼロワン' },
+  { from: 'あたおかかいちょう',         to: 'ATAOKA会長' },
+  { from: 'きんぐろ',                   to: '金グロ' },
+  { from: 'ばらばしゃ',                 to: 'バラ馬車' },
+  { from: 'いきりすと',                 to: 'イキリスト' },
+  { from: 'あがりえ',                   to: 'あがりえ' },
+  { from: 'かりーの',                   to: 'CARiNO' },
+  { from: 'もぶまーと',                 to: 'MOBmart' },
+  { from: 'とこなつまなつ',             to: '常夏真夏' },
+  { from: 'とこなつ',                   to: '常夏' },
 ];
 
 const GOOGLE_LANG_MAP = {
