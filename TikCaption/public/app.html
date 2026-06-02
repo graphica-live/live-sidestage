@@ -1473,6 +1473,7 @@ window.addEventListener('beforeunload', () => {
 // ── TTS Tab ───────────────────────────────────────────────────────────────────
 (function () {
   let ttsS = {};        // TTS-related settings cache
+  const ttsUserVoiceCache = new Map(); // uniqueId → voiceId (session-only)
   let voiceList = [];   // [{id, name, styles:[{id,name}]}]
   let audioCtx = null;
   let audioQueue = [];
@@ -1576,14 +1577,11 @@ window.addEventListener('beforeunload', () => {
       if (m && m.voiceId) return Number(m.voiceId);
     }
     if (ttsS.ttsRandomVoice && voiceList.length > 0) {
+      const key = uniqueId || '';
+      if (ttsUserVoiceCache.has(key)) return ttsUserVoiceCache.get(key);
       const allIds = voiceList.flatMap(sp => sp.styles.map(s => s.id));
-      const history = ttsS.ttsRandomVoiceHistory || [];
-      const unused = allIds.filter(id => !history.includes(id));
-      const pool = unused.length > 0 ? unused : allIds;
-      const chosen = pool[Math.floor(Math.random() * pool.length)];
-      const newHistory = history.length >= allIds.length - 1 ? [] : [...history, chosen];
-      ttsS.ttsRandomVoiceHistory = newHistory;
-      window.api.saveSettings({ ttsRandomVoiceHistory: newHistory }).catch(() => {});
+      const chosen = allIds[Math.floor(Math.random() * allIds.length)];
+      ttsUserVoiceCache.set(key, chosen);
       return chosen;
     }
     return Number(ttsS.ttsVoiceId) || 1;
@@ -1790,8 +1788,7 @@ window.addEventListener('beforeunload', () => {
 
     // Random voice reset
     document.getElementById('tts-random-reset').addEventListener('click', () => {
-      ttsS.ttsRandomVoiceHistory = [];
-      window.api.saveSettings({ ttsRandomVoiceHistory: [] }).catch(() => {});
+      ttsUserVoiceCache.clear();
     });
 
     // Test button
