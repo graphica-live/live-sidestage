@@ -79,6 +79,16 @@ const GOOGLE_LANG_MAP = {
   ko: 'ko',
   fr: 'fr',
   de: 'de',
+  es: 'es',
+  pt: 'pt',
+  it: 'it',
+  ru: 'ru',
+  ar: 'ar',
+  th: 'th',
+  vi: 'vi',
+  id: 'id',
+  nl: 'nl',
+  tr: 'tr',
 };
 
 function getIO() {
