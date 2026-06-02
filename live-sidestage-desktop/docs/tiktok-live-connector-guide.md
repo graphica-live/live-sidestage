@@ -347,34 +347,7 @@ async function fetchGiftCatalog(broadcasterId) {
 
 ---
 
-## 8. Electron 環境での署名済み WebSocket
-
-Electron アプリで動かす場合、`TikTokWebClient` を使って署名済み WebSocket URL を取得できる。
-これにより匿名接続が拒否されるケース（`NoWSUpgradeError`）を回避できる可能性がある。
-
-```js
-const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
-
-// IS_ELECTRON = process.versions.electron !== undefined
-const options = {
-    // ... 基本オプション ...
-    signedWebSocketProvider: IS_ELECTRON
-        ? async (params) => {
-            const webClient = new TikTokWebClient({
-                customHeaders: { 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8' },
-                axiosOptions: {},
-                clientParams: { app_language: 'ja' },
-                authenticateWs: false
-            });
-            return webClient.fetchSignedWebSocketFromEuler(params);
-        }
-        : undefined
-};
-```
-
----
-
-## 9. 接続状態の管理
+## 8. 接続状態の管理
 
 状態遷移の設計（参考）:
 
@@ -404,7 +377,7 @@ retrying → (手動停止) → idle
 
 ---
 
-## 10. よくあるエラーと対処
+## 9. よくあるエラーと対処
 
 | エラー | 原因 | 対処 |
 |---|---|---|
@@ -416,7 +389,7 @@ retrying → (手動停止) → idle
 
 ---
 
-## 11. 最小構成サンプル
+## 10. 最小構成サンプル
 
 ```js
 'use strict';
