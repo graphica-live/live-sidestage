@@ -43,7 +43,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://updates.YOUR_DOMAIN.com"
+      "url": "https://update.graphica-produce.com/tikcaption"
     }
   }
 }
