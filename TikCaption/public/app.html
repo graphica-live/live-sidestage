@@ -592,17 +592,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <!-- Section 3: 補正ルール -->
     <section>
       <div class="section-title">補正ルール</div>
-      <table class="rules-table">
-        <thead>
-          <tr>
-            <th>変換前</th>
-            <th>変換後</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="rules-body"></tbody>
-      </table>
-      <button id="add-rule" class="secondary" style="margin-top:8px;font-size:12px;">＋ 追加</button>
+      <button id="open-rules-modal" class="secondary" style="font-size:12px;">補正ルールを編集 (<span id="rules-count">0</span>件)</button>
     </section>
 
     <!-- Section 4: 起動動作 -->
@@ -656,6 +646,27 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
       </div>
     </section>
 
+  </div>
+</dialog>
+
+<!-- ─────────── Correction rules modal ─────────── -->
+<dialog id="rules-modal">
+  <div class="modal-header">
+    <span>補正ルール</span>
+    <button id="close-rules-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:400px;">
+    <table class="rules-table">
+      <thead>
+        <tr>
+          <th>変換前</th>
+          <th>変換後</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rules-body"></tbody>
+    </table>
+    <button id="add-rule" class="secondary" style="margin-top:8px;font-size:12px;">＋ 追加</button>
   </div>
 </dialog>
 
@@ -864,6 +875,11 @@ function updatePreview() {
 }
 
 // ── correction rules ──────────────────────────────
+function updateRulesCount() {
+  const n = document.querySelectorAll('#rules-body tr').length;
+  document.getElementById('rules-count').textContent = n;
+}
+
 function renderRules(rules) {
   const tbody = document.getElementById('rules-body');
   tbody.innerHTML = '';
@@ -876,6 +892,7 @@ function renderRules(rules) {
     `;
     tbody.appendChild(tr);
   });
+  updateRulesCount();
 }
 
 function escHtml(s) {
@@ -971,6 +988,17 @@ document.getElementById('close-modal').addEventListener('click', (e) => {
   document.getElementById('detail-modal').close();
 });
 document.getElementById('detail-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.close();
+});
+
+document.getElementById('open-rules-modal').addEventListener('click', () => {
+  document.getElementById('rules-modal').showModal();
+});
+document.getElementById('close-rules-modal').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('rules-modal').close();
+});
+document.getElementById('rules-modal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) e.currentTarget.close();
 });
 
