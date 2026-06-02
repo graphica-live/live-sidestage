@@ -123,13 +123,13 @@ async function connectTikTokLive(userId) {
   });
 
   ttsConn.on('chat', (data) => {
-    if (mainWin) {
-      mainWin.webContents.send('tts-comment', {
-        uniqueId: data.uniqueId || '',
-        nickname: data.nickname || data.uniqueId || '',
-        comment: data.comment || '',
-      });
-    }
+    const comment = {
+      uniqueId: data.uniqueId || '',
+      nickname: data.nickname || data.uniqueId || '',
+      comment: data.comment || '',
+    };
+    if (mainWin) mainWin.webContents.send('tts-comment', comment);
+    require('./server').getIO().emit('tts:comment', comment);
   });
 
   // Reset room params so each connect gets a fresh room ID
