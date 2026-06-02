@@ -196,7 +196,7 @@ function processQueue() {
   elTranslated.textContent = '';
   elOriginal.style.opacity = '1';
 
-  if (settings.charsPerSec >= 60) {
+  if (!settings.showInterim || settings.charsPerSec >= 60) {
     elOriginal.textContent = seg;
     startFadeTimer();
     processTimer = setTimeout(processQueue, settings.segmentDuration * 1000);
