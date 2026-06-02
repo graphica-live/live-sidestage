@@ -370,7 +370,41 @@ async function fetchGiftCatalog(broadcasterId) {
 
 ---
 
-## 8. 接続状態の管理
+## 8. NoWSUpgradeError 対策 — Euler 署名
+
+`NoWSUpgradeError: Unexpected server response: 200` が出る場合、TikTok がその配信で匿名 WebSocket upgrade を拒否している。
+`signedWebSocketProvider` + `TikTokWebClient.fetchSignedWebSocketFromEuler` で署名済み URL を使うと解決する。
+
+**Euler 署名 ≠ アカウント認証:**
+- `sessionId` をオプションに渡す → ユーザーアカウントで認証 → **アカウントリスクあり（使わない）**
+- `fetchSignedWebSocketFromEuler` → Euler サービスが WS URL を署名するだけ → sessionId 不使用 → **アカウントリスクなし**
+
+Electron 限定ではなく、通常の Node.js アプリでも使える。
+
+```js
+const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
+
+const connection = new WebcastPushConnection('@username', {
+    // ... 基本オプション ...
+    sessionId: undefined,       // 引き続き sessionId は渡さない
+    authenticateWs: false,
+    signedWebSocketProvider: async (params) => {
+        const webClient = new TikTokWebClient({
+            customHeaders: { 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8' },
+            axiosOptions: {},
+            clientParams: { app_language: 'ja', device_platform: 'web' },
+            authenticateWs: false   // ここも false — sessionId は使わない
+        });
+        return webClient.fetchSignedWebSocketFromEuler(params);
+    }
+});
+```
+
+`signedWebSocketProvider` が設定されている場合、ライブラリは WebSocket 接続前にこの関数を呼び出して署名済み URL を取得する。`sessionId` は依然として渡さないため匿名接続のまま。
+
+---
+
+## 9. 接続状態の管理
 
 状態遷移の設計（参考）:
 
@@ -400,19 +434,19 @@ retrying → (手動停止) → idle
 
 ---
 
-## 9. よくあるエラーと対処
+## 10. よくあるエラーと対処
 
 | エラー | 原因 | 対処 |
 |---|---|---|
 | `UserOfflineError` / `isn't online` | 配信していない | `OFFLINE_RECONNECT_DELAY_MS` 待って再試行 |
 | `already connected!` | 二重接続 | スキップして既存接続を継続使用 |
 | `Failed to retrieve Room ID from main page` | TikTok ページスクレイピング失敗 | 短い遅延（3秒）で再試行 |
-| `NoWSUpgradeError` | 匿名 WebSocket が拒否された | Electron なら `signedWebSocketProvider` を使う。それ以外は時間をおいて再試行 |
+| `NoWSUpgradeError` | 匿名 WebSocket が拒否された | `signedWebSocketProvider` + `fetchSignedWebSocketFromEuler` を使う（セクション8参照） |
 | `SIGI_STATE` / `blocked by TikTok` | ページブロック | `isRecoverableRoomInfoError` で検出して再試行 |
 
 ---
 
-## 10. 最小構成サンプル
+## 11. 最小構成サンプル
 
 ```js
 'use strict';
