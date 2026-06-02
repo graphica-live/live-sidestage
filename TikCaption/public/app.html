@@ -1057,6 +1057,7 @@ init();
   const LANG_NAMES = { en:'英語', zh:'中国語', ko:'韓国語', fr:'フランス語', de:'ドイツ語' };
 
   let silenceTimer = null;
+  let monShowInterim = false;
 
   function setText(el, text, isMuted) {
     el.textContent = text;
@@ -1081,6 +1082,7 @@ init();
     if (show && s.targetLang) {
       elLangLabel.textContent = LANG_NAMES[s.targetLang] || s.targetLang;
     }
+    if ('showInterim' in s) monShowInterim = s.showInterim;
   }
 
   // hook into existing ASR status to show stopped state
@@ -1113,9 +1115,11 @@ init();
 
       sock.on('caption:updated', ({ original, isFinal, settings: s }) => {
         if (s) applyMonitorSettings(s);
-        if (original) setText(elOrig, original, false);
-        const dur = ((s && s.segmentDuration) || 6) * 1000 + 1500;
-        scheduleReset(dur);
+        if (original && (isFinal || monShowInterim)) setText(elOrig, original, false);
+        if (isFinal || monShowInterim) {
+          const dur = ((s && s.segmentDuration) || 6) * 1000 + 1500;
+          scheduleReset(dur);
+        }
       });
 
       sock.on('caption:translation', ({ translated }) => {
