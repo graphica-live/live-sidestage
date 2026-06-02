@@ -238,8 +238,7 @@ socket.on('connect', () => {
     .catch(() => {});
 });
 
-socket.on('caption:updated', ({ original, translated, isFinal, settings: s }) => {
-  if (s) applySettings(s);
+socket.on('caption:updated', ({ original, translated, isFinal }) => {
   showText(original, translated, isFinal);
 });
 

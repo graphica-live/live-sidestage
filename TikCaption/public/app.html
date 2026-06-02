@@ -1119,6 +1119,7 @@ init();
 
   let silenceTimer = null;
   let monShowInterim = false;
+  let monSegmentDuration = 6;
 
   function setText(el, text, isMuted) {
     el.textContent = text;
@@ -1144,6 +1145,7 @@ init();
       elLangLabel.textContent = LANG_NAMES[s.targetLang] || s.targetLang;
     }
     if ('showInterim' in s) monShowInterim = s.showInterim;
+    if (s.segmentDuration) monSegmentDuration = s.segmentDuration;
   }
 
   // hook into existing ASR status to show stopped state
@@ -1175,12 +1177,10 @@ init();
     script.onload = () => {
       const sock = io('http://localhost:38200');  // eslint-disable-line no-undef
 
-      sock.on('caption:updated', ({ original, isFinal, settings: s }) => {
-        if (s) applyMonitorSettings(s);
+      sock.on('caption:updated', ({ original, isFinal }) => {
         if (original && (isFinal || monShowInterim)) setText(elOrig, original, false);
         if (isFinal || monShowInterim) {
-          const dur = ((s && s.segmentDuration) || 6) * 1000 + 1500;
-          scheduleReset(dur);
+          scheduleReset(monSegmentDuration * 1000 + 1500);
         }
       });
 
