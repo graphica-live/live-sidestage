@@ -13,6 +13,10 @@ const LOADER_PORT = 38201;
 
 const isLoaderOnly = process.argv.includes('--loader-only');
 
+// Ctrl+C in terminal → graceful shutdown (triggers before-quit + renderer beforeunload)
+process.on('SIGINT', () => app.quit());
+process.on('SIGTERM', () => app.quit());
+
 let mainWin = null;
 let overlayWin = null;
 let tray = null;
@@ -366,6 +370,11 @@ function registerIPC() {
   const serverModule = require('./server');
 
   ipcMain.handle('get-settings', () => serverModule.loadSettings());
+
+  ipcMain.on('save-settings-sync', (e, data) => {
+    serverModule.saveSettings(data);
+    e.returnValue = null;
+  });
 
   ipcMain.handle('save-settings', (e, data) => {
     const prev = serverModule.loadSettings();

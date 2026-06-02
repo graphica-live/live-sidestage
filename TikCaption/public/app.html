@@ -649,6 +649,7 @@ let analyser = null;
 let animFrame = null;
 let mediaStream = null;
 let debounceTimers = {};
+let pendingData = {};
 
 function debounce(key, fn, ms = 300) {
   if (debounceTimers[key]) clearTimeout(debounceTimers[key]);
@@ -727,7 +728,9 @@ function updateMarker(val) {
 
 // ── save helper ───────────────────────────────────
 function save(data) {
-  window.api.saveSettings(data).catch(() => {});
+  window.api.saveSettings(data).then(() => {
+    for (const k of Object.keys(data)) delete pendingData[k];
+  }).catch(() => {});
 }
 
 // ── apply settings to UI ──────────────────────────
@@ -835,6 +838,7 @@ function getRules() {
 }
 
 document.getElementById('rules-body').addEventListener('input', () => {
+  pendingData.correctionRules = getRules();
   debounce('rules', () => save({ correctionRules: getRules() }));
 });
 
@@ -864,6 +868,7 @@ document.getElementById('add-rule').addEventListener('click', () => {
     settings.noiseGateThreshold = val;
     document.getElementById('threshold-val').textContent = '閾値: ' + val.toFixed(3);
     updateMarker(val);
+    pendingData.noiseGateThreshold = val;
     debounce('threshold', () => save({ noiseGateThreshold: val }));
   }
 
@@ -935,6 +940,7 @@ document.getElementById('detail-modal').addEventListener('click', (e) => {
     const val = parseFloat(e.target.value);
     document.getElementById(vid).textContent = val.toFixed(dec) + suffix;
     if (['fontSize','strokeWidth','fontFamily','textStyleKey'].includes(key)) updatePreview();
+    pendingData[key] = val;
     debounce(key, () => save({ [key]: val }));
   });
 });
@@ -951,11 +957,13 @@ document.querySelectorAll('input[name=bg-style]').forEach(r => {
 
 fontSel.addEventListener('change', (e) => {
   updatePreview();
+  pendingData.fontFamily = e.target.value;
   debounce('fontFamily', () => save({ fontFamily: e.target.value }));
 });
 
 themeSel.addEventListener('change', (e) => {
   updatePreview();
+  pendingData.textStyleKey = e.target.value;
   debounce('textStyleKey', () => save({ textStyleKey: e.target.value }));
 });
 
@@ -1133,6 +1141,15 @@ init();
 
   connectMonitor();
 }());
+
+window.addEventListener('beforeunload', () => {
+  for (const t of Object.values(debounceTimers)) clearTimeout(t);
+  debounceTimers = {};
+  if (Object.keys(pendingData).length > 0) {
+    window.api.saveSettingsSync(pendingData);
+    pendingData = {};
+  }
+});
 </script>
 </body>
 </html>
