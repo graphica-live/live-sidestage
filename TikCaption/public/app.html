@@ -367,10 +367,13 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 }
 .cap-lang {
   width: 52px;
+  max-width: 52px;
   font-size: 11px;
   color: var(--muted);
   background: var(--panel);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cap-text {
   font-size: 13px;
@@ -571,7 +574,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         <td class="tts-label">オーバーレイURL</td>
         <td>
           <div class="row">
-            <span class="url-text">http://localhost:38201/overlay.html</span>
+            <span class="url-text">http://localhost:38201/tts-overlay.html</span>
             <button id="tts-copy-url" class="secondary">コピー</button>
           </div>
         </td>
@@ -1760,7 +1763,7 @@ window.addEventListener('beforeunload', () => {
 
     // Copy URL
     document.getElementById('tts-copy-url').addEventListener('click', async () => {
-      await navigator.clipboard.writeText('http://localhost:38201/overlay.html');
+      await navigator.clipboard.writeText('http://localhost:38201/tts-overlay.html');
       const btn = document.getElementById('tts-copy-url');
       btn.textContent = 'コピーしました ✓';
       setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
