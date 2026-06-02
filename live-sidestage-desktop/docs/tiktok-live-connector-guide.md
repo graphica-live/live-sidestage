@@ -525,3 +525,62 @@ async function start(username = '@your_username') {
 
 start('@your_username');
 ```
+
+---
+
+## 12. device_id の永続化
+
+`device_id` を毎回ランダム生成すると TikTok に「新規デバイス」として認識され続け、bot 検知リスクが上がる。
+アプリ初回起動時に生成してファイルに保存し、以降は再利用する。
+
+```js
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const DEVICE_ID_PATH = path.join(process.env.APPDATA || process.env.HOME, '.myapp', 'device.env');
+
+function loadOrCreateDeviceId() {
+    try {
+        const content = fs.readFileSync(DEVICE_ID_PATH, 'utf8');
+        const match = content.match(/TIKTOK_DEVICE_ID=(\d{19})/);
+        if (match) return match[1];
+    } catch {}
+
+    // 19桁の数字を生成（TikTok の device_id フォーマット）
+    const id = Array.from({ length: 19 }, () => Math.floor(Math.random() * 10)).join('');
+    try {
+        fs.mkdirSync(path.dirname(DEVICE_ID_PATH), { recursive: true });
+        fs.writeFileSync(DEVICE_ID_PATH, `TIKTOK_DEVICE_ID=${id}\n`, 'utf8');
+    } catch {}
+    return id;
+}
+
+const DEVICE_ID = loadOrCreateDeviceId();
+
+// 接続オプションに渡す
+const options = {
+    // ...
+    webClientParams: { app_language: 'ja', device_platform: 'web', device_id: DEVICE_ID },
+    wsClientParams:  { app_language: 'ja', device_platform: 'web', device_id: DEVICE_ID },
+};
+```
+
+**やってはいけないこと:**
+- 毎回 `crypto.randomBytes` や `Math.random()` で新しい device_id を生成する → デバイス識別が崩れる
+- room_id をファイルに保存して再利用する → 配信開始時に TikTok は新しい room_id を割り当てるため古い値で接続失敗する
+- WebSocket セッション自体を保存・復元しようとする → TikTok の WS は stateful なセッションではなくリアルタイムストリーム。再接続は常にフルコネクト
+
+---
+
+## 13. やってはいけないこと（アカウントリスク・接続安定性）
+
+| やってはいけないこと | 理由 |
+|---|---|
+| `sessionId` を接続オプションに渡す | ユーザーアカウントで認証 → TikTok のリスクスコア上昇 → 「異常な取引が検出されました」等のエラー |
+| `authenticateWs: true` にする | 同上 |
+| ギフトカタログ取得用の別接続にメイン接続の `sessionId` を流用する | 同一アカウントで2本の認証セッション → リスクスコア上昇 |
+| `connect()` 中に `disconnected`/`error`/`streamEnd` で再接続する | `connectPromise` ガードなしだと再接続ループ（10秒おきに切断・再試行）になる |
+| room_id をキャッシュして再利用する | 配信開始時に新 room_id が割り当てられるため古い room_id で接続不可 → 毎回クリアする |
+| `NoWSUpgradeError` を無視して止まる | 一時的な TikTok 側の拒否の場合があるため再接続が必要 |
+| `enableRequestPolling: true` + `disableEulerFallbacks: false` を同時に使う | Euler 経由のポーリングフォールバックが発動し、意図しない認証フローになる可能性がある |
