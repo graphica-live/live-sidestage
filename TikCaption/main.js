@@ -56,6 +56,10 @@ function isRecoverableRoomInfoError(error) {
   return /Failed to retrieve Room ID from main page|SIGI_STATE|falling back to API source|blocked by TikTok/i.test(text);
 }
 
+function isNoWSUpgradeError(error) {
+  return error?.name === 'NoWSUpgradeError';
+}
+
 function scheduleTtsReconnect(reason) {
   if (ttsStopped || ttsReconnectTimer) return;
   const delay = reason === 'user_offline' ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
@@ -160,6 +164,8 @@ async function connectTikTokLive(userId) {
       scheduleTtsReconnect('user_offline');
     } else if (isRecoverableRoomInfoError(err)) {
       scheduleTtsReconnect('room_info_error');
+    } else if (isNoWSUpgradeError(err)) {
+      scheduleTtsReconnect('ws_upgrade_unavailable');
     } else {
       emitTtsStatus({ status: 'error', message: `接続失敗: ${err?.message || err}` });
     }
