@@ -61,21 +61,31 @@ const connection = new WebcastPushConnection('@username', {
 
 ### 2-2. イベントリスナー登録（接続前に設定する）
 
+**重要:** `disconnected` / `streamEnd` / `error` は `connect()` 実行中にも発火する。
+`connect()` 中のエラーは catch ブロックで処理するため、`connectPromise` が存在する間はイベントを無視する。
+このガードがないと「接続失敗 → disconnected 発火 → 10秒後再接続 → ループ」になる。
+
 ```js
-// 切断
+// connect() 実行中かどうかを追跡するフラグ
+let connectPromise = null;
+
+// 切断（connect() 完了後のランタイム切断のみ処理）
 connection.on('disconnected', () => {
-    scheduleReconnect();
+    if (connectPromise) return; // connect() 中は catch が処理する
+    scheduleReconnect('disconnected');
 });
 
-// 配信終了
+// 配信終了（同上）
 connection.on('streamEnd', () => {
-    scheduleReconnect();
+    if (connectPromise) return;
+    scheduleReconnect('stream_end');
 });
 
-// ランタイムエラー（接続後に発生した WebSocket 切断など）
+// ランタイムエラー（connect() 完了後に発生した WebSocket 切断など）
 connection.on('error', (err) => {
+    if (connectPromise) return; // connect() 中は catch が処理する
     if (isUserOfflineError(err)) {
-        scheduleReconnect('user_offline'); // 配信開始待ち
+        scheduleReconnect('user_offline');
         return;
     }
     scheduleReconnect('error', err?.message);
@@ -133,6 +143,8 @@ connection.on('roomUser', (data) => {
 
 ```js
 async function connectToTikTok() {
+    if (connectPromise) return connectPromise; // 二重接続防止
+
     // ルームIDをリセット（配信開始時に新IDが割り当てられるため毎回クリア）
     if (connection.clientParams) {
         connection.clientParams.room_id = '';
@@ -140,16 +152,27 @@ async function connectToTikTok() {
         connection.clientParams.internal_ext = '';
     }
 
-    try {
-        await connection.connect();
-        console.log('接続成功');
-    } catch (err) {
-        if (isUserOfflineError(err)) {
-            scheduleReconnect('user_offline');
-            return;
+    connectPromise = (async () => {
+        try {
+            await connection.connect();
+            console.log('接続成功');
+        } catch (err) {
+            // connect() 中のエラーはすべてここで処理
+            // （disconnected/error/streamEnd イベントは connectPromise ガードでスキップ済み）
+            if (isUserOfflineError(err)) {
+                scheduleReconnect('user_offline');
+                return;
+            }
+            if (isAlreadyConnectedError(err)) {
+                return; // 既存接続を継続
+            }
+            scheduleReconnect('connect_failed', err?.message);
+        } finally {
+            connectPromise = null;
         }
-        throw err;
-    }
+    })();
+
+    return connectPromise;
 }
 ```
 
@@ -400,6 +423,7 @@ const RECONNECT_DELAY_MS = 10000;
 
 let connection = null;
 let reconnectTimer = null;
+let connectPromise = null; // connect() 実行中フラグ
 
 function isUserOfflineError(error) {
     const text = [error?.message, error?.exception?.message, error?.cause?.message]
@@ -417,6 +441,7 @@ async function start(username = '@your_username') {
     if (connection) {
         connection.removeAllListeners?.();
         await connection.disconnect?.().catch(() => {});
+        connectPromise = null;
     }
 
     connection = new WebcastPushConnection(username, {
@@ -430,38 +455,38 @@ async function start(username = '@your_username') {
         authenticateWs: false
     });
 
-    connection.on('disconnected', () => scheduleReconnect('disconnected'));
-    connection.on('streamEnd', () => scheduleReconnect('stream_end'));
-    connection.on('error', (err) => scheduleReconnect(isUserOfflineError(err) ? 'user_offline' : 'error'));
+    // connect() 中は connectPromise が存在するためガードで弾く。
+    // catch ブロックがすべてのエラーを処理する。
+    connection.on('disconnected', () => { if (connectPromise) return; scheduleReconnect('disconnected'); });
+    connection.on('streamEnd',    () => { if (connectPromise) return; scheduleReconnect('stream_end'); });
+    connection.on('error',        (err) => { if (connectPromise) return; scheduleReconnect(isUserOfflineError(err) ? 'user_offline' : 'error'); });
 
     connection.on('gift', (data) => {
         if (data.giftType === 1 && !data.repeatEnd) return; // コンボ途中はスキップ
         console.log(`ギフト: ${data.giftName} × ${data.repeatCount} from ${data.nickname}`);
     });
 
-    connection.on('chat', (data) => {
-        console.log(`コメント: ${data.nickname}: ${data.comment}`);
-    });
-
-    connection.on('like', (data) => {
-        console.log(`いいね: ${data.likeCount} from ${data.nickname}`);
-    });
-
-    connection.on('member', (data) => {
-        console.log(`入室: ${data.nickname}`);
-    });
+    connection.on('chat',   (data) => { console.log(`コメント: ${data.nickname}: ${data.comment}`); });
+    connection.on('like',   (data) => { console.log(`いいね: ${data.likeCount} from ${data.nickname}`); });
+    connection.on('member', (data) => { console.log(`入室: ${data.nickname}`); });
 
     if (connection.clientParams) {
         connection.clientParams.room_id = '';
         connection.clientParams.cursor = '';
     }
 
-    try {
-        await connection.connect();
-        console.log(`接続成功: ${username}`);
-    } catch (err) {
-        scheduleReconnect(isUserOfflineError(err) ? 'user_offline' : 'connect_failed');
-    }
+    connectPromise = (async () => {
+        try {
+            await connection.connect();
+            console.log(`接続成功: ${username}`);
+        } catch (err) {
+            scheduleReconnect(isUserOfflineError(err) ? 'user_offline' : 'connect_failed');
+        } finally {
+            connectPromise = null;
+        }
+    })();
+
+    return connectPromise;
 }
 
 start('@your_username');
