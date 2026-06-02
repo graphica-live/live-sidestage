@@ -146,16 +146,17 @@ def main():
             speech_buffer = []
             is_speech = False
             silence_frames = 0
-        threading.Thread(target=send_transcription, args=(audio_np,), daemon=True).start()
+        threading.Thread(target=send_transcription, args=(audio_np, keep_speech), daemon=True).start()
 
-    def send_transcription(audio_np):
+    def send_transcription(audio_np, is_interim=False):
         try:
             text = transcribe(asr_model, audio_np)
             if text:
-                log({'type': 'transcript', 'text': text, 'isFinal': True})
+                is_final = not is_interim
+                log({'type': 'transcript', 'text': text, 'isFinal': is_final})
                 requests.post(
                     f'http://127.0.0.1:{args.port}/api/caption/asr-text',
-                    json={'text': text, 'isFinal': True, 'srcLang': 'ja'},
+                    json={'text': text, 'isFinal': is_final, 'srcLang': 'ja'},
                     timeout=5,
                 )
         except Exception as e:
