@@ -28,6 +28,32 @@ body {
   user-select: none;
 }
 
+/* ── Tabs ────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  padding: 0 8px;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 14px 6px;
+  cursor: pointer;
+  border-radius: 0;
+  filter: none;
+}
+.tab-btn:hover { color: var(--text); filter: none; }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
 .container {
   padding: 16px;
   display: flex;
@@ -356,6 +382,14 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 </style>
 </head>
 <body>
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="caption">字幕</button>
+  <button class="tab-btn" data-tab="tts">読み上げ</button>
+</div>
+
+<!-- Tab: 字幕 -->
+<div class="tab-panel active" id="tab-caption">
 <div class="container">
 
   <!-- Device select -->
@@ -436,6 +470,16 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         <td id="mon-translated" class="cap-text muted">(翻訳待ち...)</td>
       </tr>
     </table>
+  </div>
+</div>
+</div><!-- /tab-caption -->
+
+<!-- Tab: 読み上げ -->
+<div class="tab-panel" id="tab-tts">
+  <div class="container">
+    <div style="color:var(--muted);font-size:13px;text-align:center;padding:40px 0;">
+      読み上げ機能（準備中）
+    </div>
   </div>
 </div>
 
@@ -1141,6 +1185,16 @@ init();
 
   connectMonitor();
 }());
+
+// ── Tab switching ─────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
 
 window.addEventListener('beforeunload', () => {
   for (const t of Object.values(debounceTimers)) clearTimeout(t);
