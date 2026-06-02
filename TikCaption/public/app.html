@@ -982,19 +982,12 @@ document.getElementById('close-modal').addEventListener('click', (e) => {
   e.stopPropagation();
   document.getElementById('detail-modal').close();
 });
-document.getElementById('detail-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) e.currentTarget.close();
-});
-
 document.getElementById('open-rules-modal').addEventListener('click', () => {
   document.getElementById('rules-modal').showModal();
 });
 document.getElementById('close-rules-modal').addEventListener('click', (e) => {
   e.stopPropagation();
   document.getElementById('rules-modal').close();
-});
-document.getElementById('rules-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) e.currentTarget.close();
 });
 
 // modal sliders
