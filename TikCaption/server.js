@@ -334,6 +334,9 @@ app.patch('/api/caption/config', (req, res) => {
 
 io.on('connection', (socket) => {
   socket.emit('caption:config', loadSettings());
+  socket.on('tts:playing', (data) => {
+    socket.broadcast.emit('tts:playing', data);
+  });
 });
 
 function startServer(port) {
