@@ -1478,6 +1478,21 @@ window.addEventListener('beforeunload', () => {
   let audioCtx = null;
   let audioQueue = [];
   let isPlaying = false;
+  let overlaySock = null;
+  function initOverlaySock() {
+    if (typeof io === 'undefined') { setTimeout(initOverlaySock, 1000); return; }
+    try { overlaySock = io('http://localhost:38200'); } catch(_) {}
+  }
+  initOverlaySock();
+
+  function getVoiceName(speakerId) {
+    for (const sp of voiceList) {
+      for (const st of sp.styles) {
+        if (st.id === speakerId) return sp.name;
+      }
+    }
+    return '';
+  }
 
   // ── Voice select population ────────────────────────────────────────────────
   async function loadVoices() {
@@ -1619,6 +1634,8 @@ window.addEventListener('beforeunload', () => {
       if (text && shouldRead(item.comment)) {
         addLogEntry(item.nickname || item.uniqueId, item.comment);
         const spId = getEffectiveSpeakerId(item.uniqueId);
+        const vName = getVoiceName(spId);
+        if (vName) overlaySock?.emit('tts:playing', { voiceName: vName });
         await synthesizeAndPlay(text, spId);
       }
     } catch (e) {

@@ -56,10 +56,27 @@ html, body {
   word-break: break-all;
   line-height: 1.4;
 }
+
+#voicevox-credit {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  background: rgba(0,0,0,0.45);
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  transition: opacity 0.5s;
+  opacity: 0;
+}
+#voicevox-credit.show { opacity: 1; }
 </style>
 </head>
 <body>
 <div id="feed"></div>
+<div id="voicevox-credit"></div>
 <script src="http://localhost:38200/socket.io/socket.io.js"></script>
 <script>
 const feed = document.getElementById('feed');
@@ -95,6 +112,15 @@ function addComment(nickname, comment) {
 const socket = io('http://localhost:38200');
 socket.on('tts:comment', ({ nickname, uniqueId, comment }) => {
   addComment(nickname || uniqueId || '?', comment || '');
+});
+
+const credit = document.getElementById('voicevox-credit');
+let creditTimer = null;
+socket.on('tts:playing', ({ voiceName }) => {
+  credit.textContent = `VOICEVOX:${voiceName}`;
+  credit.classList.add('show');
+  clearTimeout(creditTimer);
+  creditTimer = setTimeout(() => credit.classList.remove('show'), 4000);
 });
 </script>
 </body>
