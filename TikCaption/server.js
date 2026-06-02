@@ -37,8 +37,6 @@ function saveSettings(data) {
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(_settings, null, 2), 'utf8');
 }
 
-let translatePipelines = {};
-
 const DEFAULT_SETTINGS = {
   deviceId: '',
   noiseGateThreshold: 0.2,
@@ -62,15 +60,6 @@ const DEFAULT_SETTINGS = {
   correctionRules: [],
   autoStartCaption: true,
   launchOnBoot: false,
-  translationProvider: 'google',
-};
-
-const TRANSLATION_MODELS = {
-  en: 'Xenova/opus-mt-ja-en',
-  zh: 'Xenova/opus-mt-ja-zh',
-  ko: 'Xenova/opus-mt-ja-ko',
-  fr: 'Xenova/opus-mt-ja-fr',
-  de: 'Xenova/opus-mt-ja-de',
 };
 
 const GOOGLE_LANG_MAP = {
@@ -130,20 +119,6 @@ async function translateWithGoogle(text, srcLang, targetLang) {
   return data[0]?.map(chunk => chunk[0]).filter(Boolean).join('') || null;
 }
 
-async function translateWithXenova(text, targetLang) {
-  const modelId = TRANSLATION_MODELS[targetLang];
-  if (!modelId) return null;
-
-  if (!translatePipelines[targetLang]) {
-    const { pipeline } = await import('@xenova/transformers');
-    translatePipelines[targetLang] = await pipeline('translation', modelId);
-  }
-
-  const pipe = translatePipelines[targetLang];
-  const result = await pipe(text, { max_new_tokens: 256 });
-  return result[0]?.translation_text || null;
-}
-
 async function handleCaptionText(text, isFinal, srcLang) {
   const settings = loadSettings();
   const corrector = new CaptionCorrector(settings.correctionRules);
@@ -158,10 +133,7 @@ async function handleCaptionText(text, isFinal, srcLang) {
 
   if (settings.translationEnabled && isFinal && corrected.trim()) {
     try {
-      const provider = settings.translationProvider || 'google';
-      const translated = provider === 'xenova'
-        ? await translateWithXenova(corrected, settings.targetLang)
-        : await translateWithGoogle(corrected, srcLang || 'ja', settings.targetLang);
+      const translated = await translateWithGoogle(corrected, srcLang || 'ja', settings.targetLang);
       if (translated) {
         io.emit('caption:translation', { translated });
       }
