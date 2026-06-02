@@ -450,7 +450,11 @@ app.whenReady().then(async () => {
 
   if (isLoaderOnly) return;
 
-  const { startServer, loadSettings } = require('./server');
+  const { startServer, loadSettings, saveSettings } = require('./server');
+
+  const SETTINGS_PATH = path.join(os.homedir(), '.tikcaption-settings.json');
+  const isFirstRun = !fs.existsSync(SETTINGS_PATH);
+
   await startServer(CAPTION_PORT);
 
   createMainWindow();
@@ -458,7 +462,12 @@ app.whenReady().then(async () => {
   registerIPC();
 
   const s = loadSettings();
-  updateLoginItem(s.launchOnBoot);
+  if (isFirstRun) {
+    saveSettings({ launchOnBoot: true });
+    updateLoginItem(true);
+  } else {
+    updateLoginItem(s.launchOnBoot);
+  }
 });
 
 app.on('before-quit', () => {
