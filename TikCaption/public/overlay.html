@@ -241,20 +241,18 @@ function processQueue() {
 }
 
 function showText(original, translated, isFinal) {
-  if (!isFinal) {
-    if (!settings.showInterim) return;
-    clearFade();
+  clearFade();
+  captionQueue = [];
+  isTyping = false;
+
+  if (!isFinal && settings.showInterim) {
+    // streaming partial: show dimmed, don't queue
     if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
     elOriginal.style.opacity = '0.5';
     elOriginal.textContent = original;
     if (settings.translationEnabled) elTranslated.style.opacity = '1';
     return;
   }
-
-  // final — queue segments
-  clearFade();
-  captionQueue = [];
-  isTyping = false;
 
   const segs = splitText(original);
   captionQueue.push(...segs);
