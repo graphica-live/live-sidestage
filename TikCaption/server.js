@@ -24,14 +24,19 @@ function loadSettings() {
     const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
     _settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     if (!Array.isArray(_settings.correctionRules)) _settings.correctionRules = [];
-  } catch (_) {
-    _settings = { ...DEFAULT_SETTINGS };
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      _settings = { ...DEFAULT_SETTINGS };
+    }
+    // EBUSY/EPERM/parse error: _settings stays null, return temp defaults without caching
+    // Prevents overwriting saved settings with defaults on next saveSettings() call
   }
-  return { ..._settings };
+  return _settings ? { ..._settings } : { ...DEFAULT_SETTINGS };
 }
 
 function saveSettings(data) {
   if (!_settings) loadSettings();
+  if (!_settings) return; // file temporarily unavailable — skip to avoid overwriting with defaults
   for (const [key, val] of Object.entries(data)) {
     if (key in DEFAULT_SETTINGS) _settings[key] = val;
   }
