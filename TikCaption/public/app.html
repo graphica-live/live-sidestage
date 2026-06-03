@@ -1520,6 +1520,8 @@ window.addEventListener('beforeunload', () => {
         }
       }
       if (ttsS.ttsVoiceId) sel.value = ttsS.ttsVoiceId;
+      // Re-render mapping table so voice selects get correct options
+      if (ttsS.ttsVoiceMapping) renderTtsMapping(ttsS.ttsVoiceMapping);
     } catch (_) {
       sel.innerHTML = '<option value="">VOICEVOXが起動していません</option>';
     }
@@ -1908,6 +1910,9 @@ window.addEventListener('beforeunload', () => {
     ];
     for (const [btnId, key, rerender] of addMap) {
       document.getElementById(btnId).addEventListener('click', () => {
+        // Sync from DOM first to capture any unsaved edits (debounce may be pending)
+        const cur = getTtsTableData(key);
+        if (cur.length > 0) ttsS[key] = cur;
         const defaultRow = { ttsFilterRules: { pattern:'', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
