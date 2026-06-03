@@ -1640,15 +1640,25 @@ window.addEventListener('beforeunload', () => {
     return Number(ttsS.ttsVoiceId) || 1;
   }
 
-  function synthesizeAndPlay(text, speakerId) {
+  function synthesizeAndPlay(text, speakerId, key) {
     const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const onDone = () => { overlaySock?.off('tts:done', onDone); resolve(); };
       overlaySock?.once('tts:done', onDone);
-      overlaySock?.emit('tts:speak', { text, speakerId, volume: vol });
+      overlaySock?.emit('tts:speak', { text, speakerId, volume: vol, key });
       // fallback: resolve after 10s if overlay never responds
       setTimeout(() => { overlaySock?.off('tts:done', onDone); resolve(); }, 10000);
     });
+  }
+
+  function prefetchNext() {
+    const next = audioQueue[0];
+    if (!next || !next._ttsKey) return;
+    const nextText = applyConversions(next.comment);
+    if (!nextText || !shouldRead(next.comment)) return;
+    const nextSpId = getEffectiveSpeakerId(next.uniqueId);
+    const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
+    overlaySock?.emit('tts:prefetch', { key: next._ttsKey, text: nextText, speakerId: nextSpId, volume: vol });
   }
 
   async function processQueue() {
@@ -1662,7 +1672,8 @@ window.addEventListener('beforeunload', () => {
         const spId = getEffectiveSpeakerId(item.uniqueId);
         const vName = getVoiceName(spId);
         if (vName) overlaySock?.emit('tts:playing', { voiceName: vName });
-        await synthesizeAndPlay(text, spId);
+        prefetchNext();
+        await synthesizeAndPlay(text, spId, item._ttsKey);
       }
     } catch (e) {
       console.warn('[TTS]', e.message);
@@ -1672,6 +1683,7 @@ window.addEventListener('beforeunload', () => {
   }
 
   function enqueue(item) {
+    item._ttsKey = Math.random().toString(36).slice(2);
     audioQueue.push(item);
     processQueue();
   }
