@@ -1918,10 +1918,12 @@ window.addEventListener('beforeunload', () => {
     tbody.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn')) {
         const i = parseInt(e.target.dataset.i);
+        const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
         const rows = getTtsTableData(key);
         rows.splice(i, 1);
-        ttsS[key] = rows;
-        window.api.saveSettings({ [key]: rows }).then(() => {
+        const saved = rows.filter(r => (r[primaryField] || '').trim() !== '');
+        ttsS[key] = saved;
+        window.api.saveSettings({ [key]: saved }).then(() => {
           const rerender = { ttsFilterRules: () => renderTtsFilterRules(ttsS.ttsFilterRules), ttsVoiceMapping: () => renderTtsMapping(ttsS.ttsVoiceMapping), ttsConversionRules: () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']), ttsEmojiRules: () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']), ttsEmoteRules: () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']) };
           if (rerender[key]) rerender[key]();
         }).catch(() => {});
