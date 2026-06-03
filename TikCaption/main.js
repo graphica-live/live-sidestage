@@ -155,9 +155,16 @@ async function connectTikTokLive(userId) {
       nickname: data.nickname || data.uniqueId || '',
       comment: data.comment || '',
       profilePictureUrl: data.profilePictureUrl || '',
+      emotes: (data.emotes || []).map(e => ({ emoteId: e.emoteId, emoteImageUrl: e.emoteImageUrl })),
     };
     if (mainWin) mainWin.webContents.send('tts-comment', comment);
     require('./server').getIO().emit('tts:comment', comment);
+  });
+
+  ttsConn.on('emote', (data) => {
+    if (!ttsAcceptingComments) return;
+    const emotes = (data.emotes || []).map(e => ({ emoteId: e.emoteId, emoteImageUrl: e.emoteImageUrl }));
+    if (emotes.length > 0 && mainWin) mainWin.webContents.send('tts-emote', { emotes });
   });
 
   // Reset room params so each connect gets a fresh room ID

@@ -27,4 +27,5 @@ contextBridge.exposeInMainWorld('api', {
   getTtsStatus: () => ipcRenderer.invoke('tts-get-status'),
   onTtsStatus: (cb) => { ipcRenderer.on('tts-status', (_e, data) => cb(data)); },
   onTtsComment: (cb) => { ipcRenderer.on('tts-comment', (_e, data) => cb(data)); },
+  onTtsEmote: (cb) => { ipcRenderer.on('tts-emote', (_e, data) => cb(data)); },
 });

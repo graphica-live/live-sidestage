@@ -880,6 +880,10 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <button id="close-tts-emoji-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
   </div>
   <div class="modal-body" style="min-width:340px;">
+    <div id="tts-emoji-candidates" style="margin-bottom:8px;display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">受信した絵文字（クリックで追加）：</div>
+      <div id="tts-emoji-candidate-list" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
     <button id="add-tts-emoji" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
       <thead><tr><th>絵文字</th><th>読み</th><th></th></tr></thead>
@@ -895,6 +899,10 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <button id="close-tts-emote-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
   </div>
   <div class="modal-body" style="min-width:340px;">
+    <div id="tts-emote-candidates" style="margin-bottom:8px;display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">受信したエモート（クリックで追加）：</div>
+      <div id="tts-emote-candidate-list" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
     <button id="add-tts-emote" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
       <thead><tr><th>エモート名</th><th>読み</th><th></th></tr></thead>
@@ -1483,6 +1491,8 @@ window.addEventListener('beforeunload', () => {
   let ttsS = {};        // TTS-related settings cache
   const ttsUserVoiceCache = new Map(); // uniqueId → voiceId (session-only)
   const viewerCache = new Map(); // uniqueId → { nickname, profilePictureUrl }
+  const seenEmojis = new Set();
+  const seenEmotes = new Map(); // emoteId → emoteImageUrl
   let voiceList = [];   // [{id, name, styles:[{id,name}]}]
   let audioCtx = null;
   let audioQueue = [];
@@ -1723,6 +1733,73 @@ window.addEventListener('beforeunload', () => {
     if (countId) document.getElementById(countId).textContent = (rules || []).length;
   }
 
+  function refreshEmojiCandidates() {
+    const modal = document.getElementById('tts-emoji-modal');
+    if (!modal || !modal.open) return;
+    const configured = new Set((ttsS.ttsEmojiRules || []).map(r => r.emoji).filter(Boolean));
+    const candidates = [...seenEmojis].filter(e => !configured.has(e));
+    const container = document.getElementById('tts-emoji-candidates');
+    const list = document.getElementById('tts-emoji-candidate-list');
+    container.style.display = candidates.length > 0 ? '' : 'none';
+    list.innerHTML = '';
+    for (const emoji of candidates) {
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = emoji;
+      btn.title = emoji;
+      btn.style.cssText = 'font-size:18px;padding:2px 6px;min-width:32px;';
+      btn.addEventListener('click', () => {
+        const cur = getTtsTableData('ttsEmojiRules');
+        if (cur.length > 0) ttsS.ttsEmojiRules = cur;
+        ttsS.ttsEmojiRules = [{ emoji, reading: '' }, ...(ttsS.ttsEmojiRules || [])];
+        renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji', 'reading']);
+        window.api.saveSettings({ ttsEmojiRules: ttsS.ttsEmojiRules }).catch(() => {});
+        const readingInput = document.querySelector('#tts-emoji-body input[data-field="reading"]');
+        if (readingInput) readingInput.focus();
+        refreshEmojiCandidates();
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  function refreshEmoteCandidates() {
+    const modal = document.getElementById('tts-emote-modal');
+    if (!modal || !modal.open) return;
+    const configured = new Set((ttsS.ttsEmoteRules || []).map(r => r.emote).filter(Boolean));
+    const candidates = [...seenEmotes.entries()].filter(([id]) => !configured.has(id));
+    const container = document.getElementById('tts-emote-candidates');
+    const list = document.getElementById('tts-emote-candidate-list');
+    container.style.display = candidates.length > 0 ? '' : 'none';
+    list.innerHTML = '';
+    for (const [emoteId, emoteImageUrl] of candidates) {
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.title = emoteId;
+      btn.style.cssText = 'font-size:11px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;';
+      if (emoteImageUrl) {
+        const img = document.createElement('img');
+        img.src = emoteImageUrl;
+        img.style.cssText = 'width:20px;height:20px;object-fit:contain;vertical-align:middle;';
+        img.onerror = () => { img.style.display = 'none'; };
+        btn.appendChild(img);
+      }
+      const span = document.createElement('span');
+      span.textContent = emoteId;
+      btn.appendChild(span);
+      btn.addEventListener('click', () => {
+        const cur = getTtsTableData('ttsEmoteRules');
+        if (cur.length > 0) ttsS.ttsEmoteRules = cur;
+        ttsS.ttsEmoteRules = [{ emote: emoteId, reading: '' }, ...(ttsS.ttsEmoteRules || [])];
+        renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote', 'reading']);
+        window.api.saveSettings({ ttsEmoteRules: ttsS.ttsEmoteRules }).catch(() => {});
+        const readingInput = document.querySelector('#tts-emote-body input[data-field="reading"]');
+        if (readingInput) readingInput.focus();
+        refreshEmoteCandidates();
+      });
+      list.appendChild(btn);
+    }
+  }
+
   // ── Viewer suggest ─────────────────────────────────────────────────────────
   const suggestEl = document.getElementById('tts-user-suggest');
   let suggestTarget = null;
@@ -1894,6 +1971,8 @@ window.addEventListener('beforeunload', () => {
     for (const [btnId, modalId] of Object.entries(modalMap)) {
       document.getElementById(btnId).addEventListener('click', () => {
         document.getElementById(modalId).showModal();
+        if (modalId === 'tts-emoji-modal') refreshEmojiCandidates();
+        if (modalId === 'tts-emote-modal') refreshEmoteCandidates();
       });
       document.getElementById('close-' + modalId).addEventListener('click', () => {
         document.getElementById(modalId).close();
@@ -1955,7 +2034,26 @@ window.addEventListener('beforeunload', () => {
     if (data.uniqueId) {
       viewerCache.set(data.uniqueId, { nickname: data.nickname || '', profilePictureUrl: data.profilePictureUrl || '' });
     }
+    const emojiRe = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
+    let emojiAdded = false;
+    for (const m of (data.comment || '').matchAll(emojiRe)) {
+      if (!seenEmojis.has(m[0])) { seenEmojis.add(m[0]); emojiAdded = true; }
+    }
+    let emoteAdded = false;
+    for (const e of (data.emotes || [])) {
+      if (e.emoteId && !seenEmotes.has(e.emoteId)) { seenEmotes.set(e.emoteId, e.emoteImageUrl || ''); emoteAdded = true; }
+    }
+    if (emojiAdded) refreshEmojiCandidates();
+    if (emoteAdded) refreshEmoteCandidates();
     enqueue(data);
+  });
+
+  window.api.onTtsEmote((data) => {
+    let added = false;
+    for (const e of (data.emotes || [])) {
+      if (e.emoteId && !seenEmotes.has(e.emoteId)) { seenEmotes.set(e.emoteId, e.emoteImageUrl || ''); added = true; }
+    }
+    if (added) refreshEmoteCandidates();
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────
