@@ -1932,7 +1932,10 @@ window.addEventListener('beforeunload', () => {
 
   function saveTtsTable(key) {
     const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
-    const data = getTtsTableData(key).filter(r => (r[primaryField] || '').trim() !== '');
+    const allFields = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[key];
+    const data = getTtsTableData(key).filter(r =>
+      allFields ? allFields.every(f => (r[f] || '').trim() !== '') : (r[primaryField] || '').trim() !== ''
+    );
     ttsS[key] = data;
     window.api.saveSettings({ [key]: data }).catch(() => {});
   }
@@ -1946,9 +1949,12 @@ window.addEventListener('beforeunload', () => {
       if (e.target.classList.contains('del-btn')) {
         const i = parseInt(e.target.dataset.i);
         const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
+        const allFields = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[key];
         const rows = getTtsTableData(key);
         rows.splice(i, 1);
-        const saved = rows.filter(r => (r[primaryField] || '').trim() !== '');
+        const saved = rows.filter(r =>
+          allFields ? allFields.every(f => (r[f] || '').trim() !== '') : (r[primaryField] || '').trim() !== ''
+        );
         ttsS[key] = saved;
         window.api.saveSettings({ [key]: saved }).then(() => {
           const rerender = { ttsFilterRules: () => renderTtsFilterRules(ttsS.ttsFilterRules), ttsVoiceMapping: () => renderTtsMapping(ttsS.ttsVoiceMapping), ttsConversionRules: () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']), ttsEmojiRules: () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']), ttsEmoteRules: () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']) };
