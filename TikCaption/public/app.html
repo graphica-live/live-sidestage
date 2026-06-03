@@ -1742,11 +1742,24 @@ window.addEventListener('beforeunload', () => {
     const tbody = document.getElementById(tbodyId);
     const tableKey = { 'tts-conv-body': 'ttsConversionRules', 'tts-emoji-body': 'ttsEmojiRules', 'tts-emote-body': 'ttsEmoteRules' }[tbodyId];
     tbody.innerHTML = '';
+    const isEmoji = tbodyId === 'tts-emoji-body';
+    const isEmote = tbodyId === 'tts-emote-body';
     (rules || []).forEach((r, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = fields.map(f =>
-        `<td><input type="text" value="${escHtml(r[f]||'')}" data-i="${i}" data-field="${f}" style="width:120px;font-size:12px;padding:3px 6px;"></td>`
-      ).join('') + `<td><button class="del-btn" data-i="${i}" data-table="${tableKey}">削除</button></td>`;
+      const cells = fields.map((f, fi) => {
+        const w = (fi === 0 && (isEmoji || isEmote)) ? '100px' : '120px';
+        const inp = `<input type="text" value="${escHtml(r[f]||'')}" data-i="${i}" data-field="${f}" style="width:${w};font-size:12px;padding:3px 6px;">`;
+        if (fi === 0 && isEmoji) {
+          return `<td><span style="font-size:22px;vertical-align:middle;margin-right:4px;">${escHtml(r[f]||'')}</span>${inp}</td>`;
+        }
+        if (fi === 0 && isEmote) {
+          const imgUrl = seenEmotes.get(r[f]) || '';
+          const imgHtml = imgUrl ? `<img src="${escHtml(imgUrl)}" style="width:24px;height:24px;object-fit:contain;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">` : '';
+          return `<td style="white-space:nowrap;">${imgHtml}${inp}</td>`;
+        }
+        return `<td>${inp}</td>`;
+      }).join('');
+      tr.innerHTML = cells + `<td><button class="del-btn" data-i="${i}" data-table="${tableKey}">削除</button></td>`;
       tbody.appendChild(tr);
     });
     const countId = { 'tts-conv-body': 'tts-conv-count', 'tts-emoji-body': 'tts-emoji-count', 'tts-emote-body': 'tts-emote-count' }[tbodyId];
