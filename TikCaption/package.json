@@ -6,7 +6,8 @@
     "start": "electron .",
     "test": "jest --forceExit",
     "build:windows": "electron-builder --win --x64",
-    "build:installer": "electron-builder --win --x64"
+    "build:installer": "electron-builder --win --x64",
+    "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1"
   },
   "dependencies": {
     "@xenova/transformers": "^2.17.0",
