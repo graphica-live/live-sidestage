@@ -70,6 +70,7 @@ const DEFAULT_SETTINGS = {
   ttsRandomVoice: false,
   ttsRandomVoiceHistory: [],
   ttsFilterMode: 'skip',
+  ttsFilterReplacement: '',
   ttsFilterRules: [
     // 【アカウントBAN誘発・脅迫・自傷系】
     { pattern: '死ね',       mode: 'skip', replacement: '' },

@@ -835,13 +835,17 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   </div>
   <div class="modal-body" style="min-width:480px;">
     <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">パターンに一致する単語を読み上げないか、別の読みに変換する。</p>
-    <div style="display:flex;gap:16px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
       <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;">
         <input type="radio" name="tts-filter-mode" id="tts-filter-mode-skip" value="skip" style="accent-color:var(--accent);"> 読み上げない
       </label>
       <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;">
         <input type="radio" name="tts-filter-mode" id="tts-filter-mode-replace" value="replace" style="accent-color:var(--accent);"> 別単語に変換
       </label>
+    </div>
+    <div id="tts-filter-replacement-row" style="display:none;align-items:center;gap:8px;margin-bottom:10px;">
+      <label style="font-size:12px;">変換先読み</label>
+      <input type="text" id="tts-filter-replacement" placeholder="例: ピー" style="font-size:12px;padding:3px 8px;width:180px;">
     </div>
     <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
@@ -1602,9 +1606,10 @@ window.addEventListener('beforeunload', () => {
   function applyConversions(text) {
     let t = text;
     if ((ttsS.ttsFilterMode || 'skip') === 'replace') {
+      const repl = ttsS.ttsFilterReplacement || '';
       for (const r of (ttsS.ttsFilterRules || [])) {
-        if (r.enabled && r.pattern && r.replacement) {
-          try { t = t.replace(new RegExp(escapeRe(r.pattern), 'gi'), r.replacement); } catch(_) {}
+        if (r.enabled && r.pattern) {
+          try { t = t.replace(new RegExp(escapeRe(r.pattern), 'gi'), repl); } catch(_) {}
         }
       }
     }
@@ -1703,29 +1708,14 @@ window.addEventListener('beforeunload', () => {
 
   // ── Modal render helpers ────────────────────────────────────────────────────
   function renderTtsFilterRules(rules) {
-    const mode = ttsS.ttsFilterMode || 'skip';
-    const thead = document.getElementById('tts-filter-thead');
-    if (thead) {
-      thead.innerHTML = mode === 'replace'
-        ? '<tr><th>パターン</th><th>変換先読み</th><th>有効</th><th></th></tr>'
-        : '<tr><th>パターン</th><th>有効</th><th></th></tr>';
-    }
     const tbody = document.getElementById('tts-filter-body');
     tbody.innerHTML = '';
     (rules || []).forEach((r, i) => {
       const tr = document.createElement('tr');
-      if (mode === 'replace') {
-        tr.innerHTML = `
-          <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:160px;font-size:12px;padding:3px 6px;"></td>
-          <td><input type="text" value="${escHtml(r.replacement||'')}" data-i="${i}" data-field="replacement" placeholder="変換先読み" style="width:150px;font-size:12px;padding:3px 6px;"></td>
-          <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
-          <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
-      } else {
-        tr.innerHTML = `
-          <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:240px;font-size:12px;padding:3px 6px;"></td>
-          <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
-          <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
-      }
+      tr.innerHTML = `
+        <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:240px;font-size:12px;padding:3px 6px;"></td>
+        <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
+        <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
       tbody.appendChild(tr);
     });
     document.getElementById('tts-filter-count').textContent = (rules || []).length;
@@ -2008,6 +1998,8 @@ window.addEventListener('beforeunload', () => {
         if (modalId === 'tts-filter-modal') {
           const m = ttsS.ttsFilterMode || 'skip';
           document.querySelectorAll('input[name="tts-filter-mode"]').forEach(r => { r.checked = r.value === m; });
+          document.getElementById('tts-filter-replacement-row').style.display = m === 'replace' ? 'flex' : 'none';
+          document.getElementById('tts-filter-replacement').value = ttsS.ttsFilterReplacement || '';
           renderTtsFilterRules(ttsS.ttsFilterRules);
         }
         if (modalId === 'tts-emoji-modal') refreshEmojiCandidates();
@@ -2038,12 +2030,19 @@ window.addEventListener('beforeunload', () => {
     }
 
     // Block word mode radio
+    const filterReplRow = document.getElementById('tts-filter-replacement-row');
+    const filterReplInput = document.getElementById('tts-filter-replacement');
     document.querySelectorAll('input[name="tts-filter-mode"]').forEach(radio => {
       radio.addEventListener('change', () => {
         ttsS.ttsFilterMode = radio.value;
         window.api.saveSettings({ ttsFilterMode: radio.value }).catch(() => {});
+        filterReplRow.style.display = radio.value === 'replace' ? 'flex' : 'none';
         renderTtsFilterRules(ttsS.ttsFilterRules);
       });
+    });
+    filterReplInput.addEventListener('input', () => {
+      ttsS.ttsFilterReplacement = filterReplInput.value;
+      window.api.saveSettings({ ttsFilterReplacement: filterReplInput.value }).catch(() => {});
     });
 
     // Wire table input/delete events
