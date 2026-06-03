@@ -849,7 +849,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     </div>
     <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
-      <thead id="tts-filter-thead"><tr><th>パターン</th><th>有効</th><th></th></tr></thead>
+      <thead id="tts-filter-thead"><tr><th>パターン</th><th></th></tr></thead>
       <tbody id="tts-filter-body"></tbody>
     </table>
   </div>
@@ -1594,7 +1594,7 @@ window.addEventListener('beforeunload', () => {
 
   function shouldRead(text) {
     if ((ttsS.ttsFilterMode || 'skip') === 'replace') return true;
-    const rules = (ttsS.ttsFilterRules || []).filter(r => r.enabled);
+    const rules = (ttsS.ttsFilterRules || []);
     for (const r of rules) {
       try {
         if (new RegExp(escapeRe(r.pattern), 'i').test(text)) return false;
@@ -1608,7 +1608,7 @@ window.addEventListener('beforeunload', () => {
     if ((ttsS.ttsFilterMode || 'skip') === 'replace') {
       const repl = ttsS.ttsFilterReplacement || '';
       for (const r of (ttsS.ttsFilterRules || [])) {
-        if (r.enabled && r.pattern) {
+        if (r.pattern) {
           try { t = t.replace(new RegExp(escapeRe(r.pattern), 'gi'), repl); } catch(_) {}
         }
       }
@@ -1714,7 +1714,6 @@ window.addEventListener('beforeunload', () => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:240px;font-size:12px;padding:3px 6px;"></td>
-        <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
         <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
       tbody.appendChild(tr);
     });
@@ -2042,7 +2041,7 @@ window.addEventListener('beforeunload', () => {
         // Block add if any row already has an empty primary field
         const pf = primaryFieldMap[key];
         if (cur.some(r => (r[pf] || '').trim() === '')) return;
-        const defaultRow = { ttsFilterRules: { pattern:'', replacement:'', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
+        const defaultRow = { ttsFilterRules: { pattern:'', replacement:'' }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
       });
