@@ -1,7 +1,7 @@
 'use strict';
 
 const request = require('supertest');
-const { CaptionCorrector, app, loadSettings, DEFAULT_SETTINGS } = require('../server');
+const { CaptionCorrector, app, loadSettings, saveSettings, handleCaptionText, DEFAULT_SETTINGS } = require('../server');
 
 // ── CaptionCorrector ─────────────────────────────────────────────────────────
 
@@ -108,5 +108,84 @@ describe('PATCH /api/caption/config', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).not.toHaveProperty('__unknown__');
+  });
+
+  test('patch persists across subsequent GET', async () => {
+    await request(app).patch('/api/caption/config').send({ strokeWidth: 99 });
+    const res = await request(app).get('/api/caption/config');
+    expect(res.body.strokeWidth).toBe(99);
+  });
+
+  test('array field correctionRules can be set', async () => {
+    const rules = [{ from: 'てすと', to: 'テスト' }];
+    const res = await request(app).patch('/api/caption/config').send({ correctionRules: rules });
+    expect(res.status).toBe(200);
+    expect(res.body.correctionRules).toEqual(rules);
+  });
+
+  test('TTS array field ttsVoiceMapping can be set', async () => {
+    const mapping = [{ userId: 'user1', voiceId: 2 }];
+    const res = await request(app).patch('/api/caption/config').send({ ttsVoiceMapping: mapping });
+    expect(res.status).toBe(200);
+    expect(res.body.ttsVoiceMapping).toEqual(mapping);
+  });
+});
+
+// ── CaptionCorrector – hiragana→katakana expansion ───────────────────────────
+
+describe('CaptionCorrector – hiragana rule expands to katakana variant', () => {
+  test('hiragana rule also matches katakana input', () => {
+    const c = new CaptionCorrector([{ from: 'てすと', to: 'passed' }]);
+    expect(c.apply('テスト')).toBe('passed');
+  });
+
+  test('original hiragana input still matches', () => {
+    const c = new CaptionCorrector([{ from: 'てすと', to: 'passed' }]);
+    expect(c.apply('てすと')).toBe('passed');
+  });
+
+  test('pure-katakana rule: no duplicate expansion, still works', () => {
+    const c = new CaptionCorrector([{ from: 'テスト', to: 'OK' }]);
+    expect(c.apply('テスト')).toBe('OK');
+  });
+});
+
+// ── POST /api/caption/asr-text ────────────────────────────────────────────────
+
+describe('POST /api/caption/asr-text', () => {
+  test('valid text returns ok:true', async () => {
+    const res = await request(app)
+      .post('/api/caption/asr-text')
+      .send({ text: 'hello', isFinal: true, srcLang: 'ja' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  test('missing text field returns ok:true without crashing', async () => {
+    const res = await request(app)
+      .post('/api/caption/asr-text')
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  test('non-string text returns ok:true, processing skipped', async () => {
+    const res = await request(app)
+      .post('/api/caption/asr-text')
+      .send({ text: 42 });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
+
+// ── handleCaptionText ────────────────────────────────────────────────────────
+
+describe('handleCaptionText', () => {
+  test('resolves without throwing for normal text', async () => {
+    await expect(handleCaptionText('こんにちは', true, 'ja')).resolves.toBeUndefined();
+  });
+
+  test('resolves without throwing for empty string', async () => {
+    await expect(handleCaptionText('', false, 'ja')).resolves.toBeUndefined();
   });
 });

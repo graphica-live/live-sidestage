@@ -267,8 +267,16 @@ class CaptionCorrector {
     let result = text;
     for (const rule of this.rules) {
       if (!rule.from) continue;
-      const escaped = rule.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      result = result.replace(new RegExp(escaped, 'g'), rule.to || '');
+      if (rule.useRegex) {
+        try {
+          result = result.replace(new RegExp(rule.from, rule.flags || 'g'), rule.to || '');
+        } catch (_) {
+          // invalid regex pattern: skip
+        }
+      } else {
+        const escaped = rule.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(escaped, 'g'), rule.to || '');
+      }
     }
     return result;
   }
