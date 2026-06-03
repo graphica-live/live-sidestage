@@ -1985,8 +1985,9 @@ window.addEventListener('beforeunload', () => {
     // Speed
     document.getElementById('tts-speed').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
+      ttsS.ttsSpeedScale = v;
       document.getElementById('tts-speed-val').textContent = v.toFixed(1) + 'x';
-      debounce('tts-speed', () => { ttsS.ttsSpeedScale = v; window.api.saveSettings({ ttsSpeedScale: v }).catch(() => {}); });
+      debounce('tts-speed', () => { window.api.saveSettings({ ttsSpeedScale: v }).catch(() => {}); });
     });
 
     // Random voice checkbox
