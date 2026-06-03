@@ -1123,7 +1123,7 @@ function updatePreview() {
   const theme = TEXT_STYLES[themeKey] || TEXT_STYLES['gold-night'];
 
   pt.style.fontFamily = `"${fontFamily}", sans-serif`;
-  pt.style.fontSize = Math.min(fontSize, 60) + 'px';
+  pt.style.fontSize = fontSize + 'px';
   pt.style.color = theme.fill;
   pt.style.webkitTextStroke = `${strokeWidth}px ${theme.stroke}`;
 }
