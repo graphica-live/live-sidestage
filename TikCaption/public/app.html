@@ -1418,6 +1418,10 @@ async function init() {
   const status = await window.api.getASRStatus();
   updateStatus(status);
 
+  if (s.autoStartCaption && !status.running && !status.loading) {
+    await window.api.startASR();
+  }
+
   if (window._ttsInit) await window._ttsInit(s);
 }
 
