@@ -11,8 +11,12 @@ contextBridge.exposeInMainWorld('api', {
   getDevices: () => ipcRenderer.invoke('get-devices'),
   startASR: () => ipcRenderer.invoke('start-asr'),
   stopASR: () => ipcRenderer.invoke('stop-asr'),
+  pauseASR: () => ipcRenderer.invoke('pause-asr'),
   onASRStatus: (cb) => {
     ipcRenderer.on('asr-status', (_e, data) => cb(data));
+  },
+  onASRPaused: (cb) => {
+    ipcRenderer.on('asr-paused', (_e, paused) => cb(paused));
   },
   onUpdateAvailable: (cb) => {
     ipcRenderer.on('update-available', (_e, info) => cb(info));

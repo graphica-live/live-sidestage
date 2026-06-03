@@ -528,6 +528,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <!-- Start/Stop + Detail settings -->
   <div style="display:flex;align-items:center;gap:8px;">
     <button id="start-btn" style="flex:1;">▶ 開始</button>
+    <button id="pause-btn" class="secondary" style="flex:1;" disabled>⏸ 一時停止</button>
     <button id="stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
     <button id="open-rules-modal" class="secondary">補正ルール (<span id="rules-count">0</span>)</button>
     <button id="open-modal" class="secondary">詳細設定</button>
@@ -1369,10 +1370,29 @@ function updateStatus({ status, message }) {
 
   const running = !loading && status !== 'stopped' && status !== 'idle' && status !== 'error';
   document.getElementById('start-btn').disabled = running || loading;
+  document.getElementById('pause-btn').disabled = !running;
   document.getElementById('stop-btn').disabled = !running;
+  if (!running) {
+    document.getElementById('pause-btn').textContent = '⏸ 一時停止';
+    document.getElementById('pause-btn').dataset.paused = '';
+  }
 }
 
 window.api.onASRStatus(updateStatus);
+
+// ── Pause button ──────────────────────────────────
+document.getElementById('pause-btn').addEventListener('click', async () => {
+  const { paused } = await window.api.pauseASR();
+  const btn = document.getElementById('pause-btn');
+  btn.textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  btn.dataset.paused = paused ? '1' : '';
+});
+
+window.api.onASRPaused((paused) => {
+  const btn = document.getElementById('pause-btn');
+  btn.textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  btn.dataset.paused = paused ? '1' : '';
+});
 
 // ── init ──────────────────────────────────────────
 async function init() {

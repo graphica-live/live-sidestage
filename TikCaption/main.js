@@ -608,9 +608,17 @@ function registerIPC() {
 
   ipcMain.handle('stop-asr', () => {
     killASR();
+    serverModule.setPaused(false);
     asrStatus = { status: 'stopped', message: '停止しました' };
     if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     return { ok: true };
+  });
+
+  ipcMain.handle('pause-asr', () => {
+    const paused = !serverModule.isPaused();
+    serverModule.setPaused(paused);
+    if (mainWin) mainWin.webContents.send('asr-paused', paused);
+    return { paused };
   });
 
   ipcMain.handle('install-update', () => {

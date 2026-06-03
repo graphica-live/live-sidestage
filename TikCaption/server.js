@@ -350,7 +350,12 @@ async function translateWithGoogle(text, srcLang, targetLang) {
   return data[0]?.map(chunk => chunk[0]).filter(Boolean).join('') || null;
 }
 
+let _captionPaused = false;
+function setPaused(val) { _captionPaused = val; }
+function isPaused() { return _captionPaused; }
+
 async function handleCaptionText(text, isFinal, srcLang) {
+  if (_captionPaused) return;
   const settings = loadSettings();
   let corrected = new CaptionCorrector(TIKTOK_BUILTIN_VOCAB).apply(text);
   corrected = new CaptionCorrector(settings.correctionRules).apply(corrected);
@@ -418,4 +423,4 @@ function startServer(port) {
   });
 }
 
-module.exports = { loadSettings, saveSettings, getIO, handleCaptionText, startServer, CaptionCorrector, app, DEFAULT_SETTINGS };
+module.exports = { loadSettings, saveSettings, getIO, handleCaptionText, startServer, CaptionCorrector, app, DEFAULT_SETTINGS, setPaused, isPaused };
