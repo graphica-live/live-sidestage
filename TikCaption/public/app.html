@@ -637,8 +637,8 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 
     <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0;">
       <div class="check-group">
-        <input type="checkbox" id="tts-auto-start-caption">
-        <label for="tts-auto-start-caption" style="margin:0;color:var(--text);">起動時に自動で字幕を開始</label>
+        <input type="checkbox" id="tts-auto-start">
+        <label for="tts-auto-start" style="margin:0;color:var(--text);">起動時に自動で読み上げを開始</label>
       </div>
       <div class="check-group">
         <input type="checkbox" id="tts-launch-on-boot">
@@ -1121,7 +1121,9 @@ function applyToUI(s) {
 
   if ('autoStartCaption' in s) {
     document.getElementById('auto-start-caption').checked = s.autoStartCaption;
-    document.getElementById('tts-auto-start-caption').checked = s.autoStartCaption;
+  }
+  if ('autoStartTts' in s) {
+    document.getElementById('tts-auto-start').checked = s.autoStartTts;
   }
   if ('launchOnBoot' in s) {
     document.getElementById('launch-on-boot').checked = s.launchOnBoot;
@@ -1340,7 +1342,6 @@ document.getElementById('stop-btn').addEventListener('click', async () => {
 });
 
 document.getElementById('auto-start-caption').addEventListener('change', (e) => {
-  document.getElementById('tts-auto-start-caption').checked = e.target.checked;
   save({ autoStartCaption: e.target.checked });
 });
 
@@ -1349,9 +1350,8 @@ document.getElementById('launch-on-boot').addEventListener('change', (e) => {
   save({ launchOnBoot: e.target.checked });
 });
 
-document.getElementById('tts-auto-start-caption').addEventListener('change', (e) => {
-  document.getElementById('auto-start-caption').checked = e.target.checked;
-  save({ autoStartCaption: e.target.checked });
+document.getElementById('tts-auto-start').addEventListener('change', (e) => {
+  save({ autoStartTts: e.target.checked });
 });
 
 document.getElementById('tts-launch-on-boot').addEventListener('change', (e) => {
@@ -2239,6 +2239,14 @@ window.addEventListener('beforeunload', () => {
     setTtsStatusUI(status);
     wireControls();
     await loadVoices();
+
+    if (s.autoStartTts && status.status !== 'connected' && status.status !== 'connecting') {
+      const userId = s.ttsUserId || '';
+      if (userId) {
+        setTtsStatusUI({ status: 'connecting', message: `接続中: @${userId}` });
+        await window.api.startTts(userId);
+      }
+    }
   }
 
   // Piggyback on existing init()
