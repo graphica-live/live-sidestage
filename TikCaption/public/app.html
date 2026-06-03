@@ -1286,7 +1286,7 @@ document.getElementById('close-rules-modal').addEventListener('click', (e) => {
     const val = parseFloat(e.target.value);
     clearTimeout(debounceTimers[key]);
     delete debounceTimers[key];
-    delete pendingData[key];
+    pendingData[key] = val;
     save({ [key]: val });
   });
 });
