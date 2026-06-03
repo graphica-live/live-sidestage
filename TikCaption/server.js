@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS = {
   vadPaddingMs: 200,
   correctionRules: [],
   autoStartCaption: false,
+  autoStartTts: false,
   launchOnBoot: false,
   // TTS settings
   ttsUserId: '',
