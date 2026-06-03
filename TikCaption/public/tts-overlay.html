@@ -49,6 +49,8 @@ async function synthesize(text, speakerId, volume) {
   if (!qRes.ok) throw new Error('audio_query failed');
   const query = await qRes.json();
   query.volumeScale = volume ?? 0.8;
+  query.prePhonemeLength = 0;
+  query.postPhonemeLength = 0;
   const aRes = await fetch(
     `http://localhost:50021/synthesis?speaker=${speakerId}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) }
