@@ -67,6 +67,7 @@ const DEFAULT_SETTINGS = {
   ttsUserId: '',
   ttsVoiceId: 1,
   ttsVolume: 0.8,
+  ttsSpeedScale: 1.0,
   ttsRandomVoice: false,
   ttsRandomVoiceHistory: [],
   ttsFilterMode: 'skip',

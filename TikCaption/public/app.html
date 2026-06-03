@@ -602,6 +602,15 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         </td>
       </tr>
       <tr>
+        <td class="tts-label">読み上げ速度</td>
+        <td>
+          <div class="slider-row">
+            <input type="range" id="tts-speed" min="0.5" max="2.0" step="0.1">
+            <span class="val-display" id="tts-speed-val">1.0x</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
         <td class="tts-label">ランダムボイス</td>
         <td>
           <div class="row" style="gap:10px;">
@@ -1565,6 +1574,11 @@ window.addEventListener('beforeunload', () => {
       document.getElementById('tts-volume').value = v;
       document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
     }
+    if ('ttsSpeedScale' in s) {
+      const v = s.ttsSpeedScale;
+      document.getElementById('tts-speed').value = v;
+      document.getElementById('tts-speed-val').textContent = parseFloat(v).toFixed(1) + 'x';
+    }
     if ('ttsRandomVoice' in s) {
       document.getElementById('tts-random-voice').checked = s.ttsRandomVoice;
     }
@@ -1640,12 +1654,14 @@ window.addEventListener('beforeunload', () => {
     return Number(ttsS.ttsVoiceId) || 1;
   }
 
+  function getTtsVol() { return ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8; }
+  function getTtsSpeed() { return ttsS.ttsSpeedScale !== undefined ? ttsS.ttsSpeedScale : 1.0; }
+
   function synthesizeAndPlay(text, speakerId, key) {
-    const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
     return new Promise((resolve) => {
       const onDone = () => { overlaySock?.off('tts:done', onDone); resolve(); };
       overlaySock?.once('tts:done', onDone);
-      overlaySock?.emit('tts:speak', { text, speakerId, volume: vol, key });
+      overlaySock?.emit('tts:speak', { text, speakerId, volume: getTtsVol(), speed: getTtsSpeed(), key });
       // fallback: resolve after 10s if overlay never responds
       setTimeout(() => { overlaySock?.off('tts:done', onDone); resolve(); }, 10000);
     });
@@ -1655,10 +1671,9 @@ window.addEventListener('beforeunload', () => {
     const next = audioQueue[0];
     if (!next || !next._ttsKey) return;
     const nextText = applyConversions(next.comment);
-    if (!nextText || !shouldRead(next.comment)) return;
+    if (!nextText) return;
     const nextSpId = getEffectiveSpeakerId(next.uniqueId);
-    const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
-    overlaySock?.emit('tts:prefetch', { key: next._ttsKey, text: nextText, speakerId: nextSpId, volume: vol });
+    overlaySock?.emit('tts:prefetch', { key: next._ttsKey, text: nextText, speakerId: nextSpId, volume: getTtsVol(), speed: getTtsSpeed() });
   }
 
   async function processQueue() {
@@ -1667,7 +1682,7 @@ window.addEventListener('beforeunload', () => {
     const item = audioQueue.shift();
     try {
       const text = applyConversions(item.comment);
-      if (text && shouldRead(item.comment)) {
+      if (text) {
         addLogEntry(item.nickname || item.uniqueId, item.comment);
         const spId = getEffectiveSpeakerId(item.uniqueId);
         const vName = getVoiceName(spId);
@@ -1683,6 +1698,7 @@ window.addEventListener('beforeunload', () => {
   }
 
   function enqueue(item) {
+    if (!shouldRead(item.comment)) return;  // filter before queuing
     item._ttsKey = Math.random().toString(36).slice(2);
     audioQueue.push(item);
     processQueue();
@@ -1964,6 +1980,13 @@ window.addEventListener('beforeunload', () => {
       const v = parseFloat(e.target.value);
       document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
       debounce('tts-volume', () => { ttsS.ttsVolume = v; window.api.saveSettings({ ttsVolume: v }).catch(() => {}); });
+    });
+
+    // Speed
+    document.getElementById('tts-speed').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      document.getElementById('tts-speed-val').textContent = v.toFixed(1) + 'x';
+      debounce('tts-speed', () => { ttsS.ttsSpeedScale = v; window.api.saveSettings({ ttsSpeedScale: v }).catch(() => {}); });
     });
 
     // Random voice checkbox

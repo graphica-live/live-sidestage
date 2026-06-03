@@ -41,7 +41,7 @@ function getCtx() {
   return audioCtx;
 }
 
-async function synthesize(text, speakerId, volume) {
+async function synthesize(text, speakerId, volume, speed) {
   const qRes = await fetch(
     `http://localhost:50021/audio_query?speaker=${speakerId}&text=${encodeURIComponent(text)}`,
     { method: 'POST' }
@@ -49,6 +49,7 @@ async function synthesize(text, speakerId, volume) {
   if (!qRes.ok) throw new Error('audio_query failed');
   const query = await qRes.json();
   query.volumeScale = volume ?? 0.8;
+  query.speedScale = speed ?? 1.0;
   query.prePhonemeLength = 0;
   query.postPhonemeLength = 0;
   const aRes = await fetch(
@@ -67,19 +68,19 @@ socket.on('tts:playing', ({ voiceName }) => {
 });
 
 // Pre-synthesize next item while current is playing
-socket.on('tts:prefetch', ({ key, text, speakerId, volume }) => {
+socket.on('tts:prefetch', ({ key, text, speakerId, volume, speed }) => {
   if (prefetchCache.has(key)) return;
-  prefetchCache.set(key, synthesize(text, speakerId, volume).catch(() => null));
+  prefetchCache.set(key, synthesize(text, speakerId, volume, speed).catch(() => null));
 });
 
-socket.on('tts:speak', async ({ text, speakerId, volume, key }) => {
+socket.on('tts:speak', async ({ text, speakerId, volume, speed, key }) => {
   try {
     let decoded;
     if (key && prefetchCache.has(key)) {
       decoded = await prefetchCache.get(key);
       prefetchCache.delete(key);
     }
-    if (!decoded) decoded = await synthesize(text, speakerId, volume);
+    if (!decoded) decoded = await synthesize(text, speakerId, volume, speed);
     await new Promise(resolve => {
       const src = getCtx().createBufferSource();
       src.buffer = decoded;
