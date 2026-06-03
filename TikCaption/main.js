@@ -32,6 +32,22 @@ const DEVICE_ID = loadOrCreateDeviceId();
 
 const isLoaderOnly = process.argv.includes('--loader-only');
 
+// Prevent second instance from launching (would conflict on ports 38200/38201)
+if (!isLoaderOnly) {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    app.quit();
+    process.exit(0);
+  }
+  app.on('second-instance', () => {
+    if (mainWin) {
+      if (mainWin.isMinimized()) mainWin.restore();
+      mainWin.show();
+      mainWin.focus();
+    }
+  });
+}
+
 // Ctrl+C in terminal → graceful shutdown (triggers before-quit + renderer beforeunload)
 process.on('SIGINT', () => app.quit());
 process.on('SIGTERM', () => app.quit());
@@ -714,7 +730,13 @@ app.whenReady().then(async () => {
   const SETTINGS_PATH = path.join(os.homedir(), '.tikcaption-settings.json');
   const isFirstRun = !fs.existsSync(SETTINGS_PATH);
 
-  await startServer(CAPTION_PORT);
+  await startServer(CAPTION_PORT).catch((err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[main] port ${CAPTION_PORT} already in use — another instance may be running`);
+    } else {
+      throw err;
+    }
+  });
 
   createMainWindow();
   createTray();
