@@ -837,7 +837,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">パターンに一致する単語を読み上げないか、別の読みに変換する。</p>
     <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
     <table class="rules-table">
-      <thead><tr><th>パターン</th><th>動作</th><th>変換先読み</th><th>有効</th><th></th></tr></thead>
+      <thead><tr><th>パターン</th><th>動作</th><th>変換先読み</th><th></th></tr></thead>
       <tbody id="tts-filter-body"></tbody>
     </table>
   </div>
@@ -1581,7 +1581,7 @@ window.addEventListener('beforeunload', () => {
   function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
   function shouldRead(text) {
-    const rules = (ttsS.ttsFilterRules || []).filter(r => r.enabled && (r.mode === 'skip' || !r.mode));
+    const rules = (ttsS.ttsFilterRules || []).filter(r => r.mode === 'skip' || !r.mode);
     for (const r of rules) {
       try {
         if (new RegExp(escapeRe(r.pattern), 'i').test(text)) return false;
@@ -1593,7 +1593,7 @@ window.addEventListener('beforeunload', () => {
   function applyConversions(text) {
     let t = text;
     for (const r of (ttsS.ttsFilterRules || [])) {
-      if (r.enabled && r.mode === 'replace' && r.pattern && r.replacement) {
+      if (r.mode === 'replace' && r.pattern && r.replacement) {
         try { t = t.replace(new RegExp(escapeRe(r.pattern), 'gi'), r.replacement); } catch(_) {}
       }
     }
@@ -1706,7 +1706,6 @@ window.addEventListener('beforeunload', () => {
           </select>
         </td>
         <td><input type="text" value="${escHtml(r.replacement||'')}" data-i="${i}" data-field="replacement" placeholder="変換先読み" style="width:120px;font-size:12px;padding:3px 6px;${mode==='replace'?'':'display:none;'}"></td>
-        <td style="text-align:center;"><input type="checkbox" ${r.enabled?'checked':''} data-i="${i}" data-field="enabled" style="accent-color:var(--accent);"></td>
         <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
       const modeSelect = tr.querySelector('select[data-field="mode"]');
       const replInput = tr.querySelector('input[data-field="replacement"]');
@@ -1891,7 +1890,8 @@ window.addEventListener('beforeunload', () => {
   }
 
   function saveTtsTable(key) {
-    const data = getTtsTableData(key);
+    const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
+    const data = getTtsTableData(key).filter(r => (r[primaryField] || '').trim() !== '');
     ttsS[key] = data;
     window.api.saveSettings({ [key]: data }).catch(() => {});
   }
@@ -2010,10 +2010,9 @@ window.addEventListener('beforeunload', () => {
         // Sync from DOM first to capture any unsaved edits (debounce may be pending)
         const cur = getTtsTableData(key);
         if (cur.length > 0) ttsS[key] = cur;
-        const defaultRow = { ttsFilterRules: { pattern:'', mode:'skip', replacement:'', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
+        const defaultRow = { ttsFilterRules: { pattern:'', mode:'skip', replacement:'' }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
-        window.api.saveSettings({ [key]: ttsS[key] }).catch(() => {});
       });
     }
 
