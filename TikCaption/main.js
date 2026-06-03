@@ -265,6 +265,13 @@ function startLoaderServer() {
     }
   });
   srv.listen(LOADER_PORT, '0.0.0.0');
+  srv.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[loader] port ${LOADER_PORT} already in use, skipping loader server`);
+    } else {
+      console.error('[loader] server error:', err);
+    }
+  });
   return srv;
 }
 
