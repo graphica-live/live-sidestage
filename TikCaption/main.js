@@ -52,6 +52,7 @@ let ttsUserId = '';
 let ttsReconnectTimer = null;
 let ttsStopped = false; // true = user explicitly stopped, no auto-reconnect
 let ttsAcceptingComments = false;
+let ttsConnectedAt = 0; // ms timestamp when connect() resolved
 let ttsConnecting = false; // true while connect() promise is pending — suppress event-driven reconnects
 
 function emitTtsStatus(s) {
@@ -150,6 +151,8 @@ async function connectTikTokLive(userId) {
 
   ttsConn.on('chat', (data) => {
     if (!ttsAcceptingComments) return;
+    // Discard comments older than the connection time (TikTok replays recent history on connect)
+    if (data.createTime && data.createTime < ttsConnectedAt) return;
     const comment = {
       uniqueId: data.uniqueId || '',
       nickname: data.nickname || data.uniqueId || '',
@@ -180,6 +183,7 @@ async function connectTikTokLive(userId) {
   try {
     await ttsConn.connect();
     ttsConnecting = false;
+    ttsConnectedAt = Date.now();
     ttsAcceptingComments = true;
     emitTtsStatus({ status: 'connected', message: `接続済み: @${userId}` });
   } catch (err) {
