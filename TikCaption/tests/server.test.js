@@ -1,7 +1,18 @@
 'use strict';
 
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+
+const TEST_SETTINGS_PATH = path.join(os.tmpdir(), '.tikcaption-settings-test.json');
+process.env.TIKCAPTION_SETTINGS_PATH = TEST_SETTINGS_PATH;
+
 const request = require('supertest');
 const { CaptionCorrector, app, loadSettings, saveSettings, handleCaptionText, DEFAULT_SETTINGS } = require('../server');
+
+afterAll(() => {
+  try { fs.unlinkSync(TEST_SETTINGS_PATH); } catch (_) {}
+});
 
 // ── CaptionCorrector ─────────────────────────────────────────────────────────
 

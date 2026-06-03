@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 
 // シンプル JSON ストア（electron-store v10 が ESM-only のため代替）
-const SETTINGS_PATH = path.join(os.homedir(), '.tikcaption-settings.json');
+const SETTINGS_PATH = process.env.TIKCAPTION_SETTINGS_PATH || path.join(os.homedir(), '.tikcaption-settings.json');
 let _settings = null;
 
 function loadSettings() {
