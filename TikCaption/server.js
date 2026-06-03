@@ -51,7 +51,7 @@ const DEFAULT_SETTINGS = {
   showOriginal: true,
   translationEnabled: false,
   targetLang: 'en',
-  fontSize: 52,
+  fontSize: 36,
   verticalOffset: 120,
   segmentDuration: 6,
   maxCharsPerSegment: 20,
