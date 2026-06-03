@@ -402,6 +402,12 @@ io.on('connection', (socket) => {
   socket.on('tts:playing', (data) => {
     socket.broadcast.emit('tts:playing', data);
   });
+  socket.on('tts:speak', (data) => {
+    socket.broadcast.emit('tts:speak', data);
+  });
+  socket.on('tts:done', (data) => {
+    socket.broadcast.emit('tts:done', data);
+  });
 });
 
 function startServer(port) {

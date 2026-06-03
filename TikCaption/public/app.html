@@ -1506,7 +1506,6 @@ window.addEventListener('beforeunload', () => {
   const seenEmojis = new Set();
   const seenEmotes = new Map(); // emoteId → emoteImageUrl
   let voiceList = [];   // [{id, name, styles:[{id,name}]}]
-  let audioCtx = null;
   let audioQueue = [];
   let isPlaying = false;
   let overlaySock = null;
@@ -1641,29 +1640,14 @@ window.addEventListener('beforeunload', () => {
     return Number(ttsS.ttsVoiceId) || 1;
   }
 
-  async function synthesizeAndPlay(text, speakerId) {
+  function synthesizeAndPlay(text, speakerId) {
     const vol = ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8;
-    const qRes = await fetch(
-      `http://localhost:50021/audio_query?speaker=${speakerId}&text=${encodeURIComponent(text)}`,
-      { method: 'POST' }
-    );
-    if (!qRes.ok) throw new Error('audio_query failed');
-    const query = await qRes.json();
-    query.volumeScale = vol;
-    const aRes = await fetch(
-      `http://localhost:50021/synthesis?speaker=${speakerId}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) }
-    );
-    if (!aRes.ok) throw new Error('synthesis failed');
-    const buf = await aRes.arrayBuffer();
-    if (!audioCtx) audioCtx = new AudioContext();
-    const decoded = await audioCtx.decodeAudioData(buf);
-    return new Promise(resolve => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = decoded;
-      src.connect(audioCtx.destination);
-      src.onended = resolve;
-      src.start();
+    return new Promise((resolve, reject) => {
+      const onDone = () => { overlaySock?.off('tts:done', onDone); resolve(); };
+      overlaySock?.once('tts:done', onDone);
+      overlaySock?.emit('tts:speak', { text, speakerId, volume: vol });
+      // fallback: resolve after 10s if overlay never responds
+      setTimeout(() => { overlaySock?.off('tts:done', onDone); resolve(); }, 10000);
     });
   }
 

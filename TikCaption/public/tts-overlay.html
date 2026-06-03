@@ -33,11 +33,44 @@ html, body {
 const socket = io('http://localhost:38200');
 const credit = document.getElementById('voicevox-credit');
 let creditTimer = null;
+let audioCtx = null;
+
 socket.on('tts:playing', ({ voiceName }) => {
   credit.textContent = `VOICEVOX:${voiceName}`;
   credit.classList.add('show');
   clearTimeout(creditTimer);
   creditTimer = setTimeout(() => credit.classList.remove('show'), 4000);
+});
+
+socket.on('tts:speak', async ({ text, speakerId, volume }) => {
+  try {
+    const qRes = await fetch(
+      `http://localhost:50021/audio_query?speaker=${speakerId}&text=${encodeURIComponent(text)}`,
+      { method: 'POST' }
+    );
+    if (!qRes.ok) throw new Error('audio_query failed');
+    const query = await qRes.json();
+    query.volumeScale = volume ?? 0.8;
+    const aRes = await fetch(
+      `http://localhost:50021/synthesis?speaker=${speakerId}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) }
+    );
+    if (!aRes.ok) throw new Error('synthesis failed');
+    const buf = await aRes.arrayBuffer();
+    if (!audioCtx) audioCtx = new AudioContext();
+    const decoded = await audioCtx.decodeAudioData(buf);
+    await new Promise(resolve => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(audioCtx.destination);
+      src.onended = resolve;
+      src.start();
+    });
+  } catch (e) {
+    console.warn('[TTS overlay]', e.message);
+  } finally {
+    socket.emit('tts:done', {});
+  }
 });
 </script>
 </body>
