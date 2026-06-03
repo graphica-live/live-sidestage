@@ -1992,16 +1992,31 @@ window.addEventListener('beforeunload', () => {
       'tts-emoji-btn': 'tts-emoji-modal',
       'tts-emote-btn': 'tts-emote-modal',
     };
+    const modalRerenderMap = {
+      'tts-filter-modal':  () => renderTtsFilterRules(ttsS.ttsFilterRules),
+      'tts-mapping-modal': () => renderTtsMapping(ttsS.ttsVoiceMapping),
+      'tts-conv-modal':    () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']),
+      'tts-emoji-modal':   () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']),
+      'tts-emote-modal':   () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']),
+    };
+    const modalKeyMap = {
+      'tts-filter-modal': 'ttsFilterRules', 'tts-mapping-modal': 'ttsVoiceMapping',
+      'tts-conv-modal': 'ttsConversionRules', 'tts-emoji-modal': 'ttsEmojiRules', 'tts-emote-modal': 'ttsEmoteRules',
+    };
     for (const [btnId, modalId] of Object.entries(modalMap)) {
       document.getElementById(btnId).addEventListener('click', () => {
+        // Strip empty rows from memory before showing modal
+        const mk = modalKeyMap[modalId];
+        const pf2 = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[mk];
+        if (mk && ttsS[mk]) ttsS[mk] = ttsS[mk].filter(r => (r[pf2] || '').trim() !== '');
         document.getElementById(modalId).showModal();
         if (modalId === 'tts-filter-modal') {
           const m = ttsS.ttsFilterMode || 'skip';
           document.querySelectorAll('input[name="tts-filter-mode"]').forEach(r => { r.checked = r.value === m; });
           document.getElementById('tts-filter-replacement-row').style.display = m === 'replace' ? 'flex' : 'none';
           document.getElementById('tts-filter-replacement').value = ttsS.ttsFilterReplacement || '';
-          renderTtsFilterRules(ttsS.ttsFilterRules);
         }
+        if (modalRerenderMap[modalId]) modalRerenderMap[modalId]();
         if (modalId === 'tts-emoji-modal') refreshEmojiCandidates();
         if (modalId === 'tts-emote-modal') refreshEmoteCandidates();
       });
@@ -2018,11 +2033,15 @@ window.addEventListener('beforeunload', () => {
       ['add-tts-emoji', 'ttsEmojiRules', () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading'])],
       ['add-tts-emote', 'ttsEmoteRules', () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading'])],
     ];
+    const primaryFieldMap = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' };
     for (const [btnId, key, rerender] of addMap) {
       document.getElementById(btnId).addEventListener('click', () => {
         // Sync from DOM first to capture any unsaved edits (debounce may be pending)
         const cur = getTtsTableData(key);
         if (cur.length > 0) ttsS[key] = cur;
+        // Block add if any row already has an empty primary field
+        const pf = primaryFieldMap[key];
+        if (cur.some(r => (r[pf] || '').trim() === '')) return;
         const defaultRow = { ttsFilterRules: { pattern:'', replacement:'', enabled:true }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
