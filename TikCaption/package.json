@@ -26,6 +26,7 @@
     "productName": "TikCaption",
     "files": [
       "main.js",
+      "preload.js",
       "server.js",
       "public/**/*",
       "node_modules/**/*",
