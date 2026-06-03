@@ -1788,7 +1788,10 @@ window.addEventListener('beforeunload', () => {
       tbody.appendChild(tr);
     });
     const countId = { 'tts-conv-body': 'tts-conv-count', 'tts-emoji-body': 'tts-emoji-count', 'tts-emote-body': 'tts-emote-count' }[tbodyId];
-    if (countId) document.getElementById(countId).textContent = (rules || []).filter(r => (r[fields[0]] || '').trim()).length;
+    if (countId) {
+      const countFields = { 'tts-conv-body': ['from', 'to'], 'tts-emoji-body': ['emoji', 'reading'], 'tts-emote-body': ['emote', 'reading'] }[tbodyId] || [fields[0]];
+      document.getElementById(countId).textContent = (rules || []).filter(r => countFields.every(f => (r[f] || '').trim())).length;
+    }
   }
 
   function refreshEmojiCandidates() {
