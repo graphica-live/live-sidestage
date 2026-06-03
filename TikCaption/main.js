@@ -82,9 +82,15 @@ function isNoWSUpgradeError(error) {
 function scheduleTtsReconnect(reason) {
   if (ttsStopped || ttsReconnectTimer) return;
   const delay = reason === 'user_offline' ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
-  const msg = reason === 'user_offline'
-    ? `配信開始待ち — ${delay / 1000}秒後に再試行`
-    : `切断 (${reason}) — ${delay / 1000}秒後に再接続`;
+  const sec = delay / 1000;
+  const msgMap = {
+    user_offline:           `@${ttsUserId} はオフライン — ${sec}秒後に再試行`,
+    stream_end:             `@${ttsUserId} の配信が終了 — 再開を待機中 (${sec}秒)`,
+    disconnected:           `接続が切れました — ${sec}秒後に再接続`,
+    room_info_error:        `ルーム情報の取得に失敗 — ${sec}秒後に再試行`,
+    ws_upgrade_unavailable: `接続方式を変更して再試行 (${sec}秒)`,
+  };
+  const msg = msgMap[reason] ?? `エラーが発生しました — ${sec}秒後に再接続`;
   emitTtsStatus({ status: 'retrying', message: msg });
   ttsReconnectTimer = setTimeout(() => {
     ttsReconnectTimer = null;
@@ -197,7 +203,7 @@ async function connectTikTokLive(userId) {
     } else if (isNoWSUpgradeError(err)) {
       scheduleTtsReconnect('ws_upgrade_unavailable');
     } else {
-      emitTtsStatus({ status: 'error', message: `接続失敗: ${err?.message || err}` });
+      emitTtsStatus({ status: 'error', message: `接続に失敗しました。ユーザーIDを確認してください。` });
     }
   }
 }
