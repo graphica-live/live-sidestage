@@ -1514,7 +1514,19 @@ window.addEventListener('beforeunload', () => {
   const viewerCache = new Map(); // uniqueId → { nickname, profilePictureUrl }
   const seenEmojis = new Set();
   const seenEmotes = new Map(); // emoteId → emoteImageUrl
-  let voiceList = [];   // [{id, name, styles:[{id,name}]}]
+  const VOICE_WHITELIST = new Set([
+    // 東北ずん子・ずんだもんプロジェクト（SSS合同会社）
+    'ずんだもん', '四国めたん', '九州そら', '中国うさぎ', '中部つるぎ',
+    '東北ずん子', '東北きりたん', '東北イタコ', 'あんこもん',
+    // 個人・有志開発キャラクター（商用・配信収益化許可枠）
+    '春日部つむぎ', '波音リツ', '雨晴はう', '玄野武宏', '白上虎太郎',
+    '青山龍星', '冥鳴ひまり', '剣崎雌雄', 'ちび式じい', '満別花丸',
+    '栗田まろん', '琴詠ニア', '櫻歌ミコ', 'ナースロボ＿タイプＴ',
+    '小夜/SAYO', '†聖騎士 紅桜†', '雀松朱司', '麒ヶ島宗麟', '春歌ナナ',
+    '猫使アル', '猫使ビィ', '後鬼', '大月アゆむ', '夜語トバリ',
+    '暁記ミタマ', '里石ユカ', 'ユーレイちゃん', '離途', '黒沢冴白',
+  ]);
+  let voiceList = [];   // [{id, name, styles:[{id,name}]}] — whitelist-filtered
   let audioQueue = [];
   let isPlaying = false;
   let overlaySock = null;
@@ -1539,7 +1551,8 @@ window.addEventListener('beforeunload', () => {
     try {
       const res = await fetch('http://localhost:50021/speakers');
       if (!res.ok) throw new Error();
-      voiceList = await res.json();
+      const allSpeakers = await res.json();
+      voiceList = allSpeakers.filter(sp => VOICE_WHITELIST.has(sp.name));
       sel.innerHTML = '';
       for (const sp of voiceList) {
         for (const st of sp.styles) {
