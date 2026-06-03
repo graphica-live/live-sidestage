@@ -1322,14 +1322,18 @@ document.querySelectorAll('input[name=bg-style]').forEach(r => {
 
 fontSel.addEventListener('change', (e) => {
   updatePreview();
+  clearTimeout(debounceTimers['fontFamily']);
+  delete debounceTimers['fontFamily'];
   pendingData.fontFamily = e.target.value;
-  debounce('fontFamily', () => save({ fontFamily: e.target.value }));
+  save({ fontFamily: e.target.value });
 });
 
 themeSel.addEventListener('change', (e) => {
   updatePreview();
+  clearTimeout(debounceTimers['textStyleKey']);
+  delete debounceTimers['textStyleKey'];
   pendingData.textStyleKey = e.target.value;
-  debounce('textStyleKey', () => save({ textStyleKey: e.target.value }));
+  save({ textStyleKey: e.target.value });
 });
 
 // ── Start / Stop buttons ──────────────────────────
