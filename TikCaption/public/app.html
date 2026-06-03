@@ -2059,7 +2059,8 @@ window.addEventListener('beforeunload', () => {
         // Strip empty rows from memory before showing modal
         const mk = modalKeyMap[modalId];
         const pf2 = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[mk];
-        if (mk && ttsS[mk]) ttsS[mk] = ttsS[mk].filter(r => (r[pf2] || '').trim() !== '');
+        const af2 = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[mk];
+        if (mk && ttsS[mk]) ttsS[mk] = ttsS[mk].filter(r => af2 ? af2.every(f => (r[f] || '').trim() !== '') : (r[pf2] || '').trim() !== '');
         document.getElementById(modalId).showModal();
         if (modalId === 'tts-filter-modal') {
           const m = ttsS.ttsFilterMode || 'skip';
