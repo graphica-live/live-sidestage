@@ -1811,7 +1811,7 @@ window.addEventListener('beforeunload', () => {
         if (cur.length > 0) ttsS.ttsEmojiRules = cur;
         ttsS.ttsEmojiRules = [{ emoji, reading: '' }, ...(ttsS.ttsEmojiRules || [])];
         renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji', 'reading']);
-        window.api.saveSettings({ ttsEmojiRules: ttsS.ttsEmojiRules }).catch(() => {});
+        window.api.saveSettings({ ttsEmojiRules: ttsS.ttsEmojiRules.filter(r => (r.emoji || '').trim() && (r.reading || '').trim()) }).catch(() => {});
         const readingInput = document.querySelector('#tts-emoji-body input[data-field="reading"]');
         if (readingInput) readingInput.focus();
         refreshEmojiCandidates();
@@ -1849,7 +1849,7 @@ window.addEventListener('beforeunload', () => {
         if (cur.length > 0) ttsS.ttsEmoteRules = cur;
         ttsS.ttsEmoteRules = [{ emote: emoteId, reading: '' }, ...(ttsS.ttsEmoteRules || [])];
         renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote', 'reading']);
-        window.api.saveSettings({ ttsEmoteRules: ttsS.ttsEmoteRules }).catch(() => {});
+        window.api.saveSettings({ ttsEmoteRules: ttsS.ttsEmoteRules.filter(r => (r.emote || '').trim() && (r.reading || '').trim()) }).catch(() => {});
         const readingInput = document.querySelector('#tts-emote-body input[data-field="reading"]');
         if (readingInput) readingInput.focus();
         refreshEmoteCandidates();
@@ -2085,14 +2085,17 @@ window.addEventListener('beforeunload', () => {
       ['add-tts-emote', 'ttsEmoteRules', () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading'])],
     ];
     const primaryFieldMap = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' };
+    const allFieldsMap = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] };
     for (const [btnId, key, rerender] of addMap) {
       document.getElementById(btnId).addEventListener('click', () => {
         // Sync from DOM first to capture any unsaved edits (debounce may be pending)
         const cur = getTtsTableData(key);
         if (cur.length > 0) ttsS[key] = cur;
-        // Block add if any row already has an empty primary field
+        // Block add if any row already has an empty field
+        const af = allFieldsMap[key];
         const pf = primaryFieldMap[key];
-        if (cur.some(r => (r[pf] || '').trim() === '')) return;
+        const isIncomplete = af ? cur.some(r => af.some(f => (r[f] || '').trim() === '')) : cur.some(r => (r[pf] || '').trim() === '');
+        if (isIncomplete) return;
         const defaultRow = { ttsFilterRules: { pattern:'', replacement:'' }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
         ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
         rerender();
