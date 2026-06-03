@@ -1873,7 +1873,7 @@ window.addEventListener('beforeunload', () => {
       const btn = document.getElementById('tts-test-btn');
       btn.disabled = true;
       try {
-        const testSpId = getEffectiveSpeakerId('');
+        const testSpId = Number(document.getElementById('tts-voice-select').value) || 1;
         const testVName = getVoiceName(testSpId);
         if (testVName) overlaySock?.emit('tts:playing', { voiceName: testVName });
         await synthesizeAndPlay('これはVOICEVOXの読み上げテストです', testSpId);
