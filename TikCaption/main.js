@@ -356,7 +356,9 @@ function ensurePythonDeps(python) {
       asrStatus = { status: 'installing', message: `インストール中... (${python})` };
       if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
 
-      const reqPath = path.join(__dirname, 'requirements.txt');
+      const reqPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'requirements.txt')
+        : path.join(__dirname, 'requirements.txt');
       const lastLines = [];
       const inst = spawn(python, ['-m', 'pip', 'install', '-r', reqPath, '--progress-bar', 'off'], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -414,7 +416,9 @@ async function spawnASR(settings) {
   const ok = await ensurePythonDeps(python);
   if (!ok) return;
 
-  const scriptPath = path.join(__dirname, 'caption_server.py');
+  const scriptPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'caption_server.py')
+    : path.join(__dirname, 'caption_server.py');
   const args = [
     scriptPath,
     '--port', String(CAPTION_PORT),

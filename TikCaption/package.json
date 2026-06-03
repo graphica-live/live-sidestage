@@ -33,6 +33,10 @@
       "!node_modules/**/{CHANGELOG.md,README.md,readme.md,test,tests,__tests__,coverage}",
       "!node_modules/.cache"
     ],
+    "extraResources": [
+      { "from": "caption_server.py", "to": "caption_server.py" },
+      { "from": "requirements.txt", "to": "requirements.txt" }
+    ],
     "win": {
       "target": "nsis"
     },
