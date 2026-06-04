@@ -714,7 +714,6 @@ function updateLoginItem(enabled) {
   app.setLoginItemSettings({
     openAtLogin: !!enabled,
     name: 'TikCaptionLoader',
-    args: ['--loader-only'],
   });
 }
 
