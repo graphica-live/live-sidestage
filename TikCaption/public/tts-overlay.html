@@ -36,6 +36,21 @@ let creditTimer = null;
 let audioCtx = null;
 const prefetchCache = new Map(); // key → Promise<AudioBuffer>
 
+let voicevoxWasAlive = false;
+let voicevoxErrorSent = false;
+setInterval(async () => {
+  try {
+    await fetch('http://localhost:50021/version', { method: 'GET', signal: AbortSignal.timeout(500) });
+    voicevoxWasAlive = true;
+    voicevoxErrorSent = false;
+  } catch {
+    if (voicevoxWasAlive && !voicevoxErrorSent) {
+      voicevoxErrorSent = true;
+      socket.emit('tts:voicevox-error');
+    }
+  }
+}, 2000);
+
 function getCtx() {
   if (!audioCtx) audioCtx = new AudioContext();
   return audioCtx;
