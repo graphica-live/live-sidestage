@@ -36,6 +36,7 @@ let creditTimer = null;
 let audioCtx = null;
 const prefetchCache = new Map(); // key → Promise<AudioBuffer>
 
+let currentSource = null;
 let voicevoxWasAlive = false;
 let voicevoxErrorSent = false;
 setInterval(async () => {
@@ -75,6 +76,10 @@ async function synthesize(text, speakerId, volume, speed) {
   return getCtx().decodeAudioData(await aRes.arrayBuffer());
 }
 
+socket.on('tts:stop-current', () => {
+  if (currentSource) { try { currentSource.stop(); } catch {} currentSource = null; }
+});
+
 socket.on('tts:playing', ({ voiceName }) => {
   credit.textContent = `VOICEVOX:${voiceName}`;
   credit.classList.add('show');
@@ -100,7 +105,8 @@ socket.on('tts:speak', async ({ text, speakerId, volume, speed, key }) => {
       const src = getCtx().createBufferSource();
       src.buffer = decoded;
       src.connect(getCtx().destination);
-      src.onended = resolve;
+      src.onended = () => { currentSource = null; resolve(); };
+      currentSource = src;
       src.start();
     });
   } catch (e) {
