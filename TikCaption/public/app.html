@@ -1649,7 +1649,16 @@ window.addEventListener('beforeunload', () => {
   let overlaySock = null;
   function initOverlaySock() {
     if (typeof io === 'undefined') { setTimeout(initOverlaySock, 1000); return; }
-    try { overlaySock = io('http://localhost:38200'); } catch(_) {}
+    try {
+      overlaySock = io('http://localhost:38200');
+      overlaySock.on('tts:voicevox-error', () => {
+        const modal = document.getElementById('voicevox-modal');
+        if (!modal.open) {
+          document.getElementById('voicevox-modal-status').textContent = '';
+          modal.showModal();
+        }
+      });
+    } catch(_) {}
   }
   initOverlaySock();
 

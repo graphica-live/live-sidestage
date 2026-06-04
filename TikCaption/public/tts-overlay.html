@@ -90,6 +90,7 @@ socket.on('tts:speak', async ({ text, speakerId, volume, speed, key }) => {
     });
   } catch (e) {
     console.warn('[TTS overlay]', e.message);
+    socket.emit('tts:voicevox-error');
   } finally {
     socket.emit('tts:done', {});
   }

@@ -420,6 +420,9 @@ io.on('connection', (socket) => {
   socket.on('tts:done', (data) => {
     socket.broadcast.emit('tts:done', data);
   });
+  socket.on('tts:voicevox-error', () => {
+    socket.broadcast.emit('tts:voicevox-error');
+  });
 });
 
 function startServer(port) {
