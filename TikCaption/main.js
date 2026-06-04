@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const net = require('net');
@@ -660,6 +660,7 @@ function registerIPC() {
 
   // ── TTS IPC ────────────────────────────────────────────────────────────────
   ipcMain.handle('tts-get-status', () => ttsStatus);
+  ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 
   ipcMain.handle('tts-start', async (_e, userId) => {
     const uid = (userId || '').trim().replace(/^@/, '');

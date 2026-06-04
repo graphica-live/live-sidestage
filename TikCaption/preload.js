@@ -32,4 +32,5 @@ contextBridge.exposeInMainWorld('api', {
   onTtsStatus: (cb) => { ipcRenderer.on('tts-status', (_e, data) => cb(data)); },
   onTtsComment: (cb) => { ipcRenderer.on('tts-comment', (_e, data) => cb(data)); },
   onTtsEmote: (cb) => { ipcRenderer.on('tts-emote', (_e, data) => cb(data)); },
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 });
