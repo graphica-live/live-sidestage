@@ -2107,9 +2107,13 @@ window.addEventListener('beforeunload', () => {
     document.getElementById('close-tts-user-modal').addEventListener('click', () => { document.getElementById('tts-user-modal').close(); });
     document.getElementById('tts-user-save').addEventListener('click', () => {
       const val = document.getElementById('tts-user-input').value.trim().replace(/^@/, '');
+      const userChanged = val !== (ttsS.ttsUserId || '');
       ttsS.ttsUserId = val;
       document.getElementById('tts-user-display').textContent = val || '未設定';
       window.api.saveSettings({ ttsUserId: val }).catch(() => {});
+      if (userChanged && !document.getElementById('tts-stop-btn').disabled) {
+        window.api.stopTts();
+      }
       document.getElementById('tts-user-modal').close();
     });
 
