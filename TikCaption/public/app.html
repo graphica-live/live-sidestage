@@ -848,6 +848,22 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   </div>
 </dialog>
 
+<!-- ── VOICEVOX not running modal ── -->
+<dialog id="voicevox-modal">
+  <div class="modal-header">
+    <span>VOICEVOXが起動していません</span>
+  </div>
+  <div class="modal-body" style="min-width:340px;gap:12px;">
+    <p style="font-size:13px;color:var(--text);margin:0;">読み上げタブを使用するには<strong>VOICEVOX</strong>が必要です。<br>VOICEVOXを起動してから「再確認」を押してください。</p>
+    <p style="font-size:12px;color:var(--muted);margin:0;">未インストールの場合は <a href="https://voicevox.hiroshiba.jp/" target="_blank" style="color:var(--accent);">voicevox.hiroshiba.jp</a> からダウンロードできます。</p>
+    <p id="voicevox-modal-status" style="font-size:12px;color:var(--muted);margin:0;min-height:16px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="voicevox-modal-cancel" type="button" class="secondary">キャンセル</button>
+      <button id="voicevox-modal-retry" type="button">再確認</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- ── ブロック単語 modal ────── -->
 <dialog id="tts-filter-modal">
   <div class="modal-header">
@@ -1546,13 +1562,53 @@ init();
 }());
 
 // ── Tab switching ─────────────────────────────────
+async function checkVoicevox() {
+  try {
+    const res = await fetch('http://localhost:50021/version', { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-tab="${tabName}"]`).classList.add('active');
+  document.getElementById('tab-' + tabName).classList.add('active');
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.tab === 'tts') {
+      const ok = await checkVoicevox();
+      if (!ok) {
+        document.getElementById('voicevox-modal-status').textContent = '';
+        document.getElementById('voicevox-modal').showModal();
+        return;
+      }
+    }
+    switchTab(btn.dataset.tab);
   });
+});
+
+// VOICEVOX modal buttons
+document.getElementById('voicevox-modal-cancel').addEventListener('click', () => {
+  document.getElementById('voicevox-modal').close();
+});
+document.getElementById('voicevox-modal-retry').addEventListener('click', async () => {
+  const statusEl = document.getElementById('voicevox-modal-status');
+  const retryBtn = document.getElementById('voicevox-modal-retry');
+  statusEl.textContent = '確認中...';
+  retryBtn.disabled = true;
+  const ok = await checkVoicevox();
+  retryBtn.disabled = false;
+  if (ok) {
+    document.getElementById('voicevox-modal').close();
+    switchTab('tts');
+  } else {
+    statusEl.textContent = 'まだ起動していません。VOICEVOXを起動してから再度お試しください。';
+  }
 });
 
 window.addEventListener('beforeunload', () => {
