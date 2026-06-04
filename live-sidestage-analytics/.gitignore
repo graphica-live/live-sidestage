@@ -1,0 +1,21 @@
+# deps
+node_modules/
+
+# build
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.production
+
+# misc
+.DS_Store
+*.pem
+
+# prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+nul
