@@ -1652,6 +1652,8 @@ window.addEventListener('beforeunload', () => {
     try {
       overlaySock = io('http://localhost:38200');
       overlaySock.on('tts:voicevox-error', () => {
+        audioQueue.length = 0;
+        isPlaying = false;
         const modal = document.getElementById('voicevox-modal');
         if (!modal.open) {
           document.getElementById('voicevox-modal-status').textContent = '';
