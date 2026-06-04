@@ -1599,6 +1599,7 @@ document.getElementById('voicevox-dl-link').addEventListener('click', (e) => {
 });
 document.getElementById('voicevox-modal-cancel').addEventListener('click', () => {
   document.getElementById('voicevox-modal').close();
+  window.api.stopTts();
 });
 document.getElementById('voicevox-modal-retry').addEventListener('click', async () => {
   const statusEl = document.getElementById('voicevox-modal-status');
