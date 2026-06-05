@@ -1,5 +1,6 @@
 FROM node:20-alpine
 WORKDIR /app
+# build trigger
 
 COPY package*.json ./
 RUN npm ci
