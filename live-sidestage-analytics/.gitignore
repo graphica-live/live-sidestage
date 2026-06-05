@@ -19,3 +19,5 @@ prisma/dev.db
 prisma/dev.db-journal
 
 nul
+tsconfig.tsbuildinfo
+next-env.d.ts
