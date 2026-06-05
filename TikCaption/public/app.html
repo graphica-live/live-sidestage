@@ -574,6 +574,18 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     </div>
   </div>
 
+  <!-- Startup behavior -->
+  <div style="display:flex;gap:16px;margin-bottom:6px;">
+    <div class="check-group">
+      <input type="checkbox" id="auto-start-caption">
+      <label for="auto-start-caption" style="margin:0;color:var(--text);">起動時に自動で字幕を開始</label>
+    </div>
+    <div class="check-group">
+      <input type="checkbox" id="launch-on-boot">
+      <label for="launch-on-boot" style="margin:0;color:var(--text);">PC起動時にTikCaptionを起動</label>
+    </div>
+  </div>
+
   <!-- Start/Stop + Detail settings -->
   <div style="display:flex;align-items:center;gap:8px;">
     <button id="start-btn" style="flex:1;">▶ 開始</button>
@@ -821,21 +833,6 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         <label>プレビュー</label>
         <div id="caption-preview">
           <span id="preview-text">あいうえお ABC 123</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section 3: 起動動作 -->
-    <section>
-      <div class="section-title">起動動作</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <div class="check-group">
-          <input type="checkbox" id="auto-start-caption">
-          <label for="auto-start-caption" style="margin:0;color:var(--text);">起動時に自動で字幕を開始</label>
-        </div>
-        <div class="check-group">
-          <input type="checkbox" id="launch-on-boot">
-          <label for="launch-on-boot" style="margin:0;color:var(--text);">PC起動時にTikCaptionを起動</label>
         </div>
       </div>
     </section>
