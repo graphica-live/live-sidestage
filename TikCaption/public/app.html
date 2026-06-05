@@ -388,6 +388,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 /* ── TTS tab ─────────────────────────────────────── */
 .tts-table { width: 100%; border-collapse: collapse; }
 .tts-table tr { border-bottom: 1px solid var(--border); }
+.tts-table tr.no-sep { border-bottom: none; }
 .tts-table td { padding: 7px 0; vertical-align: middle; }
 .tts-label { width: 110px; font-size: 11px; color: var(--muted); padding-right: 10px; white-space: nowrap; }
 .icon-btn { padding: 5px 8px; min-width: unset; font-size: 14px; line-height: 1; }
@@ -617,7 +618,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <div class="container">
 
     <table class="tts-table">
-      <tr>
+      <tr class="no-sep">
         <td class="tts-label">配信ユーザーID</td>
         <td>
           <div class="row">
@@ -650,13 +651,13 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
           </details>
         </td>
       </tr>
-      <tr>
+      <tr class="no-sep">
         <td class="tts-label">ボイス選択</td>
         <td>
           <select id="tts-voice-select" style="width:100%;"></select>
         </td>
       </tr>
-      <tr>
+      <tr class="no-sep">
         <td class="tts-label">音量</td>
         <td>
           <div class="slider-row">
@@ -665,7 +666,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
           </div>
         </td>
       </tr>
-      <tr>
+      <tr class="no-sep">
         <td class="tts-label">読み上げ速度</td>
         <td>
           <div class="slider-row">
@@ -674,7 +675,7 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
           </div>
         </td>
       </tr>
-      <tr>
+      <tr class="no-sep">
         <td class="tts-label">ランダムボイス</td>
         <td>
           <div class="row" style="gap:10px;">
