@@ -194,12 +194,12 @@ function clearFade() {
   if (processTimer) { clearTimeout(processTimer); processTimer = null; }
 }
 
-function startFadeTimer() {
+function startFadeTimer(duration) {
   clearTimeout(fadeTimer);
   fadeTimer = setTimeout(() => {
     elOriginal.style.opacity = '0';
     elTranslated.style.opacity = '0';
-  }, settings.segmentDuration * 1000);
+  }, (duration ?? settings.segmentDuration) * 1000);
 }
 
 function typewriterDisplay(text, onDone) {
@@ -227,14 +227,20 @@ function processQueue() {
   clearFade();
   elOriginal.style.opacity = '1';
 
-  if (!settings.showInterim || settings.charsPerSec >= 60) {
+  // Boost: backlog pending → cut display time to 40% (min 1s), skip typewriter
+  const boosting = captionQueue.length >= 1;
+  const segDuration = boosting
+    ? Math.max(settings.segmentDuration * 0.4, 1)
+    : settings.segmentDuration;
+
+  if (!settings.showInterim || settings.charsPerSec >= 60 || boosting) {
     elOriginal.textContent = seg;
-    startFadeTimer();
-    processTimer = setTimeout(processQueue, settings.segmentDuration * 1000);
+    startFadeTimer(segDuration);
+    processTimer = setTimeout(processQueue, segDuration * 1000);
   } else {
     typewriterDisplay(seg, () => {
-      startFadeTimer();
-      processTimer = setTimeout(processQueue, settings.segmentDuration * 1000);
+      startFadeTimer(segDuration);
+      processTimer = setTimeout(processQueue, segDuration * 1000);
     });
   }
 }
