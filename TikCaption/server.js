@@ -425,6 +425,9 @@ io.on('connection', (socket) => {
   socket.on('tts:voicevox-error', () => {
     socket.broadcast.emit('tts:voicevox-error');
   });
+  socket.on('tts:stop-current', () => {
+    socket.broadcast.emit('tts:stop-current');
+  });
 });
 
 // ── Control API ───────────────────────────────────────────────────────────────
