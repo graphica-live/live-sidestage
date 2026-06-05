@@ -450,6 +450,14 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   padding: 0 2px;
   line-height: 1;
 }
+#pause-btn[data-paused="1"],
+#tts-pause-btn[data-paused="1"] {
+  background: #c2692a;
+}
+#pause-btn[data-paused="1"]:hover,
+#tts-pause-btn[data-paused="1"]:hover {
+  background: #d97a35;
+}
 .api-accordion {
   margin-top: 6px;
 }
@@ -2359,9 +2367,11 @@ window.addEventListener('beforeunload', () => {
       const btn = document.getElementById('tts-pause-btn');
       if (ttsPaused) {
         btn.textContent = '▶ 再開';
+        btn.dataset.paused = '1';
         overlaySock?.emit('tts:stop-current');
       } else {
         btn.textContent = '⏸ 一時停止';
+        btn.dataset.paused = '';
         processQueue();
       }
     });
