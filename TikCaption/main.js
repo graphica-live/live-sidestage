@@ -776,8 +776,16 @@ app.whenReady().then(async () => {
       emitTtsStatus({ status: 'stopped', message: '停止中' });
       return { ok: true };
     },
-    pauseTTS: () => { ttsAcceptingComments = false; return { ok: true }; },
-    resumeTTS: () => { ttsAcceptingComments = true; return { ok: true }; },
+    pauseTTS: () => {
+      ttsAcceptingComments = false;
+      if (mainWin) mainWin.webContents.send('tts-paused', true);
+      return { ok: true };
+    },
+    resumeTTS: () => {
+      ttsAcceptingComments = true;
+      if (mainWin) mainWin.webContents.send('tts-paused', false);
+      return { ok: true };
+    },
     toggleCaptionPause: () => {
       const paused = !serverModule.isPaused();
       serverModule.setPaused(paused);
@@ -786,7 +794,9 @@ app.whenReady().then(async () => {
     },
     toggleTtsPause: () => {
       ttsAcceptingComments = !ttsAcceptingComments;
-      return { paused: !ttsAcceptingComments };
+      const paused = !ttsAcceptingComments;
+      if (mainWin) mainWin.webContents.send('tts-paused', paused);
+      return { paused };
     },
     getTtsStatus: () => ({ ...ttsStatus, paused: !ttsAcceptingComments }),
   };

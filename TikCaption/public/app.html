@@ -2391,6 +2391,20 @@ window.addEventListener('beforeunload', () => {
     }
   });
 
+  window.api.onTtsPaused((paused) => {
+    ttsPaused = paused;
+    const btn = document.getElementById('tts-pause-btn');
+    if (paused) {
+      btn.textContent = '▶ 再開';
+      btn.dataset.paused = '1';
+      overlaySock?.emit('tts:stop-current');
+    } else {
+      btn.textContent = '⏸ 一時停止';
+      btn.dataset.paused = '';
+      processQueue();
+    }
+  });
+
   window.api.onTtsComment((data) => {
     if (data.uniqueId) {
       viewerCache.set(data.uniqueId, { nickname: data.nickname || '', profilePictureUrl: data.profilePictureUrl || '' });
