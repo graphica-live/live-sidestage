@@ -440,17 +440,19 @@ function controlRoute(handler) {
   };
 }
 
-app.post('/api/caption/start',  controlRoute('startASR'));
-app.post('/api/caption/pause',  controlRoute('pauseASR'));
-app.post('/api/caption/resume', controlRoute('resumeASR'));
-app.post('/api/caption/stop',   controlRoute('stopASR'));
-app.get('/api/caption/status',  controlRoute('getCaptionStatus'));
+app.post('/api/caption/start',        controlRoute('startASR'));
+app.post('/api/caption/pause',        controlRoute('pauseASR'));
+app.post('/api/caption/resume',       controlRoute('resumeASR'));
+app.post('/api/caption/stop',         controlRoute('stopASR'));
+app.post('/api/caption/pause-toggle', controlRoute('toggleCaptionPause'));
+app.get('/api/caption/status',        controlRoute('getCaptionStatus'));
 
-app.post('/api/tts/start',  controlRoute('startTTS'));
-app.post('/api/tts/pause',  controlRoute('pauseTTS'));
-app.post('/api/tts/resume', controlRoute('resumeTTS'));
-app.post('/api/tts/stop',   controlRoute('stopTTS'));
-app.get('/api/tts/status',  controlRoute('getTtsStatus'));
+app.post('/api/tts/start',        controlRoute('startTTS'));
+app.post('/api/tts/pause',        controlRoute('pauseTTS'));
+app.post('/api/tts/resume',       controlRoute('resumeTTS'));
+app.post('/api/tts/stop',         controlRoute('stopTTS'));
+app.post('/api/tts/pause-toggle', controlRoute('toggleTtsPause'));
+app.get('/api/tts/status',        controlRoute('getTtsStatus'));
 
 function startServer(port, handlers) {
   _handlers = handlers || null;

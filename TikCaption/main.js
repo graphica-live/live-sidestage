@@ -778,6 +778,16 @@ app.whenReady().then(async () => {
     },
     pauseTTS: () => { ttsAcceptingComments = false; return { ok: true }; },
     resumeTTS: () => { ttsAcceptingComments = true; return { ok: true }; },
+    toggleCaptionPause: () => {
+      const paused = !serverModule.isPaused();
+      serverModule.setPaused(paused);
+      if (mainWin) mainWin.webContents.send('asr-paused', paused);
+      return { paused };
+    },
+    toggleTtsPause: () => {
+      ttsAcceptingComments = !ttsAcceptingComments;
+      return { paused: !ttsAcceptingComments };
+    },
     getTtsStatus: () => ({ ...ttsStatus, paused: !ttsAcceptingComments }),
   };
 
