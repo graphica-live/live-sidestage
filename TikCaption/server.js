@@ -360,6 +360,8 @@ let _captionPaused = false;
 function setPaused(val) { _captionPaused = val; }
 function isPaused() { return _captionPaused; }
 
+let _handlers = null;
+
 async function handleCaptionText(text, isFinal, srcLang) {
   if (_captionPaused) return;
   const settings = loadSettings();
@@ -425,7 +427,33 @@ io.on('connection', (socket) => {
   });
 });
 
-function startServer(port) {
+// ── Control API ───────────────────────────────────────────────────────────────
+
+function controlRoute(handler) {
+  return async (req, res) => {
+    if (!_handlers) return res.status(503).json({ error: 'not ready' });
+    try {
+      res.json(await Promise.resolve(_handlers[handler]()));
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  };
+}
+
+app.post('/api/caption/start',  controlRoute('startASR'));
+app.post('/api/caption/pause',  controlRoute('pauseASR'));
+app.post('/api/caption/resume', controlRoute('resumeASR'));
+app.post('/api/caption/stop',   controlRoute('stopASR'));
+app.get('/api/caption/status',  controlRoute('getCaptionStatus'));
+
+app.post('/api/tts/start',  controlRoute('startTTS'));
+app.post('/api/tts/pause',  controlRoute('pauseTTS'));
+app.post('/api/tts/resume', controlRoute('resumeTTS'));
+app.post('/api/tts/stop',   controlRoute('stopTTS'));
+app.get('/api/tts/status',  controlRoute('getTtsStatus'));
+
+function startServer(port, handlers) {
+  _handlers = handlers || null;
   return new Promise((resolve, reject) => {
     server.listen(port, '127.0.0.1', () => resolve(server));
     server.once('error', reject);

@@ -725,12 +725,63 @@ app.whenReady().then(async () => {
 
   if (isLoaderOnly) return;
 
-  const { startServer, loadSettings, saveSettings } = require('./server');
+  const serverModule = require('./server');
+  const { startServer, loadSettings, saveSettings } = serverModule;
 
   const SETTINGS_PATH = path.join(os.homedir(), '.tikcaption-settings.json');
   const isFirstRun = !fs.existsSync(SETTINGS_PATH);
 
-  await startServer(CAPTION_PORT).catch((err) => {
+  const controlHandlers = {
+    startASR: () => { if (!asrProc) spawnASR(loadSettings()); return { ok: true }; },
+    stopASR: () => {
+      killASR();
+      serverModule.setPaused(false);
+      asrStatus = { status: 'stopped', message: '停止しました' };
+      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      return { ok: true };
+    },
+    pauseASR: () => {
+      serverModule.setPaused(true);
+      if (mainWin) mainWin.webContents.send('asr-paused', true);
+      return { ok: true };
+    },
+    resumeASR: () => {
+      serverModule.setPaused(false);
+      if (mainWin) mainWin.webContents.send('asr-paused', false);
+      return { ok: true };
+    },
+    getCaptionStatus: () => ({
+      status: asrProc ? (serverModule.isPaused() ? 'paused' : 'running') : 'idle',
+    }),
+    startTTS: async () => {
+      const uid = (loadSettings().ttsUserId || '').trim().replace(/^@/, '');
+      if (!uid) {
+        emitTtsStatus({ status: 'error', message: 'ユーザーIDを設定してください' });
+        return { ok: false };
+      }
+      ttsUserId = uid;
+      ttsStopped = false;
+      if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+      await connectTikTokLive(uid);
+      return { ok: true };
+    },
+    stopTTS: async () => {
+      ttsStopped = true;
+      if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+      if (ttsConn) {
+        ttsConn.removeAllListeners?.();
+        try { await Promise.resolve(ttsConn.disconnect?.()); } catch (_) {}
+        ttsConn = null;
+      }
+      emitTtsStatus({ status: 'stopped', message: '停止中' });
+      return { ok: true };
+    },
+    pauseTTS: () => { ttsAcceptingComments = false; return { ok: true }; },
+    resumeTTS: () => { ttsAcceptingComments = true; return { ok: true }; },
+    getTtsStatus: () => ({ ...ttsStatus, paused: !ttsAcceptingComments }),
+  };
+
+  await startServer(CAPTION_PORT, controlHandlers).catch((err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`[main] port ${CAPTION_PORT} already in use — another instance may be running`);
     } else {
