@@ -1916,6 +1916,7 @@ window.addEventListener('beforeunload', () => {
   }
 
   function enqueue(item) {
+    if (ttsPaused) return;
     if (!shouldRead(item.comment)) return;  // filter before queuing
     item._ttsKey = Math.random().toString(36).slice(2);
     audioQueue.push(item);
