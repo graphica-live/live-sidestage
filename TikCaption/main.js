@@ -9,6 +9,10 @@ const { spawn, execSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 
+// getUserMedia triggers Chromium to register a Windows Communications audio session,
+// causing OS-level ducking of other streams. Keep audio service in-process to avoid it.
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,AudioServiceSandbox');
+
 const CAPTION_PORT = 38200;
 const LOADER_PORT = 38201;
 
