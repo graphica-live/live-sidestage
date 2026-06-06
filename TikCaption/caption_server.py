@@ -205,9 +205,9 @@ def main():
 
     log({'type': 'status', 'message': 'マイク録音を開始しました'})
 
-    try:
+    def run_stream(device):
         with sd.InputStream(
-            device=device_idx,
+            device=device,
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype='float32',
@@ -216,11 +216,24 @@ def main():
         ):
             while True:
                 time.sleep(1)
+
+    try:
+        run_stream(device_idx)
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        log({'type': 'error', 'message': f'録音エラー: {e}'})
-        sys.exit(1)
+        if device_idx is not None:
+            log({'type': 'error', 'message': f'録音エラー (デフォルトデバイスで再試行): {e}'})
+            try:
+                run_stream(None)
+            except KeyboardInterrupt:
+                pass
+            except Exception as e2:
+                log({'type': 'error', 'message': f'録音エラー: {e2}'})
+                sys.exit(1)
+        else:
+            log({'type': 'error', 'message': f'録音エラー: {e}'})
+            sys.exit(1)
 
 
 if __name__ == '__main__':

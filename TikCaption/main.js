@@ -61,6 +61,7 @@ let overlayWin = null;
 let tray = null;
 let asrProc = null;
 let asrStatus = { status: 'idle', message: '' };
+let _asrExpectExit = false;
 
 // ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
 const RECONNECT_DELAY_MS = 10000;
@@ -475,14 +476,21 @@ async function spawnASR(settings) {
   });
 
   asrProc.on('exit', (code) => {
+    const wasExpected = _asrExpectExit;
+    _asrExpectExit = false;
     asrStatus = { status: 'stopped', message: `プロセス終了 (code ${code})` };
     if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     asrProc = null;
+    if (!wasExpected && code !== 0) {
+      const { loadSettings } = require('./server');
+      setTimeout(() => spawnASR(loadSettings()), 3000);
+    }
   });
 }
 
 function killASR() {
   if (asrProc) {
+    _asrExpectExit = true;
     try { asrProc.kill(); } catch (_) {}
     asrProc = null;
   }
