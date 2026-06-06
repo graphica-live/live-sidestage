@@ -349,6 +349,33 @@ function installPython() {
   });
 }
 
+function installVcRedist() {
+  return new Promise((resolve) => {
+    asrStatus = { status: 'installing', message: 'Visual C++ Redistributable をインストール中...' };
+    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+
+    const proc = spawn('winget', [
+      'install', 'Microsoft.VCRedist.2015+.x64',
+      '--silent',
+      '--accept-package-agreements',
+      '--accept-source-agreements',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const onLine = (data) => {
+      const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
+      if (line) {
+        asrStatus = { status: 'installing', message: `VC++: ${line.slice(0, 60)}` };
+        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      }
+    };
+    proc.stdout.on('data', onLine);
+    proc.stderr.on('data', onLine);
+
+    proc.on('exit', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
+}
+
 const DEPS_CACHE_PATH = path.join(os.homedir(), '.tikcaption-deps-ok');
 
 function ensurePythonDeps(python) {
@@ -484,12 +511,22 @@ async function spawnASR(settings) {
   asrProc.on('exit', (code) => {
     const wasExpected = _asrExpectExit;
     _asrExpectExit = false;
-    if (code !== 0 && _lastAsrError) {
-      let msg = _lastAsrError;
-      if (/DLL load failed/i.test(msg)) {
-        msg = `DLLロードエラー: Visual C++ Redistributable 2015-2022 x64 をインストールしてください。または ~/.tikcaption-deps-ok を削除して再起動`;
-      }
-      asrStatus = { status: 'error', message: msg };
+    if (code !== 0 && _lastAsrError && /DLL load failed/i.test(_lastAsrError)) {
+      asrProc = null;
+      try { fs.unlinkSync(DEPS_CACHE_PATH); } catch (_) {}
+      installVcRedist().then((ok) => {
+        const { loadSettings } = require('./server');
+        if (ok) {
+          asrStatus = { status: 'installing', message: 'VC++ インストール完了。再起動中...' };
+        } else {
+          asrStatus = { status: 'error', message: 'VC++ インストール失敗。microsoft.com から Visual C++ Redistributable 2015-2022 x64 を手動インストールしてください' };
+        }
+        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        if (ok) setTimeout(() => spawnASR(loadSettings()), 2000);
+      });
+      return;
+    } else if (code !== 0 && _lastAsrError) {
+      asrStatus = { status: 'error', message: _lastAsrError };
     } else {
       asrStatus = { status: 'stopped', message: code === 0 ? '停止しました' : `プロセス終了 (code ${code})` };
     }
