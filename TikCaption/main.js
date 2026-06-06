@@ -665,6 +665,7 @@ function registerIPC() {
   // ── TTS IPC ────────────────────────────────────────────────────────────────
   ipcMain.handle('tts-get-status', () => ttsStatus);
   ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
+  ipcMain.handle('open-audio-ducking-settings', () => execSync('control.exe mmsys.cpl,,3'));
 
   ipcMain.handle('tts-start', async (_e, userId) => {
     const uid = (userId || '').trim().replace(/^@/, '');

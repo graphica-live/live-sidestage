@@ -510,6 +510,9 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   <div>
     <label>録音デバイス</label>
     <select id="device-select"></select>
+    <div style="margin-top:4px;">
+      <a id="audio-ducking-link" href="#" style="font-size:11px;color:var(--muted);text-decoration:underline;">マイク音量が下がる場合はこちら</a>
+    </div>
   </div>
 
   <!-- Level meter -->
@@ -1343,6 +1346,11 @@ document.getElementById('target-lang').addEventListener('change', (e) => {
 document.getElementById('device-select').addEventListener('change', async (e) => {
   save({ deviceId: e.target.value });
   await startMeter(e.target.value || undefined);
+});
+
+document.getElementById('audio-ducking-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openAudioDuckingSettings();
 });
 
 document.getElementById('open-modal').addEventListener('click', () => {
