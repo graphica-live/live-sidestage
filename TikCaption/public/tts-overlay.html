@@ -40,16 +40,25 @@ const prefetchCache = new Map(); // key → Promise<AudioBuffer>
 let currentSource = null;
 let voicevoxWasAlive = false;
 let voicevoxErrorSent = false;
+let voicevoxConsecFails = 0;
+const VOICEVOX_FAIL_THRESHOLD = 2;
+
+function maybeEmitVoicevoxError() {
+  if (voicevoxWasAlive && !voicevoxErrorSent && voicevoxConsecFails >= VOICEVOX_FAIL_THRESHOLD) {
+    voicevoxErrorSent = true;
+    socket.emit('tts:voicevox-error');
+  }
+}
+
 setInterval(async () => {
   try {
-    await fetch('http://localhost:50021/version', { method: 'GET', signal: AbortSignal.timeout(500) });
+    await fetch('http://localhost:50021/version', { method: 'GET', signal: AbortSignal.timeout(1500) });
     voicevoxWasAlive = true;
     voicevoxErrorSent = false;
+    voicevoxConsecFails = 0;
   } catch {
-    if (voicevoxWasAlive && !voicevoxErrorSent) {
-      voicevoxErrorSent = true;
-      socket.emit('tts:voicevox-error');
-    }
+    voicevoxConsecFails++;
+    maybeEmitVoicevoxError();
   }
 }, 2000);
 
@@ -112,7 +121,8 @@ socket.on('tts:speak', async ({ text, speakerId, volume, speed, key }) => {
     });
   } catch (e) {
     console.warn('[TTS overlay]', e.message);
-    socket.emit('tts:voicevox-error');
+    voicevoxConsecFails++;
+    maybeEmitVoicevoxError();
   } finally {
     socket.emit('tts:done', {});
   }
