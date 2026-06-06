@@ -836,7 +836,9 @@ app.whenReady().then(async () => {
   createTray();
   registerIPC();
 
-  if (app.isPackaged) setupAutoUpdater();
+  if (app.isPackaged) {
+    mainWin.webContents.once('did-finish-load', () => setupAutoUpdater());
+  }
 
   const s = loadSettings();
   if (isFirstRun) {
