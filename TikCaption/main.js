@@ -62,6 +62,7 @@ let tray = null;
 let asrProc = null;
 let asrStatus = { status: 'idle', message: '' };
 let _asrExpectExit = false;
+let _lastAsrError = null;
 
 // ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
 const RECONNECT_DELAY_MS = 10000;
@@ -458,12 +459,15 @@ async function spawnASR(settings) {
     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
   });
 
+  _lastAsrError = null;
+
   asrProc.stdout.on('data', (data) => {
     const lines = data.toString('utf8').split('\n').filter(Boolean);
     for (const line of lines) {
       try {
         const msg = JSON.parse(line);
         if (msg.type === 'status' || msg.type === 'loading' || msg.type === 'error') {
+          if (msg.type === 'error') _lastAsrError = msg.message;
           asrStatus = { status: msg.type, message: msg.message };
           if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
         }
@@ -472,13 +476,19 @@ async function spawnASR(settings) {
   });
 
   asrProc.stderr.on('data', (data) => {
-    console.error('[ASR]', data.toString());
+    const text = data.toString().trim();
+    if (text) _lastAsrError = text;
+    console.error('[ASR]', text);
   });
 
   asrProc.on('exit', (code) => {
     const wasExpected = _asrExpectExit;
     _asrExpectExit = false;
-    asrStatus = { status: 'stopped', message: `プロセス終了 (code ${code})` };
+    if (code !== 0 && _lastAsrError) {
+      asrStatus = { status: 'error', message: _lastAsrError };
+    } else {
+      asrStatus = { status: 'stopped', message: code === 0 ? '停止しました' : `プロセス終了 (code ${code})` };
+    }
     if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
     asrProc = null;
     if (!wasExpected && code !== 0) {
