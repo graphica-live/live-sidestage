@@ -9,7 +9,5 @@ COPY . .
 RUN npx prisma generate && npx next build
 
 EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
 
 CMD ["sh", "-c", "npx prisma db push && node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
