@@ -485,7 +485,11 @@ async function spawnASR(settings) {
     const wasExpected = _asrExpectExit;
     _asrExpectExit = false;
     if (code !== 0 && _lastAsrError) {
-      asrStatus = { status: 'error', message: _lastAsrError };
+      let msg = _lastAsrError;
+      if (/DLL load failed/i.test(msg)) {
+        msg = `DLLロードエラー: Visual C++ Redistributable 2015-2022 x64 をインストールしてください。または ~/.tikcaption-deps-ok を削除して再起動`;
+      }
+      asrStatus = { status: 'error', message: msg };
     } else {
       asrStatus = { status: 'stopped', message: code === 0 ? '停止しました' : `プロセス終了 (code ${code})` };
     }

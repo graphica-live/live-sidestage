@@ -4,4 +4,5 @@ sounddevice
 soundfile
 torch
 torchaudio
+scikit-learn
 nemo_toolkit[asr]
