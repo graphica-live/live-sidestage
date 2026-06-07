@@ -14,6 +14,8 @@ import argparse
 import threading
 import time
 import unicodedata
+import warnings
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='pydub')
 
 
 def normalize_text(text):
