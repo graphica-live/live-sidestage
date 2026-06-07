@@ -456,6 +456,12 @@ async function spawnASR(settings) {
     }
   }
 
+  if (await checkPort(CAPTION_PORT)) {
+    asrStatus = { status: 'error', message: `ポート ${CAPTION_PORT} が他のアプリに使用されています。競合するアプリを終了してから再起動してください。` };
+    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+    return;
+  }
+
   let python = findPython();
   if (!python) {
     const installed = await installPython();
