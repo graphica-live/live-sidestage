@@ -399,7 +399,7 @@ function ensurePythonDeps(python) {
         return;
       }
 
-      asrStatus = { status: 'installing', message: `インストール中... (${python})` };
+      asrStatus = { status: 'installing', message: `初回セットアップ中... 数GB のダウンロードが発生します（目安: 10〜30分）。このまま待機してください。` };
       if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
 
       const reqPath = app.isPackaged
