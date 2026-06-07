@@ -240,6 +240,8 @@ def main():
             while True:
                 time.sleep(1)
 
+    MIC_HINT = '「設定 → プライバシーとセキュリティ → マイク」でアクセスが許可されているか確認してください。'
+
     try:
         run_stream(device_idx)
     except KeyboardInterrupt:
@@ -252,10 +254,10 @@ def main():
             except KeyboardInterrupt:
                 pass
             except Exception as e2:
-                log({'type': 'error', 'message': f'録音エラー: {e2}'})
+                log({'type': 'error', 'message': f'録音エラー: {e2}。{MIC_HINT}'})
                 sys.exit(1)
         else:
-            log({'type': 'error', 'message': f'録音エラー: {e}'})
+            log({'type': 'error', 'message': f'録音エラー: {e}。{MIC_HINT}'})
             sys.exit(1)
 
 
