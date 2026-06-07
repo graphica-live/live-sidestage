@@ -441,7 +441,21 @@ function ensurePythonDeps(python) {
   });
 }
 
+function hasVcRedist() {
+  const dll = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'MSVCP140.dll');
+  return fs.existsSync(dll);
+}
+
 async function spawnASR(settings) {
+  if (!hasVcRedist()) {
+    const ok = await installVcRedist();
+    if (!ok) {
+      asrStatus = { status: 'error', message: 'VC++ インストール失敗。microsoft.com から Visual C++ Redistributable 2015-2022 x64 を手動インストールしてください' };
+      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      return;
+    }
+  }
+
   let python = findPython();
   if (!python) {
     const installed = await installPython();
