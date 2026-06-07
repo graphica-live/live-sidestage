@@ -382,15 +382,7 @@ function installVcRedist() {
   });
 }
 
-const DEPS_CACHE_PATH = path.join(os.homedir(), '.tikcaption-deps-ok');
-
 function ensurePythonDeps(python) {
-  // Skip check if already verified in a previous run
-  if (fs.existsSync(DEPS_CACHE_PATH)) {
-    console.log('[ASR] deps cache hit, skipping check');
-    return Promise.resolve(true);
-  }
-
   return new Promise((resolve) => {
     const checkCode = [
       'import importlib.util, sys',
@@ -403,7 +395,6 @@ function ensurePythonDeps(python) {
     const check = spawn(python, ['-c', checkCode], { stdio: 'ignore' });
     check.on('exit', (code) => {
       if (code === 0) {
-        try { fs.writeFileSync(DEPS_CACHE_PATH, python, 'utf8'); } catch (_) {}
         resolve(true);
         return;
       }
@@ -433,7 +424,6 @@ function ensurePythonDeps(python) {
 
       inst.on('exit', (c) => {
         if (c === 0) {
-          try { fs.writeFileSync(DEPS_CACHE_PATH, python, 'utf8'); } catch (_) {}
           asrStatus = { status: 'ready', message: 'パッケージインストール完了' };
         } else {
           const detail = lastLines.filter(l => /error|Error|failed/i.test(l)).pop()
@@ -528,7 +518,6 @@ async function spawnASR(settings) {
     _asrExpectExit = false;
     if (code !== 0 && _lastAsrError && /DLL load failed/i.test(_lastAsrError)) {
       asrProc = null;
-      try { fs.unlinkSync(DEPS_CACHE_PATH); } catch (_) {}
       installVcRedist().then((ok) => {
         const { loadSettings } = require('./server');
         if (ok) {
