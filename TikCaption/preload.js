@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   onTtsComment: (cb) => { ipcRenderer.on('tts-comment', (_e, data) => cb(data)); },
   onTtsPaused: (cb) => { ipcRenderer.on('tts-paused', (_e, paused) => cb(paused)); },
   onTtsEmote: (cb) => { ipcRenderer.on('tts-emote', (_e, data) => cb(data)); },
+  checkVoicevox: () => ipcRenderer.invoke('check-voicevox'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openAudioDuckingSettings: () => ipcRenderer.invoke('open-audio-ducking-settings'),
 });

@@ -1637,8 +1637,7 @@ init();
 // ── Tab switching ─────────────────────────────────
 async function checkVoicevox() {
   try {
-    const res = await fetch('http://localhost:50021/version', { signal: AbortSignal.timeout(1500) });
-    return res.ok;
+    return await window.api.checkVoicevox();
   } catch (_) {
     return false;
   }

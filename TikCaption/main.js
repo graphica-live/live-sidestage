@@ -747,6 +747,14 @@ function registerIPC() {
 
   // ── TTS IPC ────────────────────────────────────────────────────────────────
   ipcMain.handle('tts-get-status', () => ttsStatus);
+  ipcMain.handle('check-voicevox', () => new Promise((resolve) => {
+    const req = http.get('http://localhost:50021/version', { timeout: 2000 }, (res) => {
+      resolve(res.statusCode < 400);
+      res.resume();
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  }));
   ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
   ipcMain.handle('open-audio-ducking-settings', () => execSync('control.exe mmsys.cpl,,3'));
 
