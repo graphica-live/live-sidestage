@@ -299,6 +299,18 @@ function startLoaderServer() {
 
 // ── ASR process ──────────────────────────────────────────────────────────────
 
+function isPython310Plus(exe) {
+  try {
+    const out = execSync(`"${exe}" -c "import sys; print(sys.version_info[:2])"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const m = out.match(/\((\d+),\s*(\d+)\)/);
+    if (!m) return false;
+    const [major, minor] = [parseInt(m[1]), parseInt(m[2])];
+    return major > 3 || (major === 3 && minor >= 10);
+  } catch (_) {
+    return false;
+  }
+}
+
 function findPython() {
   const local = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python');
   const candidates = [];
@@ -308,16 +320,10 @@ function findPython() {
     }
   }
   for (const exe of candidates) {
-    try {
-      execSync(`"${exe}" --version`, { stdio: 'ignore' });
-      return exe;
-    } catch (_) {}
+    if (isPython310Plus(exe)) return exe;
   }
   for (const bin of ['python3.12', 'python3.11', 'python3.10', 'python', 'py', 'python3']) {
-    try {
-      execSync(`${bin} --version`, { stdio: 'ignore' });
-      return bin;
-    } catch (_) {}
+    if (isPython310Plus(bin)) return bin;
   }
   return null;
 }
