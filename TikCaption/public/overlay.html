@@ -224,7 +224,7 @@ function processQueue() {
   isTyping = true;
 
   // Heavy backlog: drop intermediate segments, keep only the most recent
-  if (captionQueue.length > 2) captionQueue.splice(0, captionQueue.length - 1);
+  if (captionQueue.length > 4) captionQueue.splice(0, captionQueue.length - 1);
 
   const seg = captionQueue.shift();
 
