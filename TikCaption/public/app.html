@@ -1884,10 +1884,19 @@ window.addEventListener('beforeunload', () => {
     });
   }
 
+  function buildRawText(item) {
+    let text = item.comment || '';
+    for (const e of (item.emotes || [])) {
+      const rule = (ttsS.ttsEmoteRules || []).find(r => r.emote === e.emoteId);
+      if (rule?.reading) text = (text ? text + ' ' : '') + rule.reading;
+    }
+    return text;
+  }
+
   function prefetchNext() {
     const next = audioQueue[0];
     if (!next || !next._ttsKey) return;
-    const nextText = applyConversions(next.comment);
+    const nextText = applyConversions(buildRawText(next));
     if (!nextText) return;
     const nextSpId = getEffectiveSpeakerId(next.uniqueId);
     overlaySock?.emit('tts:prefetch', { key: next._ttsKey, text: nextText, speakerId: nextSpId, volume: getTtsVol(), speed: getTtsSpeed() });
@@ -1898,7 +1907,7 @@ window.addEventListener('beforeunload', () => {
     isPlaying = true;
     const item = audioQueue.shift();
     try {
-      const text = applyConversions(item.comment);
+      const text = applyConversions(buildRawText(item));
       if (text) {
         addLogEntry(item.nickname || item.uniqueId, item.comment);
         const spId = getEffectiveSpeakerId(item.uniqueId);
