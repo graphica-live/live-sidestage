@@ -49,7 +49,30 @@ def load_vad():
     return model, get_speech_ts
 
 
+def _patch_tqdm_for_logging():
+    try:
+        import tqdm as _tqdm_mod
+        import tqdm.auto as _tqdm_auto
+        _Orig = _tqdm_mod.tqdm
+
+        class _JsonTqdm(_Orig):
+            def update(self, n=1):
+                result = super().update(n)
+                if self.total and self.total > 1024 * 1024:
+                    pct = int(100 * self.n / self.total)
+                    mb_done = self.n / 1024 / 1024
+                    mb_total = self.total / 1024 / 1024
+                    log({'type': 'loading', 'message': f'モデルDL中: {pct}% ({mb_done:.0f} / {mb_total:.0f} MB)'})
+                return result
+
+        _tqdm_mod.tqdm = _JsonTqdm
+        _tqdm_auto.tqdm = _JsonTqdm
+    except Exception:
+        pass
+
+
 def load_asr():
+    _patch_tqdm_for_logging()
     import nemo.collections.asr as nemo_asr
     from omegaconf import OmegaConf
     model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(
