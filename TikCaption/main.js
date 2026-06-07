@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const net = require('net');
@@ -456,8 +456,17 @@ async function spawnASR(settings) {
     }
     python = findPython();
     if (!python) {
-      asrStatus = { status: 'error', message: 'Pythonが見つかりません。再起動してください' };
+      asrStatus = { status: 'error', message: 'Pythonが見つかりません。アプリを再起動してください' };
       if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      dialog.showMessageBox(mainWin, {
+        type: 'info',
+        title: 'TikCaption — 再起動が必要です',
+        message: 'Pythonのインストールが完了しました。\nTikCaptionを再起動してください。',
+        buttons: ['今すぐ再起動', '後で'],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) app.relaunch(), app.quit();
+      });
       return;
     }
   }
