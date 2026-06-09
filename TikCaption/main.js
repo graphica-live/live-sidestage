@@ -894,6 +894,10 @@ app.whenReady().then(async () => {
   await startServer(CAPTION_PORT, controlHandlers).catch((err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`[main] port ${CAPTION_PORT} already in use — another instance may be running`);
+      if (mainWin) mainWin.webContents.send('asr-status', {
+        status: 'error',
+        message: `ポート ${CAPTION_PORT} が他のアプリに使用されています。競合するアプリを終了してから再起動してください。`,
+      });
     } else {
       throw err;
     }
