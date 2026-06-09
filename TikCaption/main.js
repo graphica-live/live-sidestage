@@ -447,6 +447,7 @@ function hasVcRedist() {
 }
 
 async function spawnASR(settings) {
+  if (asrProc) return;
   if (!hasVcRedist()) {
     const ok = await installVcRedist();
     if (!ok) {
@@ -560,15 +561,36 @@ async function spawnASR(settings) {
 function killASR() {
   if (asrProc) {
     _asrExpectExit = true;
-    try { asrProc.kill(); } catch (_) {}
+    const pid = asrProc.pid;
     asrProc = null;
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGTERM');
+      }
+    } catch (_) {}
   }
 }
 
 function restartASR() {
-  killASR();
   const { loadSettings } = require('./server');
-  setTimeout(() => spawnASR(loadSettings()), 500);
+  if (asrProc) {
+    const proc = asrProc;
+    _asrExpectExit = true;
+    const pid = proc.pid;
+    asrProc = null;
+    proc.once('exit', () => spawnASR(loadSettings()));
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+      } else {
+        proc.kill();
+      }
+    } catch (_) {}
+  } else {
+    spawnASR(loadSettings());
+  }
 }
 
 // ── Windows ──────────────────────────────────────────────────────────────────
@@ -812,6 +834,18 @@ function updateLoginItem(enabled) {
 
 app.whenReady().then(async () => {
   startLoaderServer();
+
+  // Kill stale ASR processes left by a previous crashed session.
+  if (process.platform === 'win32') {
+    try {
+      const out = execSync(
+        `netstat -aon 2>nul | findstr :${CAPTION_PORT} | findstr LISTENING`,
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+      );
+      const pid = out.trim().split(/\s+/).pop();
+      if (pid && /^\d+$/.test(pid)) execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+    } catch (_) {}
+  }
 
   if (isLoaderOnly) return;
 
