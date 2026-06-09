@@ -613,9 +613,8 @@ function createMainWindow() {
 
   mainWin.loadFile(path.join(__dirname, 'public', 'app.html'));
 
-  mainWin.on('close', (e) => {
-    e.preventDefault();
-    mainWin.hide();
+  mainWin.on('close', () => {
+    app.quit();
   });
 }
 
