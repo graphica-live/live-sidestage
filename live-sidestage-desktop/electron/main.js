@@ -1,5 +1,12 @@
 'use strict';
 
+process.on('unhandledRejection', (reason) => {
+    console.error('[CRASH] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[CRASH] uncaughtException:', err);
+});
+
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');

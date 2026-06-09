@@ -1,3 +1,10 @@
+process.on('unhandledRejection', (reason) => {
+    console.error('[CRASH] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[CRASH] uncaughtException:', err);
+});
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
