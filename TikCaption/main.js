@@ -195,7 +195,7 @@ async function connectTikTokLive(userId) {
   ttsConn.on('emote', (data) => {
     if (!ttsAcceptingComments) return;
     const emotes = (data.emotes || []).map(e => ({ emoteId: e.emoteId, emoteImageUrl: e.emoteImageUrl }));
-    if (emotes.length > 0 && mainWin) mainWin.webContents.send('tts-emote', { emotes });
+    if (emotes.length > 0 && mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-emote', { emotes });
   });
 
   // Reset room params so each connect gets a fresh room ID
