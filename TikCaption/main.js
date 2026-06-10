@@ -63,6 +63,8 @@ let asrProc = null;
 let asrStatus = { status: 'idle', message: '' };
 let _asrExpectExit = false;
 let _lastAsrError = null;
+let _asrRestartCount = 0;
+const ASR_MAX_RESTARTS = 3;
 
 // ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
 const RECONNECT_DELAY_MS = 10000;
@@ -508,6 +510,8 @@ async function spawnASR(settings) {
 
   _lastAsrError = null;
 
+  const BENIGN_STDERR = /No exporters were provided|telemetry data will not be collected/i;
+
   asrProc.stdout.on('data', (data) => {
     const lines = data.toString('utf8').split('\n').filter(Boolean);
     for (const line of lines) {
@@ -515,6 +519,7 @@ async function spawnASR(settings) {
         const msg = JSON.parse(line);
         if (msg.type === 'status' || msg.type === 'loading' || msg.type === 'error') {
           if (msg.type === 'error') _lastAsrError = msg.message;
+          if (msg.type === 'status') _asrRestartCount = 0;
           asrStatus = { status: msg.type, message: msg.message };
           if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
         }
@@ -524,8 +529,10 @@ async function spawnASR(settings) {
 
   asrProc.stderr.on('data', (data) => {
     const text = data.toString().trim();
-    if (text) _lastAsrError = text;
-    console.error('[ASR]', text);
+    if (text) {
+      if (!BENIGN_STDERR.test(text)) _lastAsrError = text;
+      console.error('[ASR]', text);
+    }
   });
 
   asrProc.on('exit', (code) => {
@@ -552,8 +559,17 @@ async function spawnASR(settings) {
     if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
     asrProc = null;
     if (!wasExpected && code !== 0) {
-      const { loadSettings } = require('./server');
-      setTimeout(() => spawnASR(loadSettings()), 3000);
+      if (_asrRestartCount < ASR_MAX_RESTARTS) {
+        _asrRestartCount++;
+        const { loadSettings } = require('./server');
+        setTimeout(() => spawnASR(loadSettings()), 3000);
+      } else {
+        _asrRestartCount = 0;
+        asrStatus = { status: 'error', message: `再起動を${ASR_MAX_RESTARTS}回試みましたが失敗しました。${_lastAsrError || ''}` };
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
+      }
+    } else {
+      _asrRestartCount = 0;
     }
   });
 }
