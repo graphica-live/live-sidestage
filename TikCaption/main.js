@@ -816,21 +816,23 @@ function registerIPC() {
 
   ipcMain.handle('get-devices', async () => {
     const python = findPython();
-    if (!python) return [];
+    if (!python) return { devices: [], default: '' };
     return new Promise((resolve) => {
       const proc = spawn(python, ['-c', `
 import json, sounddevice as sd
 devs = sd.query_devices()
 result = [{"index": i, "name": d["name"]} for i, d in enumerate(devs) if d["max_input_channels"] > 0]
-print(json.dumps(result))
+default_idx = sd.default.device[0] if hasattr(sd.default.device, '__getitem__') else sd.default.device
+default_name = devs[default_idx]["name"] if default_idx is not None and default_idx >= 0 else ""
+print(json.dumps({"devices": result, "default": default_name}))
 `], { stdio: ['ignore', 'pipe', 'pipe'] });
 
       let out = '';
       proc.stdout.on('data', (d) => { out += d.toString(); });
       proc.on('exit', () => {
-        try { resolve(JSON.parse(out)); } catch (_) { resolve([]); }
+        try { resolve(JSON.parse(out)); } catch (_) { resolve({ devices: [], default: '' }); }
       });
-      proc.on('error', () => resolve([]));
+      proc.on('error', () => resolve({ devices: [], default: '' }));
     });
   });
 }

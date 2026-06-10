@@ -1521,11 +1521,13 @@ async function init() {
   const s = await window.api.getSettings();
   applyToUI(s);
 
-  const devices = await window.api.getDevices();
+  const devResult = await window.api.getDevices();
+  const devices = devResult.devices || devResult;
+  const defaultDeviceName = devResult.default || '';
   const sel = document.getElementById('device-select');
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
-  defaultOpt.textContent = 'システムデフォルト';
+  defaultOpt.textContent = defaultDeviceName ? `システムデフォルト (${defaultDeviceName})` : 'システムデフォルト';
   sel.appendChild(defaultOpt);
   for (const d of devices) {
     const opt = document.createElement('option');
