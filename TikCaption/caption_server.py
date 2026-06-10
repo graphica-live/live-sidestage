@@ -42,11 +42,21 @@ def find_device_index(label):
 
 
 def load_vad():
-    model, utils = torch.hub.load(
-        'snakers4/silero-vad',
-        'silero_vad',
-        trust_repo=True,
-    )
+    import os
+    try:
+        model, utils = torch.hub.load(
+            'snakers4/silero-vad',
+            'silero_vad',
+            trust_repo=True,
+        )
+    except Exception:
+        local_repo = os.path.join(torch.hub.get_dir(), 'snakers4_silero-vad_master')
+        model, utils = torch.hub.load(
+            local_repo,
+            'silero_vad',
+            source='local',
+            trust_repo=True,
+        )
     get_speech_ts = utils[0]
     return model, get_speech_ts
 
