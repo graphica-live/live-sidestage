@@ -79,7 +79,7 @@ let ttsConnecting = false; // true while connect() promise is pending — suppre
 
 function emitTtsStatus(s) {
   ttsStatus = s;
-  if (mainWin) mainWin.webContents.send('tts-status', s);
+  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-status', s);
 }
 
 function isUserOfflineError(error) {
@@ -188,7 +188,7 @@ async function connectTikTokLive(userId) {
       profilePictureUrl: data.profilePictureUrl || '',
       emotes: (data.emotes || []).map(e => ({ emoteId: e.emoteId, emoteImageUrl: e.emoteImageUrl })),
     };
-    if (mainWin) mainWin.webContents.send('tts-comment', comment);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-comment', comment);
     require('./server').getIO().emit('tts:comment', comment);
   });
 
@@ -331,7 +331,7 @@ function findPython() {
 function installPython() {
   return new Promise((resolve) => {
     asrStatus = { status: 'installing', message: 'Pythonをインストール中 (数分かかります)...' };
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
 
     const proc = spawn('winget', [
       'install', 'Python.Python.3.12',
@@ -344,7 +344,7 @@ function installPython() {
       const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
       if (line) {
         asrStatus = { status: 'installing', message: `Python: ${line.slice(0, 60)}` };
-        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       }
     };
     proc.stdout.on('data', onLine);
@@ -358,7 +358,7 @@ function installPython() {
 function installVcRedist() {
   return new Promise((resolve) => {
     asrStatus = { status: 'installing', message: 'Visual C++ Redistributable をインストール中...' };
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
 
     const proc = spawn('winget', [
       'install', 'Microsoft.VCRedist.2015+.x64',
@@ -371,7 +371,7 @@ function installVcRedist() {
       const line = data.toString().trim().split('\n').filter(Boolean).pop() || '';
       if (line) {
         asrStatus = { status: 'installing', message: `VC++: ${line.slice(0, 60)}` };
-        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       }
     };
     proc.stdout.on('data', onLine);
@@ -400,7 +400,7 @@ function ensurePythonDeps(python) {
       }
 
       asrStatus = { status: 'installing', message: `初回セットアップ中... 数GB のダウンロードが発生します（目安: 10〜30分）。このまま待機してください。` };
-      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
 
       const reqPath = app.isPackaged
         ? path.join(process.resourcesPath, 'requirements.txt')
@@ -416,7 +416,7 @@ function ensurePythonDeps(python) {
           lastLines.push(line);
           if (lastLines.length > 10) lastLines.shift();
           asrStatus = { status: 'installing', message: `インストール中: ${line.slice(0, 60)}` };
-          if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+          if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
         }
       };
       inst.stdout.on('data', onLine);
@@ -434,7 +434,7 @@ function ensurePythonDeps(python) {
             message: `インストール失敗 (${python}): ${detail.slice(0, 80)}`,
           };
         }
-        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
         resolve(c === 0);
       });
     });
@@ -452,7 +452,7 @@ async function spawnASR(settings) {
     const ok = await installVcRedist();
     if (!ok) {
       asrStatus = { status: 'error', message: 'VC++ インストール失敗。microsoft.com から Visual C++ Redistributable 2015-2022 x64 を手動インストールしてください' };
-      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       return;
     }
   }
@@ -462,13 +462,13 @@ async function spawnASR(settings) {
     const installed = await installPython();
     if (!installed) {
       asrStatus = { status: 'error', message: 'Pythonのインストールに失敗しました。python.orgから手動インストールしてください' };
-      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       return;
     }
     python = findPython();
     if (!python) {
       asrStatus = { status: 'error', message: 'Pythonが見つかりません。アプリを再起動してください' };
-      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       dialog.showMessageBox(mainWin, {
         type: 'info',
         title: 'TikCaption — 再起動が必要です',
@@ -516,7 +516,7 @@ async function spawnASR(settings) {
         if (msg.type === 'status' || msg.type === 'loading' || msg.type === 'error') {
           if (msg.type === 'error') _lastAsrError = msg.message;
           asrStatus = { status: msg.type, message: msg.message };
-          if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+          if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
         }
       } catch (_) {}
     }
@@ -540,7 +540,7 @@ async function spawnASR(settings) {
         } else {
           asrStatus = { status: 'error', message: 'VC++ インストール失敗。microsoft.com から Visual C++ Redistributable 2015-2022 x64 を手動インストールしてください' };
         }
-        if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
         if (ok) setTimeout(() => spawnASR(loadSettings()), 2000);
       });
       return;
@@ -549,7 +549,7 @@ async function spawnASR(settings) {
     } else {
       asrStatus = { status: 'stopped', message: code === 0 ? '停止しました' : `プロセス終了 (code ${code})` };
     }
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
     asrProc = null;
     if (!wasExpected && code !== 0) {
       const { loadSettings } = require('./server');
@@ -686,11 +686,11 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
-    if (mainWin) mainWin.webContents.send('update-available', info);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('update-available', info);
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    if (mainWin) mainWin.webContents.send('update-downloaded', info);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('update-downloaded', info);
   });
 
   autoUpdater.on('error', (err) => {
@@ -745,14 +745,14 @@ function registerIPC() {
     killASR();
     serverModule.setPaused(false);
     asrStatus = { status: 'stopped', message: '停止しました' };
-    if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
     return { ok: true };
   });
 
   ipcMain.handle('pause-asr', () => {
     const paused = !serverModule.isPaused();
     serverModule.setPaused(paused);
-    if (mainWin) mainWin.webContents.send('asr-paused', paused);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-paused', paused);
     return { paused };
   });
 
@@ -860,17 +860,17 @@ app.whenReady().then(async () => {
       killASR();
       serverModule.setPaused(false);
       asrStatus = { status: 'stopped', message: '停止しました' };
-      if (mainWin) mainWin.webContents.send('asr-status', asrStatus);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', asrStatus);
       return { ok: true };
     },
     pauseASR: () => {
       serverModule.setPaused(true);
-      if (mainWin) mainWin.webContents.send('asr-paused', true);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-paused', true);
       return { ok: true };
     },
     resumeASR: () => {
       serverModule.setPaused(false);
-      if (mainWin) mainWin.webContents.send('asr-paused', false);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-paused', false);
       return { ok: true };
     },
     getCaptionStatus: () => ({
@@ -901,24 +901,24 @@ app.whenReady().then(async () => {
     },
     pauseTTS: () => {
       ttsAcceptingComments = false;
-      if (mainWin) mainWin.webContents.send('tts-paused', true);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-paused', true);
       return { ok: true };
     },
     resumeTTS: () => {
       ttsAcceptingComments = true;
-      if (mainWin) mainWin.webContents.send('tts-paused', false);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-paused', false);
       return { ok: true };
     },
     toggleCaptionPause: () => {
       const paused = !serverModule.isPaused();
       serverModule.setPaused(paused);
-      if (mainWin) mainWin.webContents.send('asr-paused', paused);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-paused', paused);
       return { paused };
     },
     toggleTtsPause: () => {
       ttsAcceptingComments = !ttsAcceptingComments;
       const paused = !ttsAcceptingComments;
-      if (mainWin) mainWin.webContents.send('tts-paused', paused);
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('tts-paused', paused);
       return { paused };
     },
     getTtsStatus: () => ({ ...ttsStatus, paused: !ttsAcceptingComments }),
@@ -927,7 +927,7 @@ app.whenReady().then(async () => {
   await startServer(CAPTION_PORT, controlHandlers).catch((err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`[main] port ${CAPTION_PORT} already in use — another instance may be running`);
-      if (mainWin) mainWin.webContents.send('asr-status', {
+      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('asr-status', {
         status: 'error',
         message: `ポート ${CAPTION_PORT} が他のアプリに使用されています。競合するアプリを終了してから再起動してください。`,
       });
