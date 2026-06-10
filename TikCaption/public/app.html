@@ -1534,8 +1534,9 @@ async function init() {
     sel.appendChild(opt);
   }
   if (s.deviceId) sel.value = s.deviceId;
-
-  await startMeter(s.deviceId || undefined);
+  // If saved device no longer in list, sel.value falls back to '' automatically.
+  // Use sel.value as ground truth to avoid passing a stale device name.
+  await startMeter(sel.value || undefined);
 
   const status = await window.api.getASRStatus();
   updateStatus(status);
