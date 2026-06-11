@@ -139,7 +139,18 @@ async function connectInstance(streamerId: string) {
 
   if (inst.connectPromise) return inst.connectPromise;
 
+  // disconnect stale connection before creating a new one
+  if (inst.connection) {
+    inst.connection.removeAllListeners?.();
+    try { inst.connection.disconnect?.(); } catch {}
+    inst.connection = null;
+  }
+
   const deviceId = await getOrCreateDeviceId(streamerId);
+
+  // re-check after async gap
+  if (inst.stopped || inst.connectPromise) return inst.connectPromise ?? undefined;
+
   const conn = createConnection(inst.state.tiktokId, deviceId);
   inst.connection = conn;
 
