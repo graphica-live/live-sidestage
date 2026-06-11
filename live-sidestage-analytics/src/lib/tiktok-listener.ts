@@ -22,6 +22,7 @@ interface ListenerInstance {
   connection: WebcastPushConnection | null;
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
+  heartbeatInterval: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
   // dedup: key → expiry timestamp (ms) — covers both combo and non-combo
   recentGifts: Map<string, number>;
@@ -67,6 +68,17 @@ function isAlreadyConnectedError(error: unknown): boolean {
   return /already connected!?/i.test(msg);
 }
 
+async function persistState(streamerId: string, status: ListenerStatus, message: string) {
+  try {
+    await prisma.streamer.update({
+      where: { id: streamerId },
+      data: { listenerStatus: status, listenerMessage: message, listenerUpdatedAt: new Date() },
+    });
+  } catch (err) {
+    console.error("[listener] persistState error:", err);
+  }
+}
+
 function updateState(
   inst: ListenerInstance,
   status: ListenerStatus,
@@ -75,6 +87,22 @@ function updateState(
   inst.state.status = status;
   inst.state.message = message;
   inst.state.updatedAt = new Date().toISOString();
+
+  // Manage heartbeat interval
+  if (status === "connected") {
+    if (!inst.heartbeatInterval) {
+      inst.heartbeatInterval = setInterval(() => {
+        persistState(inst.state.streamerId, "connected", inst.state.message);
+      }, 30_000);
+    }
+  } else {
+    if (inst.heartbeatInterval) {
+      clearInterval(inst.heartbeatInterval);
+      inst.heartbeatInterval = null;
+    }
+  }
+
+  persistState(inst.state.streamerId, status, message);
 }
 
 async function saveGift(
@@ -298,6 +326,7 @@ export async function startListener(streamerId: string, tiktokId: string) {
     connection: null,
     connectPromise: null,
     reconnectTimer: null,
+    heartbeatInterval: null,
     pendingCombos: new Map(),
     recentGifts: new Map(),
     stopped: false,
@@ -314,10 +343,17 @@ export async function stopListener(streamerId: string) {
 
   inst.stopped = true;
 
+  if (inst.heartbeatInterval) {
+    clearInterval(inst.heartbeatInterval);
+    inst.heartbeatInterval = null;
+  }
+
   if (inst.reconnectTimer) {
     clearTimeout(inst.reconnectTimer);
     inst.reconnectTimer = null;
   }
+
+  persistState(inst.state.streamerId, "idle", "停止中");
 
   if (inst.connection) {
     inst.connection.removeAllListeners?.();

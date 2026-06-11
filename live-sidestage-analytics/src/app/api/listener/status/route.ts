@@ -18,13 +18,23 @@ export async function GET() {
 
   const live = getListenerStatus(streamer.id);
 
-  const listener = live ?? {
-    streamerId: streamer.id,
-    tiktokId: streamer.tiktokId,
-    status: "idle",
-    message: "停止中",
-    updatedAt: new Date().toISOString(),
-  };
+  // In-memory state (same process) takes priority.
+  // Fall back to DB-persisted state (handles multi-worker / cross-process scenarios).
+  const listener = live ?? (streamer.listenerStatus
+    ? {
+        streamerId: streamer.id,
+        tiktokId: streamer.tiktokId,
+        status: streamer.listenerStatus,
+        message: streamer.listenerMessage ?? "停止中",
+        updatedAt: streamer.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
+      }
+    : {
+        streamerId: streamer.id,
+        tiktokId: streamer.tiktokId,
+        status: "idle",
+        message: "停止中",
+        updatedAt: new Date().toISOString(),
+      });
 
   return NextResponse.json({ listener });
 }

@@ -67,6 +67,9 @@ model Streamer {
   verifiedAt       DateTime?
   deviceId         String?
   createdAt        DateTime  @default(now())
+  listenerStatus    String?
+  listenerMessage   String?
+  listenerUpdatedAt DateTime?
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   gifts Gift[]
