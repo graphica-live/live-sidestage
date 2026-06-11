@@ -56,50 +56,49 @@ export async function GET(req: NextRequest) {
 
   const { start, end } = getDateRange(period, date);
 
-  type RawRow = {
-    uniqueId: string;
-    nickname: string;
-    profileImageUrl: string | null;
-    giftCount: bigint;
-    totalDiamonds: bigint;
-    lastGiftAt: Date;
-  };
+  // Group by uniqueId using ORM to avoid raw SQL column-name issues
+  const grouped = await prisma.gift.groupBy({
+    by: ["uniqueId"],
+    where: {
+      streamerId: streamer.id,
+      dayKey: { gte: start, lte: end },
+    },
+    _sum: { repeatCount: true, totalDiamonds: true },
+    _max: { receivedAt: true },
+  });
 
-  const rows = await prisma.$queryRaw<RawRow[]>`
-    SELECT
-      g."uniqueId",
-      (
-        SELECT g2.nickname FROM gifts g2
-        WHERE g2."uniqueId" = g."uniqueId"
-          AND g2."streamerId" = ${streamer.id}
-        ORDER BY g2."receivedAt" DESC
-        LIMIT 1
-      ) AS nickname,
-      (
-        SELECT g2."profileImageUrl" FROM gifts g2
-        WHERE g2."uniqueId" = g."uniqueId"
-          AND g2."streamerId" = ${streamer.id}
-        ORDER BY g2."receivedAt" DESC
-        LIMIT 1
-      ) AS "profileImageUrl",
-      SUM(g."repeatCount")::bigint AS "giftCount",
-      SUM(g."totalDiamonds")::bigint AS "totalDiamonds",
-      MAX(g."receivedAt") AS "lastGiftAt"
-    FROM gifts g
-    WHERE g."streamerId" = ${streamer.id}
-      AND g."dayKey" >= ${start}
-      AND g."dayKey" <= ${end}
-    GROUP BY g."uniqueId"
-  `;
+  if (grouped.length === 0) {
+    return NextResponse.json({
+      users: [],
+      dateRange: { start, end },
+      total: { giftCount: 0, totalDiamonds: 0 },
+    });
+  }
 
-  const users = rows.map((r) => ({
-    uniqueId: r.uniqueId,
-    nickname: r.nickname ?? r.uniqueId,
-    profileImageUrl: r.profileImageUrl ?? null,
-    giftCount: Number(r.giftCount),
-    totalDiamonds: Number(r.totalDiamonds),
-    lastGiftAt: r.lastGiftAt.toISOString(),
-  }));
+  // Fetch latest nickname + avatar per uniqueId
+  const profiles = await prisma.gift.findMany({
+    where: {
+      streamerId: streamer.id,
+      uniqueId: { in: grouped.map((g) => g.uniqueId) },
+    },
+    orderBy: { receivedAt: "desc" },
+    distinct: ["uniqueId"],
+    select: { uniqueId: true, nickname: true, profileImageUrl: true },
+  });
+
+  const profileMap = new Map(profiles.map((p) => [p.uniqueId, p]));
+
+  const users = grouped.map((g) => {
+    const profile = profileMap.get(g.uniqueId);
+    return {
+      uniqueId: g.uniqueId,
+      nickname: profile?.nickname ?? g.uniqueId,
+      profileImageUrl: profile?.profileImageUrl ?? null,
+      giftCount: g._sum.repeatCount ?? 0,
+      totalDiamonds: g._sum.totalDiamonds ?? 0,
+      lastGiftAt: (g._max.receivedAt ?? new Date()).toISOString(),
+    };
+  });
 
   const total = users.reduce(
     (acc, u) => ({
