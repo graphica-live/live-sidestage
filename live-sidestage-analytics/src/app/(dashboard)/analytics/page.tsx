@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { signOut } from "next-auth/react";
 
 type Period = "day" | "week" | "month";
@@ -152,15 +152,22 @@ export default function AnalyticsPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Auto-refresh analytics data every 15s when viewing today and listener is active
+  // Keep a ref to the latest refresh action — avoids stale closure in interval
+  const autoRefreshFnRef = useRef<() => void>(() => {});
   useEffect(() => {
     const isToday = currentDate === todayStr();
     const isActive =
       listener?.status === "connected" || listener?.status === "connecting";
-    if (!isToday || !isActive) return;
-    const id = setInterval(() => fetchData(period, currentDate, true), 15000);
-    return () => clearInterval(id);
+    autoRefreshFnRef.current = isToday && isActive
+      ? () => fetchData(period, currentDate, true)
+      : () => {};
   }, [currentDate, period, listener?.status, fetchData]);
+
+  // Single interval created once — never torn down by dep changes
+  useEffect(() => {
+    const id = setInterval(() => autoRefreshFnRef.current(), 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const sortedFiltered = useMemo(() => {
     if (!data) return [];
