@@ -260,8 +260,17 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
-    // Non-combo: orderId unique constraint in DB handles dedup
-    console.log("[gift/non-combo]", { orderId: data.orderId, uniqueId: data.uniqueId });
+    // Non-combo: orderId is required for dedup — drop event if missing
+    const orderId = data.orderId ? String(data.orderId) : null;
+    if (!orderId) {
+      console.error("[gift/non-combo] missing orderId — dropping event to prevent undeduped save", {
+        uniqueId: data.uniqueId,
+        giftId: data.giftId,
+        giftName: data.giftName,
+      });
+      return;
+    }
+    console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
     saveGift(streamerId, data, currentRepeat);
   });
 
