@@ -10,4 +10,4 @@ RUN npx prisma generate && npx next build
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx prisma db push && node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx prisma db push --accept-data-loss && node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
