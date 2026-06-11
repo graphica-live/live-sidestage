@@ -138,36 +138,30 @@ export default function AnalyticsPage() {
     fetchData(period, currentDate);
   }, [period, currentDate, fetchData]);
 
-  // Poll listener status every 5s
+  // fetchData ref — always points to latest, safe to use in intervals without deps
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+
+  // Combined poll: listener status every 5s + analytics refresh every 15s when connected
   useEffect(() => {
-    async function pollStatus() {
+    let tick = 0;
+    async function poll() {
       const res = await fetch("/api/listener/status");
-      if (res.ok) {
-        const d = await res.json();
-        setListener(d.listener);
+      if (!res.ok) return;
+      const d = await res.json();
+      setListener(d.listener);
+
+      tick++;
+      const isActive =
+        d.listener?.status === "connected" || d.listener?.status === "connecting";
+      if (tick % 3 === 0 && isActive && currentDate === todayStr()) {
+        fetchDataRef.current(period, currentDate, true);
       }
     }
-    pollStatus();
-    const id = setInterval(pollStatus, 5000);
+    poll();
+    const id = setInterval(poll, 5000);
     return () => clearInterval(id);
-  }, []);
-
-  // Keep a ref to the latest refresh action — avoids stale closure in interval
-  const autoRefreshFnRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    const isToday = currentDate === todayStr();
-    const isActive =
-      listener?.status === "connected" || listener?.status === "connecting";
-    autoRefreshFnRef.current = isToday && isActive
-      ? () => fetchData(period, currentDate, true)
-      : () => {};
-  }, [currentDate, period, listener?.status, fetchData]);
-
-  // Single interval created once — never torn down by dep changes
-  useEffect(() => {
-    const id = setInterval(() => autoRefreshFnRef.current(), 15000);
-    return () => clearInterval(id);
-  }, []);
+  }, [currentDate, period]);
 
   const sortedFiltered = useMemo(() => {
     if (!data) return [];
