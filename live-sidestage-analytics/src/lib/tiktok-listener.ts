@@ -338,9 +338,13 @@ export async function resumeAllListeners() {
     where: { verified: true },
   });
 
+  console.log(`[listener] resumeAllListeners: found ${streamers.length} verified streamer(s)`);
+
   for (const s of streamers) {
+    console.log(`[listener] starting listener for @${s.tiktokId} (${s.id})`);
     await startListener(s.id, s.tiktokId).catch((err) =>
       console.error(`[listener] resume failed for ${s.tiktokId}:`, err)
     );
+    console.log(`[listener] listener state for @${s.tiktokId}:`, listeners.get(s.id)?.state.status);
   }
 }
