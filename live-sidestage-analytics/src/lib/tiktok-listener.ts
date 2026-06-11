@@ -166,19 +166,19 @@ async function connectInstance(streamerId: string) {
     const comboKey = isCombo ? `${data.uniqueId}:${data.giftId}` : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
 
-    if (isCombo && !data.repeatEnd) {
+    if (isCombo) {
       const prev = inst.pendingCombos.get(comboKey!);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
       const delta = Math.max(0, currentRepeat - prevRepeat);
-      inst.pendingCombos.set(comboKey!, {
-        ...data,
-        repeatCount: currentRepeat,
-      });
+      if (data.repeatEnd) {
+        inst.pendingCombos.delete(comboKey!);
+      } else {
+        inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
+      }
       if (delta > 0) saveGift(streamerId, data, delta);
       return;
     }
 
-    if (comboKey) inst.pendingCombos.delete(comboKey);
     saveGift(streamerId, data, currentRepeat);
   });
 
