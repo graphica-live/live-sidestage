@@ -198,6 +198,7 @@ async function connectInstance(streamerId: string) {
         updateState(inst, "connected", "接続済み");
         return;
       }
+      console.error("[listener] connect error:", err);
       if (!inst.stopped) {
         scheduleReconnect(
           streamerId,
