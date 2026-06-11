@@ -825,7 +825,7 @@ devs = sd.query_devices()
 seen = set()
 result = []
 for i, d in enumerate(devs):
-    if d["max_input_channels"] > 0 and d["name"] not in seen:
+    if d["max_input_channels"] > 0 and d["name"] not in seen and "microsoft sound mapper" not in d["name"].lower():
         seen.add(d["name"])
         result.append({"index": i, "name": d["name"]})
 default_idx = sd.default.device[0] if hasattr(sd.default.device, '__getitem__') else sd.default.device
