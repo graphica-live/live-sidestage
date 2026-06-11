@@ -67,29 +67,29 @@ export async function GET(req: NextRequest) {
 
   const rows = await prisma.$queryRaw<RawRow[]>`
     SELECT
-      unique_id AS "uniqueId",
+      g."uniqueId",
       (
-        SELECT nickname FROM gifts g2
-        WHERE g2.unique_id = g.unique_id
-          AND g2.streamer_id = ${streamer.id}
-        ORDER BY received_at DESC
+        SELECT g2.nickname FROM gifts g2
+        WHERE g2."uniqueId" = g."uniqueId"
+          AND g2."streamerId" = ${streamer.id}
+        ORDER BY g2."receivedAt" DESC
         LIMIT 1
       ) AS nickname,
       (
-        SELECT profile_image_url FROM gifts g2
-        WHERE g2.unique_id = g.unique_id
-          AND g2.streamer_id = ${streamer.id}
-        ORDER BY received_at DESC
+        SELECT g2."profileImageUrl" FROM gifts g2
+        WHERE g2."uniqueId" = g."uniqueId"
+          AND g2."streamerId" = ${streamer.id}
+        ORDER BY g2."receivedAt" DESC
         LIMIT 1
       ) AS "profileImageUrl",
-      SUM(repeat_count)::bigint AS "giftCount",
-      SUM(total_diamonds)::bigint AS "totalDiamonds",
-      MAX(received_at) AS "lastGiftAt"
+      SUM(g."repeatCount")::bigint AS "giftCount",
+      SUM(g."totalDiamonds")::bigint AS "totalDiamonds",
+      MAX(g."receivedAt") AS "lastGiftAt"
     FROM gifts g
-    WHERE streamer_id = ${streamer.id}
-      AND day_key >= ${start}
-      AND day_key <= ${end}
-    GROUP BY unique_id
+    WHERE g."streamerId" = ${streamer.id}
+      AND g."dayKey" >= ${start}
+      AND g."dayKey" <= ${end}
+    GROUP BY g."uniqueId"
   `;
 
   const users = rows.map((r) => ({
