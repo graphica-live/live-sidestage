@@ -1877,13 +1877,27 @@ window.addEventListener('beforeunload', () => {
   function getTtsVol() { return ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8; }
   function getTtsSpeed() { return ttsS.ttsSpeedScale !== undefined ? ttsS.ttsSpeedScale : 1.0; }
 
-  function synthesizeAndPlay(text, speakerId, key) {
+  function synthesizeAndPlay(text, speakerId, key, rushMs = 0) {
     return new Promise((resolve) => {
-      const onDone = () => { overlaySock?.off('tts:done', onDone); resolve(); };
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(rushTimer);
+        clearTimeout(fallbackTimer);
+        overlaySock?.off('tts:done', onDone);
+        resolve();
+      };
+      const onDone = finish;
       overlaySock?.once('tts:done', onDone);
       overlaySock?.emit('tts:speak', { text, speakerId, volume: getTtsVol(), speed: getTtsSpeed(), key });
+      // rush mode: force-stop after rushMs to drain backlog fast
+      const rushTimer = rushMs > 0 ? setTimeout(() => {
+        overlaySock?.emit('tts:stop-current');
+        finish();
+      }, rushMs) : null;
       // fallback: resolve after 10s if overlay never responds
-      setTimeout(() => { overlaySock?.off('tts:done', onDone); resolve(); }, 10000);
+      const fallbackTimer = setTimeout(finish, 10000);
     });
   }
 
@@ -1909,6 +1923,7 @@ window.addEventListener('beforeunload', () => {
     if (isPlaying || ttsPaused || audioQueue.length === 0) return;
     isPlaying = true;
     const item = audioQueue.shift();
+    const rushMode = audioQueue.length >= 5;
     try {
       const text = applyConversions(buildRawText(item));
       if (text) {
@@ -1916,8 +1931,8 @@ window.addEventListener('beforeunload', () => {
         const spId = getEffectiveSpeakerId(item.uniqueId);
         const vName = getVoiceName(spId);
         if (vName) overlaySock?.emit('tts:playing', { voiceName: vName });
-        prefetchNext();
-        await synthesizeAndPlay(text, spId, item._ttsKey);
+        if (!rushMode) prefetchNext();
+        await synthesizeAndPlay(text, spId, item._ttsKey, rushMode ? 500 : 0);
       }
     } catch (e) {
       console.warn('[TTS]', e.message);
