@@ -44,18 +44,36 @@ def find_device_index(label):
 def load_vad():
     import os
     import sys
-    hub_dir = torch.hub.get_dir()
-    local_repo = os.path.join(hub_dir, 'snakers4_silero-vad_master')
-    src_path = os.path.join(local_repo, 'src')
-    jit_path = os.path.join(local_repo, 'src', 'silero_vad', 'data', 'silero_vad.jit')
-    # Bypass torch.hub entirely — load .jit directly from cached repo
-    if os.path.isfile(jit_path):
+    import glob
+
+    # Search across all likely torch hub locations (get_dir() may differ from actual cache)
+    candidate_hub_dirs = []
+    try:
+        candidate_hub_dirs.append(torch.hub.get_dir())
+    except Exception:
+        pass
+    candidate_hub_dirs.append(os.path.join(os.path.expanduser('~'), '.cache', 'torch', 'hub'))
+
+    jit_path = None
+    src_path = None
+    for hub_dir in candidate_hub_dirs:
+        for repo_dir in glob.glob(os.path.join(hub_dir, 'snakers4_silero-vad*')):
+            jit = os.path.join(repo_dir, 'src', 'silero_vad', 'data', 'silero_vad.jit')
+            if os.path.isfile(jit):
+                jit_path = jit
+                src_path = os.path.join(repo_dir, 'src')
+                break
+        if jit_path:
+            break
+
+    if jit_path:
         if src_path not in sys.path:
             sys.path.insert(0, src_path)
         from silero_vad.utils_vad import get_speech_timestamps
         model = torch.jit.load(jit_path, map_location='cpu')
         model.eval()
         return model, get_speech_timestamps
+
     # Fallback: download from network
     try:
         model, utils = torch.hub.load(
@@ -65,8 +83,9 @@ def load_vad():
         )
         return model, utils[0]
     except Exception as e:
+        searched = ', '.join(candidate_hub_dirs)
         raise RuntimeError(
-            f'VAD load failed. Cache: {local_repo}. Error: {e}'
+            f'VAD load failed. Searched: {searched}. Error: {e}'
         ) from e
 
 
