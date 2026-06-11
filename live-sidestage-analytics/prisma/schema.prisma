@@ -89,6 +89,7 @@ model Gift {
 
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
+  @@map("gifts")
   @@index([streamerId, dayKey])
   @@index([streamerId, receivedAt])
   @@index([streamerId, uniqueId])
