@@ -822,7 +822,12 @@ function registerIPC() {
       const proc = spawn(python, ['-c', `
 import json, sounddevice as sd
 devs = sd.query_devices()
-result = [{"index": i, "name": d["name"]} for i, d in enumerate(devs) if d["max_input_channels"] > 0]
+seen = set()
+result = []
+for i, d in enumerate(devs):
+    if d["max_input_channels"] > 0 and d["name"] not in seen:
+        seen.add(d["name"])
+        result.append({"index": i, "name": d["name"]})
 default_idx = sd.default.device[0] if hasattr(sd.default.device, '__getitem__') else sd.default.device
 default_name = devs[default_idx]["name"] if default_idx is not None and default_idx >= 0 else ""
 print(json.dumps({"devices": result, "default": default_name}))
