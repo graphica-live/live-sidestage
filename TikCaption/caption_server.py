@@ -43,7 +43,21 @@ def find_device_index(label):
 
 def load_vad():
     import os
-    import sys
+    hub_dir = torch.hub.get_dir()
+    local_repo = os.path.join(hub_dir, 'snakers4_silero-vad_master')
+    # Try local cache first (source='local' avoids network + hubconf path bugs)
+    if os.path.isfile(os.path.join(local_repo, 'hubconf.py')):
+        try:
+            model, utils = torch.hub.load(
+                local_repo,
+                'silero_vad',
+                source='local',
+                trust_repo=True,
+            )
+            return model, utils[0]
+        except Exception:
+            pass
+    # Fallback: download from network
     try:
         model, utils = torch.hub.load(
             'snakers4/silero-vad',
@@ -51,20 +65,10 @@ def load_vad():
             trust_repo=True,
         )
         return model, utils[0]
-    except Exception:
-        pass
-    # torch.hub failed (no network / cache mismatch) — import directly from cached repo
-    hub_dir = os.path.join(os.path.expanduser('~'), '.cache', 'torch', 'hub')
-    src_path = os.path.join(hub_dir, 'snakers4_silero-vad_master', 'src')
-    if not os.path.isdir(src_path):
+    except Exception as e:
         raise RuntimeError(
-            f'silero-vad not found in cache ({src_path}). '
-            'Connect to internet once to download.'
-        )
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
-    from silero_vad import load_silero_vad, get_speech_timestamps
-    return load_silero_vad(), get_speech_timestamps
+            f'VAD load failed. Cache: {local_repo}. Error: {e}'
+        ) from e
 
 
 def _patch_tqdm_for_logging():
