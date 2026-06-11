@@ -29,7 +29,10 @@ interface ListenerInstance {
   stopped: boolean;
 }
 
-const listeners = new Map<string, ListenerInstance>();
+// Use global to survive Next.js module re-instantiation across route bundles and hot reloads.
+const g = global as typeof globalThis & { __tiktokListeners?: Map<string, ListenerInstance> };
+if (!g.__tiktokListeners) g.__tiktokListeners = new Map();
+const listeners = g.__tiktokListeners;
 
 const RECONNECT_DELAY_MS = 10_000;
 const OFFLINE_RECONNECT_DELAY_MS = 30_000;
