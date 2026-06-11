@@ -151,10 +151,13 @@ export default function AnalyticsPage() {
       const d = await res.json();
       setListener(d.listener);
 
-      tick++;
+        tick++;
       const isActive =
         d.listener?.status === "connected" || d.listener?.status === "connecting";
-      if (tick % 3 === 0 && isActive && currentDate === todayStr()) {
+      const isToday = currentDate === todayStr();
+      console.log("[poll]", { tick, status: d.listener?.status, isActive, isToday, willRefresh: tick % 3 === 0 && isActive && isToday });
+      if (tick % 3 === 0 && isActive && isToday) {
+        console.log("[poll] triggering data refresh");
         fetchDataRef.current(period, currentDate, true);
       }
     }
