@@ -113,7 +113,6 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [listener, setListener] = useState<ListenerState | null>(null);
-  const [listenerLoading, setListenerLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const fetchData = useCallback(
@@ -189,22 +188,6 @@ export default function AnalyticsPage() {
     return rows.map((u, i) => ({ ...u, rank: i + 1 }));
   }, [data, filter, sortKey, sortOrder]);
 
-  async function toggleListener() {
-    if (!listener) return;
-    setListenerLoading(true);
-    const isRunning =
-      listener.status === "connected" || listener.status === "connecting";
-    const endpoint = isRunning ? "/api/listener/stop" : "/api/listener/start";
-    await fetch(endpoint, { method: "POST" });
-    await new Promise((r) => setTimeout(r, 800));
-    const res = await fetch("/api/listener/status");
-    if (res.ok) {
-      const d = await res.json();
-      setListener(d.listener);
-    }
-    setListenerLoading(false);
-  }
-
   const statusColor: Record<string, string> = {
     connected: "bg-green-500",
     connecting: "bg-yellow-500 animate-pulse",
@@ -212,9 +195,6 @@ export default function AnalyticsPage() {
     idle: "bg-gray-500",
     error: "bg-red-500",
   };
-
-  const isActive =
-    listener?.status === "connected" || listener?.status === "connecting";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -225,29 +205,16 @@ export default function AnalyticsPage() {
 
           <div className="flex items-center gap-2 min-w-0">
             {listener && (
-              <>
-                <span className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0 truncate">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      statusColor[listener.status] ?? "bg-gray-500"
-                    }`}
-                  />
-                  <span className="hidden sm:inline truncate">
-                    @{listener.tiktokId} · {listener.message}
-                  </span>
-                </span>
-                <button
-                  onClick={toggleListener}
-                  disabled={listenerLoading}
-                  className={`text-xs px-2.5 py-1 rounded font-medium transition-colors shrink-0 ${
-                    isActive
-                      ? "bg-red-900/40 text-red-300 hover:bg-red-900/60"
-                      : "bg-green-900/40 text-green-300 hover:bg-green-900/60"
+              <span className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0 truncate">
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    statusColor[listener.status] ?? "bg-gray-500"
                   }`}
-                >
-                  {listenerLoading ? "..." : isActive ? "停止" : "開始"}
-                </button>
-              </>
+                />
+                <span className="hidden sm:inline truncate">
+                  @{listener.tiktokId} · {listener.message}
+                </span>
+              </span>
             )}
           </div>
 
