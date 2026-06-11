@@ -179,6 +179,17 @@ async function connectInstance(streamerId: string) {
     const comboKey = isCombo ? `${data.uniqueId}:${data.giftId}` : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
 
+    console.log("[gift]", JSON.stringify({
+      giftType: data.giftType,
+      giftName: data.giftName,
+      uniqueId: data.uniqueId,
+      giftId: data.giftId,
+      repeatCount: data.repeatCount,
+      repeatEnd: data.repeatEnd,
+      diamondCount: data.diamondCount,
+      isCombo,
+    }));
+
     if (isCombo) {
       const prev = inst.pendingCombos.get(comboKey!);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
@@ -188,6 +199,7 @@ async function connectInstance(streamerId: string) {
       } else {
         inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
       }
+      console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
       if (delta > 0) saveGift(streamerId, data, delta);
       return;
     }
@@ -196,7 +208,9 @@ async function connectInstance(streamerId: string) {
     const dedupKey = `${data.uniqueId}:${data.giftId}`;
     const now = Date.now();
     const expiry = inst.recentNonCombo.get(dedupKey) ?? 0;
-    if (now < expiry) return;
+    const isDup = now < expiry;
+    console.log("[gift/non-combo]", { dedupKey, isDup, saving: !isDup });
+    if (isDup) return;
     inst.recentNonCombo.set(dedupKey, now + 5_000);
     saveGift(streamerId, data, currentRepeat);
   });
