@@ -148,6 +148,16 @@ export default function AnalyticsPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Auto-refresh analytics data every 15s when viewing today and listener is active
+  useEffect(() => {
+    const isToday = currentDate === todayStr();
+    const isActive =
+      listener?.status === "connected" || listener?.status === "connecting";
+    if (!isToday || !isActive) return;
+    const id = setInterval(() => fetchData(period, currentDate), 15000);
+    return () => clearInterval(id);
+  }, [currentDate, period, listener?.status, fetchData]);
+
   const sortedFiltered = useMemo(() => {
     if (!data) return [];
     const q = filter.toLowerCase();
