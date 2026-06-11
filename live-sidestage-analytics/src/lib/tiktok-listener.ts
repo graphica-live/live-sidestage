@@ -24,8 +24,6 @@ interface ListenerInstance {
   reconnectTimer: NodeJS.Timeout | null;
   heartbeatInterval: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
-  // dedup: key → expiry timestamp (ms) — covers both combo and non-combo
-  recentGifts: Map<string, number>;
   stopped: boolean;
 }
 
@@ -108,6 +106,22 @@ function updateState(
   persistState(inst.state.streamerId, status, message);
 }
 
+async function loadPendingCombos(
+  streamerId: string
+): Promise<Map<string, { repeatCount: number }>> {
+  const dayKey = new Date().toISOString().slice(0, 10);
+  const rows = await prisma.gift.groupBy({
+    by: ["groupId"],
+    where: { streamerId, dayKey, groupId: { not: null } },
+    _sum: { repeatCount: true },
+  });
+  const map = new Map<string, { repeatCount: number }>();
+  for (const row of rows) {
+    if (row.groupId) map.set(row.groupId, { repeatCount: row._sum.repeatCount ?? 0 });
+  }
+  return map;
+}
+
 async function saveGift(
   streamerId: string,
   data: Record<string, unknown>,
@@ -116,6 +130,8 @@ async function saveGift(
   try {
     const dayKey = new Date().toISOString().slice(0, 10);
     const diamondCount = Number(data.diamondCount) || 0;
+    const orderId = data.orderId ? String(data.orderId) : null;
+    const groupId = data.groupId ? String(data.groupId) : null;
     await prisma.gift.create({
       data: {
         streamerId,
@@ -133,9 +149,15 @@ async function saveGift(
         diamondCount,
         totalDiamonds: diamondCount * count,
         dayKey,
+        orderId,
+        groupId,
       },
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === "P2002") {
+      console.log("[gift] dedup: duplicate orderId skipped", data.orderId);
+      return;
+    }
     console.error("[listener] gift save error:", err);
   }
 }
@@ -207,7 +229,8 @@ async function connectInstance(streamerId: string) {
 
   conn.on("gift", (data: Record<string, unknown>) => {
     const isCombo = data.giftType === 1;
-    const comboKey = isCombo ? `${data.uniqueId}:${data.giftId}` : null;
+    const groupId = data.groupId ? String(data.groupId) : null;
+    const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
 
     console.log("[gift]", JSON.stringify({
@@ -215,29 +238,20 @@ async function connectInstance(streamerId: string) {
       giftName: data.giftName,
       uniqueId: data.uniqueId,
       giftId: data.giftId,
+      groupId: data.groupId,
+      orderId: data.orderId,
       repeatCount: data.repeatCount,
       repeatEnd: data.repeatEnd,
       diamondCount: data.diamondCount,
       isCombo,
     }));
 
-    const now = Date.now();
-
     if (isCombo) {
-      // If this comboKey was completed recently, skip replayed events
-      const replayExpiry = inst.recentGifts.get(`combo:${comboKey}`);
-      if (replayExpiry && now < replayExpiry) {
-        console.log("[gift/combo] skipped replay", { comboKey });
-        return;
-      }
-
       const prev = inst.pendingCombos.get(comboKey!);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
       const delta = Math.max(0, currentRepeat - prevRepeat);
       if (data.repeatEnd) {
         inst.pendingCombos.delete(comboKey!);
-        // Guard against duplicate repeatEnd events for 10s
-        inst.recentGifts.set(`combo:${comboKey}`, now + 10_000);
       } else {
         inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
       }
@@ -246,13 +260,8 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
-    // Non-combo: deduplicate within 5s window
-    const dedupKey = `noncombo:${data.uniqueId}:${data.giftId}`;
-    const expiry = inst.recentGifts.get(dedupKey) ?? 0;
-    const isDup = now < expiry;
-    console.log("[gift/non-combo]", { dedupKey, isDup, saving: !isDup });
-    if (isDup) return;
-    inst.recentGifts.set(dedupKey, now + 5_000);
+    // Non-combo: orderId unique constraint in DB handles dedup
+    console.log("[gift/non-combo]", { orderId: data.orderId, uniqueId: data.uniqueId });
     saveGift(streamerId, data, currentRepeat);
   });
 
@@ -318,6 +327,8 @@ export async function startListener(streamerId: string, tiktokId: string) {
     await stopListener(streamerId);
   }
 
+  const pendingCombos = await loadPendingCombos(streamerId);
+
   const inst: ListenerInstance = {
     state: {
       streamerId,
@@ -330,8 +341,7 @@ export async function startListener(streamerId: string, tiktokId: string) {
     connectPromise: null,
     reconnectTimer: null,
     heartbeatInterval: null,
-    pendingCombos: new Map(),
-    recentGifts: new Map(),
+    pendingCombos,
     stopped: false,
   };
 

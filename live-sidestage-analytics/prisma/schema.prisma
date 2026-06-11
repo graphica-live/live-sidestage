@@ -89,6 +89,8 @@ model Gift {
   totalDiamonds   Int      @default(0)
   receivedAt      DateTime @default(now())
   dayKey          String
+  orderId         String?  @unique
+  groupId         String?
 
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
@@ -96,4 +98,5 @@ model Gift {
   @@index([streamerId, dayKey])
   @@index([streamerId, receivedAt])
   @@index([streamerId, uniqueId])
+  @@index([streamerId, groupId])
 }
