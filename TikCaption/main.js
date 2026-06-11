@@ -510,7 +510,7 @@ async function spawnASR(settings) {
 
   _lastAsrError = null;
 
-  const BENIGN_STDERR = /No exporters were provided|telemetry data will not be collected/i;
+  const BENIGN_STDERR = /No exporters were provided|telemetry data will not be collected|NeMo [WI] |Beam search progress|Transcribing:|UserWarning|FutureWarning|DeprecationWarning|pretokenize|dataloader\d+\]/i;
 
   asrProc.stdout.on('data', (data) => {
     const lines = data.toString('utf8').split('\n').filter(Boolean);
