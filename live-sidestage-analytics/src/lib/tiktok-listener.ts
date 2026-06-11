@@ -348,3 +348,18 @@ export async function resumeAllListeners() {
     console.log(`[listener] listener state for @${s.tiktokId}:`, listeners.get(s.id)?.state.status);
   }
 }
+
+export async function ensureAllListenersAlive() {
+  const streamers = await prisma.streamer.findMany({
+    where: { verified: true },
+  });
+
+  for (const s of streamers) {
+    if (!listeners.has(s.id)) {
+      console.log(`[listener] ensureAlive: restarting missing listener for @${s.tiktokId}`);
+      await startListener(s.id, s.tiktokId).catch((err) =>
+        console.error(`[listener] ensureAlive failed for ${s.tiktokId}:`, err)
+      );
+    }
+  }
+}
