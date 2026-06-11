@@ -251,11 +251,11 @@ function processQueue() {
 
 function showText(original, translated, isFinal) {
   clearFade();
-  captionQueue = [];
-  isTyping = false;
 
   if (!isFinal && settings.showInterim) {
-    // streaming partial: show dimmed, don't queue
+    // streaming partial: reset queue and show dimmed
+    captionQueue = [];
+    isTyping = false;
     if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
     elOriginal.style.opacity = '0.5';
     elOriginal.textContent = original;
@@ -263,6 +263,8 @@ function showText(original, translated, isFinal) {
     return;
   }
 
+  // Final: append to queue so backlog detection can accelerate/drop excess
+  isTyping = false;
   const segs = splitText(original);
   captionQueue.push(...segs);
   processQueue();
