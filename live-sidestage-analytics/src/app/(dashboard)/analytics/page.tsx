@@ -116,15 +116,15 @@ export default function AnalyticsPage() {
   const [listenerLoading, setListenerLoading] = useState(false);
 
   const fetchData = useCallback(
-    async (p: Period, d: string) => {
-      setLoading(true);
+    async (p: Period, d: string, silent = false) => {
+      if (!silent) setLoading(true);
       try {
         const res = await fetch(
           `/api/analytics/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`
         );
         if (res.ok) setData(await res.json());
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [sortKey, sortOrder]
@@ -154,7 +154,7 @@ export default function AnalyticsPage() {
     const isActive =
       listener?.status === "connected" || listener?.status === "connecting";
     if (!isToday || !isActive) return;
-    const id = setInterval(() => fetchData(period, currentDate), 15000);
+    const id = setInterval(() => fetchData(period, currentDate, true), 15000);
     return () => clearInterval(id);
   }, [currentDate, period, listener?.status, fetchData]);
 
