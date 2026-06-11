@@ -661,7 +661,8 @@ function createOverlayWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createEmpty();
+  const iconPath = path.join(__dirname, 'public', 'tray-icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon);
   tray.setToolTip('TikCaption');
 
