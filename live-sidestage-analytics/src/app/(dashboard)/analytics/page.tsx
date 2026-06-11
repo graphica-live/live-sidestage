@@ -114,6 +114,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [listener, setListener] = useState<ListenerState | null>(null);
   const [listenerLoading, setListenerLoading] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const fetchData = useCallback(
     async (p: Period, d: string, silent = false) => {
@@ -122,7 +123,10 @@ export default function AnalyticsPage() {
         const res = await fetch(
           `/api/analytics/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`
         );
-        if (res.ok) setData(await res.json());
+        if (res.ok) {
+          setData(await res.json());
+          setLastRefreshed(new Date());
+        }
       } finally {
         if (!silent) setLoading(false);
       }
@@ -365,7 +369,7 @@ export default function AnalyticsPage() {
 
         {/* Stats bar */}
         {data && (
-          <div className="flex gap-4 text-xs text-gray-400">
+          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
             <span>
               {filter ? `${sortedFiltered.length} / ${data.users.length} 人` : `${data.users.length} 人`}
             </span>
@@ -383,6 +387,11 @@ export default function AnalyticsPage() {
                 .toLocaleString()}{" "}
               件
             </span>
+            {lastRefreshed && (
+              <span className="ml-auto">
+                更新 {lastRefreshed.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
           </div>
         )}
 
