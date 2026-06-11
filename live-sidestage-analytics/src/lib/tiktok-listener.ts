@@ -23,8 +23,8 @@ interface ListenerInstance {
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
-  // non-combo dedup: key → expiry timestamp (ms)
-  recentNonCombo: Map<string, number>;
+  // dedup: key → expiry timestamp (ms) — covers both combo and non-combo
+  recentGifts: Map<string, number>;
   stopped: boolean;
 }
 
@@ -190,12 +190,23 @@ async function connectInstance(streamerId: string) {
       isCombo,
     }));
 
+    const now = Date.now();
+
     if (isCombo) {
+      // If this comboKey was completed recently, skip replayed events
+      const replayExpiry = inst.recentGifts.get(`combo:${comboKey}`);
+      if (replayExpiry && now < replayExpiry) {
+        console.log("[gift/combo] skipped replay", { comboKey });
+        return;
+      }
+
       const prev = inst.pendingCombos.get(comboKey!);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
       const delta = Math.max(0, currentRepeat - prevRepeat);
       if (data.repeatEnd) {
         inst.pendingCombos.delete(comboKey!);
+        // Guard against duplicate repeatEnd events for 10s
+        inst.recentGifts.set(`combo:${comboKey}`, now + 10_000);
       } else {
         inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
       }
@@ -204,14 +215,13 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
-    // Non-combo: deduplicate within 5s window to drop TikTok duplicate events
-    const dedupKey = `${data.uniqueId}:${data.giftId}`;
-    const now = Date.now();
-    const expiry = inst.recentNonCombo.get(dedupKey) ?? 0;
+    // Non-combo: deduplicate within 5s window
+    const dedupKey = `noncombo:${data.uniqueId}:${data.giftId}`;
+    const expiry = inst.recentGifts.get(dedupKey) ?? 0;
     const isDup = now < expiry;
     console.log("[gift/non-combo]", { dedupKey, isDup, saving: !isDup });
     if (isDup) return;
-    inst.recentNonCombo.set(dedupKey, now + 5_000);
+    inst.recentGifts.set(dedupKey, now + 5_000);
     saveGift(streamerId, data, currentRepeat);
   });
 
@@ -289,7 +299,7 @@ export async function startListener(streamerId: string, tiktokId: string) {
     connectPromise: null,
     reconnectTimer: null,
     pendingCombos: new Map(),
-    recentNonCombo: new Map(),
+    recentGifts: new Map(),
     stopped: false,
   };
 
