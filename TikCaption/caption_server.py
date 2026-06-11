@@ -43,20 +43,19 @@ def find_device_index(label):
 
 def load_vad():
     import os
+    import sys
     hub_dir = torch.hub.get_dir()
     local_repo = os.path.join(hub_dir, 'snakers4_silero-vad_master')
-    # Try local cache first (source='local' avoids network + hubconf path bugs)
-    if os.path.isfile(os.path.join(local_repo, 'hubconf.py')):
-        try:
-            model, utils = torch.hub.load(
-                local_repo,
-                'silero_vad',
-                source='local',
-                trust_repo=True,
-            )
-            return model, utils[0]
-        except Exception:
-            pass
+    src_path = os.path.join(local_repo, 'src')
+    jit_path = os.path.join(local_repo, 'src', 'silero_vad', 'data', 'silero_vad.jit')
+    # Bypass torch.hub entirely — load .jit directly from cached repo
+    if os.path.isfile(jit_path):
+        if src_path not in sys.path:
+            sys.path.insert(0, src_path)
+        from silero_vad.utils_vad import get_speech_timestamps
+        model = torch.jit.load(jit_path, map_location='cpu')
+        model.eval()
+        return model, get_speech_timestamps
     # Fallback: download from network
     try:
         model, utils = torch.hub.load(
