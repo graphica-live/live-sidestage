@@ -23,6 +23,8 @@ interface ListenerInstance {
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
+  // non-combo dedup: key → expiry timestamp (ms)
+  recentNonCombo: Map<string, number>;
   stopped: boolean;
 }
 
@@ -190,6 +192,12 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
+    // Non-combo: deduplicate within 5s window to drop TikTok duplicate events
+    const dedupKey = `${data.uniqueId}:${data.giftId}`;
+    const now = Date.now();
+    const expiry = inst.recentNonCombo.get(dedupKey) ?? 0;
+    if (now < expiry) return;
+    inst.recentNonCombo.set(dedupKey, now + 5_000);
     saveGift(streamerId, data, currentRepeat);
   });
 
@@ -267,6 +275,7 @@ export async function startListener(streamerId: string, tiktokId: string) {
     connectPromise: null,
     reconnectTimer: null,
     pendingCombos: new Map(),
+    recentNonCombo: new Map(),
     stopped: false,
   };
 
