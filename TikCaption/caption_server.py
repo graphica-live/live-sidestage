@@ -46,7 +46,21 @@ def load_vad():
     import sys
     import glob
 
-    # Search across all likely torch hub locations (get_dir() may differ from actual cache)
+    def _try_load(jit_path, pkg_dir):
+        if pkg_dir not in sys.path:
+            sys.path.insert(0, pkg_dir)
+        from silero_vad.utils_vad import get_speech_timestamps
+        model = torch.jit.load(jit_path, map_location='cpu')
+        model.eval()
+        return model, get_speech_timestamps
+
+    # 1. Bundled inside app resources (works on clean install, no internet needed)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    bundled_jit = os.path.join(script_dir, 'silero_vad', 'data', 'silero_vad.jit')
+    if os.path.isfile(bundled_jit):
+        return _try_load(bundled_jit, script_dir)
+
+    # 2. User's torch hub cache (glob across all possible hub dirs)
     candidate_hub_dirs = []
     try:
         candidate_hub_dirs.append(torch.hub.get_dir())
@@ -54,39 +68,18 @@ def load_vad():
         pass
     candidate_hub_dirs.append(os.path.join(os.path.expanduser('~'), '.cache', 'torch', 'hub'))
 
-    jit_path = None
-    src_path = None
     for hub_dir in candidate_hub_dirs:
         for repo_dir in glob.glob(os.path.join(hub_dir, 'snakers4_silero-vad*')):
             jit = os.path.join(repo_dir, 'src', 'silero_vad', 'data', 'silero_vad.jit')
             if os.path.isfile(jit):
-                jit_path = jit
-                src_path = os.path.join(repo_dir, 'src')
-                break
-        if jit_path:
-            break
+                return _try_load(jit, os.path.join(repo_dir, 'src'))
 
-    if jit_path:
-        if src_path not in sys.path:
-            sys.path.insert(0, src_path)
-        from silero_vad.utils_vad import get_speech_timestamps
-        model = torch.jit.load(jit_path, map_location='cpu')
-        model.eval()
-        return model, get_speech_timestamps
-
-    # Fallback: download from network
+    # 3. Download from network
     try:
-        model, utils = torch.hub.load(
-            'snakers4/silero-vad',
-            'silero_vad',
-            trust_repo=True,
-        )
+        model, utils = torch.hub.load('snakers4/silero-vad', 'silero_vad', trust_repo=True)
         return model, utils[0]
     except Exception as e:
-        searched = ', '.join(candidate_hub_dirs)
-        raise RuntimeError(
-            f'VAD load failed. Searched: {searched}. Error: {e}'
-        ) from e
+        raise RuntimeError(f'VAD load failed. Error: {e}') from e
 
 
 def _patch_tqdm_for_logging():

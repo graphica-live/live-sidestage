@@ -36,7 +36,8 @@
     ],
     "extraResources": [
       { "from": "caption_server.py", "to": "caption_server.py" },
-      { "from": "requirements.txt", "to": "requirements.txt" }
+      { "from": "requirements.txt", "to": "requirements.txt" },
+      { "from": "vendor/silero_vad", "to": "silero_vad" }
     ],
     "win": {
       "target": "nsis"
