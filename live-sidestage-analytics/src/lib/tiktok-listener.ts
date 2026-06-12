@@ -106,10 +106,14 @@ function updateState(
   persistState(inst.state.streamerId, status, message);
 }
 
+function jstDateKey(): string {
+  return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+}
+
 async function loadPendingCombos(
   streamerId: string
 ): Promise<Map<string, { repeatCount: number }>> {
-  const dayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = jstDateKey();
   const rows = await prisma.gift.groupBy({
     by: ["groupId"],
     where: { streamerId, dayKey, groupId: { not: null } },
@@ -128,7 +132,7 @@ async function saveGift(
   count: number
 ) {
   try {
-    const dayKey = new Date().toISOString().slice(0, 10);
+    const dayKey = jstDateKey();
     const diamondCount = Number(data.diamondCount) || 0;
     const orderId = data.orderId ? String(data.orderId) : null;
     const groupId = data.groupId ? String(data.groupId) : null;
