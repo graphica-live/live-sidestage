@@ -6,6 +6,7 @@ import { signOut } from "next-auth/react";
 type Period = "day" | "week" | "month";
 type SortKey = "diamonds" | "count" | "name" | "recent";
 type SortOrder = "asc" | "desc";
+type ViewMode = "ranking" | "history";
 
 interface GiftUser {
   uniqueId: string;
@@ -20,6 +21,25 @@ interface AnalyticsData {
   users: GiftUser[];
   dateRange: { start: string; end: string };
   total: { giftCount: number; totalDiamonds: number };
+}
+
+interface GiftEvent {
+  id: string;
+  uniqueId: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  giftId: number;
+  giftName: string;
+  giftPictureUrl: string | null;
+  repeatCount: number;
+  totalDiamonds: number;
+  receivedAt: string;
+}
+
+interface HistoryData {
+  events: GiftEvent[];
+  dateRange: { start: string; end: string };
+  total: { count: number; diamonds: number };
 }
 
 interface ListenerState {
@@ -82,6 +102,14 @@ function navigateDate(period: Period, date: string, dir: -1 | 1): string {
   return addMonths(date, dir);
 }
 
+function formatEventTime(iso: string, period: Period): string {
+  const d = new Date(iso);
+  if (period === "day") {
+    return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function downloadCSV(
   rows: (GiftUser & { rank: number })[],
   period: Period,
@@ -105,14 +133,36 @@ function downloadCSV(
   URL.revokeObjectURL(url);
 }
 
+function downloadHistoryCSV(events: GiftEvent[], period: Period, date: string) {
+  const header = "時刻,TikTokID,ニックネーム,ギフト名,個数,コイン数\n";
+  const body = events
+    .map(
+      (e) =>
+        `"${new Date(e.receivedAt).toLocaleString("ja-JP")}","${e.uniqueId}","${e.nickname.replace(/"/g, '""')}","${e.giftName.replace(/"/g, '""')}",${e.repeatCount},${e.totalDiamonds}`
+    )
+    .join("\n");
+  const blob = new Blob(["﻿" + header + body], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `liveanalytics_history_${period}_${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>("day");
   const [currentDate, setCurrentDate] = useState(todayStr());
+  const [viewMode, setViewMode] = useState<ViewMode>("ranking");
   const [sortKey, setSortKey] = useState<SortKey>("diamonds");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [filter, setFilter] = useState("");
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [historyData, setHistoryData] = useState<HistoryData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [listener, setListener] = useState<ListenerState | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -135,13 +185,33 @@ export default function AnalyticsPage() {
     [sortKey, sortOrder]
   );
 
-  useEffect(() => {
-    fetchData(period, currentDate);
-  }, [period, currentDate, fetchData]);
+  const fetchHistory = useCallback(async (p: Period, d: string, silent = false) => {
+    if (!silent) setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/analytics/gifts/history?period=${p}&date=${d}`);
+      if (res.ok) {
+        setHistoryData(await res.json());
+        setLastRefreshed(new Date());
+      }
+    } finally {
+      if (!silent) setHistoryLoading(false);
+    }
+  }, []);
 
-  // fetchData ref — always points to latest, safe to use in intervals without deps
+  useEffect(() => {
+    if (viewMode === "ranking") {
+      fetchData(period, currentDate);
+    } else {
+      fetchHistory(period, currentDate);
+    }
+  }, [period, currentDate, viewMode, fetchData, fetchHistory]);
+
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
+  const fetchHistoryRef = useRef(fetchHistory);
+  fetchHistoryRef.current = fetchHistory;
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
 
   // Combined poll: listener status every 5s + analytics refresh every 15s when connected
   useEffect(() => {
@@ -159,7 +229,11 @@ export default function AnalyticsPage() {
       console.log("[poll]", { tick, status: d.listener?.status, isActive, isToday, willRefresh: tick % 3 === 0 && isActive && isToday });
       if (tick % 3 === 0 && isActive && isToday) {
         console.log("[poll] triggering data refresh");
-        fetchDataRef.current(period, currentDate, true);
+        if (viewModeRef.current === "ranking") {
+          fetchDataRef.current(period, currentDate, true);
+        } else {
+          fetchHistoryRef.current(period, currentDate, true);
+        }
       }
     }
     poll();
@@ -189,6 +263,18 @@ export default function AnalyticsPage() {
 
     return rows.map((u, i) => ({ ...u, rank: i + 1 }));
   }, [data, filter, sortKey, sortOrder]);
+
+  const filteredEvents = useMemo(() => {
+    if (!historyData) return [];
+    const q = filter.toLowerCase();
+    if (!q) return historyData.events;
+    return historyData.events.filter(
+      (e) =>
+        e.uniqueId.toLowerCase().includes(q) ||
+        e.nickname.toLowerCase().includes(q) ||
+        e.giftName.toLowerCase().includes(q)
+    );
+  }, [historyData, filter]);
 
   const statusColor: Record<string, string> = {
     connected: "bg-green-500",
@@ -230,24 +316,42 @@ export default function AnalyticsPage() {
       </header>
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-4 space-y-4">
-        {/* Period tabs */}
-        <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
-          {(["day", "week", "month"] as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => {
-                setPeriod(p);
-                setCurrentDate(todayStr());
-              }}
-              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
-                period === p
-                  ? "bg-brand text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              {p === "day" ? "日" : p === "week" ? "週" : "月"}
-            </button>
-          ))}
+        {/* Period tabs + View mode toggle */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
+            {(["day", "week", "month"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => {
+                  setPeriod(p);
+                  setCurrentDate(todayStr());
+                }}
+                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                  period === p
+                    ? "bg-brand text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                {p === "day" ? "日" : p === "week" ? "週" : "月"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
+            {(["ranking", "history"] as ViewMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  viewMode === m
+                    ? "bg-brand text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                {m === "ranking" ? "ランキング" : "履歴"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Date navigation */}
@@ -294,7 +398,7 @@ export default function AnalyticsPage() {
             </svg>
             <input
               type="text"
-              placeholder="ユーザーを絞り込み..."
+              placeholder={viewMode === "history" ? "ユーザー・ギフト名で絞り込み..." : "ユーザーを絞り込み..."}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="input-field pl-9 text-sm"
@@ -302,35 +406,43 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
-            >
-              {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(
-                ([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                )
-              )}
-            </select>
+            {viewMode === "ranking" && (
+              <>
+                <select
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as SortKey)}
+                  className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
+                >
+                  {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(
+                    ([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <button
+                  onClick={() =>
+                    setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
+                  }
+                  className="btn-ghost px-2 py-2 text-sm"
+                  title={sortOrder === "desc" ? "降順" : "昇順"}
+                >
+                  {sortOrder === "desc" ? "↓" : "↑"}
+                </button>
+              </>
+            )}
 
             <button
-              onClick={() =>
-                setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
-              }
-              className="btn-ghost px-2 py-2 text-sm"
-              title={sortOrder === "desc" ? "降順" : "昇順"}
-            >
-              {sortOrder === "desc" ? "↓" : "↑"}
-            </button>
-
-            <button
-              onClick={() =>
-                downloadCSV(sortedFiltered, period, currentDate)
-              }
-              disabled={sortedFiltered.length === 0}
+              onClick={() => {
+                if (viewMode === "ranking") {
+                  downloadCSV(sortedFiltered, period, currentDate);
+                } else {
+                  downloadHistoryCSV(filteredEvents, period, currentDate);
+                }
+              }}
+              disabled={viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0}
               className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
               title="CSV出力"
             >
@@ -338,28 +450,30 @@ export default function AnalyticsPage() {
               <span className="hidden sm:inline">CSV</span>
             </button>
 
-            <button
-              onClick={async () => {
-                if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを全削除しますか？`)) return;
-                setDeleting(true);
-                try {
-                  await fetch(`/api/analytics/gifts?period=${period}&date=${currentDate}`, { method: "DELETE" });
-                  await fetchData(period, currentDate);
-                } finally {
-                  setDeleting(false);
-                }
-              }}
-              disabled={deleting || (data?.users.length === 0)}
-              className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
-              title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを削除`}
-            >
-              {deleting ? "削除中..." : "🗑 削除"}
-            </button>
+            {viewMode === "ranking" && (
+              <button
+                onClick={async () => {
+                  if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを全削除しますか？`)) return;
+                  setDeleting(true);
+                  try {
+                    await fetch(`/api/analytics/gifts?period=${period}&date=${currentDate}`, { method: "DELETE" });
+                    await fetchData(period, currentDate);
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting || (data?.users.length === 0)}
+                className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
+                title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを削除`}
+              >
+                {deleting ? "削除中..." : "🗑 削除"}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Stats bar */}
-        {data && (
+        {viewMode === "ranking" && data && (
           <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
             <span>
               {filter ? `${sortedFiltered.length} / ${data.users.length} 人` : `${data.users.length} 人`}
@@ -386,84 +500,176 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Table */}
-        {loading ? (
-          <div className="text-center py-16 text-gray-500">読み込み中...</div>
-        ) : sortedFiltered.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">
-            {filter ? "一致するユーザーなし" : "この期間のデータなし"}
+        {viewMode === "history" && historyData && (
+          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+            <span>
+              {filter ? `${filteredEvents.length} / ${historyData.events.length} 件` : `${historyData.events.length} 件`}
+            </span>
+            <span>
+              合計{" "}
+              {filteredEvents.reduce((s, e) => s + e.totalDiamonds, 0).toLocaleString()}{" "}
+              コイン
+            </span>
+            {lastRefreshed && (
+              <span className="ml-auto">
+                更新 {lastRefreshed.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
           </div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs text-gray-400">
-                  <th className="py-2.5 px-3 text-right w-10">#</th>
-                  <th className="py-2.5 px-3 text-left">ユーザー</th>
-                  <th className="py-2.5 px-3 text-right">
-                    <span title="コイン数">💎</span>
-                  </th>
-                  <th className="py-2.5 px-3 text-right hidden sm:table-cell">
-                    <span title="ギフト数">🎁</span>
-                  </th>
-                  <th className="py-2.5 px-3 text-right hidden md:table-cell text-gray-400">
-                    最終
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedFiltered.map((user, idx) => (
-                  <tr
-                    key={user.uniqueId}
-                    className={`border-b border-border/50 hover:bg-white/[0.02] transition-colors ${
-                      idx === 0 ? "bg-yellow-500/5" : ""
-                    }`}
-                  >
-                    <td className="py-2.5 px-3 text-right text-gray-500 font-mono text-xs">
-                      {user.rank}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar
-                          src={user.profileImageUrl}
-                          alt={user.nickname}
-                        />
-                        <div className="min-w-0">
-                          <div className="font-medium truncate max-w-[140px] sm:max-w-none">
-                            {user.nickname}
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span className="truncate max-w-[100px]">
-                              @{user.uniqueId}
-                            </span>
-                            <a
-                              href={`https://www.tiktok.com/@${user.uniqueId}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-gray-500 hover:text-brand transition-colors shrink-0"
-                              title="TikTokプロフィールを開く"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLinkIcon />
-                            </a>
+        )}
+
+        {/* Ranking Table */}
+        {viewMode === "ranking" && (
+          loading ? (
+            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+          ) : sortedFiltered.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              {filter ? "一致するユーザーなし" : "この期間のデータなし"}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-gray-400">
+                    <th className="py-2.5 px-3 text-right w-10">#</th>
+                    <th className="py-2.5 px-3 text-left">ユーザー</th>
+                    <th className="py-2.5 px-3 text-right">
+                      <span title="コイン数">💎</span>
+                    </th>
+                    <th className="py-2.5 px-3 text-right hidden sm:table-cell">
+                      <span title="ギフト数">🎁</span>
+                    </th>
+                    <th className="py-2.5 px-3 text-right hidden md:table-cell text-gray-400">
+                      最終
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedFiltered.map((user, idx) => (
+                    <tr
+                      key={user.uniqueId}
+                      className={`border-b border-border/50 hover:bg-white/[0.02] transition-colors ${
+                        idx === 0 ? "bg-yellow-500/5" : ""
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 text-right text-gray-500 font-mono text-xs">
+                        {user.rank}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar
+                            src={user.profileImageUrl}
+                            alt={user.nickname}
+                          />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate max-w-[140px] sm:max-w-none">
+                              {user.nickname}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <span className="truncate max-w-[100px]">
+                                @{user.uniqueId}
+                              </span>
+                              <a
+                                href={`https://www.tiktok.com/@${user.uniqueId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-gray-500 hover:text-brand transition-colors shrink-0"
+                                title="TikTokプロフィールを開く"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLinkIcon />
+                              </a>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-medium">
-                      {user.totalDiamonds.toLocaleString()}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-gray-400 hidden sm:table-cell">
-                      {user.giftCount.toLocaleString()}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-gray-500 text-xs hidden md:table-cell">
-                      {formatRelativeTime(user.lastGiftAt)}
-                    </td>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-medium">
+                        {user.totalDiamonds.toLocaleString()}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-gray-400 hidden sm:table-cell">
+                        {user.giftCount.toLocaleString()}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-gray-500 text-xs hidden md:table-cell">
+                        {formatRelativeTime(user.lastGiftAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {/* History Table */}
+        {viewMode === "history" && (
+          historyLoading ? (
+            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              {filter ? "一致するイベントなし" : "この期間のデータなし"}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-gray-400">
+                    <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
+                    <th className="py-2.5 px-3 text-left">ユーザー</th>
+                    <th className="py-2.5 px-3 text-left">ギフト</th>
+                    <th className="py-2.5 px-3 text-right">
+                      <span title="コイン数">💎</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredEvents.map((ev) => (
+                    <tr
+                      key={ev.id}
+                      className="border-b border-border/50 hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                        {formatEventTime(ev.receivedAt, period)}
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate max-w-[120px] sm:max-w-[200px]">
+                              {ev.nickname}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate max-w-[100px]">
+                              @{ev.uniqueId}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {ev.giftPictureUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={ev.giftPictureUrl}
+                              alt={ev.giftName}
+                              className="w-6 h-6 object-contain shrink-0"
+                            />
+                          )}
+                          <span className="truncate">
+                            {ev.giftName}
+                            {ev.repeatCount > 1 && (
+                              <span className="text-gray-400 ml-1">×{ev.repeatCount}</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-medium">
+                        {ev.totalDiamonds.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </main>
     </div>
