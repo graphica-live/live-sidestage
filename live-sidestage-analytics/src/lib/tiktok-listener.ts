@@ -27,10 +27,45 @@ interface ListenerInstance {
   stopped: boolean;
 }
 
+export interface GiftLogEntry {
+  ts: string;
+  streamerId: string;
+  action: "combo" | "non-combo" | "dropped";
+  reason?: string;
+  giftType: unknown;
+  giftName: unknown;
+  uniqueId: unknown;
+  giftId: unknown;
+  groupId: unknown;
+  orderId: unknown;
+  repeatCount: unknown;
+  repeatEnd: unknown;
+  diamondCount: unknown;
+  isCombo: boolean;
+  delta?: number;
+  prevRepeat?: number;
+}
+
+const GIFT_LOG_MAX = 200;
+
 // Use global to survive Next.js module re-instantiation across route bundles and hot reloads.
-const g = global as typeof globalThis & { __tiktokListeners?: Map<string, ListenerInstance> };
+const g = global as typeof globalThis & {
+  __tiktokListeners?: Map<string, ListenerInstance>;
+  __giftLog?: GiftLogEntry[];
+};
 if (!g.__tiktokListeners) g.__tiktokListeners = new Map();
+if (!g.__giftLog) g.__giftLog = [];
 const listeners = g.__tiktokListeners;
+const giftLog = g.__giftLog;
+
+function appendGiftLog(entry: GiftLogEntry) {
+  giftLog.push(entry);
+  if (giftLog.length > GIFT_LOG_MAX) giftLog.splice(0, giftLog.length - GIFT_LOG_MAX);
+}
+
+export function getGiftLog(streamerId?: string): GiftLogEntry[] {
+  return streamerId ? giftLog.filter((e) => e.streamerId === streamerId) : [...giftLog];
+}
 
 const RECONNECT_DELAY_MS = 10_000;
 const OFFLINE_RECONNECT_DELAY_MS = 30_000;
@@ -237,7 +272,9 @@ async function connectInstance(streamerId: string) {
     const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
 
-    console.log("[gift]", JSON.stringify({
+    const baseLog = {
+      ts: new Date().toISOString(),
+      streamerId,
       giftType: data.giftType,
       giftName: data.giftName,
       uniqueId: data.uniqueId,
@@ -248,7 +285,9 @@ async function connectInstance(streamerId: string) {
       repeatEnd: data.repeatEnd,
       diamondCount: data.diamondCount,
       isCombo,
-    }));
+    };
+
+    console.log("[gift]", JSON.stringify(baseLog));
 
     if (isCombo) {
       const prev = inst.pendingCombos.get(comboKey!);
@@ -260,6 +299,7 @@ async function connectInstance(streamerId: string) {
         inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
       }
       console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
+      appendGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
       if (delta > 0) saveGift(streamerId, data, delta);
       return;
     }
@@ -272,9 +312,11 @@ async function connectInstance(streamerId: string) {
         giftId: data.giftId,
         giftName: data.giftName,
       });
+      appendGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId" });
       return;
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
+    appendGiftLog({ ...baseLog, action: "non-combo" });
     saveGift(streamerId, data, currentRepeat);
   });
 
