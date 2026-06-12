@@ -294,9 +294,7 @@ async function connectInstance(streamerId: string) {
         updateState(inst, "connected", "接続済み");
         return;
       }
-      if (isUserOfflineError(err)) {
-        console.log("[listener] user offline error:", String(err), "retrying in 30s");
-      } else {
+      if (!isUserOfflineError(err)) {
         console.error("[listener] connect error:", err);
       }
       if (!inst.stopped) {
