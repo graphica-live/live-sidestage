@@ -304,15 +304,17 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
-    // Non-combo: orderId is required for dedup — drop event if missing
-    const orderId = data.orderId ? String(data.orderId) : null;
+    // Non-combo: use orderId for dedup, fall back to groupId (e.g. giftType=2 gifts like Compact send empty orderId)
+    const orderId =
+      (data.orderId ? String(data.orderId) : null) ||
+      (data.groupId ? String(data.groupId) : null);
     if (!orderId) {
-      console.error("[gift/non-combo] missing orderId — dropping event to prevent undeduped save", {
+      console.error("[gift/non-combo] missing orderId and groupId — dropping event", {
         uniqueId: data.uniqueId,
         giftId: data.giftId,
         giftName: data.giftName,
       });
-      appendGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId" });
+      appendGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId_and_groupId" });
       return;
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
