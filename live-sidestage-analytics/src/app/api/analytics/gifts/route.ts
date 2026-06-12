@@ -110,3 +110,27 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ users, dateRange: { start, end }, total });
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const streamer = await prisma.streamer.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true },
+  });
+
+  if (!streamer) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const { searchParams } = new URL(req.url);
+  const date = searchParams.get("date");
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+  }
+
+  const { count } = await prisma.gift.deleteMany({
+    where: { streamerId: streamer.id, dayKey: date },
+  });
+
+  return NextResponse.json({ deleted: count });
+}
