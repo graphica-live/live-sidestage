@@ -56,25 +56,13 @@ export async function GET(req: NextRequest) {
 
   const { start, end } = getDateRange(period, date);
 
-  // Day view uses receivedAt (JST-aware) to catch gifts saved with either UTC or JST dayKey
-  const giftWhere =
-    period === "day"
-      ? {
-          streamerId: streamer.id,
-          receivedAt: {
-            gte: new Date(date + "T00:00:00+09:00"),
-            lte: new Date(date + "T23:59:59.999+09:00"),
-          },
-        }
-      : {
-          streamerId: streamer.id,
-          dayKey: { gte: start, lte: end },
-        };
-
   // Group by uniqueId using ORM to avoid raw SQL column-name issues
   const grouped = await prisma.gift.groupBy({
     by: ["uniqueId"],
-    where: giftWhere,
+    where: {
+      streamerId: streamer.id,
+      dayKey: { gte: start, lte: end },
+    },
     _sum: { repeatCount: true, totalDiamonds: true },
     _max: { receivedAt: true },
   });
