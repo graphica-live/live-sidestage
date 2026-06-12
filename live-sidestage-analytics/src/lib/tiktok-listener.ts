@@ -295,7 +295,7 @@ async function connectInstance(streamerId: string) {
         return;
       }
       if (isUserOfflineError(err)) {
-        console.log("[listener] user offline, retrying in 30s");
+        console.log("[listener] user offline error:", String(err), "retrying in 30s");
       } else {
         console.error("[listener] connect error:", err);
       }
