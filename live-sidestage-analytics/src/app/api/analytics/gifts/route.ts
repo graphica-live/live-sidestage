@@ -123,13 +123,16 @@ export async function DELETE(req: NextRequest) {
   if (!streamer) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
+  const period = searchParams.get("period") ?? "day";
   const date = searchParams.get("date");
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "Invalid date" }, { status: 400 });
   }
 
+  const { start, end } = getDateRange(period, date);
+
   const { count } = await prisma.gift.deleteMany({
-    where: { streamerId: streamer.id, dayKey: date },
+    where: { streamerId: streamer.id, dayKey: { gte: start, lte: end } },
   });
 
   return NextResponse.json({ deleted: count });

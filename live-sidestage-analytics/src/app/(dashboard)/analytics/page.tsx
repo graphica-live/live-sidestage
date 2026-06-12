@@ -338,25 +338,23 @@ export default function AnalyticsPage() {
               <span className="hidden sm:inline">CSV</span>
             </button>
 
-            {period === "day" && (
-              <button
-                onClick={async () => {
-                  if (!confirm(`${formatPeriodLabel("day", currentDate)} のデータを全削除しますか？`)) return;
-                  setDeleting(true);
-                  try {
-                    await fetch(`/api/analytics/gifts?date=${currentDate}`, { method: "DELETE" });
-                    await fetchData(period, currentDate);
-                  } finally {
-                    setDeleting(false);
-                  }
-                }}
-                disabled={deleting || (data?.users.length === 0)}
-                className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
-                title="この日のデータを削除"
-              >
-                {deleting ? "削除中..." : "🗑 削除"}
-              </button>
-            )}
+            <button
+              onClick={async () => {
+                if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを全削除しますか？`)) return;
+                setDeleting(true);
+                try {
+                  await fetch(`/api/analytics/gifts?period=${period}&date=${currentDate}`, { method: "DELETE" });
+                  await fetchData(period, currentDate);
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+              disabled={deleting || (data?.users.length === 0)}
+              className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
+              title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを削除`}
+            >
+              {deleting ? "削除中..." : "🗑 削除"}
+            </button>
           </div>
         </div>
 
