@@ -5,20 +5,34 @@ import { prisma } from "@/lib/prisma";
 import { getGiftLog } from "@/lib/tiktok-listener";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  });
-
-  if (!streamer) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
   const { searchParams } = new URL(req.url);
-  const all = searchParams.get("all") === "1";
 
-  const log = getGiftLog(all ? undefined : streamer.id);
+  // Token-based access (for direct API calls / Claude Code)
+  const token = searchParams.get("token");
+  const envToken = process.env.GIFT_LOG_TOKEN;
+  const tokenValid = envToken && token === envToken;
+
+  // Session-based access (for browser)
+  const session = tokenValid ? null : await getServerSession(authOptions);
+
+  if (!tokenValid && !session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let streamerId: string | undefined;
+
+  if (!searchParams.get("all")) {
+    if (session) {
+      const streamer = await prisma.streamer.findUnique({
+        where: { userId: session.user.id },
+        select: { id: true },
+      });
+      streamerId = streamer?.id;
+    }
+    // token access without ?all=1 returns all logs
+  }
+
+  const log = getGiftLog(streamerId);
 
   return NextResponse.json({ count: log.length, log });
 }
