@@ -36,51 +36,23 @@ function getDateRange(
   return { start: date, end: date };
 }
 
-export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+async function queryGifts(
+  streamerId: string,
+  where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } }
+) {
+  const fullWhere = { streamerId, ...where };
 
-  const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true, verified: true },
-  });
-
-  if (!streamer?.verified) {
-    return NextResponse.json({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
-  }
-
-  const { searchParams } = new URL(req.url);
-  const period = searchParams.get("period") ?? "day";
-  const date =
-    searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
-
-  const { start, end } = getDateRange(period, date);
-
-  // Group by uniqueId using ORM to avoid raw SQL column-name issues
   const grouped = await prisma.gift.groupBy({
     by: ["uniqueId"],
-    where: {
-      streamerId: streamer.id,
-      dayKey: { gte: start, lte: end },
-    },
+    where: fullWhere,
     _sum: { repeatCount: true, totalDiamonds: true },
     _max: { receivedAt: true },
   });
 
-  if (grouped.length === 0) {
-    return NextResponse.json({
-      users: [],
-      dateRange: { start, end },
-      total: { giftCount: 0, totalDiamonds: 0 },
-    });
-  }
+  if (grouped.length === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
 
-  // Fetch latest nickname + avatar per uniqueId
   const profiles = await prisma.gift.findMany({
-    where: {
-      streamerId: streamer.id,
-      uniqueId: { in: grouped.map((g) => g.uniqueId) },
-    },
+    where: { ...fullWhere, uniqueId: { in: grouped.map((g) => g.uniqueId) } },
     orderBy: { receivedAt: "desc" },
     distinct: ["uniqueId"],
     select: { uniqueId: true, nickname: true, profileImageUrl: true },
@@ -101,13 +73,42 @@ export async function GET(req: NextRequest) {
   });
 
   const total = users.reduce(
-    (acc, u) => ({
-      giftCount: acc.giftCount + u.giftCount,
-      totalDiamonds: acc.totalDiamonds + u.totalDiamonds,
-    }),
+    (acc, u) => ({ giftCount: acc.giftCount + u.giftCount, totalDiamonds: acc.totalDiamonds + u.totalDiamonds }),
     { giftCount: 0, totalDiamonds: 0 }
   );
 
+  return { users, total };
+}
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const streamer = await prisma.streamer.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true, verified: true },
+  });
+
+  if (!streamer?.verified) {
+    return NextResponse.json({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const startDatetime = searchParams.get("startDatetime");
+  const endDatetime = searchParams.get("endDatetime");
+
+  if (startDatetime && endDatetime) {
+    const startDate = new Date(startDatetime);
+    const endDate = new Date(endDatetime);
+    const { users, total } = await queryGifts(streamer.id, { receivedAt: { gte: startDate, lte: endDate } });
+    return NextResponse.json({ users, dateRange: { start: startDatetime, end: endDatetime }, total });
+  }
+
+  const period = searchParams.get("period") ?? "day";
+  const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const { start, end } = getDateRange(period, date);
+
+  const { users, total } = await queryGifts(streamer.id, { dayKey: { gte: start, lte: end } });
   return NextResponse.json({ users, dateRange: { start, end }, total });
 }
 

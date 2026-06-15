@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { signOut } from "next-auth/react";
 
-type Period = "day" | "week" | "month";
+type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
 type SortOrder = "asc" | "desc";
 type ViewMode = "ranking" | "history";
@@ -54,6 +54,17 @@ const SORT_LABELS: Record<SortKey, string> = {
   name: "名前",
   recent: "最終ギフト",
 };
+
+function toLocalDatetimeString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatCustomRangeLabel(start: string, end: string): string {
+  const fmt = (d: Date) =>
+    d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return `${fmt(new Date(start))} 〜 ${fmt(new Date(end))}`;
+}
 
 function todayStr() {
   const d = new Date();
@@ -166,14 +177,28 @@ export default function AnalyticsPage() {
   const [listener, setListener] = useState<ListenerState | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return toLocalDatetimeString(d);
+  });
+  const [customEnd, setCustomEnd] = useState(() => {
+    const d = new Date(); d.setHours(23, 59, 59, 0); return toLocalDatetimeString(d);
+  });
+  const [pendingStart, setPendingStart] = useState(customStart);
+  const [pendingEnd, setPendingEnd] = useState(customEnd);
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(
     async (p: Period, d: string, silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const res = await fetch(
-          `/api/analytics/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`
-        );
+        let url: string;
+        if (p === "custom") {
+          url = `/api/analytics/gifts?startDatetime=${encodeURIComponent(new Date(customStart).toISOString())}&endDatetime=${encodeURIComponent(new Date(customEnd).toISOString())}&sort=${sortKey}&order=${sortOrder}`;
+        } else {
+          url = `/api/analytics/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`;
+        }
+        const res = await fetch(url);
         if (res.ok) {
           setData(await res.json());
           setLastRefreshed(new Date());
@@ -182,13 +207,19 @@ export default function AnalyticsPage() {
         if (!silent) setLoading(false);
       }
     },
-    [sortKey, sortOrder]
+    [sortKey, sortOrder, customStart, customEnd]
   );
 
   const fetchHistory = useCallback(async (p: Period, d: string, silent = false) => {
     if (!silent) setHistoryLoading(true);
     try {
-      const res = await fetch(`/api/analytics/gifts/history?period=${p}&date=${d}`);
+      let url: string;
+      if (p === "custom") {
+        url = `/api/analytics/gifts/history?startDatetime=${encodeURIComponent(new Date(customStart).toISOString())}&endDatetime=${encodeURIComponent(new Date(customEnd).toISOString())}`;
+      } else {
+        url = `/api/analytics/gifts/history?period=${p}&date=${d}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         setHistoryData(await res.json());
         setLastRefreshed(new Date());
@@ -196,7 +227,7 @@ export default function AnalyticsPage() {
     } finally {
       if (!silent) setHistoryLoading(false);
     }
-  }, []);
+  }, [customStart, customEnd]);
 
   useEffect(() => {
     if (viewMode === "ranking") {
@@ -205,6 +236,17 @@ export default function AnalyticsPage() {
       fetchHistory(period, currentDate);
     }
   }, [period, currentDate, viewMode, fetchData, fetchHistory]);
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    function onMouseDown(e: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setShowCalendar(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [showCalendar]);
 
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
@@ -335,6 +377,63 @@ export default function AnalyticsPage() {
                 {p === "day" ? "日" : p === "week" ? "週" : "月"}
               </button>
             ))}
+            <div className="w-px bg-border mx-0.5 self-stretch" />
+            <div className="relative" ref={calendarRef}>
+              <button
+                onClick={() => {
+                  setPendingStart(customStart);
+                  setPendingEnd(customEnd);
+                  setShowCalendar((v) => !v);
+                }}
+                className={`px-2 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-1 ${
+                  period === "custom"
+                    ? "bg-brand text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
+                title="カスタム期間"
+              >
+                <CalendarIcon />
+              </button>
+              {showCalendar && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-panel border border-border rounded-xl p-4 shadow-xl w-72">
+                  <p className="text-xs text-gray-400 mb-3 font-medium">カスタム期間</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">開始日時</label>
+                      <input
+                        type="datetime-local"
+                        step="1"
+                        value={pendingStart}
+                        onChange={(e) => setPendingStart(e.target.value)}
+                        className="input-field text-sm w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">終了日時</label>
+                      <input
+                        type="datetime-local"
+                        step="1"
+                        value={pendingEnd}
+                        onChange={(e) => setPendingEnd(e.target.value)}
+                        className="input-field text-sm w-full"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCustomStart(pendingStart);
+                        setCustomEnd(pendingEnd);
+                        setPeriod("custom");
+                        setShowCalendar(false);
+                      }}
+                      disabled={!pendingStart || !pendingEnd || pendingStart >= pendingEnd}
+                      className="w-full bg-brand text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+                    >
+                      適用
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
@@ -356,29 +455,37 @@ export default function AnalyticsPage() {
 
         {/* Date navigation */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurrentDate(navigateDate(period, currentDate, -1))}
-            className="btn-ghost px-2 py-1 text-lg leading-none"
-          >
-            ‹
-          </button>
-          <span className="text-sm font-medium min-w-0 text-center flex-1 truncate">
-            {formatPeriodLabel(period, currentDate)}
-          </span>
-          <button
-            onClick={() => setCurrentDate(navigateDate(period, currentDate, 1))}
-            disabled={currentDate >= todayStr()}
-            className="btn-ghost px-2 py-1 text-lg leading-none disabled:opacity-30"
-          >
-            ›
-          </button>
-          {currentDate !== todayStr() && (
+          {period !== "custom" && (
             <button
-              onClick={() => setCurrentDate(todayStr())}
-              className="btn-ghost text-xs"
+              onClick={() => setCurrentDate(navigateDate(period, currentDate, -1))}
+              className="btn-ghost px-2 py-1 text-lg leading-none"
             >
-              今日
+              ‹
             </button>
+          )}
+          <span className="text-sm font-medium min-w-0 text-center flex-1 truncate">
+            {period === "custom"
+              ? formatCustomRangeLabel(customStart, customEnd)
+              : formatPeriodLabel(period, currentDate)}
+          </span>
+          {period !== "custom" && (
+            <>
+              <button
+                onClick={() => setCurrentDate(navigateDate(period, currentDate, 1))}
+                disabled={currentDate >= todayStr()}
+                className="btn-ghost px-2 py-1 text-lg leading-none disabled:opacity-30"
+              >
+                ›
+              </button>
+              {currentDate !== todayStr() && (
+                <button
+                  onClick={() => setCurrentDate(todayStr())}
+                  className="btn-ghost text-xs"
+                >
+                  今日
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -700,6 +807,17 @@ function Avatar({
     <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center text-gray-500 text-xs shrink-0">
       {alt.charAt(0).toUpperCase()}
     </div>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
   );
 }
 
