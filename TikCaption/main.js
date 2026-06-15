@@ -11,7 +11,7 @@ const fs = require('fs');
 
 // getUserMedia triggers Chromium to register a Windows Communications audio session,
 // causing OS-level ducking of other streams. Keep audio service in-process to avoid it.
-app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,AudioServiceSandbox');
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,AudioServiceSandbox,WebRtcAllowInputVolumeAdjustment');
 
 const CAPTION_PORT = 38200;
 const LOADER_PORT = 38201;
