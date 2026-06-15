@@ -497,7 +497,7 @@
             const engine   = captionSettings?.recognitionEngine || 'sherpa-parakeet-gpu';
             const modelKey = captionSettings?.whisperModel || 'medium';
 
-            asrStream   = await navigator.mediaDevices.getUserMedia({ audio: true });
+            asrStream   = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false } });
             asrAudioCtx = new AudioContext();
             await asrAudioCtx.resume();
 

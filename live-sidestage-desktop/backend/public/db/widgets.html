@@ -5618,7 +5618,7 @@
 
         async function loadCaptionDevices() {
             try {
-                const tmpStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const tmpStream = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false } });
                 tmpStream.getTracks().forEach((t) => t.stop());
             } catch {}
             try {
@@ -5658,7 +5658,7 @@
 
         function startLevelMeter(deviceId) {
             stopLevelMeter();
-            const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
+            const constraints = deviceId ? { audio: { deviceId: { exact: deviceId }, autoGainControl: false, echoCancellation: false, noiseSuppression: false } } : { audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false } };
             return navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
                 levelStream = stream;
                 levelAudioCtx = new AudioContext();
