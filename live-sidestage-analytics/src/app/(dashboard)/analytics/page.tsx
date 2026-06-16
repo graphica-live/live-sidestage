@@ -447,7 +447,7 @@ export default function AnalyticsPage() {
                     : "text-gray-400 hover:text-white"
                 }`}
               >
-                {m === "ranking" ? "ランキング" : "履歴"}
+                {m === "ranking" ? "コイン数" : "ギフト履歴"}
               </button>
             ))}
           </div>
