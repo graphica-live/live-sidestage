@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 
 type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
+type HistorySortKey = "time" | "diamonds" | "user" | "gift";
 type SortOrder = "asc" | "desc";
 type ViewMode = "ranking" | "history";
 
@@ -53,6 +54,13 @@ const SORT_LABELS: Record<SortKey, string> = {
   count: "ギフト数",
   name: "名前",
   recent: "最終ギフト",
+};
+
+const HISTORY_SORT_LABELS: Record<HistorySortKey, string> = {
+  time: "時刻",
+  diamonds: "コイン数",
+  user: "ユーザー",
+  gift: "ギフト名",
 };
 
 function toLocalDatetimeString(date: Date): string {
@@ -169,6 +177,8 @@ export default function AnalyticsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("ranking");
   const [sortKey, setSortKey] = useState<SortKey>("diamonds");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [historySortKey, setHistorySortKey] = useState<HistorySortKey>("time");
+  const [historySortOrder, setHistorySortOrder] = useState<SortOrder>("desc");
   const [filter, setFilter] = useState("");
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [historyData, setHistoryData] = useState<HistoryData | null>(null);
@@ -309,14 +319,30 @@ export default function AnalyticsPage() {
   const filteredEvents = useMemo(() => {
     if (!historyData) return [];
     const q = filter.toLowerCase();
-    if (!q) return historyData.events;
-    return historyData.events.filter(
-      (e) =>
-        e.uniqueId.toLowerCase().includes(q) ||
-        e.nickname.toLowerCase().includes(q) ||
-        e.giftName.toLowerCase().includes(q)
-    );
-  }, [historyData, filter]);
+    let events = !q
+      ? historyData.events
+      : historyData.events.filter(
+          (e) =>
+            e.uniqueId.toLowerCase().includes(q) ||
+            e.nickname.toLowerCase().includes(q) ||
+            e.giftName.toLowerCase().includes(q)
+        );
+
+    events = [...events].sort((a, b) => {
+      let diff = 0;
+      if (historySortKey === "time")
+        diff = new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
+      else if (historySortKey === "diamonds")
+        diff = a.totalDiamonds - b.totalDiamonds;
+      else if (historySortKey === "user")
+        diff = a.nickname.localeCompare(b.nickname, "ja");
+      else if (historySortKey === "gift")
+        diff = a.giftName.localeCompare(b.giftName, "ja");
+      return historySortOrder === "desc" ? -diff : diff;
+    });
+
+    return events;
+  }, [historyData, filter, historySortKey, historySortOrder]);
 
   const statusColor: Record<string, string> = {
     connected: "bg-green-500",
@@ -447,7 +473,7 @@ export default function AnalyticsPage() {
                     : "text-gray-400 hover:text-white"
                 }`}
               >
-                {m === "ranking" ? "コイン数" : "ギフト履歴"}
+                {m === "ranking" ? "ユーザー別コイン数" : "ギフト履歴"}
               </button>
             ))}
           </div>
@@ -537,6 +563,34 @@ export default function AnalyticsPage() {
                   title={sortOrder === "desc" ? "降順" : "昇順"}
                 >
                   {sortOrder === "desc" ? "↓" : "↑"}
+                </button>
+              </>
+            )}
+
+            {viewMode === "history" && (
+              <>
+                <select
+                  value={historySortKey}
+                  onChange={(e) => setHistorySortKey(e.target.value as HistorySortKey)}
+                  className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
+                >
+                  {(Object.entries(HISTORY_SORT_LABELS) as [HistorySortKey, string][]).map(
+                    ([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <button
+                  onClick={() =>
+                    setHistorySortOrder((o) => (o === "desc" ? "asc" : "desc"))
+                  }
+                  className="btn-ghost px-2 py-2 text-sm"
+                  title={historySortOrder === "desc" ? "降順" : "昇順"}
+                >
+                  {historySortOrder === "desc" ? "↓" : "↑"}
                 </button>
               </>
             )}
