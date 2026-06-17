@@ -187,6 +187,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (isTopRankingRequest) {
     try {
       const nowMs = Date.now();
+      const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
       const origin = url.origin;
       const rows = rankingSource === 'pickup'
         ? await context.env.DB.prepare(
@@ -205,20 +206,41 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         )
           .bind(nowMs)
           .all<FrameRow>()
-        : await context.env.DB.prepare(
-            `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
-              u.tiktok_profile_id AS owner_tiktok_profile_id,
-              COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
-              f.view_count,
-              f.good_count
-            FROM frames f
-            LEFT JOIN users u ON u.id = f.owner_id
-             LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-            WHERE COALESCE(f.exclude_from_rankings, 0) = 0
-            ORDER BY ${rankingMetric === 'goods' ? 'COALESCE(f.good_count, 0) DESC, f.created_at DESC' : 'COALESCE(f.wear_count, 0) DESC, f.created_at DESC'}
-            LIMIT 10`
-          )
-           .all<FrameRow>();
+        : rankingMetric === 'goods'
+          ? await context.env.DB.prepare(
+              `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+                u.tiktok_profile_id AS owner_tiktok_profile_id,
+                COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+                f.view_count,
+                f.good_count
+              FROM frames f
+              LEFT JOIN users u ON u.id = f.owner_id
+              LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
+              WHERE COALESCE(f.exclude_from_rankings, 0) = 0
+                AND f.created_at > ?
+              ORDER BY COALESCE(f.good_count, 0) DESC, f.created_at DESC
+              LIMIT 10`
+            )
+            .bind(thirtyDaysAgoMs)
+            .all<FrameRow>()
+          : await context.env.DB.prepare(
+              `SELECT f.id, f.owner_id, u.email AS owner_email, anon.id AS owner_anonymous_display_number, f.custom_name, f.image_key,
+                u.tiktok_profile_id AS owner_tiktok_profile_id,
+                COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
+                f.view_count,
+                f.good_count,
+                COUNT(fwe.id) AS recent_wear_count
+              FROM frames f
+              LEFT JOIN users u ON u.id = f.owner_id
+              LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
+              LEFT JOIN frame_wear_events fwe ON fwe.frame_id = f.id AND fwe.created_at > ?
+              WHERE COALESCE(f.exclude_from_rankings, 0) = 0
+              GROUP BY f.id
+              ORDER BY recent_wear_count DESC, f.created_at DESC
+              LIMIT 10`
+            )
+            .bind(thirtyDaysAgoMs)
+            .all<FrameRow>();
 
       const frames: PublicTopFrameItem[] = (rows.results ?? []).map((row) => ({
         id: row.id,
