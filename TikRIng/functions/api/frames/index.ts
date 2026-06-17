@@ -211,11 +211,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
               COALESCE(NULLIF(TRIM(u.custom_display_name), ''), NULLIF(TRIM(u.display_name), '')) AS owner_display_name,
               f.view_count,
               f.good_count,
-              COUNT(fwe.id) AS recent_wear_count
+              COUNT(fwe.actor_id) AS recent_wear_count
             FROM frames f
             LEFT JOIN users u ON u.id = f.owner_id
             LEFT JOIN anonymous_user_numbers anon ON anon.user_id = u.id
-            LEFT JOIN frame_wear_events fwe ON fwe.frame_id = f.id AND fwe.created_at > ?
+            LEFT JOIN frame_wears fwe ON fwe.frame_id = f.id AND fwe.created_at > ?
             WHERE COALESCE(f.exclude_from_rankings, 0) = 0
             GROUP BY f.id
             ORDER BY recent_wear_count DESC, COALESCE(f.wear_count, 0) DESC, f.created_at DESC
