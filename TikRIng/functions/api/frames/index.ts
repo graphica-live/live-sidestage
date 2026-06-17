@@ -218,7 +218,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             LEFT JOIN frame_wear_events fwe ON fwe.frame_id = f.id AND fwe.created_at > ?
             WHERE COALESCE(f.exclude_from_rankings, 0) = 0
             GROUP BY f.id
-            ORDER BY recent_wear_count DESC, f.created_at DESC
+            ORDER BY recent_wear_count DESC, COALESCE(f.wear_count, 0) DESC, f.created_at DESC
             LIMIT 10`
           )
           .bind(thirtyDaysAgoMs)
