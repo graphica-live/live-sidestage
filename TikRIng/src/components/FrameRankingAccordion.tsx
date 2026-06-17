@@ -361,7 +361,9 @@ export default function FrameRankingAccordion({
         >
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tiktok-cyan/80">{eyebrow}</p>
-            <h2 className="mt-0.5 truncate text-[13px] font-bold leading-tight text-white sm:text-sm">{title}</h2>
+            <h2 className="mt-0.5 truncate text-[13px] font-bold leading-tight text-white sm:text-sm">
+              {title}<span className="ml-1.5 text-[10px] font-normal text-tiktok-lightgray">直近1か月</span>
+            </h2>
             {!open && closedSummary ? (
               <p className="mt-0.5 truncate text-[10px] leading-tight text-tiktok-lightgray">{closedSummary}</p>
             ) : null}
