@@ -1,43 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function handleCredentials(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
-    setLoading(false);
-
-    if (result?.error) {
-      setError("メールアドレスまたはパスワードが間違っています");
-      return;
-    }
-
-    router.push("/");
-    router.refresh();
-  }
-
-  async function handleGoogle() {
-    await signIn("google", { callbackUrl: "/" });
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -48,52 +13,12 @@ export default function LoginPage() {
 
         <div className="card">
           <button
-            onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors mb-4"
+            onClick={() => signIn("google", { callbackUrl: "/" })}
+            className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
           >
             <GoogleIcon />
             Googleでログイン
           </button>
-
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-gray-500">または</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-
-          <form onSubmit={handleCredentials} className="space-y-3">
-            <input
-              type="email"
-              placeholder="メールアドレス"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              required
-            />
-            <input
-              type="password"
-              placeholder="パスワード"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              required
-            />
-
-            {error && (
-              <p className="text-red-400 text-xs">{error}</p>
-            )}
-
-            <button type="submit" disabled={loading} className="btn-primary w-full">
-              {loading ? "ログイン中..." : "ログイン"}
-            </button>
-          </form>
-
-          <p className="text-center text-sm text-gray-400 mt-4">
-            アカウントなし？{" "}
-            <Link href="/register" className="text-brand hover:underline">
-              新規登録
-            </Link>
-          </p>
         </div>
       </div>
     </div>
