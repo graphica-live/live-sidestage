@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 
 type Step = "input" | "code_issued" | "verifying" | "verified";
 
@@ -96,6 +97,15 @@ export default function SetupPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-brand">LiveAnalytics</h1>
           <p className="text-gray-400 text-sm mt-1">TikTok IDの設定</p>
+        </div>
+
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="btn-ghost text-xs"
+          >
+            ログアウト
+          </button>
         </div>
 
         <div className="card space-y-4">
