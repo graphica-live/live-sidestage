@@ -1,5 +1,7 @@
 'use strict';
 
+const { repairMojibakeFilename } = require('../utils');
+
 module.exports = function registerEffectsRoutes({
     app,
     io,
@@ -77,7 +79,7 @@ module.exports = function registerEffectsRoutes({
                 ok: true,
                 asset: {
                     kind,
-                    name: req.file.originalname,
+                    name: repairMojibakeFilename(req.file.originalname),
                     url: buildEffectMediaUrl(kind, req.file.filename),
                     mimeType: req.file.mimetype,
                     size: req.file.size

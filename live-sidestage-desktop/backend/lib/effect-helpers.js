@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeEffectText, normalizeWholeNumber, normalizeBroadcasterId } = require('./utils');
+const { normalizeEffectText, normalizeWholeNumber, normalizeBroadcasterId, repairMojibakeFilename } = require('./utils');
 const {
     EFFECT_SCREEN_COUNT,
     EFFECT_EVENTS_STATE_KEY,
@@ -108,10 +108,10 @@ function normalizeEffectEvent(value, index) {
         screen: normalizeEffectScreen(value?.screen),
         videoEnabled: Boolean(value?.videoEnabled),
         videoAssetUrl: normalizeAssetUrl(value?.videoAssetUrl),
-        videoAssetName: normalizeEffectText(value?.videoAssetName, 160),
+        videoAssetName: repairMojibakeFilename(normalizeEffectText(value?.videoAssetName, 160)),
         audioEnabled: Boolean(value?.audioEnabled),
         audioAssetUrl: normalizeAssetUrl(value?.audioAssetUrl),
-        audioAssetName: normalizeEffectText(value?.audioAssetName, 160),
+        audioAssetName: repairMojibakeFilename(normalizeEffectText(value?.audioAssetName, 160)),
         mediaVolume
     };
 }
