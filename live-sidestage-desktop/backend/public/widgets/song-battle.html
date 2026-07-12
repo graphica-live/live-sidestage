@@ -8,8 +8,8 @@
     <style>
         :root {
             --stroke-color: rgba(15, 23, 42, 0.96);
-            --side-a-color: #38bdf8;
-            --side-b-color: #f472b6;
+            --side-a-color: #ef4444;
+            --side-b-color: #3b82f6;
         }
 
         * {
@@ -39,34 +39,32 @@
         .battle {
             display: none;
             width: min(1040px, calc(100vw - 48px));
-            align-items: center;
-            gap: 18px;
+            flex-direction: column;
+            gap: 16px;
         }
 
         .battle.is-visible {
             display: flex;
         }
 
+        .arena-row {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
         .side {
             flex: 1;
-            display: grid;
-            gap: 12px;
-            justify-items: center;
-            text-align: center;
-            padding: 20px;
-            border-radius: 24px;
-            background: rgba(15, 23, 42, 0.55);
-            border: 2px solid rgba(255, 255, 255, 0.12);
-            transition: border-color 200ms ease, transform 200ms ease;
+            display: flex;
+            justify-content: center;
         }
 
-        .side.is-winner {
-            border-color: #fbbf24;
-            transform: scale(1.03);
+        .side.is-winner .cover-wrap {
+            box-shadow:
+                0 12px 28px rgba(15, 23, 42, 0.45),
+                0 0 0 6px rgba(0, 0, 0, 0.35),
+                0 0 0 10px rgba(251, 191, 36, 0.65);
         }
-
-        .side-a { border-color: var(--side-a-color); }
-        .side-b { border-color: var(--side-b-color); }
 
         .cover-wrap {
             position: relative;
@@ -114,39 +112,89 @@
             pointer-events: none;
         }
 
+        .title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 18px;
+        }
+
+        .title-row .song-title {
+            flex: 1;
+        }
+
+        .title-spacer {
+            min-width: 84px;
+        }
+
         .song-title {
             font-size: 26px;
             font-weight: 800;
             line-height: 1.3;
+            text-align: center;
             text-shadow: 0 0 6px var(--stroke-color);
-            width: 240px;
             height: calc(1.3em * 2);
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            transition: color 200ms ease;
         }
 
-        .vote-bar-track {
-            width: 100%;
-            height: 10px;
+        .song-title.is-winner {
+            color: #fbbf24;
+        }
+
+        .tug-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .tug-count {
+            min-width: 32px;
+            font-size: 17px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .tug-track {
+            position: relative;
+            flex: 1;
+            height: 14px;
             border-radius: 999px;
             background: rgba(255, 255, 255, 0.14);
             overflow: hidden;
         }
 
-        .vote-bar-fill {
-            height: 100%;
-            border-radius: 999px;
-            transition: width 300ms ease;
+        .tug-fill-a {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: var(--side-a-color);
+            transition: width 400ms ease;
         }
 
-        .side-a .vote-bar-fill { background: var(--side-a-color); }
-        .side-b .vote-bar-fill { background: var(--side-b-color); }
+        .tug-fill-b {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: var(--side-b-color);
+            transition: width 400ms ease;
+        }
 
-        .vote-count {
-            font-size: 17px;
-            font-weight: 700;
+        .tug-center-mark {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.6);
+            transform: translateX(-50%);
+            pointer-events: none;
         }
 
         .center-stack {
@@ -209,21 +257,33 @@
 </head>
 <body>
     <div class="battle" id="battle">
-        <div class="side side-a" id="side-a">
-            <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
+        <div class="arena-row">
+            <div class="side side-a" id="side-a">
+                <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
+            </div>
+            <div class="center-stack">
+                <div class="vs-label" id="vs-label">VS</div>
+                <div class="countdown" id="countdown">--:--</div>
+            </div>
+            <div class="side side-b" id="side-b">
+                <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
+            </div>
+        </div>
+
+        <div class="tug-row">
+            <span class="tug-count" id="count-a">0</span>
+            <div class="tug-track">
+                <div class="tug-fill-a" id="tug-fill-a"></div>
+                <div class="tug-fill-b" id="tug-fill-b"></div>
+                <div class="tug-center-mark"></div>
+            </div>
+            <span class="tug-count" id="count-b">0</span>
+        </div>
+
+        <div class="title-row">
             <div class="song-title" id="title-a"></div>
-            <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-a" style="width:50%"></div></div>
-            <div class="vote-count" id="count-a">0</div>
-        </div>
-        <div class="center-stack">
-            <div class="vs-label" id="vs-label">VS</div>
-            <div class="countdown" id="countdown">--:--</div>
-        </div>
-        <div class="side side-b" id="side-b">
-            <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
+            <div class="title-spacer"></div>
             <div class="song-title" id="title-b"></div>
-            <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-b" style="width:50%"></div></div>
-            <div class="vote-count" id="count-b">0</div>
         </div>
     </div>
 
@@ -240,8 +300,8 @@
         const coverB = document.getElementById('cover-b');
         const titleA = document.getElementById('title-a');
         const titleB = document.getElementById('title-b');
-        const barA = document.getElementById('bar-a');
-        const barB = document.getElementById('bar-b');
+        const tugFillA = document.getElementById('tug-fill-a');
+        const tugFillB = document.getElementById('tug-fill-b');
         const countA = document.getElementById('count-a');
         const countB = document.getElementById('count-b');
         const sideAEl = document.getElementById('side-a');
@@ -309,8 +369,9 @@
 
         function renderVotes(round) {
             const total = Math.max(1, (round.tallyA || 0) + (round.tallyB || 0));
-            barA.style.width = `${((round.tallyA || 0) / total) * 100}%`;
-            barB.style.width = `${((round.tallyB || 0) / total) * 100}%`;
+            const percentA = ((round.tallyA || 0) / total) * 100;
+            tugFillA.style.width = `${percentA}%`;
+            tugFillB.style.width = `${100 - percentA}%`;
             countA.textContent = String(round.tallyA || 0);
             countB.textContent = String(round.tallyB || 0);
         }
@@ -325,6 +386,8 @@
 
             sideAEl.classList.remove('is-winner');
             sideBEl.classList.remove('is-winner');
+            titleA.classList.remove('is-winner');
+            titleB.classList.remove('is-winner');
             battleEl.classList.add('is-visible');
 
             coverA.src = round.songA.coverDataUrl || '';
@@ -358,8 +421,14 @@
             stopCountdown();
             countdownEl.textContent = '0:00';
             renderVotes(round);
-            if (round.winnerSide === 'A') sideAEl.classList.add('is-winner');
-            if (round.winnerSide === 'B') sideBEl.classList.add('is-winner');
+            if (round.winnerSide === 'A') {
+                sideAEl.classList.add('is-winner');
+                titleA.classList.add('is-winner');
+            }
+            if (round.winnerSide === 'B') {
+                sideBEl.classList.add('is-winner');
+                titleB.classList.add('is-winner');
+            }
             clearHideTimer();
             hideTimer = setTimeout(() => {
                 hideTimer = null;
