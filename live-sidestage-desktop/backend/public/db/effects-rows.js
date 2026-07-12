@@ -119,10 +119,12 @@ function renderEvents() {
         const videoLinkedValue = fragment.querySelector('[data-role="video-linked"]');
         const audioLinkedValue = fragment.querySelector('[data-role="audio-linked"]');
         const midiLinkedValue = fragment.querySelector('[data-role="midi-linked"]');
+        const vdjLinkedValue = fragment.querySelector('[data-role="vdj-linked"]');
         const mediaVolumeValue = fragment.querySelector('[data-role="media-volume-value"]');
         const hasVideoAsset = Boolean(eventRecord.videoAssetUrl || eventRecord.videoAssetName);
         const hasAudioAsset = Boolean(eventRecord.audioAssetUrl || eventRecord.audioAssetName);
         const hasMidi = Boolean(eventRecord.midiEnabled && eventRecord.midiDeviceName);
+        const hasVdjEffect = Boolean(eventRecord.vdjEffectEnabled && eventRecord.vdjEffectType);
 
         card.dataset.eventId = eventRecord.id;
         nameValue.textContent = eventRecord.name || '未設定';
@@ -133,6 +135,8 @@ function renderEvents() {
         audioLinkedValue.classList.toggle('is-empty', !hasAudioAsset);
         midiLinkedValue.textContent = hasMidi ? '✓' : '-';
         midiLinkedValue.classList.toggle('is-empty', !hasMidi);
+        vdjLinkedValue.textContent = hasVdjEffect ? '✓' : '-';
+        vdjLinkedValue.classList.toggle('is-empty', !hasVdjEffect);
         mediaVolumeValue.textContent = `${eventRecord.mediaVolume ?? 100}%`;
 
         fragment.querySelector('[data-action="delete-event"]').addEventListener('click', async () => {

@@ -37,6 +37,7 @@
                 <div>動画</div>
                 <div>音声</div>
                 <div>MIDI</div>
+                <div>VDJ</div>
                 <div>音量</div>
             </div>
             <div class="record-list" id="event-list"></div>
@@ -136,6 +137,33 @@
                             <input type="number" id="event-modal-midi-data1" class="modal-midi-byte-input" min="0" max="127" step="1" value="60">
                             <span class="field-hint" id="event-modal-midi-data2-label">ベロシティ</span>
                             <input type="number" id="event-modal-midi-data2" class="modal-midi-byte-input" min="0" max="127" step="1" value="127">
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>VDJエフェクト</label>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-vdj-enabled"><span>VirtualDJエフェクトを発火</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-vdj-effect-type">
+                                <option value="backspin_1_1">バックスピン 1/1（4拍）</option>
+                                <option value="backspin_1_2">バックスピン 1/2（2拍）</option>
+                                <option value="backspin_1_4">バックスピン 1/4（1拍）</option>
+                                <option value="backspin_1_8">バックスピン 1/8（0.5拍）</option>
+                                <option value="backspin_1_16">バックスピン 1/16（0.25拍）</option>
+                            </select>
+                        </div>
+                        <div class="modal-inline-row">
+                            <span class="field-hint">対象デッキ</span>
+                            <select id="event-modal-vdj-target-deck">
+                                <option value="deck1">Deck 1</option>
+                                <option value="deck2">Deck 2</option>
+                                <option value="active">アクティブデッキ</option>
+                                <option value="inactive">非アクティブデッキ</option>
+                                <option value="both">両方</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -267,6 +295,10 @@
                 <div class="field">
                     <label>MIDI</label>
                     <div class="linked-indicator is-empty" data-role="midi-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>VDJ</label>
+                    <div class="linked-indicator is-empty" data-role="vdj-linked">-</div>
                 </div>
                 <div class="field">
                     <label>音量</label>

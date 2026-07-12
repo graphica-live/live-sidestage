@@ -13,6 +13,7 @@ module.exports = function createEffectsRuntime({
     normalizeEffectText,
     normalizeWholeNumber,
     getTimestamp,
+    sendVdjEffectForEvent,
 }) {
     const USER_VIDEO_EXTENSIONS = ['mp4', 'vp9', 'mov'];
     const USER_VIDEO_MIME_TYPES = { mp4: 'video/mp4', vp9: 'video/webm', mov: 'video/quicktime' };
@@ -88,6 +89,7 @@ module.exports = function createEffectsRuntime({
         if (getEffectsGloballyPaused()) return;
         io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent));
         sendMidiForEffectEvent(effectEvent);
+        sendVdjEffectForEvent(effectEvent);
     }
 
     function matchesEffectTrigger(trigger, context) {
@@ -181,6 +183,7 @@ module.exports = function createEffectsRuntime({
                     if (!getEffectsGloballyPaused()) {
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
+                        sendVdjEffectForEvent(effectEvent);
                     }
                 } else {
                     emitEffectPlayback(effectEvent, trigger, sourceEvent);

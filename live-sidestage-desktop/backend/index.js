@@ -4108,34 +4108,15 @@ function extractObservedEmojiEntries(comment) {
         .map((emoji) => ({ emoji, observedAt: Date.now() }));
 }
 
-const {
-    createEffectPlaybackPayload,
-    emitEffectPlayback,
-    matchesEffectTrigger,
-    speculativelyPreloadUserVideos,
-    tryRunEffectTriggers,
-    tryRunEffectTriggersForGift,
-    tryRunEffectTriggersForComment,
-    findUserVideoFile,
-    normalizeUserIdForFilename,
-    USER_VIDEO_EXTENSIONS,
-    USER_VIDEO_MIME_TYPES,
-} = require('./lib/effects-runtime')({
-    io,
-    getEffectEvents,
-    getEffectTriggers,
-    getEffectsGloballyPaused,
-    normalizeBroadcasterId,
-    normalizeEffectText,
-    normalizeWholeNumber,
-    getTimestamp,
-});
-
 const { closeAllMidiOutputs } = require('./lib/midi-helpers');
 
 function setGlobalStateValue(stateKey, stateValue) {
     dbStore.setGlobalStateValue(stateKey, stateValue, getTimestamp());
     return stateValue;
+}
+
+function getGlobalStateValue(stateKey) {
+    return dbStore.getGlobalStateValue(stateKey);
 }
 
 function getScopedStateValue(stateKey) {
@@ -4164,6 +4145,33 @@ function setScopedStateValue(stateKey, stateValue) {
     dbStore.setBroadcasterStateValue(broadcasterId, stateKey, stateValue, getTimestamp());
     return stateValue;
 }
+
+const vdjClient = require('./lib/vdj-client')({ getGlobalStateValue, setGlobalStateValue });
+const { sendVdjEffectForEvent } = require('./lib/vdj-effects')({ vdjClient });
+
+const {
+    createEffectPlaybackPayload,
+    emitEffectPlayback,
+    matchesEffectTrigger,
+    speculativelyPreloadUserVideos,
+    tryRunEffectTriggers,
+    tryRunEffectTriggersForGift,
+    tryRunEffectTriggersForComment,
+    findUserVideoFile,
+    normalizeUserIdForFilename,
+    USER_VIDEO_EXTENSIONS,
+    USER_VIDEO_MIME_TYPES,
+} = require('./lib/effects-runtime')({
+    io,
+    getEffectEvents,
+    getEffectTriggers,
+    getEffectsGloballyPaused,
+    normalizeBroadcasterId,
+    normalizeEffectText,
+    normalizeWholeNumber,
+    getTimestamp,
+    sendVdjEffectForEvent,
+});
 
 function getStoredBroadcasterId() {
     return normalizeBroadcasterId(dbStore.getGlobalStateValue(BROADCASTER_ID_STATE_KEY));

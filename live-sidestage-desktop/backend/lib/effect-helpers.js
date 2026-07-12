@@ -47,7 +47,10 @@ function createDefaultEffectEvent(slot = 1) {
         midiMessageType: 'noteon',
         midiChannel: 1,
         midiData1: 60,
-        midiData2: 127
+        midiData2: 127,
+        vdjEffectEnabled: false,
+        vdjEffectType: 'backspin_1_1',
+        vdjEffectTargetDeck: 'active'
     };
 }
 
@@ -117,6 +120,19 @@ function normalizeMidiByte(value, fallback) {
     return Number.isInteger(parsed) && parsed >= 0 && parsed <= 127 ? parsed : fallback;
 }
 
+const VDJ_EFFECT_TYPES = ['backspin_1_1', 'backspin_1_2', 'backspin_1_4', 'backspin_1_8', 'backspin_1_16'];
+const VDJ_TARGET_DECKS = ['deck1', 'deck2', 'active', 'inactive', 'both'];
+
+function normalizeVdjEffectType(value) {
+    const normalized = normalizeEffectText(value, 24).toLowerCase();
+    return VDJ_EFFECT_TYPES.includes(normalized) ? normalized : 'backspin_1_1';
+}
+
+function normalizeVdjTargetDeck(value) {
+    const normalized = normalizeEffectText(value, 16).toLowerCase();
+    return VDJ_TARGET_DECKS.includes(normalized) ? normalized : 'active';
+}
+
 function normalizeEffectEvent(value, index) {
     const fallback = createDefaultEffectEvent(index + 1);
     const mediaVolume = Number.isFinite(Number(value?.mediaVolume))
@@ -139,7 +155,10 @@ function normalizeEffectEvent(value, index) {
         midiMessageType: normalizeMidiMessageType(value?.midiMessageType),
         midiChannel: normalizeMidiChannel(value?.midiChannel),
         midiData1: normalizeMidiByte(value?.midiData1, fallback.midiData1),
-        midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2)
+        midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2),
+        vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
+        vdjEffectType: normalizeVdjEffectType(value?.vdjEffectType),
+        vdjEffectTargetDeck: normalizeVdjTargetDeck(value?.vdjEffectTargetDeck)
     };
 }
 

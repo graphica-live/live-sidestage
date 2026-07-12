@@ -42,6 +42,9 @@ function resetEventModal() {
     eventModalMidiData1.value = '60';
     eventModalMidiData2.value = '127';
     syncEventModalMidiFields();
+    eventModalVdjEnabled.checked = false;
+    eventModalVdjEffectType.value = 'backspin_1_1';
+    eventModalVdjTargetDeck.value = 'active';
 }
 
 function openEventModalForCreate() {
@@ -76,6 +79,9 @@ function openEventModalForEdit(eventRecord) {
     eventModalMidiData1.value = String(eventRecord.midiData1 ?? 60);
     eventModalMidiData2.value = String(eventRecord.midiData2 ?? 127);
     syncEventModalMidiFields();
+    eventModalVdjEnabled.checked = Boolean(eventRecord.vdjEffectEnabled);
+    eventModalVdjEffectType.value = eventRecord.vdjEffectType || 'backspin_1_1';
+    eventModalVdjTargetDeck.value = eventRecord.vdjEffectTargetDeck || 'active';
     openModal(eventModal);
     eventModalName.focus();
 }
@@ -97,7 +103,10 @@ function collectEventFromModal() {
         midiMessageType: eventModalMidiMessageType.value,
         midiChannel: Number(eventModalMidiChannel.value || 1),
         midiData1: Number(eventModalMidiData1.value || 0),
-        midiData2: Number(eventModalMidiData2.value || 0)
+        midiData2: Number(eventModalMidiData2.value || 0),
+        vdjEffectEnabled: eventModalVdjEnabled.checked,
+        vdjEffectType: eventModalVdjEffectType.value,
+        vdjEffectTargetDeck: eventModalVdjTargetDeck.value
     };
 }
 
