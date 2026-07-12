@@ -36,6 +36,7 @@ module.exports = function createSongBattleRuntime({
 }) {
     const state = {
         status: 'idle',
+        starting: false,
         songA: null,
         songB: null,
         startedAt: 0,
@@ -230,38 +231,47 @@ module.exports = function createSongBattleRuntime({
     }
 
     async function startRound() {
-        const settings = getSettings();
-        if (!settings.directory) {
-            throw new Error('楽曲ディレクトリが未設定です。');
-        }
-        if (!settings.giftNameA || !settings.giftNameB) {
-            throw new Error('ギフトA/ギフトBの名前が未設定です。');
+        if (state.status === 'running' || state.starting) {
+            throw new Error('投票中です。終了または中止してから開始してください。');
         }
 
-        const [pathA, pathB] = pickCandidatePaths(settings);
-        const [songA, songB] = await Promise.all([extractTrackInfo(pathA), extractTrackInfo(pathB)]);
+        state.starting = true;
+        try {
+            const settings = getSettings();
+            if (!settings.directory) {
+                throw new Error('楽曲ディレクトリが未設定です。');
+            }
+            if (!settings.giftNameA || !settings.giftNameB) {
+                throw new Error('ギフトA/ギフトBの名前が未設定です。');
+            }
 
-        clearTimers();
-        state.status = 'running';
-        state.songA = songA;
-        state.songB = songB;
-        state.startedAt = Date.now();
-        state.durationSec = settings.durationSec;
-        state.endsAt = state.startedAt + settings.durationSec * 1000;
-        state.tallyA = 0;
-        state.tallyB = 0;
-        state.voterSide = new Map();
-        state.usedTrackPaths.add(pathA);
-        state.usedTrackPaths.add(pathB);
+            const [pathA, pathB] = pickCandidatePaths(settings);
+            const [songA, songB] = await Promise.all([extractTrackInfo(pathA), extractTrackInfo(pathB)]);
 
-        io.emit('song-battle:round-start', getRoundSnapshot());
-        state.endTimer = setTimeout(() => {
-            endRound({ cancelled: false }).catch((error) => {
-                console.warn('⚠️ 曲対決投票の終了処理に失敗しました:', error.message);
-            });
-        }, settings.durationSec * 1000);
+            clearTimers();
+            state.status = 'running';
+            state.songA = songA;
+            state.songB = songB;
+            state.startedAt = Date.now();
+            state.durationSec = settings.durationSec;
+            state.endsAt = state.startedAt + settings.durationSec * 1000;
+            state.tallyA = 0;
+            state.tallyB = 0;
+            state.voterSide = new Map();
+            state.usedTrackPaths.add(pathA);
+            state.usedTrackPaths.add(pathB);
 
-        return getRoundSnapshot();
+            io.emit('song-battle:round-start', getRoundSnapshot());
+            state.endTimer = setTimeout(() => {
+                endRound({ cancelled: false }).catch((error) => {
+                    console.warn('⚠️ 曲対決投票の終了処理に失敗しました:', error.message);
+                });
+            }, settings.durationSec * 1000);
+
+            return getRoundSnapshot();
+        } finally {
+            state.starting = false;
+        }
     }
 
     async function endRound({ cancelled }) {

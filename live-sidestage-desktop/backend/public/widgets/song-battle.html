@@ -219,6 +219,14 @@
         const vsLabelEl = document.getElementById('vs-label');
 
         let countdownTimer = null;
+        let hideTimer = null;
+
+        function clearHideTimer() {
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+        }
 
         function playEntranceAnimation() {
             [coverA, vsLabelEl].forEach((el) => el.classList.remove('anim-enter-a', 'anim-pop'));
@@ -267,6 +275,7 @@
                 return;
             }
 
+            clearHideTimer();
             const wasVisible = battleEl.classList.contains('is-visible');
 
             sideAEl.classList.remove('is-winner');
@@ -308,12 +317,15 @@
             renderVotes(round);
             if (round.winnerSide === 'A') sideAEl.classList.add('is-winner');
             if (round.winnerSide === 'B') sideBEl.classList.add('is-winner');
-            setTimeout(() => {
+            clearHideTimer();
+            hideTimer = setTimeout(() => {
+                hideTimer = null;
                 battleEl.classList.remove('is-visible');
             }, 6000);
         });
         socket.on('song-battle:round-cancelled', () => {
             stopCountdown();
+            clearHideTimer();
             battleEl.classList.remove('is-visible');
         });
 
