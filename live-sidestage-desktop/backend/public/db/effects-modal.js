@@ -44,7 +44,7 @@ function resetEventModal() {
     syncEventModalMidiFields();
     eventModalVdjEnabled.checked = false;
     eventModalVdjEffectType.value = 'backspin_1_1';
-    eventModalVdjTargetDeck.value = 'active';
+    eventModalVdjTargetDeck.value = 'master';
 }
 
 function openEventModalForCreate() {
@@ -81,7 +81,7 @@ function openEventModalForEdit(eventRecord) {
     syncEventModalMidiFields();
     eventModalVdjEnabled.checked = Boolean(eventRecord.vdjEffectEnabled);
     eventModalVdjEffectType.value = eventRecord.vdjEffectType || 'backspin_1_1';
-    eventModalVdjTargetDeck.value = eventRecord.vdjEffectTargetDeck || 'active';
+    eventModalVdjTargetDeck.value = eventRecord.vdjEffectTargetDeck || 'master';
     openModal(eventModal);
     eventModalName.focus();
 }

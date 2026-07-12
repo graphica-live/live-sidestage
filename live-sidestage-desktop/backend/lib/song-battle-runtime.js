@@ -284,7 +284,7 @@ module.exports = function createSongBattleRuntime({
         const winnerTrack = winnerSide === 'A' ? state.songA : state.songB;
 
         try {
-            const [deckNum] = await vdjClient.resolveTargetDecks('inactive');
+            const [deckNum] = await vdjClient.resolveTargetDecks('non-master');
             if (deckNum && winnerTrack?.filePath) {
                 await vdjClient.loadTrackToDeck(deckNum, winnerTrack.filePath);
             }

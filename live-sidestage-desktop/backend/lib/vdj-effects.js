@@ -20,7 +20,7 @@ module.exports = function createVdjEffects({ vdjClient }) {
         }
 
         try {
-            const decks = await vdjClient.resolveTargetDecks(effectEvent.vdjEffectTargetDeck || 'active');
+            const decks = await vdjClient.resolveTargetDecks(effectEvent.vdjEffectTargetDeck || 'master');
             await Promise.all(decks.map((deckNum) => vdjClient.triggerBackspin(deckNum, beatsToken)));
         } catch (error) {
             console.warn('⚠️ VDJエフェクトの送信に失敗しました:', error.message);

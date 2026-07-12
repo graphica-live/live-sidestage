@@ -81,7 +81,7 @@ module.exports = function createVdjClient({ getGlobalStateValue, setGlobalStateV
         return Number.isInteger(deckNum) && deckNum > 0 ? deckNum : null;
     }
 
-    // active/inactive は2デッキ運用を前提に get_activedeck(マスターデッキ) で判定する。
+    // master/non-master は2デッキ運用を前提に get_activedeck(マスターデッキ) で判定する。
     // マスターデッキが取得できない場合は deck2 を非マスター側にフォールバックする。
     async function resolveTargetDecks(targetMode) {
         switch (targetMode) {
@@ -91,14 +91,14 @@ module.exports = function createVdjClient({ getGlobalStateValue, setGlobalStateV
                 return [2];
             case 'both':
                 return [1, 2];
-            case 'active':
-            case 'inactive': {
+            case 'master':
+            case 'non-master': {
                 const masterDeck = await getMasterDeckNumber();
-                const activeDeck = masterDeck === 1 || masterDeck === 2 ? masterDeck : null;
-                const inactiveDeck = activeDeck === 1 ? 2 : activeDeck === 2 ? 1 : 2;
-                return targetMode === 'active'
-                    ? (activeDeck ? [activeDeck] : [])
-                    : [inactiveDeck];
+                const resolvedMaster = masterDeck === 1 || masterDeck === 2 ? masterDeck : null;
+                const nonMasterDeck = resolvedMaster === 1 ? 2 : resolvedMaster === 2 ? 1 : 2;
+                return targetMode === 'master'
+                    ? (resolvedMaster ? [resolvedMaster] : [])
+                    : [nonMasterDeck];
             }
             default:
                 return [1];
