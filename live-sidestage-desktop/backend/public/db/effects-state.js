@@ -22,6 +22,14 @@ const eventModalAudioFile = document.getElementById('event-modal-audio-file');
 const eventModalAudioName = document.getElementById('event-modal-audio-name');
 const eventModalMediaVolume = document.getElementById('event-modal-media-volume');
 const eventModalMediaVolumeValue = document.getElementById('event-modal-media-volume-value');
+const eventModalMidiEnabled = document.getElementById('event-modal-midi-enabled');
+const eventModalMidiDevice = document.getElementById('event-modal-midi-device');
+const eventModalMidiMessageType = document.getElementById('event-modal-midi-message-type');
+const eventModalMidiChannel = document.getElementById('event-modal-midi-channel');
+const eventModalMidiData1 = document.getElementById('event-modal-midi-data1');
+const eventModalMidiData2 = document.getElementById('event-modal-midi-data2');
+const eventModalMidiData1Label = document.getElementById('event-modal-midi-data1-label');
+const eventModalMidiData2Label = document.getElementById('event-modal-midi-data2-label');
 const eventModalSubmit = document.getElementById('event-modal-submit');
 const triggerModal = document.getElementById('trigger-modal');
 const triggerModalTitle = document.getElementById('trigger-modal-title');
@@ -67,6 +75,7 @@ let visibleUserSuggestions = [];
 let activeUserSuggestionIndex = -1;
 let visibleEventSuggestions = [];
 let activeEventSuggestionIndex = -1;
+let knownMidiDevices = [];
 
 // トリガーモーダルの選択済みイベントIDリスト（表示順）
 let triggerModalSelectedEventIds = [];
@@ -109,6 +118,16 @@ async function loadConfig() {
     renderEvents();
     renderTriggers();
     renderUrls();
+}
+
+async function loadMidiDevices() {
+    try {
+        const response = await fetch('/api/effects/midi/devices');
+        const payload = await response.json();
+        knownMidiDevices = payload.devices || [];
+    } catch {
+        knownMidiDevices = [];
+    }
 }
 
 async function saveConfig() {

@@ -118,9 +118,11 @@ function renderEvents() {
         const screenValue = fragment.querySelector('[data-role="screen"]');
         const videoLinkedValue = fragment.querySelector('[data-role="video-linked"]');
         const audioLinkedValue = fragment.querySelector('[data-role="audio-linked"]');
+        const midiLinkedValue = fragment.querySelector('[data-role="midi-linked"]');
         const mediaVolumeValue = fragment.querySelector('[data-role="media-volume-value"]');
         const hasVideoAsset = Boolean(eventRecord.videoAssetUrl || eventRecord.videoAssetName);
         const hasAudioAsset = Boolean(eventRecord.audioAssetUrl || eventRecord.audioAssetName);
+        const hasMidi = Boolean(eventRecord.midiEnabled && eventRecord.midiDeviceName);
 
         card.dataset.eventId = eventRecord.id;
         nameValue.textContent = eventRecord.name || '未設定';
@@ -129,6 +131,8 @@ function renderEvents() {
         videoLinkedValue.classList.toggle('is-empty', !hasVideoAsset);
         audioLinkedValue.textContent = hasAudioAsset ? '✓' : '-';
         audioLinkedValue.classList.toggle('is-empty', !hasAudioAsset);
+        midiLinkedValue.textContent = hasMidi ? '✓' : '-';
+        midiLinkedValue.classList.toggle('is-empty', !hasMidi);
         mediaVolumeValue.textContent = `${eventRecord.mediaVolume ?? 100}%`;
 
         fragment.querySelector('[data-action="delete-event"]').addEventListener('click', async () => {

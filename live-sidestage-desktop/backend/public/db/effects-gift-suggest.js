@@ -532,6 +532,8 @@ loadGiftSuggestions().catch((error) => {
 
 loadUserSuggestions().catch(() => {});
 
+loadMidiDevices().catch(() => {});
+
 loadConfig().catch((error) => {
     setStatus(error.message || '設定の読み込みに失敗しました。', 'error');
 });

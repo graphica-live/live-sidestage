@@ -4131,6 +4131,8 @@ const {
     getTimestamp,
 });
 
+const { closeAllMidiOutputs } = require('./lib/midi-helpers');
+
 function setGlobalStateValue(stateKey, stateValue) {
     dbStore.setGlobalStateValue(stateKey, stateValue, getTimestamp());
     return stateValue;
@@ -5261,6 +5263,8 @@ async function shutdownApplication(reason = 'manual') {
         await new Promise((resolve) => {
             io.close(() => resolve());
         });
+
+        closeAllMidiOutputs();
 
         await closeHttpServer();
 

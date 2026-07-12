@@ -2,6 +2,24 @@ function createId(prefix) {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function populateMidiDeviceSelect(selectedValue) {
+    const knownOptions = knownMidiDevices.map((name) =>
+        `<option value="${escapeHtml(name)}"${name === selectedValue ? ' selected' : ''}>${escapeHtml(name)}</option>`
+    ).join('');
+    const missingSelectedOption = selectedValue && !knownMidiDevices.includes(selectedValue)
+        ? `<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)}（未検出）</option>`
+        : '';
+
+    eventModalMidiDevice.innerHTML = `<option value="">(デバイス未選択)</option>${knownOptions}${missingSelectedOption}`;
+}
+
+function syncEventModalMidiFields() {
+    const messageType = eventModalMidiMessageType.value;
+    eventModalMidiData1Label.textContent = messageType === 'cc' ? 'CC番号' : messageType === 'pc' ? 'プログラム番号' : 'ノート番号';
+    eventModalMidiData2Label.textContent = messageType === 'cc' ? '値' : 'ベロシティ';
+    eventModalMidiData2.disabled = messageType === 'pc';
+}
+
 function resetEventModal() {
     editingEventId = null;
     eventModalTitle.textContent = 'イベントを新規追加';
@@ -17,6 +35,13 @@ function resetEventModal() {
     eventModalAudioName.textContent = '未設定';
     eventModalMediaVolume.value = '100';
     syncEventModalVolume();
+    eventModalMidiEnabled.checked = false;
+    populateMidiDeviceSelect('');
+    eventModalMidiMessageType.value = 'noteon';
+    eventModalMidiChannel.value = '1';
+    eventModalMidiData1.value = '60';
+    eventModalMidiData2.value = '127';
+    syncEventModalMidiFields();
 }
 
 function openEventModalForCreate() {
@@ -44,6 +69,13 @@ function openEventModalForEdit(eventRecord) {
     eventModalAudioName.textContent = eventRecord.audioAssetName || '未設定';
     eventModalMediaVolume.value = String(eventRecord.mediaVolume ?? 100);
     syncEventModalVolume();
+    eventModalMidiEnabled.checked = Boolean(eventRecord.midiEnabled);
+    populateMidiDeviceSelect(eventRecord.midiDeviceName || '');
+    eventModalMidiMessageType.value = eventRecord.midiMessageType || 'noteon';
+    eventModalMidiChannel.value = String(eventRecord.midiChannel ?? 1);
+    eventModalMidiData1.value = String(eventRecord.midiData1 ?? 60);
+    eventModalMidiData2.value = String(eventRecord.midiData2 ?? 127);
+    syncEventModalMidiFields();
     openModal(eventModal);
     eventModalName.focus();
 }
@@ -59,7 +91,13 @@ function collectEventFromModal() {
         audioEnabled: eventModalAudioEnabled.checked,
         audioAssetUrl: pendingEventModalAudioAsset?.url || '',
         audioAssetName: pendingEventModalAudioAsset?.name || '',
-        mediaVolume: Number(eventModalMediaVolume.value || 100)
+        mediaVolume: Number(eventModalMediaVolume.value || 100),
+        midiEnabled: eventModalMidiEnabled.checked,
+        midiDeviceName: eventModalMidiDevice.value || '',
+        midiMessageType: eventModalMidiMessageType.value,
+        midiChannel: Number(eventModalMidiChannel.value || 1),
+        midiData1: Number(eventModalMidiData1.value || 0),
+        midiData2: Number(eventModalMidiData2.value || 0)
     };
 }
 
@@ -413,6 +451,10 @@ document.addEventListener('keydown', (event) => {
 
 eventModalMediaVolume.addEventListener('input', () => {
     syncEventModalVolume();
+});
+
+eventModalMidiMessageType.addEventListener('change', () => {
+    syncEventModalMidiFields();
 });
 
 eventModalName.addEventListener('input', () => {

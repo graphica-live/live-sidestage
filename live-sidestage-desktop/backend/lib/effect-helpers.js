@@ -41,7 +41,13 @@ function createDefaultEffectEvent(slot = 1) {
         audioEnabled: false,
         audioAssetUrl: '',
         audioAssetName: '',
-        mediaVolume: 100
+        mediaVolume: 100,
+        midiEnabled: false,
+        midiDeviceName: '',
+        midiMessageType: 'noteon',
+        midiChannel: 1,
+        midiData1: 60,
+        midiData2: 127
     };
 }
 
@@ -96,6 +102,21 @@ function normalizeUserIdList(value) {
     return [...new Set(values.map((item) => normalizeBroadcasterId(item)).filter(Boolean))];
 }
 
+function normalizeMidiMessageType(value) {
+    const normalized = normalizeEffectText(value, 16).toLowerCase();
+    return ['noteon', 'noteoff', 'cc', 'pc'].includes(normalized) ? normalized : 'noteon';
+}
+
+function normalizeMidiChannel(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 16 ? parsed : 1;
+}
+
+function normalizeMidiByte(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 127 ? parsed : fallback;
+}
+
 function normalizeEffectEvent(value, index) {
     const fallback = createDefaultEffectEvent(index + 1);
     const mediaVolume = Number.isFinite(Number(value?.mediaVolume))
@@ -112,7 +133,13 @@ function normalizeEffectEvent(value, index) {
         audioEnabled: Boolean(value?.audioEnabled),
         audioAssetUrl: normalizeAssetUrl(value?.audioAssetUrl),
         audioAssetName: repairMojibakeFilename(normalizeEffectText(value?.audioAssetName, 160)),
-        mediaVolume
+        mediaVolume,
+        midiEnabled: Boolean(value?.midiEnabled),
+        midiDeviceName: normalizeEffectText(value?.midiDeviceName, 160),
+        midiMessageType: normalizeMidiMessageType(value?.midiMessageType),
+        midiChannel: normalizeMidiChannel(value?.midiChannel),
+        midiData1: normalizeMidiByte(value?.midiData1, fallback.midiData1),
+        midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2)
     };
 }
 

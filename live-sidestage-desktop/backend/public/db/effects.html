@@ -36,6 +36,7 @@
                 <div>Screen</div>
                 <div>動画</div>
                 <div>音声</div>
+                <div>MIDI</div>
                 <div>音量</div>
             </div>
             <div class="record-list" id="event-list"></div>
@@ -107,6 +108,33 @@
                                 <input type="file" id="event-modal-audio-file" accept="audio/*" hidden>
                             </div>
                             <div class="modal-asset-name" id="event-modal-audio-name">未設定</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>MIDI送信</label>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-midi-enabled"><span>MIDIメッセージを送信</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-midi-device" class="modal-midi-device-select"></select>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-midi-message-type">
+                                <option value="noteon">ノートON</option>
+                                <option value="noteoff">ノートOFF</option>
+                                <option value="cc">コントロールチェンジ</option>
+                                <option value="pc">プログラムチェンジ</option>
+                            </select>
+                            <span class="field-hint">Ch</span>
+                            <input type="number" id="event-modal-midi-channel" class="modal-midi-channel-input" min="1" max="16" step="1" value="1">
+                        </div>
+                        <div class="modal-inline-row">
+                            <span class="field-hint" id="event-modal-midi-data1-label">ノート番号</span>
+                            <input type="number" id="event-modal-midi-data1" class="modal-midi-byte-input" min="0" max="127" step="1" value="60">
+                            <span class="field-hint" id="event-modal-midi-data2-label">ベロシティ</span>
+                            <input type="number" id="event-modal-midi-data2" class="modal-midi-byte-input" min="0" max="127" step="1" value="127">
                         </div>
                     </div>
                 </div>
@@ -234,6 +262,10 @@
                 <div class="field">
                     <label>音声</label>
                     <div class="linked-indicator is-empty" data-role="audio-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>MIDI</label>
+                    <div class="linked-indicator is-empty" data-role="midi-linked">-</div>
                 </div>
                 <div class="field">
                     <label>音量</label>

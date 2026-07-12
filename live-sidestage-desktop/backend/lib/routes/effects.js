@@ -1,6 +1,7 @@
 'use strict';
 
 const { repairMojibakeFilename } = require('../utils');
+const { listMidiOutputDevices } = require('../midi-helpers');
 
 module.exports = function registerEffectsRoutes({
     app,
@@ -24,6 +25,10 @@ module.exports = function registerEffectsRoutes({
     resolveEffectAssetFilePath,
     fs,
 }) {
+    app.get('/api/effects/midi/devices', (req, res) => {
+        res.json({ devices: listMidiOutputDevices() });
+    });
+
     app.get('/api/effects/global-pause', (req, res) => {
         res.json({ paused: getEffectsGloballyPaused() });
     });
@@ -53,8 +58,8 @@ module.exports = function registerEffectsRoutes({
     app.post('/api/effects/preview', (req, res) => {
         const effectEvent = normalizeEffectEvent(req.body?.event, 0);
 
-        if (!effectEvent.videoAssetUrl && !effectEvent.audioAssetUrl) {
-            return res.status(400).json({ ok: false, error: '動画または音声を設定したイベントだけ再生できます。' });
+        if (!effectEvent.videoAssetUrl && !effectEvent.audioAssetUrl && !effectEvent.midiEnabled) {
+            return res.status(400).json({ ok: false, error: '動画・音声・MIDIのいずれかを設定したイベントだけ再生できます。' });
         }
 
         emitEffectPlayback(effectEvent, null, null);

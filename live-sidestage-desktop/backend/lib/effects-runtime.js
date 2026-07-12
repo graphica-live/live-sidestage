@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { sendMidiForEffectEvent } = require('./midi-helpers');
 
 module.exports = function createEffectsRuntime({
     io,
@@ -86,6 +87,7 @@ module.exports = function createEffectsRuntime({
     function emitEffectPlayback(effectEvent, trigger, sourceEvent) {
         if (getEffectsGloballyPaused()) return;
         io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent));
+        sendMidiForEffectEvent(effectEvent);
     }
 
     function matchesEffectTrigger(trigger, context) {
@@ -178,6 +180,7 @@ module.exports = function createEffectsRuntime({
                         : '';
                     if (!getEffectsGloballyPaused()) {
                         io.emit('effects:playback', payload);
+                        sendMidiForEffectEvent(effectEvent);
                     }
                 } else {
                     emitEffectPlayback(effectEvent, trigger, sourceEvent);

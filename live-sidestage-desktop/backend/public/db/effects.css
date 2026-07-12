@@ -137,7 +137,7 @@ button:disabled {
 }
 
 .event-table-head {
-    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
+    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px 52px minmax(0, 0.68fr);
 }
 
 .trigger-table-head {
@@ -572,6 +572,16 @@ input[type="range"] {
     gap: 10px;
 }
 
+.modal-midi-device-select {
+    flex: 1 1 auto;
+}
+
+.modal-midi-channel-input,
+.modal-midi-byte-input {
+    width: 76px;
+    flex: 0 0 auto;
+}
+
 .modal-media-item .modal-inline-row {
     align-items: center;
 }
@@ -902,7 +912,7 @@ input[type="range"] {
 
 .event-record-fields {
     display: grid;
-    grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px 52px minmax(0, 0.68fr);
     align-items: center;
     gap: 8px;
     width: 100%;
