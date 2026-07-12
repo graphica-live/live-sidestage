@@ -326,8 +326,8 @@
 
             renderRound(payload.round);
 
-            if (payload.widgetUrls?.songBattleOverlayUrl) {
-                songBattleOverlayUrl = payload.widgetUrls.songBattleOverlayUrl;
+            if (payload.widgetUrls?.songBattleLoaderUrl || payload.widgetUrls?.songBattleOverlayUrl) {
+                songBattleOverlayUrl = payload.widgetUrls.songBattleLoaderUrl || payload.widgetUrls.songBattleOverlayUrl;
             }
             urlBox.textContent = songBattleOverlayUrl;
             previewFrame.src = `${songBattleOverlayUrl}?preview=1`;
