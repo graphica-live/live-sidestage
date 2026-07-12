@@ -5,9 +5,12 @@ const midi = require('@julusian/midi');
 const MIDI_MESSAGE_STATUS = {
     noteon: 0x90,
     noteoff: 0x80,
+    noteonoff: 0x90,
     cc: 0xb0,
     pc: 0xc0
 };
+
+const NOTE_ON_OFF_GAP_MS = 50;
 
 const openOutputsByDeviceName = new Map();
 
@@ -81,6 +84,17 @@ function sendMidiForEffectEvent(effectEvent) {
     try {
         if (effectEvent.midiMessageType === 'pc') {
             output.sendMessage([statusByte, data1]);
+        } else if (effectEvent.midiMessageType === 'noteonoff') {
+            const data2 = Math.max(0, Math.min(127, Number(effectEvent.midiData2) || 0));
+            output.sendMessage([statusByte, data1, data2]);
+            const noteOffStatusByte = MIDI_MESSAGE_STATUS.noteoff | channel;
+            setTimeout(() => {
+                try {
+                    output.sendMessage([noteOffStatusByte, data1, 0]);
+                } catch (error) {
+                    console.warn(`⚠️ MIDI ノートOFFの送信に失敗しました (${effectEvent.midiDeviceName}):`, error.message);
+                }
+            }, NOTE_ON_OFF_GAP_MS);
         } else {
             const data2 = Math.max(0, Math.min(127, Number(effectEvent.midiData2) || 0));
             output.sendMessage([statusByte, data1, data2]);

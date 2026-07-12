@@ -104,7 +104,7 @@ function normalizeUserIdList(value) {
 
 function normalizeMidiMessageType(value) {
     const normalized = normalizeEffectText(value, 16).toLowerCase();
-    return ['noteon', 'noteoff', 'cc', 'pc'].includes(normalized) ? normalized : 'noteon';
+    return ['noteon', 'noteoff', 'noteonoff', 'cc', 'pc'].includes(normalized) ? normalized : 'noteon';
 }
 
 function normalizeMidiChannel(value) {
