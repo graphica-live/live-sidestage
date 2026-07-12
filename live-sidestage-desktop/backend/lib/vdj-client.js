@@ -73,17 +73,16 @@ module.exports = function createVdjClient({ getGlobalStateValue, setGlobalStateV
         return String(value || '').replace(/"/g, '\\"');
     }
 
-    async function isDeckAudible(deckNum) {
-        const result = await vdjQuery(`deck ${deckNum} is_audible`);
-        if (result === null) {
-            return null;
-        }
-        const normalized = result.toLowerCase();
-        return normalized === 'true' || normalized === '1' || normalized === 'on';
+    // get_activedeck は VDJScript上の「sync masterデッキ」番号を返す。
+    // これが VirtualDJ 用語での「マスターデッキ」に相当する。
+    async function getMasterDeckNumber() {
+        const result = await vdjQuery('get_activedeck');
+        const deckNum = Number.parseInt(result, 10);
+        return Number.isInteger(deckNum) && deckNum > 0 ? deckNum : null;
     }
 
-    // active/inactive は deck1/deck2 の2デッキ運用を前提に is_audible で判定する。
-    // 両方audible・両方非audibleのどちらの場合も deck2 を非アクティブ側にフォールバックする。
+    // active/inactive は2デッキ運用を前提に get_activedeck(マスターデッキ) で判定する。
+    // マスターデッキが取得できない場合は deck2 を非マスター側にフォールバックする。
     async function resolveTargetDecks(targetMode) {
         switch (targetMode) {
             case 'deck1':
@@ -94,12 +93,8 @@ module.exports = function createVdjClient({ getGlobalStateValue, setGlobalStateV
                 return [1, 2];
             case 'active':
             case 'inactive': {
-                const [deck1Audible, deck2Audible] = await Promise.all([isDeckAudible(1), isDeckAudible(2)]);
-                let activeDeck = null;
-                if (deck1Audible && !deck2Audible) activeDeck = 1;
-                else if (deck2Audible && !deck1Audible) activeDeck = 2;
-                else if (deck1Audible && deck2Audible) activeDeck = 1;
-
+                const masterDeck = await getMasterDeckNumber();
+                const activeDeck = masterDeck === 1 || masterDeck === 2 ? masterDeck : null;
                 const inactiveDeck = activeDeck === 1 ? 2 : activeDeck === 2 ? 1 : 2;
                 return targetMode === 'active'
                     ? (activeDeck ? [activeDeck] : [])
@@ -128,7 +123,7 @@ module.exports = function createVdjClient({ getGlobalStateValue, setGlobalStateV
         setConnectionSettings,
         vdjQuery,
         vdjExecute,
-        isDeckAudible,
+        getMasterDeckNumber,
         resolveTargetDecks,
         triggerBackspin,
         loadTrackToDeck,
