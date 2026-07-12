@@ -1,0 +1,424 @@
+function createId(prefix) {
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resetEventModal() {
+    editingEventId = null;
+    eventModalTitle.textContent = 'イベントを新規追加';
+    eventModalDescription.textContent = '表示名と再生先 screen を決め、動画と音声もこの画面で設定します。';
+    eventModalSubmit.textContent = '追加';
+    syncEventModalOptions();
+    eventModalName.value = '';
+    eventModalVideoEnabled.checked = false;
+    pendingEventModalVideoAsset = null;
+    eventModalVideoName.textContent = '未設定';
+    eventModalAudioEnabled.checked = false;
+    pendingEventModalAudioAsset = null;
+    eventModalAudioName.textContent = '未設定';
+    eventModalMediaVolume.value = '100';
+    syncEventModalVolume();
+}
+
+function openEventModalForCreate() {
+    resetEventModal();
+    openModal(eventModal);
+    eventModalName.focus();
+}
+
+function openEventModalForEdit(eventRecord) {
+    editingEventId = eventRecord.id;
+    eventModalTitle.textContent = 'イベントを編集';
+    eventModalDescription.textContent = '表示名、再生先 screen、動画と音声をここで更新します。';
+    eventModalSubmit.textContent = '更新';
+    eventModalScreen.innerHTML = buildScreenOptions(eventRecord.screen);
+    eventModalName.value = eventRecord.name || '';
+    eventModalVideoEnabled.checked = Boolean(eventRecord.videoEnabled);
+    pendingEventModalVideoAsset = eventRecord.videoAssetUrl
+        ? { url: eventRecord.videoAssetUrl, name: eventRecord.videoAssetName || '設定済み' }
+        : null;
+    eventModalVideoName.textContent = eventRecord.videoAssetName || '未設定';
+    eventModalAudioEnabled.checked = Boolean(eventRecord.audioEnabled);
+    pendingEventModalAudioAsset = eventRecord.audioAssetUrl
+        ? { url: eventRecord.audioAssetUrl, name: eventRecord.audioAssetName || '設定済み' }
+        : null;
+    eventModalAudioName.textContent = eventRecord.audioAssetName || '未設定';
+    eventModalMediaVolume.value = String(eventRecord.mediaVolume ?? 100);
+    syncEventModalVolume();
+    openModal(eventModal);
+    eventModalName.focus();
+}
+
+function collectEventFromModal() {
+    return {
+        id: editingEventId || createId('event'),
+        name: eventModalName.value.trim(),
+        screen: Number(eventModalScreen.value || currentScreenUrls[0]?.slot || 1),
+        videoEnabled: eventModalVideoEnabled.checked,
+        videoAssetUrl: pendingEventModalVideoAsset?.url || '',
+        videoAssetName: pendingEventModalVideoAsset?.name || '',
+        audioEnabled: eventModalAudioEnabled.checked,
+        audioAssetUrl: pendingEventModalAudioAsset?.url || '',
+        audioAssetName: pendingEventModalAudioAsset?.name || '',
+        mediaVolume: Number(eventModalMediaVolume.value || 100)
+    };
+}
+
+function getEventLabel(eventRecord, index) {
+    return eventRecord.name?.trim() || `イベント ${index + 1}`;
+}
+
+function getTriggerLabel(triggerRecord, index) {
+    return triggerRecord.name?.trim() || `トリガー ${index + 1}`;
+}
+
+function normalizeUserIdsInput(value) {
+    return String(value || '')
+        .split(/[\s,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function getSelectedEventLabel(eventId) {
+    if (!eventId) {
+        return '未選択';
+    }
+
+    const matchedEvent = currentEvents.find((eventRecord) => eventRecord.id === eventId);
+    return matchedEvent ? getEventLabel(matchedEvent, currentEvents.indexOf(matchedEvent)) : '未選択';
+}
+
+function buildScreenOptions(selectedValue) {
+    return currentScreenUrls.map((item) => {
+        const selected = Number(item.slot) === Number(selectedValue) ? ' selected' : '';
+        return `<option value="${item.slot}"${selected}>screen ${item.slot}</option>`;
+    }).join('');
+}
+
+function openModal(modal) {
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal(modal) {
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+
+    if (modal === triggerModal) {
+        hideGiftSuggestionPanel();
+        hideEventSuggestionPanel();
+    }
+}
+
+function syncEventModalOptions() {
+    eventModalScreen.innerHTML = buildScreenOptions(currentScreenUrls[0]?.slot || 1);
+}
+
+function syncEventModalVolume() {
+    eventModalMediaVolumeValue.textContent = `${eventModalMediaVolume.value}%`;
+}
+
+function renderTriggerModalEventIdsList() {
+    const isRandom = triggerModalPlayRandom.checked;
+    triggerModalEventIdsList.innerHTML = triggerModalSelectedEventIds.map((eventId, index) => {
+        const ev = currentEvents.find((e) => e.id === eventId);
+        const label = ev ? getEventLabel(ev, currentEvents.indexOf(ev)) : `(ID: ${eventId})`;
+        const orderLabel = isRandom ? '' : `${index + 1}.`;
+        return `<div class="event-id-chip" data-event-id="${escapeHtml(eventId)}">
+            <span class="event-id-chip-order">${escapeHtml(orderLabel)}</span>
+            <span class="event-id-chip-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            <button type="button" class="event-id-chip-remove" data-remove-event-id="${escapeHtml(eventId)}" title="削除" aria-label="削除">×</button>
+        </div>`;
+    }).join('');
+    triggerModalEventIdsList.querySelectorAll('[data-remove-event-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            triggerModalSelectedEventIds = triggerModalSelectedEventIds.filter((id) => id !== btn.dataset.removeEventId);
+            renderTriggerModalEventIdsList();
+        });
+    });
+}
+
+function syncUserTargetMode() {
+    const isFilemap = triggerModalUserTargetFilemap.checked;
+    triggerModalUserListSection.hidden = isFilemap;
+    triggerModalUserFilemapSection.hidden = !isFilemap;
+}
+
+function setFilemapDir(dirPath) {
+    triggerModalFilemapDir.value = dirPath || '';
+    triggerModalFilemapDirDisplay.textContent = dirPath || '未選択';
+    triggerModalFilemapDirDisplay.title = dirPath || '';
+}
+
+function resetTriggerModal() {
+    editingTriggerId = null;
+    triggerModalTitle.textContent = 'トリガーを新規追加';
+    triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。';
+    triggerModalSubmit.textContent = '追加';
+    triggerModalName.value = '';
+    triggerModalEnabled.checked = true;
+    triggerModalSelectedEventIds = [];
+    triggerModalPlaySequential.checked = true;
+    renderTriggerModalEventIdsList();
+    triggerModalEvent.value = '';
+    triggerModalGiftName.value = '';
+    triggerModalMinCoins.value = '0';
+    triggerModalTreatComboSingle.checked = true;
+    triggerModalCommentMode.value = '';
+    triggerModalCommentText.value = '';
+    triggerModalUserIds.value = '';
+    triggerModalUserTargetList.checked = true;
+    setFilemapDir('');
+    syncUserTargetMode();
+    syncTriggerCommentField();
+    hideGiftSuggestionPanel();
+    hideEventSuggestionPanel();
+}
+
+function openTriggerModalForCreate() {
+    resetTriggerModal();
+    openModal(triggerModal);
+    triggerModalName.focus();
+}
+
+function openTriggerModalForEdit(triggerRecord) {
+    editingTriggerId = triggerRecord.id;
+    triggerModalTitle.textContent = 'トリガーを編集';
+    triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をここで更新します。';
+    triggerModalSubmit.textContent = '更新';
+    triggerModalName.value = triggerRecord.name || '';
+    triggerModalEnabled.checked = Boolean(triggerRecord.enabled);
+    // eventIds 複数対応（旧フォーマット eventId も考慮）
+    const ids = Array.isArray(triggerRecord.eventIds) && triggerRecord.eventIds.length > 0
+        ? triggerRecord.eventIds
+        : (triggerRecord.eventId ? [triggerRecord.eventId] : []);
+    triggerModalSelectedEventIds = [...ids];
+    const isRandom = triggerRecord.eventPlayMode === 'random';
+    triggerModalPlayRandom.checked = isRandom;
+    triggerModalPlaySequential.checked = !isRandom;
+    renderTriggerModalEventIdsList();
+    triggerModalEvent.value = '';
+    triggerModalGiftName.value = triggerRecord.giftName || '';
+    triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
+    triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
+    triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
+    triggerModalCommentText.value = triggerRecord.commentText || '';
+    triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
+        ? triggerRecord.userIds.join('\n')
+        : '';
+    const isFilemap = triggerRecord.userTargetMode === 'file-map';
+    triggerModalUserTargetFilemap.checked = isFilemap;
+    triggerModalUserTargetList.checked = !isFilemap;
+    setFilemapDir(isFilemap ? (triggerRecord.userIdToFileDir || '') : '');
+    syncUserTargetMode();
+    syncTriggerCommentField();
+    hideGiftSuggestionPanel();
+    hideEventSuggestionPanel();
+    openModal(triggerModal);
+    triggerModalName.focus();
+}
+
+function collectTriggerFromModal() {
+    const isFilemap = triggerModalUserTargetFilemap.checked;
+    return {
+        id: editingTriggerId || createId('trigger'),
+        name: triggerModalName.value.trim(),
+        eventIds: [...triggerModalSelectedEventIds],
+        eventPlayMode: triggerModalPlayRandom.checked ? 'random' : 'sequential',
+        giftName: triggerModalGiftName.value.trim(),
+        minCoins: Number(triggerModalMinCoins.value || 0),
+        treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
+        commentMode: triggerModalCommentMode.value,
+        commentText: triggerModalCommentText.value.trim(),
+        userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),
+        enabled: triggerModalEnabled.checked,
+        userTargetMode: isFilemap ? 'file-map' : 'list',
+        userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : ''
+    };
+}
+
+function syncTriggerModalOptions() {
+    hideEventSuggestionPanel();
+}
+
+function syncTriggerCommentField() {
+    const mode = triggerModalCommentMode.value;
+    const isExact = mode === 'exact';
+    triggerModalCommentText.disabled = !isExact;
+
+    if (mode === 'any') {
+        triggerModalCommentText.value = '';
+        triggerModalCommentText.placeholder = 'あらゆるコメントを対象にします';
+        return;
+    }
+
+    triggerModalCommentText.placeholder = isExact
+        ? '入力一致にするコメントを入力'
+        : 'コメント条件を使わない場合は未入力のまま';
+}
+
+addEventButton.addEventListener('click', () => {
+    openEventModalForCreate();
+});
+
+addTriggerButton.addEventListener('click', () => {
+    openTriggerModalForCreate();
+});
+
+eventModalSubmit.addEventListener('click', async () => {
+    const nextEvent = collectEventFromModal();
+
+    if (nextEvent.name) {
+        const isDuplicate = currentEvents.some((item) =>
+            item.id !== nextEvent.id && item.name.trim() === nextEvent.name
+        );
+        if (isDuplicate) {
+            eventModalName.setCustomValidity('同じイベント名が既に存在します。');
+            eventModalName.reportValidity();
+            return;
+        }
+    }
+    eventModalName.setCustomValidity('');
+
+    if (editingEventId) {
+        currentEvents = currentEvents.map((item) => item.id === editingEventId ? nextEvent : item);
+    } else {
+        currentEvents = [
+            ...currentEvents,
+            nextEvent
+        ];
+    }
+
+    closeModal(eventModal);
+    syncTriggerModalOptions();
+    renderEvents();
+    renderTriggers();
+    editingEventId = null;
+
+    try {
+        await saveConfig();
+    } catch {
+        // saveConfig already reports the failure in the status box.
+    }
+});
+
+triggerModalSubmit.addEventListener('click', async () => {
+    const nextTrigger = collectTriggerFromModal();
+
+    if (nextTrigger.name) {
+        const isDuplicate = currentTriggers.some((item) =>
+            item.id !== nextTrigger.id && item.name.trim() === nextTrigger.name
+        );
+        if (isDuplicate) {
+            triggerModalName.setCustomValidity('同じトリガー名が既に存在します。');
+            triggerModalName.reportValidity();
+            return;
+        }
+    }
+    triggerModalName.setCustomValidity('');
+
+    if (nextTrigger.userTargetMode === 'file-map' && !nextTrigger.giftName) {
+        triggerModalGiftName.focus();
+        triggerModalGiftName.setCustomValidity('ファイルマップモードでは対象ギフト名が必須です。');
+        triggerModalGiftName.reportValidity();
+        return;
+    }
+
+    triggerModalGiftName.setCustomValidity('');
+
+    if (nextTrigger.userTargetMode === 'file-map' && !nextTrigger.userIdToFileDir) {
+        triggerModalFilemapDirButton.focus();
+        alert('フォルダを選択してください。');
+        return;
+    }
+
+    if (editingTriggerId) {
+        currentTriggers = currentTriggers.map((item) => item.id === editingTriggerId ? nextTrigger : item);
+    } else {
+        currentTriggers = [
+            ...currentTriggers,
+            nextTrigger
+        ];
+    }
+
+    closeModal(triggerModal);
+    renderTriggers();
+    editingTriggerId = null;
+
+    try {
+        await saveConfig();
+    } catch {
+        // saveConfig already reports the failure in the status box.
+    }
+});
+
+triggerModalCommentMode.addEventListener('change', () => {
+    syncTriggerCommentField();
+});
+
+triggerModalUserTargetList.addEventListener('change', () => {
+    syncUserTargetMode();
+});
+
+triggerModalUserTargetFilemap.addEventListener('change', () => {
+    syncUserTargetMode();
+});
+
+triggerModalFilemapDirButton.addEventListener('click', async () => {
+    triggerModalFilemapDirButton.disabled = true;
+    try {
+        const response = await fetch('/api/electron/pick-directory', { method: 'POST' });
+        if (!response.ok) {
+            return;
+        }
+
+        const result = await response.json();
+        if (result.dirPath) {
+            setFilemapDir(result.dirPath);
+        }
+    } catch {
+        // ダイアログが閉じられた場合など
+    } finally {
+        triggerModalFilemapDirButton.disabled = false;
+    }
+});
+
+triggerModalPlaySequential.addEventListener('change', () => {
+    renderTriggerModalEventIdsList();
+});
+
+triggerModalPlayRandom.addEventListener('change', () => {
+    renderTriggerModalEventIdsList();
+});
+
+document.querySelectorAll('[data-action="close-event-modal"]').forEach((button) => {
+    button.addEventListener('click', () => {
+        closeModal(eventModal);
+    });
+});
+
+document.querySelectorAll('[data-action="close-trigger-modal"]').forEach((button) => {
+    button.addEventListener('click', () => {
+        closeModal(triggerModal);
+    });
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        hideGiftSuggestionPanel();
+        hideEventSuggestionPanel();
+        closeModal(eventModal);
+        closeModal(triggerModal);
+    }
+});
+
+eventModalMediaVolume.addEventListener('input', () => {
+    syncEventModalVolume();
+});
+
+eventModalName.addEventListener('input', () => {
+    eventModalName.setCustomValidity('');
+});
+
+triggerModalName.addEventListener('input', () => {
+    triggerModalName.setCustomValidity('');
+});
