@@ -206,6 +206,24 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/push-pull');
     });
 
+    app.get(['/overlays/song-battle', '/overlays/widgets/song-battle'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'song-battle.html'));
+    });
+    app.get(['/overlays/song-battle/index.html', '/overlays/widgets/song-battle/index.html'], (req, res) => {
+        return res.redirect('/overlays/song-battle');
+    });
+
+    app.get('/virtualdj', (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));
+    });
+
+    app.get('/virtualdj.html', (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.redirect('/virtualdj');
+    });
+
     app.use(express.static(PUBLIC_DIRECTORY, {
         setHeaders(res) {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

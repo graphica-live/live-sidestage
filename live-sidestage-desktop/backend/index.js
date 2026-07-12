@@ -1419,7 +1419,9 @@ function buildWidgetUrls(req) {
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
         pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
         captionOverlayUrl: `${origin}/overlays/caption`,
-        captionLoaderUrl: `${loaderOrigin}/overlays/caption`
+        captionLoaderUrl: `${loaderOrigin}/overlays/caption`,
+        songBattleOverlayUrl: `${origin}/overlays/song-battle`,
+        songBattleLoaderUrl: `${loaderOrigin}/overlays/song-battle`
     };
 }
 
@@ -4148,6 +4150,14 @@ function setScopedStateValue(stateKey, stateValue) {
 
 const vdjClient = require('./lib/vdj-client')({ getGlobalStateValue, setGlobalStateValue });
 const { sendVdjEffectForEvent } = require('./lib/vdj-effects')({ vdjClient });
+const songBattleRuntime = require('./lib/song-battle-runtime')({
+    io,
+    vdjClient,
+    getScopedStateValue,
+    setScopedStateValue,
+    normalizeBroadcasterId,
+    normalizeWholeNumber,
+});
 
 const {
     createEffectPlaybackPayload,
@@ -5388,6 +5398,10 @@ require('./lib/routes/widgets/top-gift')({
     setWidgetTopGiftSettings, setTopGiftWidgetTextAppearance,
 });
 
+require('./lib/routes/widgets/song-battle')({
+    app, vdjClient, songBattleRuntime, buildWidgetUrls,
+});
+
 require('./lib/routes/widgets/like-contribution')({
     app, io,
     buildLikeContributionWidgetPayload,
@@ -5756,6 +5770,7 @@ function ensureTikTokConnection() {
         if (!alreadyTriggered) {
             tryRunEffectTriggersForGift(normalizedEvent);
         }
+        songBattleRuntime.registerVote(normalizedEvent);
 
         const inserted = storeRawGiftEvent(normalizedEvent);
 

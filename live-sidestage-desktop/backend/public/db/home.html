@@ -613,6 +613,10 @@
                         <span class="nav-link-icon">✨</span>
                         <span class="nav-link-title">イベントトリガー</span>
                     </button>
+                    <button type="button" class="nav-link" data-view-path="/virtualdj" data-name="virtualdj-window">
+                        <span class="nav-link-icon">🎧</span>
+                        <span class="nav-link-title">VirtualDJ</span>
+                    </button>
                     <button type="button" class="nav-link" data-view-path="/comments" data-name="comments-window">
                         <span class="nav-link-icon">💬</span>
                         <span class="nav-link-title">コメント欄</span>
@@ -729,6 +733,10 @@
             '/widgets': {
                 title: 'ウィジェット',
                 description: 'オーバーレイURLや表示設定を切り替えながら管理します。'
+            },
+            '/virtualdj': {
+                title: 'VirtualDJ',
+                description: 'VirtualDJとの接続設定と、曲対決投票ウィジェットを管理します。'
             }
         };
 
@@ -824,7 +832,8 @@
                 '/user-coins': { width: 1320, height: 920 },
                 '/comments': { width: 980, height: 820 },
                 '/effects': { width: 1480, height: 980 },
-                '/widgets': { width: 1280, height: 940 }
+                '/widgets': { width: 1280, height: 940 },
+                '/virtualdj': { width: 1280, height: 940 }
             };
             const size = windowSizes[path] || { width: 1200, height: 860 };
             const features = [

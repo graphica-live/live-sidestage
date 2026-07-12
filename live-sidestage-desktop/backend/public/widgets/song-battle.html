@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Battle Overlay</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --stroke-color: rgba(15, 23, 42, 0.96);
+            --side-a-color: #38bdf8;
+            --side-b-color: #f472b6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+            background: transparent;
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            color: #f8fafc;
+        }
+
+        body {
+            padding: 24px;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 10px;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .battle {
+            display: none;
+            width: min(880px, calc(100vw - 48px));
+            align-items: center;
+            gap: 18px;
+        }
+
+        .battle.is-visible {
+            display: flex;
+        }
+
+        .side {
+            flex: 1;
+            display: grid;
+            gap: 10px;
+            justify-items: center;
+            text-align: center;
+            padding: 16px;
+            border-radius: 20px;
+            background: rgba(15, 23, 42, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.12);
+            transition: border-color 200ms ease, transform 200ms ease;
+        }
+
+        .side.is-winner {
+            border-color: #fbbf24;
+            transform: scale(1.03);
+        }
+
+        .side-a { border-color: var(--side-a-color); }
+        .side-b { border-color: var(--side-b-color); }
+
+        .cover {
+            width: 160px;
+            height: 160px;
+            border-radius: 14px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.4);
+        }
+
+        .song-title {
+            font-size: 18px;
+            font-weight: 800;
+            line-height: 1.3;
+            text-shadow: 0 0 6px var(--stroke-color);
+            max-width: 220px;
+        }
+
+        .song-artist {
+            font-size: 13px;
+            color: rgba(248, 250, 252, 0.72);
+            max-width: 220px;
+        }
+
+        .vote-bar-track {
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            overflow: hidden;
+        }
+
+        .vote-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 300ms ease;
+        }
+
+        .side-a .vote-bar-fill { background: var(--side-a-color); }
+        .side-b .vote-bar-fill { background: var(--side-b-color); }
+
+        .vote-count {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .center-stack {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            min-width: 84px;
+        }
+
+        .vs-label {
+            font-size: 22px;
+            font-weight: 900;
+            opacity: 0.85;
+        }
+
+        .countdown {
+            font-size: 20px;
+            font-weight: 800;
+            color: #fbbf24;
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+    <div class="battle" id="battle">
+        <div class="side side-a" id="side-a">
+            <img class="cover" id="cover-a" alt="">
+            <div class="song-title" id="title-a"></div>
+            <div class="song-artist" id="artist-a"></div>
+            <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-a" style="width:50%"></div></div>
+            <div class="vote-count" id="count-a">0</div>
+        </div>
+        <div class="center-stack">
+            <div class="vs-label">VS</div>
+            <div class="countdown" id="countdown">--:--</div>
+        </div>
+        <div class="side side-b" id="side-b">
+            <img class="cover" id="cover-b" alt="">
+            <div class="song-title" id="title-b"></div>
+            <div class="song-artist" id="artist-b"></div>
+            <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-b" style="width:50%"></div></div>
+            <div class="vote-count" id="count-b">0</div>
+        </div>
+    </div>
+
+    <script>
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1';
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const battleEl = document.getElementById('battle');
+        const coverA = document.getElementById('cover-a');
+        const coverB = document.getElementById('cover-b');
+        const titleA = document.getElementById('title-a');
+        const titleB = document.getElementById('title-b');
+        const artistA = document.getElementById('artist-a');
+        const artistB = document.getElementById('artist-b');
+        const barA = document.getElementById('bar-a');
+        const barB = document.getElementById('bar-b');
+        const countA = document.getElementById('count-a');
+        const countB = document.getElementById('count-b');
+        const sideAEl = document.getElementById('side-a');
+        const sideBEl = document.getElementById('side-b');
+        const countdownEl = document.getElementById('countdown');
+
+        let countdownTimer = null;
+
+        function formatCountdown(msRemaining) {
+            const totalSec = Math.max(0, Math.ceil(msRemaining / 1000));
+            const minutes = Math.floor(totalSec / 60);
+            const seconds = totalSec % 60;
+            return `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function stopCountdown() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }
+
+        function startCountdown(endsAt) {
+            stopCountdown();
+            const tick = () => {
+                const remaining = endsAt - Date.now();
+                countdownEl.textContent = formatCountdown(remaining);
+                if (remaining <= 0) stopCountdown();
+            };
+            tick();
+            countdownTimer = setInterval(tick, 500);
+        }
+
+        function renderVotes(round) {
+            const total = Math.max(1, (round.tallyA || 0) + (round.tallyB || 0));
+            barA.style.width = `${((round.tallyA || 0) / total) * 100}%`;
+            barB.style.width = `${((round.tallyB || 0) / total) * 100}%`;
+            countA.textContent = String(round.tallyA || 0);
+            countB.textContent = String(round.tallyB || 0);
+        }
+
+        function renderRound(round) {
+            if (!round || round.status !== 'running' || !round.songA || !round.songB) {
+                return;
+            }
+
+            sideAEl.classList.remove('is-winner');
+            sideBEl.classList.remove('is-winner');
+            battleEl.classList.add('is-visible');
+
+            coverA.src = round.songA.coverDataUrl || '';
+            coverB.src = round.songB.coverDataUrl || '';
+            titleA.textContent = round.songA.title || '';
+            titleB.textContent = round.songB.title || '';
+            artistA.textContent = round.songA.artist || '';
+            artistB.textContent = round.songB.artist || '';
+            renderVotes(round);
+            startCountdown(round.endsAt);
+        }
+
+        function showSample() {
+            renderRound({
+                status: 'running',
+                songA: { title: 'サンプル曲 A', artist: 'Artist A', coverDataUrl: '' },
+                songB: { title: 'サンプル曲 B', artist: 'Artist B', coverDataUrl: '' },
+                tallyA: 3,
+                tallyB: 5,
+                endsAt: Date.now() + 45000
+            });
+        }
+
+        const socket = io();
+
+        socket.on('song-battle:round-start', renderRound);
+        socket.on('song-battle:vote-update', (round) => {
+            if (round.status === 'running') renderVotes(round);
+        });
+        socket.on('song-battle:round-end', (round) => {
+            stopCountdown();
+            countdownEl.textContent = '0:00';
+            renderVotes(round);
+            if (round.winnerSide === 'A') sideAEl.classList.add('is-winner');
+            if (round.winnerSide === 'B') sideBEl.classList.add('is-winner');
+            setTimeout(() => {
+                battleEl.classList.remove('is-visible');
+            }, 6000);
+        });
+        socket.on('song-battle:round-cancelled', () => {
+            stopCountdown();
+            battleEl.classList.remove('is-visible');
+        });
+
+        fetch('/api/widgets/song-battle/snapshot')
+            .then((res) => res.json())
+            .then((payload) => {
+                if (payload?.round?.status === 'running') {
+                    renderRound(payload.round);
+                } else if (previewMode) {
+                    showSample();
+                }
+            })
+            .catch(() => {
+                if (previewMode) showSample();
+            });
+    </script>
+</body>
+</html>
