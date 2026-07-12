@@ -135,6 +135,35 @@
             opacity: 0.85;
         }
 
+        @keyframes coverInLeft {
+            0% { opacity: 0; transform: translateX(-160px) rotate(-540deg) scale(0.3); }
+            60% { opacity: 1; transform: translateX(12px) rotate(15deg) scale(1.08); }
+            80% { transform: translateX(-4px) rotate(-4deg) scale(0.98); }
+            100% { opacity: 1; transform: translateX(0) rotate(0deg) scale(1); }
+        }
+
+        @keyframes coverInRight {
+            0% { opacity: 0; transform: translateX(160px) rotate(540deg) scale(0.3); }
+            60% { opacity: 1; transform: translateX(-12px) rotate(-15deg) scale(1.08); }
+            80% { transform: translateX(4px) rotate(4deg) scale(0.98); }
+            100% { opacity: 1; transform: translateX(0) rotate(0deg) scale(1); }
+        }
+
+        @keyframes vsPop {
+            0% { opacity: 0; transform: scale(0.1) rotate(-25deg); }
+            55% { opacity: 1; transform: scale(1.6) rotate(8deg); }
+            75% { transform: scale(0.85) rotate(-4deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        .cover.anim-enter-a { animation: coverInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover.anim-enter-b { animation: coverInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
+
+        .vs-label.anim-pop {
+            animation: vsPop 480ms cubic-bezier(.34,1.56,.64,1) both;
+            animation-delay: 520ms;
+        }
+
         .countdown {
             font-size: 20px;
             font-weight: 800;
@@ -153,7 +182,7 @@
             <div class="vote-count" id="count-a">0</div>
         </div>
         <div class="center-stack">
-            <div class="vs-label">VS</div>
+            <div class="vs-label" id="vs-label">VS</div>
             <div class="countdown" id="countdown">--:--</div>
         </div>
         <div class="side side-b" id="side-b">
@@ -187,8 +216,18 @@
         const sideAEl = document.getElementById('side-a');
         const sideBEl = document.getElementById('side-b');
         const countdownEl = document.getElementById('countdown');
+        const vsLabelEl = document.getElementById('vs-label');
 
         let countdownTimer = null;
+
+        function playEntranceAnimation() {
+            [coverA, vsLabelEl].forEach((el) => el.classList.remove('anim-enter-a', 'anim-pop'));
+            coverB.classList.remove('anim-enter-b');
+            void battleEl.offsetWidth;
+            coverA.classList.add('anim-enter-a');
+            coverB.classList.add('anim-enter-b');
+            vsLabelEl.classList.add('anim-pop');
+        }
 
         function formatCountdown(msRemaining) {
             const totalSec = Math.max(0, Math.ceil(msRemaining / 1000));
@@ -228,6 +267,8 @@
                 return;
             }
 
+            const wasVisible = battleEl.classList.contains('is-visible');
+
             sideAEl.classList.remove('is-winner');
             sideBEl.classList.remove('is-winner');
             battleEl.classList.add('is-visible');
@@ -240,6 +281,8 @@
             artistB.textContent = round.songB.artist || '';
             renderVotes(round);
             startCountdown(round.endsAt);
+
+            if (!wasVisible) playEntranceAnimation();
         }
 
         function showSample() {
