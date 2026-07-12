@@ -127,16 +127,6 @@
             overflow: hidden;
         }
 
-        .song-artist {
-            font-size: 16px;
-            color: rgba(248, 250, 252, 0.72);
-            width: 240px;
-            height: 1.4em;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
         .vote-bar-track {
             width: 100%;
             height: 10px;
@@ -196,6 +186,14 @@
         .cover-wrap.anim-enter-a { animation: coverInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
         .cover-wrap.anim-enter-b { animation: coverInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
 
+        @keyframes spinCW {
+            to { transform: rotate(360deg); }
+        }
+
+        .cover-wrap.spinning {
+            animation: spinCW 4s linear infinite;
+        }
+
         .vs-label.anim-pop {
             animation: vsPop 480ms cubic-bezier(.34,1.56,.64,1) both;
             animation-delay: 520ms;
@@ -214,7 +212,6 @@
         <div class="side side-a" id="side-a">
             <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
             <div class="song-title" id="title-a"></div>
-            <div class="song-artist" id="artist-a"></div>
             <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-a" style="width:50%"></div></div>
             <div class="vote-count" id="count-a">0</div>
         </div>
@@ -225,7 +222,6 @@
         <div class="side side-b" id="side-b">
             <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
             <div class="song-title" id="title-b"></div>
-            <div class="song-artist" id="artist-b"></div>
             <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-b" style="width:50%"></div></div>
             <div class="vote-count" id="count-b">0</div>
         </div>
@@ -244,8 +240,6 @@
         const coverB = document.getElementById('cover-b');
         const titleA = document.getElementById('title-a');
         const titleB = document.getElementById('title-b');
-        const artistA = document.getElementById('artist-a');
-        const artistB = document.getElementById('artist-b');
         const barA = document.getElementById('bar-a');
         const barB = document.getElementById('bar-b');
         const countA = document.getElementById('count-a');
@@ -267,14 +261,25 @@
             }
         }
 
+        function spinAfterEntrance(coverWrapEl, enterClass) {
+            coverWrapEl.addEventListener('animationend', function onEnd(event) {
+                if (event.animationName !== 'coverInLeft' && event.animationName !== 'coverInRight') return;
+                coverWrapEl.removeEventListener('animationend', onEnd);
+                coverWrapEl.classList.remove(enterClass);
+                coverWrapEl.classList.add('spinning');
+            });
+        }
+
         function playEntranceAnimation() {
-            coverWrapA.classList.remove('anim-enter-a');
-            coverWrapB.classList.remove('anim-enter-b');
+            coverWrapA.classList.remove('anim-enter-a', 'spinning');
+            coverWrapB.classList.remove('anim-enter-b', 'spinning');
             vsLabelEl.classList.remove('anim-pop');
             void battleEl.offsetWidth;
             coverWrapA.classList.add('anim-enter-a');
             coverWrapB.classList.add('anim-enter-b');
             vsLabelEl.classList.add('anim-pop');
+            spinAfterEntrance(coverWrapA, 'anim-enter-a');
+            spinAfterEntrance(coverWrapB, 'anim-enter-b');
         }
 
         function formatCountdown(msRemaining) {
@@ -326,8 +331,6 @@
             coverB.src = round.songB.coverDataUrl || '';
             titleA.textContent = round.songA.title || '';
             titleB.textContent = round.songB.title || '';
-            artistA.textContent = round.songA.artist || '';
-            artistB.textContent = round.songB.artist || '';
             renderVotes(round);
             startCountdown(round.endsAt);
 
