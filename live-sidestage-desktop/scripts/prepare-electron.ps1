@@ -28,7 +28,7 @@ if ($workspaceProcesses) {
 
 Write-Host 'Running electron-rebuild for better-sqlite3...'
 $ErrorActionPreference = 'Continue'
-& $electronRebuild -f better-sqlite3
+& $electronRebuild -f -o better-sqlite3
 $rebuildExitCode = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 
