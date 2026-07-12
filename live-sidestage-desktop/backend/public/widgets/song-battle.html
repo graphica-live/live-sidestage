@@ -82,13 +82,22 @@
             font-weight: 800;
             line-height: 1.3;
             text-shadow: 0 0 6px var(--stroke-color);
-            max-width: 220px;
+            width: 220px;
+            height: calc(1.3em * 2);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .song-artist {
             font-size: 13px;
             color: rgba(248, 250, 252, 0.72);
-            max-width: 220px;
+            width: 220px;
+            height: 1.4em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .vote-bar-track {
