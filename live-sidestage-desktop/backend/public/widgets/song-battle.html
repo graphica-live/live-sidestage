@@ -38,7 +38,7 @@
 
         .battle {
             display: none;
-            width: min(880px, calc(100vw - 48px));
+            width: min(1040px, calc(100vw - 48px));
             align-items: center;
             gap: 18px;
         }
@@ -50,11 +50,11 @@
         .side {
             flex: 1;
             display: grid;
-            gap: 10px;
+            gap: 12px;
             justify-items: center;
             text-align: center;
-            padding: 16px;
-            border-radius: 20px;
+            padding: 20px;
+            border-radius: 24px;
             background: rgba(15, 23, 42, 0.55);
             border: 2px solid rgba(255, 255, 255, 0.12);
             transition: border-color 200ms ease, transform 200ms ease;
@@ -68,21 +68,58 @@
         .side-a { border-color: var(--side-a-color); }
         .side-b { border-color: var(--side-b-color); }
 
+        .cover-wrap {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45), 0 0 0 6px rgba(0, 0, 0, 0.35);
+        }
+
         .cover {
-            width: 160px;
-            height: 160px;
-            border-radius: 14px;
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
             object-fit: cover;
             background: rgba(255, 255, 255, 0.08);
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.4);
+        }
+
+        .cover-wrap::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: repeating-radial-gradient(
+                circle at center,
+                transparent 0,
+                transparent 7px,
+                rgba(0, 0, 0, 0.2) 7px,
+                rgba(0, 0, 0, 0.2) 8px
+            );
+            pointer-events: none;
+        }
+
+        .cover-wrap::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            background: #0f172a;
+            border: 2px solid rgba(255, 255, 255, 0.55);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
         }
 
         .song-title {
-            font-size: 18px;
+            font-size: 26px;
             font-weight: 800;
             line-height: 1.3;
             text-shadow: 0 0 6px var(--stroke-color);
-            width: 220px;
+            width: 240px;
             height: calc(1.3em * 2);
             display: -webkit-box;
             -webkit-line-clamp: 2;
@@ -91,9 +128,9 @@
         }
 
         .song-artist {
-            font-size: 13px;
+            font-size: 16px;
             color: rgba(248, 250, 252, 0.72);
-            width: 220px;
+            width: 240px;
             height: 1.4em;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -118,7 +155,7 @@
         .side-b .vote-bar-fill { background: var(--side-b-color); }
 
         .vote-count {
-            font-size: 15px;
+            font-size: 17px;
             font-weight: 700;
         }
 
@@ -130,7 +167,7 @@
         }
 
         .vs-label {
-            font-size: 22px;
+            font-size: 28px;
             font-weight: 900;
             opacity: 0.85;
         }
@@ -156,8 +193,8 @@
             100% { opacity: 1; transform: scale(1) rotate(0deg); }
         }
 
-        .cover.anim-enter-a { animation: coverInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
-        .cover.anim-enter-b { animation: coverInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover-wrap.anim-enter-a { animation: coverInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover-wrap.anim-enter-b { animation: coverInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
 
         .vs-label.anim-pop {
             animation: vsPop 480ms cubic-bezier(.34,1.56,.64,1) both;
@@ -165,7 +202,7 @@
         }
 
         .countdown {
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 800;
             color: #fbbf24;
             font-variant-numeric: tabular-nums;
@@ -175,7 +212,7 @@
 <body>
     <div class="battle" id="battle">
         <div class="side side-a" id="side-a">
-            <img class="cover" id="cover-a" alt="">
+            <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
             <div class="song-title" id="title-a"></div>
             <div class="song-artist" id="artist-a"></div>
             <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-a" style="width:50%"></div></div>
@@ -186,7 +223,7 @@
             <div class="countdown" id="countdown">--:--</div>
         </div>
         <div class="side side-b" id="side-b">
-            <img class="cover" id="cover-b" alt="">
+            <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
             <div class="song-title" id="title-b"></div>
             <div class="song-artist" id="artist-b"></div>
             <div class="vote-bar-track"><div class="vote-bar-fill" id="bar-b" style="width:50%"></div></div>
@@ -217,6 +254,8 @@
         const sideBEl = document.getElementById('side-b');
         const countdownEl = document.getElementById('countdown');
         const vsLabelEl = document.getElementById('vs-label');
+        const coverWrapA = document.getElementById('cover-wrap-a');
+        const coverWrapB = document.getElementById('cover-wrap-b');
 
         let countdownTimer = null;
         let hideTimer = null;
@@ -229,11 +268,12 @@
         }
 
         function playEntranceAnimation() {
-            [coverA, vsLabelEl].forEach((el) => el.classList.remove('anim-enter-a', 'anim-pop'));
-            coverB.classList.remove('anim-enter-b');
+            coverWrapA.classList.remove('anim-enter-a');
+            coverWrapB.classList.remove('anim-enter-b');
+            vsLabelEl.classList.remove('anim-pop');
             void battleEl.offsetWidth;
-            coverA.classList.add('anim-enter-a');
-            coverB.classList.add('anim-enter-b');
+            coverWrapA.classList.add('anim-enter-a');
+            coverWrapB.classList.add('anim-enter-b');
             vsLabelEl.classList.add('anim-pop');
         }
 
