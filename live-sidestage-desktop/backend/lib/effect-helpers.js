@@ -49,8 +49,7 @@ function createDefaultEffectEvent(slot = 1) {
         midiData1: 60,
         midiData2: 127,
         vdjEffectEnabled: false,
-        vdjEffectType: 'backspin_1_1',
-        vdjEffectTargetDeck: 'master'
+        vdjCommand: ''
     };
 }
 
@@ -120,17 +119,8 @@ function normalizeMidiByte(value, fallback) {
     return Number.isInteger(parsed) && parsed >= 0 && parsed <= 127 ? parsed : fallback;
 }
 
-const VDJ_EFFECT_TYPES = ['backspin_1_1', 'backspin_1_2', 'backspin_1_4', 'backspin_1_8', 'backspin_1_16'];
-const VDJ_TARGET_DECKS = ['deck1', 'deck2', 'master', 'non-master', 'both'];
-
-function normalizeVdjEffectType(value) {
-    const normalized = normalizeEffectText(value, 24).toLowerCase();
-    return VDJ_EFFECT_TYPES.includes(normalized) ? normalized : 'backspin_1_1';
-}
-
-function normalizeVdjTargetDeck(value) {
-    const normalized = normalizeEffectText(value, 16).toLowerCase();
-    return VDJ_TARGET_DECKS.includes(normalized) ? normalized : 'master';
+function normalizeVdjCommand(value) {
+    return normalizeEffectText(value, 200);
 }
 
 function normalizeEffectEvent(value, index) {
@@ -157,8 +147,7 @@ function normalizeEffectEvent(value, index) {
         midiData1: normalizeMidiByte(value?.midiData1, fallback.midiData1),
         midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2),
         vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
-        vdjEffectType: normalizeVdjEffectType(value?.vdjEffectType),
-        vdjEffectTargetDeck: normalizeVdjTargetDeck(value?.vdjEffectTargetDeck)
+        vdjCommand: normalizeVdjCommand(value?.vdjCommand)
     };
 }
 

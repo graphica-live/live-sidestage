@@ -36,7 +36,7 @@
                 <div>Screen</div>
                 <div>動画</div>
                 <div>音声</div>
-                <div>MIDI</div>
+                <div hidden>MIDI</div>
                 <div>VDJ</div>
                 <div>音量</div>
             </div>
@@ -112,7 +112,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="field">
+                <div class="field" hidden>
                     <label>MIDI送信</label>
                     <div class="modal-media-item">
                         <div class="modal-media-head">
@@ -141,30 +141,15 @@
                     </div>
                 </div>
                 <div class="field">
-                    <label>VDJエフェクト</label>
+                    <label>VDJコマンド</label>
                     <div class="modal-media-item">
                         <div class="modal-media-head">
-                            <label class="toggle"><input type="checkbox" id="event-modal-vdj-enabled"><span>VirtualDJエフェクトを発火</span></label>
+                            <label class="toggle"><input type="checkbox" id="event-modal-vdj-enabled"><span>VDJコマンドを実行</span></label>
                         </div>
                         <div class="modal-inline-row">
-                            <select id="event-modal-vdj-effect-type">
-                                <option value="backspin_1_1">バックスピン 1/1（4拍）</option>
-                                <option value="backspin_1_2">バックスピン 1/2（2拍）</option>
-                                <option value="backspin_1_4">バックスピン 1/4（1拍）</option>
-                                <option value="backspin_1_8">バックスピン 1/8（0.5拍）</option>
-                                <option value="backspin_1_16">バックスピン 1/16（0.25拍）</option>
-                            </select>
+                            <input type="text" id="event-modal-vdj-command" placeholder="例: deck 1 backspin 4bt" style="width:100%;">
                         </div>
-                        <div class="modal-inline-row">
-                            <span class="field-hint">対象デッキ</span>
-                            <select id="event-modal-vdj-target-deck">
-                                <option value="deck1">Deck 1</option>
-                                <option value="deck2">Deck 2</option>
-                                <option value="master">マスターデッキ</option>
-                                <option value="non-master">非マスターデッキ</option>
-                                <option value="both">両方</option>
-                            </select>
-                        </div>
+                        <div class="field-hint">VDJScript コマンドをそのまま入力します（対象デッキもコマンド内で指定）。内部で VirtualDJ の API に渡されます。</div>
                     </div>
                 </div>
                 <div class="field">
@@ -292,7 +277,7 @@
                     <label>音声</label>
                     <div class="linked-indicator is-empty" data-role="audio-linked">-</div>
                 </div>
-                <div class="field">
+                <div class="field" hidden>
                     <label>MIDI</label>
                     <div class="linked-indicator is-empty" data-role="midi-linked">-</div>
                 </div>

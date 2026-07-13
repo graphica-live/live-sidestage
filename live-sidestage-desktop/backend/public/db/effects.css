@@ -137,7 +137,7 @@ button:disabled {
 }
 
 .event-table-head {
-    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px 52px minmax(0, 0.68fr);
+    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
 }
 
 .trigger-table-head {
@@ -912,7 +912,7 @@ input[type="range"] {
 
 .event-record-fields {
     display: grid;
-    grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px 52px minmax(0, 0.68fr);
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
     align-items: center;
     gap: 8px;
     width: 100%;

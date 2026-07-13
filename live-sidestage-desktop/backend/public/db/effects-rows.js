@@ -124,7 +124,7 @@ function renderEvents() {
         const hasVideoAsset = Boolean(eventRecord.videoAssetUrl || eventRecord.videoAssetName);
         const hasAudioAsset = Boolean(eventRecord.audioAssetUrl || eventRecord.audioAssetName);
         const hasMidi = Boolean(eventRecord.midiEnabled && eventRecord.midiDeviceName);
-        const hasVdjEffect = Boolean(eventRecord.vdjEffectEnabled && eventRecord.vdjEffectType);
+        const hasVdjEffect = Boolean(eventRecord.vdjEffectEnabled && eventRecord.vdjCommand);
 
         card.dataset.eventId = eventRecord.id;
         nameValue.textContent = eventRecord.name || '未設定';
