@@ -66,11 +66,6 @@
                 0 0 0 10px rgba(251, 191, 36, 0.65);
         }
 
-        .side-a.is-winner .cover-anchor.zoomed { transform: translate(calc(-50% + 32px), -50%) scale(1.95); }
-        .side-a.is-loser  .cover-anchor.zoomed { transform: translate(calc(-50% - 32px), -50%) scale(1.55); }
-        .side-b.is-winner .cover-anchor.zoomed { transform: translate(calc(-50% - 32px), -50%) scale(1.95); }
-        .side-b.is-loser  .cover-anchor.zoomed { transform: translate(calc(-50% + 32px), -50%) scale(1.55); }
-
         .cover-anchor {
             position: absolute;
             top: 50%;
@@ -84,6 +79,19 @@
 
         .cover-anchor.zoomed {
             transform: translate(-50%, -50%) scale(1.8);
+        }
+
+        .cover-anchor.center-stage,
+        .cover-anchor.exit-offscreen {
+            transition: transform 900ms cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .cover-anchor.center-stage {
+            transform: translate(calc(-50% + var(--shift-x, 0px)), -50%) scale(2.3);
+        }
+
+        .cover-anchor.exit-offscreen {
+            transform: translate(calc(-50% + var(--shift-x, 0px)), -50%) scale(1.4);
         }
 
         .cover-wrap {
@@ -143,6 +151,24 @@
             -webkit-backdrop-filter: blur(8px);
             border-radius: 20px;
             padding: 16px 20px;
+            transition: background 700ms ease, backdrop-filter 700ms ease;
+        }
+
+        .info-panel.dissolved {
+            background: transparent;
+            backdrop-filter: blur(0);
+            -webkit-backdrop-filter: blur(0);
+        }
+
+        .tug-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 900ms cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .tug-row.exit-offscreen {
+            transform: translateX(var(--shift-x, 0px));
         }
 
         .title-row {
@@ -170,17 +196,16 @@
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            transition: color 200ms ease;
+            transition: color 200ms ease, transform 900ms cubic-bezier(.4, 0, .2, 1);
         }
 
         .song-title.is-winner {
             color: #fbbf24;
         }
 
-        .tug-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .song-title.center-stage,
+        .song-title.exit-offscreen {
+            transform: translateX(var(--shift-x, 0px));
         }
 
         .tug-count {
@@ -309,8 +334,8 @@
             </div>
         </div>
 
-        <div class="info-panel">
-            <div class="tug-row">
+        <div class="info-panel" id="info-panel">
+            <div class="tug-row" id="tug-row">
                 <span class="tug-count" id="count-a">0</span>
                 <div class="tug-track">
                     <div class="tug-fill-a" id="tug-fill-a"></div>
@@ -353,6 +378,8 @@
         const coverWrapB = document.getElementById('cover-wrap-b');
         const coverAnchorA = document.getElementById('cover-anchor-a');
         const coverAnchorB = document.getElementById('cover-anchor-b');
+        const infoPanelEl = document.getElementById('info-panel');
+        const tugRowEl = document.getElementById('tug-row');
 
         let countdownTimer = null;
         let hideTimer = null;
@@ -372,8 +399,52 @@
             }
         }
 
+        function resetRevealState() {
+            coverAnchorA.classList.remove('center-stage', 'exit-offscreen');
+            coverAnchorB.classList.remove('center-stage', 'exit-offscreen');
+            titleA.classList.remove('center-stage', 'exit-offscreen');
+            titleB.classList.remove('center-stage', 'exit-offscreen');
+            tugRowEl.classList.remove('exit-offscreen');
+            infoPanelEl.classList.remove('dissolved');
+            [coverAnchorA, coverAnchorB, titleA, titleB, tugRowEl].forEach((el) => {
+                el.style.removeProperty('--shift-x');
+            });
+        }
+
+        function applyCenterStageReveal(winnerSide) {
+            const winnerAnchor = winnerSide === 'A' ? coverAnchorA : coverAnchorB;
+            const loserAnchor = winnerSide === 'A' ? coverAnchorB : coverAnchorA;
+            const winnerTitle = winnerSide === 'A' ? titleA : titleB;
+            const loserTitle = winnerSide === 'A' ? titleB : titleA;
+            const loserIsLeft = winnerSide === 'A' ? false : true;
+
+            const battleRect = battleEl.getBoundingClientRect();
+            const battleCenterX = battleRect.left + battleRect.width / 2;
+
+            const winnerAnchorRect = winnerAnchor.getBoundingClientRect();
+            const winnerAnchorShift = battleCenterX - (winnerAnchorRect.left + winnerAnchorRect.width / 2);
+            winnerAnchor.style.setProperty('--shift-x', `${winnerAnchorShift}px`);
+
+            const winnerTitleRect = winnerTitle.getBoundingClientRect();
+            const winnerTitleShift = battleCenterX - (winnerTitleRect.left + winnerTitleRect.width / 2);
+            winnerTitle.style.setProperty('--shift-x', `${winnerTitleShift}px`);
+
+            const exitShift = (loserIsLeft ? -1 : 1) * (window.innerWidth + 600);
+            loserAnchor.style.setProperty('--shift-x', `${exitShift}px`);
+            loserTitle.style.setProperty('--shift-x', `${exitShift}px`);
+            tugRowEl.style.setProperty('--shift-x', `${exitShift}px`);
+
+            winnerAnchor.classList.add('center-stage');
+            winnerTitle.classList.add('center-stage');
+            loserAnchor.classList.add('exit-offscreen');
+            loserTitle.classList.add('exit-offscreen');
+            tugRowEl.classList.add('exit-offscreen');
+            infoPanelEl.classList.add('dissolved');
+        }
+
         function playEntranceAnimation() {
             clearZoomTimer();
+            resetRevealState();
             coverAnchorA.classList.remove('anim-enter-a', 'zoomed');
             coverAnchorB.classList.remove('anim-enter-b', 'zoomed');
             coverWrapA.classList.remove('spinning');
@@ -488,6 +559,9 @@
                 sideAEl.classList.add('is-loser');
                 titleB.classList.add('is-winner');
             }
+            if (round.winnerSide === 'A' || round.winnerSide === 'B') {
+                applyCenterStageReveal(round.winnerSide);
+            }
             clearHideTimer();
             hideTimer = setTimeout(() => {
                 hideTimer = null;
@@ -498,6 +572,7 @@
             stopCountdown();
             clearHideTimer();
             clearZoomTimer();
+            resetRevealState();
             battleEl.classList.remove('is-visible');
         });
 
