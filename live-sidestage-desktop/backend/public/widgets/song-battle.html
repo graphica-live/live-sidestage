@@ -476,6 +476,33 @@
             avatarElsByVoterId.clear();
         }
 
+        function pickAvatarPosition(parent) {
+            const existing = Array.from(parent.querySelectorAll('.voter-avatar')).map((el) => ({
+                left: parseFloat(el.style.left) || 0,
+                top: parseFloat(el.style.top) || 0
+            }));
+
+            const MIN_DISTANCE = 16;
+            let bestCandidate = null;
+            let bestNearestDistance = -1;
+
+            for (let attempt = 0; attempt < 12; attempt++) {
+                const candidate = { left: 15 + Math.random() * 70, top: 10 + Math.random() * 80 };
+                const nearestDistance = existing.reduce((min, pos) => {
+                    return Math.min(min, Math.hypot(pos.left - candidate.left, pos.top - candidate.top));
+                }, Infinity);
+
+                if (nearestDistance >= MIN_DISTANCE) return candidate;
+                if (nearestDistance > bestNearestDistance) {
+                    bestNearestDistance = nearestDistance;
+                    bestCandidate = candidate;
+                }
+            }
+
+            // 混雑しすぎて空きが見つからない場合は、一番マシな(最も離れた)候補で妥協する
+            return bestCandidate || { left: 15 + Math.random() * 70, top: 10 + Math.random() * 80 };
+        }
+
         function renderVoterAvatars(voters) {
             if (!Array.isArray(voters) || voters.length === 0) return;
 
@@ -489,12 +516,13 @@
 
                 if (!el) {
                     const parent = voter.side === 'A' ? sideAEl : sideBEl;
+                    const position = pickAvatarPosition(parent);
                     el = document.createElement('img');
                     el.className = `voter-avatar voter-avatar-${voter.side === 'A' ? 'a' : 'b'}`;
                     el.alt = '';
                     el.src = voter.image || '';
-                    el.style.left = `${15 + Math.random() * 70}%`;
-                    el.style.top = `${10 + Math.random() * 80}%`;
+                    el.style.left = `${position.left}%`;
+                    el.style.top = `${position.top}%`;
                     el.style.setProperty('--avatar-size', '0px');
                     parent.appendChild(el);
                     avatarElsByVoterId.set(voter.userId, el);

@@ -13,11 +13,18 @@ function defaultHistoryFilePath() {
     return path.join(os.homedir(), 'AppData', 'Local', 'VirtualDJ', 'History', 'tracklist.txt');
 }
 
-const TEST_VOTERS = [
-    { id: '__test_voter_a__', nickname: 'テストリスナーA', letter: 'A', color: '#f87171' },
-    { id: '__test_voter_b__', nickname: 'テストリスナーB', letter: 'B', color: '#60a5fa' },
-    { id: '__test_voter_c__', nickname: 'テストリスナーC', letter: 'C', color: '#34d399' }
-];
+const TEST_VOTERS = {
+    A: [
+        { id: '__test_voter_a__', nickname: 'テストリスナーA', letter: 'A', color: '#f87171' },
+        { id: '__test_voter_b__', nickname: 'テストリスナーB', letter: 'B', color: '#fb923c' },
+        { id: '__test_voter_c__', nickname: 'テストリスナーC', letter: 'C', color: '#facc15' }
+    ],
+    B: [
+        { id: '__test_voter_d__', nickname: 'テストリスナーD', letter: 'D', color: '#60a5fa' },
+        { id: '__test_voter_e__', nickname: 'テストリスナーE', letter: 'E', color: '#818cf8' },
+        { id: '__test_voter_f__', nickname: 'テストリスナーF', letter: 'F', color: '#34d399' }
+    ]
+};
 
 function buildTestAvatarDataUrl(letter, color) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80">`
@@ -415,7 +422,8 @@ module.exports = function createSongBattleRuntime({
             throw new Error('side は A か B を指定してください。');
         }
 
-        const persona = TEST_VOTERS[Math.floor(Math.random() * TEST_VOTERS.length)];
+        const pool = TEST_VOTERS[side];
+        const persona = pool[Math.floor(Math.random() * pool.length)];
         let lockedSide = state.voterSide.get(persona.id);
         if (!lockedSide) {
             lockedSide = side;
