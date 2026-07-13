@@ -4157,6 +4157,7 @@ const songBattleRuntime = require('./lib/song-battle-runtime')({
     setScopedStateValue,
     normalizeBroadcasterId,
     normalizeWholeNumber,
+    fetchTikTokGiftCatalog,
 });
 
 const {

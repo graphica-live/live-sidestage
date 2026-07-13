@@ -208,8 +208,29 @@
             transform: translateX(var(--shift-x, 0px));
         }
 
-        .tug-count {
+        .tug-side {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
             min-width: 32px;
+        }
+
+        .tug-gift-icon {
+            display: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.4);
+        }
+
+        .tug-gift-icon.has-image {
+            display: block;
+        }
+
+        .tug-count {
             font-size: 17px;
             font-weight: 700;
             text-align: center;
@@ -336,13 +357,19 @@
 
         <div class="info-panel" id="info-panel">
             <div class="tug-row" id="tug-row">
-                <span class="tug-count" id="count-a">0</span>
+                <div class="tug-side">
+                    <img class="tug-gift-icon" id="gift-icon-a" alt="">
+                    <span class="tug-count" id="count-a">0</span>
+                </div>
                 <div class="tug-track">
                     <div class="tug-fill-a" id="tug-fill-a"></div>
                     <div class="tug-fill-b" id="tug-fill-b"></div>
                     <div class="tug-center-mark"></div>
                 </div>
-                <span class="tug-count" id="count-b">0</span>
+                <div class="tug-side">
+                    <img class="tug-gift-icon" id="gift-icon-b" alt="">
+                    <span class="tug-count" id="count-b">0</span>
+                </div>
             </div>
 
             <div class="title-row">
@@ -370,6 +397,8 @@
         const tugFillB = document.getElementById('tug-fill-b');
         const countA = document.getElementById('count-a');
         const countB = document.getElementById('count-b');
+        const giftIconA = document.getElementById('gift-icon-a');
+        const giftIconB = document.getElementById('gift-icon-b');
         const sideAEl = document.getElementById('side-a');
         const sideBEl = document.getElementById('side-b');
         const countdownEl = document.getElementById('countdown');
@@ -504,6 +533,16 @@
             countB.textContent = String(tallyB);
         }
 
+        function setGiftIcon(imgEl, url) {
+            if (url) {
+                imgEl.src = url;
+                imgEl.classList.add('has-image');
+            } else {
+                imgEl.removeAttribute('src');
+                imgEl.classList.remove('has-image');
+            }
+        }
+
         function renderRound(round) {
             if (!round || round.status !== 'running' || !round.songA || !round.songB) {
                 return;
@@ -522,6 +561,8 @@
             coverB.src = round.songB.coverDataUrl || '';
             titleA.textContent = round.songA.title || '';
             titleB.textContent = round.songB.title || '';
+            setGiftIcon(giftIconA, round.giftImageA);
+            setGiftIcon(giftIconB, round.giftImageB);
             renderVotes(round);
             startCountdown(round.endsAt);
 

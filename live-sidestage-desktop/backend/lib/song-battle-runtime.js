@@ -33,12 +33,15 @@ module.exports = function createSongBattleRuntime({
     setScopedStateValue,
     normalizeBroadcasterId,
     normalizeWholeNumber,
+    fetchTikTokGiftCatalog,
 }) {
     const state = {
         status: 'idle',
         starting: false,
         songA: null,
         songB: null,
+        giftImageA: '',
+        giftImageB: '',
         startedAt: 0,
         endsAt: 0,
         durationSec: 0,
@@ -217,11 +220,31 @@ module.exports = function createSongBattleRuntime({
         }
     }
 
+    async function resolveGiftImages(settings) {
+        const giftNameA = settings.giftNameA.trim().toLowerCase();
+        const giftNameB = settings.giftNameB.trim().toLowerCase();
+
+        try {
+            const catalog = await fetchTikTokGiftCatalog();
+            const findImage = (giftName) => {
+                if (!giftName) return '';
+                const match = catalog.find((gift) => String(gift.name || '').trim().toLowerCase() === giftName);
+                return match?.imageUrl || '';
+            };
+
+            return { giftImageA: findImage(giftNameA), giftImageB: findImage(giftNameB) };
+        } catch {
+            return { giftImageA: '', giftImageB: '' };
+        }
+    }
+
     function getRoundSnapshot() {
         return {
             status: state.status,
             songA: state.songA,
             songB: state.songB,
+            giftImageA: state.giftImageA,
+            giftImageB: state.giftImageB,
             startedAt: state.startedAt,
             endsAt: state.endsAt,
             durationSec: state.durationSec,
@@ -246,12 +269,18 @@ module.exports = function createSongBattleRuntime({
             }
 
             const [pathA, pathB] = pickCandidatePaths(settings);
-            const [songA, songB] = await Promise.all([extractTrackInfo(pathA), extractTrackInfo(pathB)]);
+            const [songA, songB, giftImages] = await Promise.all([
+                extractTrackInfo(pathA),
+                extractTrackInfo(pathB),
+                resolveGiftImages(settings)
+            ]);
 
             clearTimers();
             state.status = 'running';
             state.songA = songA;
             state.songB = songB;
+            state.giftImageA = giftImages.giftImageA;
+            state.giftImageB = giftImages.giftImageB;
             state.startedAt = Date.now();
             state.durationSec = settings.durationSec;
             state.endsAt = state.startedAt + settings.durationSec * 1000;
