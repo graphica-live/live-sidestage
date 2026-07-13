@@ -402,6 +402,10 @@
         startButton.addEventListener('click', async () => {
             startButton.disabled = true;
             try {
+                // 直前に設定欄をhand-typeしてすぐ押した場合、blurで発火した保存PATCHが
+                // まだサーバーに届いていないことがある(bodyなしのstartの方が先に処理され得る)。
+                // 保存キューが片付くまで待ってから開始する。
+                await songBattleSaveChain;
                 const response = await fetch('/api/widgets/song-battle/start', { method: 'POST' });
                 const payload = await response.json();
                 if (!response.ok) {
