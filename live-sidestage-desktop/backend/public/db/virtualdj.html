@@ -348,21 +348,29 @@
             vdjPasswordInput.value = settings.password || '';
         }
 
-        async function saveSongBattleSettings() {
-            await fetch('/api/widgets/song-battle', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    directory: dirDisplay.title || '',
-                    giftNameA: giftAInput.value.trim(),
-                    giftNameB: giftBInput.value.trim(),
-                    durationSec: Number(durationInput.value || 60),
-                    startMode: modeAutoInput.checked ? 'auto-loop' : 'manual',
-                    loopIntervalMin: Number(loopIntervalInput.value || 10),
-                    historyExcludeCount: Number(historyCountInput.value || 20),
-                    historyFilePath: historyPathInput.value.trim()
-                })
-            });
+        let songBattleSaveChain = Promise.resolve();
+
+        // PATCHは毎回全フィールドを送る置き換え方式のため、直列化しないと
+        // 複数欄をすばやく手打ちした際にリクエストが順不同で届き、
+        // 古い値のPATCHが後から届いて新しい値を上書きしてしまう。
+        function saveSongBattleSettings() {
+            songBattleSaveChain = songBattleSaveChain
+                .then(() => fetch('/api/widgets/song-battle', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: dirDisplay.title || '',
+                        giftNameA: giftAInput.value.trim(),
+                        giftNameB: giftBInput.value.trim(),
+                        durationSec: Number(durationInput.value || 60),
+                        startMode: modeAutoInput.checked ? 'auto-loop' : 'manual',
+                        loopIntervalMin: Number(loopIntervalInput.value || 10),
+                        historyExcludeCount: Number(historyCountInput.value || 20),
+                        historyFilePath: historyPathInput.value.trim()
+                    })
+                }))
+                .catch(() => {});
+            return songBattleSaveChain;
         }
 
         [giftAInput, giftBInput, durationInput, loopIntervalInput, historyCountInput].forEach((input) => {
