@@ -352,6 +352,24 @@ module.exports = function createSongBattleRuntime({
         io.emit('song-battle:vote-update', getRoundSnapshot());
     }
 
+    function testVote(side) {
+        if (state.status !== 'running') {
+            throw new Error('投票中ではありません。');
+        }
+        if (side !== 'A' && side !== 'B') {
+            throw new Error('side は A か B を指定してください。');
+        }
+
+        if (side === 'A') {
+            state.tallyA += 1;
+        } else {
+            state.tallyB += 1;
+        }
+
+        io.emit('song-battle:vote-update', getRoundSnapshot());
+        return getRoundSnapshot();
+    }
+
     return {
         getSettings,
         setSettings,
@@ -359,6 +377,7 @@ module.exports = function createSongBattleRuntime({
         startRound,
         endRoundNow: () => endRound({ cancelled: false }),
         cancelRound: () => endRound({ cancelled: true }),
-        registerVote
+        registerVote,
+        testVote
     };
 };

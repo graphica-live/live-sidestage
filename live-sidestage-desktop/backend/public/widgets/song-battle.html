@@ -368,12 +368,14 @@
         }
 
         function renderVotes(round) {
-            const total = Math.max(1, (round.tallyA || 0) + (round.tallyB || 0));
-            const percentA = ((round.tallyA || 0) / total) * 100;
+            const tallyA = round.tallyA || 0;
+            const tallyB = round.tallyB || 0;
+            const total = tallyA + tallyB;
+            const percentA = total > 0 ? (tallyA / total) * 100 : 50;
             tugFillA.style.width = `${percentA}%`;
             tugFillB.style.width = `${100 - percentA}%`;
-            countA.textContent = String(round.tallyA || 0);
-            countB.textContent = String(round.tallyB || 0);
+            countA.textContent = String(tallyA);
+            countB.textContent = String(tallyB);
         }
 
         function renderRound(round) {

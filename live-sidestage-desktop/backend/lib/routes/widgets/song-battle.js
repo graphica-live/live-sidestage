@@ -33,6 +33,15 @@ module.exports = function registerSongBattleRoutes({ app, vdjClient, songBattleR
         res.json({ ok: true, round });
     });
 
+    app.post('/api/widgets/song-battle/test-vote', (req, res) => {
+        try {
+            const round = songBattleRuntime.testVote(req.body?.side);
+            res.json({ ok: true, round });
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    });
+
     app.get('/api/vdj/connection', (req, res) => {
         res.json(vdjClient.getConnectionSettings());
     });
