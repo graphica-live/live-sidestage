@@ -59,6 +59,7 @@ module.exports = function createSongBattleRuntime({
     const state = {
         status: 'idle',
         starting: false,
+        cancelRequested: false,
         songA: null,
         songB: null,
         giftImageA: '',
@@ -282,6 +283,7 @@ module.exports = function createSongBattleRuntime({
         }
 
         state.starting = true;
+        state.cancelRequested = false;
         try {
             const settings = getSettings();
             if (!settings.directory) {
@@ -297,6 +299,12 @@ module.exports = function createSongBattleRuntime({
                 extractTrackInfo(pathB),
                 resolveGiftImages(settings)
             ]);
+
+            if (state.cancelRequested) {
+                state.cancelRequested = false;
+                io.emit('song-battle:round-cancelled', getRoundSnapshot());
+                return getRoundSnapshot();
+            }
 
             clearTimers();
             state.status = 'running';
@@ -455,7 +463,13 @@ module.exports = function createSongBattleRuntime({
         getRoundSnapshot,
         startRound,
         endRoundNow: () => endRound({ cancelled: false }),
-        cancelRound: () => endRound({ cancelled: true }),
+        cancelRound: () => {
+            if (state.starting) {
+                state.cancelRequested = true;
+                return getRoundSnapshot();
+            }
+            return endRound({ cancelled: true });
+        },
         registerVote,
         testVote
     };
