@@ -66,6 +66,11 @@
                 0 0 0 10px rgba(251, 191, 36, 0.65);
         }
 
+        .side-a.is-winner .cover-anchor.zoomed { transform: translate(calc(-50% + 32px), -50%) scale(1.95); }
+        .side-a.is-loser  .cover-anchor.zoomed { transform: translate(calc(-50% - 32px), -50%) scale(1.55); }
+        .side-b.is-winner .cover-anchor.zoomed { transform: translate(calc(-50% - 32px), -50%) scale(1.95); }
+        .side-b.is-loser  .cover-anchor.zoomed { transform: translate(calc(-50% + 32px), -50%) scale(1.55); }
+
         .cover-anchor {
             position: absolute;
             top: 50%;
@@ -436,8 +441,8 @@
             clearHideTimer();
             const wasVisible = battleEl.classList.contains('is-visible');
 
-            sideAEl.classList.remove('is-winner');
-            sideBEl.classList.remove('is-winner');
+            sideAEl.classList.remove('is-winner', 'is-loser');
+            sideBEl.classList.remove('is-winner', 'is-loser');
             titleA.classList.remove('is-winner');
             titleB.classList.remove('is-winner');
             battleEl.classList.add('is-visible');
@@ -475,10 +480,12 @@
             renderVotes(round);
             if (round.winnerSide === 'A') {
                 sideAEl.classList.add('is-winner');
+                sideBEl.classList.add('is-loser');
                 titleA.classList.add('is-winner');
             }
             if (round.winnerSide === 'B') {
                 sideBEl.classList.add('is-winner');
+                sideAEl.classList.add('is-loser');
                 titleB.classList.add('is-winner');
             }
             clearHideTimer();
