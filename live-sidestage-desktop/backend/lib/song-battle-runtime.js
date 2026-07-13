@@ -13,6 +13,20 @@ function defaultHistoryFilePath() {
     return path.join(os.homedir(), 'AppData', 'Local', 'VirtualDJ', 'History', 'tracklist.txt');
 }
 
+const TEST_VOTERS = [
+    { id: '__test_voter_a__', nickname: 'テストリスナーA', letter: 'A', color: '#f87171' },
+    { id: '__test_voter_b__', nickname: 'テストリスナーB', letter: 'B', color: '#60a5fa' },
+    { id: '__test_voter_c__', nickname: 'テストリスナーC', letter: 'C', color: '#34d399' }
+];
+
+function buildTestAvatarDataUrl(letter, color) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80">`
+        + `<rect width="80" height="80" rx="14" fill="${color}"/>`
+        + `<text x="40" y="53" font-size="38" font-family="sans-serif" font-weight="bold" `
+        + `text-anchor="middle" fill="white">${letter}</text></svg>`;
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 function defaultSongBattleSettings() {
     return {
         directory: '',
@@ -48,6 +62,7 @@ module.exports = function createSongBattleRuntime({
         tallyA: 0,
         tallyB: 0,
         voterSide: new Map(),
+        voters: new Map(),
         usedTrackPaths: new Set(),
         endTimer: null,
         loopTimer: null
@@ -249,7 +264,8 @@ module.exports = function createSongBattleRuntime({
             endsAt: state.endsAt,
             durationSec: state.durationSec,
             tallyA: state.tallyA,
-            tallyB: state.tallyB
+            tallyB: state.tallyB,
+            voters: Array.from(state.voters.values())
         };
     }
 
@@ -287,6 +303,7 @@ module.exports = function createSongBattleRuntime({
             state.tallyA = 0;
             state.tallyB = 0;
             state.voterSide = new Map();
+            state.voters = new Map();
             state.usedTrackPaths.add(pathA);
             state.usedTrackPaths.add(pathB);
 
@@ -378,6 +395,15 @@ module.exports = function createSongBattleRuntime({
             state.tallyB += coins;
         }
 
+        const existingVoter = state.voters.get(userId);
+        state.voters.set(userId, {
+            userId,
+            side,
+            image: giftEvent?.image || existingVoter?.image || '',
+            nickname: giftEvent?.nickname || existingVoter?.nickname || userId,
+            coins: (existingVoter?.coins || 0) + coins
+        });
+
         io.emit('song-battle:vote-update', getRoundSnapshot());
     }
 
@@ -389,11 +415,27 @@ module.exports = function createSongBattleRuntime({
             throw new Error('side は A か B を指定してください。');
         }
 
-        if (side === 'A') {
+        const persona = TEST_VOTERS[Math.floor(Math.random() * TEST_VOTERS.length)];
+        let lockedSide = state.voterSide.get(persona.id);
+        if (!lockedSide) {
+            lockedSide = side;
+            state.voterSide.set(persona.id, lockedSide);
+        }
+
+        if (lockedSide === 'A') {
             state.tallyA += 1;
         } else {
             state.tallyB += 1;
         }
+
+        const existingVoter = state.voters.get(persona.id);
+        state.voters.set(persona.id, {
+            userId: persona.id,
+            side: lockedSide,
+            image: buildTestAvatarDataUrl(persona.letter, persona.color),
+            nickname: persona.nickname,
+            coins: (existingVoter?.coins || 0) + 1
+        });
 
         io.emit('song-battle:vote-update', getRoundSnapshot());
         return getRoundSnapshot();

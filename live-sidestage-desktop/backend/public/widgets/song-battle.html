@@ -66,6 +66,33 @@
                 0 0 0 10px rgba(251, 191, 36, 0.65);
         }
 
+        .voter-avatar {
+            position: absolute;
+            width: var(--avatar-size, 0px);
+            height: var(--avatar-size, 0px);
+            border-radius: 50%;
+            object-fit: cover;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.5);
+            transition: width 400ms ease, height 400ms ease, opacity 300ms ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .voter-avatar.is-shown {
+            opacity: 1;
+        }
+
+        .voter-avatar-a {
+            border: 2px solid var(--side-a-color);
+        }
+
+        .voter-avatar-b {
+            border: 2px solid var(--side-b-color);
+        }
+
         .cover-anchor {
             position: absolute;
             top: 50%;
@@ -440,6 +467,62 @@
             });
         }
 
+        const AVATAR_MIN_SIZE = 26;
+        const AVATAR_MAX_SIZE = 76;
+        const avatarElsByVoterId = new Map();
+
+        function clearAvatars() {
+            avatarElsByVoterId.forEach((el) => el.remove());
+            avatarElsByVoterId.clear();
+        }
+
+        function renderVoterAvatars(voters) {
+            if (!Array.isArray(voters) || voters.length === 0) return;
+
+            const maxCoins = Math.max(1, ...voters.map((voter) => voter.coins || 0));
+
+            voters.forEach((voter) => {
+                if (!voter?.userId) return;
+                const sizeRatio = Math.min(1, (voter.coins || 0) / maxCoins);
+                const size = AVATAR_MIN_SIZE + sizeRatio * (AVATAR_MAX_SIZE - AVATAR_MIN_SIZE);
+                let el = avatarElsByVoterId.get(voter.userId);
+
+                if (!el) {
+                    const parent = voter.side === 'A' ? sideAEl : sideBEl;
+                    el = document.createElement('img');
+                    el.className = `voter-avatar voter-avatar-${voter.side === 'A' ? 'a' : 'b'}`;
+                    el.alt = '';
+                    el.src = voter.image || '';
+                    el.style.left = `${15 + Math.random() * 70}%`;
+                    el.style.top = `${10 + Math.random() * 80}%`;
+                    el.style.setProperty('--avatar-size', '0px');
+                    parent.appendChild(el);
+                    avatarElsByVoterId.set(voter.userId, el);
+                    void el.offsetWidth;
+                    el.classList.add('is-shown');
+                }
+
+                el.style.setProperty('--avatar-size', `${size}px`);
+            });
+        }
+
+        function collapseToWinnerVoters(voters, winnerSide) {
+            if (!Array.isArray(voters) || voters.length === 0) {
+                clearAvatars();
+                return;
+            }
+
+            const votersById = new Map(voters.map((voter) => [voter.userId, voter]));
+
+            avatarElsByVoterId.forEach((el, voterId) => {
+                const voter = votersById.get(voterId);
+                if (!voter || voter.side !== winnerSide) {
+                    el.remove();
+                    avatarElsByVoterId.delete(voterId);
+                }
+            });
+        }
+
         function applyCenterStageReveal(winnerSide) {
             const winnerAnchor = winnerSide === 'A' ? coverAnchorA : coverAnchorB;
             const loserAnchor = winnerSide === 'A' ? coverAnchorB : coverAnchorA;
@@ -563,6 +646,8 @@
             titleB.textContent = round.songB.title || '';
             setGiftIcon(giftIconA, round.giftImageA);
             setGiftIcon(giftIconB, round.giftImageB);
+            clearAvatars();
+            renderVoterAvatars(round.voters);
             renderVotes(round);
             startCountdown(round.endsAt);
 
@@ -584,12 +669,16 @@
 
         socket.on('song-battle:round-start', renderRound);
         socket.on('song-battle:vote-update', (round) => {
-            if (round.status === 'running') renderVotes(round);
+            if (round.status === 'running') {
+                renderVotes(round);
+                renderVoterAvatars(round.voters);
+            }
         });
         socket.on('song-battle:round-end', (round) => {
             stopCountdown();
             countdownEl.textContent = '0:00';
             renderVotes(round);
+            collapseToWinnerVoters(round.voters, round.winnerSide);
             if (round.winnerSide === 'A') {
                 sideAEl.classList.add('is-winner');
                 sideBEl.classList.add('is-loser');
@@ -614,6 +703,7 @@
             clearHideTimer();
             clearZoomTimer();
             resetRevealState();
+            clearAvatars();
             battleEl.classList.remove('is-visible');
         });
 
