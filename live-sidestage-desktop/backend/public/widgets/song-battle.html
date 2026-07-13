@@ -54,9 +54,9 @@
         }
 
         .side {
+            position: relative;
             flex: 1;
-            display: flex;
-            justify-content: center;
+            min-height: 220px;
         }
 
         .side.is-winner .cover-wrap {
@@ -66,10 +66,25 @@
                 0 0 0 10px rgba(251, 191, 36, 0.65);
         }
 
-        .cover-wrap {
-            position: relative;
+        .cover-anchor {
+            position: absolute;
+            top: 50%;
+            left: 50%;
             width: 220px;
             height: 220px;
+            transform: translate(-50%, -50%);
+            transition: transform 700ms cubic-bezier(.34, 1.56, .64, 1);
+            z-index: 1;
+        }
+
+        .cover-anchor.zoomed {
+            transform: translate(-50%, -50%) scale(2.6);
+        }
+
+        .cover-wrap {
+            position: relative;
+            width: 100%;
+            height: 100%;
             border-radius: 50%;
             box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45), 0 0 0 6px rgba(0, 0, 0, 0.35);
         }
@@ -110,6 +125,19 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
+        }
+
+        .info-panel {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 20px;
+            padding: 16px 20px;
         }
 
         .title-row {
@@ -210,18 +238,18 @@
             opacity: 0.85;
         }
 
-        @keyframes coverInLeft {
-            0% { opacity: 0; transform: translateX(-160px) rotate(-540deg) scale(0.3); }
-            60% { opacity: 1; transform: translateX(12px) rotate(15deg) scale(1.08); }
-            80% { transform: translateX(-4px) rotate(-4deg) scale(0.98); }
-            100% { opacity: 1; transform: translateX(0) rotate(0deg) scale(1); }
+        @keyframes anchorInLeft {
+            0% { opacity: 0; transform: translate(calc(-50% - 220px), -50%) scale(0.3); }
+            60% { opacity: 1; transform: translate(calc(-50% + 14px), -50%) scale(1.08); }
+            80% { transform: translate(calc(-50% - 5px), -50%) scale(0.98); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
         }
 
-        @keyframes coverInRight {
-            0% { opacity: 0; transform: translateX(160px) rotate(540deg) scale(0.3); }
-            60% { opacity: 1; transform: translateX(-12px) rotate(-15deg) scale(1.08); }
-            80% { transform: translateX(4px) rotate(4deg) scale(0.98); }
-            100% { opacity: 1; transform: translateX(0) rotate(0deg) scale(1); }
+        @keyframes anchorInRight {
+            0% { opacity: 0; transform: translate(calc(-50% + 220px), -50%) scale(0.3); }
+            60% { opacity: 1; transform: translate(calc(-50% - 14px), -50%) scale(1.08); }
+            80% { transform: translate(calc(-50% + 5px), -50%) scale(0.98); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
         }
 
         @keyframes vsPop {
@@ -231,8 +259,8 @@
             100% { opacity: 1; transform: scale(1) rotate(0deg); }
         }
 
-        .cover-wrap.anim-enter-a { animation: coverInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
-        .cover-wrap.anim-enter-b { animation: coverInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover-anchor.anim-enter-a { animation: anchorInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover-anchor.anim-enter-b { animation: anchorInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
 
         @keyframes spinCW {
             to { transform: rotate(360deg); }
@@ -259,31 +287,37 @@
     <div class="battle" id="battle">
         <div class="arena-row">
             <div class="side side-a" id="side-a">
-                <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
+                <div class="cover-anchor" id="cover-anchor-a">
+                    <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
+                </div>
             </div>
             <div class="center-stack">
                 <div class="vs-label" id="vs-label">VS</div>
                 <div class="countdown" id="countdown">--:--</div>
             </div>
             <div class="side side-b" id="side-b">
-                <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
+                <div class="cover-anchor" id="cover-anchor-b">
+                    <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
+                </div>
             </div>
         </div>
 
-        <div class="tug-row">
-            <span class="tug-count" id="count-a">0</span>
-            <div class="tug-track">
-                <div class="tug-fill-a" id="tug-fill-a"></div>
-                <div class="tug-fill-b" id="tug-fill-b"></div>
-                <div class="tug-center-mark"></div>
+        <div class="info-panel">
+            <div class="tug-row">
+                <span class="tug-count" id="count-a">0</span>
+                <div class="tug-track">
+                    <div class="tug-fill-a" id="tug-fill-a"></div>
+                    <div class="tug-fill-b" id="tug-fill-b"></div>
+                    <div class="tug-center-mark"></div>
+                </div>
+                <span class="tug-count" id="count-b">0</span>
             </div>
-            <span class="tug-count" id="count-b">0</span>
-        </div>
 
-        <div class="title-row">
-            <div class="song-title" id="title-a"></div>
-            <div class="title-spacer"></div>
-            <div class="song-title" id="title-b"></div>
+            <div class="title-row">
+                <div class="song-title" id="title-a"></div>
+                <div class="title-spacer"></div>
+                <div class="song-title" id="title-b"></div>
+            </div>
         </div>
     </div>
 
@@ -310,9 +344,12 @@
         const vsLabelEl = document.getElementById('vs-label');
         const coverWrapA = document.getElementById('cover-wrap-a');
         const coverWrapB = document.getElementById('cover-wrap-b');
+        const coverAnchorA = document.getElementById('cover-anchor-a');
+        const coverAnchorB = document.getElementById('cover-anchor-b');
 
         let countdownTimer = null;
         let hideTimer = null;
+        let zoomTimer = null;
 
         function clearHideTimer() {
             if (hideTimer) {
@@ -321,25 +358,34 @@
             }
         }
 
-        function spinAfterEntrance(coverWrapEl, enterClass) {
-            coverWrapEl.addEventListener('animationend', function onEnd(event) {
-                if (event.animationName !== 'coverInLeft' && event.animationName !== 'coverInRight') return;
-                coverWrapEl.removeEventListener('animationend', onEnd);
-                coverWrapEl.classList.remove(enterClass);
-                coverWrapEl.classList.add('spinning');
-            });
+        function clearZoomTimer() {
+            if (zoomTimer) {
+                clearTimeout(zoomTimer);
+                zoomTimer = null;
+            }
         }
 
         function playEntranceAnimation() {
-            coverWrapA.classList.remove('anim-enter-a', 'spinning');
-            coverWrapB.classList.remove('anim-enter-b', 'spinning');
+            clearZoomTimer();
+            coverAnchorA.classList.remove('anim-enter-a', 'zoomed');
+            coverAnchorB.classList.remove('anim-enter-b', 'zoomed');
+            coverWrapA.classList.remove('spinning');
+            coverWrapB.classList.remove('spinning');
             vsLabelEl.classList.remove('anim-pop');
             void battleEl.offsetWidth;
-            coverWrapA.classList.add('anim-enter-a');
-            coverWrapB.classList.add('anim-enter-b');
+            coverAnchorA.classList.add('anim-enter-a');
+            coverAnchorB.classList.add('anim-enter-b');
+            coverWrapA.classList.add('spinning');
+            coverWrapB.classList.add('spinning');
             vsLabelEl.classList.add('anim-pop');
-            spinAfterEntrance(coverWrapA, 'anim-enter-a');
-            spinAfterEntrance(coverWrapB, 'anim-enter-b');
+
+            zoomTimer = setTimeout(() => {
+                zoomTimer = null;
+                coverAnchorA.classList.remove('anim-enter-a');
+                coverAnchorB.classList.remove('anim-enter-b');
+                coverAnchorA.classList.add('zoomed');
+                coverAnchorB.classList.add('zoomed');
+            }, 1000);
         }
 
         function formatCountdown(msRemaining) {
@@ -440,6 +486,7 @@
         socket.on('song-battle:round-cancelled', () => {
             stopCountdown();
             clearHideTimer();
+            clearZoomTimer();
             battleEl.classList.remove('is-visible');
         });
 
