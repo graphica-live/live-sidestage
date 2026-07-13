@@ -105,7 +105,7 @@
         }
 
         .cover-anchor.zoomed {
-            transform: translate(-50%, -50%) scale(1.8);
+            transform: translate(-50%, calc(-50% + 180px)) scale(1.8);
         }
 
         .cover-anchor.center-stage,
@@ -114,11 +114,11 @@
         }
 
         .cover-anchor.center-stage {
-            transform: translate(calc(-50% + var(--shift-x, 0px)), -50%) scale(2.3);
+            transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-50% + 180px)) scale(2.3);
         }
 
         .cover-anchor.exit-offscreen {
-            transform: translate(calc(-50% + var(--shift-x, 0px)), -50%) scale(1.4);
+            transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-50% + 180px)) scale(1.4);
         }
 
         .cover-wrap {
