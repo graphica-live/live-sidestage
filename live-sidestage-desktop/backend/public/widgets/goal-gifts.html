@@ -1472,19 +1472,15 @@
                     goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
                     layoutOutlinedSvgText(goalHeading);
 
-                    // トラックは複製2個分の自然な幅/高さを持つ。1個分(=ちょうど1周期)を
-                    // 「見える窓」の基準サイズとし、パネルサイズを超えない範囲でそれに合わせる。
-                    // 窓 = 1周期ぴったりだと、常に隙間なく文字が流れ続けるきれいなループになる。
+                    // スクロール領域の幅/高さは背景パネル(半透過グレー)と揃える。
                     const track = goalHeading.querySelector('.goal-heading-track');
                     const overlayRect = overlay.getBoundingClientRect();
                     if (layoutMode === 'column') {
                         const singleCopyHeight = track ? track.scrollHeight / 2 : 0;
-                        const maxHeight = Math.max(60, Math.min(overlayRect.height || singleCopyHeight, window.innerHeight - 64));
-                        goalHeading.style.height = `${Math.min(maxHeight, singleCopyHeight || maxHeight)}px`;
+                        goalHeading.style.height = `${Math.round(overlayRect.height || singleCopyHeight || 60)}px`;
                     } else {
                         const singleCopyWidth = track ? track.scrollWidth / 2 : 0;
-                        const maxWidth = Math.max(80, Math.min(overlayRect.width || singleCopyWidth, window.innerWidth - 64));
-                        goalHeading.style.width = `${Math.min(maxWidth, singleCopyWidth || maxWidth)}px`;
+                        goalHeading.style.width = `${Math.round(overlayRect.width || singleCopyWidth || 80)}px`;
                     }
                 } else {
                     goalHeading.innerHTML = `<div class="goal-heading-track"><span class="goal-heading-item">${headingSvg}</span></div>`;
