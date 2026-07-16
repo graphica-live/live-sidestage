@@ -194,7 +194,7 @@ module.exports = function createSongBattleRuntime({
 
             return {
                 filePath,
-                title: common.title || fallbackTitle,
+                title: fallbackTitle,
                 artist: common.artist || '',
                 coverDataUrl
             };
