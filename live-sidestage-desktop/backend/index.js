@@ -926,6 +926,8 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         let readAloudWarningClearTimer = null;
         let activePlaybackId = null;
         let activePlaybackEventId = null;
+        let activeVideoUrl = null;
+        let activeAudioUrl = null;
         let playbackQueue = [];
         let isPlaying = false;
         let audioEnded = true;
@@ -938,6 +940,24 @@ function buildEffectOverlayHtml(slot, config, options = null) {
 
         // メディア Blob URL キャッシュ: 元の URL -> 解決済み Blob URL (ロード中は Promise)
         const mediaBlobCache = new Map();
+        const MEDIA_BLOB_CACHE_MAX = 40;
+
+        function isMediaCacheKeyProtected(key) {
+            if (key === activeVideoUrl || key === activeAudioUrl) return true;
+            return playbackQueue.some((p) => p?.videoUrl === key || p?.audioUrl === key);
+        }
+
+        // キャッシュが上限を超えたら、再生中/再生待ちでない古いエントリから Blob URL を解放して破棄
+        function evictOldMediaBlobs() {
+            if (mediaBlobCache.size <= MEDIA_BLOB_CACHE_MAX) return;
+            for (const [key, value] of mediaBlobCache) {
+                if (mediaBlobCache.size <= MEDIA_BLOB_CACHE_MAX) break;
+                if (typeof value !== 'string') continue; // ロード中は温存
+                if (isMediaCacheKeyProtected(key)) continue;
+                if (value.startsWith('blob:')) URL.revokeObjectURL(value);
+                mediaBlobCache.delete(key);
+            }
+        }
 
         function preloadMediaBlob(url) {
             if (!url || mediaBlobCache.has(url) || url.startsWith('data:')) return;
@@ -946,6 +966,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 .then(blob => {
                     const result = blob ? URL.createObjectURL(blob) : url;
                     mediaBlobCache.set(url, result);
+                    evictOldMediaBlobs();
                     return result;
                 })
                 .catch(() => { mediaBlobCache.set(url, url); return url; });
@@ -1179,6 +1200,8 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             video.style.display = 'none';
             activePlaybackId = null;
             activePlaybackEventId = null;
+            activeVideoUrl = null;
+            activeAudioUrl = null;
         }
 
         video.addEventListener('ended', () => {
@@ -1233,6 +1256,8 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             isPlaying = true;
             activePlaybackId = payload.playbackId || String(Date.now());
             activePlaybackEventId = payload.eventId || '';
+            activeVideoUrl = payload.videoUrl || null;
+            activeAudioUrl = payload.audioUrl || null;
             videoEnded = !payload.videoUrl;
             audioEnded = !payload.audioUrl;
             updateDebugLog((payload.eventName || 'event') + ' / ' + (payload.uniqueId || '') + ' / ' + (payload.giftName || ''));
