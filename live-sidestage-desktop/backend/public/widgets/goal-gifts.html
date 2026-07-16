@@ -640,14 +640,6 @@
             justify-content: flex-start;
         }
 
-        .widget-shell.layout-row .goal-heading.is-scrolling {
-            width: calc(100vw - 64px);
-        }
-
-        .widget-shell.layout-column .goal-heading.is-scrolling {
-            height: calc(100vh - 64px);
-        }
-
         .goal-heading-track {
             display: inline-flex;
             align-items: center;
@@ -1447,26 +1439,6 @@
             widgetShell.classList.toggle('is-single', Boolean(requestedGoal));
             widgetShell.classList.toggle('layout-column', layoutMode === 'column');
             widgetShell.classList.toggle('layout-row', layoutMode !== 'column');
-            if (headingText) {
-                const headingFontSize = previewCardMode
-                    ? Math.max(10, Math.round(baseHeadingFontSize * (14 / 32)))
-                    : (window.innerWidth <= 640 ? Math.max(12, Math.round(baseHeadingFontSize * (20 / 32))) : baseHeadingFontSize);
-                const headingLayoutHeight = Math.round(headingFontSize * 1.15);
-                const headingDuration = Math.max(6, headingText.length * 0.4);
-                const headingSvg = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-a' });
-                goalHeading.classList.add('has-text');
-                goalHeading.classList.toggle('is-scrolling', headingScrollEnabled);
-                if (headingScrollEnabled) {
-                    const headingSvg2 = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-b' });
-                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
-                } else {
-                    goalHeading.innerHTML = `<div class="goal-heading-track"><span class="goal-heading-item">${headingSvg}</span></div>`;
-                }
-                layoutOutlinedSvgText(goalHeading);
-            } else {
-                goalHeading.classList.remove('has-text', 'is-scrolling');
-                goalHeading.innerHTML = '';
-            }
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
                 return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
@@ -1482,6 +1454,49 @@
                 </div>`;
             }).join('');
             layoutOutlinedSvgText(overlay);
+
+            if (headingText) {
+                const headingFontSize = previewCardMode
+                    ? Math.max(10, Math.round(baseHeadingFontSize * (14 / 32)))
+                    : (window.innerWidth <= 640 ? Math.max(12, Math.round(baseHeadingFontSize * (20 / 32))) : baseHeadingFontSize);
+                const headingLayoutHeight = Math.round(headingFontSize * 1.15);
+                const headingDuration = Math.max(6, headingText.length * 0.4);
+                const headingSvg = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-a' });
+                goalHeading.classList.add('has-text');
+                goalHeading.classList.toggle('is-scrolling', headingScrollEnabled);
+                goalHeading.style.width = '';
+                goalHeading.style.height = '';
+
+                if (headingScrollEnabled) {
+                    const headingSvg2 = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-b' });
+                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
+                    layoutOutlinedSvgText(goalHeading);
+
+                    // トラックは複製2個分の自然な幅/高さを持つ。1個分(=ちょうど1周期)を
+                    // 「見える窓」の基準サイズとし、パネルサイズを超えない範囲でそれに合わせる。
+                    // 窓 = 1周期ぴったりだと、常に隙間なく文字が流れ続けるきれいなループになる。
+                    const track = goalHeading.querySelector('.goal-heading-track');
+                    const overlayRect = overlay.getBoundingClientRect();
+                    if (layoutMode === 'column') {
+                        const singleCopyHeight = track ? track.scrollHeight / 2 : 0;
+                        const maxHeight = Math.max(60, Math.min(overlayRect.height || singleCopyHeight, window.innerHeight - 64));
+                        goalHeading.style.height = `${Math.min(maxHeight, singleCopyHeight || maxHeight)}px`;
+                    } else {
+                        const singleCopyWidth = track ? track.scrollWidth / 2 : 0;
+                        const maxWidth = Math.max(80, Math.min(overlayRect.width || singleCopyWidth, window.innerWidth - 64));
+                        goalHeading.style.width = `${Math.min(maxWidth, singleCopyWidth || maxWidth)}px`;
+                    }
+                } else {
+                    goalHeading.innerHTML = `<div class="goal-heading-track"><span class="goal-heading-item">${headingSvg}</span></div>`;
+                    layoutOutlinedSvgText(goalHeading);
+                }
+            } else {
+                goalHeading.classList.remove('has-text', 'is-scrolling');
+                goalHeading.innerHTML = '';
+                goalHeading.style.width = '';
+                goalHeading.style.height = '';
+            }
+
             lastRenderStructureKey = structureKey;
             lastRenderedCounts = new Map(goals.map((g) => [Number(g.slot) || 0, g.currentCount]));
         }
