@@ -4055,7 +4055,17 @@
         async function refreshGoalGiftSnapshot() {
             const response = await fetch('/api/widgets/goal-gifts/snapshot');
             const payload = await response.json();
-            state.goalGiftItems = Array.isArray(payload.snapshot?.goals) ? payload.snapshot.goals : state.goalGiftItems;
+            const nextItems = Array.isArray(payload.snapshot?.goals) ? payload.snapshot.goals : state.goalGiftItems;
+
+            // 編集中(フォーカス中 or オートセーブ未完了)にここで即描画すると、
+            // ユーザーが今クリアした入力がサーバーの古いスナップショットで
+            // 上書きされてしまう(未保存の編集が消える)。編集が落ち着くまで保留する。
+            if (goalGiftList.contains(document.activeElement) || goalGiftAutosaveTimer || goalGiftAutosavePromise) {
+                pendingGoalGiftItems = nextItems;
+                return;
+            }
+
+            state.goalGiftItems = nextItems;
             renderGoalGiftRows();
         }
 
@@ -4071,6 +4081,7 @@
                     .catch(() => {})
                     .finally(() => {
                         goalGiftAutosavePromise = null;
+                        flushDeferredWidgetFormUpdates();
                     });
             }, 450);
         }
@@ -4083,6 +4094,7 @@
                     .catch(() => {})
                     .finally(() => {
                         goalGiftAutosavePromise = null;
+                        flushDeferredWidgetFormUpdates();
                     });
             }
 
@@ -4105,6 +4117,7 @@
                 .catch(() => {})
                 .finally(() => {
                     goalGiftAutosavePromise = null;
+                    flushDeferredWidgetFormUpdates();
                 });
 
             await goalGiftAutosavePromise;
