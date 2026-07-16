@@ -19,7 +19,7 @@ module.exports = function registerSongBattleRoutes({ app, vdjClient, songBattleR
             const round = await songBattleRuntime.startRound();
             res.json({ ok: true, round });
         } catch (error) {
-            res.status(400).json({ error: error.message });
+            res.status(400).json({ error: error.message, round: songBattleRuntime.getRoundSnapshot() });
         }
     });
 
@@ -38,7 +38,7 @@ module.exports = function registerSongBattleRoutes({ app, vdjClient, songBattleR
             const round = songBattleRuntime.testVote(req.body?.side);
             res.json({ ok: true, round });
         } catch (error) {
-            res.status(400).json({ error: error.message });
+            res.status(400).json({ error: error.message, round: songBattleRuntime.getRoundSnapshot() });
         }
     });
 

@@ -177,14 +177,14 @@
 
             <div class="action-row">
                 <button type="button" class="primary" id="song-battle-start-button">投票開始</button>
-                <button type="button" id="song-battle-end-button">今すぐ集計して終了</button>
-                <button type="button" class="danger" id="song-battle-cancel-button">中止（ロードなし）</button>
+                <button type="button" id="song-battle-end-button" disabled>今すぐ集計して終了</button>
+                <button type="button" class="danger" id="song-battle-cancel-button" disabled>中止（ロードなし）</button>
                 <div class="status" id="song-battle-status" hidden></div>
             </div>
 
             <div class="action-row">
-                <button type="button" id="song-battle-test-vote-a-button">A投票テスト</button>
-                <button type="button" id="song-battle-test-vote-b-button">B投票テスト</button>
+                <button type="button" id="song-battle-test-vote-a-button" disabled>A投票テスト</button>
+                <button type="button" id="song-battle-test-vote-b-button" disabled>B投票テスト</button>
             </div>
 
             <div class="song-battle-status-grid">
@@ -299,7 +299,9 @@
         function renderRound(round) {
             if (!round) return;
 
-            roundStatusEl.textContent = round.status === 'running' ? '投票中' : 'アイドル';
+            const isRunning = round.status === 'running';
+
+            roundStatusEl.textContent = isRunning ? '投票中' : 'アイドル';
             titleA.textContent = round.songA?.title || '-';
             titleB.textContent = round.songB?.title || '-';
             coverA.src = round.songA?.coverDataUrl || '';
@@ -307,7 +309,14 @@
             tallyA.textContent = `得票: ${round.tallyA || 0}`;
             tallyB.textContent = `得票: ${round.tallyB || 0}`;
 
-            if (round.status === 'running' && round.endsAt) {
+            // 割り込み不可の操作(投票中の開始、非投票中の終了/中止)はボタン自体を非活性にする
+            startButton.disabled = isRunning;
+            endButton.disabled = !isRunning;
+            cancelButton.disabled = !isRunning;
+            testVoteAButton.disabled = !isRunning;
+            testVoteBButton.disabled = !isRunning;
+
+            if (isRunning && round.endsAt) {
                 startRemainingTimer(round.endsAt);
             } else {
                 stopRemainingTimer();
@@ -408,13 +417,13 @@
                 await songBattleSaveChain;
                 const response = await fetch('/api/widgets/song-battle/start', { method: 'POST' });
                 const payload = await response.json();
+                renderRound(payload.round);
                 if (!response.ok) {
                     setStatus(statusBox, payload.error || '投票の開始に失敗しました。', 'error');
                     return;
                 }
-                renderRound(payload.round);
                 setStatus(statusBox, '投票を開始しました。', 'ok');
-            } finally {
+            } catch {
                 startButton.disabled = false;
             }
         });
@@ -426,7 +435,7 @@
                 const payload = await response.json();
                 renderRound(payload.round);
                 setStatus(statusBox, '集計して終了しました。', 'ok');
-            } finally {
+            } catch {
                 endButton.disabled = false;
             }
         });
@@ -438,7 +447,7 @@
                 const payload = await response.json();
                 renderRound(payload.round);
                 setStatus(statusBox, '投票を中止しました。', 'ok');
-            } finally {
+            } catch {
                 cancelButton.disabled = false;
             }
         });
@@ -454,10 +463,11 @@
                 const payload = await response.json();
                 if (!response.ok) {
                     setStatus(statusBox, payload.error || 'テスト投票に失敗しました。', 'error');
+                    renderRound(payload.round);
                     return;
                 }
                 renderRound(payload.round);
-            } finally {
+            } catch {
                 button.disabled = false;
             }
         }
