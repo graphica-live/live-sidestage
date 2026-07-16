@@ -1519,7 +1519,14 @@
             const diff = getGoalFeedbackDiff(snapshot, { allowRegression });
             currentFeedbackSettings = diff.feedback;
             const notifiedSlots = notify ? diff.increasedSlots : new Set();
-            await render(snapshot, diff.feedback.effectEnabled ? notifiedSlots : new Set(), diff.feedback.effectKey, notifiedSlots, diff.previousCounts);
+
+            try {
+                await render(snapshot, diff.feedback.effectEnabled ? notifiedSlots : new Set(), diff.feedback.effectKey, notifiedSlots, diff.previousCounts);
+            } catch (error) {
+                // 描画例外(特に全ゴール一覧の見出しマーキー処理)で通知(音)まで
+                // 巻き込んで止まらないよう、ここで捕捉してログだけ出す。
+                console.error('goal-gifts overlay render failed', error);
+            }
 
             if (notify && diff.shouldNotify && diff.feedback.soundEnabled) {
                 playGoalFeedbackTone(diff.feedback.soundKey).catch(() => {});
