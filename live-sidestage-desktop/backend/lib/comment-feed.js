@@ -906,8 +906,6 @@ function buildCommentFeedMessage(type, data, actor) {
             return displayText || '配信ゴールが更新されました。';
         case 'roomMessage':
             return displayText || 'ルームメッセージを受信しました。';
-        case 'captionMessage':
-            return displayText || '字幕メッセージを受信しました。';
         case 'imDelete':
             return displayText || `${displayName} のメッセージが削除されました。`;
         case 'unauthorizedMember':

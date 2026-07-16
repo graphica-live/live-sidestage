@@ -17,9 +17,6 @@ const { Server } = require('socket.io');
 const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
 const { createDbStore } = require('./lib/db/store');
 const { renderContributorsOverlayHtml } = require('../overlays/contributors/render');
-const { WhisperEngine, WHISPER_MODELS } = require('./lib/caption/whisper-engine');
-const { SherpaEngine } = require('./lib/caption/sherpa-engine');
-const { CaptionCorrector } = require('./lib/caption/caption-corrector');
 const tiktokState = require('./lib/tiktok-state');
 const tikTokHelpers = require('./lib/tiktok-helpers');
 const {
@@ -200,9 +197,6 @@ const {
     WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY,
     WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY,
     WIDGET_TAP_LIST_SETTINGS_STATE_KEY,
-    WIDGET_CAPTION_SETTINGS_STATE_KEY,
-    CAPTION_CORRECTION_RULES_STATE_KEY,
-    CAPTION_CORRECTION_MAX_RULES,
     WIDGET_CONTRIBUTORS_FONT_STATE_KEY,
     WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY,
     WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY,
@@ -225,9 +219,6 @@ const {
     WIDGET_PUSH_PULL_FONT_STATE_KEY,
     WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY,
     WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
-    WIDGET_CAPTION_FONT_STATE_KEY,
-    WIDGET_CAPTION_TEXT_STYLE_STATE_KEY,
-    WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY,
     EXPORTABLE_SCOPED_SETTINGS_KEYS,
     EXPORTABLE_GLOBAL_SETTINGS_KEYS,
     EFFECT_SCREEN_COUNT,
@@ -244,8 +235,6 @@ const {
     MAX_GOAL_GIFT_WIDGET_ITEMS,
     DEFAULT_WIDGET_TOP_GIFT_SETTINGS,
     DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS,
-    DEFAULT_WIDGET_CAPTION_SETTINGS,
-    CAPTION_ALLOWED_WHISPER_MODELS,
     ALLOWED_BALLOON_DESIGN_KEYS,
     ALLOWED_LIKE_CONTRIBUTION_FONT_KEYS,
     ALLOWED_LIKE_CONTRIBUTION_TEXT_STYLE_KEYS,
@@ -1418,8 +1407,6 @@ function buildWidgetUrls(req) {
         coinListLoaderUrl: `${loaderOrigin}/overlays/coin-list`,
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
         pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
-        captionOverlayUrl: `${origin}/overlays/caption`,
-        captionLoaderUrl: `${loaderOrigin}/overlays/caption`,
         songBattleOverlayUrl: `${origin}/overlays/song-battle`,
         songBattleLoaderUrl: `${loaderOrigin}/overlays/song-battle`
     };
@@ -2267,13 +2254,6 @@ function setPushPullWidgetTextAppearance(a) {
     return base;
 }
 
-function getCaptionWidgetTextAppearance() {
-    return getPerWidgetTextAppearance(WIDGET_CAPTION_FONT_STATE_KEY, WIDGET_CAPTION_TEXT_STYLE_STATE_KEY, WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY);
-}
-function setCaptionWidgetTextAppearance(a) {
-    return setPerWidgetTextAppearance(WIDGET_CAPTION_FONT_STATE_KEY, WIDGET_CAPTION_TEXT_STYLE_STATE_KEY, WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY, a);
-}
-
 function getGoalGiftsWidgetTextAppearance() {
     return getPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, normalizeGoalGiftFontKey);
 }
@@ -2744,462 +2724,6 @@ function setWidgetCoinListSettings(settings) {
     setScopedStateValue(WIDGET_COIN_LIST_SETTINGS_STATE_KEY, JSON.stringify(normalized));
     return normalized;
 }
-
-// ---- 字幕ウィジェット ----
-
-const CAPTION_ALLOWED_RECOGNITION_ENGINES = new Set(['whisper-cpp-cuda', 'whisper-cpp-cpu', 'sherpa-parakeet-gpu', 'sherpa-parakeet-cpu']);
-const CAPTION_ALLOWED_ENGINES = new Set(['mymemory', 'helsinki', 'helsinki-cuda', 'ctranslate2', 'xenova', 'google']);
-const CAPTION_ALLOWED_LANGS = new Set(['en', 'zh', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'th', 'vi', 'id', 'ar']);
-const CAPTION_ALLOWED_BG = new Set(['transparent', 'semi']);
-
-function normalizeWidgetCaptionSettings(raw) {
-    let parsed = raw;
-    if (typeof raw === 'string') {
-        try { parsed = JSON.parse(raw); } catch { parsed = {}; }
-    }
-    const s = parsed || {};
-    const rawPythonPath = typeof s.pythonPath === 'string' ? s.pythonPath.trim() : '';
-    return {
-        recognitionEngine: CAPTION_ALLOWED_RECOGNITION_ENGINES.has(s.recognitionEngine) ? s.recognitionEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.recognitionEngine,
-        whisperModel: CAPTION_ALLOWED_WHISPER_MODELS.has(s.whisperModel) ? s.whisperModel : DEFAULT_WIDGET_CAPTION_SETTINGS.whisperModel,
-        translationEnabled: Boolean(s.translationEnabled),
-        translationEngine: CAPTION_ALLOWED_ENGINES.has(s.translationEngine) ? s.translationEngine : DEFAULT_WIDGET_CAPTION_SETTINGS.translationEngine,
-        targetLang: CAPTION_ALLOWED_LANGS.has(s.targetLang) ? s.targetLang : DEFAULT_WIDGET_CAPTION_SETTINGS.targetLang,
-        fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 16 && s.fontSize <= 200 ? s.fontSize : DEFAULT_WIDGET_CAPTION_SETTINGS.fontSize,
-        charsPerSec: Number.isInteger(s.charsPerSec) && s.charsPerSec >= 1 && s.charsPerSec <= 60 ? s.charsPerSec : DEFAULT_WIDGET_CAPTION_SETTINGS.charsPerSec,
-        segmentDuration: Number.isInteger(s.segmentDuration) && s.segmentDuration >= 2 && s.segmentDuration <= 30 ? s.segmentDuration : DEFAULT_WIDGET_CAPTION_SETTINGS.segmentDuration,
-        maxCharsPerSegment: Number.isInteger(s.maxCharsPerSegment) && s.maxCharsPerSegment >= 5 && s.maxCharsPerSegment <= 100 ? s.maxCharsPerSegment : DEFAULT_WIDGET_CAPTION_SETTINGS.maxCharsPerSegment,
-        showInterim: s.showInterim !== false,
-        bgStyle: CAPTION_ALLOWED_BG.has(s.bgStyle) ? s.bgStyle : DEFAULT_WIDGET_CAPTION_SETTINGS.bgStyle,
-        pythonPath: rawPythonPath.length > 0 && rawPythonPath.length <= 512 ? rawPythonPath : DEFAULT_WIDGET_CAPTION_SETTINGS.pythonPath,
-        vadThreshold: typeof s.vadThreshold === 'number' && s.vadThreshold >= 0 && s.vadThreshold <= 1 ? Math.round(s.vadThreshold * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.vadThreshold,
-        vadMinSpeechMs: Number.isInteger(s.vadMinSpeechMs) && s.vadMinSpeechMs >= 0 && s.vadMinSpeechMs <= 2000 ? s.vadMinSpeechMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadMinSpeechMs,
-        vadPaddingMs: Number.isInteger(s.vadPaddingMs) && s.vadPaddingMs >= 0 && s.vadPaddingMs <= 2000 ? s.vadPaddingMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadPaddingMs,
-        vadSilenceMs: Number.isInteger(s.vadSilenceMs) && s.vadSilenceMs >= 0 && s.vadSilenceMs <= 2000 ? s.vadSilenceMs : DEFAULT_WIDGET_CAPTION_SETTINGS.vadSilenceMs,
-        audioSampleRate: s.audioSampleRate === 48000 ? 48000 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioSampleRate,
-        audioChunkSec: typeof s.audioChunkSec === 'number' && s.audioChunkSec >= 0.05 && s.audioChunkSec <= 1.0 ? Math.round(s.audioChunkSec * 100) / 100 : DEFAULT_WIDGET_CAPTION_SETTINGS.audioChunkSec,
-        deduplicateDevices: s.deduplicateDevices !== false,
-        noiseGateThreshold: typeof s.noiseGateThreshold === 'number' && s.noiseGateThreshold >= 0 && s.noiseGateThreshold <= 1 ? Math.round(s.noiseGateThreshold * 10000) / 10000 : DEFAULT_WIDGET_CAPTION_SETTINGS.noiseGateThreshold,
-        verticalOffset: Number.isInteger(s.verticalOffset) && s.verticalOffset >= 0 && s.verticalOffset <= 1080 ? s.verticalOffset : DEFAULT_WIDGET_CAPTION_SETTINGS.verticalOffset
-    };
-}
-
-function getWidgetCaptionSettings() {
-    return normalizeWidgetCaptionSettings(getScopedStateValue(WIDGET_CAPTION_SETTINGS_STATE_KEY));
-}
-
-function setWidgetCaptionSettings(settings) {
-    const normalized = normalizeWidgetCaptionSettings(settings);
-    setScopedStateValue(WIDGET_CAPTION_SETTINGS_STATE_KEY, JSON.stringify(normalized));
-    return normalized;
-}
-
-function buildCaptionConfig() {
-    return { settings: getWidgetCaptionSettings(), appearance: getCaptionWidgetTextAppearance() };
-}
-
-// ── 字幕補正辞書 ────────────────────────────────────────────────────────────
-
-function normalizeCaptionCorrectionRules(raw) {
-    let arr;
-    try { arr = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { arr = []; }
-    if (!Array.isArray(arr)) return [];
-    return arr.slice(0, CAPTION_CORRECTION_MAX_RULES).filter(r =>
-        r && typeof r.from === 'string' && r.from.trim() &&
-        r.from.length <= 200 && typeof r.to === 'string' && r.to.length <= 200
-    ).map(r => ({
-        from: r.from.trim(),
-        to: r.to,
-        useRegex: Boolean(r.useRegex),
-        flags: typeof r.flags === 'string' && /^[gimsuy]*$/.test(r.flags) ? r.flags : 'g',
-    }));
-}
-
-function getCaptionCorrectionRules() {
-    return normalizeCaptionCorrectionRules(getScopedStateValue(CAPTION_CORRECTION_RULES_STATE_KEY));
-}
-
-function setCaptionCorrectionRules(rules) {
-    const normalized = normalizeCaptionCorrectionRules(rules);
-    setScopedStateValue(CAPTION_CORRECTION_RULES_STATE_KEY, JSON.stringify(normalized));
-    captionCorrector.setRules(normalized);
-    return normalized;
-}
-
-// MyMemory 翻訳（無料API、登録不要）
-async function translateWithMyMemory(text, srcLang, tgtLang) {
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${srcLang}|${tgtLang}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    const data = await resp.json();
-    if (data.responseStatus === 200) {
-        return data.responseData?.translatedText || null;
-    }
-    return null;
-}
-
-// ── Python翻訳エンジン共通サブプロセス管理 ──────────────────────────────────
-const PY_ENGINE_CONFIG = {
-    'helsinki':      { args: ['--backend', 'transformers', '--device', 'auto'], check: 'import transformers, sentencepiece, torch', pkgs: ['transformers', 'sentencepiece', 'sacremoses', 'torch'] },
-    'helsinki-cuda': { args: ['--backend', 'transformers', '--device', 'cuda'], check: 'import transformers, sentencepiece, torch', pkgs: ['transformers', 'sentencepiece', 'sacremoses', 'torch'] },
-    'ctranslate2':   { args: ['--backend', 'ctranslate2'],                      check: 'import ctranslate2, sentencepiece',          pkgs: ['ctranslate2', 'transformers', 'sentencepiece'] },
-};
-
-const _pyState = Object.fromEntries(
-    Object.keys(PY_ENGINE_CONFIG).map(k => [k, { proc: null, ready: false, callbacks: new Map(), buf: '', ensurePromise: null }])
-);
-
-function ensurePyEngine(engineKey) {
-    const s = _pyState[engineKey];
-    if (s.proc && !s.proc.killed && s.ready) return Promise.resolve();
-    if (s.ensurePromise) return s.ensurePromise;
-    s.ensurePromise = _doEnsurePyEngine(engineKey).finally(() => { s.ensurePromise = null; });
-    return s.ensurePromise;
-}
-
-async function _doEnsurePyEngine(engineKey) {
-    const s = _pyState[engineKey];
-    const cfg = PY_ENGINE_CONFIG[engineKey];
-    s.ready = false;
-    s.callbacks.clear();
-    s.buf = '';
-
-    const settings = getWidgetCaptionSettings();
-    const py = settings.pythonPath || 'python';
-
-    const pkgsOk = await new Promise(resolve => {
-        const c = spawn(py, ['-c', cfg.check], { stdio: 'ignore', shell: false });
-        c.on('close', code => resolve(code === 0));
-        c.on('error', () => resolve(false));
-    });
-    if (!pkgsOk) {
-        io.emit('widgets:caption:status', { message: `${engineKey}: パッケージインストール中 (初回のみ)...` });
-        await new Promise((resolve, reject) => {
-            const inst = spawn(py, ['-m', 'pip', 'install', ...cfg.pkgs], { stdio: ['ignore', 'pipe', 'pipe'] });
-            inst.stdout.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
-            inst.stderr.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
-            inst.on('close', code => code === 0 ? resolve() : reject(new Error(`pip install exit ${code}`)));
-            inst.on('error', reject);
-        });
-    }
-
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-        const readyTimer = setTimeout(() => settle(reject, new Error(`${engineKey} ready timeout`)), 30000);
-
-        const scriptPath = path.join(PROJECT_ROOT, 'caption_translate.py');
-        s.proc = spawn(py, [scriptPath, ...cfg.args], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-        s.proc.stdout.on('data', (chunk) => {
-            s.buf += chunk.toString();
-            const lines = s.buf.split('\n');
-            s.buf = lines.pop();
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const msg = JSON.parse(line);
-                    if (msg.type === 'ready') {
-                        s.ready = true;
-                        clearTimeout(readyTimer);
-                        settle(resolve);
-                        io.emit('widgets:caption:status', { message: `${engineKey} 準備完了` });
-                        continue;
-                    }
-                    if (msg.type === 'status') { io.emit('widgets:caption:status', { message: msg.message }); continue; }
-                    if (msg.type === 'error')  { io.emit('widgets:caption:status', { message: `${engineKey} エラー: ${msg.message}`, error: true }); continue; }
-                    if (msg.id && s.callbacks.has(msg.id)) {
-                        const { resolve: res, reject: rej } = s.callbacks.get(msg.id);
-                        s.callbacks.delete(msg.id);
-                        msg.error ? rej(new Error(msg.error)) : res(msg.text || '');
-                    }
-                } catch {}
-            }
-        });
-
-        s.proc.stderr.on('data', (d) => console.error(`[${engineKey}]`, d.toString().trim()));
-        s.proc.on('error', (e) => { clearTimeout(readyTimer); s.proc = null; s.ready = false; settle(reject, e); });
-        s.proc.on('exit', (code) => { clearTimeout(readyTimer); s.proc = null; s.ready = false; settle(reject, new Error(`${engineKey} exit ${code}`)); });
-    });
-}
-
-async function translateWithPyEngine(text, srcLang, tgtLang, engineKey) {
-    await ensurePyEngine(engineKey);
-    const s = _pyState[engineKey];
-    return new Promise((resolve, reject) => {
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => {
-            s.callbacks.delete(id);
-            reject(new Error('translation timeout'));
-        }, 600000);
-        s.callbacks.set(id, {
-            resolve: (t) => { clearTimeout(timer); resolve(t); },
-            reject: (e) => { clearTimeout(timer); reject(e); }
-        });
-        try {
-            s.proc.stdin.write(JSON.stringify({ id, text, src: srcLang, tgt: tgtLang }) + '\n');
-        } catch (e) {
-            s.callbacks.delete(id);
-            clearTimeout(timer);
-            reject(e);
-        }
-    });
-}
-
-// ── Xenova Transformers.js（ローカル・Python不要） ───────────────────────────
-let xenovaCache = {};
-
-async function translateWithXenova(text, srcLang, tgtLang) {
-    const key = `${srcLang}-${tgtLang}`;
-    if (!xenovaCache[key]) {
-        let lib;
-        try {
-            lib = await import('@huggingface/transformers');
-        } catch {
-            io.emit('widgets:caption:status', { message: '@huggingface/transformers インストール中...' });
-            await new Promise((resolve, reject) => {
-                const proc = spawn('npm', ['install', '@huggingface/transformers', 'onnxruntime-node'], { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
-                proc.stdout.on('data', d => io.emit('widgets:caption:status', { message: d.toString().trim().slice(0, 120) }));
-                proc.on('close', code => code === 0 ? resolve() : reject(new Error(`npm install exit ${code}`)));
-                proc.on('error', reject);
-            });
-            lib = await import('@huggingface/transformers');
-        }
-        const modelId = `Xenova/opus-mt-${srcLang}-${tgtLang}`;
-        io.emit('widgets:caption:status', { message: `Transformers.js モデル読み込み中... (${modelId})` });
-        xenovaCache[key] = await lib.pipeline('translation', modelId, {
-            progress_callback: (info) => {
-                if (info.status === 'downloading' && info.total) {
-                    io.emit('widgets:caption:download-progress', { pct: Math.round(info.loaded / info.total * 100), label: `Xenova (${key})`, received: info.loaded, total: info.total });
-                }
-            },
-        });
-        io.emit('widgets:caption:status', { message: `Transformers.js 準備完了 (${key})` });
-    }
-    const result = await xenovaCache[key](text, { max_new_tokens: 256 });
-    return result?.[0]?.translation_text || null;
-}
-
-// ── Google翻訳（無料・非公式） ──────────────────────────────────────────────
-async function translateWithGoogle(text, srcLang, tgtLang) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${srcLang}&tl=${tgtLang}&dt=t&q=${encodeURIComponent(text)}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    return data?.[0]?.map(s => s?.[0]).filter(Boolean).join('') || null;
-}
-
-async function translateCaption(text, srcLang) {
-    const settings = getWidgetCaptionSettings();
-    if (!settings.translationEnabled || !text) return null;
-    try {
-        if (settings.translationEngine === 'helsinki')      return await translateWithPyEngine(text, srcLang, settings.targetLang, 'helsinki');
-        if (settings.translationEngine === 'helsinki-cuda') return await translateWithPyEngine(text, srcLang, settings.targetLang, 'helsinki-cuda');
-        if (settings.translationEngine === 'ctranslate2')   return await translateWithPyEngine(text, srcLang, settings.targetLang, 'ctranslate2');
-        if (settings.translationEngine === 'xenova')        return await translateWithXenova(text, srcLang, settings.targetLang);
-        if (settings.translationEngine === 'google')   return await translateWithGoogle(text, srcLang, settings.targetLang);
-        return await translateWithMyMemory(text, srcLang, settings.targetLang);
-    } catch (e) {
-        console.error('[Caption] Translation error:', e.message);
-        io.emit('widgets:caption:status', { message: `翻訳エラー (${settings.translationEngine}): ${e.message}`, error: true });
-        return null;
-    }
-}
-
-let _captionBuf = '';
-let _captionBufTimer = null;
-
-function bufferOrEmitCaption(text, isFinal, srcLang) {
-    const s = getWidgetCaptionSettings();
-    if (s.showInterim) {
-        // Interim enabled: emit each segment immediately as-is
-        handleCaptionText(text, isFinal, srcLang);
-        return;
-    }
-    // Interim disabled: accumulate segments, flush after 1.5 s of silence
-    _captionBuf += (_captionBuf ? '　' : '') + text;
-    clearTimeout(_captionBufTimer);
-    _captionBufTimer = setTimeout(() => {
-        const flushed = _captionBuf;
-        _captionBuf = '';
-        if (flushed) handleCaptionText(flushed, true, srcLang);
-    }, 1500);
-}
-
-function handleCaptionText(text, isFinal, srcLang) {
-    const corrected = captionCorrector.apply(text);
-    const settings = getWidgetCaptionSettings();
-    io.emit('widgets:caption:updated', { original: corrected, translated: null, isFinal, settings });
-    if (isFinal && settings.translationEnabled) {
-        translateCaption(corrected, srcLang)
-            .then(t => { if (t) io.emit('widgets:caption:translation', { translated: t }); })
-            .catch(() => {});
-    }
-}
-
-// Parakeet サブプロセス管理
-let parakeetProc = null;
-
-function startParakeetProcess(deviceIndex) {
-    if (parakeetProc && !parakeetProc.killed) return;
-    const settings = getWidgetCaptionSettings();
-    const py = process.env.CAPTION_PYTHON_PATH || settings.pythonPath || 'python';
-    const scriptPath = path.join(PROJECT_ROOT, 'caption_server.py');
-    const args = [scriptPath, '--port', String(FIXED_PORT)];
-    if (typeof deviceIndex === 'number') args.push('--device', String(deviceIndex));
-    parakeetProc = spawn(py, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-
-    let buf = '';
-    let hadError = false;
-    let stderrLines = [];
-
-    parakeetProc.stdout.on('data', (chunk) => {
-        buf += chunk.toString();
-        const lines = buf.split('\n');
-        buf = lines.pop();
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-                const msg = JSON.parse(line);
-                if (msg.type === 'status') io.emit('widgets:caption:status', { message: msg.message, engine: 'parakeet' });
-                else if (msg.type === 'error') {
-                    hadError = true;
-                    io.emit('widgets:caption:status', { message: `エラー: ${msg.message}`, engine: 'parakeet', error: true });
-                }
-            } catch {}
-        }
-    });
-    parakeetProc.stderr.on('data', (d) => {
-        const text = d.toString().trim();
-        console.error('[Parakeet]', text);
-        stderrLines.push(...text.split('\n').filter(Boolean));
-    });
-    // close fires after all I/O is flushed (exit fires before stdout is drained)
-    parakeetProc.on('close', (code) => {
-        parakeetProc = null;
-        if (hadError) return;
-        if (code !== 0 && code !== null) {
-            const useful = stderrLines.find((l) => !l.startsWith('  ') && !l.startsWith('Traceback')) || stderrLines.at(-1) || '';
-            const detail = useful ? `: ${useful.slice(0, 140)}` : ` (code ${code})`;
-            io.emit('widgets:caption:status', { message: `起動失敗${detail}`, engine: 'parakeet', error: true });
-        } else {
-            io.emit('widgets:caption:status', { message: '停止しました', engine: 'parakeet' });
-        }
-    });
-    parakeetProc.on('error', (e) => {
-        parakeetProc = null;
-        io.emit('widgets:caption:status', { message: `起動失敗: ${e.message}`, engine: 'parakeet', error: true });
-    });
-}
-
-function stopParakeetProcess() {
-    if (parakeetProc) { parakeetProc.kill(); parakeetProc = null; }
-}
-
-// ── Node.js ネイティブ ASR エンジン（Whisper-cpp / Sherpa-Parakeet） ──────────
-
-const ASR_DATA_DIR = path.join(USER_DATA_DIRECTORY, 'asr');
-
-const captionCorrector = new CaptionCorrector();
-captionCorrector.setRules(getCaptionCorrectionRules());
-
-let whisperCudaEngine = null;
-let whisperCpuEngine  = null;
-let sherpaGpuEngine   = null;
-let sherpaCpuEngine   = null;
-let activeAsrSocket = null;   // socket that owns the current streaming session
-
-function getWhisperEngine(cpuOnly = false) {
-    const engineId = cpuOnly ? 'whisper-cpp-cpu' : 'whisper-cpp-cuda';
-    if (cpuOnly) {
-        if (!whisperCpuEngine) {
-            whisperCpuEngine = new WhisperEngine(ASR_DATA_DIR, true);
-            whisperCpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
-            whisperCpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
-            whisperCpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-            whisperCpuEngine.on('interim',  text => {
-                const s = getWidgetCaptionSettings();
-                if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
-            });
-            whisperCpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
-        }
-        return whisperCpuEngine;
-    } else {
-        if (!whisperCudaEngine) {
-            whisperCudaEngine = new WhisperEngine(ASR_DATA_DIR, false);
-            whisperCudaEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
-            whisperCudaEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
-            whisperCudaEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-            whisperCudaEngine.on('interim',  text => {
-                const s = getWidgetCaptionSettings();
-                if (s.showInterim) io.emit('widgets:caption:updated', { original: text, translated: null, isFinal: false, settings: s });
-            });
-            whisperCudaEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
-        }
-        return whisperCudaEngine;
-    }
-}
-
-function getSherpaEngine(gpu = true) {
-    const engineId = gpu ? 'sherpa-parakeet-gpu' : 'sherpa-parakeet-cpu';
-    if (gpu) {
-        if (!sherpaGpuEngine) {
-            sherpaGpuEngine = new SherpaEngine(ASR_DATA_DIR, 'directml');
-            sherpaGpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
-            sherpaGpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
-            sherpaGpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-            sherpaGpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
-        }
-        return sherpaGpuEngine;
-    } else {
-        if (!sherpaCpuEngine) {
-            sherpaCpuEngine = new SherpaEngine(ASR_DATA_DIR, 'cpu');
-            sherpaCpuEngine.on('status',   msg  => io.emit('widgets:caption:status', { message: msg, engine: engineId }));
-            sherpaCpuEngine.on('error',    msg  => io.emit('widgets:caption:status', { message: `エラー: ${msg}`, engine: engineId, error: true }));
-            sherpaCpuEngine.on('transcript', ({ text, isFinal }) => bufferOrEmitCaption(text, isFinal, 'ja'));
-            sherpaCpuEngine.on('download-progress', p => io.emit('widgets:caption:download-progress', p));
-        }
-        return sherpaCpuEngine;
-    }
-}
-
-async function startNativeAsr(socketId, engine, modelKey) {
-    activeAsrSocket = socketId;
-    try {
-        if (engine === 'whisper-cpp-cuda' || engine === 'whisper-cpp-cpu') {
-            const e = getWhisperEngine(engine === 'whisper-cpp-cpu');
-            await e.init(modelKey || 'medium');
-            e.start();
-            io.emit('widgets:caption:status', { message: '認識中...', engine });
-        } else if (engine === 'sherpa-parakeet-gpu' || engine === 'sherpa-parakeet-cpu') {
-            const e = getSherpaEngine(engine === 'sherpa-parakeet-gpu');
-            await e.init();
-            e.start();
-            io.emit('widgets:caption:status', { message: '認識中...', engine });
-        }
-    } catch (err) {
-        activeAsrSocket = null;
-        io.emit('widgets:caption:status', { message: `起動失敗: ${err.message}`, engine, error: true });
-    }
-}
-
-function stopNativeAsr(engine) {
-    activeAsrSocket = null;
-    if (engine === 'whisper-cpp-cuda' && whisperCudaEngine) whisperCudaEngine.stop();
-    else if (engine === 'whisper-cpp-cpu' && whisperCpuEngine) whisperCpuEngine.stop();
-    else if (engine === 'sherpa-parakeet-gpu' && sherpaGpuEngine) sherpaGpuEngine.stop();
-    else if (engine === 'sherpa-parakeet-cpu' && sherpaCpuEngine) sherpaCpuEngine.stop();
-    // フロントエンドがすでに「停止中」を表示するので、ここからは送信しない
-}
-
-function feedAudioToEngine(socketId, engine, buf) {
-    if (socketId !== activeAsrSocket) return;
-    if (engine === 'whisper-cpp-cuda' && whisperCudaEngine) whisperCudaEngine.feedAudio(buf);
-    else if (engine === 'whisper-cpp-cpu' && whisperCpuEngine) whisperCpuEngine.feedAudio(buf);
-    else if (engine === 'sherpa-parakeet-gpu' && sherpaGpuEngine) sherpaGpuEngine.feedAudio(buf);
-    else if (engine === 'sherpa-parakeet-cpu' && sherpaCpuEngine) sherpaCpuEngine.feedAudio(buf);
-}
-
-// ---- /字幕ウィジェット ----
 
 function buildTapListUserMap() {
     const nicknames = getLikeContributionUserNicknames();
@@ -5316,14 +4840,7 @@ require('./lib/socket-handlers')({
     setCustomJarLastPositions,
     buildCustomJarPayload,
     buildPushPullSnapshot,
-    buildCaptionConfig,
     getPendingUpdateInfo,
-    bufferOrEmitCaption,
-    startParakeetProcess,
-    stopParakeetProcess,
-    startNativeAsr,
-    stopNativeAsr,
-    feedAudioToEngine,
 });
 
 
@@ -5387,7 +4904,7 @@ require('./lib/routes/widgets/config')({
     getWidgetLikeContributionSettings, getLikeContributionWidgetTextAppearance,
     getWidgetTapListSettings, getTapListWidgetTextAppearance,
     getWidgetCoinListSettings, getCoinListWidgetTextAppearance,
-    getGiftJarWidgetTextAppearance, getPushPullWidgetTextAppearance, getCaptionWidgetTextAppearance,
+    getGiftJarWidgetTextAppearance, getPushPullWidgetTextAppearance,
     getGoalGiftsWidgetTextAppearance, getGoalGiftWidgetNoteFontSize,
     getGoalGiftWidgetAchievementBadgeSize, getGoalGiftWidgetAchievementBadgeStyle,
     buildGoalGiftProgressSnapshot,
@@ -5422,16 +4939,6 @@ require('./lib/routes/widgets/coin-list')({
     app, io,
     buildCoinListPayload,
     setWidgetCoinListSettings, setCoinListWidgetTextAppearance,
-});
-
-require('./lib/routes/widgets/caption')({
-    app, io,
-    WhisperEngine, SherpaEngine, ASR_DATA_DIR,
-    buildCaptionConfig,
-    setWidgetCaptionSettings, setCaptionWidgetTextAppearance, getCaptionWidgetTextAppearance,
-    getCaptionCorrectionRules, setCaptionCorrectionRules,
-    handleCaptionText, isLoopbackRequest,
-    getWhisperEngine, getSherpaEngine,
 });
 
 require('./lib/routes/widgets/gift-jar')({

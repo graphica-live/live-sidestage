@@ -52,7 +52,6 @@ app.get('/api/state', (req, res) => res.json({ connected: false, streamTitle: ''
 app.get('/api/comments/config', (req, res) => res.json({ settings: MOCK_COMMENT_SETTINGS }));
 app.get('/api/comments/read-aloud-voices', (req, res) => res.json({ voices: [] }));
 app.get('/api/effects/global-pause', (req, res) => res.json({ paused: false }));
-app.get('/api/widgets/caption/config', (req, res) => res.json({ settings: {} }));
 app.get('/api/users/recent', (req, res) => res.json({ users: [] }));
 
 // ── backend/public を静的配信 ───────────────────────────────────────────────

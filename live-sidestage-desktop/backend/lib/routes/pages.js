@@ -172,13 +172,6 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/coin-list');
     });
 
-    app.get(['/overlays/caption', '/overlays/widgets/caption'], (req, res) => {
-        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'caption.html'));
-    });
-    app.get(['/overlays/caption/index.html', '/overlays/widgets/caption/index.html'], (req, res) => {
-        return res.redirect('/overlays/caption');
-    });
-
     app.get(['/overlays/goal-gifts', '/overlays/widgets/goal-gifts'], (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'goal-gifts.html'));

@@ -362,7 +362,6 @@ async function fetchGiftCatalog(broadcasterId) {
 | `streamEnd` | 配信終了 |
 | `goalUpdate` | ゴール更新 |
 | `roomMessage` | ルームメッセージ |
-| `captionMessage` | 字幕 |
 | `pollMessage` | 投票 |
 | `rankUpdate` | ランキング更新 |
 | `disconnected` | 切断（ライブラリ発火） |

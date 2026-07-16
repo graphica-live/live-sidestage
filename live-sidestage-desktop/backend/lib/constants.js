@@ -38,9 +38,6 @@ const WIDGET_LIKE_CONTRIBUTION_USER_TOTALS_STATE_KEY = 'widget_like_contribution
 const WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY = 'widget_like_contribution_user_nicknames';
 const WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY = 'widget_like_contribution_user_avatars';
 const WIDGET_TAP_LIST_SETTINGS_STATE_KEY = 'widget_tap_list_settings';
-const WIDGET_CAPTION_SETTINGS_STATE_KEY = 'widget_caption_settings';
-const CAPTION_CORRECTION_RULES_STATE_KEY = 'caption_correction_rules';
-const CAPTION_CORRECTION_MAX_RULES = 200;
 const WIDGET_CONTRIBUTORS_FONT_STATE_KEY = 'widget_contributors_font';
 const WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY = 'widget_contributors_text_style';
 const WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY = 'widget_contributors_stroke_width';
@@ -63,9 +60,6 @@ const WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY = 'widget_gift_jar_stroke_width';
 const WIDGET_PUSH_PULL_FONT_STATE_KEY = 'widget_push_pull_font';
 const WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY = 'widget_push_pull_text_style';
 const WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY = 'widget_push_pull_stroke_width';
-const WIDGET_CAPTION_FONT_STATE_KEY = 'widget_caption_font';
-const WIDGET_CAPTION_TEXT_STYLE_STATE_KEY = 'widget_caption_text_style';
-const WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY = 'widget_caption_stroke_width';
 
 const EXPORTABLE_SCOPED_SETTINGS_KEYS = [
     CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,
@@ -89,8 +83,6 @@ const EXPORTABLE_SCOPED_SETTINGS_KEYS = [
     WIDGET_GOAL_GIFTS_STATE_KEY,
     WIDGET_TAP_LIST_SETTINGS_STATE_KEY,
     WIDGET_COIN_LIST_SETTINGS_STATE_KEY,
-    WIDGET_CAPTION_SETTINGS_STATE_KEY,
-    CAPTION_CORRECTION_RULES_STATE_KEY,
     COMMENT_SETTINGS_STATE_KEY,
     COMMENT_OBSERVED_EMOTES_STATE_KEY,
     COMMENT_OBSERVED_EMOJIS_STATE_KEY,
@@ -117,9 +109,6 @@ const EXPORTABLE_SCOPED_SETTINGS_KEYS = [
     WIDGET_PUSH_PULL_FONT_STATE_KEY,
     WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY,
     WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
-    WIDGET_CAPTION_FONT_STATE_KEY,
-    WIDGET_CAPTION_TEXT_STYLE_STATE_KEY,
-    WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY,
 ];
 
 const EXPORTABLE_GLOBAL_SETTINGS_KEYS = [
@@ -154,30 +143,6 @@ const DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS = {
     countFontSize: 42,
     nameFontSize: 34
 };
-const DEFAULT_WIDGET_CAPTION_SETTINGS = {
-    recognitionEngine: 'sherpa-parakeet-gpu',
-    whisperModel: 'medium',
-    translationEnabled: false,
-    translationEngine: 'google',
-    targetLang: 'en',
-    fontSize: 52,
-    charsPerSec: 12,
-    segmentDuration: 6,
-    maxCharsPerSegment: 20,
-    showInterim: true,
-    bgStyle: 'semi',
-    pythonPath: 'python',
-    vadThreshold: 0.55,
-    vadMinSpeechMs: 200,
-    vadPaddingMs: 300,
-    vadSilenceMs: 150,
-    audioSampleRate: 44100,
-    audioChunkSec: 0.15,
-    deduplicateDevices: true,
-    noiseGateThreshold: 0.033,
-    verticalOffset: 120
-};
-const CAPTION_ALLOWED_WHISPER_MODELS = new Set(['tiny', 'base', 'small', 'medium', 'large', 'large-v3']);
 // 新デザイン追加時は db/widgets.html の select#like-contribution-balloon-design と
 // widgets/like-contribution.html の BALLOON_DESIGN_KEYS も同時に更新すること。
 const ALLOWED_BALLOON_DESIGN_KEYS = new Set(['dark-glass', 'horizontal-pill', 'big-number', 'side-accent', 'compact-banner', 'stacked-center', 'wa-stamp', 'singer-stage', 'dance-floor', 'kitchen-chalk', 'paw-pop']);
@@ -371,7 +336,6 @@ const COMMENT_FEED_EVENT_DEFINITIONS = [
     { type: 'streamEnd', label: '配信終了', system: true },
     { type: 'goalUpdate', label: 'ゴール更新', system: true },
     { type: 'roomMessage', label: 'ルームメッセージ', system: true },
-    { type: 'captionMessage', label: '字幕', system: true },
     { type: 'imDelete', label: '削除', system: true },
     { type: 'unauthorizedMember', label: '制限メンバー', system: true },
     { type: 'inRoomBanner', label: 'ルームバナー', system: true },
@@ -425,9 +389,6 @@ module.exports = {
     WIDGET_LIKE_CONTRIBUTION_USER_NICKNAMES_STATE_KEY,
     WIDGET_LIKE_CONTRIBUTION_USER_AVATARS_STATE_KEY,
     WIDGET_TAP_LIST_SETTINGS_STATE_KEY,
-    WIDGET_CAPTION_SETTINGS_STATE_KEY,
-    CAPTION_CORRECTION_RULES_STATE_KEY,
-    CAPTION_CORRECTION_MAX_RULES,
     WIDGET_CONTRIBUTORS_FONT_STATE_KEY,
     WIDGET_CONTRIBUTORS_TEXT_STYLE_STATE_KEY,
     WIDGET_CONTRIBUTORS_STROKE_WIDTH_STATE_KEY,
@@ -450,9 +411,6 @@ module.exports = {
     WIDGET_PUSH_PULL_FONT_STATE_KEY,
     WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY,
     WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
-    WIDGET_CAPTION_FONT_STATE_KEY,
-    WIDGET_CAPTION_TEXT_STYLE_STATE_KEY,
-    WIDGET_CAPTION_STROKE_WIDTH_STATE_KEY,
     EXPORTABLE_SCOPED_SETTINGS_KEYS,
     EXPORTABLE_GLOBAL_SETTINGS_KEYS,
     EFFECT_SCREEN_COUNT,
@@ -469,8 +427,6 @@ module.exports = {
     MAX_GOAL_GIFT_WIDGET_ITEMS,
     DEFAULT_WIDGET_TOP_GIFT_SETTINGS,
     DEFAULT_WIDGET_LIKE_CONTRIBUTION_SETTINGS,
-    DEFAULT_WIDGET_CAPTION_SETTINGS,
-    CAPTION_ALLOWED_WHISPER_MODELS,
     ALLOWED_BALLOON_DESIGN_KEYS,
     ALLOWED_LIKE_CONTRIBUTION_FONT_KEYS,
     ALLOWED_LIKE_CONTRIBUTION_TEXT_STYLE_KEYS,

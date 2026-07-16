@@ -17,7 +17,6 @@ const WIDGETS = [
     { name: 'top-gift',          file: 'widgets/top-gift.html',          width: 400,  height: 300 },
     { name: 'like-contribution', file: 'widgets/like-contribution.html', width: 500,  height: 400 },
     { name: 'goal-gifts',        file: 'widgets/goal-gifts.html',        width: 500,  height: 200 },
-    { name: 'caption',           file: 'widgets/caption.html',           width: 800,  height: 120 },
     { name: 'push-pull',         file: 'widgets/push-pull.html',         width: 500,  height: 200 },
     { name: 'tap-list',          file: 'widgets/tap-list.html',          width: 400,  height: 500 },
     { name: 'gift-jar',          file: 'widgets/gift-jar.html',          width: 300,  height: 400 },
