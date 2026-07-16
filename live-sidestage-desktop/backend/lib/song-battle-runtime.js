@@ -302,6 +302,14 @@ module.exports = function createSongBattleRuntime({
 
             if (state.cancelRequested) {
                 state.cancelRequested = false;
+                state.songA = null;
+                state.songB = null;
+                state.giftImageA = '';
+                state.giftImageB = '';
+                state.tallyA = 0;
+                state.tallyB = 0;
+                state.voterSide = new Map();
+                state.voters = new Map();
                 io.emit('song-battle:round-cancelled', getRoundSnapshot());
                 return getRoundSnapshot();
             }
@@ -342,9 +350,9 @@ module.exports = function createSongBattleRuntime({
 
         clearTimers();
         const settings = getSettings();
+        state.status = 'idle';
 
         if (cancelled) {
-            state.status = 'idle';
             io.emit('song-battle:round-cancelled', getRoundSnapshot());
             return getRoundSnapshot();
         }
@@ -363,7 +371,6 @@ module.exports = function createSongBattleRuntime({
             console.warn('⚠️ 勝者曲のVirtualDJロードに失敗しました:', error.message);
         }
 
-        state.status = 'idle';
         io.emit('song-battle:round-end', {
             ...getRoundSnapshot(),
             winnerSide

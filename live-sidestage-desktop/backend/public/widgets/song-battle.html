@@ -442,6 +442,7 @@
         let countdownTimer = null;
         let hideTimer = null;
         let zoomTimer = null;
+        let lastRenderedStartedAt = 0;
 
         function clearHideTimer() {
             if (hideTimer) {
@@ -662,7 +663,11 @@
             }
 
             clearHideTimer();
-            const wasVisible = battleEl.classList.contains('is-visible');
+            clearZoomTimer();
+            resetRevealState();
+
+            const isNewRound = round.startedAt !== lastRenderedStartedAt;
+            lastRenderedStartedAt = round.startedAt;
 
             sideAEl.classList.remove('is-winner', 'is-loser');
             sideBEl.classList.remove('is-winner', 'is-loser');
@@ -681,7 +686,7 @@
             renderVotes(round);
             startCountdown(round.endsAt);
 
-            if (!wasVisible) playEntranceAnimation();
+            if (isNewRound) playEntranceAnimation();
         }
 
         function showSample() {
