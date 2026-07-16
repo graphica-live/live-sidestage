@@ -646,8 +646,11 @@
             white-space: nowrap;
         }
 
+        /* vertical-rl 内では flex の主軸(row/column)がインライン軸/ブロック軸に
+           対応するため、物理的な上下方向へ積みたい場合は "row"(インライン軸=縦)を
+           指定する。"column" にすると横並びになってしまう。 */
         .widget-shell.layout-column .goal-heading-track {
-            flex-direction: column;
+            flex-direction: row;
             white-space: normal;
         }
 
@@ -659,12 +662,12 @@
            持たせることで、複製2要素分の幅がちょうどコピー1個分の周期になる。
            gap で間隔を取ると -50% 移動が周期のちょうど半分にならずループが割れる。 */
         .goal-heading.is-scrolling .goal-heading-item {
-            margin-right: 3em;
+            margin-right: var(--heading-gap, 3em);
         }
 
         .widget-shell.layout-column .goal-heading.is-scrolling .goal-heading-item {
             margin-right: 0;
-            margin-bottom: 3em;
+            margin-bottom: var(--heading-gap, 3em);
         }
 
         .goal-heading.is-scrolling .goal-heading-track {
@@ -1460,7 +1463,6 @@
                     ? Math.max(10, Math.round(baseHeadingFontSize * (14 / 32)))
                     : (window.innerWidth <= 640 ? Math.max(12, Math.round(baseHeadingFontSize * (20 / 32))) : baseHeadingFontSize);
                 const headingLayoutHeight = Math.round(headingFontSize * 1.15);
-                const headingDuration = Math.max(6, headingText.length * 0.4);
                 const headingSvg = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-a' });
                 goalHeading.classList.add('has-text');
                 goalHeading.classList.toggle('is-scrolling', headingScrollEnabled);
@@ -1468,19 +1470,35 @@
                 goalHeading.style.height = '';
 
                 if (headingScrollEnabled) {
+                    // スクロール領域の幅/高さは背景パネル(半透過グレー)と揃える。
+                    const overlayRect = overlay.getBoundingClientRect();
+                    const windowSize = layoutMode === 'column'
+                        ? Math.max(60, Math.round(overlayRect.height || 60))
+                        : Math.max(80, Math.round(overlayRect.width || 80));
+
+                    // 折り返しの間隔(gap)を表示窓と同じかそれ以上にする。こうすると
+                    // 1周目が完全に窓を通り抜けて消えてから、間(空白)を挟んで2周目が
+                    // 入ってくる、という一本の流れに見える。gapが窓より狭いと、1周目の
+                    // 末尾と2周目の先頭が同時に窓内に断片として見えてしまい汚く見える。
                     const headingSvg2 = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-b' });
-                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
+                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-gap: ${windowSize}px;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
                     layoutOutlinedSvgText(goalHeading);
 
-                    // スクロール領域の幅/高さは背景パネル(半透過グレー)と揃える。
-                    const track = goalHeading.querySelector('.goal-heading-track');
-                    const overlayRect = overlay.getBoundingClientRect();
                     if (layoutMode === 'column') {
-                        const singleCopyHeight = track ? track.scrollHeight / 2 : 0;
-                        goalHeading.style.height = `${Math.round(overlayRect.height || singleCopyHeight || 60)}px`;
+                        goalHeading.style.height = `${windowSize}px`;
                     } else {
-                        const singleCopyWidth = track ? track.scrollWidth / 2 : 0;
-                        goalHeading.style.width = `${Math.round(overlayRect.width || singleCopyWidth || 80)}px`;
+                        goalHeading.style.width = `${windowSize}px`;
+                    }
+
+                    // 一定の速度(px/秒)で流れるよう、実測した1周期の長さから再生時間を決める。
+                    const track = goalHeading.querySelector('.goal-heading-track');
+                    const periodPx = layoutMode === 'column'
+                        ? (track ? track.scrollHeight / 2 : windowSize)
+                        : (track ? track.scrollWidth / 2 : windowSize);
+                    const scrollSpeedPxPerSec = 90;
+                    const headingDuration = Math.max(4, periodPx / scrollSpeedPxPerSec);
+                    if (track) {
+                        track.style.setProperty('--heading-scroll-duration', `${headingDuration}s`);
                     }
                 } else {
                     goalHeading.innerHTML = `<div class="goal-heading-track"><span class="goal-heading-item">${headingSvg}</span></div>`;
