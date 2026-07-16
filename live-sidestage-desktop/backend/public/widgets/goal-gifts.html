@@ -58,24 +58,42 @@
 
         .overlay {
             display: none;
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            justify-content: center;
             width: min(1680px, calc(100vw - 64px));
-            gap: 24px;
+            gap: 28px;
+            padding: 30px 36px;
+            background: linear-gradient(180deg, rgba(36, 40, 48, 0.46) 0%, rgba(20, 22, 28, 0.52) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 28px;
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.07);
         }
 
         .overlay.is-visible {
-            display: grid;
+            display: flex;
         }
 
         body.preview-card .overlay {
             width: min(240px, calc(100vw - 20px));
-            gap: 6px;
-            justify-items: center;
-            align-content: center;
+            gap: 8px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            align-items: flex-end;
         }
 
         .overlay.is-empty {
-            place-items: center;
+            justify-content: center;
+            align-items: center;
             min-height: calc(100vh - 64px);
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
         }
 
         .overlay-message {
