@@ -23,6 +23,8 @@ module.exports = function registerSocketHandlers({
         emitOverlaySnapshot(socket, displayDayKey);
         socket.emit('admin_day_updated', createAdminDayPayload(displayDayKey));
         socket.emit('admin_comments_updated', createAdminCommentsPayload());
+        // ---- 瓶詰めギフト（非表示中につき処理停止・PC負荷軽減） ----
+        /*
         if (giftJarHistory.length > 0) {
             socket.emit('widgets:gift-jar:history', giftJarHistory);
         }
@@ -39,8 +41,11 @@ module.exports = function registerSocketHandlers({
             }
             socket.broadcast.emit('widgets:gift-jar:positions', data);
         });
+        */
+        // ---- /瓶詰めギフト ----
 
-        // ---- オリジナル瓶詰めギフト ----
+        // ---- オリジナル瓶詰めギフト（非表示中につき処理停止・PC負荷軽減） ----
+        /*
         socket.emit('widgets:custom-jar:config', buildCustomJarPayload());
         if (customJarHistory.length > 0) socket.emit('widgets:custom-jar:history', customJarHistory);
         const customJarLastPositions = getCustomJarLastPositions();
@@ -51,6 +56,7 @@ module.exports = function registerSocketHandlers({
             }
             socket.broadcast.emit('widgets:custom-jar:positions', data);
         });
+        */
         // ---- /オリジナル瓶詰めギフト ----
         socket.on('overlay:join-room', (room) => {
             if (room === 'gift-jar' || room === 'custom-jar') {

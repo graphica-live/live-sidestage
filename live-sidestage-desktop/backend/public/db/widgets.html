@@ -1497,7 +1497,7 @@
                 </article>
                 </div><!-- /jar-pair -->
 
-                <div class="jar-pair">
+                <div class="jar-pair" style="display:none"><!-- 瓶詰め/オリジナル瓶詰めウィジェット非表示 -->
                 <article class="card">
                     <div class="card-head">
                         <div>
@@ -3141,9 +3141,11 @@
         }
 
         function refreshGiftJarPreview(options = {}) {
+            return; // 瓶詰めウィジェット非表示中につき処理停止（PC負荷軽減）
             updatePreviewFrame(giftJarPreviewFrame, buildGiftJarPreviewUrl(), options);
         }
         function refreshCustomJarPreview(options = {}) {
+            return; // オリジナル瓶詰めウィジェット非表示中につき処理停止（PC負荷軽減）
             updatePreviewFrame(customJarPreviewFrame, '/overlays/custom-jar?jar=custom&preview=1', options);
         }
 

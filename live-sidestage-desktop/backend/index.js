@@ -4635,6 +4635,7 @@ function pushGiftJarHistoryEntries(payload, deltaRepeat) {
 }
 
 function emitGiftJarFromRawData(rawData, deltaRepeat) {
+    return; // 瓶詰め/オリジナル瓶詰めウィジェット非表示中につき処理停止（PC負荷軽減）
     const payload = {
         giftId: rawData.giftId ? String(rawData.giftId) : '',
         giftName: rawData.giftName || '',
@@ -4655,6 +4656,7 @@ function emitGiftJarFromRawData(rawData, deltaRepeat) {
 }
 
 function emitGiftJarFromNormalized(normalizedEvent, rawData, deltaRepeat) {
+    return; // 瓶詰め/オリジナル瓶詰めウィジェット非表示中につき処理停止（PC負荷軽減）
     const payload = {
         giftId: normalizedEvent.giftId || '',
         giftName: normalizedEvent.giftName || '',
