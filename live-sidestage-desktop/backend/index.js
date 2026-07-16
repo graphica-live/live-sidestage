@@ -190,6 +190,8 @@ const {
     WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_STYLE_STATE_KEY,
     WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY,
+    WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY,
+    WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY,
     WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY,
@@ -255,6 +257,9 @@ const {
     ALLOWED_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLES,
     DEFAULT_GOAL_GIFT_WIDGET_LAYOUT,
     ALLOWED_GOAL_GIFT_WIDGET_LAYOUTS,
+    DEFAULT_GOAL_GIFT_WIDGET_HEADING_TEXT,
+    MAX_GOAL_GIFT_WIDGET_HEADING_TEXT_LENGTH,
+    DEFAULT_GOAL_GIFT_WIDGET_HEADING_SCROLL,
     GOAL_GIFT_SYSTEM_IDS,
     GOAL_GIFT_SYSTEM_LABELS,
     GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS,
@@ -3089,6 +3094,34 @@ function setGoalGiftWidgetLayout(value) {
     return normalizedValue;
 }
 
+function normalizeGoalGiftHeadingText(value) {
+    return normalizeEffectText(value, MAX_GOAL_GIFT_WIDGET_HEADING_TEXT_LENGTH) || DEFAULT_GOAL_GIFT_WIDGET_HEADING_TEXT;
+}
+
+function getGoalGiftWidgetHeadingText() {
+    return normalizeGoalGiftHeadingText(getScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY));
+}
+
+function setGoalGiftWidgetHeadingText(value) {
+    const normalizedValue = normalizeGoalGiftHeadingText(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
+function normalizeGoalGiftHeadingScroll(value) {
+    return normalizeBooleanInput(value, DEFAULT_GOAL_GIFT_WIDGET_HEADING_SCROLL);
+}
+
+function getGoalGiftWidgetHeadingScroll() {
+    return normalizeGoalGiftHeadingScroll(getScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY));
+}
+
+function setGoalGiftWidgetHeadingScroll(value) {
+    const normalizedValue = normalizeGoalGiftHeadingScroll(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
 function normalizeGoalGiftWidgetItems(value) {
     let source = value;
 
@@ -3162,7 +3195,9 @@ function buildGoalGiftProgressSnapshot(
     noteFontSize = getGoalGiftWidgetNoteFontSize(),
     achievementBadgeSize = getGoalGiftWidgetAchievementBadgeSize(),
     achievementBadgeStyle = getGoalGiftWidgetAchievementBadgeStyle(),
-    layout = getGoalGiftWidgetLayout()
+    layout = getGoalGiftWidgetLayout(),
+    headingText = getGoalGiftWidgetHeadingText(),
+    headingScroll = getGoalGiftWidgetHeadingScroll()
 ) {
     const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
     const broadcasterId = getBroadcasterId();
@@ -3174,6 +3209,8 @@ function buildGoalGiftProgressSnapshot(
     const normalizedAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(achievementBadgeSize);
     const normalizedAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(achievementBadgeStyle);
     const normalizedLayout = normalizeGoalGiftLayout(layout);
+    const normalizedHeadingText = normalizeGoalGiftHeadingText(headingText);
+    const normalizedHeadingScroll = normalizeGoalGiftHeadingScroll(headingScroll);
 
     if (!broadcasterId) {
         return {
@@ -3186,6 +3223,8 @@ function buildGoalGiftProgressSnapshot(
             achievementBadgeSize: normalizedAchievementBadgeSize,
             achievementBadgeStyle: normalizedAchievementBadgeStyle,
             layout: normalizedLayout,
+            headingText: normalizedHeadingText,
+            headingScroll: normalizedHeadingScroll,
             feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
@@ -3211,6 +3250,8 @@ function buildGoalGiftProgressSnapshot(
         achievementBadgeSize: normalizedAchievementBadgeSize,
         achievementBadgeStyle: normalizedAchievementBadgeStyle,
         layout: normalizedLayout,
+        headingText: normalizedHeadingText,
+        headingScroll: normalizedHeadingScroll,
         feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
@@ -4957,6 +4998,7 @@ require('./lib/routes/widgets/config')({
     getGoalGiftsWidgetTextAppearance, getGoalGiftWidgetNoteFontSize,
     getGoalGiftWidgetAchievementBadgeSize, getGoalGiftWidgetAchievementBadgeStyle,
     getGoalGiftWidgetLayout,
+    getGoalGiftWidgetHeadingText, getGoalGiftWidgetHeadingScroll,
     buildGoalGiftProgressSnapshot,
 });
 
@@ -5034,6 +5076,8 @@ require('./lib/routes/widgets/goal-gifts')({
     getGoalGiftWidgetAchievementBadgeSize, setGoalGiftWidgetAchievementBadgeSize,
     getGoalGiftWidgetAchievementBadgeStyle, setGoalGiftWidgetAchievementBadgeStyle,
     getGoalGiftWidgetLayout, setGoalGiftWidgetLayout,
+    getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
+    getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
     setGoalGiftWidgetItems,
 });
 

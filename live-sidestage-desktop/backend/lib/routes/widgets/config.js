@@ -33,6 +33,8 @@ module.exports = function registerWidgetsConfigRoutes({
     getGoalGiftWidgetAchievementBadgeSize,
     getGoalGiftWidgetAchievementBadgeStyle,
     getGoalGiftWidgetLayout,
+    getGoalGiftWidgetHeadingText,
+    getGoalGiftWidgetHeadingScroll,
     buildGoalGiftProgressSnapshot,
 }) {
     app.get('/api/widgets/config', (req, res) => {
@@ -75,6 +77,8 @@ module.exports = function registerWidgetsConfigRoutes({
             goalGiftAchievementBadgeSize: getGoalGiftWidgetAchievementBadgeSize(),
             goalGiftAchievementBadgeStyle: getGoalGiftWidgetAchievementBadgeStyle(),
             goalGiftLayout: getGoalGiftWidgetLayout(),
+            goalGiftHeadingText: getGoalGiftWidgetHeadingText(),
+            goalGiftHeadingScroll: getGoalGiftWidgetHeadingScroll(),
             goalGiftFeedback: sharedWidgetFeedback,
             goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals
         });

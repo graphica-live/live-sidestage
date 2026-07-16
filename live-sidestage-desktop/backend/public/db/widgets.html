@@ -1801,6 +1801,16 @@
                         </select>
                     </div>
                     <div class="field">
+                        <label for="goal-gift-heading-text">見出し(全ゴール一括URL) <span style="font-weight:400;opacity:0.7;">— 横並び時は上、縦並び時は左に縦書き表示</span></label>
+                        <input type="text" id="goal-gift-heading-text" maxlength="40" placeholder="例: 目標ギフト一覧" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <div class="toggle" style="width:100%;box-sizing:border-box;">
+                            <input type="checkbox" id="goal-gift-heading-scroll">
+                            <label for="goal-gift-heading-scroll" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">見出しスクロール <span style="font-weight:400;opacity:0.7;">— ONで見出しを流し続ける</span></label>
+                        </div>
+                    </div>
+                    <div class="field">
                         <label for="goal-gift-achievement-badge-style">達成バッジ スタイル</label>
                         <select id="goal-gift-achievement-badge-style">
                             <option value="stamp-red">赤スタンプ</option>
@@ -1970,6 +1980,8 @@
         const goalGiftAchievementBadgeSizeInput = document.getElementById('goal-gift-achievement-badge-size');
         const goalGiftAchievementBadgeStyleSelect = document.getElementById('goal-gift-achievement-badge-style');
         const goalGiftLayoutSelect = document.getElementById('goal-gift-layout');
+        const goalGiftHeadingTextInput = document.getElementById('goal-gift-heading-text');
+        const goalGiftHeadingScrollInput = document.getElementById('goal-gift-heading-scroll');
         const sharedSoundKeySelect = document.getElementById('shared-sound-key');
         const sharedEffectKeySelect = document.getElementById('shared-effect-key');
         const testSharedSoundButton = document.getElementById('test-shared-sound-button');
@@ -2104,6 +2116,8 @@
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
             goalGiftLayout: 'row',
+            goalGiftHeadingText: '',
+            goalGiftHeadingScroll: false,
             sharedWidgetFeedback: {
                 soundEnabled: true,
                 effectEnabled: true,
@@ -2799,6 +2813,10 @@
             return ALLOWED_GOAL_GIFT_LAYOUTS.has(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_LAYOUT;
         }
 
+        function normalizeGoalGiftHeadingText(value) {
+            return typeof value === 'string' ? value.trim().slice(0, 40) : '';
+        }
+
         function normalizeContributorsTextStyleKey(value) {
             const normalizedValue = String(value || '').trim().toLowerCase();
             const aliases = {
@@ -2954,6 +2972,8 @@
             goalGiftAchievementBadgeSizeInput.value = String(normalizeGoalGiftAchievementBadgeSize(state.goalGiftAchievementBadgeSize));
             goalGiftAchievementBadgeStyleSelect.value = normalizeGoalGiftAchievementBadgeStyle(state.goalGiftAchievementBadgeStyle);
             goalGiftLayoutSelect.value = normalizeGoalGiftLayout(state.goalGiftLayout);
+            goalGiftHeadingTextInput.value = normalizeGoalGiftHeadingText(state.goalGiftHeadingText);
+            goalGiftHeadingScrollInput.checked = Boolean(state.goalGiftHeadingScroll);
         }
 
         function syncSharedFeedbackControls() {
@@ -4005,6 +4025,8 @@
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
             state.goalGiftLayout = normalizeGoalGiftLayout(payload.goalGiftLayout);
+            state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.goalGiftHeadingText);
+            state.goalGiftHeadingScroll = Boolean(payload.goalGiftHeadingScroll);
             state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.sharedWidgetFeedback || payload.contributorsFeedback || payload.goalGiftFeedback);
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
@@ -4338,6 +4360,8 @@
                         achievementBadgeSize: normalizeGoalGiftAchievementBadgeSize(goalGiftAchievementBadgeSizeInput.value),
                         achievementBadgeStyle: normalizeGoalGiftAchievementBadgeStyle(goalGiftAchievementBadgeStyleSelect.value),
                         layout: normalizeGoalGiftLayout(goalGiftLayoutSelect.value),
+                        headingText: normalizeGoalGiftHeadingText(goalGiftHeadingTextInput.value),
+                        headingScroll: goalGiftHeadingScrollInput.checked,
                         appearance: {
                             fontKey: normalizeGoalGiftFontKey(goalGiftFontSelect.value),
                             textStyleKey: normalizeGoalGiftTextStyleKey(goalGiftTextStyleSelect.value),
@@ -4354,6 +4378,8 @@
                 state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.snapshot?.achievementBadgeSize ?? goalGiftAchievementBadgeSizeInput.value);
                 state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.snapshot?.achievementBadgeStyle ?? goalGiftAchievementBadgeStyleSelect.value);
                 state.goalGiftLayout = normalizeGoalGiftLayout(payload.snapshot?.layout ?? goalGiftLayoutSelect.value);
+                state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.snapshot?.headingText ?? goalGiftHeadingTextInput.value);
+                state.goalGiftHeadingScroll = Boolean(payload.snapshot?.headingScroll ?? goalGiftHeadingScrollInput.checked);
                 state.goalGiftAppearance = payload.appearance || state.goalGiftAppearance;
                 state.goalGiftItems = Array.isArray(payload.items) ? payload.items : [];
                 syncGoalGiftNoteFontSizeControl();
@@ -4427,6 +4453,9 @@
         goalGiftAchievementBadgeSizeInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftAchievementBadgeStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftLayoutSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftHeadingTextInput.addEventListener('input', scheduleGoalGiftAutosave);
+        goalGiftHeadingTextInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftHeadingScrollInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftFontSelect.addEventListener('input', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); });
         goalGiftFontSelect.addEventListener('change', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftTextStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });

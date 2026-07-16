@@ -590,14 +590,99 @@
                 transform: scale(1) rotate(-14deg);
             }
         }
+
+        .widget-shell {
+            display: none;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .widget-shell.is-visible {
+            display: flex;
+        }
+
+        .widget-shell.layout-row {
+            flex-direction: column;
+        }
+
+        .widget-shell.layout-column {
+            flex-direction: row;
+        }
+
+        .widget-shell.is-single .goal-heading {
+            display: none;
+        }
+
+        .goal-heading {
+            display: none;
+            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .goal-heading.has-text {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .widget-shell.layout-column .goal-heading {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        .goal-heading.is-scrolling {
+            overflow: hidden;
+        }
+
+        .widget-shell.layout-row .goal-heading.is-scrolling {
+            width: calc(100vw - 64px);
+        }
+
+        .widget-shell.layout-column .goal-heading.is-scrolling {
+            height: calc(100vh - 64px);
+        }
+
+        .goal-heading-track {
+            display: inline-flex;
+            align-items: center;
+            gap: 3em;
+            white-space: nowrap;
+        }
+
+        .widget-shell.layout-column .goal-heading-track {
+            flex-direction: column;
+            white-space: normal;
+        }
+
+        .goal-heading.is-scrolling .goal-heading-track {
+            animation: goalHeadingScrollX var(--heading-scroll-duration, 10s) linear infinite;
+        }
+
+        .widget-shell.layout-column .goal-heading.is-scrolling .goal-heading-track {
+            animation-name: goalHeadingScrollY;
+        }
+
+        @keyframes goalHeadingScrollX {
+            from { transform: translateX(0); }
+            to { transform: translateX(-50%); }
+        }
+
+        @keyframes goalHeadingScrollY {
+            from { transform: translateY(0); }
+            to { transform: translateY(-50%); }
+        }
     </style>
 </head>
 <body>
-    <section class="overlay" id="overlay"></section>
+    <div class="widget-shell" id="widget-shell">
+        <div class="goal-heading" id="goal-heading"></div>
+        <section class="overlay" id="overlay"></section>
+    </div>
 
     <script>
         const socket = io();
         const overlay = document.getElementById('overlay');
+        const widgetShell = document.getElementById('widget-shell');
+        const goalHeading = document.getElementById('goal-heading');
         const searchParams = new URLSearchParams(window.location.search);
         const requestedSlot = Number.parseInt(searchParams.get('slot') || '', 10);
         const previewMode = searchParams.get('preview') === '1';
@@ -1244,6 +1329,9 @@
                         <div class="overlay-message-copy">対象ギフト未選択</div>
                     </div>
                 `;
+                widgetShell.classList.add('is-visible', 'is-single');
+                goalHeading.classList.remove('has-text', 'is-scrolling');
+                goalHeading.innerHTML = '';
                 lastRenderStructureKey = null;
                 return;
             }
@@ -1251,6 +1339,9 @@
             if (!goals.length) {
                 overlay.classList.remove('is-visible', 'is-empty');
                 overlay.innerHTML = '';
+                widgetShell.classList.remove('is-visible');
+                goalHeading.classList.remove('has-text', 'is-scrolling');
+                goalHeading.innerHTML = '';
                 lastRenderStructureKey = null;
                 lastRenderedCounts = new Map();
                 return;
@@ -1261,7 +1352,9 @@
             if (generation !== renderGeneration) return;
 
             // Structure key: changes when layout/design or goal list changes (triggers full re-render)
-            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|`
+            const headingText = requestedGoal ? '' : String(resolvedSnapshot?.headingText || '').trim();
+            const headingScrollEnabled = Boolean(resolvedSnapshot?.headingScroll);
+            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|`
                 + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
 
             const canIncremental = lastRenderStructureKey === structureKey
@@ -1318,6 +1411,28 @@
             overlay.classList.remove('is-empty');
             overlay.classList.toggle('is-single', Boolean(requestedGoal));
             overlay.classList.toggle('is-column', layoutMode === 'column');
+            widgetShell.classList.add('is-visible');
+            widgetShell.classList.toggle('is-single', Boolean(requestedGoal));
+            widgetShell.classList.toggle('layout-column', layoutMode === 'column');
+            widgetShell.classList.toggle('layout-row', layoutMode !== 'column');
+            if (headingText) {
+                const headingFontSize = previewCardMode ? 14 : (window.innerWidth <= 640 ? 20 : 32);
+                const headingLayoutHeight = previewCardMode ? 16 : (window.innerWidth <= 640 ? 22 : 36);
+                const headingDuration = Math.max(6, headingText.length * 0.4);
+                const headingSvg = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-a' });
+                goalHeading.classList.add('has-text');
+                goalHeading.classList.toggle('is-scrolling', headingScrollEnabled);
+                if (headingScrollEnabled) {
+                    const headingSvg2 = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-b' });
+                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;">${headingSvg}${headingSvg2}</div>`;
+                } else {
+                    goalHeading.innerHTML = `<div class="goal-heading-track">${headingSvg}</div>`;
+                }
+                layoutOutlinedSvgText(goalHeading);
+            } else {
+                goalHeading.classList.remove('has-text', 'is-scrolling');
+                goalHeading.innerHTML = '';
+            }
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
                 return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
