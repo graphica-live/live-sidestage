@@ -1811,6 +1811,13 @@
                         </div>
                     </div>
                     <div class="field">
+                        <label for="goal-gift-heading-font-size">見出し文字サイズ</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-heading-font-size" min="12" max="160" step="1" value="32" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                    <div class="field">
                         <label for="goal-gift-achievement-badge-style">達成バッジ スタイル</label>
                         <select id="goal-gift-achievement-badge-style">
                             <option value="stamp-red">赤スタンプ</option>
@@ -1982,6 +1989,7 @@
         const goalGiftLayoutSelect = document.getElementById('goal-gift-layout');
         const goalGiftHeadingTextInput = document.getElementById('goal-gift-heading-text');
         const goalGiftHeadingScrollInput = document.getElementById('goal-gift-heading-scroll');
+        const goalGiftHeadingFontSizeInput = document.getElementById('goal-gift-heading-font-size');
         const sharedSoundKeySelect = document.getElementById('shared-sound-key');
         const sharedEffectKeySelect = document.getElementById('shared-effect-key');
         const testSharedSoundButton = document.getElementById('test-shared-sound-button');
@@ -2118,6 +2126,7 @@
             goalGiftLayout: 'row',
             goalGiftHeadingText: '',
             goalGiftHeadingScroll: false,
+            goalGiftHeadingFontSize: 32,
             sharedWidgetFeedback: {
                 soundEnabled: true,
                 effectEnabled: true,
@@ -2817,6 +2826,15 @@
             return typeof value === 'string' ? value.trim().slice(0, 40) : '';
         }
 
+        function normalizeGoalGiftHeadingFontSize(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 12) {
+                return 32;
+            }
+
+            return Math.min(parsed, 160);
+        }
+
         function normalizeContributorsTextStyleKey(value) {
             const normalizedValue = String(value || '').trim().toLowerCase();
             const aliases = {
@@ -2974,6 +2992,7 @@
             goalGiftLayoutSelect.value = normalizeGoalGiftLayout(state.goalGiftLayout);
             goalGiftHeadingTextInput.value = normalizeGoalGiftHeadingText(state.goalGiftHeadingText);
             goalGiftHeadingScrollInput.checked = Boolean(state.goalGiftHeadingScroll);
+            goalGiftHeadingFontSizeInput.value = String(normalizeGoalGiftHeadingFontSize(state.goalGiftHeadingFontSize));
         }
 
         function syncSharedFeedbackControls() {
@@ -4027,6 +4046,7 @@
             state.goalGiftLayout = normalizeGoalGiftLayout(payload.goalGiftLayout);
             state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.goalGiftHeadingText);
             state.goalGiftHeadingScroll = Boolean(payload.goalGiftHeadingScroll);
+            state.goalGiftHeadingFontSize = normalizeGoalGiftHeadingFontSize(payload.goalGiftHeadingFontSize);
             state.sharedWidgetFeedback = normalizeFeedbackSettings(payload.sharedWidgetFeedback || payload.contributorsFeedback || payload.goalGiftFeedback);
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
@@ -4362,6 +4382,7 @@
                         layout: normalizeGoalGiftLayout(goalGiftLayoutSelect.value),
                         headingText: normalizeGoalGiftHeadingText(goalGiftHeadingTextInput.value),
                         headingScroll: goalGiftHeadingScrollInput.checked,
+                        headingFontSize: normalizeGoalGiftHeadingFontSize(goalGiftHeadingFontSizeInput.value),
                         appearance: {
                             fontKey: normalizeGoalGiftFontKey(goalGiftFontSelect.value),
                             textStyleKey: normalizeGoalGiftTextStyleKey(goalGiftTextStyleSelect.value),
@@ -4380,6 +4401,7 @@
                 state.goalGiftLayout = normalizeGoalGiftLayout(payload.snapshot?.layout ?? goalGiftLayoutSelect.value);
                 state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.snapshot?.headingText ?? goalGiftHeadingTextInput.value);
                 state.goalGiftHeadingScroll = Boolean(payload.snapshot?.headingScroll ?? goalGiftHeadingScrollInput.checked);
+                state.goalGiftHeadingFontSize = normalizeGoalGiftHeadingFontSize(payload.snapshot?.headingFontSize ?? goalGiftHeadingFontSizeInput.value);
                 state.goalGiftAppearance = payload.appearance || state.goalGiftAppearance;
                 state.goalGiftItems = Array.isArray(payload.items) ? payload.items : [];
                 syncGoalGiftNoteFontSizeControl();
@@ -4456,6 +4478,8 @@
         goalGiftHeadingTextInput.addEventListener('input', scheduleGoalGiftAutosave);
         goalGiftHeadingTextInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftHeadingScrollInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftHeadingFontSizeInput.addEventListener('input', scheduleGoalGiftAutosave);
+        goalGiftHeadingFontSizeInput.addEventListener('change', scheduleGoalGiftAutosave);
         goalGiftFontSelect.addEventListener('input', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); });
         goalGiftFontSelect.addEventListener('change', () => { goalGiftFontSelect.style.fontFamily = getGoalGiftFontFamily(goalGiftFontSelect.value); saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftTextStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });

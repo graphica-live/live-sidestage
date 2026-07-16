@@ -192,6 +192,7 @@ const {
     WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY,
     WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY,
     WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY,
+    WIDGET_GOAL_GIFTS_HEADING_FONT_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY,
@@ -260,6 +261,9 @@ const {
     DEFAULT_GOAL_GIFT_WIDGET_HEADING_TEXT,
     MAX_GOAL_GIFT_WIDGET_HEADING_TEXT_LENGTH,
     DEFAULT_GOAL_GIFT_WIDGET_HEADING_SCROLL,
+    DEFAULT_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE,
+    MIN_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE,
+    MAX_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE,
     GOAL_GIFT_SYSTEM_IDS,
     GOAL_GIFT_SYSTEM_LABELS,
     GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS,
@@ -3122,6 +3126,25 @@ function setGoalGiftWidgetHeadingScroll(value) {
     return normalizedValue;
 }
 
+function normalizeGoalGiftHeadingFontSize(value) {
+    const normalizedValue = normalizeWholeNumber(value);
+    if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE) {
+        return DEFAULT_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE;
+    }
+
+    return Math.min(normalizedValue, MAX_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE);
+}
+
+function getGoalGiftWidgetHeadingFontSize() {
+    return normalizeGoalGiftHeadingFontSize(getScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_FONT_SIZE_STATE_KEY));
+}
+
+function setGoalGiftWidgetHeadingFontSize(value) {
+    const normalizedValue = normalizeGoalGiftHeadingFontSize(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_HEADING_FONT_SIZE_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
 function normalizeGoalGiftWidgetItems(value) {
     let source = value;
 
@@ -3197,7 +3220,8 @@ function buildGoalGiftProgressSnapshot(
     achievementBadgeStyle = getGoalGiftWidgetAchievementBadgeStyle(),
     layout = getGoalGiftWidgetLayout(),
     headingText = getGoalGiftWidgetHeadingText(),
-    headingScroll = getGoalGiftWidgetHeadingScroll()
+    headingScroll = getGoalGiftWidgetHeadingScroll(),
+    headingFontSize = getGoalGiftWidgetHeadingFontSize()
 ) {
     const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
     const broadcasterId = getBroadcasterId();
@@ -3211,6 +3235,7 @@ function buildGoalGiftProgressSnapshot(
     const normalizedLayout = normalizeGoalGiftLayout(layout);
     const normalizedHeadingText = normalizeGoalGiftHeadingText(headingText);
     const normalizedHeadingScroll = normalizeGoalGiftHeadingScroll(headingScroll);
+    const normalizedHeadingFontSize = normalizeGoalGiftHeadingFontSize(headingFontSize);
 
     if (!broadcasterId) {
         return {
@@ -3225,6 +3250,7 @@ function buildGoalGiftProgressSnapshot(
             layout: normalizedLayout,
             headingText: normalizedHeadingText,
             headingScroll: normalizedHeadingScroll,
+            headingFontSize: normalizedHeadingFontSize,
             feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
@@ -3252,6 +3278,7 @@ function buildGoalGiftProgressSnapshot(
         layout: normalizedLayout,
         headingText: normalizedHeadingText,
         headingScroll: normalizedHeadingScroll,
+        headingFontSize: normalizedHeadingFontSize,
         feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
@@ -4999,6 +5026,7 @@ require('./lib/routes/widgets/config')({
     getGoalGiftWidgetAchievementBadgeSize, getGoalGiftWidgetAchievementBadgeStyle,
     getGoalGiftWidgetLayout,
     getGoalGiftWidgetHeadingText, getGoalGiftWidgetHeadingScroll,
+    getGoalGiftWidgetHeadingFontSize,
     buildGoalGiftProgressSnapshot,
 });
 
@@ -5078,6 +5106,7 @@ require('./lib/routes/widgets/goal-gifts')({
     getGoalGiftWidgetLayout, setGoalGiftWidgetLayout,
     getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
     getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
+    getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
     setGoalGiftWidgetItems,
 });
 

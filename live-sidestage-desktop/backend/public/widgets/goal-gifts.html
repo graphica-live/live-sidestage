@@ -644,13 +644,28 @@
         .goal-heading-track {
             display: inline-flex;
             align-items: center;
-            gap: 3em;
             white-space: nowrap;
         }
 
         .widget-shell.layout-column .goal-heading-track {
             flex-direction: column;
             white-space: normal;
+        }
+
+        .goal-heading-item {
+            display: inline-flex;
+        }
+
+        /* シームレスループ用の間隔: track の gap ではなく各コピー自身の余白として
+           持たせることで、複製2要素分の幅がちょうどコピー1個分の周期になる。
+           gap で間隔を取ると -50% 移動が周期のちょうど半分にならずループが割れる。 */
+        .goal-heading.is-scrolling .goal-heading-item {
+            margin-right: 3em;
+        }
+
+        .widget-shell.layout-column .goal-heading.is-scrolling .goal-heading-item {
+            margin-right: 0;
+            margin-bottom: 3em;
         }
 
         .goal-heading.is-scrolling .goal-heading-track {
@@ -1013,6 +1028,15 @@
             return Math.min(parsed, 96);
         }
 
+        function getGoalGiftHeadingFontSize(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 12) {
+                return 32;
+            }
+
+            return Math.min(parsed, 160);
+        }
+
         function getPrimaryFontFamily(fontFamily) {
             const match = String(fontFamily || '').match(/"([^"]+)"/);
             return match ? `"${match[1]}"` : String(fontFamily || '').split(',')[0]?.trim() || 'sans-serif';
@@ -1294,6 +1318,7 @@
             const textStyle = getGoalGiftTextStyle(resolvedSnapshot?.textStyleKey);
             const strokeWidth = getGoalGiftStrokeWidth(resolvedSnapshot?.strokeWidth);
             const baseNoteFontSize = getGoalGiftNoteFontSize(resolvedSnapshot?.noteFontSize);
+            const baseHeadingFontSize = getGoalGiftHeadingFontSize(resolvedSnapshot?.headingFontSize);
             const rawBadgeSize = Number.parseInt(String(resolvedSnapshot?.achievementBadgeSize ?? 152), 10);
             const badgeBaseWidth = (Number.isInteger(rawBadgeSize) && rawBadgeSize >= 40) ? Math.min(rawBadgeSize, 400) : 152;
             const badgeBaseHeight = Math.round(badgeBaseWidth * 68 / 152);
@@ -1354,7 +1379,7 @@
             // Structure key: changes when layout/design or goal list changes (triggers full re-render)
             const headingText = requestedGoal ? '' : String(resolvedSnapshot?.headingText || '').trim();
             const headingScrollEnabled = Boolean(resolvedSnapshot?.headingScroll);
-            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|`
+            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|${baseHeadingFontSize}|`
                 + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
 
             const canIncremental = lastRenderStructureKey === structureKey
@@ -1416,17 +1441,19 @@
             widgetShell.classList.toggle('layout-column', layoutMode === 'column');
             widgetShell.classList.toggle('layout-row', layoutMode !== 'column');
             if (headingText) {
-                const headingFontSize = previewCardMode ? 14 : (window.innerWidth <= 640 ? 20 : 32);
-                const headingLayoutHeight = previewCardMode ? 16 : (window.innerWidth <= 640 ? 22 : 36);
+                const headingFontSize = previewCardMode
+                    ? Math.max(10, Math.round(baseHeadingFontSize * (14 / 32)))
+                    : (window.innerWidth <= 640 ? Math.max(12, Math.round(baseHeadingFontSize * (20 / 32))) : baseHeadingFontSize);
+                const headingLayoutHeight = Math.round(headingFontSize * 1.15);
                 const headingDuration = Math.max(6, headingText.length * 0.4);
                 const headingSvg = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-a' });
                 goalHeading.classList.add('has-text');
                 goalHeading.classList.toggle('is-scrolling', headingScrollEnabled);
                 if (headingScrollEnabled) {
                     const headingSvg2 = buildOutlinedSvgMarkup(headingText, { fontSize: headingFontSize, fontWeight: 800, strokeWidth, layoutHeight: headingLayoutHeight, fill: textStyle.fillColor, idPrefix: 'goal-heading-b' });
-                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;">${headingSvg}${headingSvg2}</div>`;
+                    goalHeading.innerHTML = `<div class="goal-heading-track" style="--heading-scroll-duration: ${headingDuration}s;"><span class="goal-heading-item">${headingSvg}</span><span class="goal-heading-item">${headingSvg2}</span></div>`;
                 } else {
-                    goalHeading.innerHTML = `<div class="goal-heading-track">${headingSvg}</div>`;
+                    goalHeading.innerHTML = `<div class="goal-heading-track"><span class="goal-heading-item">${headingSvg}</span></div>`;
                 }
                 layoutOutlinedSvgText(goalHeading);
             } else {

@@ -13,6 +13,7 @@ module.exports = function registerGoalGiftsRoutes({
     getGoalGiftWidgetLayout, setGoalGiftWidgetLayout,
     getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
     getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
+    getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
     setGoalGiftWidgetItems,
 }) {
     app.get('/api/widgets/goal-gifts/snapshot', (req, res) => {
@@ -64,11 +65,14 @@ module.exports = function registerGoalGiftsRoutes({
         const headingScroll = req.body?.headingScroll !== undefined
             ? setGoalGiftWidgetHeadingScroll(req.body.headingScroll)
             : getGoalGiftWidgetHeadingScroll();
+        const headingFontSize = req.body?.headingFontSize !== undefined
+            ? setGoalGiftWidgetHeadingFontSize(req.body.headingFontSize)
+            : getGoalGiftWidgetHeadingFontSize();
         const feedback = req.body?.feedback !== undefined
             ? setGoalGiftFeedbackSettings(req.body.feedback)
             : getGoalGiftFeedbackSettings();
         const items = setGoalGiftWidgetItems(req.body.items);
-        const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth, noteFontSize, achievementBadgeSize, achievementBadgeStyle, layout, headingText, headingScroll);
+        const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth, noteFontSize, achievementBadgeSize, achievementBadgeStyle, layout, headingText, headingScroll, headingFontSize);
 
         io.emit('widgets:goal-gifts:updated', { snapshot });
 
