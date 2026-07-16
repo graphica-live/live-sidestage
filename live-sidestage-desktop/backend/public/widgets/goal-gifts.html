@@ -96,6 +96,16 @@
             -webkit-backdrop-filter: none;
         }
 
+        .overlay.is-single {
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
         .overlay-message {
             display: grid;
             gap: 10px;
@@ -1295,6 +1305,7 @@
             const badgeHeight = Math.round(badgeWidth * 68 / 152);
             overlay.classList.add('is-visible');
             overlay.classList.remove('is-empty');
+            overlay.classList.toggle('is-single', Boolean(requestedGoal));
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
                 return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>
