@@ -62,9 +62,10 @@
             flex-wrap: wrap;
             align-items: flex-end;
             justify-content: center;
-            width: min(1680px, calc(100vw - 64px));
+            width: fit-content;
+            max-width: calc(100vw - 64px);
             gap: 28px;
-            padding: 30px 36px;
+            padding: 24px 30px;
             background: linear-gradient(180deg, rgba(36, 40, 48, 0.46) 0%, rgba(20, 22, 28, 0.52) 100%);
             border: 1px solid rgba(255, 255, 255, 0.09);
             border-radius: 28px;
@@ -78,9 +79,10 @@
         }
 
         body.preview-card .overlay {
-            width: min(240px, calc(100vw - 20px));
+            width: fit-content;
+            max-width: calc(100vw - 20px);
             gap: 8px;
-            padding: 12px 14px;
+            padding: 10px 12px;
             border-radius: 16px;
             align-items: flex-end;
         }
