@@ -98,6 +98,14 @@
             -webkit-backdrop-filter: none;
         }
 
+        .overlay.is-column {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            align-items: center;
+            max-width: none;
+            max-height: calc(100vh - 64px);
+        }
+
         .overlay.is-single {
             padding: 0;
             background: transparent;
@@ -1205,6 +1213,7 @@
             const badgeBaseWidth = (Number.isInteger(rawBadgeSize) && rawBadgeSize >= 40) ? Math.min(rawBadgeSize, 400) : 152;
             const badgeBaseHeight = Math.round(badgeBaseWidth * 68 / 152);
             const badgeStyle = String(resolvedSnapshot?.achievementBadgeStyle || 'stamp-red').trim().toLowerCase();
+            const layoutMode = String(resolvedSnapshot?.layout || 'row').trim().toLowerCase() === 'column' ? 'column' : 'row';
             const fillPreviewColor = getTextPaintPreviewColor(textStyle.fillColor, '#f8fafc');
             const countPreviewColor = getTextPaintPreviewColor(textStyle.countColor, fillPreviewColor);
             const notePreviewColor = getTextPaintPreviewColor(textStyle.noteColor, fillPreviewColor);
@@ -1252,7 +1261,7 @@
             if (generation !== renderGeneration) return;
 
             // Structure key: changes when layout/design or goal list changes (triggers full re-render)
-            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|`
+            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|`
                 + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
 
             const canIncremental = lastRenderStructureKey === structureKey
@@ -1308,6 +1317,7 @@
             overlay.classList.add('is-visible');
             overlay.classList.remove('is-empty');
             overlay.classList.toggle('is-single', Boolean(requestedGoal));
+            overlay.classList.toggle('is-column', layoutMode === 'column');
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
                 return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px;'>

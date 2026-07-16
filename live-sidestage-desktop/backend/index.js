@@ -189,6 +189,7 @@ const {
     WIDGET_GOAL_GIFTS_NOTE_FONT_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFTS_ACHIEVEMENT_BADGE_STYLE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY,
     WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY,
     WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY,
@@ -252,6 +253,8 @@ const {
     MAX_GOAL_GIFT_WIDGET_ACHIEVEMENT_BADGE_SIZE,
     DEFAULT_GOAL_GIFT_WIDGET_ACHIEVEMENT_BADGE_STYLE,
     ALLOWED_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLES,
+    DEFAULT_GOAL_GIFT_WIDGET_LAYOUT,
+    ALLOWED_GOAL_GIFT_WIDGET_LAYOUTS,
     GOAL_GIFT_SYSTEM_IDS,
     GOAL_GIFT_SYSTEM_LABELS,
     GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS,
@@ -3046,6 +3049,21 @@ function setGoalGiftWidgetAchievementBadgeStyle(value) {
     return normalizedValue;
 }
 
+function normalizeGoalGiftLayout(value) {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    return ALLOWED_GOAL_GIFT_WIDGET_LAYOUTS.has(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_WIDGET_LAYOUT;
+}
+
+function getGoalGiftWidgetLayout() {
+    return normalizeGoalGiftLayout(getScopedStateValue(WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY));
+}
+
+function setGoalGiftWidgetLayout(value) {
+    const normalizedValue = normalizeGoalGiftLayout(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
 function normalizeGoalGiftWidgetItems(value) {
     let source = value;
 
@@ -3118,7 +3136,8 @@ function buildGoalGiftProgressSnapshot(
     strokeWidth = getGoalGiftsWidgetTextAppearance().strokeWidth,
     noteFontSize = getGoalGiftWidgetNoteFontSize(),
     achievementBadgeSize = getGoalGiftWidgetAchievementBadgeSize(),
-    achievementBadgeStyle = getGoalGiftWidgetAchievementBadgeStyle()
+    achievementBadgeStyle = getGoalGiftWidgetAchievementBadgeStyle(),
+    layout = getGoalGiftWidgetLayout()
 ) {
     const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
     const broadcasterId = getBroadcasterId();
@@ -3129,6 +3148,7 @@ function buildGoalGiftProgressSnapshot(
     const normalizedNoteFontSize = normalizeGoalGiftNoteFontSize(noteFontSize);
     const normalizedAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(achievementBadgeSize);
     const normalizedAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(achievementBadgeStyle);
+    const normalizedLayout = normalizeGoalGiftLayout(layout);
 
     if (!broadcasterId) {
         return {
@@ -3140,6 +3160,7 @@ function buildGoalGiftProgressSnapshot(
             noteFontSize: normalizedNoteFontSize,
             achievementBadgeSize: normalizedAchievementBadgeSize,
             achievementBadgeStyle: normalizedAchievementBadgeStyle,
+            layout: normalizedLayout,
             feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
@@ -3164,6 +3185,7 @@ function buildGoalGiftProgressSnapshot(
         noteFontSize: normalizedNoteFontSize,
         achievementBadgeSize: normalizedAchievementBadgeSize,
         achievementBadgeStyle: normalizedAchievementBadgeStyle,
+        layout: normalizedLayout,
         feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
@@ -4909,6 +4931,7 @@ require('./lib/routes/widgets/config')({
     getGiftJarWidgetTextAppearance, getPushPullWidgetTextAppearance,
     getGoalGiftsWidgetTextAppearance, getGoalGiftWidgetNoteFontSize,
     getGoalGiftWidgetAchievementBadgeSize, getGoalGiftWidgetAchievementBadgeStyle,
+    getGoalGiftWidgetLayout,
     buildGoalGiftProgressSnapshot,
 });
 
@@ -4985,6 +5008,7 @@ require('./lib/routes/widgets/goal-gifts')({
     getGoalGiftWidgetNoteFontSize, setGoalGiftWidgetNoteFontSize,
     getGoalGiftWidgetAchievementBadgeSize, setGoalGiftWidgetAchievementBadgeSize,
     getGoalGiftWidgetAchievementBadgeStyle, setGoalGiftWidgetAchievementBadgeStyle,
+    getGoalGiftWidgetLayout, setGoalGiftWidgetLayout,
     setGoalGiftWidgetItems,
 });
 
