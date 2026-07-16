@@ -1763,6 +1763,15 @@
                 <button type="button" class="settings-toggle-btn" data-panel-id="goal-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
             </div>
 
+            <div class="field full overlay-url-field">
+                <label>Overlay URL(全ゴール横一列)</label>
+                <div class="overlay-url-row">
+                    <div class="url-box" id="goal-gift-all-url">読み込み中</div>
+                    <button type="button" class="ghost-button icon-button" id="open-goal-gift-all-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                    <button type="button" class="ghost-button icon-button" id="copy-goal-gift-all-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                </div>
+            </div>
+
             <div class="widget-settings-panel" id="goal-gift-settings-panel" hidden>
                 <div class="form-grid">
                     <div class="field">
@@ -2026,6 +2035,7 @@
         window.addEventListener('resize', resizeGiftJarPreview);
         const goalGiftPreviewFrame = document.getElementById('goal-gift-preview-frame');
         const goalGiftList = document.getElementById('goal-gift-list');
+        const goalGiftAllUrlBox = document.getElementById('goal-gift-all-url');
         const goalGiftSuggestionPanel = document.getElementById('goal-gift-suggestion-panel');
         const titleInput = document.getElementById('top-gift-title');
         const senderDisplayModeInput = document.getElementById('top-gift-sender-display-mode');
@@ -3150,6 +3160,7 @@
         }
 
         function refreshGoalGiftPreviews(options = {}) {
+            goalGiftAllUrlBox.textContent = state.widgetUrls.goalGiftsLoaderUrl || state.widgetUrls.goalGiftsOverlayUrl || '未取得';
             const slot1 = Array.isArray(state.goalGiftItems) ? state.goalGiftItems[0] : null;
             const baseUrl = buildGoalGiftOverlayUrl(1, { preview: true });
             let url = baseUrl;
@@ -4322,6 +4333,14 @@
                 setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
             }
         }
+
+        document.getElementById('open-goal-gift-all-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.goalGiftsLoaderUrl || state.widgetUrls.goalGiftsOverlayUrl || '/overlays/goal-gifts';
+            openWindow(url, 'goal-gift-all-overlay-window', { width: 1680, height: 700 });
+        });
+        document.getElementById('copy-goal-gift-all-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.goalGiftsLoaderUrl || state.widgetUrls.goalGiftsOverlayUrl || '/overlays/goal-gifts');
+        });
 
         document.getElementById('open-contributors-overlay-button').addEventListener('click', () => {
             openWindow('/overlays/contributors', 'contributors-overlay-window', { width: 1180, height: 880 });
