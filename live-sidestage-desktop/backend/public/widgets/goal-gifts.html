@@ -633,6 +633,13 @@
             overflow: hidden;
         }
 
+        /* スクロール時は中央寄せしない。中央寄せのままだと複製2個分のトラックが
+           コンテナ中央に居座り、はみ出した分がクリップされて「全体が収まる位置まで
+           来ないと表示されない」ように見える。start 基準にして端から流れ込ませる。 */
+        .goal-heading.has-text.is-scrolling {
+            justify-content: flex-start;
+        }
+
         .widget-shell.layout-row .goal-heading.is-scrolling {
             width: calc(100vw - 64px);
         }
