@@ -1557,6 +1557,19 @@
             await applySnapshot(payload.snapshot, { notify: false });
         }
 
+        // connect直後のrefresh()完了より先に 'widgets:goal-gifts:updated' が届くと、
+        // previousGoalCounts/hasRenderedSnapshot が未初期化のままそのイベントで
+        // 初期化されてしまい、本来鳴るべき通知が黙って基準値扱いされて消える
+        // （多ゴールの全部一覧ほど初回ハンドシェイクに時間がかかり発生しやすい）。
+        // refresh完了を待ってから更新イベントを処理することでこの競合を防ぐ。
+        let initialRefreshPromise = null;
+        function ensureInitialRefresh() {
+            if (!initialRefreshPromise) {
+                initialRefreshPromise = refresh().catch(() => {});
+            }
+            return initialRefreshPromise;
+        }
+
         let overlayRecoveryTimer = null;
         let overlayRecoveryInFlight = false;
         const OVERLAY_RECOVERY_RETRY_MS = 2000;
@@ -1605,7 +1618,7 @@
 
         socket.on('connect', () => {
             clearOverlayRecoveryTimer();
-            refresh().catch(() => {});
+            ensureInitialRefresh();
         });
 
         socket.on('admin_day_updated', () => {
@@ -1616,7 +1629,9 @@
             if (sampleMode) {
                 return;
             }
-            applySnapshot(payload?.snapshot, { allowRegression: true }).catch(() => {});
+            ensureInitialRefresh().then(() => {
+                applySnapshot(payload?.snapshot, { allowRegression: true }).catch(() => {});
+            });
         });
 
         socket.on('widgets:goal-gifts:test-feedback', (payload) => {
