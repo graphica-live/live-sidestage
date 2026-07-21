@@ -3,7 +3,32 @@
 const express = require('express');
 const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS } = require('../constants');
 
-module.exports = function registerSettingsRoutes({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp }) {
+module.exports = function registerSettingsRoutes({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
+    app.get('/api/settings/auto-launch', (req, res) => {
+        if (!IS_ELECTRON || !IS_PACKAGED_ELECTRON) {
+            return res.json({ available: false, enabled: false });
+        }
+        const { app: electronApp } = require('electron');
+        const launchItems = electronApp.getLoginItemSettings().launchItems || [];
+        const item = launchItems.find((entry) => entry.name === 'TikEffect');
+        res.json({ available: true, enabled: Boolean(item && item.enabled) });
+    });
+
+    app.post('/api/settings/auto-launch', express.json(), (req, res) => {
+        if (!IS_ELECTRON || !IS_PACKAGED_ELECTRON) {
+            return res.status(400).json({ ok: false, error: 'インストール版でのみ利用できます' });
+        }
+        const enabled = Boolean((req.body || {}).enabled);
+        const { app: electronApp } = require('electron');
+        electronApp.setLoginItemSettings({
+            openAtLogin: enabled,
+            name: 'TikEffect',
+            path: process.execPath
+        });
+        res.json({ ok: true, enabled });
+    });
+
+
     app.get('/api/settings/export', (req, res) => {
         const broadcasterId = getBroadcasterId();
         const settings = {};

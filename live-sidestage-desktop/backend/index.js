@@ -2671,7 +2671,7 @@ require('./lib/routes/data')({
 
 
 
-require('./lib/routes/settings')({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp });
+require('./lib/routes/settings')({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON });
 
 
 currentBroadcasterId = getInitialBroadcasterId();

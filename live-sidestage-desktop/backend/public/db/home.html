@@ -676,6 +676,14 @@
                 <select id="admin-theme-select" class="admin-settings-select" aria-label="管理画面テーマ切替"></select>
             </section>
             <section class="admin-settings-section">
+                <div class="admin-settings-label">起動設定</div>
+                <label class="admin-settings-checkbox-row" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="auto-launch-checkbox">
+                    <span>PC起動時にTikEffectを自動的に起動する</span>
+                </label>
+                <p id="auto-launch-status" class="nav-footnote"></p>
+            </section>
+            <section class="admin-settings-section">
                 <div class="admin-settings-label">データ管理</div>
                 <div class="admin-settings-data-row">
                     <button type="button" class="ghost-button" id="export-settings-btn">📤 エクスポート</button>
@@ -1041,6 +1049,56 @@
                     importBtn.disabled = false;
                 }
             });
+        }());
+    </script>
+    <script>
+        (function () {
+            const checkbox = document.getElementById('auto-launch-checkbox');
+            const status = document.getElementById('auto-launch-status');
+
+            function showStatus(msg) {
+                status.textContent = msg;
+                status.hidden = !msg;
+            }
+
+            async function loadState() {
+                try {
+                    const res = await fetch('/api/settings/auto-launch');
+                    const data = await res.json();
+                    if (!data.available) {
+                        checkbox.checked = false;
+                        checkbox.disabled = true;
+                        showStatus('インストール版でのみ設定できます。');
+                        return;
+                    }
+                    checkbox.disabled = false;
+                    checkbox.checked = Boolean(data.enabled);
+                    showStatus('');
+                } catch {
+                    checkbox.disabled = true;
+                    showStatus('状態を取得できませんでした。');
+                }
+            }
+
+            checkbox.addEventListener('change', async () => {
+                checkbox.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/auto-launch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: checkbox.checked })
+                    });
+                    if (!res.ok) throw new Error('サーバーエラー');
+                    showStatus('');
+                } catch (e) {
+                    showStatus('保存に失敗しました: ' + e.message);
+                    checkbox.checked = !checkbox.checked;
+                } finally {
+                    checkbox.disabled = false;
+                }
+            });
+
+            loadState();
         }());
     </script>
 </body>
