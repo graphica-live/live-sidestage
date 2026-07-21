@@ -13,17 +13,9 @@ function defaultHistoryFilePath() {
     return path.join(os.homedir(), 'AppData', 'Local', 'VirtualDJ', 'History', 'tracklist.txt');
 }
 
-const TEST_VOTERS = {
-    A: [
-        { id: '__test_voter_a__', nickname: 'テストリスナーA', letter: 'A', color: '#f87171' },
-        { id: '__test_voter_b__', nickname: 'テストリスナーB', letter: 'B', color: '#fb923c' },
-        { id: '__test_voter_c__', nickname: 'テストリスナーC', letter: 'C', color: '#facc15' }
-    ],
-    B: [
-        { id: '__test_voter_d__', nickname: 'テストリスナーD', letter: 'D', color: '#60a5fa' },
-        { id: '__test_voter_e__', nickname: 'テストリスナーE', letter: 'E', color: '#818cf8' },
-        { id: '__test_voter_f__', nickname: 'テストリスナーF', letter: 'F', color: '#34d399' }
-    ]
+const TEST_VOTER_FALLBACK_PALETTE = {
+    A: ['#f87171', '#fb923c', '#facc15', '#fb7185', '#f472b6', '#e879f9'],
+    B: ['#60a5fa', '#818cf8', '#34d399', '#2dd4bf', '#4ade80', '#a3e635']
 };
 
 function buildTestAvatarDataUrl(letter, color) {
@@ -73,7 +65,7 @@ module.exports = function createSongBattleRuntime({
         tallyB: 0,
         voterSide: new Map(),
         voters: new Map(),
-        testVoterAssignments: new Map(),
+        testVoterCounter: 0,
         usedTrackPaths: new Set(),
         endTimer: null,
         loopTimer: null
@@ -313,7 +305,7 @@ module.exports = function createSongBattleRuntime({
                 state.tallyB = 0;
                 state.voterSide = new Map();
                 state.voters = new Map();
-                state.testVoterAssignments = new Map();
+                state.testVoterCounter = 0;
                 io.emit('song-battle:round-cancelled', getRoundSnapshot());
                 return getRoundSnapshot();
             }
@@ -331,7 +323,7 @@ module.exports = function createSongBattleRuntime({
             state.tallyB = 0;
             state.voterSide = new Map();
             state.voters = new Map();
-            state.testVoterAssignments = new Map();
+            state.testVoterCounter = 0;
             state.usedTrackPaths.add(pathA);
             state.usedTrackPaths.add(pathB);
 
@@ -434,32 +426,34 @@ module.exports = function createSongBattleRuntime({
         io.emit('song-battle:vote-update', getRoundSnapshot());
     }
 
-    // テスト投票のリスナー像を、like貢献ウィジェットで蓄積された実際のアイコン/ニックネーム履歴から
-    // ランダムに割り当てる。履歴がない/枯渇した場合は文字アイコンにフォールバックする。
-    function assignTestVoterPersona(persona) {
-        if (state.testVoterAssignments.has(persona.id)) {
-            return state.testVoterAssignments.get(persona.id);
-        }
-
+    // like貢献ウィジェットの履歴からまだ未使用の実リスナーをランダムに1人選ぶ。
+    // 人数上限はなく、現ラウンドで既に投票済みのuidだけを除外する。
+    function pickUnusedRealListener() {
         const avatars = typeof getLikeContributionUserAvatars === 'function' ? getLikeContributionUserAvatars() : {};
         const nicknames = typeof getLikeContributionUserNicknames === 'function' ? getLikeContributionUserNicknames() : {};
-        const usedUids = new Set(
-            Array.from(state.testVoterAssignments.values())
-                .filter(Boolean)
-                .map((assignment) => assignment.uid)
-        );
         const candidates = Object.entries(avatars).filter(
-            ([uid, avatarUrl]) => typeof avatarUrl === 'string' && avatarUrl && !usedUids.has(uid)
+            ([uid, avatarUrl]) => typeof avatarUrl === 'string' && avatarUrl && !state.voters.has(uid)
         );
 
-        let assignment = null;
-        if (candidates.length > 0) {
-            const [uid, avatarUrl] = candidates[Math.floor(Math.random() * candidates.length)];
-            assignment = { uid, avatarUrl, nickname: nicknames[uid] || uid };
-        }
+        if (candidates.length === 0) return null;
 
-        state.testVoterAssignments.set(persona.id, assignment);
-        return assignment;
+        const [uid, avatarUrl] = candidates[Math.floor(Math.random() * candidates.length)];
+        return { uid, avatarUrl, nickname: nicknames[uid] || uid };
+    }
+
+    // 実リスナー履歴が枯渇した場合のフォールバック。呼び出すたびに新しいIDを発行するため無制限に生成できる。
+    function buildSyntheticTestVoter(side) {
+        state.testVoterCounter += 1;
+        const n = state.testVoterCounter;
+        const palette = TEST_VOTER_FALLBACK_PALETTE[side];
+        const color = palette[(n - 1) % palette.length];
+        const letter = String.fromCharCode(65 + ((n - 1) % 26));
+
+        return {
+            uid: `__test_voter_${side}_${n}__`,
+            avatarUrl: buildTestAvatarDataUrl(letter, color),
+            nickname: `テストリスナー${n}`
+        };
     }
 
     function testVote(side) {
@@ -470,12 +464,13 @@ module.exports = function createSongBattleRuntime({
             throw new Error('side は A か B を指定してください。');
         }
 
-        const pool = TEST_VOTERS[side];
-        const persona = pool[Math.floor(Math.random() * pool.length)];
-        let lockedSide = state.voterSide.get(persona.id);
+        const assignment = pickUnusedRealListener() || buildSyntheticTestVoter(side);
+        const personaId = assignment.uid;
+
+        let lockedSide = state.voterSide.get(personaId);
         if (!lockedSide) {
             lockedSide = side;
-            state.voterSide.set(persona.id, lockedSide);
+            state.voterSide.set(personaId, lockedSide);
         }
 
         if (lockedSide === 'A') {
@@ -484,13 +479,12 @@ module.exports = function createSongBattleRuntime({
             state.tallyB += 1;
         }
 
-        const realAssignment = assignTestVoterPersona(persona);
-        const existingVoter = state.voters.get(persona.id);
-        state.voters.set(persona.id, {
-            userId: persona.id,
+        const existingVoter = state.voters.get(personaId);
+        state.voters.set(personaId, {
+            userId: personaId,
             side: lockedSide,
-            image: realAssignment ? realAssignment.avatarUrl : buildTestAvatarDataUrl(persona.letter, persona.color),
-            nickname: realAssignment ? realAssignment.nickname : persona.nickname,
+            image: assignment.avatarUrl,
+            nickname: assignment.nickname,
             coins: (existingVoter?.coins || 0) + 1
         });
 
