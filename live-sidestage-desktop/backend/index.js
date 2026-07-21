@@ -1287,6 +1287,8 @@ const songBattleRuntime = require('./lib/song-battle-runtime')({
     normalizeBroadcasterId,
     normalizeWholeNumber,
     fetchTikTokGiftCatalog,
+    getLikeContributionUserAvatars,
+    getLikeContributionUserNicknames,
 });
 
 const {

@@ -55,6 +55,8 @@ module.exports = function createSongBattleRuntime({
     normalizeBroadcasterId,
     normalizeWholeNumber,
     fetchTikTokGiftCatalog,
+    getLikeContributionUserAvatars,
+    getLikeContributionUserNicknames,
 }) {
     const state = {
         status: 'idle',
@@ -71,6 +73,7 @@ module.exports = function createSongBattleRuntime({
         tallyB: 0,
         voterSide: new Map(),
         voters: new Map(),
+        testVoterAssignments: new Map(),
         usedTrackPaths: new Set(),
         endTimer: null,
         loopTimer: null
@@ -310,6 +313,7 @@ module.exports = function createSongBattleRuntime({
                 state.tallyB = 0;
                 state.voterSide = new Map();
                 state.voters = new Map();
+                state.testVoterAssignments = new Map();
                 io.emit('song-battle:round-cancelled', getRoundSnapshot());
                 return getRoundSnapshot();
             }
@@ -327,6 +331,7 @@ module.exports = function createSongBattleRuntime({
             state.tallyB = 0;
             state.voterSide = new Map();
             state.voters = new Map();
+            state.testVoterAssignments = new Map();
             state.usedTrackPaths.add(pathA);
             state.usedTrackPaths.add(pathB);
 
@@ -429,6 +434,34 @@ module.exports = function createSongBattleRuntime({
         io.emit('song-battle:vote-update', getRoundSnapshot());
     }
 
+    // テスト投票のリスナー像を、like貢献ウィジェットで蓄積された実際のアイコン/ニックネーム履歴から
+    // ランダムに割り当てる。履歴がない/枯渇した場合は文字アイコンにフォールバックする。
+    function assignTestVoterPersona(persona) {
+        if (state.testVoterAssignments.has(persona.id)) {
+            return state.testVoterAssignments.get(persona.id);
+        }
+
+        const avatars = typeof getLikeContributionUserAvatars === 'function' ? getLikeContributionUserAvatars() : {};
+        const nicknames = typeof getLikeContributionUserNicknames === 'function' ? getLikeContributionUserNicknames() : {};
+        const usedUids = new Set(
+            Array.from(state.testVoterAssignments.values())
+                .filter(Boolean)
+                .map((assignment) => assignment.uid)
+        );
+        const candidates = Object.entries(avatars).filter(
+            ([uid, avatarUrl]) => typeof avatarUrl === 'string' && avatarUrl && !usedUids.has(uid)
+        );
+
+        let assignment = null;
+        if (candidates.length > 0) {
+            const [uid, avatarUrl] = candidates[Math.floor(Math.random() * candidates.length)];
+            assignment = { uid, avatarUrl, nickname: nicknames[uid] || uid };
+        }
+
+        state.testVoterAssignments.set(persona.id, assignment);
+        return assignment;
+    }
+
     function testVote(side) {
         if (state.status !== 'running') {
             throw new Error('投票中ではありません。');
@@ -451,12 +484,13 @@ module.exports = function createSongBattleRuntime({
             state.tallyB += 1;
         }
 
+        const realAssignment = assignTestVoterPersona(persona);
         const existingVoter = state.voters.get(persona.id);
         state.voters.set(persona.id, {
             userId: persona.id,
             side: lockedSide,
-            image: buildTestAvatarDataUrl(persona.letter, persona.color),
-            nickname: persona.nickname,
+            image: realAssignment ? realAssignment.avatarUrl : buildTestAvatarDataUrl(persona.letter, persona.color),
+            nickname: realAssignment ? realAssignment.nickname : persona.nickname,
             coins: (existingVoter?.coins || 0) + 1
         });
 
