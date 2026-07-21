@@ -473,10 +473,12 @@
         const AVATAR_MIN_SIZE = 26;
         const AVATAR_MAX_SIZE = 76;
         const avatarElsByVoterId = new Map();
+        const failedAvatarVoterIds = new Set();
 
         function clearAvatars() {
             avatarElsByVoterId.forEach((el) => el.remove());
             avatarElsByVoterId.clear();
+            failedAvatarVoterIds.clear();
         }
 
         function pickAvatarPosition(parent) {
@@ -518,7 +520,8 @@
                 let el = avatarElsByVoterId.get(voter.userId);
 
                 if (!el) {
-                    if (!voter.image) return; // 画像未取得のユーザーはアイコンを出さない
+                    // 画像未取得、または過去に取得失敗したユーザーはアイコンを出さない
+                    if (!voter.image || failedAvatarVoterIds.has(voter.userId)) return;
 
                     const parent = voter.side === 'A' ? sideAEl : sideBEl;
                     const position = pickAvatarPosition(parent);
@@ -526,7 +529,8 @@
                     el.className = `voter-avatar voter-avatar-${voter.side === 'A' ? 'a' : 'b'}`;
                     el.alt = '';
                     el.onerror = () => {
-                        // 画像取得失敗ユーザーのアイコンは出さない
+                        // 取得失敗を記録し、以降の再描画でも出さない
+                        failedAvatarVoterIds.add(voter.userId);
                         el.remove();
                         avatarElsByVoterId.delete(voter.userId);
                     };
