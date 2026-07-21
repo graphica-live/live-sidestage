@@ -518,12 +518,19 @@
                 let el = avatarElsByVoterId.get(voter.userId);
 
                 if (!el) {
+                    if (!voter.image) return; // 画像未取得のユーザーはアイコンを出さない
+
                     const parent = voter.side === 'A' ? sideAEl : sideBEl;
                     const position = pickAvatarPosition(parent);
                     el = document.createElement('img');
                     el.className = `voter-avatar voter-avatar-${voter.side === 'A' ? 'a' : 'b'}`;
                     el.alt = '';
-                    el.src = voter.image || '';
+                    el.onerror = () => {
+                        // 画像取得失敗ユーザーのアイコンは出さない
+                        el.remove();
+                        avatarElsByVoterId.delete(voter.userId);
+                    };
+                    el.src = voter.image;
                     el.style.left = `${position.left}%`;
                     el.style.top = `${position.top}%`;
                     el.style.setProperty('--avatar-size', '0px');
