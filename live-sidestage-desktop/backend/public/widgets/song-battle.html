@@ -530,7 +530,9 @@
                         el.remove();
                         avatarElsByVoterId.delete(voter.userId);
                     };
-                    el.src = voter.image;
+                    el.src = /^https?:\/\//i.test(voter.image)
+                        ? `/api/proxy/avatar?url=${encodeURIComponent(voter.image)}`
+                        : voter.image;
                     el.style.left = `${position.left}%`;
                     el.style.top = `${position.top}%`;
                     el.style.setProperty('--avatar-size', '0px');
