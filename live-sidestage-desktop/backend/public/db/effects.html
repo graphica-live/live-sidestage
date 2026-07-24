@@ -108,6 +108,9 @@
                                 <button type="button" class="danger modal-remove-button" id="event-modal-clear-audio-button" title="音声を外す" aria-label="音声を外す">🗑</button>
                                 <input type="file" id="event-modal-audio-file" accept="audio/*" hidden>
                             </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-template-audio-button">テンプレートから選択</button>
+                            </div>
                             <div class="modal-asset-name" id="event-modal-audio-name">未設定</div>
                         </div>
                     </div>
@@ -163,6 +166,31 @@
             <div class="modal-actions">
                 <button type="button" data-action="close-event-modal">キャンセル</button>
                 <button type="button" class="primary" id="event-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="myinstants-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
+            <div>
+                <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
+                <p class="subtext">myinstants.com のサウンドを検索して取り込みます。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>キーワード検索</label>
+                    <div class="modal-inline-row">
+                        <input type="text" id="myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
+                        <button type="button" class="primary" id="myinstants-search-button">検索</button>
+                    </div>
+                </div>
+                <div class="field full">
+                    <div class="myinstants-status" id="myinstants-status"></div>
+                    <div class="myinstants-results" id="myinstants-results"></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-myinstants-modal">閉じる</button>
             </div>
         </div>
     </div>
@@ -354,6 +382,7 @@
 
     <script src="/db/effects-state.js"></script>
     <script src="/db/effects-media.js"></script>
+    <script src="/db/effects-myinstants.js"></script>
     <script src="/db/effects-modal.js"></script>
     <script src="/db/effects-rows.js"></script>
     <script src="/db/effects-gift-suggest.js"></script>

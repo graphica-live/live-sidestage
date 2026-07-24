@@ -2,6 +2,7 @@
 
 const { repairMojibakeFilename } = require('../utils');
 const { listMidiOutputDevices } = require('../midi-helpers');
+const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
 
 module.exports = function registerEffectsRoutes({
     app,
@@ -23,6 +24,8 @@ module.exports = function registerEffectsRoutes({
     setEffectTriggers,
     normalizeEffectTriggerEventIds,
     resolveEffectAssetFilePath,
+    getEffectMediaDirectory,
+    path,
     fs,
 }) {
     app.get('/api/effects/midi/devices', (req, res) => {
@@ -91,6 +94,57 @@ module.exports = function registerEffectsRoutes({
                 }
             });
         });
+    });
+
+    app.get('/api/effects/myinstants/search', async (req, res) => {
+        const query = String(req.query.q || '').trim();
+
+        if (!query) {
+            return res.status(400).json({ ok: false, error: '検索キーワードを入力してください。' });
+        }
+
+        try {
+            const results = await searchMyinstants(query);
+            return res.json({ ok: true, results });
+        } catch (error) {
+            return res.status(502).json({ ok: false, error: error.message || 'myinstants検索に失敗しました。' });
+        }
+    });
+
+    app.post('/api/effects/myinstants/import', async (req, res) => {
+        const mp3Url = String(req.body?.mp3Url || '').trim();
+        const name = String(req.body?.name || '').trim() || 'myinstants-sound';
+        const rawEventId = String(req.query.eventId || req.body?.eventId || '').trim();
+
+        if (!mp3Url) {
+            return res.status(400).json({ ok: false, error: 'mp3Url is required' });
+        }
+
+        try {
+            const buffer = await downloadMyinstantsSound(mp3Url);
+            const directory = getEffectMediaDirectory('audio');
+            fs.mkdirSync(directory, { recursive: true });
+
+            const safeEventId = rawEventId.replace(/[^a-zA-Z0-9\-_]/g, '').slice(0, 80);
+            const fileName = safeEventId.length >= 4
+                ? `${safeEventId}-audio.mp3`
+                : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.mp3`;
+
+            fs.writeFileSync(path.join(directory, fileName), buffer);
+
+            return res.json({
+                ok: true,
+                asset: {
+                    kind: 'audio',
+                    name: repairMojibakeFilename(`${name}.mp3`),
+                    url: buildEffectMediaUrl('audio', fileName),
+                    mimeType: 'audio/mpeg',
+                    size: buffer.length
+                }
+            });
+        } catch (error) {
+            return res.status(502).json({ ok: false, error: error.message || '音声の取り込みに失敗しました。' });
+        }
     });
 
     app.get('/api/effects/user-video/:triggerId/:userId', (req, res) => {

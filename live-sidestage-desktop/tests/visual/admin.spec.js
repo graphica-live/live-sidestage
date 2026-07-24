@@ -124,4 +124,10 @@ test.describe('effects.html: モーダルが開ける', () => {
     test('confirm-dialog', async ({ page }) => {
         await expect(page.locator('#confirm-dialog')).toHaveAttribute('aria-hidden', 'true');
     });
+
+    test('myinstants-modal', async ({ page }) => {
+        await page.click('#add-event-button');
+        await page.click('#event-modal-template-audio-button');
+        await expect(page.locator('#myinstants-modal')).toHaveClass(/is-open/);
+    });
 });

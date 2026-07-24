@@ -2498,6 +2498,8 @@ require('./lib/routes/effects')({
     setEffectTriggers,
     normalizeEffectTriggerEventIds,
     resolveEffectAssetFilePath,
+    getEffectMediaDirectory,
+    path,
     fs,
 });
 
