@@ -249,16 +249,29 @@
         .goal-progress-ring-track {
             fill: none;
             stroke: rgba(255, 255, 255, 0.18);
-            stroke-width: 10;
+            stroke-width: 9;
             stroke-linecap: round;
+        }
+
+        .goal-progress-ring-track-outline {
+            fill: none;
+            stroke: rgba(15, 23, 42, 0.55);
+            stroke-width: 12;
+        }
+
+        .goal-progress-ring-fill-outline {
+            fill: none;
+            stroke: rgba(15, 23, 42, 0.65);
+            stroke-width: 13;
+            transition: stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .goal-progress-ring-fill {
             fill: none;
             stroke: var(--goal-ring-color, #f59e0b);
-            stroke-width: 10;
+            stroke-width: 9;
             stroke-linecap: round;
-            filter: drop-shadow(0 0 8px var(--goal-ring-color, #f59e0b));
+            filter: drop-shadow(0 0 5px var(--goal-ring-color, #f59e0b));
             transition: stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
@@ -1141,7 +1154,7 @@
 
         // ゲージ状の円形バー: 底辺中央に隙間を残し、左下から時計回りに上部を通って右下まで進む。
         // transform: rotate(120deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を左下(210°)に移す。
-        const GOAL_RING_RADIUS = 43;
+        const GOAL_RING_RADIUS = 47;
         const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * GOAL_RING_RADIUS;
         const GOAL_RING_SWEEP_DEG = 300;
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
@@ -1172,10 +1185,13 @@
         }
 
         function buildGoalProgressRingHtml(goal) {
+            const fillDasharray = getGoalProgressRingFillDasharray(goal);
             return `<svg class="goal-progress-ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">`
                 + `<circle class="goal-progress-ring-backdrop" cx="50" cy="50" r="${GOAL_RING_RADIUS}"></circle>`
+                + `<circle class="goal-progress-ring-track-outline" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${GOAL_RING_TRACK_DASHARRAY};"></circle>`
                 + `<circle class="goal-progress-ring-track" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${GOAL_RING_TRACK_DASHARRAY};"></circle>`
-                + `<circle class="goal-progress-ring-fill" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${getGoalProgressRingFillDasharray(goal)};"></circle>`
+                + `<circle class="goal-progress-ring-fill-outline" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${fillDasharray};"></circle>`
+                + `<circle class="goal-progress-ring-fill" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${fillDasharray};"></circle>`
                 + `</svg>`;
         }
 
@@ -1480,9 +1496,14 @@
                             countEl.outerHTML = buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle);
                             layoutOutlinedSvgText(row.querySelector('.copy') || row);
                         }
+                        const ringFillDasharray = getGoalProgressRingFillDasharray(goal);
                         const ringFill = row.querySelector('.goal-progress-ring-fill');
                         if (ringFill) {
-                            ringFill.style.strokeDasharray = getGoalProgressRingFillDasharray(goal);
+                            ringFill.style.strokeDasharray = ringFillDasharray;
+                        }
+                        const ringFillOutline = row.querySelector('.goal-progress-ring-fill-outline');
+                        if (ringFillOutline) {
+                            ringFillOutline.style.strokeDasharray = ringFillDasharray;
                         }
                         lastRenderedCounts.set(slot, goal.currentCount);
                     }
