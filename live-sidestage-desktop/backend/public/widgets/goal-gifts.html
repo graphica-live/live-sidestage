@@ -443,6 +443,8 @@
 
         .gift-image {
             display: block;
+            position: relative;
+            z-index: 2;
             width: var(--gift-width);
             height: var(--gift-height);
             object-fit: contain;
@@ -1149,7 +1151,7 @@
 
         // ゲージ状の円形バー: 底辺中央に隙間を残し、左下から時計回りに上部を通って右下まで進む。
         // transform: rotate(120deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を左下(210°)に移す。
-        const GOAL_RING_RADIUS = 47;
+        const GOAL_RING_RADIUS = 52;
         const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * GOAL_RING_RADIUS;
         const GOAL_RING_SWEEP_DEG = 300;
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
