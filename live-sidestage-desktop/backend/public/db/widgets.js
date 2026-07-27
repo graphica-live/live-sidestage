@@ -178,7 +178,7 @@
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
             goalGiftProgressRingColor: '#f59e0b',
-            goalGiftProgressBackgroundOpacity: 30,
+            goalGiftProgressBackgroundOpacity: 46,
             goalGiftLayout: 'row',
             goalGiftHeadingText: '',
             goalGiftHeadingScroll: false,
@@ -689,7 +689,7 @@
         const DEFAULT_GOAL_GIFT_LAYOUT = 'row';
         const ALLOWED_GOAL_GIFT_LAYOUTS = new Set(['row', 'column']);
         const DEFAULT_GOAL_GIFT_PROGRESS_RING_COLOR = '#f59e0b';
-        const DEFAULT_GOAL_GIFT_PROGRESS_BG_OPACITY = 30;
+        const DEFAULT_GOAL_GIFT_PROGRESS_BG_OPACITY = 46;
         const MIN_GOAL_GIFT_PROGRESS_BG_OPACITY = 0;
         const MAX_GOAL_GIFT_PROGRESS_BG_OPACITY = 100;
         const contributorsTextStyleOptions = sharedTextStyleOptions;
