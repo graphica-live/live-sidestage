@@ -732,7 +732,7 @@ function buildGoalGiftProgressSnapshot(
 
             gifts.forEach((gift) => {
                 const idMatched = item.giftId && String(gift.giftId || '') === item.giftId;
-                const nameMatched = !item.giftId && normalizedGiftName && normalizeGoalGiftMatchName(gift.giftName) === normalizedGiftName;
+                const nameMatched = normalizedGiftName && normalizeGoalGiftMatchName(gift.giftName) === normalizedGiftName;
 
                 if (!idMatched && !nameMatched) {
                     return;
@@ -805,8 +805,7 @@ function getDuplicateUniqueGoalGiftSlots(giftEvent, dayKey = getTodayDayKey(), g
 
         const idMatched = item.giftId && String(giftEvent.giftId || '') === item.giftId;
         const normalizedGiftName = normalizeGoalGiftMatchName(item.giftName);
-        const nameMatched = !item.giftId
-            && normalizedGiftName
+        const nameMatched = normalizedGiftName
             && normalizeGoalGiftMatchName(giftEvent.giftName) === normalizedGiftName;
 
         if (!idMatched && !nameMatched) {
@@ -815,8 +814,7 @@ function getDuplicateUniqueGoalGiftSlots(giftEvent, dayKey = getTodayDayKey(), g
 
         const alreadyCounted = historicalGifts.some((gift) => {
             const historicalIdMatched = item.giftId && String(gift.giftId || '') === item.giftId;
-            const historicalNameMatched = !item.giftId
-                && normalizedGiftName
+            const historicalNameMatched = normalizedGiftName
                 && normalizeGoalGiftMatchName(gift.giftName) === normalizedGiftName;
 
             if (!historicalIdMatched && !historicalNameMatched) {
