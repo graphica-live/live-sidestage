@@ -241,19 +241,24 @@
             overflow: visible;
         }
 
+        .goal-progress-ring-backdrop {
+            fill: var(--goal-ring-color, #f59e0b);
+            fill-opacity: var(--goal-ring-bg-opacity, 0.3);
+        }
+
         .goal-progress-ring-track {
             fill: none;
-            stroke: rgba(255, 255, 255, 0.16);
-            stroke-width: 6;
+            stroke: rgba(255, 255, 255, 0.18);
+            stroke-width: 10;
             stroke-linecap: round;
         }
 
         .goal-progress-ring-fill {
             fill: none;
             stroke: var(--goal-ring-color, #f59e0b);
-            stroke-width: 6;
+            stroke-width: 10;
             stroke-linecap: round;
-            filter: drop-shadow(0 0 7px var(--goal-ring-color, #f59e0b));
+            filter: drop-shadow(0 0 8px var(--goal-ring-color, #f59e0b));
             transition: stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
@@ -1136,7 +1141,7 @@
 
         // ゲージ状の円形バー: 底辺中央に隙間を残し、左下から時計回りに上部を通って右下まで進む。
         // transform: rotate(120deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を左下(210°)に移す。
-        const GOAL_RING_RADIUS = 44;
+        const GOAL_RING_RADIUS = 43;
         const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * GOAL_RING_RADIUS;
         const GOAL_RING_SWEEP_DEG = 300;
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
@@ -1160,8 +1165,15 @@
             return /^#[0-9a-f]{6}$/.test(normalizedValue) ? normalizedValue : DEFAULT_GOAL_RING_COLOR;
         }
 
+        function getGoalProgressBackgroundOpacityFraction(value) {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(parsed) || parsed < 0) return 0.3;
+            return Math.min(parsed, 100) / 100;
+        }
+
         function buildGoalProgressRingHtml(goal) {
             return `<svg class="goal-progress-ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">`
+                + `<circle class="goal-progress-ring-backdrop" cx="50" cy="50" r="${GOAL_RING_RADIUS}"></circle>`
                 + `<circle class="goal-progress-ring-track" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${GOAL_RING_TRACK_DASHARRAY};"></circle>`
                 + `<circle class="goal-progress-ring-fill" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${getGoalProgressRingFillDasharray(goal)};"></circle>`
                 + `</svg>`;
@@ -1392,6 +1404,7 @@
             const badgeStyle = String(resolvedSnapshot?.achievementBadgeStyle || 'stamp-red').trim().toLowerCase();
             const layoutMode = String(resolvedSnapshot?.layout || 'row').trim().toLowerCase() === 'column' ? 'column' : 'row';
             const ringColor = getGoalProgressRingColor(resolvedSnapshot?.progressRingColor);
+            const ringBgOpacity = getGoalProgressBackgroundOpacityFraction(resolvedSnapshot?.progressBackgroundOpacity);
             const fillPreviewColor = getTextPaintPreviewColor(textStyle.fillColor, '#f8fafc');
             const countPreviewColor = getTextPaintPreviewColor(textStyle.countColor, fillPreviewColor);
             const notePreviewColor = getTextPaintPreviewColor(textStyle.noteColor, fillPreviewColor);
@@ -1447,7 +1460,7 @@
             // Structure key: changes when layout/design or goal list changes (triggers full re-render)
             const headingText = requestedGoal ? '' : String(resolvedSnapshot?.headingText || '').trim();
             const headingScrollEnabled = Boolean(resolvedSnapshot?.headingScroll);
-            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|${baseHeadingFontSize}|${ringColor}|`
+            const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|${baseHeadingFontSize}|${ringColor}|${ringBgOpacity}|`
                 + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
 
             const canIncremental = lastRenderStructureKey === structureKey
@@ -1514,11 +1527,11 @@
             widgetShell.classList.toggle('layout-row', layoutMode !== 'column');
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
-                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${ringColor};'>
+                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${ringColor}; --goal-ring-bg-opacity: ${ringBgOpacity};'>
                     <div class="gift-visual ${goal.currentCount >= goal.targetCount ? 'is-achieved' : ''}">
                         ${buildGoalProgressRingHtml(goal)}
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
-                        <div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName || goal.giftName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>
+                        ${goal.displayName ? `<div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>` : ''}
                         ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
                     </div>
                     <div class="copy">

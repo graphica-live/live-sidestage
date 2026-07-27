@@ -5,6 +5,8 @@ const {
     DEFAULT_GOAL_GIFT_WIDGET_HEADING_SCROLL, DEFAULT_GOAL_GIFT_WIDGET_HEADING_TEXT,
     DEFAULT_GOAL_GIFT_WIDGET_ITEM, DEFAULT_GOAL_GIFT_WIDGET_LAYOUT,
     DEFAULT_GOAL_GIFT_WIDGET_NOTE_FONT_SIZE, DEFAULT_GOAL_GIFT_WIDGET_PROGRESS_RING_COLOR,
+    DEFAULT_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY, MIN_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY,
+    MAX_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY,
     DEFAULT_GOAL_GIFT_WIDGET_STROKE_WIDTH,
     DEFAULT_GOAL_GIFT_WIDGET_TEXT_STYLE_KEY,
     GOAL_GIFT_SYSTEM_IDS, GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS, GOAL_GIFT_SYSTEM_LABELS,
@@ -17,7 +19,7 @@ const {
     WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_HEADING_FONT_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY, WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY,
     WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY, WIDGET_GOAL_GIFTS_NOTE_FONT_SIZE_STATE_KEY,
-    WIDGET_GOAL_GIFTS_PROGRESS_RING_COLOR_STATE_KEY,
+    WIDGET_GOAL_GIFTS_PROGRESS_RING_COLOR_STATE_KEY, WIDGET_GOAL_GIFTS_PROGRESS_BG_OPACITY_STATE_KEY,
     WIDGET_GOAL_GIFTS_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY,
     WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY,
     WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY, WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY,
@@ -585,6 +587,25 @@ function setGoalGiftWidgetProgressRingColor(value) {
     return normalizedValue;
 }
 
+function normalizeGoalGiftProgressBackgroundOpacity(value) {
+    const normalizedValue = normalizeWholeNumber(value);
+    if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY) {
+        return DEFAULT_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY;
+    }
+
+    return Math.min(normalizedValue, MAX_GOAL_GIFT_WIDGET_PROGRESS_BG_OPACITY);
+}
+
+function getGoalGiftWidgetProgressBackgroundOpacity() {
+    return normalizeGoalGiftProgressBackgroundOpacity(getScopedStateValue(WIDGET_GOAL_GIFTS_PROGRESS_BG_OPACITY_STATE_KEY));
+}
+
+function setGoalGiftWidgetProgressBackgroundOpacity(value) {
+    const normalizedValue = normalizeGoalGiftProgressBackgroundOpacity(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_PROGRESS_BG_OPACITY_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
 function normalizeGoalGiftWidgetItems(value) {
     let source = value;
 
@@ -662,7 +683,8 @@ function buildGoalGiftProgressSnapshot(
     headingText = getGoalGiftWidgetHeadingText(),
     headingScroll = getGoalGiftWidgetHeadingScroll(),
     headingFontSize = getGoalGiftWidgetHeadingFontSize(),
-    progressRingColor = getGoalGiftWidgetProgressRingColor()
+    progressRingColor = getGoalGiftWidgetProgressRingColor(),
+    progressBackgroundOpacity = getGoalGiftWidgetProgressBackgroundOpacity()
 ) {
     const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
     const broadcasterId = getBroadcasterId();
@@ -678,6 +700,7 @@ function buildGoalGiftProgressSnapshot(
     const normalizedHeadingScroll = normalizeGoalGiftHeadingScroll(headingScroll);
     const normalizedHeadingFontSize = normalizeGoalGiftHeadingFontSize(headingFontSize);
     const normalizedProgressRingColor = normalizeGoalGiftProgressRingColor(progressRingColor);
+    const normalizedProgressBackgroundOpacity = normalizeGoalGiftProgressBackgroundOpacity(progressBackgroundOpacity);
 
     if (!broadcasterId) {
         return {
@@ -694,6 +717,7 @@ function buildGoalGiftProgressSnapshot(
             headingScroll: normalizedHeadingScroll,
             headingFontSize: normalizedHeadingFontSize,
             progressRingColor: normalizedProgressRingColor,
+            progressBackgroundOpacity: normalizedProgressBackgroundOpacity,
             feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
@@ -723,6 +747,7 @@ function buildGoalGiftProgressSnapshot(
         headingScroll: normalizedHeadingScroll,
         headingFontSize: normalizedHeadingFontSize,
         progressRingColor: normalizedProgressRingColor,
+        progressBackgroundOpacity: normalizedProgressBackgroundOpacity,
         feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
@@ -897,6 +922,7 @@ function setGoalGiftWidgetItems(items) {
         normalizeGoalGiftHeadingScroll, getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
         normalizeGoalGiftHeadingFontSize, getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
         normalizeGoalGiftProgressRingColor, getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
+        normalizeGoalGiftProgressBackgroundOpacity, getGoalGiftWidgetProgressBackgroundOpacity, setGoalGiftWidgetProgressBackgroundOpacity,
         normalizeGoalGiftWidgetItems, getGoalGiftWidgetItems,
         normalizeGoalGiftMatchName, getGoalGiftContributorKey,
         buildGoalGiftProgressSnapshot, getDuplicateUniqueGoalGiftSlots, setGoalGiftWidgetItems,

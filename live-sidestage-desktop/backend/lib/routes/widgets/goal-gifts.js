@@ -15,6 +15,7 @@ module.exports = function registerGoalGiftsRoutes({
     getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
     getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
     getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
+    getGoalGiftWidgetProgressBackgroundOpacity, setGoalGiftWidgetProgressBackgroundOpacity,
     setGoalGiftWidgetItems,
 }) {
     app.get('/api/widgets/goal-gifts/snapshot', (req, res) => {
@@ -72,11 +73,14 @@ module.exports = function registerGoalGiftsRoutes({
         const progressRingColor = req.body?.progressRingColor !== undefined
             ? setGoalGiftWidgetProgressRingColor(req.body.progressRingColor)
             : getGoalGiftWidgetProgressRingColor();
+        const progressBackgroundOpacity = req.body?.progressBackgroundOpacity !== undefined
+            ? setGoalGiftWidgetProgressBackgroundOpacity(req.body.progressBackgroundOpacity)
+            : getGoalGiftWidgetProgressBackgroundOpacity();
         const feedback = req.body?.feedback !== undefined
             ? setGoalGiftFeedbackSettings(req.body.feedback)
             : getGoalGiftFeedbackSettings();
         const items = setGoalGiftWidgetItems(req.body.items);
-        const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth, noteFontSize, achievementBadgeSize, achievementBadgeStyle, layout, headingText, headingScroll, headingFontSize, progressRingColor);
+        const snapshot = buildGoalGiftProgressSnapshot(getTodayDayKey(), items, fontKey, textStyleKey, strokeWidth, noteFontSize, achievementBadgeSize, achievementBadgeStyle, layout, headingText, headingScroll, headingFontSize, progressRingColor, progressBackgroundOpacity);
 
         io.emit('widgets:goal-gifts:updated', { snapshot });
 

@@ -38,6 +38,8 @@
         const goalGiftAchievementBadgeSizeInput = document.getElementById('goal-gift-achievement-badge-size');
         const goalGiftAchievementBadgeStyleSelect = document.getElementById('goal-gift-achievement-badge-style');
         const goalGiftProgressRingColorInput = document.getElementById('goal-gift-progress-ring-color');
+        const goalGiftProgressBgOpacityInput = document.getElementById('goal-gift-progress-bg-opacity');
+        const goalGiftProgressBgOpacityValue = document.getElementById('goal-gift-progress-bg-opacity-value');
         const goalGiftLayoutSelect = document.getElementById('goal-gift-layout');
         const goalGiftHeadingTextInput = document.getElementById('goal-gift-heading-text');
         const goalGiftHeadingScrollInput = document.getElementById('goal-gift-heading-scroll');
@@ -176,6 +178,7 @@
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
             goalGiftProgressRingColor: '#f59e0b',
+            goalGiftProgressBackgroundOpacity: 30,
             goalGiftLayout: 'row',
             goalGiftHeadingText: '',
             goalGiftHeadingScroll: false,
@@ -686,6 +689,9 @@
         const DEFAULT_GOAL_GIFT_LAYOUT = 'row';
         const ALLOWED_GOAL_GIFT_LAYOUTS = new Set(['row', 'column']);
         const DEFAULT_GOAL_GIFT_PROGRESS_RING_COLOR = '#f59e0b';
+        const DEFAULT_GOAL_GIFT_PROGRESS_BG_OPACITY = 30;
+        const MIN_GOAL_GIFT_PROGRESS_BG_OPACITY = 0;
+        const MAX_GOAL_GIFT_PROGRESS_BG_OPACITY = 100;
         const contributorsTextStyleOptions = sharedTextStyleOptions;
         const contributorsTextStyleOptionMap = new Map(contributorsTextStyleOptions.map((option) => [option.key, option]));
         const MAX_CONTRIBUTORS_STROKE_WIDTH = 12;
@@ -881,6 +887,15 @@
             return /^#[0-9a-f]{6}$/.test(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_PROGRESS_RING_COLOR;
         }
 
+        function normalizeGoalGiftProgressBackgroundOpacity(value) {
+            const normalizedValue = Number.parseInt(String(value ?? ''), 10);
+            if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_PROGRESS_BG_OPACITY) {
+                return DEFAULT_GOAL_GIFT_PROGRESS_BG_OPACITY;
+            }
+
+            return Math.min(normalizedValue, MAX_GOAL_GIFT_PROGRESS_BG_OPACITY);
+        }
+
         function normalizeGoalGiftHeadingText(value) {
             return typeof value === 'string' ? value.trim().slice(0, 40) : '';
         }
@@ -1049,6 +1064,8 @@
             goalGiftAchievementBadgeSizeInput.value = String(normalizeGoalGiftAchievementBadgeSize(state.goalGiftAchievementBadgeSize));
             goalGiftAchievementBadgeStyleSelect.value = normalizeGoalGiftAchievementBadgeStyle(state.goalGiftAchievementBadgeStyle);
             goalGiftProgressRingColorInput.value = normalizeGoalGiftProgressRingColor(state.goalGiftProgressRingColor);
+            goalGiftProgressBgOpacityInput.value = String(normalizeGoalGiftProgressBackgroundOpacity(state.goalGiftProgressBackgroundOpacity));
+            goalGiftProgressBgOpacityValue.textContent = `${goalGiftProgressBgOpacityInput.value}%`;
             goalGiftLayoutSelect.value = normalizeGoalGiftLayout(state.goalGiftLayout);
             goalGiftHeadingTextInput.value = normalizeGoalGiftHeadingText(state.goalGiftHeadingText);
             goalGiftHeadingScrollInput.checked = Boolean(state.goalGiftHeadingScroll);
@@ -2104,6 +2121,7 @@
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
             state.goalGiftProgressRingColor = normalizeGoalGiftProgressRingColor(payload.goalGiftProgressRingColor);
+            state.goalGiftProgressBackgroundOpacity = normalizeGoalGiftProgressBackgroundOpacity(payload.goalGiftProgressBackgroundOpacity);
             state.goalGiftLayout = normalizeGoalGiftLayout(payload.goalGiftLayout);
             state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.goalGiftHeadingText);
             state.goalGiftHeadingScroll = Boolean(payload.goalGiftHeadingScroll);
@@ -2441,6 +2459,7 @@
                         achievementBadgeSize: normalizeGoalGiftAchievementBadgeSize(goalGiftAchievementBadgeSizeInput.value),
                         achievementBadgeStyle: normalizeGoalGiftAchievementBadgeStyle(goalGiftAchievementBadgeStyleSelect.value),
                         progressRingColor: normalizeGoalGiftProgressRingColor(goalGiftProgressRingColorInput.value),
+                        progressBackgroundOpacity: normalizeGoalGiftProgressBackgroundOpacity(goalGiftProgressBgOpacityInput.value),
                         layout: normalizeGoalGiftLayout(goalGiftLayoutSelect.value),
                         headingText: normalizeGoalGiftHeadingText(goalGiftHeadingTextInput.value),
                         headingScroll: goalGiftHeadingScrollInput.checked,
@@ -2461,6 +2480,7 @@
                 state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.snapshot?.achievementBadgeSize ?? goalGiftAchievementBadgeSizeInput.value);
                 state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.snapshot?.achievementBadgeStyle ?? goalGiftAchievementBadgeStyleSelect.value);
                 state.goalGiftProgressRingColor = normalizeGoalGiftProgressRingColor(payload.snapshot?.progressRingColor ?? goalGiftProgressRingColorInput.value);
+                state.goalGiftProgressBackgroundOpacity = normalizeGoalGiftProgressBackgroundOpacity(payload.snapshot?.progressBackgroundOpacity ?? goalGiftProgressBgOpacityInput.value);
                 state.goalGiftLayout = normalizeGoalGiftLayout(payload.snapshot?.layout ?? goalGiftLayoutSelect.value);
                 state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.snapshot?.headingText ?? goalGiftHeadingTextInput.value);
                 state.goalGiftHeadingScroll = Boolean(payload.snapshot?.headingScroll ?? goalGiftHeadingScrollInput.checked);
@@ -2539,6 +2559,11 @@
         goalGiftAchievementBadgeStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftProgressRingColorInput.addEventListener('input', scheduleGoalGiftAutosave);
         goalGiftProgressRingColorInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftProgressBgOpacityInput.addEventListener('input', () => {
+            goalGiftProgressBgOpacityValue.textContent = `${goalGiftProgressBgOpacityInput.value}%`;
+            scheduleGoalGiftAutosave();
+        });
+        goalGiftProgressBgOpacityInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftLayoutSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftHeadingTextInput.addEventListener('input', scheduleGoalGiftAutosave);
         goalGiftHeadingTextInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
