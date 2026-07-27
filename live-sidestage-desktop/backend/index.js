@@ -1126,6 +1126,7 @@ const {
     normalizeGoalGiftHeadingText, getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
     normalizeGoalGiftHeadingScroll, getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
     normalizeGoalGiftHeadingFontSize, getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
+    normalizeGoalGiftProgressRingColor, getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
     normalizeGoalGiftWidgetItems, getGoalGiftWidgetItems,
     normalizeGoalGiftMatchName, getGoalGiftContributorKey,
     buildGoalGiftProgressSnapshot, getDuplicateUniqueGoalGiftSlots, setGoalGiftWidgetItems,
@@ -2521,6 +2522,7 @@ require('./lib/routes/widgets/config')({
     getGoalGiftWidgetLayout,
     getGoalGiftWidgetHeadingText, getGoalGiftWidgetHeadingScroll,
     getGoalGiftWidgetHeadingFontSize,
+    getGoalGiftWidgetProgressRingColor,
     buildGoalGiftProgressSnapshot,
 });
 
@@ -2601,6 +2603,7 @@ require('./lib/routes/widgets/goal-gifts')({
     getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
     getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
     getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
+    getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
     setGoalGiftWidgetItems,
 });
 

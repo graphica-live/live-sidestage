@@ -37,6 +37,7 @@
         const goalGiftNoteFontSizeInput = document.getElementById('goal-gift-note-font-size');
         const goalGiftAchievementBadgeSizeInput = document.getElementById('goal-gift-achievement-badge-size');
         const goalGiftAchievementBadgeStyleSelect = document.getElementById('goal-gift-achievement-badge-style');
+        const goalGiftProgressRingColorInput = document.getElementById('goal-gift-progress-ring-color');
         const goalGiftLayoutSelect = document.getElementById('goal-gift-layout');
         const goalGiftHeadingTextInput = document.getElementById('goal-gift-heading-text');
         const goalGiftHeadingScrollInput = document.getElementById('goal-gift-heading-scroll');
@@ -174,6 +175,7 @@
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
+            goalGiftProgressRingColor: '#f59e0b',
             goalGiftLayout: 'row',
             goalGiftHeadingText: '',
             goalGiftHeadingScroll: false,
@@ -683,6 +685,7 @@
         const ALLOWED_GOAL_GIFT_ACHIEVEMENT_BADGE_STYLES = new Set(['stamp-red', 'stamp-blue', 'stamp-gold', 'stamp-green', 'stamp-dark']);
         const DEFAULT_GOAL_GIFT_LAYOUT = 'row';
         const ALLOWED_GOAL_GIFT_LAYOUTS = new Set(['row', 'column']);
+        const DEFAULT_GOAL_GIFT_PROGRESS_RING_COLOR = '#f59e0b';
         const contributorsTextStyleOptions = sharedTextStyleOptions;
         const contributorsTextStyleOptionMap = new Map(contributorsTextStyleOptions.map((option) => [option.key, option]));
         const MAX_CONTRIBUTORS_STROKE_WIDTH = 12;
@@ -873,6 +876,11 @@
             return ALLOWED_GOAL_GIFT_LAYOUTS.has(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_LAYOUT;
         }
 
+        function normalizeGoalGiftProgressRingColor(value) {
+            const normalizedValue = String(value || '').trim().toLowerCase();
+            return /^#[0-9a-f]{6}$/.test(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_PROGRESS_RING_COLOR;
+        }
+
         function normalizeGoalGiftHeadingText(value) {
             return typeof value === 'string' ? value.trim().slice(0, 40) : '';
         }
@@ -1040,6 +1048,7 @@
         function syncGoalGiftAchievementBadgeControls() {
             goalGiftAchievementBadgeSizeInput.value = String(normalizeGoalGiftAchievementBadgeSize(state.goalGiftAchievementBadgeSize));
             goalGiftAchievementBadgeStyleSelect.value = normalizeGoalGiftAchievementBadgeStyle(state.goalGiftAchievementBadgeStyle);
+            goalGiftProgressRingColorInput.value = normalizeGoalGiftProgressRingColor(state.goalGiftProgressRingColor);
             goalGiftLayoutSelect.value = normalizeGoalGiftLayout(state.goalGiftLayout);
             goalGiftHeadingTextInput.value = normalizeGoalGiftHeadingText(state.goalGiftHeadingText);
             goalGiftHeadingScrollInput.checked = Boolean(state.goalGiftHeadingScroll);
@@ -2094,6 +2103,7 @@
             state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.goalGiftNoteFontSize);
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
+            state.goalGiftProgressRingColor = normalizeGoalGiftProgressRingColor(payload.goalGiftProgressRingColor);
             state.goalGiftLayout = normalizeGoalGiftLayout(payload.goalGiftLayout);
             state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.goalGiftHeadingText);
             state.goalGiftHeadingScroll = Boolean(payload.goalGiftHeadingScroll);
@@ -2430,6 +2440,7 @@
                         noteFontSize: normalizeGoalGiftNoteFontSize(goalGiftNoteFontSizeInput.value),
                         achievementBadgeSize: normalizeGoalGiftAchievementBadgeSize(goalGiftAchievementBadgeSizeInput.value),
                         achievementBadgeStyle: normalizeGoalGiftAchievementBadgeStyle(goalGiftAchievementBadgeStyleSelect.value),
+                        progressRingColor: normalizeGoalGiftProgressRingColor(goalGiftProgressRingColorInput.value),
                         layout: normalizeGoalGiftLayout(goalGiftLayoutSelect.value),
                         headingText: normalizeGoalGiftHeadingText(goalGiftHeadingTextInput.value),
                         headingScroll: goalGiftHeadingScrollInput.checked,
@@ -2449,6 +2460,7 @@
                 state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.snapshot?.noteFontSize ?? goalGiftNoteFontSizeInput.value);
                 state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.snapshot?.achievementBadgeSize ?? goalGiftAchievementBadgeSizeInput.value);
                 state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.snapshot?.achievementBadgeStyle ?? goalGiftAchievementBadgeStyleSelect.value);
+                state.goalGiftProgressRingColor = normalizeGoalGiftProgressRingColor(payload.snapshot?.progressRingColor ?? goalGiftProgressRingColorInput.value);
                 state.goalGiftLayout = normalizeGoalGiftLayout(payload.snapshot?.layout ?? goalGiftLayoutSelect.value);
                 state.goalGiftHeadingText = normalizeGoalGiftHeadingText(payload.snapshot?.headingText ?? goalGiftHeadingTextInput.value);
                 state.goalGiftHeadingScroll = Boolean(payload.snapshot?.headingScroll ?? goalGiftHeadingScrollInput.checked);
@@ -2525,6 +2537,8 @@
         goalGiftAchievementBadgeSizeInput.addEventListener('blur', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftAchievementBadgeSizeInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftAchievementBadgeStyleSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
+        goalGiftProgressRingColorInput.addEventListener('input', scheduleGoalGiftAutosave);
+        goalGiftProgressRingColorInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftLayoutSelect.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });
         goalGiftHeadingTextInput.addEventListener('input', scheduleGoalGiftAutosave);
         goalGiftHeadingTextInput.addEventListener('change', () => { saveGoalGiftSettingsImmediately().catch(() => {}); });

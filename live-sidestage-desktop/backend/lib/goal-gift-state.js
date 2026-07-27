@@ -4,7 +4,8 @@ const {
     DEFAULT_GOAL_GIFT_WIDGET_FONT_KEY, DEFAULT_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE,
     DEFAULT_GOAL_GIFT_WIDGET_HEADING_SCROLL, DEFAULT_GOAL_GIFT_WIDGET_HEADING_TEXT,
     DEFAULT_GOAL_GIFT_WIDGET_ITEM, DEFAULT_GOAL_GIFT_WIDGET_LAYOUT,
-    DEFAULT_GOAL_GIFT_WIDGET_NOTE_FONT_SIZE, DEFAULT_GOAL_GIFT_WIDGET_STROKE_WIDTH,
+    DEFAULT_GOAL_GIFT_WIDGET_NOTE_FONT_SIZE, DEFAULT_GOAL_GIFT_WIDGET_PROGRESS_RING_COLOR,
+    DEFAULT_GOAL_GIFT_WIDGET_STROKE_WIDTH,
     DEFAULT_GOAL_GIFT_WIDGET_TEXT_STYLE_KEY,
     GOAL_GIFT_SYSTEM_IDS, GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS, GOAL_GIFT_SYSTEM_LABELS,
     MAX_GOAL_GIFT_WIDGET_ACHIEVEMENT_BADGE_SIZE, MAX_GOAL_GIFT_WIDGET_HEADING_FONT_SIZE,
@@ -16,6 +17,7 @@ const {
     WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_HEADING_FONT_SIZE_STATE_KEY,
     WIDGET_GOAL_GIFTS_HEADING_SCROLL_STATE_KEY, WIDGET_GOAL_GIFTS_HEADING_TEXT_STATE_KEY,
     WIDGET_GOAL_GIFTS_LAYOUT_STATE_KEY, WIDGET_GOAL_GIFTS_NOTE_FONT_SIZE_STATE_KEY,
+    WIDGET_GOAL_GIFTS_PROGRESS_RING_COLOR_STATE_KEY,
     WIDGET_GOAL_GIFTS_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY,
     WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFT_ACTIVITY_COUNTS_STATE_KEY,
     WIDGET_GOAL_GIFT_FOLLOW_STATE_KEY, WIDGET_GOAL_GIFT_LIKE_TOTALS_STATE_KEY,
@@ -568,6 +570,21 @@ function setGoalGiftWidgetHeadingFontSize(value) {
     return normalizedValue;
 }
 
+function normalizeGoalGiftProgressRingColor(value) {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(normalizedValue) ? normalizedValue : DEFAULT_GOAL_GIFT_WIDGET_PROGRESS_RING_COLOR;
+}
+
+function getGoalGiftWidgetProgressRingColor() {
+    return normalizeGoalGiftProgressRingColor(getScopedStateValue(WIDGET_GOAL_GIFTS_PROGRESS_RING_COLOR_STATE_KEY));
+}
+
+function setGoalGiftWidgetProgressRingColor(value) {
+    const normalizedValue = normalizeGoalGiftProgressRingColor(value);
+    setScopedStateValue(WIDGET_GOAL_GIFTS_PROGRESS_RING_COLOR_STATE_KEY, normalizedValue);
+    return normalizedValue;
+}
+
 function normalizeGoalGiftWidgetItems(value) {
     let source = value;
 
@@ -644,7 +661,8 @@ function buildGoalGiftProgressSnapshot(
     layout = getGoalGiftWidgetLayout(),
     headingText = getGoalGiftWidgetHeadingText(),
     headingScroll = getGoalGiftWidgetHeadingScroll(),
-    headingFontSize = getGoalGiftWidgetHeadingFontSize()
+    headingFontSize = getGoalGiftWidgetHeadingFontSize(),
+    progressRingColor = getGoalGiftWidgetProgressRingColor()
 ) {
     const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
     const broadcasterId = getBroadcasterId();
@@ -659,6 +677,7 @@ function buildGoalGiftProgressSnapshot(
     const normalizedHeadingText = normalizeGoalGiftHeadingText(headingText);
     const normalizedHeadingScroll = normalizeGoalGiftHeadingScroll(headingScroll);
     const normalizedHeadingFontSize = normalizeGoalGiftHeadingFontSize(headingFontSize);
+    const normalizedProgressRingColor = normalizeGoalGiftProgressRingColor(progressRingColor);
 
     if (!broadcasterId) {
         return {
@@ -674,6 +693,7 @@ function buildGoalGiftProgressSnapshot(
             headingText: normalizedHeadingText,
             headingScroll: normalizedHeadingScroll,
             headingFontSize: normalizedHeadingFontSize,
+            progressRingColor: normalizedProgressRingColor,
             feedback: getGoalGiftFeedbackSettings(),
             goals: normalizedItems.map((item, index) => ({
                 slot: index + 1,
@@ -702,6 +722,7 @@ function buildGoalGiftProgressSnapshot(
         headingText: normalizedHeadingText,
         headingScroll: normalizedHeadingScroll,
         headingFontSize: normalizedHeadingFontSize,
+        progressRingColor: normalizedProgressRingColor,
         feedback: getGoalGiftFeedbackSettings(),
         goals: normalizedItems.map((item, index) => {
             const systemType = getGoalGiftSystemTypeById(item.giftId);
@@ -875,6 +896,7 @@ function setGoalGiftWidgetItems(items) {
         normalizeGoalGiftHeadingText, getGoalGiftWidgetHeadingText, setGoalGiftWidgetHeadingText,
         normalizeGoalGiftHeadingScroll, getGoalGiftWidgetHeadingScroll, setGoalGiftWidgetHeadingScroll,
         normalizeGoalGiftHeadingFontSize, getGoalGiftWidgetHeadingFontSize, setGoalGiftWidgetHeadingFontSize,
+        normalizeGoalGiftProgressRingColor, getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
         normalizeGoalGiftWidgetItems, getGoalGiftWidgetItems,
         normalizeGoalGiftMatchName, getGoalGiftContributorKey,
         buildGoalGiftProgressSnapshot, getDuplicateUniqueGoalGiftSlots, setGoalGiftWidgetItems,
