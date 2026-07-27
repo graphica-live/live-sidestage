@@ -774,6 +774,7 @@ function buildGoalGiftProgressSnapshot(
             const normalizedGiftName = normalizeGoalGiftMatchName(item.giftName);
             let observedCount = 0;
             let latestGiftImage = item.giftImage || '';
+            let lastSenderImage = '';
             const countedContributorKeys = item.countUniqueUsers ? new Set() : null;
 
             gifts.forEach((gift) => {
@@ -802,6 +803,10 @@ function buildGoalGiftProgressSnapshot(
                 if (!latestGiftImage && gift.giftImage) {
                     latestGiftImage = gift.giftImage;
                 }
+
+                if (gift.image) {
+                    lastSenderImage = gift.image;
+                }
             });
 
             const currentCountOffset = item.resetAtMidnight && item.currentCountOffsetDayKey !== requestedDayKey
@@ -815,7 +820,8 @@ function buildGoalGiftProgressSnapshot(
                 currentCount,
                 observedCount,
                 completed: currentCount >= item.targetCount,
-                progressRatio: item.targetCount > 0 ? Math.min(currentCount / item.targetCount, 1) : 0
+                progressRatio: item.targetCount > 0 ? Math.min(currentCount / item.targetCount, 1) : 0,
+                lastSenderImage
             };
         })
     };

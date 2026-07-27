@@ -228,6 +228,37 @@
             position: relative;
             width: var(--gift-width);
             min-height: var(--gift-height);
+            --ring-square-size: min(var(--gift-width), var(--gift-height));
+            --ring-offset-x: calc((var(--gift-width) - var(--ring-square-size)) / 2);
+            --ring-offset-y: calc((var(--gift-height) - var(--ring-square-size)) / 2);
+        }
+
+        .goal-sender-avatar {
+            display: none;
+            position: absolute;
+            z-index: 3;
+            width: calc(var(--ring-square-size) * 0.22);
+            height: calc(var(--ring-square-size) * 0.22);
+            left: calc(var(--ring-offset-x) + var(--ring-square-size) * 0.24);
+            top: calc(var(--ring-offset-y) + var(--ring-square-size) * 0.95);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.88);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+            background: rgba(15, 23, 42, 0.5);
+            pointer-events: none;
+        }
+
+        .goal-sender-avatar.has-image {
+            display: block;
+        }
+
+        .goal-sender-avatar img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .goal-progress-ring {
@@ -804,6 +835,8 @@
         const _previewGiftNameParam = searchParams.get('previewGiftName');
         const resolvedPreviewGiftImage = _previewGiftImageParam || previewGoalGiftImage;
         const resolvedPreviewGiftName = _previewGiftNameParam || 'Rose Bear';
+        const previewSenderAvatar = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#94a3b8"/><circle cx="32" cy="24" r="14" fill="#e2e8f0"/><path d="M8 60c0-15 10.7-24 24-24s24 9 24 24" fill="#e2e8f0"/></svg>');
+        const resolvedPreviewSenderImage = searchParams.get('previewSenderImage') || previewSenderAvatar;
 
         if (previewCardMode) {
             document.body.classList.add('preview-card');
@@ -1377,10 +1410,16 @@
                         note: 'あと少し',
                         giftImage: resolvedPreviewGiftImage,
                         targetCount: 30,
-                        currentCount: 12
+                        currentCount: 12,
+                        lastSenderImage: resolvedPreviewSenderImage
                     }
                 ]
             };
+        }
+
+        function buildGoalSenderAvatarHtml(goal) {
+            const image = goal?.lastSenderImage || '';
+            return `<div class="goal-sender-avatar${image ? ' has-image' : ''}">${image ? `<img src="${escapeHtml(image)}" alt="">` : ''}</div>`;
         }
 
         function buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle) {
@@ -1502,6 +1541,10 @@
                         if (ringFillOutline) {
                             ringFillOutline.style.strokeDasharray = ringFillDasharray;
                         }
+                        const avatarEl = row.querySelector('.goal-sender-avatar');
+                        if (avatarEl) {
+                            avatarEl.outerHTML = buildGoalSenderAvatarHtml(goal);
+                        }
                         lastRenderedCounts.set(slot, goal.currentCount);
                     }
 
@@ -1549,6 +1592,7 @@
                     <div class="gift-visual ${goal.currentCount >= goal.targetCount ? 'is-achieved' : ''}">
                         ${buildGoalProgressRingHtml(goal)}
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
+                        ${buildGoalSenderAvatarHtml(goal)}
                         ${goal.displayName ? `<div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>` : ''}
                         ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
                     </div>
