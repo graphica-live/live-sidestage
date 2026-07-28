@@ -452,6 +452,7 @@ document.addEventListener('keydown', (event) => {
         hideEventSuggestionPanel();
         closeModal(eventModal);
         closeModal(triggerModal);
+        closeModal(categoryMoveModal);
     }
 });
 

@@ -167,6 +167,10 @@ function renderEvents() {
             openEventModalForEdit(eventRecord);
         });
 
+        fragment.querySelector('[data-action="move-event"]').addEventListener('click', () => {
+            openCategoryMoveModal('event', eventRecord.id);
+        });
+
         fragment.querySelector('[data-action="play-event"]').addEventListener('click', async () => {
             setStatus(`${getEventLabel(eventRecord, index)} を再生しています。`);
 
@@ -270,6 +274,10 @@ function renderTriggers() {
 
         fragment.querySelector('[data-action="edit-trigger"]').addEventListener('click', () => {
             openTriggerModalForEdit(triggerRecord);
+        });
+
+        fragment.querySelector('[data-action="move-trigger"]').addEventListener('click', () => {
+            openCategoryMoveModal('trigger', triggerRecord.id);
         });
 
         triggerList.appendChild(fragment);
