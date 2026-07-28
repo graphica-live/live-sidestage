@@ -70,11 +70,6 @@ module.exports = function registerEffectsRoutes({
 
     app.delete('/api/effects/categories/:id', (req, res) => {
         const id = String(req.params.id || '');
-
-        if (id === EFFECT_DEFAULT_CATEGORY_ID) {
-            return res.status(400).json({ ok: false, error: '「初期」カテゴリは削除できません。' });
-        }
-
         const existing = getEffectCategories();
 
         if (!existing.some((item) => item.id === id)) {

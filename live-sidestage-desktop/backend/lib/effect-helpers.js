@@ -265,17 +265,20 @@ function normalizeEffectCategories(value) {
         source = [];
     }
 
-    const categories = source.map((item) => normalizeEffectCategory(item));
-
-    if (!categories.some((category) => category.id === EFFECT_DEFAULT_CATEGORY_ID)) {
-        categories.unshift(createDefaultEffectCategory());
-    }
-
-    return categories;
+    return source.map((item) => normalizeEffectCategory(item));
 }
 
 function getEffectCategories() {
-    return normalizeEffectCategories(_getScopedStateValue(EFFECT_CATEGORIES_STATE_KEY));
+    const raw = _getScopedStateValue(EFFECT_CATEGORIES_STATE_KEY);
+
+    // カテゴリが一度も保存されていない場合のみ「初期」カテゴリで初期化する
+    // （既存イベント・トリガーの自動移行用）。ユーザーが明示的に全カテゴリを
+    // 削除した後は空配列のまま保持し、勝手に復活させない。
+    if (raw == null) {
+        return [createDefaultEffectCategory()];
+    }
+
+    return normalizeEffectCategories(raw);
 }
 
 function setEffectCategories(categories) {

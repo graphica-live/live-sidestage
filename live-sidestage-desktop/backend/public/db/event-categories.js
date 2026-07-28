@@ -69,15 +69,27 @@ async function loadCategories() {
     renderCategories();
 }
 
+function getOrphanCategories() {
+    const knownIds = new Set(currentCategories.map((category) => category.id));
+    const orphanIds = new Set([
+        ...Object.keys(eventCountByCategory),
+        ...Object.keys(triggerCountByCategory)
+    ].filter((id) => !knownIds.has(id)));
+
+    return [...orphanIds].map((id) => ({ id, name: '未分類', isOrphan: true }));
+}
+
 function renderCategories() {
-    if (!currentCategories.length) {
+    const displayCategories = [...currentCategories, ...getOrphanCategories()];
+
+    if (!displayCategories.length) {
         categoryList.innerHTML = '<div class="empty">カテゴリはまだありません。上のボタンから追加してください。</div>';
         return;
     }
 
     categoryList.innerHTML = '';
 
-    currentCategories.forEach((category) => {
+    displayCategories.forEach((category) => {
         const fragment = categoryTemplate.content.cloneNode(true);
         const nameButton = fragment.querySelector('[data-role="name"]');
         const metaEl = fragment.querySelector('[data-role="meta"]');
@@ -92,14 +104,16 @@ function renderCategories() {
         });
 
         const deleteButton = fragment.querySelector('[data-action="delete-category"]');
+        const editButton = fragment.querySelector('[data-action="edit-category"]');
 
-        if (category.id === DEFAULT_CATEGORY_ID) {
+        if (category.isOrphan) {
             deleteButton.disabled = true;
-            deleteButton.title = '「初期」カテゴリは削除できません。';
+            deleteButton.title = 'カテゴリが削除された未分類の項目です。開いて📁ボタンで別カテゴリへ移動してください。';
+            editButton.disabled = true;
         } else {
             deleteButton.addEventListener('click', async () => {
                 const confirmed = await showConfirm(
-                    `「${category.name}」を削除してもよいですか？含まれるイベント・トリガーは「初期」カテゴリに移動します。`
+                    `「${category.name}」を削除してもよいですか？含まれるイベント・トリガーはカテゴリ未分類になります。`
                 );
                 if (!confirmed) return;
 
@@ -120,7 +134,8 @@ function renderCategories() {
             });
         }
 
-        fragment.querySelector('[data-action="edit-category"]').addEventListener('click', () => {
+        editButton.addEventListener('click', () => {
+            if (category.isOrphan) return;
             openCategoryModalForEdit(category);
         });
 
