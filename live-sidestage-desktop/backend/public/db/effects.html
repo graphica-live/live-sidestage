@@ -284,32 +284,12 @@
         </div>
     </div>
 
-    <div class="modal-shell" id="category-move-modal" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="category-move-modal-title" style="width:min(420px,100%);">
-            <div>
-                <h2 id="category-move-modal-title">カテゴリを変更</h2>
-                <p class="subtext">移動先のカテゴリを選んでください。参照関係（トリガーの再生イベント指定）が別カテゴリをまたぐ場合、表示が正しく行われないことがあります。</p>
-            </div>
-            <div class="record-fields modal-fields-vertical">
-                <div class="field full">
-                    <label>移動先カテゴリ</label>
-                    <select id="category-move-select"></select>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" data-action="close-category-move-modal">キャンセル</button>
-                <button type="button" class="primary" id="category-move-submit">移動</button>
-            </div>
-        </div>
-    </div>
-
     <template id="event-template">
         <article class="record-card event-record-card">
             <div class="record-head event-record-head">
                 <div class="icon-button-row">
                     <button type="button" class="icon-button danger" data-action="delete-event" title="削除" aria-label="削除">🗑</button>
                     <button type="button" class="icon-button edit" data-action="edit-event" title="編集" aria-label="編集">🖊</button>
-                    <button type="button" class="icon-button" data-action="move-event" title="カテゴリ変更" aria-label="カテゴリ変更">📁</button>
                     <button type="button" class="icon-button play" data-action="play-event" title="再生" aria-label="再生">▶</button>
                 </div>
             </div>
@@ -352,7 +332,6 @@
                 <div class="icon-button-row">
                     <button type="button" class="icon-button danger" data-action="delete-trigger" title="削除" aria-label="削除">🗑</button>
                     <button type="button" class="icon-button edit" data-action="edit-trigger" title="編集" aria-label="編集">🖊</button>
-                    <button type="button" class="icon-button" data-action="move-trigger" title="カテゴリ変更" aria-label="カテゴリ変更">📁</button>
                     <label class="trigger-enabled-label">
                         <input type="checkbox" data-role="enabled" data-action="toggle-enabled">
                         <span>有効</span>

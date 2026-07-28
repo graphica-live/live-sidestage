@@ -144,17 +144,3 @@ test.describe('event-categories.html: モーダルが開ける', () => {
         await expect(page.locator('#category-modal')).toHaveClass(/is-open/);
     });
 });
-
-// ── effects.html: カテゴリ変更モーダル (自動生成) ──────────────────────────
-// category-move-modal は行テンプレート内の📁ボタン（動的レンダリング）からのみ開く。
-// 静的なトリガー要素が無いため、confirm-dialog と同様に初期状態のみ検証する。
-test.describe('effects.html: カテゴリ変更モーダル', () => {
-    test.beforeEach(async ({ page }) => {
-        await page.goto(`${BASE_URL}/db/effects.html`);
-    await page.waitForLoadState('networkidle');
-    });
-
-    test('category-move-modal は初期状態で閉じている', async ({ page }) => {
-        await expect(page.locator('#category-move-modal')).toHaveAttribute('aria-hidden', 'true');
-    });
-});

@@ -67,9 +67,6 @@ const triggerModalFilemapDir = document.getElementById('trigger-modal-filemap-di
 const triggerModalSubmit = document.getElementById('trigger-modal-submit');
 const backToCategoriesButton = document.getElementById('back-to-categories-button');
 const categoryNameLabel = document.getElementById('category-name-label');
-const categoryMoveModal = document.getElementById('category-move-modal');
-const categoryMoveSelect = document.getElementById('category-move-select');
-const categoryMoveSubmit = document.getElementById('category-move-submit');
 
 const DEFAULT_CATEGORY_ID = 'default';
 const currentCategoryId = new URLSearchParams(window.location.search).get('category') || DEFAULT_CATEGORY_ID;
@@ -80,9 +77,6 @@ function belongsToCurrentCategory(item) {
 
 let allEvents = [];
 let allTriggers = [];
-let allCategories = [];
-let pendingMoveType = null;
-let pendingMoveId = null;
 let currentEvents = [];
 let currentTriggers = [];
 let currentScreenUrls = [];
@@ -209,81 +203,15 @@ backToCategoriesButton.addEventListener('click', () => {
     window.location.href = '/event-categories';
 });
 
-async function loadCategories() {
+async function loadCategoryLabel() {
     try {
         const response = await fetch('/api/effects/categories');
         const payload = await response.json();
-        allCategories = payload.categories || [];
-        const category = allCategories.find((item) => item.id === currentCategoryId);
+        const category = (payload.categories || []).find((item) => item.id === currentCategoryId);
         categoryNameLabel.textContent = category ? category.name : 'イベントトリガー';
     } catch {
-        allCategories = [];
         categoryNameLabel.textContent = 'イベントトリガー';
     }
 }
 
-function openCategoryMoveModal(type, id) {
-    pendingMoveType = type;
-    pendingMoveId = id;
-    categoryMoveSelect.innerHTML = allCategories.map((category) =>
-        `<option value="${escapeHtml(category.id)}"${category.id === currentCategoryId ? ' selected' : ''}>${escapeHtml(category.name)}</option>`
-    ).join('');
-    openModal(categoryMoveModal);
-}
-
-async function moveRecordToCategory(type, id, targetCategoryId) {
-    const updatedEvents = type === 'event'
-        ? allEvents.map((item) => item.id === id ? { ...item, categoryId: targetCategoryId } : item)
-        : allEvents;
-    const updatedTriggers = type === 'trigger'
-        ? allTriggers.map((item) => item.id === id ? { ...item, categoryId: targetCategoryId } : item)
-        : allTriggers;
-
-    const response = await fetch('/api/effects/config', {
-        method: 'PATCH',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            events: updatedEvents,
-            triggers: updatedTriggers
-        })
-    });
-    const payload = await response.json();
-
-    if (!response.ok) {
-        throw new Error(payload.error || 'カテゴリの変更に失敗しました。');
-    }
-
-    allEvents = payload.events || [];
-    allTriggers = payload.triggers || [];
-    currentEvents = allEvents.filter(belongsToCurrentCategory);
-    currentTriggers = allTriggers.filter(belongsToCurrentCategory);
-    renderEvents();
-    renderTriggers();
-}
-
-categoryMoveSubmit.addEventListener('click', async () => {
-    const targetCategoryId = categoryMoveSelect.value;
-
-    if (!targetCategoryId || !pendingMoveType || !pendingMoveId) {
-        closeModal(categoryMoveModal);
-        return;
-    }
-
-    try {
-        await moveRecordToCategory(pendingMoveType, pendingMoveId, targetCategoryId);
-        closeModal(categoryMoveModal);
-    } catch (error) {
-        setStatus(error.message || 'カテゴリの変更に失敗しました。', 'error');
-    } finally {
-        pendingMoveType = null;
-        pendingMoveId = null;
-    }
-});
-
-document.querySelectorAll('[data-action="close-category-move-modal"]').forEach((button) => {
-    button.addEventListener('click', () => closeModal(categoryMoveModal));
-});
-
-loadCategories();
+loadCategoryLabel();

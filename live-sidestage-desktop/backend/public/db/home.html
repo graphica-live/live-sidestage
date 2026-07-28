@@ -902,7 +902,10 @@
 
         navButtons.forEach((button) => {
             button.addEventListener('click', () => {
-                setCurrentRoute(button.dataset.viewPath);
+                const path = button.dataset.viewPath;
+                // イベントトリガーは詳細画面(/effects?category=...)に潜っていることがあるため、
+                // サイドバーから再度押した際は必ずカテゴリ一覧へ戻す。
+                setCurrentRoute(path, { forceReload: path === '/event-categories' });
             });
         });
 
