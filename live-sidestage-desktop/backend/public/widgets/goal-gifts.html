@@ -239,8 +239,8 @@
             z-index: 4;
             width: calc(var(--ring-square-size) * 0.6);
             height: calc(var(--ring-square-size) * 0.6);
-            left: calc(var(--ring-offset-x) + var(--ring-square-size) * 0.18);
-            top: calc(var(--ring-offset-y) + var(--ring-square-size) * 0.95);
+            left: calc(var(--ring-offset-x) + var(--ring-square-size) * -0.02);
+            top: calc(var(--ring-offset-y) + var(--ring-square-size) * 0.5);
             transform: translate(-50%, -50%);
             border-radius: 50%;
             overflow: hidden;
@@ -269,7 +269,7 @@
             height: 100%;
             pointer-events: none;
             z-index: 1;
-            transform: rotate(120deg);
+            transform: rotate(180deg);
             overflow: visible;
         }
 
@@ -1190,11 +1190,11 @@
             return `${compactValue}${matchedUnit.suffix}`;
         }
 
-        // ゲージ状の円形バー: 底辺中央に隙間を残し、左下から時計回りに上部を通って右下まで進む。
-        // transform: rotate(120deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を左下(210°)に移す。
+        // ゲージ状の円形バー: 左下(6時-9時間)に隙間を残し、9時から時計回りに12時・3時を通って6時まで進む。
+        // transform: rotate(180deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を9時に移す。
         const GOAL_RING_RADIUS = 52;
         const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * GOAL_RING_RADIUS;
-        const GOAL_RING_SWEEP_DEG = 300;
+        const GOAL_RING_SWEEP_DEG = 270;
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
         const GOAL_RING_TRACK_DASHARRAY = `${GOAL_RING_ARC_LENGTH} ${GOAL_RING_CIRCUMFERENCE - GOAL_RING_ARC_LENGTH}`;
         const DEFAULT_GOAL_RING_COLOR = '#f59e0b';
