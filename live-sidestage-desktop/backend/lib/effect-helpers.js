@@ -240,13 +240,14 @@ function normalizeEffectTriggers(value) {
 
 // ── Category model ────────────────────────────────────────────────────────────
 function createDefaultEffectCategory() {
-    return { id: EFFECT_DEFAULT_CATEGORY_ID, name: EFFECT_DEFAULT_CATEGORY_NAME };
+    return { id: EFFECT_DEFAULT_CATEGORY_ID, name: EFFECT_DEFAULT_CATEGORY_NAME, enabled: true };
 }
 
 function normalizeEffectCategory(value) {
     return {
         id: normalizeEffectId(value?.id, 'category'),
-        name: normalizeEffectText(value?.name, 60) || '無題のカテゴリ'
+        name: normalizeEffectText(value?.name, 60) || '無題のカテゴリ',
+        enabled: value?.enabled !== false
     };
 }
 

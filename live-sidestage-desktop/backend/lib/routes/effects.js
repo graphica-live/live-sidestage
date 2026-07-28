@@ -51,19 +51,30 @@ module.exports = function registerEffectsRoutes({
 
     app.patch('/api/effects/categories/:id', (req, res) => {
         const id = String(req.params.id || '');
-        const name = String(req.body?.name || '').trim();
-
-        if (!name) {
-            return res.status(400).json({ ok: false, error: 'カテゴリ名を入力してください。' });
-        }
-
         const existing = getEffectCategories();
+        const target = existing.find((item) => item.id === id);
 
-        if (!existing.some((item) => item.id === id)) {
+        if (!target) {
             return res.status(404).json({ ok: false, error: 'カテゴリが見つかりません。' });
         }
 
-        const categories = setEffectCategories(existing.map((item) => item.id === id ? { ...item, name } : item));
+        const updates = {};
+
+        if (req.body?.name !== undefined) {
+            const name = String(req.body.name || '').trim();
+
+            if (!name) {
+                return res.status(400).json({ ok: false, error: 'カテゴリ名を入力してください。' });
+            }
+
+            updates.name = name;
+        }
+
+        if (req.body?.enabled !== undefined) {
+            updates.enabled = Boolean(req.body.enabled);
+        }
+
+        const categories = setEffectCategories(existing.map((item) => item.id === id ? { ...item, ...updates } : item));
 
         return res.json({ ok: true, categories });
     });

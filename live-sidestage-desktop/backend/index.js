@@ -1310,6 +1310,7 @@ const {
     io,
     getEffectEvents,
     getEffectTriggers,
+    getEffectCategories,
     getEffectsGloballyPaused,
     normalizeBroadcasterId,
     normalizeEffectText,

@@ -8,6 +8,7 @@ module.exports = function createEffectsRuntime({
     io,
     getEffectEvents,
     getEffectTriggers,
+    getEffectCategories,
     getEffectsGloballyPaused,
     normalizeBroadcasterId,
     normalizeEffectText,
@@ -15,6 +16,10 @@ module.exports = function createEffectsRuntime({
     getTimestamp,
     sendVdjEffectForEvent,
 }) {
+    // カテゴリ単位のON/OFF。個々のトリガーの enabled 値には一切干渉しない。
+    function getDisabledCategoryIds() {
+        return new Set(getEffectCategories().filter((category) => category.enabled === false).map((category) => category.id));
+    }
     const USER_VIDEO_EXTENSIONS = ['mp4', 'vp9', 'mov'];
     const USER_VIDEO_MIME_TYPES = { mp4: 'video/mp4', vp9: 'video/webm', mov: 'video/quicktime' };
 
@@ -123,8 +128,10 @@ module.exports = function createEffectsRuntime({
         if (!userId) return;
         const effectEvents = getEffectEvents();
         const eventById = new Map(effectEvents.map((item) => [item.id, item]));
+        const disabledCategoryIds = getDisabledCategoryIds();
         const fileMapTriggers = getEffectTriggers().filter(
             (item) => item.enabled && item.userTargetMode === 'file-map' && item.userIdToFileDir && item.eventIds.length > 0
+                && !disabledCategoryIds.has(item.categoryId)
         );
         fileMapTriggers.forEach((trigger) => {
             if (!findUserVideoFile(trigger.userIdToFileDir, userId)) return;
@@ -141,7 +148,9 @@ module.exports = function createEffectsRuntime({
     function tryRunEffectTriggers(context, sourceEvent) {
         const effectEvents = getEffectEvents();
         const eventById = new Map(effectEvents.map((item) => [item.id, item]));
-        const triggers = getEffectTriggers().filter((item) => item.enabled && item.eventIds.length > 0);
+        const disabledCategoryIds = getDisabledCategoryIds();
+        const triggers = getEffectTriggers().filter((item) => item.enabled && item.eventIds.length > 0
+            && !disabledCategoryIds.has(item.categoryId));
         let anyTriggered = false;
 
         triggers.forEach((trigger) => {

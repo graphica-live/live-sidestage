@@ -105,12 +105,39 @@ function renderCategories() {
 
         const deleteButton = fragment.querySelector('[data-action="delete-category"]');
         const editButton = fragment.querySelector('[data-action="edit-category"]');
+        const enabledCheckbox = fragment.querySelector('[data-action="toggle-category-enabled"]');
+        const enabledLabel = fragment.querySelector('[data-role="enabled-label"]');
 
         if (category.isOrphan) {
             deleteButton.disabled = true;
-            deleteButton.title = 'カテゴリが削除された未分類の項目です。開いて📁ボタンで別カテゴリへ移動してください。';
+            deleteButton.title = 'カテゴリが削除された未分類の項目です。開いて中の項目を別カテゴリへ付け替えてください。';
             editButton.disabled = true;
+            enabledCheckbox.disabled = true;
+            enabledLabel.hidden = true;
         } else {
+            enabledCheckbox.checked = category.enabled !== false;
+            enabledCheckbox.addEventListener('change', async () => {
+                const nextEnabled = enabledCheckbox.checked;
+
+                try {
+                    const response = await fetch(`/api/effects/categories/${encodeURIComponent(category.id)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: nextEnabled })
+                    });
+                    const payload = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(payload.error || 'カテゴリの有効状態の変更に失敗しました。');
+                    }
+
+                    currentCategories = payload.categories || currentCategories;
+                } catch (error) {
+                    enabledCheckbox.checked = !nextEnabled;
+                    alert(error.message || 'カテゴリの有効状態の変更に失敗しました。');
+                }
+            });
+
             deleteButton.addEventListener('click', async () => {
                 const confirmed = await showConfirm(
                     `「${category.name}」を削除してもよいですか？含まれるイベント・トリガーはカテゴリ未分類になります。`
