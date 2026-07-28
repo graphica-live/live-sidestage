@@ -1190,11 +1190,11 @@
             return `${compactValue}${matchedUnit.suffix}`;
         }
 
-        // ゲージ状の円形バー: 左下(6時-9時間)に隙間を残し、9時から時計回りに12時・3時を通って6時まで進む。
+        // ゲージ状の円形バー: 下部(5時-9時間)に隙間を残し、9時から時計回りに12時・3時を通って5時まで進む。
         // transform: rotate(180deg) (CSS側) と組み合わせて、円の描画開始点(3時の位置)を9時に移す。
         const GOAL_RING_RADIUS = 52;
         const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * GOAL_RING_RADIUS;
-        const GOAL_RING_SWEEP_DEG = 270;
+        const GOAL_RING_SWEEP_DEG = 240;
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
         const GOAL_RING_TRACK_DASHARRAY = `${GOAL_RING_ARC_LENGTH} ${GOAL_RING_CIRCUMFERENCE - GOAL_RING_ARC_LENGTH}`;
         const DEFAULT_GOAL_RING_COLOR = '#f59e0b';
