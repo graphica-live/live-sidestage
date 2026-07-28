@@ -65,7 +65,18 @@ const triggerModalFilemapDirDisplay = document.getElementById('trigger-modal-fil
 const triggerModalFilemapDirButton = document.getElementById('trigger-modal-filemap-dir-button');
 const triggerModalFilemapDir = document.getElementById('trigger-modal-filemap-dir');
 const triggerModalSubmit = document.getElementById('trigger-modal-submit');
+const backToCategoriesButton = document.getElementById('back-to-categories-button');
+const categoryNameLabel = document.getElementById('category-name-label');
 
+const DEFAULT_CATEGORY_ID = 'default';
+const currentCategoryId = new URLSearchParams(window.location.search).get('category') || DEFAULT_CATEGORY_ID;
+
+function belongsToCurrentCategory(item) {
+    return (item.categoryId || DEFAULT_CATEGORY_ID) === currentCategoryId;
+}
+
+let allEvents = [];
+let allTriggers = [];
 let currentEvents = [];
 let currentTriggers = [];
 let currentScreenUrls = [];
@@ -118,8 +129,10 @@ async function loadConfig() {
         throw new Error(payload.error || '設定の読み込みに失敗しました。');
     }
 
-    currentEvents = payload.events || [];
-    currentTriggers = payload.triggers || [];
+    allEvents = payload.events || [];
+    allTriggers = payload.triggers || [];
+    currentEvents = allEvents.filter(belongsToCurrentCategory);
+    currentTriggers = allTriggers.filter(belongsToCurrentCategory);
     currentScreenUrls = payload.screenUrls || [];
     syncEventModalOptions();
     syncTriggerModalOptions();
@@ -143,14 +156,23 @@ async function saveConfig() {
     addTriggerButton.disabled = true;
 
     try {
+        const mergedEvents = [
+            ...allEvents.filter((item) => !belongsToCurrentCategory(item)),
+            ...collectEvents().map((item) => ({ ...item, categoryId: currentCategoryId }))
+        ];
+        const mergedTriggers = [
+            ...allTriggers.filter((item) => !belongsToCurrentCategory(item)),
+            ...collectTriggers().map((item) => ({ ...item, categoryId: currentCategoryId }))
+        ];
+
         const response = await fetch('/api/effects/config', {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                events: collectEvents(),
-                triggers: collectTriggers()
+                events: mergedEvents,
+                triggers: mergedTriggers
             })
         });
         const payload = await response.json();
@@ -159,8 +181,10 @@ async function saveConfig() {
             throw new Error(payload.error || '設定の保存に失敗しました。');
         }
 
-        currentEvents = payload.events || [];
-        currentTriggers = payload.triggers || [];
+        allEvents = payload.events || [];
+        allTriggers = payload.triggers || [];
+        currentEvents = allEvents.filter(belongsToCurrentCategory);
+        currentTriggers = allTriggers.filter(belongsToCurrentCategory);
         currentScreenUrls = payload.screenUrls || currentScreenUrls;
         syncEventModalOptions();
         syncTriggerModalOptions();
@@ -174,3 +198,20 @@ async function saveConfig() {
         addTriggerButton.disabled = false;
     }
 }
+
+backToCategoriesButton.addEventListener('click', () => {
+    window.location.href = '/event-categories';
+});
+
+async function loadCategoryLabel() {
+    try {
+        const response = await fetch('/api/effects/categories');
+        const payload = await response.json();
+        const category = (payload.categories || []).find((item) => item.id === currentCategoryId);
+        categoryNameLabel.textContent = category ? category.name : 'イベントトリガー';
+    } catch {
+        categoryNameLabel.textContent = 'イベントトリガー';
+    }
+}
+
+loadCategoryLabel();

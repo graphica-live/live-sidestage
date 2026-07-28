@@ -5,6 +5,9 @@ const {
     EFFECT_SCREEN_COUNT,
     EFFECT_EVENTS_STATE_KEY,
     EFFECT_TRIGGERS_STATE_KEY,
+    EFFECT_CATEGORIES_STATE_KEY,
+    EFFECT_DEFAULT_CATEGORY_ID,
+    EFFECT_DEFAULT_CATEGORY_NAME,
 } = require('./constants');
 
 // ── Module state ──────────────────────────────────────────────────────────────
@@ -34,6 +37,7 @@ function createDefaultEffectEvent(slot = 1) {
     return {
         id: `event-${slot}`,
         name: `エフェクト ${slot}`,
+        categoryId: EFFECT_DEFAULT_CATEGORY_ID,
         screen: slot,
         videoEnabled: false,
         videoAssetUrl: '',
@@ -57,6 +61,7 @@ function createDefaultEffectTrigger() {
     return {
         id: `trigger-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         name: '',
+        categoryId: EFFECT_DEFAULT_CATEGORY_ID,
         enabled: true,
         eventIds: [],
         eventPlayMode: 'sequential',
@@ -85,6 +90,11 @@ function normalizeEffectScreen(value) {
 function normalizeEffectId(value, fallbackPrefix) {
     const normalized = normalizeEffectText(value, 60).replace(/[^a-zA-Z0-9_-]/g, '');
     return normalized || `${fallbackPrefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeEffectCategoryId(value) {
+    const normalized = normalizeEffectText(value, 60).replace(/[^a-zA-Z0-9_-]/g, '');
+    return normalized || EFFECT_DEFAULT_CATEGORY_ID;
 }
 
 function normalizeAssetUrl(value) {
@@ -132,6 +142,7 @@ function normalizeEffectEvent(value, index) {
     return {
         id: normalizeEffectId(value?.id, 'event'),
         name: normalizeEffectText(value?.name, 80) || fallback.name,
+        categoryId: normalizeEffectCategoryId(value?.categoryId),
         screen: normalizeEffectScreen(value?.screen),
         videoEnabled: Boolean(value?.videoEnabled),
         videoAssetUrl: normalizeAssetUrl(value?.videoAssetUrl),
@@ -194,6 +205,7 @@ function normalizeEffectTrigger(value) {
     return {
         id: normalizeEffectId(value?.id, 'trigger'),
         name: normalizeEffectText(value?.name, 80),
+        categoryId: normalizeEffectCategoryId(value?.categoryId),
         enabled: Boolean(value?.enabled),
         eventIds: normalizeEffectTriggerEventIds(value),
         eventPlayMode,
@@ -224,6 +236,52 @@ function normalizeEffectTriggers(value) {
     }
 
     return source.map((item) => normalizeEffectTrigger(item));
+}
+
+// ── Category model ────────────────────────────────────────────────────────────
+function createDefaultEffectCategory() {
+    return { id: EFFECT_DEFAULT_CATEGORY_ID, name: EFFECT_DEFAULT_CATEGORY_NAME };
+}
+
+function normalizeEffectCategory(value) {
+    return {
+        id: normalizeEffectId(value?.id, 'category'),
+        name: normalizeEffectText(value?.name, 60) || '無題のカテゴリ'
+    };
+}
+
+function normalizeEffectCategories(value) {
+    let source = value;
+
+    if (typeof source === 'string') {
+        try {
+            source = JSON.parse(source);
+        } catch {
+            source = null;
+        }
+    }
+
+    if (!Array.isArray(source)) {
+        source = [];
+    }
+
+    const categories = source.map((item) => normalizeEffectCategory(item));
+
+    if (!categories.some((category) => category.id === EFFECT_DEFAULT_CATEGORY_ID)) {
+        categories.unshift(createDefaultEffectCategory());
+    }
+
+    return categories;
+}
+
+function getEffectCategories() {
+    return normalizeEffectCategories(_getScopedStateValue(EFFECT_CATEGORIES_STATE_KEY));
+}
+
+function setEffectCategories(categories) {
+    const normalizedCategories = normalizeEffectCategories(categories);
+    _setScopedStateValue(EFFECT_CATEGORIES_STATE_KEY, JSON.stringify(normalizedCategories));
+    return normalizedCategories;
 }
 
 // ── State getters/setters ─────────────────────────────────────────────────────
@@ -302,6 +360,7 @@ module.exports = {
     normalizeEffectTriggerCommentMode,
     normalizeEffectScreen,
     normalizeEffectId,
+    normalizeEffectCategoryId,
     normalizeAssetUrl,
     normalizeUserIdList,
     normalizeEffectEvent,
@@ -313,6 +372,11 @@ module.exports = {
     setEffectEvents,
     getEffectTriggers,
     setEffectTriggers,
+    createDefaultEffectCategory,
+    normalizeEffectCategory,
+    normalizeEffectCategories,
+    getEffectCategories,
+    setEffectCategories,
     normalizeEffectMediaKind,
     getEffectMediaDirectory,
     buildEffectMediaUrl,

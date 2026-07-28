@@ -73,6 +73,16 @@ module.exports = function registerPageRoutes({
         return res.redirect('/effects');
     });
 
+    app.get('/event-categories', (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'event-categories.html'));
+    });
+
+    app.get('/event-categories.html', (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.redirect('/event-categories');
+    });
+
     app.get('/widgets', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'widgets.html'));

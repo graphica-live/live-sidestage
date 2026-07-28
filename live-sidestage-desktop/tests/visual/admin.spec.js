@@ -131,3 +131,16 @@ test.describe('effects.html: モーダルが開ける', () => {
         await expect(page.locator('#myinstants-modal')).toHaveClass(/is-open/);
     });
 });
+
+// ── event-categories.html モーダル開閉テスト (自動生成) ──────────────────────────
+test.describe('event-categories.html: モーダルが開ける', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/event-categories.html`);
+    await page.waitForLoadState('networkidle');
+    });
+
+    test('category-modal', async ({ page }) => {
+        await page.click('#add-category-button');
+        await expect(page.locator('#category-modal')).toHaveClass(/is-open/);
+    });
+});

@@ -67,6 +67,7 @@ const {
     normalizeEffectEvent, normalizeEffectEvents,
     normalizeEffectTriggerEventIds, normalizeEffectTrigger, normalizeEffectTriggers,
     getEffectEvents, setEffectEvents, getEffectTriggers, setEffectTriggers,
+    getEffectCategories, setEffectCategories,
     normalizeEffectMediaKind, getEffectMediaDirectory, buildEffectMediaUrl, resolveEffectAssetFilePath,
 } = effectHelpers;
 const {
@@ -2501,6 +2502,8 @@ require('./lib/routes/effects')({
     normalizeEffectTriggerEventIds,
     resolveEffectAssetFilePath,
     getEffectMediaDirectory,
+    getEffectCategories,
+    setEffectCategories,
     path,
     fs,
 });

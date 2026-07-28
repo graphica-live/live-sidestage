@@ -3,6 +3,7 @@
 const { repairMojibakeFilename } = require('../utils');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
+const { EFFECT_DEFAULT_CATEGORY_ID } = require('../constants');
 
 module.exports = function registerEffectsRoutes({
     app,
@@ -25,9 +26,71 @@ module.exports = function registerEffectsRoutes({
     normalizeEffectTriggerEventIds,
     resolveEffectAssetFilePath,
     getEffectMediaDirectory,
+    getEffectCategories,
+    setEffectCategories,
     path,
     fs,
 }) {
+    app.get('/api/effects/categories', (req, res) => {
+        res.json({ categories: getEffectCategories() });
+    });
+
+    app.post('/api/effects/categories', (req, res) => {
+        const name = String(req.body?.name || '').trim();
+
+        if (!name) {
+            return res.status(400).json({ ok: false, error: 'カテゴリ名を入力してください。' });
+        }
+
+        const id = `category-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const categories = setEffectCategories([...getEffectCategories(), { id, name }]);
+        const category = categories.find((item) => item.id === id);
+
+        return res.json({ ok: true, categories, category });
+    });
+
+    app.patch('/api/effects/categories/:id', (req, res) => {
+        const id = String(req.params.id || '');
+        const name = String(req.body?.name || '').trim();
+
+        if (!name) {
+            return res.status(400).json({ ok: false, error: 'カテゴリ名を入力してください。' });
+        }
+
+        const existing = getEffectCategories();
+
+        if (!existing.some((item) => item.id === id)) {
+            return res.status(404).json({ ok: false, error: 'カテゴリが見つかりません。' });
+        }
+
+        const categories = setEffectCategories(existing.map((item) => item.id === id ? { ...item, name } : item));
+
+        return res.json({ ok: true, categories });
+    });
+
+    app.delete('/api/effects/categories/:id', (req, res) => {
+        const id = String(req.params.id || '');
+
+        if (id === EFFECT_DEFAULT_CATEGORY_ID) {
+            return res.status(400).json({ ok: false, error: '「初期」カテゴリは削除できません。' });
+        }
+
+        const existing = getEffectCategories();
+
+        if (!existing.some((item) => item.id === id)) {
+            return res.status(404).json({ ok: false, error: 'カテゴリが見つかりません。' });
+        }
+
+        // 削除するカテゴリに属していたイベント・トリガーは「初期」カテゴリへ移動する
+        const events = setEffectEvents(getEffectEvents().map((item) =>
+            item.categoryId === id ? { ...item, categoryId: EFFECT_DEFAULT_CATEGORY_ID } : item));
+        const triggers = setEffectTriggers(getEffectTriggers().map((item) =>
+            item.categoryId === id ? { ...item, categoryId: EFFECT_DEFAULT_CATEGORY_ID } : item));
+        const categories = setEffectCategories(existing.filter((item) => item.id !== id));
+
+        return res.json({ ok: true, categories, events, triggers });
+    });
+
     app.get('/api/effects/midi/devices', (req, res) => {
         res.json({ devices: listMidiOutputDevices() });
     });
