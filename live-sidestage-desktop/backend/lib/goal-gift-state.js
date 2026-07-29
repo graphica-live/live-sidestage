@@ -139,6 +139,59 @@ function normalizeGoalGiftStrokeWidth(value) {
     return Math.min(normalizedValue, MAX_GOAL_GIFT_WIDGET_STROKE_WIDTH);
 }
 
+function normalizeGoalGiftMissionUnitCount(value, targetCount) {
+    const normalizedValue = normalizeWholeNumber(value);
+    const normalizedTargetCount = normalizeWholeNumber(targetCount);
+
+    if (!Number.isInteger(normalizedValue) || normalizedValue <= 0) {
+        return 0;
+    }
+
+    if (!Number.isInteger(normalizedTargetCount) || normalizedTargetCount <= 0) {
+        return 0;
+    }
+
+    if (normalizedValue > normalizedTargetCount || normalizedTargetCount % normalizedValue !== 0) {
+        return 0;
+    }
+
+    return normalizedValue;
+}
+
+// missionUnitCount が targetCount の約数として設定されている場合、目標達成までを
+// 「ミッション」単位の周回に分割する。0(未設定)の場合は従来通り目標全体を1周とみなす。
+function computeGoalMissionState(targetCount, missionUnitCount, currentCount) {
+    const normalizedTargetCount = Math.max(0, normalizeWholeNumber(targetCount) || 0);
+    const normalizedCurrentCount = Math.max(0, normalizeWholeNumber(currentCount) || 0);
+    const unitCount = normalizeGoalGiftMissionUnitCount(missionUnitCount, normalizedTargetCount);
+
+    if (!unitCount || unitCount >= normalizedTargetCount) {
+        return {
+            missionUnitCount: 0,
+            missionTotalSteps: 1,
+            missionCurrentStep: 1,
+            missionStepProgressCount: Math.min(normalizedCurrentCount, normalizedTargetCount),
+            missionStepRemaining: Math.max(0, normalizedTargetCount - normalizedCurrentCount),
+            missionStepRatio: normalizedTargetCount > 0 ? Math.min(1, normalizedCurrentCount / normalizedTargetCount) : 0
+        };
+    }
+
+    const totalSteps = normalizedTargetCount / unitCount;
+    const currentStep = normalizedCurrentCount >= normalizedTargetCount
+        ? totalSteps
+        : Math.min(totalSteps, Math.floor(normalizedCurrentCount / unitCount) + 1);
+    const stepProgressCount = Math.min(unitCount, Math.max(0, normalizedCurrentCount - (currentStep - 1) * unitCount));
+
+    return {
+        missionUnitCount: unitCount,
+        missionTotalSteps: totalSteps,
+        missionCurrentStep: currentStep,
+        missionStepProgressCount: stepProgressCount,
+        missionStepRemaining: Math.max(0, unitCount - stepProgressCount),
+        missionStepRatio: stepProgressCount / unitCount
+    };
+}
+
 function normalizeGoalGiftNoteFontSize(value) {
     const normalizedValue = normalizeWholeNumber(value);
     if (!Number.isInteger(normalizedValue) || normalizedValue < MIN_GOAL_GIFT_WIDGET_NOTE_FONT_SIZE) {
@@ -635,6 +688,7 @@ function normalizeGoalGiftWidgetItems(value) {
         const currentCountOffset = normalizeSignedWholeNumber(item?.currentCountOffset, DEFAULT_GOAL_GIFT_WIDGET_ITEM.currentCountOffset);
         const resetAtMidnight = normalizeBooleanInput(item?.resetAtMidnight, DEFAULT_GOAL_GIFT_WIDGET_ITEM.resetAtMidnight);
         const currentCountOffsetDayKey = normalizeDayKey(item?.currentCountOffsetDayKey) || '';
+        const missionUnitCount = normalizeGoalGiftMissionUnitCount(item?.missionUnitCount, targetCount);
 
         return {
             enabled: Boolean(giftId || giftName),
@@ -647,7 +701,8 @@ function normalizeGoalGiftWidgetItems(value) {
             countUniqueUsers,
             currentCountOffset,
             resetAtMidnight,
-            currentCountOffsetDayKey: resetAtMidnight ? currentCountOffsetDayKey : ''
+            currentCountOffsetDayKey: resetAtMidnight ? currentCountOffsetDayKey : '',
+            missionUnitCount
         };
     });
 }
@@ -719,14 +774,19 @@ function buildGoalGiftProgressSnapshot(
             progressRingColor: normalizedProgressRingColor,
             progressBackgroundOpacity: normalizedProgressBackgroundOpacity,
             feedback: getGoalGiftFeedbackSettings(),
-            goals: normalizedItems.map((item, index) => ({
-                slot: index + 1,
-                ...item,
-                currentCount: Math.max(0, item.resetAtMidnight && item.currentCountOffsetDayKey !== requestedDayKey ? 0 : item.currentCountOffset),
-                observedCount: 0,
-                completed: false,
-                progressRatio: 0
-            }))
+            goals: normalizedItems.map((item, index) => {
+                const currentCount = Math.max(0, item.resetAtMidnight && item.currentCountOffsetDayKey !== requestedDayKey ? 0 : item.currentCountOffset);
+
+                return {
+                    slot: index + 1,
+                    ...item,
+                    currentCount,
+                    observedCount: 0,
+                    completed: false,
+                    progressRatio: 0,
+                    ...computeGoalMissionState(item.targetCount, item.missionUnitCount, currentCount)
+                };
+            })
         };
     }
 
@@ -767,7 +827,8 @@ function buildGoalGiftProgressSnapshot(
                     currentCount,
                     observedCount,
                     completed: currentCount >= item.targetCount,
-                    progressRatio: item.targetCount > 0 ? Math.min(currentCount / item.targetCount, 1) : 0
+                    progressRatio: item.targetCount > 0 ? Math.min(currentCount / item.targetCount, 1) : 0,
+                    ...computeGoalMissionState(item.targetCount, item.missionUnitCount, currentCount)
                 };
             }
 
@@ -821,7 +882,8 @@ function buildGoalGiftProgressSnapshot(
                 observedCount,
                 completed: currentCount >= item.targetCount,
                 progressRatio: item.targetCount > 0 ? Math.min(currentCount / item.targetCount, 1) : 0,
-                lastSenderImage
+                lastSenderImage,
+                ...computeGoalMissionState(item.targetCount, item.missionUnitCount, currentCount)
             };
         })
     };
@@ -914,6 +976,7 @@ function setGoalGiftWidgetItems(items) {
         normalizeGoalGiftTextStyleKey, getGoalGiftWidgetTextStyleKey, setGoalGiftWidgetTextStyleKey,
         normalizeGoalGiftStrokeWidth, getGoalGiftWidgetStrokeWidth, setGoalGiftWidgetStrokeWidth,
         normalizeGoalGiftNoteFontSize, getGoalGiftWidgetNoteFontSize, setGoalGiftWidgetNoteFontSize,
+        normalizeGoalGiftMissionUnitCount, computeGoalMissionState,
         getGoalGiftSystemTypeById, getGoalGiftSystemImageUrl,
         normalizeGoalGiftActivityCounts, getGoalGiftActivityCountsState, setGoalGiftActivityCountsState,
         getGoalGiftActivityCounts,

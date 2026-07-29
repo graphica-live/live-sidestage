@@ -224,6 +224,87 @@
             background: transparent;
         }
 
+        .goal-row.is-step-clear .gift-visual::before {
+            content: '';
+            position: absolute;
+            inset: 6% 10%;
+            pointer-events: none;
+            border-radius: 999px;
+            box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.32);
+            animation: stepClearRingPulse 5000ms ease-in-out;
+        }
+
+        @keyframes stepClearRingPulse {
+            0%, 100% { opacity: 0; transform: scale(0.92); }
+            10%, 30%, 50%, 70%, 90% { opacity: 1; transform: scale(1.05); }
+            20%, 40%, 60%, 80% { opacity: 0.5; transform: scale(0.98); }
+        }
+
+        .goal-step-label:empty {
+            display: none;
+        }
+
+        .goal-step-label {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 6;
+            padding: 3px 11px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.66);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #f8fafc;
+            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .goal-row.is-step-clear .goal-step-label {
+            background: rgba(245, 158, 11, 0.92);
+            color: #1e293b;
+            animation: stepClearLabelPulse 5000ms ease-in-out;
+        }
+
+        @keyframes stepClearLabelPulse {
+            0%, 100% { transform: scale(1); }
+            10%, 30%, 50%, 70%, 90% { transform: scale(1.14); }
+            20%, 40%, 60%, 80% { transform: scale(1); }
+        }
+
+        .goal-step-clear-badge {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            z-index: 7;
+            transform: translate(-50%, -50%);
+            padding: 6px 18px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #fde68a, #f59e0b);
+            color: #451a03;
+            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+        }
+
+        .goal-row.is-step-clear .goal-step-clear-badge {
+            display: block;
+            animation: stepClearBadgePop 5000ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        @keyframes stepClearBadgePop {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-8deg); }
+            12% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(3deg); }
+            20% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            85% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85) rotate(0deg); }
+        }
+
         .gift-visual {
             position: relative;
             width: var(--gift-width);
@@ -1206,8 +1287,8 @@
             return Math.min(1, Math.max(0, current / target));
         }
 
-        function getGoalProgressRingFillDasharray(goal) {
-            const fillLength = GOAL_RING_ARC_LENGTH * computeGoalProgressPercent(goal);
+        function getGoalProgressRingFillDasharray(ratio) {
+            const fillLength = GOAL_RING_ARC_LENGTH * Math.min(1, Math.max(0, Number(ratio) || 0));
             return `${fillLength} ${GOAL_RING_CIRCUMFERENCE - fillLength}`;
         }
 
@@ -1222,8 +1303,8 @@
             return Math.min(parsed, 100) / 100;
         }
 
-        function buildGoalProgressRingHtml(goal) {
-            const fillDasharray = getGoalProgressRingFillDasharray(goal);
+        function buildGoalProgressRingHtml(ratio) {
+            const fillDasharray = getGoalProgressRingFillDasharray(ratio);
             return `<svg class="goal-progress-ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">`
                 + `<circle class="goal-progress-ring-track-outline" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${GOAL_RING_TRACK_DASHARRAY};"></circle>`
                 + `<circle class="goal-progress-ring-track" cx="50" cy="50" r="${GOAL_RING_RADIUS}" style="stroke-dasharray:${GOAL_RING_TRACK_DASHARRAY};"></circle>`
@@ -1232,11 +1313,83 @@
                 + `</svg>`;
         }
 
+        function formatGoalGiftRemainingCount(remaining) {
+            return `あと${formatGoalGiftCount(Math.max(0, Math.round(Number(remaining) || 0)))}個`;
+        }
+
         function formatGoalGiftRemaining(goal) {
             const target = Math.round(Number(goal?.targetCount) || 0);
             const current = Math.round(Number(goal?.currentCount) || 0);
-            const remaining = Math.max(0, target - current);
-            return `あと${formatGoalGiftCount(remaining)}個`;
+            return formatGoalGiftRemainingCount(target - current);
+        }
+
+        // ミッション(周回)単位の表示状態。スロットごとに、直近に画面へ反映した
+        // ステップ番号/周内進捗を保持し、ステップ達成時は5秒間その状態を保持してから
+        // 次のステップへ切り替える(お祝いエフェクト用)。
+        const STEP_CELEBRATE_DURATION_MS = 5000;
+        const goalMissionDisplayState = new Map();
+        let lastRenderRawSnapshot = null;
+
+        function resolveGoalMissionDisplay(goal) {
+            const slot = Number(goal?.slot) || 0;
+            const totalSteps = Math.max(1, Number(goal?.missionTotalSteps) || 1);
+            const unitCount = Number(goal?.missionUnitCount) || 0;
+
+            if (totalSteps <= 1 || unitCount <= 0) {
+                goalMissionDisplayState.delete(slot);
+                return {
+                    active: false,
+                    step: 1,
+                    totalSteps: 1,
+                    ratio: computeGoalProgressPercent(goal),
+                    remainingCount: Math.max(0, Math.round(Number(goal?.targetCount) || 0) - Math.round(Number(goal?.currentCount) || 0)),
+                    celebrating: false
+                };
+            }
+
+            const rawStep = Number(goal?.missionCurrentStep) || 1;
+            const rawProgressCount = Number(goal?.missionStepProgressCount) || 0;
+            let state = goalMissionDisplayState.get(slot);
+
+            if (!state) {
+                state = { step: rawStep, progressCount: rawProgressCount, celebrating: false, pendingStep: rawStep, pendingProgressCount: rawProgressCount };
+                goalMissionDisplayState.set(slot, state);
+            } else if (state.celebrating) {
+                // 演出中はサーバーの最新値を保持だけしておき、演出終了時に反映する。
+                state.pendingStep = rawStep;
+                state.pendingProgressCount = rawProgressCount;
+            } else if (rawStep > state.step) {
+                state.celebrating = true;
+                state.pendingStep = rawStep;
+                state.pendingProgressCount = rawProgressCount;
+                setTimeout(() => {
+                    const latestState = goalMissionDisplayState.get(slot);
+                    if (!latestState) return;
+                    latestState.step = latestState.pendingStep;
+                    latestState.progressCount = latestState.pendingProgressCount;
+                    latestState.celebrating = false;
+                    render(lastRenderRawSnapshot, new Set(), currentFeedbackSettings.effectKey, new Set(), new Map()).catch(() => {});
+                }, STEP_CELEBRATE_DURATION_MS);
+            } else {
+                // 同じステップの進捗更新、またはリセット等によるステップの後退。
+                state.step = rawStep;
+                state.progressCount = rawProgressCount;
+            }
+
+            const displayedProgressCount = state.celebrating ? unitCount : state.progressCount;
+
+            return {
+                active: true,
+                step: state.step,
+                totalSteps,
+                ratio: unitCount > 0 ? Math.min(1, displayedProgressCount / unitCount) : 0,
+                remainingCount: Math.max(0, unitCount - displayedProgressCount),
+                celebrating: state.celebrating
+            };
+        }
+
+        function buildGoalStepClearBadgeHtml(fontFamily) {
+            return `<div class="goal-step-clear-badge" style="font-family:${fontFamily};">CLEAR!</div>`;
         }
 
         function normalizeFeedbackSettings(value) {
@@ -1430,7 +1583,13 @@
             return `<div class="goal-sender-avatar${image ? ' has-image' : ''}">${image ? `<img src="${escapeHtml(image)}" alt="">` : ''}</div>`;
         }
 
-        function buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle) {
+        function buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle, missionDisplay) {
+            if (missionDisplay?.active) {
+                const _stepText = formatGoalGiftRemainingCount(missionDisplay.remainingCount);
+                return `<div class="count">`
+                    + buildOutlinedSvgMarkup(_stepText, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-' + index })
+                    + `</div>`;
+            }
             const _p = previousCounts.get(slot);
             const _newText = formatGoalGiftRemaining(goal);
             if (rollerSlots.has(slot) && typeof _p === 'number') {
@@ -1450,6 +1609,7 @@
 
         async function render(snapshot, increasedSlots = new Set(), effectKey = 'glow', rollerSlots = new Set(), previousCounts = new Map()) {
             const generation = ++renderGeneration;
+            lastRenderRawSnapshot = snapshot;
             const resolvedSnapshot = sampleMode ? buildSampleSnapshot(snapshot) : snapshot;
             const sourceGoals = Array.isArray(resolvedSnapshot?.goals) ? resolvedSnapshot.goals : [];
             const fontFamily = getGoalGiftFontFamily(resolvedSnapshot?.fontKey);
@@ -1521,7 +1681,7 @@
             const headingText = requestedGoal ? '' : String(resolvedSnapshot?.headingText || '').trim();
             const headingScrollEnabled = Boolean(resolvedSnapshot?.headingScroll);
             const structureKey = `${resolvedSnapshot?.fontKey}|${resolvedSnapshot?.textStyleKey}|${resolvedSnapshot?.strokeWidth}|${baseNoteFontSize}|${badgeBaseWidth}|${badgeStyle}|${layoutMode}|${headingText}|${headingScrollEnabled}|${baseHeadingFontSize}|${ringColor}|`
-                + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}`).join('|');
+                + goals.map((g) => `${Number(g.slot)}:${g.giftId}:${String(g.displayName || g.giftName)}:${String(g.giftImage || '')}:${String(g.note || '')}:${Number(g.targetCount)}:${Boolean(g.completed)}:${Number(g.missionUnitCount) || 0}`).join('|');
 
             const canIncremental = lastRenderStructureKey === structureKey
                 && overlay.querySelectorAll('[data-goal-slot]').length === goals.length;
@@ -1533,14 +1693,15 @@
                     const row = overlay.querySelector(`[data-goal-slot="${slot}"]`);
                     if (!row) continue;
 
+                    const missionDisplay = resolveGoalMissionDisplay(goal);
                     const countChanged = goal.currentCount !== lastRenderedCounts.get(slot);
-                    if (countChanged) {
+                    if (countChanged || missionDisplay.active) {
                         const countEl = row.querySelector('.count, .count-split');
                         if (countEl) {
-                            countEl.outerHTML = buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle);
+                            countEl.outerHTML = buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle, missionDisplay);
                             layoutOutlinedSvgText(row.querySelector('.copy') || row);
                         }
-                        const ringFillDasharray = getGoalProgressRingFillDasharray(goal);
+                        const ringFillDasharray = getGoalProgressRingFillDasharray(missionDisplay.ratio);
                         const ringFill = row.querySelector('.goal-progress-ring-fill');
                         if (ringFill) {
                             ringFill.style.strokeDasharray = ringFillDasharray;
@@ -1549,12 +1710,20 @@
                         if (ringFillOutline) {
                             ringFillOutline.style.strokeDasharray = ringFillDasharray;
                         }
+                    }
+                    if (countChanged) {
                         const avatarEl = row.querySelector('.goal-sender-avatar');
                         if (avatarEl) {
                             avatarEl.outerHTML = buildGoalSenderAvatarHtml(goal);
                         }
                         lastRenderedCounts.set(slot, goal.currentCount);
                     }
+
+                    const stepLabelEl = row.querySelector('.goal-step-label');
+                    if (stepLabelEl) {
+                        stepLabelEl.textContent = missionDisplay.active ? `STEP ${missionDisplay.step}/${missionDisplay.totalSteps}` : '';
+                    }
+                    row.classList.toggle('is-step-clear', Boolean(missionDisplay.celebrating));
 
                     const isNowAchieved = goal.currentCount >= goal.targetCount;
                     const giftVisual = row.querySelector('.gift-visual');
@@ -1596,16 +1765,19 @@
             widgetShell.classList.toggle('layout-row', layoutMode !== 'column');
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
-                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${ringColor};'>
+                const missionDisplay = resolveGoalMissionDisplay(goal);
+                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''} ${missionDisplay.celebrating ? 'is-step-clear' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${ringColor};'>
                     <div class="gift-visual ${goal.currentCount >= goal.targetCount ? 'is-achieved' : ''}">
-                        ${buildGoalProgressRingHtml(goal)}
+                        ${buildGoalProgressRingHtml(missionDisplay.ratio)}
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
                         ${buildGoalSenderAvatarHtml(goal)}
+                        <div class="goal-step-label">${missionDisplay.active ? escapeHtml(`STEP ${missionDisplay.step}/${missionDisplay.totalSteps}`) : ''}</div>
+                        ${buildGoalStepClearBadgeHtml(fontFamily)}
                         ${goal.displayName ? `<div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>` : ''}
                         ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
                     </div>
                     <div class="copy">
-                        ${buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle)}
+                        ${buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle, missionDisplay)}
                         ${goal.note ? `<div class="note">${buildOutlinedSvgMarkup(goal.note, { fontSize: noteFontSize, fontWeight: 700, strokeWidth, layoutHeight: noteLayoutHeight, fill: textStyle.noteColor, idPrefix: `goal-note-${index}` })}</div>` : ''}
                     </div>
                 </div>`;

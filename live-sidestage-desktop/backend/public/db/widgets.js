@@ -1854,6 +1854,7 @@
                 targetCount: 1,
                 countUniqueUsers: false,
                 resetAtMidnight: false,
+                missionUnitCount: 0,
                 currentCount: 0,
                 observedCount: 0,
                 completed: false,
@@ -1916,6 +1917,7 @@
                         <input type="text" data-goal-note maxlength="120" value="${escapeHtml(item.note || '')}" aria-label="備考">
                         <input type="checkbox" data-goal-count-unique-users ${item.countUniqueUsers ? 'checked' : ''} aria-label="1人1個">
                         <input type="checkbox" data-goal-reset-at-midnight ${item.resetAtMidnight ? 'checked' : ''} aria-label="0時リセット">
+                        <input type="text" data-goal-mission-unit-count value="${escapeHtml(item.missionUnitCount || 0)}" aria-label="1ミッションあたりの個数">
                     </div>
                 </div>
             `).join('');
@@ -2060,6 +2062,12 @@
                 const currentValue = Number.parseInt(row.querySelector('[data-goal-current]').value, 10);
                 const giftName = nameInput.value.trim();
                 const giftId = row.dataset.goalGiftId || String(catalogGift?.id || '');
+                const targetCount = Number.isInteger(targetValue) && targetValue > 0 ? targetValue : 1;
+                const missionUnitValue = Number.parseInt(row.querySelector('[data-goal-mission-unit-count]').value, 10);
+                const missionUnitCount = Number.isInteger(missionUnitValue) && missionUnitValue > 0
+                    && targetCount % missionUnitValue === 0 && missionUnitValue < targetCount
+                    ? missionUnitValue
+                    : 0;
 
                 return {
                     enabled: Boolean(giftId || giftName),
@@ -2068,9 +2076,10 @@
                     displayName: row.querySelector('[data-goal-display-name]').value.trim(),
                     note: row.querySelector('[data-goal-note]').value.trim(),
                     giftImage: row.dataset.goalGiftImage || catalogGift?.imageUrl || '',
-                    targetCount: Number.isInteger(targetValue) && targetValue > 0 ? targetValue : 1,
+                    targetCount,
                     countUniqueUsers: row.querySelector('[data-goal-count-unique-users]').checked,
                     resetAtMidnight: row.querySelector('[data-goal-reset-at-midnight]').checked,
+                    missionUnitCount,
                     currentCount: Number.isInteger(currentValue) && currentValue >= 0 ? currentValue : 0
                 };
             });
@@ -3024,17 +3033,43 @@
         const goalRowModalNote = document.getElementById('goal-row-modal-note');
         const goalRowModalCountUnique = document.getElementById('goal-row-modal-count-unique');
         const goalRowModalResetAtMidnight = document.getElementById('goal-row-modal-reset-at-midnight');
+        const goalRowModalMissionUnitCount = document.getElementById('goal-row-modal-mission-unit-count');
 
         let _activeGoalRow = null;
+
+        function getGoalTargetCountDivisors(targetCount) {
+            const divisors = new Set();
+            for (let candidate = 1; candidate * candidate <= targetCount; candidate += 1) {
+                if (targetCount % candidate === 0) {
+                    divisors.add(candidate);
+                    divisors.add(targetCount / candidate);
+                }
+            }
+            return Array.from(divisors).sort((a, b) => a - b);
+        }
+
+        function populateGoalRowModalMissionUnitCount(targetCount, missionUnitCount) {
+            const divisors = getGoalTargetCountDivisors(targetCount).filter((divisor) => divisor < targetCount);
+            const options = [`<option value="0">分割なし(1周で達成)</option>`]
+                .concat(divisors.map((divisor) => {
+                    const steps = targetCount / divisor;
+                    return `<option value="${divisor}">${divisor}個ごと(${steps}ステップ)</option>`;
+                }));
+            goalRowModalMissionUnitCount.innerHTML = options.join('');
+            goalRowModalMissionUnitCount.value = divisors.includes(missionUnitCount) ? String(missionUnitCount) : '0';
+        }
 
         function openGoalRowSettingsModal(row) {
             if (!row) return;
             _activeGoalRow = row;
             const slot = Number(row.dataset.goalRow || '0') + 1;
+            const targetCount = Number.parseInt(row.querySelector('[data-goal-target]').value, 10) || 1;
+            const missionUnitCount = Number.parseInt(row.querySelector('[data-goal-mission-unit-count]').value, 10) || 0;
             goalRowModalTitle.textContent = `スロット ${slot} の詳細設定`;
             goalRowModalNote.value = row.querySelector('[data-goal-note]').value;
             goalRowModalCountUnique.checked = row.querySelector('[data-goal-count-unique-users]').checked;
             goalRowModalResetAtMidnight.checked = row.querySelector('[data-goal-reset-at-midnight]').checked;
+            populateGoalRowModalMissionUnitCount(targetCount, missionUnitCount);
             goalRowSettingsModal.hidden = false;
             document.body.style.overflow = 'hidden';
             goalRowModalNote.focus();
@@ -3052,6 +3087,7 @@
             _activeGoalRow.querySelector('[data-goal-note]').value = goalRowModalNote.value;
             _activeGoalRow.querySelector('[data-goal-count-unique-users]').checked = goalRowModalCountUnique.checked;
             _activeGoalRow.querySelector('[data-goal-reset-at-midnight]').checked = goalRowModalResetAtMidnight.checked;
+            _activeGoalRow.querySelector('[data-goal-mission-unit-count]').value = goalRowModalMissionUnitCount.value;
             scheduleGoalGiftAutosave();
         }
 
@@ -3063,6 +3099,7 @@
         goalRowModalNote.addEventListener('change', syncGoalRowModalToRow);
         goalRowModalCountUnique.addEventListener('change', syncGoalRowModalToRow);
         goalRowModalResetAtMidnight.addEventListener('change', syncGoalRowModalToRow);
+        goalRowModalMissionUnitCount.addEventListener('change', syncGoalRowModalToRow);
 
         // ---- Push & Pull widget ----
         const pushPullUrl = document.getElementById('push-pull-url');

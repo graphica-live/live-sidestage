@@ -181,7 +181,8 @@ const DEFAULT_GOAL_GIFT_WIDGET_ITEM = {
     countUniqueUsers: false,
     currentCountOffset: 0,
     resetAtMidnight: false,
-    currentCountOffsetDayKey: ''
+    currentCountOffsetDayKey: '',
+    missionUnitCount: 0
 };
 const DEFAULT_GOAL_GIFT_WIDGET_FONT_KEY = 'default';
 const DEFAULT_GOAL_GIFT_WIDGET_TEXT_STYLE_KEY = 'gold-night';
