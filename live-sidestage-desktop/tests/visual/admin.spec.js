@@ -144,3 +144,16 @@ test.describe('event-categories.html: モーダルが開ける', () => {
         await expect(page.locator('#category-modal')).toHaveClass(/is-open/);
     });
 });
+
+// ── comments.html モーダル開閉テスト (自動生成) ──────────────────────────
+test.describe('comments.html: モーダルが開ける', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/comments.html`);
+    await page.waitForLoadState('networkidle');
+    });
+
+    test('comment-settings-modal', async ({ page }) => {
+        await page.click('#comment-settings-button');
+        await expect(page.locator('#comment-settings-modal')).toHaveClass(/is-open/);
+    });
+});

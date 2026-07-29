@@ -2,6 +2,13 @@
         const commentFeedback = document.getElementById('comment-feedback');
         const commentStream = document.getElementById('comment-stream');
         const sortOrderButton = document.getElementById('sort-order-button');
+        const filterSummary = document.getElementById('filter-summary');
+        const commentSettingsButton = document.getElementById('comment-settings-button');
+        const commentSettingsModal = document.getElementById('comment-settings-modal');
+        const commentFilterList = document.getElementById('comment-filter-list');
+        const commentSettingsSelectAll = document.getElementById('comment-settings-select-all');
+        const commentSettingsClearAll = document.getElementById('comment-settings-clear-all');
+        const commentSettingsClose = document.getElementById('comment-settings-close');
         const commentReadAloudTestButton = document.getElementById('comment-read-aloud-test-button');
         const commentReadAloudVoiceButton = document.getElementById('comment-read-aloud-voice-button');
         const commentReadAloudVoiceSelect = document.getElementById('comment-read-aloud-voice-select');
@@ -984,8 +991,17 @@
             syncReadAloudControls();
         }
 
+        function syncFilterSummary() {
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            const visibleCount = currentCommentTypes.filter((item) => enabledTypes.has(item.type)).length;
+            filterSummary.textContent = currentCommentTypes.length
+                ? `表示対象: ${visibleCount}/${currentCommentTypes.length} 種別`
+                : '表示対象を読み込み中です。';
+        }
+
         function getFilteredComments(comments) {
-            return (Array.isArray(comments) ? comments : []).filter((item) => (item.type || 'chat') === 'chat');
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            return (Array.isArray(comments) ? comments : []).filter((item) => enabledTypes.has(item.type || 'chat'));
         }
 
         function getOrderedComments(comments) {
@@ -996,6 +1012,46 @@
             });
         }
 
+
+        function renderCommentSettingsModal() {
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            commentFilterList.innerHTML = '';
+
+            currentCommentTypes.forEach((item) => {
+                const row = document.createElement('label');
+                row.className = 'filter-item';
+                row.innerHTML = `
+                    <div class="filter-copy">
+                        <strong>${escapeHtml(item.label || item.type)}</strong>
+                        <span>${item.system ? 'システムメッセージ' : '通常コメント'}</span>
+                    </div>
+                    <input type="checkbox" data-type="${escapeHtml(item.type)}" ${enabledTypes.has(item.type) ? 'checked' : ''}>
+                `;
+                commentFilterList.appendChild(row);
+            });
+        }
+
+        function openCommentSettingsModal() {
+            renderCommentSettingsModal();
+            commentSettingsModal.classList.add('is-open');
+            commentSettingsModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCommentSettingsModal() {
+            commentSettingsModal.classList.remove('is-open');
+            commentSettingsModal.setAttribute('aria-hidden', 'true');
+        }
+
+        async function saveCommentDisplaySettings() {
+            const enabledTypes = [...commentFilterList.querySelectorAll('input[type="checkbox"]:checked')]
+                .map((input) => input.dataset.type)
+                .filter(Boolean);
+            try {
+                await saveCommentSettings({ ...currentSettings, enabledTypes });
+            } catch (error) {
+                setCommentFeedback(error.message || 'コメント設定の保存に失敗しました。');
+            }
+        }
 
         function renderReadAloudVoiceMappings() {
             const items = normalizeReadAloudVoiceMappings(pendingReadAloudVoiceMappings);
@@ -1324,6 +1380,7 @@
             syncReadAloudEmojiButton();
             syncReadAloudEmoteButton();
             syncReadAloudControls();
+            syncFilterSummary();
             renderLiveComments(currentComments);
             if (commentReadAloudVoiceModal.classList.contains('is-open')) {
                 commentReadAloudVoiceSelect.innerHTML = buildReadAloudVoiceOptions(currentSettings.readAloudVoiceName || '');
@@ -1423,8 +1480,9 @@
             // データ側は「new first」で先頭追加し、上限を超えた末尾を落とす
             currentComments = [commentEvent, ...currentComments].slice(0, 100);
 
-            if ((commentEvent.type || 'chat') !== 'chat') {
-                return;
+            const enabledTypes = new Set(currentSettings.enabledTypes);
+            if (!enabledTypes.has(commentEvent.type || 'chat')) {
+                return; // 表示フィルタで除外されるタイプは DOM 操作不要
             }
 
             // 空ステート・フィルタ不一致メッセージが出ている場合はクリア
@@ -1474,6 +1532,7 @@
             syncReadAloudEmojiButton();
             syncReadAloudEmoteButton();
             syncReadAloudControls();
+            syncFilterSummary();
             ensureCommentExpirationTimer();
         }
 
@@ -1526,6 +1585,7 @@
             syncReadAloudEmojiButton();
             syncReadAloudEmoteButton();
             syncReadAloudControls();
+            syncFilterSummary();
             renderLiveComments(currentComments);
             if (commentReadAloudVoiceMappingModal.classList.contains('is-open')) {
                 // モーダルが開いている間は編集中の pending 状態を保持する（上書きしない）
@@ -1558,6 +1618,34 @@
                 await saveCommentSettings(nextSettings);
             } catch (error) {
                 setCommentFeedback(error.message || '並び順の保存に失敗しました。');
+            }
+        });
+
+        commentSettingsButton.addEventListener('click', () => {
+            openCommentSettingsModal();
+        });
+
+        commentSettingsClose.addEventListener('click', () => {
+            closeCommentSettingsModal();
+        });
+
+        commentSettingsSelectAll.addEventListener('click', async () => {
+            commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = true;
+            });
+            await saveCommentDisplaySettings();
+        });
+
+        commentSettingsClearAll.addEventListener('click', async () => {
+            commentFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.checked = false;
+            });
+            await saveCommentDisplaySettings();
+        });
+
+        commentFilterList.addEventListener('change', async (event) => {
+            if (event.target.matches('input[type="checkbox"]')) {
+                await saveCommentDisplaySettings();
             }
         });
 
@@ -1931,6 +2019,10 @@
         document.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') {
                 return;
+            }
+
+            if (commentSettingsModal.classList.contains('is-open')) {
+                closeCommentSettingsModal();
             }
 
             if (commentReadAloudVoiceModal.classList.contains('is-open')) {
