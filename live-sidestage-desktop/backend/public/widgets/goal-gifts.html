@@ -240,43 +240,6 @@
             20%, 40%, 60%, 80% { opacity: 0.5; transform: scale(0.98); }
         }
 
-        .goal-step-label:empty {
-            display: none;
-        }
-
-        .goal-step-label {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            z-index: 6;
-            padding: 6px 16px;
-            border-radius: 999px;
-            background: rgba(15, 23, 42, 0.72);
-            border: 2px solid rgba(255, 255, 255, 0.28);
-            color: #f8fafc;
-            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
-            font-size: 22px;
-            font-weight: 900;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
-            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-            -webkit-text-stroke: 1px rgba(0, 0, 0, 0.35);
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-            pointer-events: none;
-        }
-
-        .goal-row.is-step-clear .goal-step-label {
-            background: rgba(245, 158, 11, 0.92);
-            color: #1e293b;
-            animation: stepClearLabelPulse 5000ms ease-in-out;
-        }
-
-        @keyframes stepClearLabelPulse {
-            0%, 100% { transform: scale(1); }
-            10%, 30%, 50%, 70%, 90% { transform: scale(1.14); }
-            20%, 40%, 60%, 80% { transform: scale(1); }
-        }
-
         .goal-step-clear-badge {
             display: none;
             position: absolute;
@@ -1282,6 +1245,14 @@
         const GOAL_RING_ARC_LENGTH = GOAL_RING_CIRCUMFERENCE * (GOAL_RING_SWEEP_DEG / 360);
         const GOAL_RING_TRACK_DASHARRAY = `${GOAL_RING_ARC_LENGTH} ${GOAL_RING_CIRCUMFERENCE - GOAL_RING_ARC_LENGTH}`;
         const DEFAULT_GOAL_RING_COLOR = '#f59e0b';
+        // ミッションの周回(step)をプログレスバーの色で示す。1周目=白、以降は
+        // 水色→黄色→緑→紫→赤の順で、6周目以降は赤のまま固定。
+        const LAP_RING_COLORS = ['#ffffff', '#38bdf8', '#facc15', '#4ade80', '#a78bfa', '#ef4444'];
+
+        function getLapRingColor(step) {
+            const index = Math.min(Math.max(Number(step) || 1, 1) - 1, LAP_RING_COLORS.length - 1);
+            return LAP_RING_COLORS[index];
+        }
 
         function computeGoalProgressPercent(goal) {
             const target = Number(goal?.targetCount) || 0;
@@ -1722,10 +1693,7 @@
                         lastRenderedCounts.set(slot, goal.currentCount);
                     }
 
-                    const stepLabelEl = row.querySelector('.goal-step-label');
-                    if (stepLabelEl) {
-                        stepLabelEl.textContent = missionDisplay.active ? `STEP ${missionDisplay.step}/${missionDisplay.totalSteps}` : '';
-                    }
+                    row.style.setProperty('--goal-ring-color', missionDisplay.active ? getLapRingColor(missionDisplay.step) : ringColor);
                     row.classList.toggle('is-step-clear', Boolean(missionDisplay.celebrating));
 
                     const isNowAchieved = goal.currentCount >= goal.targetCount;
@@ -1769,12 +1737,12 @@
             overlay.innerHTML = goals.map((goal, index) => {
                 const slot = Number(goal.slot) || 0;
                 const missionDisplay = resolveGoalMissionDisplay(goal);
-                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''} ${missionDisplay.celebrating ? 'is-step-clear' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${ringColor};'>
+                const rowRingColor = missionDisplay.active ? getLapRingColor(missionDisplay.step) : ringColor;
+                return `<div class="goal-row ${goal.completed ? 'is-complete' : ''} ${increasedSlots.has(slot) ? 'is-celebrating' : ''} ${missionDisplay.celebrating ? 'is-step-clear' : ''}" data-goal-slot="${slot}" ${increasedSlots.has(slot) ? `data-feedback-effect="${escapeHtml(effectKey)}"` : ''} style='font-family: ${fontFamily}; --goal-font-family: ${fontFamily}; --goal-fill-color: ${fillPreviewColor}; --goal-count-color: ${countPreviewColor}; --goal-note-color: ${notePreviewColor}; --goal-stroke-color: ${textStyle.strokeColor}; --goal-text-shadow: ${textStyle.textShadow}; --goal-stroke-width: ${strokeWidth}px; --goal-ring-color: ${rowRingColor};'>
                     <div class="gift-visual ${goal.currentCount >= goal.targetCount ? 'is-achieved' : ''}">
                         ${buildGoalProgressRingHtml(missionDisplay.ratio)}
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
                         ${buildGoalSenderAvatarHtml(goal)}
-                        <div class="goal-step-label">${missionDisplay.active ? escapeHtml(`STEP ${missionDisplay.step}/${missionDisplay.totalSteps}`) : ''}</div>
                         ${buildGoalStepClearBadgeHtml(fontFamily)}
                         ${goal.displayName ? `<div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>` : ''}
                         ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
