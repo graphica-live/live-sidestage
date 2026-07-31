@@ -1319,6 +1319,7 @@
             const rawStep = Number(goal?.missionCurrentStep) || 1;
             const rawProgressCount = Number(goal?.missionStepProgressCount) || 0;
             let state = goalMissionDisplayState.get(slot);
+            const prevRemainingCount = state ? state.displayedRemainingCount : undefined;
 
             if (!state) {
                 state = { step: rawStep, progressCount: rawProgressCount, celebrating: false, queuedUpTo: rawStep, pendingProgressCount: rawProgressCount };
@@ -1348,13 +1349,16 @@
             }
 
             const displayedProgressCount = state.celebrating ? unitCount : state.progressCount;
+            const remainingCount = Math.max(0, unitCount - displayedProgressCount);
+            state.displayedRemainingCount = remainingCount;
 
             return {
                 active: true,
                 step: state.step,
                 totalSteps,
                 ratio: unitCount > 0 ? Math.min(1, displayedProgressCount / unitCount) : 0,
-                remainingCount: Math.max(0, unitCount - displayedProgressCount),
+                remainingCount,
+                prevRemainingCount,
                 celebrating: state.celebrating
             };
         }
@@ -1553,6 +1557,16 @@
         function buildGoalCountHtml(goal, slot, index, rollerSlots, previousCounts, countFontSize, countLayoutHeight, strokeWidth, textStyle, missionDisplay) {
             if (missionDisplay?.active) {
                 const _stepText = formatGoalGiftRemainingCount(missionDisplay.remainingCount);
+                if (rollerSlots.has(slot) && typeof missionDisplay.prevRemainingCount === 'number' && missionDisplay.prevRemainingCount !== missionDisplay.remainingCount) {
+                    const _oldStepText = formatGoalGiftRemainingCount(missionDisplay.prevRemainingCount);
+                    return `<div class="count count-split">`
+                        + `<div class="count-roller" style="height:${countLayoutHeight}px;--roller-item-h:${countLayoutHeight}px">`
+                        + `<div class="count-roller-track">`
+                        + buildOutlinedSvgMarkup(_oldStepText, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-old-' + index })
+                        + buildOutlinedSvgMarkup(_stepText, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-new-' + index })
+                        + `</div></div>`
+                        + `</div>`;
+                }
                 return `<div class="count">`
                     + buildOutlinedSvgMarkup(_stepText, { fontSize: countFontSize, fontWeight: 700, strokeWidth, layoutHeight: countLayoutHeight, fill: textStyle.countColor, idPrefix: 'goal-count-' + index })
                     + `</div>`;
