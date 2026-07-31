@@ -224,77 +224,17 @@
             background: transparent;
         }
 
-        .goal-row.is-step-clear .gift-visual::before {
-            content: '';
-            position: absolute;
-            inset: 4% 8%;
-            pointer-events: none;
-            border-radius: 999px;
-            box-shadow: 0 0 0 10px var(--goal-ring-color, rgba(251, 191, 36, 0.32));
-            filter: drop-shadow(0 0 26px var(--goal-ring-color, rgba(251, 191, 36, 0.6)));
-            animation: stepClearRingPulse 5000ms ease-in-out;
+        .goal-row.is-step-clear .goal-progress-ring-fill {
+            animation: stepClearRingBlink 3000ms steps(1, end) 1;
         }
 
-        @keyframes stepClearRingPulse {
-            0%, 100% { opacity: 0; transform: scale(0.9); }
-            6%, 24%, 42%, 60%, 78% { opacity: 1; transform: scale(1.22); }
-            15%, 33%, 51%, 69%, 87% { opacity: 0.35; transform: scale(0.98); }
-        }
-
-        .goal-step-clear-flash {
-            display: none;
-            position: absolute;
-            inset: -35%;
-            z-index: 6;
-            pointer-events: none;
-            border-radius: 999px;
-            background: radial-gradient(circle at center, #ffffff 0%, var(--goal-ring-color, #fbbf24) 46%, transparent 74%);
-            mix-blend-mode: screen;
-        }
-
-        .goal-row.is-step-clear .goal-step-clear-flash {
-            display: block;
-            animation: stepClearFlashBurst 900ms ease-out;
-        }
-
-        @keyframes stepClearFlashBurst {
-            0% { opacity: 0; transform: scale(0.45) rotate(-10deg); }
-            14% { opacity: 1; transform: scale(1.4) rotate(6deg); }
-            32% { opacity: 0.5; transform: scale(1.15) rotate(0deg); }
-            100% { opacity: 0; transform: scale(1.15) rotate(0deg); }
-        }
-
-        .goal-step-clear-badge {
-            display: none;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            z-index: 7;
-            transform: translate(-50%, -50%);
-            padding: 8px 22px;
-            border-radius: 999px;
-            background: linear-gradient(135deg, #fde68a, #f59e0b);
-            color: #451a03;
-            font-family: var(--goal-font-family, "M PLUS Rounded 1c", sans-serif);
-            font-weight: 900;
-            letter-spacing: 0.06em;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(255, 255, 255, 0.5);
-            pointer-events: none;
-        }
-
-        .goal-row.is-step-clear .goal-step-clear-badge {
-            display: block;
-            animation: stepClearBadgePop 5000ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
-        @keyframes stepClearBadgePop {
-            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-14deg); }
-            10% { opacity: 1; transform: translate(-50%, -50%) scale(1.34) rotate(6deg); }
-            20% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-            26%, 34%, 42% { transform: translate(-50%, -50%) scale(1.08) rotate(0deg); }
-            30%, 38% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-            85% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85) rotate(0deg); }
+        @keyframes stepClearRingBlink {
+            0%, 12% { stroke: #ffffff; filter: drop-shadow(0 0 14px #ffffff); }
+            13%, 32% { stroke: var(--goal-ring-color, #f59e0b); filter: none; }
+            33%, 45% { stroke: #ffffff; filter: drop-shadow(0 0 14px #ffffff); }
+            46%, 65% { stroke: var(--goal-ring-color, #f59e0b); filter: none; }
+            66%, 78% { stroke: #ffffff; filter: drop-shadow(0 0 14px #ffffff); }
+            79%, 100% { stroke: var(--goal-ring-color, #f59e0b); filter: none; }
         }
 
         .gift-visual {
@@ -1326,7 +1266,7 @@
         // ミッション(周回)単位の表示状態。スロットごとに、直近に画面へ反映した
         // ステップ番号/周内進捗を保持し、ステップ達成時は5秒間その状態を保持してから
         // 次のステップへ切り替える(お祝いエフェクト用)。
-        const STEP_CELEBRATE_DURATION_MS = 5000;
+        const STEP_CELEBRATE_DURATION_MS = 3000;
         const goalMissionDisplayState = new Map();
         let lastRenderRawSnapshot = null;
 
@@ -1389,10 +1329,6 @@
                 remainingCount: Math.max(0, unitCount - displayedProgressCount),
                 celebrating: state.celebrating
             };
-        }
-
-        function buildGoalStepClearBadgeHtml(fontFamily) {
-            return `<div class="goal-step-clear-badge" style="font-family:${fontFamily};">CLEAR!</div>`;
         }
 
         function normalizeFeedbackSettings(value) {
@@ -1772,8 +1708,6 @@
                         ${buildGoalProgressRingHtml(missionDisplay.ratio)}
                         <img class="gift-image" src="${escapeHtml(goal.giftImage || '')}" alt="gift" ${goal.giftImage ? '' : 'style="visibility:hidden"'}>
                         ${buildGoalSenderAvatarHtml(goal)}
-                        <div class="goal-step-clear-flash"></div>
-                        ${buildGoalStepClearBadgeHtml(fontFamily)}
                         ${goal.displayName ? `<div class="gift-name">${buildOutlinedSvgMarkup(goal.displayName, { fontSize: nameFontSize, fontWeight: 700, strokeWidth, shadowPad: 10, layoutHeight: nameLayoutHeight, fill: textStyle.fillColor, idPrefix: `goal-name-${index}` })}</div>` : ''}
                         ${buildAchievementBadgeHtml(badgeStyle, badgeWidth, badgeHeight, fontFamily)}
                     </div>
