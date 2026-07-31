@@ -3053,7 +3053,7 @@
             const options = [`<option value="0">分割なし(1周で達成)</option>`]
                 .concat(divisors.map((divisor) => {
                     const steps = targetCount / divisor;
-                    return `<option value="${divisor}">${divisor}個ごと(${steps}ステップ)</option>`;
+                    return `<option value="${divisor}">${divisor}個ごと(ミッション最大${steps}周)</option>`;
                 }));
             goalRowModalMissionUnitCount.innerHTML = options.join('');
             goalRowModalMissionUnitCount.value = divisors.includes(missionUnitCount) ? String(missionUnitCount) : '0';
