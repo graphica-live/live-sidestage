@@ -1341,6 +1341,9 @@
                         playGoalFeedbackTone(currentFeedbackSettings.soundKey).catch(() => {});
                     }
                     advanceGoalMissionStep(slot);
+                } else if (!state.celebrating) {
+                    // 同一ステップ内の進捗更新。演出中でなければ即座に反映する。
+                    state.progressCount = rawProgressCount;
                 }
             }
 
