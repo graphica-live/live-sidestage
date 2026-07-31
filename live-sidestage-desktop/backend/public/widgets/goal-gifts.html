@@ -1270,6 +1270,35 @@
         const goalMissionDisplayState = new Map();
         let lastRenderRawSnapshot = null;
 
+        // まとめ投げ等でステップが一度に複数進んだ場合も、1ステップずつ順番に
+        // クリア演出(効果音含む)を発生させる。最終ステップへスキップして中間の
+        // クリアイベントが消えてしまうのを防ぐため、queuedUpTo まで1段ずつ進める。
+        function advanceGoalMissionStep(slot) {
+            const state = goalMissionDisplayState.get(slot);
+            if (!state) return;
+            const nextStep = state.step + 1;
+
+            setTimeout(() => {
+                const latestState = goalMissionDisplayState.get(slot);
+                if (!latestState) return;
+
+                latestState.step = nextStep;
+
+                if (nextStep < latestState.queuedUpTo) {
+                    latestState.progressCount = 0;
+                    if (!sampleMode && currentFeedbackSettings.soundEnabled) {
+                        playGoalFeedbackTone(currentFeedbackSettings.soundKey).catch(() => {});
+                    }
+                    advanceGoalMissionStep(slot);
+                } else {
+                    latestState.progressCount = latestState.pendingProgressCount;
+                    latestState.celebrating = false;
+                }
+
+                render(lastRenderRawSnapshot, new Set(), currentFeedbackSettings.effectKey, new Set(), new Map()).catch(() => {});
+            }, STEP_CELEBRATE_DURATION_MS);
+        }
+
         function resolveGoalMissionDisplay(goal) {
             const slot = Number(goal?.slot) || 0;
             const totalSteps = Math.max(1, Number(goal?.missionTotalSteps) || 1);
@@ -1292,31 +1321,27 @@
             let state = goalMissionDisplayState.get(slot);
 
             if (!state) {
-                state = { step: rawStep, progressCount: rawProgressCount, celebrating: false, pendingStep: rawStep, pendingProgressCount: rawProgressCount };
+                state = { step: rawStep, progressCount: rawProgressCount, celebrating: false, queuedUpTo: rawStep, pendingProgressCount: rawProgressCount };
                 goalMissionDisplayState.set(slot, state);
-            } else if (state.celebrating) {
-                // 演出中はサーバーの最新値を保持だけしておき、演出終了時に反映する。
-                state.pendingStep = rawStep;
-                state.pendingProgressCount = rawProgressCount;
-            } else if (rawStep > state.step) {
-                state.celebrating = true;
-                state.pendingStep = rawStep;
-                state.pendingProgressCount = rawProgressCount;
-                if (!sampleMode && currentFeedbackSettings.soundEnabled) {
-                    playGoalFeedbackTone(currentFeedbackSettings.soundKey).catch(() => {});
-                }
-                setTimeout(() => {
-                    const latestState = goalMissionDisplayState.get(slot);
-                    if (!latestState) return;
-                    latestState.step = latestState.pendingStep;
-                    latestState.progressCount = latestState.pendingProgressCount;
-                    latestState.celebrating = false;
-                    render(lastRenderRawSnapshot, new Set(), currentFeedbackSettings.effectKey, new Set(), new Map()).catch(() => {});
-                }, STEP_CELEBRATE_DURATION_MS);
-            } else {
-                // 同じステップの進捗更新、またはリセット等によるステップの後退。
+            } else if (rawStep < state.step && !state.celebrating) {
+                // リセット等によるステップの後退は即座に反映する。
                 state.step = rawStep;
                 state.progressCount = rawProgressCount;
+                state.queuedUpTo = rawStep;
+                state.pendingProgressCount = rawProgressCount;
+            } else {
+                if (rawStep > state.queuedUpTo) {
+                    state.queuedUpTo = rawStep;
+                }
+                state.pendingProgressCount = rawProgressCount;
+
+                if (!state.celebrating && state.queuedUpTo > state.step) {
+                    state.celebrating = true;
+                    if (!sampleMode && currentFeedbackSettings.soundEnabled) {
+                        playGoalFeedbackTone(currentFeedbackSettings.soundKey).catch(() => {});
+                    }
+                    advanceGoalMissionStep(slot);
+                }
             }
 
             const displayedProgressCount = state.celebrating ? unitCount : state.progressCount;
