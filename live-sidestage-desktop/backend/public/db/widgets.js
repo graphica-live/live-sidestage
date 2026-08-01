@@ -1723,12 +1723,10 @@
                 minutesEl.max = '180';
                 minutesEl.placeholder = '分';
                 minutesEl.value = gift ? String(gift.minutesDelta) : '';
-                minutesEl.disabled = !gift;
                 minutesEl.addEventListener('change', () => {
-                    if (timerGiftSlots[i]) {
-                        timerGiftSlots[i].minutesDelta = Math.max(-180, Math.min(180, parseInt(minutesEl.value, 10) || 0));
-                        scheduleTimerSave();
-                    }
+                    if (!timerGiftSlots[i]) return;
+                    timerGiftSlots[i].minutesDelta = Math.max(-180, Math.min(180, parseInt(minutesEl.value, 10) || 0));
+                    scheduleTimerSave();
                 });
 
                 row.appendChild(imgEl);
@@ -1974,6 +1972,7 @@
 
         // --- タイマー終了サウンド（myinstants検索） ---
         function openTimerMyinstantsModal() {
+            closeTimerSuggestPanel();
             timerMyinstantsSearchInput.value = '';
             timerMyinstantsStatus.textContent = '';
             timerMyinstantsResults.innerHTML = '';

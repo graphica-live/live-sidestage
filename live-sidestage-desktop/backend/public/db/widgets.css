@@ -1082,7 +1082,7 @@
             justify-content: center;
             padding: 20px;
             background: rgba(47, 38, 29, 0.38);
-            z-index: 30;
+            z-index: 10000;
         }
 
         .modal-shell.is-open {
