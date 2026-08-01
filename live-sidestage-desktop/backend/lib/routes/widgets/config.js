@@ -39,6 +39,9 @@ module.exports = function registerWidgetsConfigRoutes({
     getGoalGiftWidgetProgressRingColor,
     getGoalGiftWidgetProgressBackgroundOpacity,
     buildGoalGiftProgressSnapshot,
+    getWidgetTapGoalSettings,
+    getTapGoalWidgetTextAppearance,
+    buildTapGoalPayload,
 }) {
     app.get('/api/widgets/config', (req, res) => {
         const sharedWidgetAppearance = getSharedWidgetTextAppearance();
@@ -86,7 +89,10 @@ module.exports = function registerWidgetsConfigRoutes({
             goalGiftProgressRingColor: getGoalGiftWidgetProgressRingColor(),
             goalGiftProgressBackgroundOpacity: getGoalGiftWidgetProgressBackgroundOpacity(),
             goalGiftFeedback: sharedWidgetFeedback,
-            goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals
+            goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals,
+            tapGoalSettings: getWidgetTapGoalSettings(),
+            tapGoalAppearance: getTapGoalWidgetTextAppearance(),
+            tapGoalPayload: buildTapGoalPayload()
         });
     });
 

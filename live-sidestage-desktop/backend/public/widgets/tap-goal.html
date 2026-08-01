@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タップ目標</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --heading-color: #f1f5f9;
+            --count-color: #fbbf24;
+            --bar-fill-color: #fbbf24;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 5px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .widget {
+            padding: 18px;
+            width: max-content;
+            pointer-events: none;
+            display: flex;
+            gap: 14px;
+        }
+
+        .widget[data-orientation="horizontal"] {
+            flex-direction: column;
+            min-width: 360px;
+            max-width: min(640px, 100vw);
+        }
+
+        .widget[data-orientation="vertical"] {
+            flex-direction: row;
+            align-items: stretch;
+            height: min(480px, 90vh);
+        }
+
+        .heading {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--heading-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow);
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .widget[data-orientation="vertical"] .heading {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+        }
+
+        .bar-track {
+            position: relative;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .widget[data-orientation="horizontal"] .bar-track {
+            width: 100%;
+            height: 44px;
+        }
+
+        .widget[data-orientation="vertical"] .bar-track {
+            width: 44px;
+            height: 100%;
+        }
+
+        .bar-fill {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, var(--bar-fill-color), color-mix(in srgb, var(--bar-fill-color) 60%, white));
+            border-radius: 999px;
+            transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1), height 320ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .widget[data-orientation="horizontal"] .bar-fill {
+            top: 0;
+            height: 100%;
+            width: 0%;
+        }
+
+        .widget[data-orientation="vertical"] .bar-fill {
+            top: auto;
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(0deg, var(--bar-fill-color), color-mix(in srgb, var(--bar-fill-color) 60%, white));
+        }
+
+        .bar-count {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 900;
+            color: var(--count-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 5px 16px var(--shadow);
+        }
+
+        .widget[data-orientation="vertical"] .bar-count {
+            writing-mode: vertical-rl;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget" data-orientation="horizontal">
+        <div class="heading" id="heading"></div>
+        <div class="bar-track" id="barTrack">
+            <div class="bar-fill" id="barFill"></div>
+            <div class="bar-count" id="barCount">0 / 0</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
+        const widgetEl = document.getElementById('widget');
+        const headingEl = document.getElementById('heading');
+        const barFillEl = document.getElementById('barFill');
+        const barCountEl = document.getElementById('barCount');
+
+        const TAP_GOAL_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TAP_GOAL_TEXT_STYLES = {
+            'gold-night':      { headingColor: 'rgba(241,245,249,0.94)', barColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)', textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { headingColor: 'rgba(191,219,254,0.94)', barColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)', textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { headingColor: 'rgba(251,207,232,0.94)', barColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { headingColor: 'rgba(209,250,229,0.94)', barColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)', textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { headingColor: 'rgba(254,215,170,0.94)', barColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 5));
+            const fontFamily = TAP_GOAL_FONT_FAMILIES[fontKey] || TAP_GOAL_FONT_FAMILIES.default;
+            const textStyle = TAP_GOAL_TEXT_STYLES[textStyleKey] || TAP_GOAL_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--heading-color', textStyle.headingColor);
+            root.setProperty('--count-color', textStyle.barColor);
+            root.setProperty('--bar-fill-color', textStyle.barColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function applySettings(settings) {
+            if (!settings) return;
+            widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
+            headingEl.textContent = settings.headingText || '';
+        }
+
+        function applyProgress(progress) {
+            if (!progress) return;
+            const target = Math.max(1, Number(progress.target) || 1);
+            const count = Math.max(0, Number(progress.count) || 0);
+            const ratio = Math.max(0, Math.min(1, count / target));
+            if (widgetEl.dataset.orientation === 'vertical') {
+                barFillEl.style.height = (ratio * 100) + '%';
+                barFillEl.style.width = '';
+            } else {
+                barFillEl.style.width = (ratio * 100) + '%';
+                barFillEl.style.height = '';
+            }
+            barCountEl.textContent = `${count.toLocaleString()} / ${target.toLocaleString()}`;
+        }
+
+        function applyPayload(payload) {
+            if (!payload) return;
+            if (payload.settings) applySettings(payload.settings);
+            if (payload.appearance) applyAppearance(payload.appearance);
+            if (payload.progress) applyProgress(payload.progress);
+        }
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/tap-goal/config')
+                .then((r) => r.json())
+                .then(applyPayload)
+                .catch(() => {});
+        });
+
+        socket.on('widgets:tap-goal:updated', applyPayload);
+    </script>
+</body>
+</html>

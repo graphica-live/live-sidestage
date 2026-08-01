@@ -31,6 +31,16 @@
         const pushPullGiftSizeInput = document.getElementById('push-pull-gift-size');
         const pushPullGiftPtsSizeInput = document.getElementById('push-pull-gift-pts-size');
         const pushPullScoreModeSelect = document.getElementById('push-pull-score-mode');
+        const tapGoalFontSelect = document.getElementById('tap-goal-font');
+        const tapGoalTextStyleSelect = document.getElementById('tap-goal-text-style');
+        const tapGoalStrokeWidthInput = document.getElementById('tap-goal-stroke-width');
+        const tapGoalOrientationSelect = document.getElementById('tap-goal-orientation');
+        const tapGoalHeadingTextInput = document.getElementById('tap-goal-heading-text');
+        const tapGoalTargetCountInput = document.getElementById('tap-goal-target-count');
+        const tapGoalEffectEventSelect = document.getElementById('tap-goal-effect-event');
+        const tapGoalUrl = document.getElementById('tap-goal-url');
+        const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
+        const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
         const goalGiftFontSelect = document.getElementById('goal-gift-font');
         const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
         const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
@@ -159,7 +169,9 @@
                 coinListOverlayUrl: '',
                 coinListLoaderUrl: '',
                 pushPullOverlayUrl: '',
-                pushPullLoaderUrl: ''
+                pushPullLoaderUrl: '',
+                tapGoalOverlayUrl: '',
+                tapGoalLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -174,6 +186,8 @@
             giftJarAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             pushPullAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             goalGiftAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
+            tapGoalProgress: { count: 0, target: 100 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
@@ -192,6 +206,7 @@
             topGiftSettings: null,
             likeContributionSettings: null,
             tapListSettings: null,
+            tapGoalSettings: null,
             coinListSettings: null,
             goalGiftItems: [],
             giftCatalog: [],
@@ -279,6 +294,8 @@
         let coinListAutosavePromise = null;
         let goalGiftAutosaveTimer = null;
         let goalGiftAutosavePromise = null;
+        let tapGoalAutosaveTimer = null;
+        let tapGoalAutosavePromise = null;
         let pendingTopGiftSettings = null;
         let pendingGoalGiftItems = null;
         const goalGiftNotePlaceholderByRow = new Map();
@@ -1055,6 +1072,9 @@
         function syncGoalGiftAppearanceControls() {
             syncWidgetAppearanceControls(goalGiftFontSelect, goalGiftTextStyleSelect, goalGiftStrokeWidthInput, state.goalGiftAppearance);
         }
+        function syncTapGoalAppearanceControls() {
+            syncWidgetAppearanceControls(tapGoalFontSelect, tapGoalTextStyleSelect, tapGoalStrokeWidthInput, state.tapGoalAppearance);
+        }
 
         function syncGoalGiftNoteFontSizeControl() {
             goalGiftNoteFontSizeInput.value = String(normalizeGoalGiftNoteFontSize(state.goalGiftNoteFontSize));
@@ -1508,6 +1528,97 @@
             }
             tapListAutosavePromise = saveTapListSettings();
             return tapListAutosavePromise;
+        }
+
+        function applyTapGoalSettingsToForm(settings) {
+            if (!settings) return;
+            tapGoalOrientationSelect.value = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
+            tapGoalHeadingTextInput.value = settings.headingText || '';
+            tapGoalTargetCountInput.value = String(Number.parseInt(String(settings.targetCount ?? 100), 10) || 100);
+            tapGoalEffectEventSelect.value = settings.effectEventId || '';
+            refreshTapGoalPreview();
+        }
+
+        function buildTapGoalPreviewUrl() {
+            const baseUrl = state.widgetUrls.tapGoalOverlayUrl || '/overlays/tap-goal';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?preview=1`;
+            }
+        }
+
+        function refreshTapGoalPreview(options = {}) {
+            updatePreviewFrame(tapGoalPreviewFrame, buildTapGoalPreviewUrl(), options);
+        }
+
+        function updateTapGoalProgressLabel() {
+            const count = Number(state.tapGoalProgress?.count) || 0;
+            const target = Number(state.tapGoalProgress?.target) || 0;
+            tapGoalProgressLabel.textContent = `進捗: ${count.toLocaleString()} / ${target.toLocaleString()}`;
+        }
+
+        async function loadTapGoalEffectEventOptions(selectedId) {
+            try {
+                const response = await fetch('/api/effects/config');
+                const payload = await response.json();
+                const events = Array.isArray(payload.events) ? payload.events : [];
+                const options = ['<option value="">未選択</option>'].concat(
+                    events.map((ev) => `<option value="${escapeHtml(ev.id)}">${escapeHtml(ev.name || ev.id)}</option>`)
+                );
+                tapGoalEffectEventSelect.innerHTML = options.join('');
+                tapGoalEffectEventSelect.value = selectedId || '';
+            } catch {
+                tapGoalEffectEventSelect.innerHTML = '<option value="">未選択</option>';
+            }
+        }
+
+        function getDraftTapGoalSettings() {
+            return {
+                orientation: tapGoalOrientationSelect.value === 'vertical' ? 'vertical' : 'horizontal',
+                headingText: tapGoalHeadingTextInput.value,
+                targetCount: Number.parseInt(tapGoalTargetCountInput.value, 10) || 100,
+                effectEventId: tapGoalEffectEventSelect.value || '',
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(tapGoalFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(tapGoalTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(tapGoalStrokeWidthInput.value)
+                }
+            };
+        }
+
+        async function saveTapGoalSettings() {
+            setStatus(saveStatus, '設定状態: タップ目標を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/tap-goal', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTapGoalSettings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'タップ目標の保存に失敗しました。');
+                state.tapGoalSettings = payload.settings || state.tapGoalSettings;
+                state.tapGoalAppearance = payload.appearance || state.tapGoalAppearance;
+                state.tapGoalProgress = payload.progress || state.tapGoalProgress;
+                applyTapGoalSettingsToForm(state.tapGoalSettings);
+                syncTapGoalAppearanceControls();
+                updateTapGoalProgressLabel();
+                refreshTapGoalPreview({ forceReload: true });
+                setStatus(saveStatus, '設定状態: タップ目標を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function saveTapGoalSettingsImmediately() {
+            if (tapGoalAutosaveTimer) {
+                window.clearTimeout(tapGoalAutosaveTimer);
+                tapGoalAutosaveTimer = null;
+            }
+            tapGoalAutosavePromise = saveTapGoalSettings();
+            return tapGoalAutosavePromise;
         }
 
         function applyCoinListSettingsToForm(settings) {
@@ -2126,6 +2237,7 @@
             state.giftJarAppearance = payload.giftJarAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.pushPullAppearance = payload.pushPullAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.goalGiftAppearance = payload.goalGiftAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.tapGoalAppearance = payload.tapGoalAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.goalGiftNoteFontSize);
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
@@ -2139,6 +2251,8 @@
             state.topGiftSettings = payload.topGiftSettings || state.topGiftSettings;
             state.likeContributionSettings = payload.likeContributionSettings || state.likeContributionSettings;
             state.tapListSettings = payload.tapListSettings || state.tapListSettings;
+            state.tapGoalSettings = payload.tapGoalSettings || state.tapGoalSettings;
+            state.tapGoalProgress = payload.tapGoalPayload?.progress || state.tapGoalProgress;
             state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -2155,12 +2269,14 @@
             syncGiftJarAppearanceControls();
             syncPushPullAppearanceControls();
             syncGoalGiftAppearanceControls();
+            syncTapGoalAppearanceControls();
             syncGoalGiftNoteFontSizeControl();
             syncGoalGiftAchievementBadgeControls();
             syncSharedFeedbackControls();
             topGiftUrl.textContent = state.widgetUrls.topGiftLoaderUrl || state.widgetUrls.topGiftOverlayUrl || '未取得';
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
+            tapGoalUrl.textContent = state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '未取得';
             coinListUrl.textContent = state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
@@ -2171,6 +2287,9 @@
             applyTopGiftSettingsToForm(state.topGiftSettings);
             applyLikeContributionSettingsToForm(state.likeContributionSettings);
             applyTapListSettingsToForm(state.tapListSettings);
+            applyTapGoalSettingsToForm(state.tapGoalSettings);
+            loadTapGoalEffectEventOptions(state.tapGoalSettings?.effectEventId).catch(() => {});
+            updateTapGoalProgressLabel();
             applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();
@@ -2180,6 +2299,7 @@
             refreshCustomJarPreview();
             refreshPushPullPreview();
             refreshCoinListPreview();
+            refreshTapGoalPreview();
         }
 
         async function refreshGoalGiftSnapshot() {
@@ -2680,6 +2800,52 @@
             if (!confirm('本日のタップ数をリセットしますか？')) return;
             fetch('/api/widgets/tap-list/reset', { method: 'POST' }).catch(() => {});
         });
+        document.getElementById('open-tap-goal-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.tapGoalOverlayUrl || '/overlays/tap-goal';
+            openWindow(url, 'tap-goal-overlay-window', { width: 480, height: 320 });
+        });
+        document.getElementById('copy-tap-goal-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '');
+        });
+        tapGoalOrientationSelect.addEventListener('change', () => {
+            saveTapGoalSettingsImmediately().catch(() => {});
+            refreshTapGoalPreview({ forceReload: true });
+        });
+        tapGoalHeadingTextInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalTargetCountInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalEffectEventSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalFontSelect.addEventListener('input', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); });
+        tapGoalFontSelect.addEventListener('change', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalTextStyleSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalStrokeWidthInput.addEventListener('input', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalStrokeWidthInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        document.getElementById('reset-tap-goal-button').addEventListener('click', () => {
+            if (!confirm('タップ目標の進捗をリセットしますか？')) return;
+            fetch('/api/widgets/tap-goal/reset', { method: 'POST' })
+                .then((r) => r.json())
+                .then((payload) => {
+                    if (payload?.progress) {
+                        state.tapGoalProgress = payload.progress;
+                        updateTapGoalProgressLabel();
+                    }
+                })
+                .catch(() => {});
+        });
+        document.getElementById('test-tap-goal-button').addEventListener('click', () => {
+            fetch('/api/widgets/tap-goal/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: 10 })
+            })
+                .then((r) => r.json())
+                .then((payload) => {
+                    if (payload?.progress) {
+                        state.tapGoalProgress = payload.progress;
+                        updateTapGoalProgressLabel();
+                    }
+                })
+                .catch(() => {});
+        });
         document.getElementById('open-coin-list-overlay-button').addEventListener('click', () => {
             const url = state.widgetUrls.coinListOverlayUrl || '/overlays/coin-list';
             openWindow(url, 'coin-list-overlay-window', { width: 420, height: 560 });
@@ -2951,6 +3117,13 @@
             syncContributorsRangeControl();
             refreshContributorsOverlayControls();
             refreshGoalGiftSnapshot().catch(() => {});
+        });
+
+        socket.on('widgets:tap-goal:updated', (payload) => {
+            if (payload?.progress) {
+                state.tapGoalProgress = payload.progress;
+                updateTapGoalProgressLabel();
+            }
         });
 
         document.addEventListener('click', (event) => {

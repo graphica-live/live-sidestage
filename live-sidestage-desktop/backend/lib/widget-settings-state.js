@@ -12,6 +12,7 @@ const {
     WIDGET_GIFT_JAR_FONT_STATE_KEY, WIDGET_GIFT_JAR_TEXT_STYLE_STATE_KEY, WIDGET_GIFT_JAR_STROKE_WIDTH_STATE_KEY,
     WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
     WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY,
+    WIDGET_TAP_GOAL_FONT_STATE_KEY, WIDGET_TAP_GOAL_TEXT_STYLE_STATE_KEY, WIDGET_TAP_GOAL_STROKE_WIDTH_STATE_KEY,
 } = require('./constants');
 const { normalizeEffectText, normalizeWholeNumber, normalizeBooleanInput } = require('./utils');
 
@@ -309,6 +310,13 @@ function setGoalGiftsWidgetTextAppearance(a) {
     return setPerWidgetTextAppearance(WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY, a, normalizeGoalGiftFontKey);
 }
 
+function getTapGoalWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_TAP_GOAL_FONT_STATE_KEY, WIDGET_TAP_GOAL_TEXT_STYLE_STATE_KEY, WIDGET_TAP_GOAL_STROKE_WIDTH_STATE_KEY);
+}
+function setTapGoalWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_TAP_GOAL_FONT_STATE_KEY, WIDGET_TAP_GOAL_TEXT_STYLE_STATE_KEY, WIDGET_TAP_GOAL_STROKE_WIDTH_STATE_KEY, a);
+}
+
 function normalizeSharedWidgetFontKey(value) {
     const normalizedValue = String(value || '').trim().toLowerCase();
     const allowedKeys = new Set([
@@ -338,6 +346,7 @@ function normalizeSharedWidgetFontKey(value) {
         getGiftJarWidgetTextAppearance, setGiftJarWidgetTextAppearance,
         getPushPullWidgetTextAppearance, setPushPullWidgetTextAppearance,
         getGoalGiftsWidgetTextAppearance, setGoalGiftsWidgetTextAppearance,
+        getTapGoalWidgetTextAppearance, setTapGoalWidgetTextAppearance,
         normalizeSharedWidgetFontKey,
     };
 };

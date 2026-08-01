@@ -421,6 +421,76 @@
                 </article>
                 </div><!-- /jar-pair -->
 
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>タップ目標</h2>
+                            <p class="subtext">全リスナーのタップ数を合算し、目標に到達するとエフェクトを発火します。到達後は自動的に0に戻り、繰り返しループします。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="tap-goal-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="tap-goal-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-tap-goal-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-tap-goal-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="tap-goal-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="tap-goal-font">フォント</label>
+                                <select id="tap-goal-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-text-style">文字色と縁取り</label>
+                                <select id="tap-goal-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-stroke-width">縁取り太さ</label>
+                                <input id="tap-goal-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-orientation">プログレスバーの向き</label>
+                                <select id="tap-goal-orientation">
+                                    <option value="horizontal">横向き</option>
+                                    <option value="vertical">縦向き</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-heading-text">見出しテキスト</label>
+                                <input id="tap-goal-heading-text" type="text" maxlength="40" placeholder="タップチャレンジ">
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-target-count">目標タップ数</label>
+                                <input id="tap-goal-target-count" type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="100">
+                            </div>
+                            <div class="field full">
+                                <label for="tap-goal-effect-event">到達時に発火するエフェクトイベント</label>
+                                <select id="tap-goal-effect-event"><option value="">未選択</option></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="tap-goal-progress-label">進捗: 0 / 0</div>
+                        <button type="button" class="ghost-button" id="test-tap-goal-button">タップをテスト送信 (+10)</button>
+                        <button type="button" class="ghost-button" id="reset-tap-goal-button">進捗をリセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="tap-goal-preview-frame" title="タップ目標プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
                 <div class="jar-pair" style="display:none"><!-- 瓶詰め/オリジナル瓶詰めウィジェット非表示 -->
                 <article class="card">
                     <div class="card-head">

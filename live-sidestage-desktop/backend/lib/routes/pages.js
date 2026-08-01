@@ -217,6 +217,14 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/song-battle');
     });
 
+    app.get(['/overlays/tap-goal', '/overlays/widgets/tap-goal'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'tap-goal.html'));
+    });
+    app.get(['/overlays/tap-goal/index.html', '/overlays/widgets/tap-goal/index.html'], (req, res) => {
+        return res.redirect('/overlays/tap-goal');
+    });
+
     app.get('/virtualdj', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));

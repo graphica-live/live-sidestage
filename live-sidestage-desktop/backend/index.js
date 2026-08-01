@@ -512,7 +512,9 @@ function buildWidgetUrls(req) {
         pushPullOverlayUrl: `${origin}/overlays/push-pull`,
         pushPullLoaderUrl: `${loaderOrigin}/overlays/push-pull`,
         songBattleOverlayUrl: `${origin}/overlays/song-battle`,
-        songBattleLoaderUrl: `${loaderOrigin}/overlays/song-battle`
+        songBattleLoaderUrl: `${loaderOrigin}/overlays/song-battle`,
+        tapGoalOverlayUrl: `${origin}/overlays/tap-goal`,
+        tapGoalLoaderUrl: `${loaderOrigin}/overlays/tap-goal`
     };
 }
 
@@ -1096,6 +1098,7 @@ const {
     getGiftJarWidgetTextAppearance, setGiftJarWidgetTextAppearance,
     getPushPullWidgetTextAppearance, setPushPullWidgetTextAppearance,
     getGoalGiftsWidgetTextAppearance, setGoalGiftsWidgetTextAppearance,
+    getTapGoalWidgetTextAppearance, setTapGoalWidgetTextAppearance,
     normalizeSharedWidgetFontKey,
 } = require('./lib/widget-settings-state')({
     getScopedStateValue: (...args) => getScopedStateValue(...args),
@@ -1241,6 +1244,16 @@ const {
     getLikeContributionUserAvatars, getLikeContributionUserNicknames, getLikeContributionUserTotalsState,
 });
 
+const {
+    normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
+    getTapGoalProgress, setTapGoalProgress,
+    addTapGoalTaps, resetTapGoalProgress,
+    buildTapGoalPayload,
+} = require('./lib/tap-goal-state')({
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTapGoalWidgetTextAppearance: (...args) => getTapGoalWidgetTextAppearance(...args),
+});
 
 const { closeAllMidiOutputs } = require('./lib/midi-helpers');
 
@@ -2530,6 +2543,7 @@ require('./lib/routes/widgets/config')({
     getGoalGiftWidgetProgressRingColor,
     getGoalGiftWidgetProgressBackgroundOpacity,
     buildGoalGiftProgressSnapshot,
+    getWidgetTapGoalSettings, getTapGoalWidgetTextAppearance, buildTapGoalPayload,
 });
 
 require('./lib/routes/widgets/top-gift')({
@@ -2612,6 +2626,14 @@ require('./lib/routes/widgets/goal-gifts')({
     getGoalGiftWidgetProgressRingColor, setGoalGiftWidgetProgressRingColor,
     getGoalGiftWidgetProgressBackgroundOpacity, setGoalGiftWidgetProgressBackgroundOpacity,
     setGoalGiftWidgetItems,
+});
+
+require('./lib/routes/widgets/tap-goal')({
+    app, io,
+    getEffectEvents, emitEffectPlayback,
+    buildTapGoalPayload,
+    setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
+    addTapGoalTaps, resetTapGoalProgress,
 });
 
 require('./lib/routes/widgets/contributors')({
@@ -2983,6 +3005,18 @@ function ensureTikTokConnection() {
                 });
 
                 io.emit('widgets:tap-list:updated', buildTapListPayload());
+
+                const tapGoalResult = addTapGoalTaps(normalizeWholeNumber(data?.likeCount) || 0);
+                if (tapGoalResult.crossings > 0) {
+                    const tapGoalSettings = getWidgetTapGoalSettings();
+                    const tapGoalEffectEvent = getEffectEvents().find((e) => e.id === tapGoalSettings.effectEventId);
+                    if (tapGoalEffectEvent) {
+                        for (let i = 0; i < tapGoalResult.crossings; i++) {
+                            emitEffectPlayback(tapGoalEffectEvent, null, normalizedComment);
+                        }
+                    }
+                }
+                io.emit('widgets:tap-goal:updated', buildTapGoalPayload());
             }
 
             if (goalGiftCountsChanged) {
