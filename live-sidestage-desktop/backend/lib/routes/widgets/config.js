@@ -42,6 +42,8 @@ module.exports = function registerWidgetsConfigRoutes({
     getWidgetTapGoalSettings,
     getTapGoalWidgetTextAppearance,
     buildTapGoalPayload,
+    getTimerWidgetTextAppearance,
+    buildTimerPayload,
 }) {
     app.get('/api/widgets/config', (req, res) => {
         const sharedWidgetAppearance = getSharedWidgetTextAppearance();
@@ -92,7 +94,9 @@ module.exports = function registerWidgetsConfigRoutes({
             goalGiftItems: buildGoalGiftProgressSnapshot(getTodayDayKey()).goals,
             tapGoalSettings: getWidgetTapGoalSettings(),
             tapGoalAppearance: getTapGoalWidgetTextAppearance(),
-            tapGoalPayload: buildTapGoalPayload()
+            tapGoalPayload: buildTapGoalPayload(),
+            timerAppearance: getTimerWidgetTextAppearance(),
+            timerPayload: buildTimerPayload()
         });
     });
 

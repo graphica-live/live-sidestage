@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイマー</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --heading-color: #f1f5f9;
+            --digit-color: #fbbf24;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 6px;
+            --urgent-glow: rgba(239, 68, 68, 0.85);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .widget {
+            position: relative;
+            padding: 22px 36px;
+            width: max-content;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .heading {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--heading-color);
+            -webkit-text-stroke: var(--stroke-width, 6px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow);
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .heading:empty { display: none; }
+
+        .digits {
+            font-size: 76px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            color: var(--digit-color);
+            -webkit-text-stroke: var(--stroke-width, 6px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 6px 20px var(--shadow);
+            line-height: 1;
+            white-space: nowrap;
+            transition: transform 120ms ease;
+        }
+
+        .widget[data-urgent="1"] .digits {
+            animation: urgent-pulse 1s ease-in-out infinite;
+        }
+
+        .widget[data-ended="1"] .digits {
+            color: #f87171;
+        }
+
+        @keyframes urgent-pulse {
+            0%, 100% {
+                color: var(--digit-color);
+                text-shadow: 0 6px 20px var(--shadow);
+            }
+            50% {
+                color: #fecaca;
+                text-shadow: 0 0 34px var(--urgent-glow), 0 0 70px var(--urgent-glow);
+            }
+        }
+
+        .urgent-flash {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle, var(--urgent-glow) 0%, rgba(239, 68, 68, 0) 68%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .widget[data-urgent="1"] .urgent-flash {
+            animation: urgent-flash-pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes urgent-flash-pulse {
+            0% { opacity: 0; }
+            15% { opacity: 0.55; }
+            100% { opacity: 0; }
+        }
+
+        .popup-layer {
+            position: absolute;
+            left: 50%;
+            bottom: 100%;
+            width: 0;
+            height: 0;
+            pointer-events: none;
+        }
+
+        .popup-chip {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: translate(-50%, 0);
+            font-size: 30px;
+            font-weight: 900;
+            white-space: nowrap;
+            -webkit-text-stroke: 4px var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 12px var(--shadow);
+            animation: popup-rise 1.6s ease-out forwards;
+        }
+
+        .popup-chip.positive { color: #4ade80; }
+        .popup-chip.negative { color: #f87171; }
+
+        @keyframes popup-rise {
+            0% { opacity: 0; transform: translate(-50%, 10px) scale(0.7); }
+            15% { opacity: 1; transform: translate(-50%, -6px) scale(1.08); }
+            30% { transform: translate(-50%, -14px) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -70px) scale(1); }
+        }
+
+        canvas#confetti-canvas {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget" data-urgent="0" data-ended="0">
+        <div class="urgent-flash"></div>
+        <div class="heading" id="heading"></div>
+        <div class="digits" id="digits">00:00</div>
+        <div class="popup-layer" id="popupLayer"></div>
+    </div>
+    <canvas id="confetti-canvas"></canvas>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
+        const widgetEl = document.getElementById('widget');
+        const headingEl = document.getElementById('heading');
+        const digitsEl = document.getElementById('digits');
+        const popupLayerEl = document.getElementById('popupLayer');
+
+        const TIMER_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TIMER_TEXT_STYLES = {
+            'gold-night':      { headingColor: 'rgba(241,245,249,0.94)', digitColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)', textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { headingColor: 'rgba(191,219,254,0.94)', digitColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)', textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { headingColor: 'rgba(251,207,232,0.94)', digitColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { headingColor: 'rgba(209,250,229,0.94)', digitColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)', textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { headingColor: 'rgba(254,215,170,0.94)', digitColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 6));
+            const fontFamily = TIMER_FONT_FAMILIES[fontKey] || TIMER_FONT_FAMILIES.default;
+            const textStyle = TIMER_TEXT_STYLES[textStyleKey] || TIMER_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--heading-color', textStyle.headingColor);
+            root.setProperty('--digit-color', textStyle.digitColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+        }
+
+        function formatRemaining(ms) {
+            const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+        }
+
+        let settings = { headingText: '' };
+        let running = false;
+        let baseRemainingMs = 0;
+        let baseAtPerf = performance.now();
+        let hasEndedForThisRun = false;
+        let lastWholeSecond = null;
+
+        function applySettings(nextSettings) {
+            if (!nextSettings) return;
+            settings = nextSettings;
+            headingEl.textContent = settings.headingText || '';
+        }
+
+        function applyRuntime(runtime) {
+            if (!runtime) return;
+            running = Boolean(runtime.running);
+            baseRemainingMs = Math.max(0, Number(runtime.remainingMs) || 0);
+            baseAtPerf = performance.now();
+            hasEndedForThisRun = baseRemainingMs <= 0;
+            lastWholeSecond = null;
+        }
+
+        function applyPayload(payload) {
+            if (!payload) return;
+            if (payload.settings) applySettings(payload.settings);
+            if (payload.appearance) applyAppearance(payload.appearance);
+            if (payload.runtime) applyRuntime(payload.runtime);
+        }
+
+        function getCurrentRemainingMs() {
+            if (!running) return baseRemainingMs;
+            return Math.max(0, baseRemainingMs - (performance.now() - baseAtPerf));
+        }
+
+        function showAdjustPopup(minutesDelta) {
+            if (!minutesDelta) return;
+            const chip = document.createElement('div');
+            const isPositive = minutesDelta > 0;
+            chip.className = 'popup-chip ' + (isPositive ? 'positive' : 'negative');
+            chip.textContent = (isPositive ? '+' : '-') + Math.abs(minutesDelta) + '分';
+            chip.style.left = (Math.random() * 60 - 30) + 'px';
+            popupLayerEl.appendChild(chip);
+            setTimeout(() => chip.remove(), 1700);
+        }
+
+        // --- 紙吹雪エフェクト（外部ライブラリ不使用の手製実装） ---
+        const confettiCanvas = document.getElementById('confetti-canvas');
+        const confettiCtx = confettiCanvas.getContext('2d');
+        let confettiParticles = [];
+        let confettiRunning = false;
+        const CONFETTI_COLORS = ['#fbbf24', '#f472b6', '#60a5fa', '#4ade80', '#f87171', '#a78bfa'];
+
+        function resizeConfettiCanvas() {
+            confettiCanvas.width = window.innerWidth;
+            confettiCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeConfettiCanvas);
+        resizeConfettiCanvas();
+
+        function launchConfetti() {
+            const count = 160;
+            confettiParticles = Array.from({ length: count }, () => ({
+                x: Math.random() * confettiCanvas.width,
+                y: -20 - Math.random() * confettiCanvas.height * 0.4,
+                vx: (Math.random() - 0.5) * 4,
+                vy: 2 + Math.random() * 4,
+                size: 6 + Math.random() * 8,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.3,
+                color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+                life: 0,
+                maxLife: 240 + Math.random() * 80
+            }));
+            if (!confettiRunning) {
+                confettiRunning = true;
+                requestAnimationFrame(stepConfetti);
+            }
+        }
+
+        function stepConfetti() {
+            confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+            let alive = false;
+            for (const p of confettiParticles) {
+                p.life += 1;
+                if (p.life > p.maxLife) continue;
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.03;
+                p.rotation += p.rotationSpeed;
+                alive = true;
+                confettiCtx.save();
+                confettiCtx.translate(p.x, p.y);
+                confettiCtx.rotate(p.rotation);
+                confettiCtx.fillStyle = p.color;
+                confettiCtx.globalAlpha = Math.max(0, 1 - p.life / p.maxLife);
+                confettiCtx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+                confettiCtx.restore();
+            }
+            if (alive) {
+                requestAnimationFrame(stepConfetti);
+            } else {
+                confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+                confettiRunning = false;
+            }
+        }
+
+        function playEndSound() {
+            const url = settings?.endSound?.url;
+            if (!url) return;
+            try {
+                const audio = new Audio(url);
+                audio.play().catch(() => {});
+            } catch {}
+        }
+
+        function triggerEnd() {
+            launchConfetti();
+            playEndSound();
+        }
+
+        function tick() {
+            const remainingMs = getCurrentRemainingMs();
+            digitsEl.textContent = formatRemaining(remainingMs);
+
+            const isUrgent = running && remainingMs > 0 && remainingMs <= 60000;
+            widgetEl.dataset.urgent = isUrgent ? '1' : '0';
+
+            const wholeSecond = Math.ceil(remainingMs / 1000);
+            if (isUrgent && wholeSecond !== lastWholeSecond) {
+                lastWholeSecond = wholeSecond;
+            }
+
+            if (remainingMs <= 0) {
+                widgetEl.dataset.ended = '1';
+                if (running && !hasEndedForThisRun) {
+                    hasEndedForThisRun = true;
+                    triggerEnd();
+                }
+            } else {
+                widgetEl.dataset.ended = '0';
+            }
+
+            requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/timer/config')
+                .then((r) => r.json())
+                .then(applyPayload)
+                .catch(() => {});
+        });
+
+        socket.on('widgets:timer:updated', applyPayload);
+        socket.on('widgets:timer:adjusted', (data) => {
+            showAdjustPopup(Number(data?.minutesDelta) || 0);
+        });
+    </script>
+</body>
+</html>

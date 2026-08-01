@@ -157,3 +157,17 @@ test.describe('comments.html: モーダルが開ける', () => {
         await expect(page.locator('#comment-settings-modal')).toHaveClass(/is-open/);
     });
 });
+
+// ── widgets.html モーダル開閉テスト (自動生成) ──────────────────────────
+test.describe('widgets.html: モーダルが開ける', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/widgets.html`);
+    await page.waitForLoadState('networkidle');
+    });
+
+    test('timer-myinstants-modal', async ({ page }) => {
+        await page.click('[data-panel-id="timer-settings-panel"]');
+        await page.click('#timer-myinstants-button');
+        await expect(page.locator('#timer-myinstants-modal')).toHaveClass(/is-open/);
+    });
+});

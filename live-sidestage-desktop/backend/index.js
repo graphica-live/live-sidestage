@@ -514,7 +514,9 @@ function buildWidgetUrls(req) {
         songBattleOverlayUrl: `${origin}/overlays/song-battle`,
         songBattleLoaderUrl: `${loaderOrigin}/overlays/song-battle`,
         tapGoalOverlayUrl: `${origin}/overlays/tap-goal`,
-        tapGoalLoaderUrl: `${loaderOrigin}/overlays/tap-goal`
+        tapGoalLoaderUrl: `${loaderOrigin}/overlays/tap-goal`,
+        timerOverlayUrl: `${origin}/overlays/timer`,
+        timerLoaderUrl: `${loaderOrigin}/overlays/timer`
     };
 }
 
@@ -1099,6 +1101,7 @@ const {
     getPushPullWidgetTextAppearance, setPushPullWidgetTextAppearance,
     getGoalGiftsWidgetTextAppearance, setGoalGiftsWidgetTextAppearance,
     getTapGoalWidgetTextAppearance, setTapGoalWidgetTextAppearance,
+    getTimerWidgetTextAppearance, setTimerWidgetTextAppearance,
     normalizeSharedWidgetFontKey,
 } = require('./lib/widget-settings-state')({
     getScopedStateValue: (...args) => getScopedStateValue(...args),
@@ -1253,6 +1256,18 @@ const {
     getScopedStateValue: (...args) => getScopedStateValue(...args),
     setScopedStateValue: (...args) => setScopedStateValue(...args),
     getTapGoalWidgetTextAppearance: (...args) => getTapGoalWidgetTextAppearance(...args),
+});
+
+const {
+    getTimerSettings, setTimerSettings, getTimerDurationMs,
+    getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
+    startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
+    applyTimerGiftEvent,
+    buildTimerPayload,
+} = require('./lib/timer-state')({
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTimerWidgetTextAppearance: (...args) => getTimerWidgetTextAppearance(...args),
 });
 
 const { closeAllMidiOutputs } = require('./lib/midi-helpers');
@@ -2544,6 +2559,7 @@ require('./lib/routes/widgets/config')({
     getGoalGiftWidgetProgressBackgroundOpacity,
     buildGoalGiftProgressSnapshot,
     getWidgetTapGoalSettings, getTapGoalWidgetTextAppearance, buildTapGoalPayload,
+    getTimerWidgetTextAppearance, buildTimerPayload,
 });
 
 require('./lib/routes/widgets/top-gift')({
@@ -2634,6 +2650,13 @@ require('./lib/routes/widgets/tap-goal')({
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
+});
+
+require('./lib/routes/widgets/timer')({
+    app, io,
+    buildTimerPayload,
+    setTimerSettings, setTimerWidgetTextAppearance,
+    startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
 });
 
 require('./lib/routes/widgets/contributors')({
@@ -2968,6 +2991,15 @@ function ensureTikTokConnection() {
                 pushPullState.pullPoints += pullMatch.points * repeatCount;
                 persistPushPullState();
                 io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
+            }
+
+            const timerMatch = applyTimerGiftEvent(giftId, repeatCount);
+            if (timerMatch) {
+                io.emit('widgets:timer:updated', buildTimerPayload());
+                io.emit('widgets:timer:adjusted', {
+                    minutesDelta: timerMatch.deltaMinutes,
+                    giftName: timerMatch.slot.giftName
+                });
             }
         }
 

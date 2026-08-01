@@ -41,6 +41,26 @@
         const tapGoalUrl = document.getElementById('tap-goal-url');
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
+        const timerFontSelect = document.getElementById('timer-font');
+        const timerTextStyleSelect = document.getElementById('timer-text-style');
+        const timerStrokeWidthInput = document.getElementById('timer-stroke-width');
+        const timerHeadingTextInput = document.getElementById('timer-heading-text');
+        const timerDurationMinutesInput = document.getElementById('timer-duration-minutes');
+        const timerDurationSecondsInput = document.getElementById('timer-duration-seconds');
+        const timerEndSoundPickerButton = document.getElementById('timer-myinstants-button');
+        const timerEndSoundPreviewButton = document.getElementById('timer-end-sound-preview-button');
+        const timerEndSoundClearButton = document.getElementById('timer-end-sound-clear-button');
+        const timerEndSoundNameEl = document.getElementById('timer-end-sound-name');
+        const timerGiftRowsEl = document.getElementById('timer-gift-rows');
+        const timerUrl = document.getElementById('timer-url');
+        const timerPreviewFrame = document.getElementById('timer-preview-frame');
+        const timerStatusLabel = document.getElementById('timer-status-label');
+        const timerSuggestPanel = document.getElementById('timer-suggest-panel');
+        const timerMyinstantsModal = document.getElementById('timer-myinstants-modal');
+        const timerMyinstantsSearchInput = document.getElementById('timer-myinstants-search-input');
+        const timerMyinstantsSearchButton = document.getElementById('timer-myinstants-search-button');
+        const timerMyinstantsStatus = document.getElementById('timer-myinstants-status');
+        const timerMyinstantsResults = document.getElementById('timer-myinstants-results');
         const goalGiftFontSelect = document.getElementById('goal-gift-font');
         const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
         const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
@@ -171,7 +191,9 @@
                 pushPullOverlayUrl: '',
                 pushPullLoaderUrl: '',
                 tapGoalOverlayUrl: '',
-                tapGoalLoaderUrl: ''
+                tapGoalLoaderUrl: '',
+                timerOverlayUrl: '',
+                timerLoaderUrl: ''
             },
             contributorsDisplayThreshold: 1000,
             contributorsGoalCount: 10,
@@ -188,6 +210,9 @@
             goalGiftAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
+            timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' } },
+            timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
             goalGiftAchievementBadgeStyle: 'stamp-red',
@@ -296,6 +321,9 @@
         let goalGiftAutosavePromise = null;
         let tapGoalAutosaveTimer = null;
         let tapGoalAutosavePromise = null;
+        let timerAutosaveTimer = null;
+        let timerAutosavePromise = null;
+        let timerStatusInterval = null;
         let pendingTopGiftSettings = null;
         let pendingGoalGiftItems = null;
         const goalGiftNotePlaceholderByRow = new Map();
@@ -1076,6 +1104,10 @@
             syncWidgetAppearanceControls(tapGoalFontSelect, tapGoalTextStyleSelect, tapGoalStrokeWidthInput, state.tapGoalAppearance);
         }
 
+        function syncTimerAppearanceControls() {
+            syncWidgetAppearanceControls(timerFontSelect, timerTextStyleSelect, timerStrokeWidthInput, state.timerAppearance);
+        }
+
         function syncGoalGiftNoteFontSizeControl() {
             goalGiftNoteFontSizeInput.value = String(normalizeGoalGiftNoteFontSize(state.goalGiftNoteFontSize));
         }
@@ -1620,6 +1652,435 @@
             tapGoalAutosavePromise = saveTapGoalSettings();
             return tapGoalAutosavePromise;
         }
+
+        const MAX_TIMER_GIFT_SLOTS = 3;
+        let timerGiftSlots = [null, null, null];
+        let timerActivePicker = null; // {index, anchorEl}
+        let timerActiveSuggestionIndex = -1;
+        let visibleTimerSuggestions = [];
+
+        function renderTimerGiftRows() {
+            timerGiftRowsEl.innerHTML = '';
+
+            for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
+                const gift = timerGiftSlots[i] || null;
+                const row = document.createElement('div');
+                row.className = 'push-pull-gift-row';
+                row.dataset.index = String(i);
+
+                const imgEl = document.createElement('div');
+                imgEl.className = 'push-pull-gift-img' + (gift ? '' : ' empty');
+                imgEl.title = 'ギフトを選ぶ';
+                imgEl.tabIndex = 0;
+                imgEl.setAttribute('role', 'button');
+                if (gift && gift.giftImage) {
+                    const img = document.createElement('img');
+                    img.src = gift.giftImage;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:5px;';
+                    imgEl.appendChild(img);
+                } else {
+                    imgEl.textContent = '+';
+                }
+                imgEl.addEventListener('click', () => nameEl.focus());
+                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nameEl.focus(); } });
+
+                const nameEl = document.createElement('input');
+                nameEl.type = 'text';
+                nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
+                nameEl.value = gift ? gift.giftName : '';
+                nameEl.placeholder = 'ギフトを選ぶ';
+                nameEl.autocomplete = 'off';
+                nameEl.maxLength = 80;
+                nameEl.addEventListener('focus', () => {
+                    if (!state.giftCatalog.length) return;
+                    timerActivePicker = { index: i, anchorEl: nameEl };
+                    renderTimerSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('input', () => {
+                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl };
+                    renderTimerSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('keydown', (e) => {
+                    if (timerSuggestPanel.hidden) {
+                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl }; renderTimerSuggestItems(nameEl.value); }
+                        return;
+                    }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex + 1); }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex - 1); }
+                    else if (e.key === 'Enter') { e.preventDefault(); if (timerActiveSuggestionIndex >= 0 && visibleTimerSuggestions[timerActiveSuggestionIndex]) selectTimerGift(visibleTimerSuggestions[timerActiveSuggestionIndex]); }
+                    else if (e.key === 'Escape') { closeTimerSuggestPanel(); }
+                });
+                nameEl.addEventListener('blur', () => {
+                    window.setTimeout(() => {
+                        if (!timerSuggestPanel.contains(document.activeElement)) closeTimerSuggestPanel();
+                    }, 100);
+                });
+
+                const minutesEl = document.createElement('input');
+                minutesEl.type = 'number';
+                minutesEl.className = 'push-pull-points-input';
+                minutesEl.min = '-180';
+                minutesEl.max = '180';
+                minutesEl.placeholder = '分';
+                minutesEl.value = gift ? String(gift.minutesDelta) : '';
+                minutesEl.disabled = !gift;
+                minutesEl.addEventListener('change', () => {
+                    if (timerGiftSlots[i]) {
+                        timerGiftSlots[i].minutesDelta = Math.max(-180, Math.min(180, parseInt(minutesEl.value, 10) || 0));
+                        scheduleTimerSave();
+                    }
+                });
+
+                row.appendChild(imgEl);
+                row.appendChild(nameEl);
+                row.appendChild(minutesEl);
+                timerGiftRowsEl.appendChild(row);
+            }
+        }
+
+        function renderTimerSuggestItems(query) {
+            if (!timerActivePicker) return;
+            const { index, anchorEl } = timerActivePicker;
+            const current = timerGiftSlots[index];
+            visibleTimerSuggestions = getFilteredPushPullSuggestions(query).slice(0, 80);
+            if (!visibleTimerSuggestions.length) { closeTimerSuggestPanel(); return; }
+            timerActiveSuggestionIndex = 0;
+            timerSuggestPanel.innerHTML = '';
+            for (const [idx, gift] of visibleTimerSuggestions.entries()) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                const isCurrentGift = current && current.giftId === String(gift.id || '');
+                btn.className = 'push-pull-suggest-item' + (isCurrentGift || idx === 0 ? ' is-active' : '');
+                const img = document.createElement('img');
+                img.src = gift.imageUrl;
+                img.className = 'push-pull-suggest-img';
+                img.alt = '';
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'push-pull-suggest-name';
+                nameSpan.textContent = gift.name || '(名前なし)';
+                const costSpan = document.createElement('span');
+                costSpan.className = 'push-pull-suggest-cost';
+                costSpan.textContent = gift.diamondCount != null ? `${gift.diamondCount}コイン` : '';
+                btn.appendChild(img);
+                btn.appendChild(nameSpan);
+                btn.appendChild(costSpan);
+                btn.addEventListener('mousedown', (e) => e.preventDefault());
+                btn.addEventListener('click', () => selectTimerGift(gift));
+                timerSuggestPanel.appendChild(btn);
+            }
+            if (current) {
+                const activeIdx = visibleTimerSuggestions.findIndex((g) => String(g.id || '') === current.giftId);
+                if (activeIdx >= 0) {
+                    timerActiveSuggestionIndex = activeIdx;
+                    const items = timerSuggestPanel.querySelectorAll('.push-pull-suggest-item');
+                    items.forEach((btn, i) => btn.classList.toggle('is-active', i === activeIdx));
+                }
+            }
+            timerSuggestPanel.hidden = false;
+            positionTimerSuggestPanel(anchorEl);
+        }
+
+        function updateTimerActiveSuggestion(nextIndex) {
+            const items = [...timerSuggestPanel.querySelectorAll('.push-pull-suggest-item')];
+            if (!items.length) return;
+            const clampedIndex = Math.max(0, Math.min(nextIndex, items.length - 1));
+            items.forEach((btn, i) => btn.classList.toggle('is-active', i === clampedIndex));
+            timerActiveSuggestionIndex = clampedIndex;
+            items[clampedIndex]?.scrollIntoView({ block: 'nearest' });
+        }
+
+        function positionTimerSuggestPanel(anchorEl) {
+            const rect = anchorEl.getBoundingClientRect();
+            const panelH = Math.min(240, timerSuggestPanel.scrollHeight);
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            const top = spaceBelow >= panelH ? rect.bottom + 4 : rect.top - panelH - 4;
+            timerSuggestPanel.style.left = rect.left + 'px';
+            timerSuggestPanel.style.top = Math.max(4, top) + 'px';
+            timerSuggestPanel.style.width = Math.max(260, rect.width + 100) + 'px';
+        }
+
+        function selectTimerGift(catalogGift) {
+            if (!timerActivePicker) return;
+            const { index } = timerActivePicker;
+            const existing = timerGiftSlots[index];
+            timerGiftSlots[index] = {
+                giftId: String(catalogGift.id || ''),
+                giftName: String(catalogGift.name || ''),
+                giftImage: String(catalogGift.imageUrl || ''),
+                minutesDelta: existing ? existing.minutesDelta : 1,
+            };
+            closeTimerSuggestPanel();
+            renderTimerGiftRows();
+            scheduleTimerSave();
+        }
+
+        function closeTimerSuggestPanel() {
+            timerSuggestPanel.hidden = true;
+            timerActivePicker = null;
+            timerActiveSuggestionIndex = -1;
+            visibleTimerSuggestions = [];
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!timerSuggestPanel.hidden &&
+                !timerSuggestPanel.contains(e.target) &&
+                !e.target.closest('.push-pull-gift-name') &&
+                !e.target.closest('.push-pull-gift-img')) {
+                closeTimerSuggestPanel();
+            }
+        });
+
+        function applyTimerSettingsToForm(settings) {
+            if (!settings) return;
+            timerHeadingTextInput.value = settings.headingText || '';
+            timerDurationMinutesInput.value = String(Number.parseInt(String(settings.durationMinutes ?? 10), 10) || 0);
+            timerDurationSecondsInput.value = String(Number.parseInt(String(settings.durationSeconds ?? 0), 10) || 0);
+            timerEndSoundNameEl.textContent = settings.endSound?.name || '未設定';
+            timerGiftSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
+                const slot = settings.slots?.[i];
+                return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
+            });
+            renderTimerGiftRows();
+            refreshTimerPreview();
+        }
+
+        function buildTimerPreviewUrl() {
+            const baseUrl = state.widgetUrls.timerOverlayUrl || '/overlays/timer';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?preview=1`;
+            }
+        }
+
+        function refreshTimerPreview(options = {}) {
+            updatePreviewFrame(timerPreviewFrame, buildTimerPreviewUrl(), options);
+        }
+
+        function getTimerCurrentRemainingMs() {
+            const runtime = state.timerRuntime || {};
+            if (!runtime.running || runtime.endsAt == null) return Math.max(0, Number(runtime.remainingMs) || 0);
+            return Math.max(0, runtime.endsAt - Date.now());
+        }
+
+        function formatTimerRemaining(ms) {
+            const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+        }
+
+        function updateTimerStatusLabel() {
+            const running = Boolean(state.timerRuntime?.running);
+            timerStatusLabel.textContent = `残り時間: ${formatTimerRemaining(getTimerCurrentRemainingMs())}（${running ? '稼働中' : '停止中'}）`;
+        }
+
+        if (!timerStatusInterval) {
+            timerStatusInterval = window.setInterval(updateTimerStatusLabel, 1000);
+        }
+
+        function getDraftTimerSettings() {
+            return {
+                headingText: timerHeadingTextInput.value,
+                durationMinutes: Number.parseInt(timerDurationMinutesInput.value, 10) || 0,
+                durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
+                slots: timerGiftSlots.filter(Boolean).map((g) => ({ ...g })),
+                endSound: state.timerSettings.endSound || { name: '', url: '' },
+                appearance: {
+                    fontKey: normalizeDisplayFontKey(timerFontSelect.value),
+                    textStyleKey: normalizeDisplayTextStyleKey(timerTextStyleSelect.value),
+                    strokeWidth: normalizeDisplayStrokeWidth(timerStrokeWidthInput.value)
+                }
+            };
+        }
+
+        async function saveTimerSettings() {
+            setStatus(saveStatus, '設定状態: タイマーを保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/timer', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTimerSettings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'タイマーの保存に失敗しました。');
+                state.timerSettings = payload.settings || state.timerSettings;
+                state.timerAppearance = payload.appearance || state.timerAppearance;
+                state.timerRuntime = payload.runtime || state.timerRuntime;
+                applyTimerSettingsToForm(state.timerSettings);
+                syncTimerAppearanceControls();
+                updateTimerStatusLabel();
+                refreshTimerPreview({ forceReload: true });
+                setStatus(saveStatus, '設定状態: タイマーを保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function scheduleTimerSave() {
+            if (timerAutosaveTimer) clearTimeout(timerAutosaveTimer);
+            timerAutosaveTimer = window.setTimeout(() => { timerAutosavePromise = saveTimerSettings(); }, 600);
+        }
+
+        function saveTimerSettingsImmediately() {
+            if (timerAutosaveTimer) {
+                window.clearTimeout(timerAutosaveTimer);
+                timerAutosaveTimer = null;
+            }
+            timerAutosavePromise = saveTimerSettings();
+            return timerAutosavePromise;
+        }
+
+        async function callTimerAction(path, body) {
+            const response = await fetch(`/api/widgets/timer/${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body || {})
+            });
+            const payload = await response.json();
+            if (payload.ok) {
+                state.timerRuntime = payload.runtime || state.timerRuntime;
+                updateTimerStatusLabel();
+            }
+            return payload;
+        }
+
+        document.getElementById('start-timer-button').addEventListener('click', () => { callTimerAction('start').catch(() => {}); });
+        document.getElementById('pause-timer-button').addEventListener('click', () => { callTimerAction('pause').catch(() => {}); });
+        document.getElementById('reset-timer-button').addEventListener('click', () => { callTimerAction('reset').catch(() => {}); });
+        document.getElementById('test-timer-plus-button').addEventListener('click', () => { callTimerAction('test', { minutes: 1 }).catch(() => {}); });
+        document.getElementById('test-timer-minus-button').addEventListener('click', () => { callTimerAction('test', { minutes: -1 }).catch(() => {}); });
+
+        document.getElementById('open-timer-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.timerOverlayUrl || '/overlays/timer';
+            openWindow(url, 'timer-overlay-window', { width: 480, height: 320 });
+        });
+        document.getElementById('copy-timer-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.timerLoaderUrl || state.widgetUrls.timerOverlayUrl || '');
+        });
+
+        timerHeadingTextInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerDurationMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerDurationSecondsInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerFontSelect.addEventListener('input', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); });
+        timerFontSelect.addEventListener('change', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); saveTimerSettingsImmediately().catch(() => {}); });
+        timerTextStyleSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerStrokeWidthInput.addEventListener('input', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerStrokeWidthInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+
+        // --- タイマー終了サウンド（myinstants検索） ---
+        function openTimerMyinstantsModal() {
+            timerMyinstantsSearchInput.value = '';
+            timerMyinstantsStatus.textContent = '';
+            timerMyinstantsResults.innerHTML = '';
+            timerMyinstantsModal.classList.add('is-open');
+            timerMyinstantsModal.setAttribute('aria-hidden', 'false');
+            timerMyinstantsSearchInput.focus();
+        }
+
+        function closeTimerMyinstantsModal() {
+            timerMyinstantsModal.classList.remove('is-open');
+            timerMyinstantsModal.setAttribute('aria-hidden', 'true');
+        }
+
+        function renderTimerMyinstantsResults(results) {
+            if (!results.length) {
+                timerMyinstantsResults.innerHTML = '';
+                timerMyinstantsStatus.textContent = '該当するサウンドが見つかりませんでした。';
+                return;
+            }
+            timerMyinstantsStatus.textContent = `${results.length}件見つかりました。`;
+            timerMyinstantsResults.innerHTML = results.map((result, index) => `
+                <div class="myinstants-result-item">
+                    <span class="myinstants-result-name">${escapeHtml(result.name)}</span>
+                    <div class="myinstants-result-actions">
+                        <button type="button" class="ghost-button icon-button" data-preview-index="${index}" title="試聴" aria-label="試聴">▶</button>
+                        <button type="button" class="ghost-button" data-import-index="${index}">これを使う</button>
+                    </div>
+                </div>
+            `).join('');
+
+            timerMyinstantsResults.querySelectorAll('[data-preview-index]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const result = results[Number(button.dataset.previewIndex)];
+                    if (!result) return;
+                    new Audio(result.mp3Url).play().catch(() => {});
+                });
+            });
+
+            timerMyinstantsResults.querySelectorAll('[data-import-index]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const result = results[Number(button.dataset.importIndex)];
+                    if (!result) return;
+                    timerMyinstantsStatus.textContent = `${result.name} を取り込み中です。`;
+                    try {
+                        const params = `?eventId=${encodeURIComponent('timer-end-sound')}`;
+                        const response = await fetch(`/api/effects/myinstants/import${params}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mp3Url: result.mp3Url, name: result.name })
+                        });
+                        const payload = await response.json();
+                        if (!payload.ok) throw new Error(payload.error || '音声の取り込みに失敗しました。');
+                        state.timerSettings = { ...state.timerSettings, endSound: { name: payload.asset.name, url: payload.asset.url } };
+                        timerEndSoundNameEl.textContent = payload.asset.name;
+                        closeTimerMyinstantsModal();
+                        saveTimerSettingsImmediately().catch(() => {});
+                    } catch (error) {
+                        timerMyinstantsStatus.textContent = error.message || '音声の取り込みに失敗しました。';
+                    }
+                });
+            });
+        }
+
+        async function runTimerMyinstantsSearch() {
+            const query = timerMyinstantsSearchInput.value.trim();
+            if (!query) {
+                timerMyinstantsStatus.textContent = 'キーワードを入力してください。';
+                return;
+            }
+            timerMyinstantsStatus.textContent = '検索中です。';
+            timerMyinstantsResults.innerHTML = '';
+            try {
+                const response = await fetch(`/api/effects/myinstants/search?q=${encodeURIComponent(query)}`);
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '検索に失敗しました。');
+                renderTimerMyinstantsResults(payload.results || []);
+            } catch (error) {
+                timerMyinstantsStatus.textContent = error.message || '検索に失敗しました。';
+            }
+        }
+
+        timerEndSoundPickerButton.addEventListener('click', openTimerMyinstantsModal);
+        timerMyinstantsSearchButton.addEventListener('click', runTimerMyinstantsSearch);
+        timerMyinstantsSearchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); runTimerMyinstantsSearch(); }
+        });
+        document.querySelectorAll('[data-action="close-timer-myinstants-modal"]').forEach((button) => {
+            button.addEventListener('click', closeTimerMyinstantsModal);
+        });
+
+        timerEndSoundPreviewButton.addEventListener('click', () => {
+            const url = state.timerSettings?.endSound?.url;
+            if (!url) return;
+            new Audio(url).play().catch(() => {});
+        });
+
+        timerEndSoundClearButton.addEventListener('click', () => {
+            state.timerSettings = { ...state.timerSettings, endSound: { name: '', url: '' } };
+            timerEndSoundNameEl.textContent = '未設定';
+            saveTimerSettingsImmediately().catch(() => {});
+        });
+
+        socket.on('widgets:timer:updated', (payload) => {
+            if (!payload) return;
+            state.timerRuntime = payload.runtime || state.timerRuntime;
+            updateTimerStatusLabel();
+        });
 
         function applyCoinListSettingsToForm(settings) {
             if (!settings) return;
@@ -2238,6 +2699,7 @@
             state.pushPullAppearance = payload.pushPullAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.goalGiftAppearance = payload.goalGiftAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
             state.tapGoalAppearance = payload.tapGoalAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 };
+            state.timerAppearance = payload.timerAppearance || { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 };
             state.goalGiftNoteFontSize = normalizeGoalGiftNoteFontSize(payload.goalGiftNoteFontSize);
             state.goalGiftAchievementBadgeSize = normalizeGoalGiftAchievementBadgeSize(payload.goalGiftAchievementBadgeSize);
             state.goalGiftAchievementBadgeStyle = normalizeGoalGiftAchievementBadgeStyle(payload.goalGiftAchievementBadgeStyle);
@@ -2253,6 +2715,8 @@
             state.tapListSettings = payload.tapListSettings || state.tapListSettings;
             state.tapGoalSettings = payload.tapGoalSettings || state.tapGoalSettings;
             state.tapGoalProgress = payload.tapGoalPayload?.progress || state.tapGoalProgress;
+            state.timerSettings = payload.timerPayload?.settings || state.timerSettings;
+            state.timerRuntime = payload.timerPayload?.runtime || state.timerRuntime;
             state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -2270,6 +2734,7 @@
             syncPushPullAppearanceControls();
             syncGoalGiftAppearanceControls();
             syncTapGoalAppearanceControls();
+            syncTimerAppearanceControls();
             syncGoalGiftNoteFontSizeControl();
             syncGoalGiftAchievementBadgeControls();
             syncSharedFeedbackControls();
@@ -2277,6 +2742,7 @@
             likeContributionUrl.textContent = state.widgetUrls.likeContributionLoaderUrl || state.widgetUrls.likeContributionOverlayUrl || '未取得';
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             tapGoalUrl.textContent = state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '未取得';
+            timerUrl.textContent = state.widgetUrls.timerLoaderUrl || state.widgetUrls.timerOverlayUrl || '未取得';
             coinListUrl.textContent = state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
@@ -2290,6 +2756,8 @@
             applyTapGoalSettingsToForm(state.tapGoalSettings);
             loadTapGoalEffectEventOptions(state.tapGoalSettings?.effectEventId).catch(() => {});
             updateTapGoalProgressLabel();
+            applyTimerSettingsToForm(state.timerSettings);
+            updateTimerStatusLabel();
             applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();

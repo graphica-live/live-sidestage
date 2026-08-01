@@ -13,6 +13,7 @@ const {
     WIDGET_PUSH_PULL_FONT_STATE_KEY, WIDGET_PUSH_PULL_TEXT_STYLE_STATE_KEY, WIDGET_PUSH_PULL_STROKE_WIDTH_STATE_KEY,
     WIDGET_GOAL_GIFTS_FONT_STATE_KEY, WIDGET_GOAL_GIFTS_TEXT_STYLE_STATE_KEY, WIDGET_GOAL_GIFTS_STROKE_WIDTH_STATE_KEY,
     WIDGET_TAP_GOAL_FONT_STATE_KEY, WIDGET_TAP_GOAL_TEXT_STYLE_STATE_KEY, WIDGET_TAP_GOAL_STROKE_WIDTH_STATE_KEY,
+    WIDGET_TIMER_FONT_STATE_KEY, WIDGET_TIMER_TEXT_STYLE_STATE_KEY, WIDGET_TIMER_STROKE_WIDTH_STATE_KEY,
 } = require('./constants');
 const { normalizeEffectText, normalizeWholeNumber, normalizeBooleanInput } = require('./utils');
 
@@ -317,6 +318,13 @@ function setTapGoalWidgetTextAppearance(a) {
     return setPerWidgetTextAppearance(WIDGET_TAP_GOAL_FONT_STATE_KEY, WIDGET_TAP_GOAL_TEXT_STYLE_STATE_KEY, WIDGET_TAP_GOAL_STROKE_WIDTH_STATE_KEY, a);
 }
 
+function getTimerWidgetTextAppearance() {
+    return getPerWidgetTextAppearance(WIDGET_TIMER_FONT_STATE_KEY, WIDGET_TIMER_TEXT_STYLE_STATE_KEY, WIDGET_TIMER_STROKE_WIDTH_STATE_KEY);
+}
+function setTimerWidgetTextAppearance(a) {
+    return setPerWidgetTextAppearance(WIDGET_TIMER_FONT_STATE_KEY, WIDGET_TIMER_TEXT_STYLE_STATE_KEY, WIDGET_TIMER_STROKE_WIDTH_STATE_KEY, a);
+}
+
 function normalizeSharedWidgetFontKey(value) {
     const normalizedValue = String(value || '').trim().toLowerCase();
     const allowedKeys = new Set([
@@ -347,6 +355,7 @@ function normalizeSharedWidgetFontKey(value) {
         getPushPullWidgetTextAppearance, setPushPullWidgetTextAppearance,
         getGoalGiftsWidgetTextAppearance, setGoalGiftsWidgetTextAppearance,
         getTapGoalWidgetTextAppearance, setTapGoalWidgetTextAppearance,
+        getTimerWidgetTextAppearance, setTimerWidgetTextAppearance,
         normalizeSharedWidgetFontKey,
     };
 };

@@ -225,6 +225,14 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/tap-goal');
     });
 
+    app.get(['/overlays/timer', '/overlays/widgets/timer'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'timer.html'));
+    });
+    app.get(['/overlays/timer/index.html', '/overlays/widgets/timer/index.html'], (req, res) => {
+        return res.redirect('/overlays/timer');
+    });
+
     app.get('/virtualdj', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));

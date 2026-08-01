@@ -491,6 +491,85 @@
                 </article>
                 </div><!-- /jar-pair -->
 
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>タイマー</h2>
+                            <p class="subtext">指定時間のカウントダウンを表示します。設定したギフトが飛ぶと時間を延長/短縮でき、終了時に紙吹雪と効果音が再生されます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="timer-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="timer-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-timer-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-timer-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="timer-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="timer-font">フォント</label>
+                                <select id="timer-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="timer-text-style">文字色と縁取り</label>
+                                <select id="timer-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="timer-stroke-width">縁取り太さ</label>
+                                <input id="timer-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="timer-heading-text">見出しテキスト</label>
+                                <input id="timer-heading-text" type="text" maxlength="40" placeholder="カウントダウン">
+                            </div>
+                            <div class="field">
+                                <label for="timer-duration-minutes">開始時間（分）</label>
+                                <input id="timer-duration-minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" placeholder="10">
+                            </div>
+                            <div class="field">
+                                <label for="timer-duration-seconds">開始時間（秒）</label>
+                                <input id="timer-duration-seconds" type="number" min="0" max="59" step="1" inputmode="numeric" placeholder="0">
+                            </div>
+                            <div class="field full">
+                                <label>終了時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="timer-myinstants-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-end-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-end-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="timer-end-sound-name">未設定</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>ギフトで時間を延長/短縮（最大3件・分単位、マイナスで短縮）</label>
+                                <div id="timer-gift-rows"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="timer-status-label">残り時間: 00:00（停止中）</div>
+                        <button type="button" class="ghost-button" id="start-timer-button">開始</button>
+                        <button type="button" class="ghost-button" id="pause-timer-button">一時停止</button>
+                        <button type="button" class="ghost-button" id="reset-timer-button">リセット</button>
+                        <button type="button" class="ghost-button" id="test-timer-plus-button">テスト +1分</button>
+                        <button type="button" class="ghost-button" id="test-timer-minus-button">テスト -1分</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="timer-preview-frame" title="タイマープレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
                 <div class="jar-pair" style="display:none"><!-- 瓶詰め/オリジナル瓶詰めウィジェット非表示 -->
                 <article class="card">
                     <div class="card-head">
@@ -747,6 +826,32 @@
         </section>
 
         <div class="push-pull-suggest-panel" id="push-pull-suggest-panel" hidden></div>
+        <div class="push-pull-suggest-panel" id="timer-suggest-panel" hidden></div>
+
+        <div class="modal-shell" id="timer-myinstants-modal" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="timer-myinstants-modal-title">
+                <div>
+                    <h2 id="timer-myinstants-modal-title">テンプレートから音声を選ぶ</h2>
+                    <p class="subtext"><a href="https://www.myinstants.com/ja/index/jp/" target="_blank" rel="noopener noreferrer">myinstants.com</a> のサウンドを検索して取り込みます。</p>
+                </div>
+                <div class="record-fields modal-fields-vertical">
+                    <div class="field full">
+                        <label>キーワード検索</label>
+                        <div class="modal-inline-row">
+                            <input type="text" id="timer-myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
+                            <button type="button" class="primary" id="timer-myinstants-search-button">検索</button>
+                        </div>
+                    </div>
+                    <div class="field full">
+                        <div class="myinstants-status" id="timer-myinstants-status"></div>
+                        <div class="myinstants-results" id="timer-myinstants-results"></div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" data-action="close-timer-myinstants-modal">閉じる</button>
+                </div>
+            </div>
+        </div>
 
         <section class="panel">
             <div class="card-head">
