@@ -1958,6 +1958,7 @@
         document.getElementById('reset-timer-button').addEventListener('click', () => { callTimerAction('reset').catch(() => {}); });
         document.getElementById('test-timer-plus-button').addEventListener('click', () => { callTimerAction('test', { minutes: 1 }).catch(() => {}); });
         document.getElementById('test-timer-minus-button').addEventListener('click', () => { callTimerAction('test', { minutes: -1 }).catch(() => {}); });
+        document.getElementById('test-timer-end-sound-button').addEventListener('click', () => { callTimerAction('test-end-sound').catch(() => {}); });
 
         document.getElementById('open-timer-overlay-button').addEventListener('click', () => {
             const url = state.widgetUrls.timerOverlayUrl || '/overlays/timer';

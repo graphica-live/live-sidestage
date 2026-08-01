@@ -172,9 +172,14 @@ function fireTimerEnded() {
 
     if (!io) return;
     io.emit('widgets:timer:updated', buildTimerPayload());
+    emitTimerEndSound();
+}
 
+// screen 1 (overlay1) の効果音オーバーレイへ終了音を直接送る。管理画面からの手動テストにも使う。
+function emitTimerEndSound() {
+    if (!io) return false;
     const settings = getTimerSettings();
-    if (!settings.endSound.url) return;
+    if (!settings.endSound.url) return false;
 
     io.emit('effects:playback', {
         playbackId: `timer-end-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -195,6 +200,7 @@ function fireTimerEnded() {
         nickname: '',
         timestamp: Date.now()
     });
+    return true;
 }
 
 function startTimer() {
@@ -277,6 +283,7 @@ function buildTimerPayload() {
         normalizeTimerRuntime, getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
         startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
         applyTimerGiftEvent,
+        emitTimerEndSound,
         buildTimerPayload,
     };
 };

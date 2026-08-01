@@ -5,6 +5,7 @@ module.exports = function registerTimerRoutes({
     buildTimerPayload,
     setTimerSettings, setTimerWidgetTextAppearance,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
+    emitTimerEndSound,
 }) {
     function emitTimerUpdate() {
         const payload = buildTimerPayload();
@@ -44,5 +45,10 @@ module.exports = function registerTimerRoutes({
         const payload = emitTimerUpdate();
         io.emit('widgets:timer:adjusted', { minutesDelta: minutes, giftName: 'テスト' });
         res.json({ ok: true, ...payload });
+    });
+
+    app.post('/api/widgets/timer/test-end-sound', (req, res) => {
+        const played = emitTimerEndSound();
+        res.json({ ok: true, played });
     });
 };

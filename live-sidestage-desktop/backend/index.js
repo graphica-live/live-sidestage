@@ -1263,6 +1263,7 @@ const {
     getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
     applyTimerGiftEvent,
+    emitTimerEndSound,
     buildTimerPayload,
 } = require('./lib/timer-state')({
     io,
@@ -2658,6 +2659,7 @@ require('./lib/routes/widgets/timer')({
     buildTimerPayload,
     setTimerSettings, setTimerWidgetTextAppearance,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
+    emitTimerEndSound,
 });
 
 require('./lib/routes/widgets/contributors')({
