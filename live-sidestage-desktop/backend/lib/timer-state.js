@@ -8,6 +8,7 @@ const { normalizeEffectText, normalizeWholeNumber, normalizeBooleanInput } = req
 
 const MAX_TIMER_GIFT_SLOTS = 3;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
+const TIMER_END_SOUND_SCREEN = 1;
 
 const DEFAULT_TIMER_SETTINGS = {
     durationMinutes: 10,
@@ -15,12 +16,16 @@ const DEFAULT_TIMER_SETTINGS = {
     headingText: 'カウントダウン',
     slots: [],
     endSound: { name: '', url: '' },
+    endSoundVolume: 100,
 };
 
 module.exports = function createTimerState({
+    io,
     getScopedStateValue, setScopedStateValue,
     getTimerWidgetTextAppearance,
 }) {
+
+let endTimeoutHandle = null;
 
 function normalizeSignedMinutes(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -36,6 +41,12 @@ function normalizeTimerSoundAsset(value) {
         name: normalizeEffectText(value.name, 120),
         url: isSafeUrl ? url : '',
     };
+}
+
+function normalizeTimerSoundVolume(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.endSoundVolume;
+    return Math.max(0, Math.min(100, parsed));
 }
 
 function normalizeTimerGiftSlot(value) {
@@ -75,6 +86,7 @@ function normalizeTimerSettings(value) {
         headingText: normalizeEffectText(source.headingText, 40) || DEFAULT_TIMER_SETTINGS.headingText,
         slots,
         endSound: normalizeTimerSoundAsset(source.endSound),
+        endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
     };
 }
 
@@ -126,35 +138,104 @@ function getTimerRemainingMs(runtime = getTimerRuntime()) {
     return Math.max(0, runtime.remainingMs);
 }
 
+// 終了時刻ぴったりにサーバー側で1回だけ発火させ、overlay1(screen 1)へ効果音を飛ばす。
+// クライアント（オーバーレイ）任せにすると複数インスタンスで多重再生されるため、発火はサーバー側で一元管理する。
+function clearEndTimeout() {
+    if (endTimeoutHandle) {
+        clearTimeout(endTimeoutHandle);
+        endTimeoutHandle = null;
+    }
+}
+
+function scheduleEndTimeout() {
+    clearEndTimeout();
+    const runtime = getTimerRuntime();
+    if (!runtime.running || runtime.endsAt === null) return;
+
+    const delay = runtime.endsAt - Date.now();
+    if (delay <= 0) {
+        fireTimerEnded();
+        return;
+    }
+    endTimeoutHandle = setTimeout(fireTimerEnded, Math.min(delay, MAX_TIMER_MS));
+}
+
+function fireTimerEnded() {
+    endTimeoutHandle = null;
+    const runtime = getTimerRuntime();
+    if (!runtime.running) return;
+
+    if (getTimerRemainingMs(runtime) > 250) {
+        scheduleEndTimeout();
+        return;
+    }
+
+    if (!io) return;
+    io.emit('widgets:timer:updated', buildTimerPayload());
+
+    const settings = getTimerSettings();
+    if (!settings.endSound.url) return;
+
+    io.emit('effects:playback', {
+        playbackId: `timer-end-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        eventId: 'timer-end-sound',
+        eventName: 'タイマー終了',
+        screen: TIMER_END_SOUND_SCREEN,
+        videoUrl: '',
+        audioUrl: settings.endSound.url,
+        mediaVolume: settings.endSoundVolume,
+        playbackCount: 1,
+        triggerId: 'timer',
+        triggerName: 'タイマー',
+        giftName: '',
+        comment: '',
+        totalGifts: 0,
+        repeatCount: 1,
+        uniqueId: '',
+        nickname: '',
+        timestamp: Date.now()
+    });
+}
+
 function startTimer() {
     const runtime = getTimerRuntime();
     const base = getTimerRemainingMs(runtime) > 0 ? getTimerRemainingMs(runtime) : getTimerDurationMs();
-    return setTimerRuntime({ running: true, endsAt: Date.now() + base, remainingMs: base });
+    const next = setTimerRuntime({ running: true, endsAt: Date.now() + base, remainingMs: base });
+    scheduleEndTimeout();
+    return next;
 }
 
 function pauseTimer() {
     const runtime = getTimerRuntime();
     if (!runtime.running) return runtime;
-    return setTimerRuntime({ running: false, endsAt: null, remainingMs: getTimerRemainingMs(runtime) });
+    const next = setTimerRuntime({ running: false, endsAt: null, remainingMs: getTimerRemainingMs(runtime) });
+    scheduleEndTimeout();
+    return next;
 }
 
 function resetTimer() {
-    return setTimerRuntime({ running: false, endsAt: null, remainingMs: getTimerDurationMs() });
+    const next = setTimerRuntime({ running: false, endsAt: null, remainingMs: getTimerDurationMs() });
+    scheduleEndTimeout();
+    return next;
 }
 
 // ギフト等でタイマーに分数を加算/減算する。稼働中は終了時刻を、停止中は残り時間を直接調整する。
 function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
     const runtime = getTimerRuntime();
+    let next;
 
     if (runtime.running) {
         const now = Date.now();
         const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now, runtime.endsAt + deltaMs));
-        return setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextEndsAt - now });
+        next = setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextEndsAt - now });
+    } else {
+        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(0, runtime.remainingMs + deltaMs));
+        next = setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemaining });
     }
 
-    const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(0, runtime.remainingMs + deltaMs));
-    return setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemaining });
+    scheduleEndTimeout();
+    return next;
 }
 
 // ギフトイベントを設定済みスロットと照合し、一致すればタイマーを調整する。
@@ -186,6 +267,9 @@ function buildTimerPayload() {
         serverNow: Date.now(),
     };
 }
+
+    // サーバー再起動時、稼働中だった残り時間分のタイムアウトを復元する。
+    scheduleEndTimeout();
 
     return {
         MAX_TIMER_GIFT_SLOTS,

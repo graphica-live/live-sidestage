@@ -1265,6 +1265,7 @@ const {
     applyTimerGiftEvent,
     buildTimerPayload,
 } = require('./lib/timer-state')({
+    io,
     getScopedStateValue: (...args) => getScopedStateValue(...args),
     setScopedStateValue: (...args) => setScopedStateValue(...args),
     getTimerWidgetTextAppearance: (...args) => getTimerWidgetTextAppearance(...args),

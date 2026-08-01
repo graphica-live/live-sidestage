@@ -358,18 +358,10 @@
             }
         }
 
-        function playEndSound() {
-            const url = settings?.endSound?.url;
-            if (!url) return;
-            try {
-                const audio = new Audio(url);
-                audio.play().catch(() => {});
-            } catch {}
-        }
-
+        // 終了サウンドはこのオーバーレイでは再生しない。サーバーが screen 1 (overlay1) の
+        // エフェクトオーバーレイへ effects:playback を直接送っているため、多重再生を避けるため。
         function triggerEnd() {
             launchConfetti();
-            playEndSound();
         }
 
         function tick() {

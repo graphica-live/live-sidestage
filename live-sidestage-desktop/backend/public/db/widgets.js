@@ -51,6 +51,8 @@
         const timerEndSoundPreviewButton = document.getElementById('timer-end-sound-preview-button');
         const timerEndSoundClearButton = document.getElementById('timer-end-sound-clear-button');
         const timerEndSoundNameEl = document.getElementById('timer-end-sound-name');
+        const timerEndSoundVolumeInput = document.getElementById('timer-end-sound-volume');
+        const timerEndSoundVolumeValueEl = document.getElementById('timer-end-sound-volume-value');
         const timerGiftRowsEl = document.getElementById('timer-gift-rows');
         const timerUrl = document.getElementById('timer-url');
         const timerPreviewFrame = document.getElementById('timer-preview-frame');
@@ -211,7 +213,7 @@
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
             timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
-            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' } },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100 },
             timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
@@ -1834,6 +1836,9 @@
             timerDurationMinutesInput.value = String(Number.parseInt(String(settings.durationMinutes ?? 10), 10) || 0);
             timerDurationSecondsInput.value = String(Number.parseInt(String(settings.durationSeconds ?? 0), 10) || 0);
             timerEndSoundNameEl.textContent = settings.endSound?.name || '未設定';
+            const volume = Number.isFinite(Number(settings.endSoundVolume)) ? Math.max(0, Math.min(100, Number(settings.endSoundVolume))) : 100;
+            timerEndSoundVolumeInput.value = String(volume);
+            timerEndSoundVolumeValueEl.textContent = `${volume}%`;
             timerGiftSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
                 const slot = settings.slots?.[i];
                 return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
@@ -1888,6 +1893,7 @@
                 durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
                 slots: timerGiftSlots.filter(Boolean).map((g) => ({ ...g })),
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
+                endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
                 appearance: {
                     fontKey: normalizeDisplayFontKey(timerFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(timerTextStyleSelect.value),
@@ -2066,8 +2072,15 @@
         timerEndSoundPreviewButton.addEventListener('click', () => {
             const url = state.timerSettings?.endSound?.url;
             if (!url) return;
-            new Audio(url).play().catch(() => {});
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(timerEndSoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
         });
+
+        timerEndSoundVolumeInput.addEventListener('input', () => {
+            timerEndSoundVolumeValueEl.textContent = `${timerEndSoundVolumeInput.value}%`;
+        });
+        timerEndSoundVolumeInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
         timerEndSoundClearButton.addEventListener('click', () => {
             state.timerSettings = { ...state.timerSettings, endSound: { name: '', url: '' } };
