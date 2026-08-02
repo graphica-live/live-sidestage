@@ -71,6 +71,7 @@ function createDefaultEffectTrigger() {
         commentText: '',
         userIds: [],
         treatGiftComboAsSingle: true,
+        excludedFromListOverlay: false,
         userTargetMode: 'list',
         userIdToFileDir: ''
     };
@@ -225,6 +226,7 @@ function normalizeEffectTrigger(value) {
         commentText,
         userIds: normalizeUserIdList(value?.userIds),
         treatGiftComboAsSingle: value?.treatGiftComboAsSingle !== false,
+        excludedFromListOverlay: Boolean(value?.excludedFromListOverlay),
         userTargetMode,
         userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : ''
     };

@@ -53,6 +53,7 @@ const triggerModalGiftName = document.getElementById('trigger-modal-gift-name');
 const triggerGiftSuggestionPanel = document.getElementById('trigger-gift-suggestion-panel');
 const triggerModalMinCoins = document.getElementById('trigger-modal-min-coins');
 const triggerModalTreatComboSingle = document.getElementById('trigger-modal-treat-combo-single');
+const triggerModalExcludeFromOverlay = document.getElementById('trigger-modal-exclude-from-overlay');
 const triggerModalCommentMode = document.getElementById('trigger-modal-comment-mode');
 const triggerModalCommentText = document.getElementById('trigger-modal-comment-text');
 const triggerModalUserIds = document.getElementById('trigger-modal-user-ids');

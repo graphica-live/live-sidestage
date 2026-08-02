@@ -207,6 +207,7 @@ function resetTriggerModal() {
     triggerModalGiftName.value = '';
     triggerModalMinCoins.value = '0';
     triggerModalTreatComboSingle.checked = true;
+    triggerModalExcludeFromOverlay.checked = false;
     triggerModalCommentMode.value = '';
     triggerModalCommentText.value = '';
     triggerModalUserIds.value = '';
@@ -244,6 +245,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalGiftName.value = triggerRecord.giftName || '';
     triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
     triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
+    triggerModalExcludeFromOverlay.checked = Boolean(triggerRecord.excludedFromListOverlay);
     triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
     triggerModalCommentText.value = triggerRecord.commentText || '';
     triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
@@ -271,6 +273,7 @@ function collectTriggerFromModal() {
         giftName: triggerModalGiftName.value.trim(),
         minCoins: Number(triggerModalMinCoins.value || 0),
         treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
+        excludedFromListOverlay: triggerModalExcludeFromOverlay.checked,
         commentMode: triggerModalCommentMode.value,
         commentText: triggerModalCommentText.value.trim(),
         userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),

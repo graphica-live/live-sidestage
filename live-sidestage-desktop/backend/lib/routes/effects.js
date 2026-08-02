@@ -241,6 +241,7 @@ module.exports = function registerEffectsRoutes({
         const items = getEffectTriggers()
             .filter((trigger) => trigger.enabled
                 && trigger.giftName
+                && !trigger.excludedFromListOverlay
                 && (trigger.categoryId || EFFECT_DEFAULT_CATEGORY_ID) === categoryId)
             .map((trigger) => {
                 const matchedGift = catalogGifts.find((gift) =>
