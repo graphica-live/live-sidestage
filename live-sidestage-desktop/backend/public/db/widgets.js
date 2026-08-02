@@ -37,6 +37,8 @@
         const tapGoalOrientationSelect = document.getElementById('tap-goal-orientation');
         const tapGoalHeadingTextInput = document.getElementById('tap-goal-heading-text');
         const tapGoalTargetCountInput = document.getElementById('tap-goal-target-count');
+        const tapGoalIconSizeInput = document.getElementById('tap-goal-icon-size');
+        const tapGoalIconSizeValueEl = document.getElementById('tap-goal-icon-size-value');
         const tapGoalSoundPickerButton = document.getElementById('tap-goal-myinstants-button');
         const tapGoalSoundPreviewButton = document.getElementById('tap-goal-sound-preview-button');
         const tapGoalSoundClearButton = document.getElementById('tap-goal-sound-clear-button');
@@ -1577,6 +1579,9 @@
             tapGoalOrientationSelect.value = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
             tapGoalHeadingTextInput.value = settings.headingText || '';
             tapGoalTargetCountInput.value = String(Number.parseInt(String(settings.targetCount ?? 100), 10) || 100);
+            const iconSize = Number.isInteger(settings.iconSize) ? settings.iconSize : 100;
+            tapGoalIconSizeInput.value = String(iconSize);
+            tapGoalIconSizeValueEl.textContent = `${iconSize}%`;
             tapGoalSoundNameEl.textContent = settings.sound?.name || '未設定';
             const volume = Number.isInteger(settings.soundVolume) ? settings.soundVolume : 100;
             tapGoalSoundVolumeInput.value = String(volume);
@@ -1610,6 +1615,7 @@
                 orientation: tapGoalOrientationSelect.value === 'vertical' ? 'vertical' : 'horizontal',
                 headingText: tapGoalHeadingTextInput.value,
                 targetCount: Number.parseInt(tapGoalTargetCountInput.value, 10) || 100,
+                iconSize: Number.parseInt(tapGoalIconSizeInput.value, 10) || 100,
                 sound: state.tapGoalSettings?.sound || { name: '', url: '' },
                 soundVolume: Number.parseInt(tapGoalSoundVolumeInput.value, 10) || 100,
                 appearance: {
@@ -3454,6 +3460,8 @@
         });
         tapGoalHeadingTextInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTargetCountInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalIconSizeInput.addEventListener('input', () => { tapGoalIconSizeValueEl.textContent = `${tapGoalIconSizeInput.value}%`; });
+        tapGoalIconSizeInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalFontSelect.addEventListener('input', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); });
         tapGoalFontSelect.addEventListener('change', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTextStyleSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });

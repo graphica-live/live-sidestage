@@ -10,6 +10,7 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     targetCount: 100,
     orientation: 'horizontal',
     headingText: 'タップチャレンジ',
+    iconSize: 100,
     soundEnabled: true,
     sound: { name: '', url: '' },
     soundVolume: 100,
@@ -30,11 +31,13 @@ function normalizeTapGoalSettings(value) {
     const targetCount = Number.parseInt(String(source.targetCount ?? ''), 10);
     const orientation = String(source.orientation || '').trim().toLowerCase();
     const soundVolume = Number.parseInt(String(source.soundVolume ?? ''), 10);
+    const iconSize = Number.parseInt(String(source.iconSize ?? ''), 10);
 
     return {
         targetCount: Number.isInteger(targetCount) && targetCount >= 1 ? Math.min(targetCount, 1000000) : DEFAULT_TAP_GOAL_SETTINGS.targetCount,
         orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
         headingText: String(source.headingText ?? '').trim().slice(0, 40) || DEFAULT_TAP_GOAL_SETTINGS.headingText,
+        iconSize: Number.isInteger(iconSize) ? Math.max(30, Math.min(200, iconSize)) : DEFAULT_TAP_GOAL_SETTINGS.iconSize,
         soundEnabled: source.soundEnabled !== false,
         sound: normalizeSoundAsset(source.sound),
         soundVolume: Number.isInteger(soundVolume) ? Math.max(0, Math.min(100, soundVolume)) : DEFAULT_TAP_GOAL_SETTINGS.soundVolume,

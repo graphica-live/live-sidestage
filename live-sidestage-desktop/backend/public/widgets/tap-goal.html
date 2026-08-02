@@ -240,12 +240,14 @@
         const barCountEl = document.getElementById('barCount');
         const heartsLayerEl = document.getElementById('heartsLayer');
 
+        let tapGoalIconSizeScale = 1;
+
         // メーターの根本から上方向 ±10度 の範囲でランダムに、タップ主のアイコンを拡散させる
         function spawnTapGoalHeart(actor) {
             const angleDeg = (Math.random() * 20) - 10;
             const travel = 180 + Math.random() * 100;
             const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
-            const size = (32 + Math.random() * 18) * (2 / 3);
+            const size = (32 + Math.random() * 18) * (2 / 3) * tapGoalIconSizeScale;
             const duration = 1500 + Math.random() * 600;
 
             const heartEl = document.createElement('div');
@@ -356,6 +358,7 @@
             if (!settings) return;
             widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
             headingEl.textContent = settings.headingText || '';
+            tapGoalIconSizeScale = Math.max(0.3, Math.min(2, (Number(settings.iconSize) || 100) / 100));
         }
 
         let lastTapGoalCount = null;
