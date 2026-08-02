@@ -2091,11 +2091,7 @@
         });
 
         tapGoalSoundPreviewButton.addEventListener('click', () => {
-            const url = state.tapGoalSettings?.sound?.url;
-            if (!url) return;
-            const audio = new Audio(url);
-            audio.volume = Math.max(0, Math.min(100, Number.parseInt(tapGoalSoundVolumeInput.value, 10) || 0)) / 100;
-            audio.play().catch(() => {});
+            fetch('/api/widgets/tap-goal/test-sound', { method: 'POST' }).catch(() => {});
         });
 
         tapGoalSoundVolumeInput.addEventListener('input', () => {

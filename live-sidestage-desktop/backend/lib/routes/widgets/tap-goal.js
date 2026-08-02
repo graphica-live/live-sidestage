@@ -42,4 +42,10 @@ module.exports = function registerTapGoalRoutes({
         io.emit('widgets:tap-goal:updated', payload);
         res.json({ ok: true, ...payload });
     });
+
+    app.post('/api/widgets/tap-goal/test-sound', (req, res) => {
+        const payload = buildTapGoalPayload();
+        emitTapGoalReached(payload.settings);
+        res.json({ ok: true, ...payload });
+    });
 };
