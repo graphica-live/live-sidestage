@@ -191,14 +191,58 @@
             82%  { opacity: 1; transform: scale(1); }
             100% { opacity: 0; transform: scale(0.8); }
         }
+
+        .bar-track-wrap {
+            position: relative;
+        }
+
+        .widget[data-orientation="horizontal"] .bar-track-wrap {
+            width: 100%;
+        }
+
+        .widget[data-orientation="vertical"] .bar-track-wrap {
+            height: 100%;
+        }
+
+        .hearts-layer {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .heart-particle {
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            width: var(--size, 20px);
+            height: var(--size, 20px);
+            opacity: 0.7;
+            animation: heartRise var(--duration, 1300ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        }
+
+        .heart-particle svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        @keyframes heartRise {
+            0%   { transform: translate(-50%, 0) scale(0.7); opacity: 0; }
+            12%  { opacity: 0.75; }
+            100% { transform: translate(calc(-50% + var(--dx, 0px)), var(--dy, -120px)) scale(1); opacity: 0; }
+        }
     </style>
 </head>
 <body>
     <div class="widget" id="widget" data-orientation="horizontal">
         <div class="heading" id="heading"></div>
         <div class="bar-group" id="barGroup">
-            <div class="bar-track" id="barTrack">
-                <div class="bar-fill" id="barFill"></div>
+            <div class="bar-track-wrap">
+                <div class="bar-track" id="barTrack">
+                    <div class="bar-fill" id="barFill"></div>
+                </div>
+                <div class="hearts-layer" id="heartsLayer"></div>
             </div>
             <div class="bar-count" id="barCount">0 / 0</div>
         </div>
@@ -221,9 +265,40 @@
         const barFillEl = document.getElementById('barFill');
         const barCountEl = document.getElementById('barCount');
         const contributorsRowEl = document.getElementById('contributorsRow');
+        const heartsLayerEl = document.getElementById('heartsLayer');
 
         const CONTRIBUTOR_ICON_MIN_SIZE = 44;
         const CONTRIBUTOR_ICON_MAX_SIZE = 100;
+
+        const HEART_SVG_MARKUP = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+            '<path d="M12 21C12 21 3 13.5 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 5.5-9 13-9 13z" fill="#f87171"/>' +
+            '</svg>';
+
+        // メーターの根本から上方向 ±10度 の範囲でランダムにハートを拡散させる
+        function spawnTapGoalHeart() {
+            const angleDeg = (Math.random() * 20) - 10;
+            const travel = 90 + Math.random() * 60;
+            const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
+            const size = 16 + Math.random() * 14;
+            const duration = 1100 + Math.random() * 500;
+
+            const heartEl = document.createElement('div');
+            heartEl.className = 'heart-particle';
+            heartEl.style.setProperty('--dx', dx.toFixed(1) + 'px');
+            heartEl.style.setProperty('--dy', (-travel).toFixed(1) + 'px');
+            heartEl.style.setProperty('--size', size.toFixed(0) + 'px');
+            heartEl.style.setProperty('--duration', duration.toFixed(0) + 'ms');
+            heartEl.innerHTML = HEART_SVG_MARKUP;
+            heartEl.addEventListener('animationend', () => heartEl.remove(), { once: true });
+            heartsLayerEl.appendChild(heartEl);
+        }
+
+        function spawnTapGoalHearts(amount) {
+            const count = Math.max(1, Math.min(8, Math.round(amount / 3)));
+            for (let i = 0; i < count; i++) {
+                window.setTimeout(spawnTapGoalHeart, i * 60);
+            }
+        }
 
         const TAP_GOAL_FONT_FAMILIES = {
             default:          '"M PLUS Rounded 1c", sans-serif',
@@ -338,6 +413,8 @@
             headingEl.textContent = settings.headingText || '';
         }
 
+        let lastTapGoalCount = null;
+
         function applyProgress(progress) {
             if (!progress) return;
             const target = Math.max(1, Number(progress.target) || 1);
@@ -351,6 +428,13 @@
                 barFillEl.style.height = '';
             }
             barCountEl.textContent = `${count.toLocaleString()} / ${target.toLocaleString()}`;
+
+            if (lastTapGoalCount !== null) {
+                let increment = count - lastTapGoalCount;
+                if (increment < 0) increment += target; // 周回ループでラップした分を補正
+                if (increment > 0) spawnTapGoalHearts(increment);
+            }
+            lastTapGoalCount = count;
         }
 
         function applyPayload(payload) {
