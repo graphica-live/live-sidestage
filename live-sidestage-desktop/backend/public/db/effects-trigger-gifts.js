@@ -4,6 +4,7 @@ const triggerGiftsFontSelect = document.getElementById('trigger-gifts-font');
 const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-style');
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
+const triggerGiftsLayoutSelect = document.getElementById('trigger-gifts-layout');
 
 const TRIGGER_GIFTS_FONT_OPTIONS = [
     { key: 'default', label: 'M PLUS Rounded 1c', family: '"M PLUS Rounded 1c", sans-serif' },
@@ -87,6 +88,7 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsTextStyleSelect.innerHTML = getTriggerGiftsTextStyleOptionsMarkup(appearance.textStyleKey || 'gold-night');
         triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 3);
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
+        triggerGiftsLayoutSelect.value = appearance.layout === 'column' ? 'column' : 'grid';
     } catch {
         // 読み込み失敗時は既定値のまま
     }
@@ -102,7 +104,8 @@ async function saveTriggerGiftsAppearance() {
                     fontKey: triggerGiftsFontSelect.value,
                     textStyleKey: triggerGiftsTextStyleSelect.value,
                     strokeWidth: triggerGiftsStrokeWidthInput.value,
-                    fontSize: triggerGiftsFontSizeInput.value
+                    fontSize: triggerGiftsFontSizeInput.value,
+                    layout: triggerGiftsLayoutSelect.value
                 }
             })
         });
@@ -122,6 +125,7 @@ document.querySelectorAll('[data-action="close-trigger-gifts-settings-modal"]').
 triggerGiftsFontSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsLayoutSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 
 loadTriggerGiftsAppearance();

@@ -41,6 +41,11 @@
             gap: 18px;
         }
 
+        .grid.is-column {
+            grid-template-columns: 1fr;
+            max-width: var(--card-min-width);
+        }
+
         .card {
             display: flex;
             flex-direction: column;
@@ -199,6 +204,7 @@
             root.setProperty('--stroke', textStyle.strokeColor);
             root.setProperty('--stroke-width', strokeWidth + 'px');
             root.setProperty('--name-font-size', fontSize + 'px');
+            gridEl.classList.toggle('is-column', String(appearance.layout || '').trim().toLowerCase() === 'column');
         }
 
         function escapeHtml(s) {

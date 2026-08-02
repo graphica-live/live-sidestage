@@ -165,7 +165,8 @@ module.exports = function registerEffectsRoutes({
             fontKey: normalizeSharedWidgetFontKey(source.fontKey),
             textStyleKey: normalizeDisplayColorTheme(source.textStyleKey),
             strokeWidth: normalizeDisplayStrokeWidth(source.strokeWidth),
-            fontSize: normalizeTriggerGiftsFontSize(source.fontSize)
+            fontSize: normalizeTriggerGiftsFontSize(source.fontSize),
+            layout: String(source.layout || '').trim().toLowerCase() === 'column' ? 'column' : 'grid'
         };
     }
 
