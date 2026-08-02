@@ -14,8 +14,8 @@
             --stroke: rgba(15, 23, 42, 0.96);
             --stroke-width: 3px;
             --name-font-size: 20px;
-            --card-min-width: 200px;
-            --card-min-height: 210px;
+            --card-min-width: 300px;
+            --card-min-height: 200px;
             --gift-image-size: 132px;
         }
 
@@ -60,6 +60,7 @@
             gap: 10px;
             width: var(--card-min-width);
             min-width: 0;
+            aspect-ratio: 3 / 2;
             padding: 16px 12px;
             border-radius: 20px;
             background: linear-gradient(180deg, rgba(36, 40, 48, var(--card-bg-opacity, 0.46)) 0%, rgba(20, 22, 28, calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
