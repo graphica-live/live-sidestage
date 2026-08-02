@@ -420,9 +420,12 @@
                         <option value="column">縦並び（自動折り返し）</option>
                     </select>
                 </div>
-                <div class="field">
+                <div class="field full">
                     <label for="trigger-gifts-bg-opacity">背景の不透明度</label>
-                    <input id="trigger-gifts-bg-opacity" type="number" min="0" max="100" step="1" inputmode="numeric" aria-label="背景の不透明度">
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-bg-opacity" min="0" max="100" step="5" value="46" style="flex: 1;" aria-label="背景の不透明度">
+                        <span class="subtext" id="trigger-gifts-bg-opacity-value" style="margin-top: 0; width: 42px;">46%</span>
+                    </div>
                 </div>
             </div>
             <div class="modal-actions">

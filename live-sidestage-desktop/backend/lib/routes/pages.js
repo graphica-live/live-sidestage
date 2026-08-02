@@ -123,6 +123,13 @@ module.exports = function registerPageRoutes({
         setHeaders(res) { res.setHeader('Cache-Control', 'no-store'); }
     }));
 
+    app.use('/overlays', (req, res, next) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        next();
+    });
+
     app.get('/overlays/contributors', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return sendContributorsOverlayHtml(res);

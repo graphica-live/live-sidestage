@@ -6,6 +6,7 @@ const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stro
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
 const triggerGiftsLayoutSelect = document.getElementById('trigger-gifts-layout');
 const triggerGiftsBgOpacityInput = document.getElementById('trigger-gifts-bg-opacity');
+const triggerGiftsBgOpacityValue = document.getElementById('trigger-gifts-bg-opacity-value');
 
 const TRIGGER_GIFTS_FONT_OPTIONS = [
     { key: 'default', label: 'M PLUS Rounded 1c', family: '"M PLUS Rounded 1c", sans-serif' },
@@ -91,6 +92,7 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
         triggerGiftsLayoutSelect.value = appearance.layout === 'column' ? 'column' : 'grid';
         triggerGiftsBgOpacityInput.value = String(appearance.backgroundOpacity ?? 46);
+        triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
     } catch {
         // 読み込み失敗時は既定値のまま
     }
@@ -130,6 +132,9 @@ triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearanc
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsLayoutSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsBgOpacityInput.addEventListener('input', () => {
+    triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
+});
 triggerGiftsBgOpacityInput.addEventListener('change', saveTriggerGiftsAppearance);
 
 loadTriggerGiftsAppearance();
