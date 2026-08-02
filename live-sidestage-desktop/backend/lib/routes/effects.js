@@ -13,7 +13,7 @@ module.exports = function registerEffectsRoutes({
     getEffectTriggers,
     buildEffectOverlayUrls,
     buildTriggerGiftsOverlayUrlBase,
-    cachedTikTokGiftCatalog,
+    fetchTikTokGiftCatalog,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
@@ -133,10 +133,10 @@ module.exports = function registerEffectsRoutes({
         });
     });
 
-    app.get('/api/effects/trigger-gifts', (req, res) => {
+    app.get('/api/effects/trigger-gifts', async (req, res) => {
         const categoryId = String(req.query.category || '').trim() || EFFECT_DEFAULT_CATEGORY_ID;
         const category = getEffectCategories().find((item) => item.id === categoryId) || null;
-        const catalogGifts = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
+        const catalogGifts = await fetchTikTokGiftCatalog().catch(() => []);
 
         const items = getEffectTriggers()
             .filter((trigger) => trigger.enabled

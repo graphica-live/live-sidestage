@@ -2530,7 +2530,7 @@ require('./lib/routes/effects')({
     getEffectTriggers,
     buildEffectOverlayUrls,
     buildTriggerGiftsOverlayUrlBase,
-    cachedTikTokGiftCatalog: tiktokState.giftCatalog,
+    fetchTikTokGiftCatalog,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
