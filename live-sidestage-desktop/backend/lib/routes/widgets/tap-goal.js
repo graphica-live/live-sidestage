@@ -6,9 +6,13 @@ module.exports = function registerTapGoalRoutes({
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
 }) {
-    function emitTapGoalReached(settings) {
-        if (!settings.soundEnabled || !settings.sound?.url) return;
-        io.emit('widgets:tap-goal:reached', { url: settings.sound.url, volume: settings.soundVolume });
+    function buildReachedPayload(settings, contributors = []) {
+        const payload = { contributors };
+        if (settings.soundEnabled && settings.sound?.url) {
+            payload.url = settings.sound.url;
+            payload.volume = settings.soundVolume;
+        }
+        return payload;
     }
 
     app.get('/api/widgets/tap-goal/config', (req, res) => {
@@ -36,7 +40,7 @@ module.exports = function registerTapGoalRoutes({
         const payload = buildTapGoalPayload();
 
         if (result.crossings > 0) {
-            emitTapGoalReached(payload.settings);
+            io.emit('widgets:tap-goal:reached', buildReachedPayload(payload.settings));
         }
 
         io.emit('widgets:tap-goal:updated', payload);
@@ -45,7 +49,9 @@ module.exports = function registerTapGoalRoutes({
 
     app.post('/api/widgets/tap-goal/test-sound', (req, res) => {
         const payload = buildTapGoalPayload();
-        emitTapGoalReached(payload.settings);
+        if (payload.settings.soundEnabled && payload.settings.sound?.url) {
+            io.emit('widgets:tap-goal:reached', buildReachedPayload(payload.settings));
+        }
         res.json({ ok: true, ...payload });
     });
 };

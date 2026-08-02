@@ -15,6 +15,10 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     soundVolume: 100,
 };
 
+// 現在の周回（前回の目標到達リセットからの分）で誰が何回タップしたかを保持する。
+// 達成演出でのアイコン表示にのみ使うため、DB永続化はせずインメモリで十分。
+let lapTaps = new Map();
+
 module.exports = function createTapGoalState({
     getScopedStateValue, setScopedStateValue,
     getTapGoalWidgetTextAppearance,
@@ -92,7 +96,34 @@ function addTapGoalTaps(amount) {
 }
 
 function resetTapGoalProgress() {
+    lapTaps = new Map();
     return setTapGoalProgress({ count: 0 });
+}
+
+function addTapGoalLapContribution({ uniqueId, nickname, avatarUrl, amount }) {
+    const inc = Number(amount) || 0;
+    if (!uniqueId || inc <= 0) return;
+
+    const existing = lapTaps.get(uniqueId);
+    if (existing) {
+        existing.amount += inc;
+        if (nickname) existing.nickname = nickname;
+        if (avatarUrl) existing.avatarUrl = avatarUrl;
+    } else {
+        lapTaps.set(uniqueId, {
+            uniqueId,
+            nickname: nickname || uniqueId,
+            avatarUrl: avatarUrl || '',
+            amount: inc,
+        });
+    }
+}
+
+// 周回達成時に呼び出し、その周回分の集計を取り出して次周回用にクリアする
+function consumeTapGoalLapContributions() {
+    const entries = Array.from(lapTaps.values()).sort((a, b) => b.amount - a.amount);
+    lapTaps = new Map();
+    return entries;
 }
 
 function buildTapGoalPayload() {
@@ -109,6 +140,7 @@ function buildTapGoalPayload() {
         normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
         getTapGoalProgress, setTapGoalProgress,
         addTapGoalTaps, resetTapGoalProgress,
+        addTapGoalLapContribution, consumeTapGoalLapContributions,
         buildTapGoalPayload,
     };
 };

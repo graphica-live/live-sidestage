@@ -1261,6 +1261,7 @@ const {
     normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
     getTapGoalProgress, setTapGoalProgress,
     addTapGoalTaps, resetTapGoalProgress,
+    addTapGoalLapContribution, consumeTapGoalLapContributions,
     buildTapGoalPayload,
 } = require('./lib/tap-goal-state')({
     getScopedStateValue: (...args) => getScopedStateValue(...args),
@@ -3052,12 +3053,25 @@ function ensureTikTokConnection() {
 
                 io.emit('widgets:tap-list:updated', buildTapListPayload());
 
-                const tapGoalResult = addTapGoalTaps(normalizeWholeNumber(data?.likeCount) || 0);
+                const tapAmount = normalizeWholeNumber(data?.likeCount) || 0;
+                const tapActor = extractCommentFeedActor(data);
+                addTapGoalLapContribution({
+                    uniqueId: tapActor.uniqueId,
+                    nickname: tapActor.nickname,
+                    avatarUrl: tapActor.image,
+                    amount: tapAmount,
+                });
+
+                const tapGoalResult = addTapGoalTaps(tapAmount);
                 if (tapGoalResult.crossings > 0) {
                     const tapGoalSettings = getWidgetTapGoalSettings();
+                    const contributors = consumeTapGoalLapContributions();
+                    const reachedPayload = { contributors };
                     if (tapGoalSettings.soundEnabled && tapGoalSettings.sound?.url) {
-                        io.emit('widgets:tap-goal:reached', { url: tapGoalSettings.sound.url, volume: tapGoalSettings.soundVolume });
+                        reachedPayload.url = tapGoalSettings.sound.url;
+                        reachedPayload.volume = tapGoalSettings.soundVolume;
                     }
+                    io.emit('widgets:tap-goal:reached', reachedPayload);
                 }
                 io.emit('widgets:tap-goal:updated', buildTapGoalPayload());
             }

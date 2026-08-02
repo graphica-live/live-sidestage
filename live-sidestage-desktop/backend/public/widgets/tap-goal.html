@@ -137,6 +137,60 @@
             margin-top: 0;
             margin-left: 8px;
         }
+
+        @keyframes tapGoalFlash {
+            0%, 100% { filter: brightness(1); }
+            25% { filter: brightness(2.4); }
+            50% { filter: brightness(1); }
+            75% { filter: brightness(2.4); }
+        }
+
+        .bar-group.is-flashing {
+            animation: tapGoalFlash 600ms ease-in-out;
+        }
+
+        .contributors-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .contributor-icon {
+            flex-shrink: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid #ffffff;
+            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.9), 0 4px 12px rgba(0, 0, 0, 0.45);
+            background: rgba(30, 41, 59, 0.85);
+            animation: contributorIconFade 3000ms ease-in-out forwards;
+        }
+
+        .contributor-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .contributor-icon .contributor-letter {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #f1f5f9;
+        }
+
+        @keyframes contributorIconFade {
+            0%   { opacity: 0; transform: scale(0.6); }
+            12%  { opacity: 1; transform: scale(1); }
+            82%  { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.8); }
+        }
     </style>
 </head>
 <body>
@@ -148,6 +202,7 @@
             </div>
             <div class="bar-count" id="barCount">0 / 0</div>
         </div>
+        <div class="contributors-row" id="contributorsRow"></div>
     </div>
 
     <script>
@@ -162,8 +217,13 @@
 
         const widgetEl = document.getElementById('widget');
         const headingEl = document.getElementById('heading');
+        const barGroupEl = document.getElementById('barGroup');
         const barFillEl = document.getElementById('barFill');
         const barCountEl = document.getElementById('barCount');
+        const contributorsRowEl = document.getElementById('contributorsRow');
+
+        const CONTRIBUTOR_ICON_MIN_SIZE = 44;
+        const CONTRIBUTOR_ICON_MAX_SIZE = 100;
 
         const TAP_GOAL_FONT_FAMILIES = {
             default:          '"M PLUS Rounded 1c", sans-serif',
@@ -230,6 +290,48 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function triggerTapGoalFlash() {
+            barGroupEl.classList.remove('is-flashing');
+            void barGroupEl.offsetWidth; // アニメーション再トリガー用のreflow
+            barGroupEl.classList.add('is-flashing');
+        }
+
+        function renderTapGoalContributors(contributors) {
+            if (!Array.isArray(contributors) || contributors.length === 0) return;
+
+            const maxAmount = Math.max(1, ...contributors.map((c) => Number(c.amount) || 0));
+            contributorsRowEl.innerHTML = '';
+
+            contributors.forEach((contributor) => {
+                const amount = Number(contributor.amount) || 0;
+                const ratio = Math.max(0, Math.min(1, amount / maxAmount));
+                const size = Math.round(CONTRIBUTOR_ICON_MIN_SIZE + (CONTRIBUTOR_ICON_MAX_SIZE - CONTRIBUTOR_ICON_MIN_SIZE) * ratio);
+
+                const iconEl = document.createElement('div');
+                iconEl.className = 'contributor-icon';
+                iconEl.style.width = size + 'px';
+                iconEl.style.height = size + 'px';
+
+                const letter = escapeHtml(String(contributor.nickname || '?').charAt(0).toUpperCase());
+                if (contributor.avatarUrl) {
+                    const proxied = `/api/proxy/avatar?url=${encodeURIComponent(contributor.avatarUrl)}`;
+                    iconEl.innerHTML =
+                        `<img src="${escapeAttr(proxied)}" alt="" ` +
+                        `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+                        `<span class="contributor-letter" style="display:none">${letter}</span>`;
+                } else {
+                    iconEl.innerHTML = `<span class="contributor-letter">${letter}</span>`;
+                }
+
+                iconEl.addEventListener('animationend', () => iconEl.remove(), { once: true });
+                contributorsRowEl.appendChild(iconEl);
+            });
+        }
+
         function applySettings(settings) {
             if (!settings) return;
             widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
@@ -268,6 +370,8 @@
         socket.on('widgets:tap-goal:updated', applyPayload);
         socket.on('widgets:tap-goal:reached', (payload) => {
             playTapGoalSound(payload?.url, payload?.volume);
+            triggerTapGoalFlash();
+            renderTapGoalContributors(payload?.contributors);
         });
     </script>
 </body>
