@@ -80,6 +80,9 @@ const WIDGET_TIMER_FONT_STATE_KEY = 'widget_timer_font';
 const WIDGET_TIMER_TEXT_STYLE_STATE_KEY = 'widget_timer_text_style';
 const WIDGET_TIMER_STROKE_WIDTH_STATE_KEY = 'widget_timer_stroke_width';
 const WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY = 'widget_trigger_gifts_appearance';
+// イベントトリガーのギフト選択に表示する疑似ギフト名（フォロー/リフォロー発火用）。
+// フロント側の対応値: backend/public/db/effects-gift-suggest.js の FOLLOW_TRIGGER_GIFT_NAME と同期すること。
+const EFFECT_TRIGGER_FOLLOW_GIFT_NAME = 'フォロー・リフォロー';
 
 const EXPORTABLE_SCOPED_SETTINGS_KEYS = [
     CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,
@@ -482,6 +485,7 @@ module.exports = {
     WIDGET_TIMER_TEXT_STYLE_STATE_KEY,
     WIDGET_TIMER_STROKE_WIDTH_STATE_KEY,
     WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY,
+    EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     EXPORTABLE_SCOPED_SETTINGS_KEYS,
     EXPORTABLE_GLOBAL_SETTINGS_KEYS,
     EFFECT_SCREEN_COUNT,

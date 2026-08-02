@@ -346,6 +346,16 @@ async function loadUserSuggestions() {
         : [];
 }
 
+// バックエンドの EFFECT_TRIGGER_FOLLOW_GIFT_NAME（backend/lib/constants.js）と同期すること。
+const FOLLOW_TRIGGER_GIFT_NAME = 'フォロー・リフォロー';
+const FOLLOW_TRIGGER_GIFT_SUGGESTION = {
+    id: '__follow__',
+    name: FOLLOW_TRIGGER_GIFT_NAME,
+    describe: 'フォロー / リフォロー時に発火します（ギフト以外のイベント）',
+    diamondCount: null,
+    imageUrl: ''
+};
+
 async function loadGiftSuggestions() {
     const response = await fetch('/api/tiktok/gifts');
     const payload = await response.json();
@@ -354,9 +364,11 @@ async function loadGiftSuggestions() {
         throw new Error(payload.error || 'ギフト候補の読み込みに失敗しました。');
     }
 
-    knownGiftSuggestions = Array.isArray(payload.gifts)
+    const realGifts = Array.isArray(payload.gifts)
         ? payload.gifts.filter((gift) => typeof gift?.name === 'string' && gift.name.trim())
         : [];
+
+    knownGiftSuggestions = [FOLLOW_TRIGGER_GIFT_SUGGESTION, ...realGifts];
 
     if (currentTriggers.length) {
         renderTriggers();

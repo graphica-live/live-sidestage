@@ -15,6 +15,7 @@ module.exports = function createEffectsRuntime({
     normalizeWholeNumber,
     getTimestamp,
     sendVdjEffectForEvent,
+    followTriggerGiftName,
 }) {
     // カテゴリ単位のON/OFF。個々のトリガーの enabled 値には一切干渉しない。
     function getDisabledCategoryIds() {
@@ -216,12 +217,26 @@ module.exports = function createEffectsRuntime({
     }
 
     function tryRunEffectTriggersForComment(commentEvent) {
-        if (commentEvent?.type !== 'chat' && commentEvent?.type !== 'emote') {
+        const isFollowEvent = commentEvent?.type === 'follow';
+
+        if (!isFollowEvent && commentEvent?.type !== 'chat' && commentEvent?.type !== 'emote') {
             return;
         }
 
         const userId = normalizeBroadcasterId(commentEvent?.uniqueId);
         speculativelyPreloadUserVideos(userId);
+
+        if (isFollowEvent) {
+            tryRunEffectTriggers({
+                type: 'follow',
+                giftName: normalizeEffectText(followTriggerGiftName, 80).toLowerCase(),
+                comment: '',
+                totalGifts: 0,
+                userId
+            }, commentEvent);
+            return;
+        }
+
         tryRunEffectTriggers({
             type: 'comment',
             giftName: '',

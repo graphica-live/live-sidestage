@@ -288,6 +288,7 @@ const {
     COMMENT_OBSERVED_EMOJI_CACHE_LIMIT,
     COMMENT_READ_ALOUD_DEFAULT_FILTERS,
     COMMENT_FEED_EVENT_DEFINITIONS,
+    EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
 } = require('./lib/constants');
 const IS_ELECTRON = Boolean(process.env.ELECTRON_RUN);
 const serverEvents = new EventEmitter();
@@ -1357,6 +1358,7 @@ const {
     normalizeWholeNumber,
     getTimestamp,
     sendVdjEffectForEvent,
+    followTriggerGiftName: EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
 });
 
 function getStoredBroadcasterId() {
