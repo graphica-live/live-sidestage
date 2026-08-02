@@ -137,11 +137,11 @@ button:disabled {
 }
 
 .event-table-head {
-    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr);
+    grid-template-columns: 104px minmax(0, 1.7fr) minmax(0, 0.72fr) 52px 52px minmax(0, 0.68fr) 36px;
 }
 
 .trigger-table-head {
-    grid-template-columns: 132px minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1.15fr) 72px minmax(0, 1.45fr);
+    grid-template-columns: 132px minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1.15fr) 72px minmax(0, 1.45fr) 36px;
 }
 
 .record-table-head > div {
@@ -913,13 +913,28 @@ input[type="range"] {
 }
 
 .event-record-card {
-    grid-template-columns: 104px minmax(0, 1fr);
+    grid-template-columns: 104px minmax(0, 1fr) 36px;
     align-items: center;
 }
 
 .trigger-record-card {
-    grid-template-columns: 132px minmax(0, 1fr);
+    grid-template-columns: 132px minmax(0, 1fr) 36px;
     align-items: center;
+}
+
+.drag-handle {
+    cursor: grab;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.7);
+    justify-self: center;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.record-card.dragging {
+    opacity: 0.45;
 }
 
 .event-record-head {
@@ -1196,16 +1211,22 @@ input[type="range"] {
         gap: 6px;
     }
 
-    .event-record-card {
+    .event-record-card,
+    .trigger-record-card {
         grid-template-columns: 1fr;
+        position: relative;
+        padding-right: 40px;
+    }
+
+    .event-record-card .drag-handle,
+    .trigger-record-card .drag-handle {
+        position: absolute;
+        top: 6px;
+        right: 4px;
     }
 
     .event-record-head {
         position: static;
-    }
-
-    .trigger-record-card {
-        grid-template-columns: 1fr;
     }
 
     .trigger-record-head {

@@ -335,6 +335,99 @@ function renderUrls() {
     });
 }
 
+function reorderByVisibleIds(fullArray, visibleIdsNewOrder) {
+    const byId = new Map(fullArray.map((item) => [item.id, item]));
+    const visibleIdSet = new Set(visibleIdsNewOrder);
+    const queue = [...visibleIdsNewOrder];
+    return fullArray.map((item) => (visibleIdSet.has(item.id) ? byId.get(queue.shift()) : item));
+}
+
+function attachDragReorder(listEl, getRecordId, applyNewOrder) {
+    let draggedCard = null;
+
+    listEl.addEventListener('mousedown', (e) => {
+        const handle = e.target.closest('[data-action="drag-handle"]');
+        if (!handle) return;
+        const card = handle.closest('.record-card');
+        if (card) card.setAttribute('draggable', 'true');
+    });
+
+    listEl.addEventListener('mouseup', () => {
+        listEl.querySelectorAll('.record-card[draggable="true"]').forEach((card) => {
+            if (card !== draggedCard) card.removeAttribute('draggable');
+        });
+    });
+
+    listEl.addEventListener('dragstart', (e) => {
+        const card = e.target.closest('.record-card');
+        if (!card || card.getAttribute('draggable') !== 'true') {
+            e.preventDefault();
+            return;
+        }
+        draggedCard = card;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', getRecordId(card) || '');
+        requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+
+    listEl.addEventListener('dragover', (e) => {
+        if (!draggedCard) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+
+        const cards = Array.from(listEl.querySelectorAll('.record-card:not(.dragging)'));
+        const target = cards.reduce((closest, card) => {
+            const box = card.getBoundingClientRect();
+            const offset = e.clientY - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset, element: card };
+            }
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+
+        if (target) {
+            listEl.insertBefore(draggedCard, target);
+        } else {
+            listEl.appendChild(draggedCard);
+        }
+    });
+
+    listEl.addEventListener('dragend', () => {
+        if (!draggedCard) return;
+        draggedCard.classList.remove('dragging');
+        draggedCard.removeAttribute('draggable');
+        const orderedIds = Array.from(listEl.querySelectorAll('.record-card')).map(getRecordId);
+        draggedCard = null;
+        applyNewOrder(orderedIds);
+    });
+}
+
+attachDragReorder(eventList, (card) => card.dataset.eventId, async (orderedIds) => {
+    const newOrder = reorderByVisibleIds(currentEvents, orderedIds);
+    if (newOrder.every((item, i) => item.id === currentEvents[i].id)) return;
+    currentEvents = newOrder;
+    renderEvents();
+
+    try {
+        await saveConfig();
+    } catch {
+        // saveConfig already reports the failure in the status box.
+    }
+});
+
+attachDragReorder(triggerList, (card) => card.dataset.triggerId, async (orderedIds) => {
+    const newOrder = reorderByVisibleIds(currentTriggers, orderedIds);
+    if (newOrder.every((item, i) => item.id === currentTriggers[i].id)) return;
+    currentTriggers = newOrder;
+    renderTriggers();
+
+    try {
+        await saveConfig();
+    } catch {
+        // saveConfig already reports the failure in the status box.
+    }
+});
+
 const eventFilterInput = document.getElementById('event-filter');
 const triggerFilterInput = document.getElementById('trigger-filter');
 
