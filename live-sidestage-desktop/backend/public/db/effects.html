@@ -394,7 +394,7 @@
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trigger-gifts-settings-modal-title" style="width:min(520px,100%);">
             <div>
                 <h2 id="trigger-gifts-settings-modal-title">トリガーギフト一覧オーバーレイの表示設定</h2>
-                <p class="subtext">フォント・文字色・縁取り・文字サイズを変更できます。変更は選択時に自動で保存されます。</p>
+                <p class="subtext">見た目・列数と行数・スライド表示を変更できます。変更は選択時に自動で保存されます。列数×行数を超えるトリガーは、スライド表示OFFなら表示されず、ONなら指定間隔で自動的に切り替わります。</p>
             </div>
             <div class="form-grid">
                 <div class="field">
@@ -417,19 +417,36 @@
                     <label for="trigger-gifts-image-size">ギフト画像サイズ</label>
                     <input id="trigger-gifts-image-size" type="number" min="48" max="2000" step="1" inputmode="numeric" aria-label="ギフト画像サイズ">
                 </div>
-                <div class="field">
-                    <label for="trigger-gifts-layout">レイアウト</label>
-                    <select id="trigger-gifts-layout" aria-label="レイアウト">
-                        <option value="grid">横並び（自動折り返し）</option>
-                        <option value="column">縦並び（自動折り返し）</option>
-                    </select>
-                </div>
                 <div class="field full">
                     <label for="trigger-gifts-bg-opacity">背景の不透明度</label>
                     <div class="action-row">
                         <input type="range" id="trigger-gifts-bg-opacity" min="0" max="100" step="5" value="46" style="flex: 1;" aria-label="背景の不透明度">
                         <span class="subtext" id="trigger-gifts-bg-opacity-value" style="margin-top: 0; width: 42px;">46%</span>
                     </div>
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-columns">列数</label>
+                    <input id="trigger-gifts-columns" type="number" min="1" max="20" step="1" inputmode="numeric" aria-label="列数">
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-rows">行数</label>
+                    <input id="trigger-gifts-rows" type="number" min="1" max="20" step="1" inputmode="numeric" aria-label="行数">
+                </div>
+                <div class="field full">
+                    <label class="toggle"><input type="checkbox" id="trigger-gifts-slide-enabled"><span>スライド表示（あふれた分を自動で切り替え表示）</span></label>
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-slide-interval">スライド間隔（秒）</label>
+                    <input id="trigger-gifts-slide-interval" type="number" min="1" max="300" step="1" inputmode="numeric" aria-label="スライド間隔（秒）">
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-slide-direction">スライド方向</label>
+                    <select id="trigger-gifts-slide-direction" aria-label="スライド方向">
+                        <option value="left">左へ</option>
+                        <option value="right">右へ</option>
+                        <option value="up">上へ</option>
+                        <option value="down">下へ</option>
+                    </select>
                 </div>
             </div>
             <div class="modal-actions">

@@ -5,9 +5,13 @@ const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
 const triggerGiftsImageSizeInput = document.getElementById('trigger-gifts-image-size');
-const triggerGiftsLayoutSelect = document.getElementById('trigger-gifts-layout');
 const triggerGiftsBgOpacityInput = document.getElementById('trigger-gifts-bg-opacity');
 const triggerGiftsBgOpacityValue = document.getElementById('trigger-gifts-bg-opacity-value');
+const triggerGiftsColumnsInput = document.getElementById('trigger-gifts-columns');
+const triggerGiftsRowsInput = document.getElementById('trigger-gifts-rows');
+const triggerGiftsSlideEnabledInput = document.getElementById('trigger-gifts-slide-enabled');
+const triggerGiftsSlideIntervalInput = document.getElementById('trigger-gifts-slide-interval');
+const triggerGiftsSlideDirectionSelect = document.getElementById('trigger-gifts-slide-direction');
 
 const TRIGGER_GIFTS_FONT_OPTIONS = [
     { key: 'default', label: 'M PLUS Rounded 1c', family: '"M PLUS Rounded 1c", sans-serif' },
@@ -92,9 +96,13 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 3);
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
         triggerGiftsImageSizeInput.value = String(appearance.giftImageSize ?? 132);
-        triggerGiftsLayoutSelect.value = appearance.layout === 'column' ? 'column' : 'grid';
         triggerGiftsBgOpacityInput.value = String(appearance.backgroundOpacity ?? 46);
         triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
+        triggerGiftsColumnsInput.value = String(appearance.columns ?? 3);
+        triggerGiftsRowsInput.value = String(appearance.rows ?? 2);
+        triggerGiftsSlideEnabledInput.checked = Boolean(appearance.slideEnabled);
+        triggerGiftsSlideIntervalInput.value = String(appearance.slideIntervalSeconds ?? 5);
+        triggerGiftsSlideDirectionSelect.value = appearance.slideDirection || 'left';
     } catch {
         // 読み込み失敗時は既定値のまま
     }
@@ -112,8 +120,12 @@ async function saveTriggerGiftsAppearance() {
                     strokeWidth: triggerGiftsStrokeWidthInput.value,
                     fontSize: triggerGiftsFontSizeInput.value,
                     giftImageSize: triggerGiftsImageSizeInput.value,
-                    layout: triggerGiftsLayoutSelect.value,
-                    backgroundOpacity: triggerGiftsBgOpacityInput.value
+                    backgroundOpacity: triggerGiftsBgOpacityInput.value,
+                    columns: triggerGiftsColumnsInput.value,
+                    rows: triggerGiftsRowsInput.value,
+                    slideEnabled: triggerGiftsSlideEnabledInput.checked,
+                    slideIntervalSeconds: triggerGiftsSlideIntervalInput.value,
+                    slideDirection: triggerGiftsSlideDirectionSelect.value
                 }
             })
         });
@@ -133,12 +145,16 @@ document.querySelectorAll('[data-action="close-trigger-gifts-settings-modal"]').
 triggerGiftsFontSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
-triggerGiftsLayoutSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsImageSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsBgOpacityInput.addEventListener('input', () => {
     triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
 });
 triggerGiftsBgOpacityInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsColumnsInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsRowsInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsSlideEnabledInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsSlideIntervalInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsSlideDirectionSelect.addEventListener('change', saveTriggerGiftsAppearance);
 
 loadTriggerGiftsAppearance();

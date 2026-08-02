@@ -17,6 +17,8 @@
             --card-min-width: 500px;
             --card-min-height: 333px;
             --gift-image-size: 132px;
+            --cols: 3;
+            --rows: 2;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,21 +38,37 @@
             background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
         }
 
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, var(--card-min-width));
-            justify-content: start;
-            gap: 18px;
+        .stage {
+            position: relative;
+            overflow: hidden;
+            width: calc(var(--cols) * var(--card-min-width) + (var(--cols) - 1) * 18px);
+            height: calc(var(--rows) * var(--card-min-height) + (var(--rows) - 1) * 18px);
         }
 
-        .grid.is-column {
-            height: calc(100vh - 48px);
-            grid-auto-flow: column;
-            grid-template-columns: none;
-            grid-auto-columns: var(--card-min-width);
-            grid-template-rows: repeat(auto-fill, var(--card-min-height));
-            justify-content: start;
-            align-content: start;
+        .track {
+            position: absolute;
+            inset: 0;
+            display: flex;
+        }
+
+        .track.axis-x {
+            flex-direction: row;
+        }
+
+        .track.axis-y {
+            flex-direction: column;
+        }
+
+        .page {
+            flex: 0 0 100%;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(var(--cols), var(--card-min-width));
+            grid-template-rows: repeat(var(--rows), var(--card-min-height));
+            gap: 18px;
+            justify-content: center;
+            align-content: center;
         }
 
         .card {
@@ -137,7 +155,9 @@
     </style>
 </head>
 <body>
-    <div class="grid" id="grid"></div>
+    <div class="stage" id="stage">
+        <div class="track axis-x" id="track"></div>
+    </div>
 
     <script>
         const TRIGGER_GIFTS_FONT_FAMILIES = {
@@ -204,33 +224,22 @@
         const searchParams = new URLSearchParams(window.location.search);
         const categoryId = searchParams.get('category') || '';
         const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
-        const gridEl = document.getElementById('grid');
+        const trackEl = document.getElementById('track');
 
         if (previewMode) {
             document.body.classList.add('preview-card');
         }
 
-        function applyAppearance(appearance) {
-            if (!appearance) return;
-            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
-            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
-            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
-            const fontSize = Math.max(12, Math.min(96, Number(appearance.fontSize) || 20));
-            const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
-            const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
-            const rawGiftImageSize = Number(appearance.giftImageSize);
-            const giftImageSize = Math.max(48, Math.min(2000, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
-            const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
-            const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
-            const root = document.documentElement.style;
-            root.setProperty('--widget-font-family', fontFamily);
-            root.setProperty('--name-color', textStyle.nameColor);
-            root.setProperty('--stroke', textStyle.strokeColor);
-            root.setProperty('--stroke-width', strokeWidth + 'px');
-            root.setProperty('--name-font-size', fontSize + 'px');
-            root.setProperty('--card-bg-opacity', String(backgroundOpacity));
-            root.setProperty('--gift-image-size', giftImageSize + 'px');
-            gridEl.classList.toggle('is-column', String(appearance.layout || '').trim().toLowerCase() === 'column');
+        let currentAppearance = null;
+        let pages = [[]];
+        let pageIndex = 0;
+        let slideTimer = null;
+
+        function stopSlideTimer() {
+            if (slideTimer) {
+                clearInterval(slideTimer);
+                slideTimer = null;
+            }
         }
 
         function escapeHtml(s) {
@@ -252,18 +261,128 @@
                 `</div>`;
         }
 
-        function render(items) {
-            if (!Array.isArray(items) || items.length === 0) {
-                gridEl.innerHTML = previewMode ? '<div class="empty">有効なトリガーがありません</div>' : '';
+        function chunkItems(items, size) {
+            if (!items.length) return [[]];
+            if (size <= 0) return [items];
+
+            const result = [];
+            for (let i = 0; i < items.length; i += size) {
+                result.push(items.slice(i, i + size));
+            }
+            return result;
+        }
+
+        function buildPageHtml(items) {
+            return `<div class="page">${items.map(buildCardHtml).join('')}</div>`;
+        }
+
+        // 無限ループスライド: 次ページを現在ページの隣に挿入し、track を1ページ分
+        // transformで動かしてから、見えなくなった旧ページをDOMから外して0位置へ戻す。
+        function slideToNextPage() {
+            if (!currentAppearance || pages.length <= 1) return;
+
+            const nextIndex = (pageIndex + 1) % pages.length;
+            const axisX = currentAppearance.slideDirection === 'left' || currentAppearance.slideDirection === 'right';
+            // forward: 新ページを進行方向側(右/下)に置いて track を進行方向へ動かす
+            const forward = currentAppearance.slideDirection === 'left' || currentAppearance.slideDirection === 'up';
+
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = buildPageHtml(pages[nextIndex]);
+            const nextPageNode = wrapper.firstElementChild;
+
+            trackEl.style.transition = 'none';
+
+            if (forward) {
+                trackEl.appendChild(nextPageNode);
+                trackEl.style.transform = 'translate(0, 0)';
+            } else {
+                trackEl.insertBefore(nextPageNode, trackEl.firstElementChild);
+                trackEl.style.transform = axisX ? 'translateX(-100%)' : 'translateY(-100%)';
+            }
+
+            // transition:none の初期位置を確定させるための強制リフロー
+            void trackEl.offsetWidth;
+
+            trackEl.style.transition = 'transform 650ms cubic-bezier(0.65, 0, 0.35, 1)';
+            trackEl.style.transform = forward
+                ? (axisX ? 'translateX(-100%)' : 'translateY(-100%)')
+                : 'translate(0, 0)';
+
+            const handleTransitionEnd = () => {
+                trackEl.removeEventListener('transitionend', handleTransitionEnd);
+                trackEl.style.transition = 'none';
+                if (forward) {
+                    trackEl.removeChild(trackEl.firstElementChild);
+                } else {
+                    trackEl.removeChild(trackEl.lastElementChild);
+                }
+                trackEl.style.transform = 'translate(0, 0)';
+                pageIndex = nextIndex;
+            };
+            trackEl.addEventListener('transitionend', handleTransitionEnd, { once: true });
+        }
+
+        function renderPages(items, appearance) {
+            stopSlideTimer();
+
+            const cols = Math.max(1, Number.parseInt(appearance.columns, 10) || 1);
+            const rows = Math.max(1, Number.parseInt(appearance.rows, 10) || 1);
+            const capacity = cols * rows;
+            const axisX = appearance.slideDirection === 'left' || appearance.slideDirection === 'right';
+
+            trackEl.className = 'track ' + (axisX ? 'axis-x' : 'axis-y');
+            trackEl.style.transition = 'none';
+            trackEl.style.transform = 'translate(0, 0)';
+
+            if (!items.length) {
+                pages = [[]];
+                pageIndex = 0;
+                trackEl.innerHTML = previewMode ? '<div class="empty">有効なトリガーがありません</div>' : '';
                 return;
             }
 
-            gridEl.innerHTML = items.map(buildCardHtml).join('');
+            // トリガー多数時: スライドOFFなら先頭ページのみ表示しあふれた分は表示しない
+            pages = chunkItems(items, capacity);
+            pageIndex = 0;
+            trackEl.innerHTML = buildPageHtml(pages[0]);
+
+            if (appearance.slideEnabled && pages.length > 1) {
+                const intervalMs = Math.max(1, Number(appearance.slideIntervalSeconds) || 5) * 1000;
+                slideTimer = setInterval(slideToNextPage, intervalMs);
+            }
+        }
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            currentAppearance = appearance;
+
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
+            const fontSize = Math.max(12, Math.min(96, Number(appearance.fontSize) || 20));
+            const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
+            const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
+            const rawGiftImageSize = Number(appearance.giftImageSize);
+            const giftImageSize = Math.max(48, Math.min(2000, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
+            const cols = Math.max(1, Number.parseInt(appearance.columns, 10) || 1);
+            const rows = Math.max(1, Number.parseInt(appearance.rows, 10) || 1);
+            const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
+            const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--name-color', textStyle.nameColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+            root.setProperty('--name-font-size', fontSize + 'px');
+            root.setProperty('--card-bg-opacity', String(backgroundOpacity));
+            root.setProperty('--gift-image-size', giftImageSize + 'px');
+            root.setProperty('--cols', String(cols));
+            root.setProperty('--rows', String(rows));
         }
 
         function loadSnapshot() {
             if (!categoryId) {
-                render([]);
+                renderPages([], currentAppearance || { columns: 3, rows: 2, slideEnabled: false, slideIntervalSeconds: 5, slideDirection: 'left' });
                 return;
             }
 
@@ -271,7 +390,7 @@
                 .then((r) => r.json())
                 .then((payload) => {
                     applyAppearance(payload.appearance);
-                    render(payload.items);
+                    renderPages(payload.items || [], currentAppearance);
                 })
                 .catch(() => {});
         }

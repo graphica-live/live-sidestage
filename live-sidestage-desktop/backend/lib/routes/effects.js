@@ -29,6 +29,27 @@ function normalizeTriggerGiftsImageSize(value) {
     return Math.min(parsed, 2000);
 }
 
+function normalizeTriggerGiftsGridCount(value, fallback) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return fallback;
+    }
+    return Math.min(parsed, 20);
+}
+
+function normalizeTriggerGiftsSlideIntervalSeconds(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return 5;
+    }
+    return Math.min(parsed, 300);
+}
+
+function normalizeTriggerGiftsSlideDirection(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['left', 'right', 'up', 'down'].includes(normalized) ? normalized : 'left';
+}
+
 module.exports = function registerEffectsRoutes({
     app,
     io,
@@ -182,9 +203,13 @@ module.exports = function registerEffectsRoutes({
             textStyleKey: normalizeDisplayColorTheme(source.textStyleKey),
             strokeWidth: normalizeDisplayStrokeWidth(source.strokeWidth),
             fontSize: normalizeTriggerGiftsFontSize(source.fontSize),
-            layout: String(source.layout || '').trim().toLowerCase() === 'column' ? 'column' : 'grid',
             backgroundOpacity: normalizeTriggerGiftsBackgroundOpacity(source.backgroundOpacity),
-            giftImageSize: normalizeTriggerGiftsImageSize(source.giftImageSize)
+            giftImageSize: normalizeTriggerGiftsImageSize(source.giftImageSize),
+            columns: normalizeTriggerGiftsGridCount(source.columns, 3),
+            rows: normalizeTriggerGiftsGridCount(source.rows, 2),
+            slideEnabled: Boolean(source.slideEnabled),
+            slideIntervalSeconds: normalizeTriggerGiftsSlideIntervalSeconds(source.slideIntervalSeconds),
+            slideDirection: normalizeTriggerGiftsSlideDirection(source.slideDirection)
         };
     }
 
