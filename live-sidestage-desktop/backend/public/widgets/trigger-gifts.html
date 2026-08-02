@@ -16,7 +16,7 @@
             --name-font-size: 20px;
             --card-min-width: 200px;
             --card-min-height: 210px;
-            --gift-image-height: 132px;
+            --gift-image-size: 132px;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,7 +38,8 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
+            grid-template-columns: repeat(auto-fill, var(--card-min-width));
+            justify-content: start;
             gap: 18px;
         }
 
@@ -46,6 +47,7 @@
             height: calc(100vh - 48px);
             grid-auto-flow: column;
             grid-template-columns: none;
+            grid-auto-columns: var(--card-min-width);
             grid-template-rows: repeat(auto-fill, minmax(var(--card-min-height), max-content));
             justify-content: start;
             align-content: start;
@@ -56,6 +58,8 @@
             flex-direction: column;
             align-items: center;
             gap: 10px;
+            width: var(--card-min-width);
+            min-width: 0;
             padding: 16px 12px;
             border-radius: 20px;
             background: linear-gradient(180deg, rgba(36, 40, 48, var(--card-bg-opacity, 0.46)) 0%, rgba(20, 22, 28, calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
@@ -68,14 +72,14 @@
 
         .gift-image-wrap {
             width: 100%;
-            height: var(--gift-image-height);
+            height: var(--gift-image-size);
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
         .gift-image {
-            max-width: 100%;
+            max-width: min(100%, var(--gift-image-size));
             max-height: 100%;
             object-fit: contain;
         }
@@ -91,6 +95,7 @@
             position: relative;
             z-index: 2;
             width: 100%;
+            min-width: 0;
             display: flex;
             justify-content: center;
             font-family: var(--widget-font-family);
@@ -99,6 +104,7 @@
 
         .trigger-name-badge {
             display: inline-block;
+            min-width: 0;
             max-width: 100%;
             padding: 5px 14px;
             border-radius: 10px;
@@ -206,6 +212,8 @@
             const fontSize = Math.max(12, Math.min(48, Number(appearance.fontSize) || 20));
             const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
             const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
+            const rawGiftImageSize = Number(appearance.giftImageSize);
+            const giftImageSize = Math.max(48, Math.min(400, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
             const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
             const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
             const root = document.documentElement.style;
@@ -215,6 +223,7 @@
             root.setProperty('--stroke-width', strokeWidth + 'px');
             root.setProperty('--name-font-size', fontSize + 'px');
             root.setProperty('--card-bg-opacity', String(backgroundOpacity));
+            root.setProperty('--gift-image-size', giftImageSize + 'px');
             gridEl.classList.toggle('is-column', String(appearance.layout || '').trim().toLowerCase() === 'column');
         }
 

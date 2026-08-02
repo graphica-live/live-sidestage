@@ -21,6 +21,14 @@ function normalizeTriggerGiftsBackgroundOpacity(value) {
     return Math.min(parsed, 100);
 }
 
+function normalizeTriggerGiftsImageSize(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 48) {
+        return 132;
+    }
+    return Math.min(parsed, 400);
+}
+
 module.exports = function registerEffectsRoutes({
     app,
     io,
@@ -175,7 +183,8 @@ module.exports = function registerEffectsRoutes({
             strokeWidth: normalizeDisplayStrokeWidth(source.strokeWidth),
             fontSize: normalizeTriggerGiftsFontSize(source.fontSize),
             layout: String(source.layout || '').trim().toLowerCase() === 'column' ? 'column' : 'grid',
-            backgroundOpacity: normalizeTriggerGiftsBackgroundOpacity(source.backgroundOpacity)
+            backgroundOpacity: normalizeTriggerGiftsBackgroundOpacity(source.backgroundOpacity),
+            giftImageSize: normalizeTriggerGiftsImageSize(source.giftImageSize)
         };
     }
 

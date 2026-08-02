@@ -4,6 +4,7 @@ const triggerGiftsFontSelect = document.getElementById('trigger-gifts-font');
 const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-style');
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
+const triggerGiftsImageSizeInput = document.getElementById('trigger-gifts-image-size');
 const triggerGiftsLayoutSelect = document.getElementById('trigger-gifts-layout');
 const triggerGiftsBgOpacityInput = document.getElementById('trigger-gifts-bg-opacity');
 const triggerGiftsBgOpacityValue = document.getElementById('trigger-gifts-bg-opacity-value');
@@ -90,6 +91,7 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsTextStyleSelect.innerHTML = getTriggerGiftsTextStyleOptionsMarkup(appearance.textStyleKey || 'gold-night');
         triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 3);
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
+        triggerGiftsImageSizeInput.value = String(appearance.giftImageSize ?? 132);
         triggerGiftsLayoutSelect.value = appearance.layout === 'column' ? 'column' : 'grid';
         triggerGiftsBgOpacityInput.value = String(appearance.backgroundOpacity ?? 46);
         triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
@@ -109,6 +111,7 @@ async function saveTriggerGiftsAppearance() {
                     textStyleKey: triggerGiftsTextStyleSelect.value,
                     strokeWidth: triggerGiftsStrokeWidthInput.value,
                     fontSize: triggerGiftsFontSizeInput.value,
+                    giftImageSize: triggerGiftsImageSizeInput.value,
                     layout: triggerGiftsLayoutSelect.value,
                     backgroundOpacity: triggerGiftsBgOpacityInput.value
                 }
@@ -132,6 +135,7 @@ triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearanc
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsLayoutSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsImageSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsBgOpacityInput.addEventListener('input', () => {
     triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
 });
