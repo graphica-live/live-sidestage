@@ -245,7 +245,7 @@
             const angleDeg = (Math.random() * 20) - 10;
             const travel = 180 + Math.random() * 100;
             const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
-            const size = 32 + Math.random() * 18;
+            const size = (32 + Math.random() * 18) * (2 / 3);
             const duration = 1500 + Math.random() * 600;
 
             const heartEl = document.createElement('div');
