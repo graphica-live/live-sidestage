@@ -217,40 +217,13 @@
             root.setProperty('--stroke-width', strokeWidth + 'px');
         }
 
-        const FEEDBACK_SOUND_CANDIDATE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a'];
-        const feedbackSoundUrlCache = new Map();
-
-        async function resolveFeedbackSoundUrl(soundKey) {
-            const normalizedKey = String(soundKey || '').trim().toLowerCase() || 'business08';
-            if (feedbackSoundUrlCache.has(normalizedKey)) {
-                return feedbackSoundUrlCache.get(normalizedKey);
-            }
-            for (const extension of FEEDBACK_SOUND_CANDIDATE_EXTENSIONS) {
-                const candidateUrl = `/audio/feedback/${normalizedKey}.${extension}`;
-                try {
-                    const response = await fetch(candidateUrl, { method: 'HEAD' });
-                    if (response.ok) {
-                        feedbackSoundUrlCache.set(normalizedKey, candidateUrl);
-                        return candidateUrl;
-                    }
-                } catch {
-                    // 次の拡張子を試す
-                }
-            }
-            feedbackSoundUrlCache.set(normalizedKey, '');
-            return '';
-        }
-
-        async function playTapGoalSound(soundKey) {
-            const soundUrl = await resolveFeedbackSoundUrl(soundKey);
-            if (!soundUrl) return;
-            const audio = new Audio(soundUrl);
-            audio.preload = 'auto';
-            try {
-                await audio.play();
-            } catch {
+        function playTapGoalSound(url, volume) {
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
+            audio.play().catch(() => {
                 // 自動再生ブロック等は無視
-            }
+            });
         }
 
         function escapeHtml(s) {
@@ -294,7 +267,7 @@
 
         socket.on('widgets:tap-goal:updated', applyPayload);
         socket.on('widgets:tap-goal:reached', (payload) => {
-            playTapGoalSound(payload?.soundKey).catch(() => {});
+            playTapGoalSound(payload?.url, payload?.volume);
         });
     </script>
 </body>

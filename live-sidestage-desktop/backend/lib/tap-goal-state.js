@@ -4,30 +4,16 @@ const {
     WIDGET_TAP_GOAL_SETTINGS_STATE_KEY,
     WIDGET_TAP_GOAL_PROGRESS_STATE_KEY,
 } = require('./constants');
+const { normalizeSoundAsset } = require('./effect-helpers');
 
 const DEFAULT_TAP_GOAL_SETTINGS = {
     targetCount: 100,
     orientation: 'horizontal',
     headingText: 'タップチャレンジ',
     soundEnabled: true,
-    soundKey: 'business08',
+    sound: { name: '', url: '' },
+    soundVolume: 100,
 };
-
-const ALLOWED_TAP_GOAL_SOUND_KEYS = new Set([
-    'business08',
-    'business09',
-    'business10',
-    'business11',
-    'bush-warbler',
-    'cow',
-    'hyoshigi',
-    'xylophone',
-    'glocken01',
-    'glocken02',
-    'glocken03',
-    'electronic-chime02',
-    'electronic-chime03',
-]);
 
 module.exports = function createTapGoalState({
     getScopedStateValue, setScopedStateValue,
@@ -43,14 +29,15 @@ function normalizeTapGoalSettings(value) {
 
     const targetCount = Number.parseInt(String(source.targetCount ?? ''), 10);
     const orientation = String(source.orientation || '').trim().toLowerCase();
-    const soundKey = String(source.soundKey || '').trim().toLowerCase();
+    const soundVolume = Number.parseInt(String(source.soundVolume ?? ''), 10);
 
     return {
         targetCount: Number.isInteger(targetCount) && targetCount >= 1 ? Math.min(targetCount, 1000000) : DEFAULT_TAP_GOAL_SETTINGS.targetCount,
         orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
         headingText: String(source.headingText ?? '').trim().slice(0, 40) || DEFAULT_TAP_GOAL_SETTINGS.headingText,
         soundEnabled: source.soundEnabled !== false,
-        soundKey: ALLOWED_TAP_GOAL_SOUND_KEYS.has(soundKey) ? soundKey : DEFAULT_TAP_GOAL_SETTINGS.soundKey,
+        sound: normalizeSoundAsset(source.sound),
+        soundVolume: Number.isInteger(soundVolume) ? Math.max(0, Math.min(100, soundVolume)) : DEFAULT_TAP_GOAL_SETTINGS.soundVolume,
     };
 }
 

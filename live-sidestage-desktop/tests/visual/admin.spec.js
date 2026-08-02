@@ -168,6 +168,12 @@ test.describe('widgets.html: モーダルが開ける', () => {
     test('timer-myinstants-modal', async ({ page }) => {
         await page.click('[data-panel-id="timer-settings-panel"]');
         await page.click('#timer-myinstants-button');
-        await expect(page.locator('#timer-myinstants-modal')).toHaveClass(/is-open/);
+        await expect(page.locator('#myinstants-modal')).toHaveClass(/is-open/);
+    });
+
+    test('tap-goal-myinstants-modal', async ({ page }) => {
+        await page.click('[data-panel-id="tap-goal-settings-panel"]');
+        await page.click('#tap-goal-myinstants-button');
+        await expect(page.locator('#myinstants-modal')).toHaveClass(/is-open/);
     });
 });

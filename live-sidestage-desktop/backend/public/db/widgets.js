@@ -37,7 +37,12 @@
         const tapGoalOrientationSelect = document.getElementById('tap-goal-orientation');
         const tapGoalHeadingTextInput = document.getElementById('tap-goal-heading-text');
         const tapGoalTargetCountInput = document.getElementById('tap-goal-target-count');
-        const tapGoalSoundKeySelect = document.getElementById('tap-goal-sound-key');
+        const tapGoalSoundPickerButton = document.getElementById('tap-goal-myinstants-button');
+        const tapGoalSoundPreviewButton = document.getElementById('tap-goal-sound-preview-button');
+        const tapGoalSoundClearButton = document.getElementById('tap-goal-sound-clear-button');
+        const tapGoalSoundNameEl = document.getElementById('tap-goal-sound-name');
+        const tapGoalSoundVolumeInput = document.getElementById('tap-goal-sound-volume');
+        const tapGoalSoundVolumeValueEl = document.getElementById('tap-goal-sound-volume-value');
         const tapGoalUrl = document.getElementById('tap-goal-url');
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
@@ -58,11 +63,11 @@
         const timerPreviewFrame = document.getElementById('timer-preview-frame');
         const timerStatusLabel = document.getElementById('timer-status-label');
         const timerSuggestPanel = document.getElementById('timer-suggest-panel');
-        const timerMyinstantsModal = document.getElementById('timer-myinstants-modal');
-        const timerMyinstantsSearchInput = document.getElementById('timer-myinstants-search-input');
-        const timerMyinstantsSearchButton = document.getElementById('timer-myinstants-search-button');
-        const timerMyinstantsStatus = document.getElementById('timer-myinstants-status');
-        const timerMyinstantsResults = document.getElementById('timer-myinstants-results');
+        const myinstantsModal = document.getElementById('myinstants-modal');
+        const myinstantsSearchInput = document.getElementById('myinstants-search-input');
+        const myinstantsSearchButton = document.getElementById('myinstants-search-button');
+        const myinstantsStatus = document.getElementById('myinstants-status');
+        const myinstantsResults = document.getElementById('myinstants-results');
         const goalGiftFontSelect = document.getElementById('goal-gift-font');
         const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
         const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
@@ -1569,18 +1574,11 @@
             tapGoalOrientationSelect.value = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
             tapGoalHeadingTextInput.value = settings.headingText || '';
             tapGoalTargetCountInput.value = String(Number.parseInt(String(settings.targetCount ?? 100), 10) || 100);
-            syncTapGoalSoundKeyControl(settings.soundKey);
+            tapGoalSoundNameEl.textContent = settings.sound?.name || '未設定';
+            const volume = Number.isInteger(settings.soundVolume) ? settings.soundVolume : 100;
+            tapGoalSoundVolumeInput.value = String(volume);
+            tapGoalSoundVolumeValueEl.textContent = `${volume}%`;
             refreshTapGoalPreview();
-        }
-
-        function syncTapGoalSoundKeyControl(soundKey) {
-            const normalizedKey = sharedFeedbackSoundOptionMap.has(String(soundKey || '').toLowerCase())
-                ? String(soundKey).toLowerCase()
-                : 'business08';
-            tapGoalSoundKeySelect.innerHTML = sharedFeedbackSoundOptions.map((option) => `
-                <option value="${escapeHtml(option.key)}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
-            `).join('');
-            tapGoalSoundKeySelect.value = normalizedKey;
         }
 
         function buildTapGoalPreviewUrl() {
@@ -1609,7 +1607,8 @@
                 orientation: tapGoalOrientationSelect.value === 'vertical' ? 'vertical' : 'horizontal',
                 headingText: tapGoalHeadingTextInput.value,
                 targetCount: Number.parseInt(tapGoalTargetCountInput.value, 10) || 100,
-                soundKey: tapGoalSoundKeySelect.value || 'business08',
+                sound: state.tapGoalSettings?.sound || { name: '', url: '' },
+                soundVolume: Number.parseInt(tapGoalSoundVolumeInput.value, 10) || 100,
                 appearance: {
                     fontKey: normalizeDisplayFontKey(tapGoalFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(tapGoalTextStyleSelect.value),
@@ -1972,30 +1971,35 @@
         timerStrokeWidthInput.addEventListener('input', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerStrokeWidthInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
-        // --- タイマー終了サウンド（myinstants検索） ---
-        function openTimerMyinstantsModal() {
-            closeTimerSuggestPanel();
-            timerMyinstantsSearchInput.value = '';
-            timerMyinstantsStatus.textContent = '';
-            timerMyinstantsResults.innerHTML = '';
-            timerMyinstantsModal.classList.add('is-open');
-            timerMyinstantsModal.setAttribute('aria-hidden', 'false');
-            timerMyinstantsSearchInput.focus();
+        // --- myinstants.com 音声ピッカー（複数機能で共有） ---
+        // 使い方: openMyinstantsPicker({ eventIdHint, onImported: (asset) => { ... } })
+        // asset は { name, url } (取り込み後にサーバー側で保存されたローカルアセット)
+        let myinstantsPickerContext = null;
+
+        function openMyinstantsPicker({ eventIdHint = 'sound', onImported }) {
+            myinstantsPickerContext = { eventIdHint, onImported };
+            myinstantsSearchInput.value = '';
+            myinstantsStatus.textContent = '';
+            myinstantsResults.innerHTML = '';
+            myinstantsModal.classList.add('is-open');
+            myinstantsModal.setAttribute('aria-hidden', 'false');
+            myinstantsSearchInput.focus();
         }
 
-        function closeTimerMyinstantsModal() {
-            timerMyinstantsModal.classList.remove('is-open');
-            timerMyinstantsModal.setAttribute('aria-hidden', 'true');
+        function closeMyinstantsPicker() {
+            myinstantsModal.classList.remove('is-open');
+            myinstantsModal.setAttribute('aria-hidden', 'true');
+            myinstantsPickerContext = null;
         }
 
-        function renderTimerMyinstantsResults(results) {
+        function renderMyinstantsResults(results) {
             if (!results.length) {
-                timerMyinstantsResults.innerHTML = '';
-                timerMyinstantsStatus.textContent = '該当するサウンドが見つかりませんでした。';
+                myinstantsResults.innerHTML = '';
+                myinstantsStatus.textContent = '該当するサウンドが見つかりませんでした。';
                 return;
             }
-            timerMyinstantsStatus.textContent = `${results.length}件見つかりました。`;
-            timerMyinstantsResults.innerHTML = results.map((result, index) => `
+            myinstantsStatus.textContent = `${results.length}件見つかりました。`;
+            myinstantsResults.innerHTML = results.map((result, index) => `
                 <div class="myinstants-result-item">
                     <span class="myinstants-result-name">${escapeHtml(result.name)}</span>
                     <div class="myinstants-result-actions">
@@ -2005,7 +2009,7 @@
                 </div>
             `).join('');
 
-            timerMyinstantsResults.querySelectorAll('[data-preview-index]').forEach((button) => {
+            myinstantsResults.querySelectorAll('[data-preview-index]').forEach((button) => {
                 button.addEventListener('click', () => {
                     const result = results[Number(button.dataset.previewIndex)];
                     if (!result) return;
@@ -2013,13 +2017,14 @@
                 });
             });
 
-            timerMyinstantsResults.querySelectorAll('[data-import-index]').forEach((button) => {
+            myinstantsResults.querySelectorAll('[data-import-index]').forEach((button) => {
                 button.addEventListener('click', async () => {
                     const result = results[Number(button.dataset.importIndex)];
-                    if (!result) return;
-                    timerMyinstantsStatus.textContent = `${result.name} を取り込み中です。`;
+                    const context = myinstantsPickerContext;
+                    if (!result || !context) return;
+                    myinstantsStatus.textContent = `${result.name} を取り込み中です。`;
                     try {
-                        const params = `?eventId=${encodeURIComponent('timer-end-sound')}`;
+                        const params = `?eventId=${encodeURIComponent(context.eventIdHint)}`;
                         const response = await fetch(`/api/effects/myinstants/import${params}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2027,42 +2032,81 @@
                         });
                         const payload = await response.json();
                         if (!payload.ok) throw new Error(payload.error || '音声の取り込みに失敗しました。');
-                        state.timerSettings = { ...state.timerSettings, endSound: { name: payload.asset.name, url: payload.asset.url } };
-                        timerEndSoundNameEl.textContent = payload.asset.name;
-                        closeTimerMyinstantsModal();
-                        saveTimerSettingsImmediately().catch(() => {});
+                        context.onImported?.(payload.asset);
+                        closeMyinstantsPicker();
                     } catch (error) {
-                        timerMyinstantsStatus.textContent = error.message || '音声の取り込みに失敗しました。';
+                        myinstantsStatus.textContent = error.message || '音声の取り込みに失敗しました。';
                     }
                 });
             });
         }
 
-        async function runTimerMyinstantsSearch() {
-            const query = timerMyinstantsSearchInput.value.trim();
+        async function runMyinstantsSearch() {
+            const query = myinstantsSearchInput.value.trim();
             if (!query) {
-                timerMyinstantsStatus.textContent = 'キーワードを入力してください。';
+                myinstantsStatus.textContent = 'キーワードを入力してください。';
                 return;
             }
-            timerMyinstantsStatus.textContent = '検索中です。';
-            timerMyinstantsResults.innerHTML = '';
+            myinstantsStatus.textContent = '検索中です。';
+            myinstantsResults.innerHTML = '';
             try {
                 const response = await fetch(`/api/effects/myinstants/search?q=${encodeURIComponent(query)}`);
                 const payload = await response.json();
                 if (!payload.ok) throw new Error(payload.error || '検索に失敗しました。');
-                renderTimerMyinstantsResults(payload.results || []);
+                renderMyinstantsResults(payload.results || []);
             } catch (error) {
-                timerMyinstantsStatus.textContent = error.message || '検索に失敗しました。';
+                myinstantsStatus.textContent = error.message || '検索に失敗しました。';
             }
         }
 
-        timerEndSoundPickerButton.addEventListener('click', openTimerMyinstantsModal);
-        timerMyinstantsSearchButton.addEventListener('click', runTimerMyinstantsSearch);
-        timerMyinstantsSearchInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') { event.preventDefault(); runTimerMyinstantsSearch(); }
+        myinstantsSearchButton.addEventListener('click', runMyinstantsSearch);
+        myinstantsSearchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); runMyinstantsSearch(); }
         });
-        document.querySelectorAll('[data-action="close-timer-myinstants-modal"]').forEach((button) => {
-            button.addEventListener('click', closeTimerMyinstantsModal);
+        document.querySelectorAll('[data-action="close-myinstants-modal"]').forEach((button) => {
+            button.addEventListener('click', closeMyinstantsPicker);
+        });
+
+        timerEndSoundPickerButton.addEventListener('click', () => {
+            closeTimerSuggestPanel();
+            openMyinstantsPicker({
+                eventIdHint: 'timer-end-sound',
+                onImported: (asset) => {
+                    state.timerSettings = { ...state.timerSettings, endSound: { name: asset.name, url: asset.url } };
+                    timerEndSoundNameEl.textContent = asset.name;
+                    saveTimerSettingsImmediately().catch(() => {});
+                }
+            });
+        });
+
+        tapGoalSoundPickerButton.addEventListener('click', () => {
+            openMyinstantsPicker({
+                eventIdHint: 'tap-goal-sound',
+                onImported: (asset) => {
+                    state.tapGoalSettings = { ...state.tapGoalSettings, sound: { name: asset.name, url: asset.url } };
+                    tapGoalSoundNameEl.textContent = asset.name;
+                    saveTapGoalSettingsImmediately().catch(() => {});
+                }
+            });
+        });
+
+        tapGoalSoundPreviewButton.addEventListener('click', () => {
+            const url = state.tapGoalSettings?.sound?.url;
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(tapGoalSoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
+        });
+
+        tapGoalSoundVolumeInput.addEventListener('input', () => {
+            tapGoalSoundVolumeValueEl.textContent = `${tapGoalSoundVolumeInput.value}%`;
+        });
+        tapGoalSoundVolumeInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+
+        tapGoalSoundClearButton.addEventListener('click', () => {
+            state.tapGoalSettings = { ...state.tapGoalSettings, sound: { name: '', url: '' } };
+            tapGoalSoundNameEl.textContent = '未設定';
+            saveTapGoalSettingsImmediately().catch(() => {});
         });
 
         timerEndSoundPreviewButton.addEventListener('click', () => {
@@ -3288,10 +3332,6 @@
         });
         tapGoalHeadingTextInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTargetCountInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
-        tapGoalSoundKeySelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
-        document.getElementById('test-tap-goal-sound-button').addEventListener('click', () => {
-            fetch('/api/widgets/tap-goal/test-sound', { method: 'POST' }).catch(() => {});
-        });
         tapGoalFontSelect.addEventListener('input', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); });
         tapGoalFontSelect.addEventListener('change', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTextStyleSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });

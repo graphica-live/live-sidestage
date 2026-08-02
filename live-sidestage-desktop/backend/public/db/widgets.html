@@ -469,16 +469,24 @@
                                 <label for="tap-goal-target-count">目標タップ数</label>
                                 <input id="tap-goal-target-count" type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="100">
                             </div>
-                            <div class="field">
-                                <label for="tap-goal-sound-key">到達時の通知音</label>
-                                <select id="tap-goal-sound-key"></select>
+                            <div class="field full">
+                                <label>到達時の通知音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="tap-goal-myinstants-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="tap-goal-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="tap-goal-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="tap-goal-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="tap-goal-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="tap-goal-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="action-row">
                         <div class="status" id="tap-goal-progress-label">進捗: 0 / 0</div>
-                        <button type="button" class="ghost-button" id="test-tap-goal-sound-button">通知音を試聴</button>
                         <button type="button" class="ghost-button" id="test-tap-goal-button">タップをテスト送信 (+10)</button>
                         <button type="button" class="ghost-button" id="reset-tap-goal-button">進捗をリセット</button>
                     </div>
@@ -834,27 +842,27 @@
         <div class="push-pull-suggest-panel" id="push-pull-suggest-panel" hidden></div>
         <div class="push-pull-suggest-panel" id="timer-suggest-panel" hidden></div>
 
-        <div class="modal-shell" id="timer-myinstants-modal" aria-hidden="true">
-            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="timer-myinstants-modal-title">
+        <div class="modal-shell" id="myinstants-modal" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
                 <div>
-                    <h2 id="timer-myinstants-modal-title">テンプレートから音声を選ぶ</h2>
+                    <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
                     <p class="subtext"><a href="https://www.myinstants.com/ja/index/jp/" target="_blank" rel="noopener noreferrer">myinstants.com</a> のサウンドを検索して取り込みます。</p>
                 </div>
                 <div class="record-fields modal-fields-vertical">
                     <div class="field full">
                         <label>キーワード検索</label>
                         <div class="modal-inline-row">
-                            <input type="text" id="timer-myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
-                            <button type="button" class="primary" id="timer-myinstants-search-button">検索</button>
+                            <input type="text" id="myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
+                            <button type="button" class="primary" id="myinstants-search-button">検索</button>
                         </div>
                     </div>
                     <div class="field full">
-                        <div class="myinstants-status" id="timer-myinstants-status"></div>
-                        <div class="myinstants-results" id="timer-myinstants-results"></div>
+                        <div class="myinstants-status" id="myinstants-status"></div>
+                        <div class="myinstants-results" id="myinstants-results"></div>
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" data-action="close-timer-myinstants-modal">閉じる</button>
+                    <button type="button" data-action="close-myinstants-modal">閉じる</button>
                 </div>
             </div>
         </div>

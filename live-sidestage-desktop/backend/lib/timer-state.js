@@ -5,6 +5,7 @@ const {
     WIDGET_TIMER_STATE_KEY,
 } = require('./constants');
 const { normalizeEffectText, normalizeWholeNumber, normalizeBooleanInput } = require('./utils');
+const { normalizeSoundAsset } = require('./effect-helpers');
 
 const MAX_TIMER_GIFT_SLOTS = 3;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
@@ -31,16 +32,6 @@ function normalizeSignedMinutes(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isInteger(parsed)) return 0;
     return Math.max(-180, Math.min(180, parsed));
-}
-
-function normalizeTimerSoundAsset(value) {
-    if (!value || typeof value !== 'object') return { name: '', url: '' };
-    const url = String(value.url || '').trim();
-    const isSafeUrl = /^\/sound\/[^\s"'<>]+$/.test(url);
-    return {
-        name: normalizeEffectText(value.name, 120),
-        url: isSafeUrl ? url : '',
-    };
 }
 
 function normalizeTimerSoundVolume(value) {
@@ -85,7 +76,7 @@ function normalizeTimerSettings(value) {
         durationSeconds: durationSeconds !== null ? Math.min(durationSeconds, 59) : DEFAULT_TIMER_SETTINGS.durationSeconds,
         headingText: normalizeEffectText(source.headingText, 40) || DEFAULT_TIMER_SETTINGS.headingText,
         slots,
-        endSound: normalizeTimerSoundAsset(source.endSound),
+        endSound: normalizeSoundAsset(source.endSound),
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
     };
 }

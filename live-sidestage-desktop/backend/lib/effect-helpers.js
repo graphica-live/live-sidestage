@@ -106,6 +106,16 @@ function normalizeAssetUrl(value) {
     return '';
 }
 
+// myinstants取り込み等で保存された { name, url } 形式のサウンドアセットを検証する。
+// タイマーウィジェット・タップ目標ウィジェットなど、複数機能で共通利用する。
+function normalizeSoundAsset(value) {
+    if (!value || typeof value !== 'object') return { name: '', url: '' };
+    return {
+        name: normalizeEffectText(value.name, 120),
+        url: normalizeAssetUrl(value.url),
+    };
+}
+
 function normalizeUserIdList(value) {
     const values = Array.isArray(value)
         ? value
@@ -366,6 +376,7 @@ module.exports = {
     normalizeEffectId,
     normalizeEffectCategoryId,
     normalizeAssetUrl,
+    normalizeSoundAsset,
     normalizeUserIdList,
     normalizeEffectEvent,
     normalizeEffectEvents,

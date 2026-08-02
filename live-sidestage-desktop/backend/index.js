@@ -490,6 +490,16 @@ function buildEffectOverlayUrls(req) {
     }));
 }
 
+function buildTriggerGiftsOverlayUrlBase(req) {
+    const origin = getStudioCompatibleOrigin(req);
+    const loaderOrigin = getLoaderOrigin(req);
+
+    return {
+        url: `${loaderOrigin}/overlays/trigger-gifts`,
+        directUrl: `${origin}/overlays/trigger-gifts`
+    };
+}
+
 function buildWidgetUrls(req) {
     const origin = getStudioCompatibleOrigin(req);
     const loaderOrigin = getLoaderOrigin(req);
@@ -2519,6 +2529,8 @@ require('./lib/routes/effects')({
     getEffectEvents,
     getEffectTriggers,
     buildEffectOverlayUrls,
+    buildTriggerGiftsOverlayUrlBase,
+    cachedTikTokGiftCatalog: tiktokState.giftCatalog,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
@@ -3043,8 +3055,8 @@ function ensureTikTokConnection() {
                 const tapGoalResult = addTapGoalTaps(normalizeWholeNumber(data?.likeCount) || 0);
                 if (tapGoalResult.crossings > 0) {
                     const tapGoalSettings = getWidgetTapGoalSettings();
-                    if (tapGoalSettings.soundEnabled) {
-                        io.emit('widgets:tap-goal:reached', { soundKey: tapGoalSettings.soundKey });
+                    if (tapGoalSettings.soundEnabled && tapGoalSettings.sound?.url) {
+                        io.emit('widgets:tap-goal:reached', { url: tapGoalSettings.sound.url, volume: tapGoalSettings.soundVolume });
                     }
                 }
                 io.emit('widgets:tap-goal:updated', buildTapGoalPayload());
