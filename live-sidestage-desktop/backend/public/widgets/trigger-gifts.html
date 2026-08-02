@@ -74,16 +74,17 @@
         }
 
         .gift-image-wrap {
-            width: 100%;
+            width: var(--gift-image-size);
             height: var(--gift-image-size);
+            max-width: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
         .gift-image {
-            max-width: min(100%, var(--gift-image-size));
-            max-height: 100%;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
         }
 
