@@ -10,7 +10,8 @@ const triggerGiftsBgOpacityValue = document.getElementById('trigger-gifts-bg-opa
 const triggerGiftsColumnsInput = document.getElementById('trigger-gifts-columns');
 const triggerGiftsRowsInput = document.getElementById('trigger-gifts-rows');
 const triggerGiftsSlideEnabledInput = document.getElementById('trigger-gifts-slide-enabled');
-const triggerGiftsSlideIntervalInput = document.getElementById('trigger-gifts-slide-interval');
+const triggerGiftsSlideSpeedInput = document.getElementById('trigger-gifts-slide-speed');
+const triggerGiftsSlideSpeedValue = document.getElementById('trigger-gifts-slide-speed-value');
 const triggerGiftsSlideDirectionSelect = document.getElementById('trigger-gifts-slide-direction');
 
 const TRIGGER_GIFTS_FONT_OPTIONS = [
@@ -101,7 +102,8 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsColumnsInput.value = String(appearance.columns ?? 3);
         triggerGiftsRowsInput.value = String(appearance.rows ?? 2);
         triggerGiftsSlideEnabledInput.checked = Boolean(appearance.slideEnabled);
-        triggerGiftsSlideIntervalInput.value = String(appearance.slideIntervalSeconds ?? 5);
+        triggerGiftsSlideSpeedInput.value = String(appearance.slideSpeed ?? 60);
+        triggerGiftsSlideSpeedValue.textContent = `${triggerGiftsSlideSpeedInput.value}px/秒`;
         triggerGiftsSlideDirectionSelect.value = appearance.slideDirection || 'left';
     } catch {
         // 読み込み失敗時は既定値のまま
@@ -124,7 +126,7 @@ async function saveTriggerGiftsAppearance() {
                     columns: triggerGiftsColumnsInput.value,
                     rows: triggerGiftsRowsInput.value,
                     slideEnabled: triggerGiftsSlideEnabledInput.checked,
-                    slideIntervalSeconds: triggerGiftsSlideIntervalInput.value,
+                    slideSpeed: triggerGiftsSlideSpeedInput.value,
                     slideDirection: triggerGiftsSlideDirectionSelect.value
                 }
             })
@@ -154,7 +156,10 @@ triggerGiftsBgOpacityInput.addEventListener('change', saveTriggerGiftsAppearance
 triggerGiftsColumnsInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsRowsInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsSlideEnabledInput.addEventListener('change', saveTriggerGiftsAppearance);
-triggerGiftsSlideIntervalInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsSlideSpeedInput.addEventListener('input', () => {
+    triggerGiftsSlideSpeedValue.textContent = `${triggerGiftsSlideSpeedInput.value}px/秒`;
+});
+triggerGiftsSlideSpeedInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsSlideDirectionSelect.addEventListener('change', saveTriggerGiftsAppearance);
 
 loadTriggerGiftsAppearance();

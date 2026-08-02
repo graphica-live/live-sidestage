@@ -433,11 +433,14 @@
                     <input id="trigger-gifts-rows" type="number" min="1" max="20" step="1" inputmode="numeric" aria-label="行数">
                 </div>
                 <div class="field full">
-                    <label class="toggle"><input type="checkbox" id="trigger-gifts-slide-enabled"><span>スライド表示（あふれた分を自動で切り替え表示）</span></label>
+                    <label class="toggle"><input type="checkbox" id="trigger-gifts-slide-enabled"><span>スライド表示（あふれた分を定速無限スライド）</span></label>
                 </div>
-                <div class="field">
-                    <label for="trigger-gifts-slide-interval">スライド間隔（秒）</label>
-                    <input id="trigger-gifts-slide-interval" type="number" min="1" max="300" step="1" inputmode="numeric" aria-label="スライド間隔（秒）">
+                <div class="field full">
+                    <label for="trigger-gifts-slide-speed">スライド速度（px/秒）</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-slide-speed" min="10" max="300" step="10" value="60" style="flex: 1;" aria-label="スライド速度">
+                        <span class="subtext" id="trigger-gifts-slide-speed-value" style="margin-top: 0; width: 56px;">60px/秒</span>
+                    </div>
                 </div>
                 <div class="field">
                     <label for="trigger-gifts-slide-direction">スライド方向</label>

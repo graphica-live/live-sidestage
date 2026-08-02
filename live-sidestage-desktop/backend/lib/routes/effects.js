@@ -37,12 +37,12 @@ function normalizeTriggerGiftsGridCount(value, fallback) {
     return Math.min(parsed, 20);
 }
 
-function normalizeTriggerGiftsSlideIntervalSeconds(value) {
+function normalizeTriggerGiftsSlideSpeed(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-        return 5;
+    if (!Number.isInteger(parsed) || parsed < 5) {
+        return 60;
     }
-    return Math.min(parsed, 300);
+    return Math.min(parsed, 500);
 }
 
 function normalizeTriggerGiftsSlideDirection(value) {
@@ -208,7 +208,7 @@ module.exports = function registerEffectsRoutes({
             columns: normalizeTriggerGiftsGridCount(source.columns, 3),
             rows: normalizeTriggerGiftsGridCount(source.rows, 2),
             slideEnabled: Boolean(source.slideEnabled),
-            slideIntervalSeconds: normalizeTriggerGiftsSlideIntervalSeconds(source.slideIntervalSeconds),
+            slideSpeed: normalizeTriggerGiftsSlideSpeed(source.slideSpeed),
             slideDirection: normalizeTriggerGiftsSlideDirection(source.slideDirection)
         };
     }
