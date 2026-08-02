@@ -15,6 +15,7 @@
             --stroke-width: 3px;
             --name-font-size: 20px;
             --card-min-width: 200px;
+            --card-min-height: 210px;
             --gift-image-height: 132px;
         }
 
@@ -42,8 +43,12 @@
         }
 
         .grid.is-column {
-            grid-template-columns: 1fr;
-            max-width: var(--card-min-width);
+            height: calc(100vh - 48px);
+            grid-auto-flow: column;
+            grid-template-columns: none;
+            grid-template-rows: repeat(auto-fill, minmax(var(--card-min-height), max-content));
+            justify-content: start;
+            align-content: start;
         }
 
         .card {
@@ -53,7 +58,7 @@
             gap: 10px;
             padding: 16px 12px;
             border-radius: 20px;
-            background: linear-gradient(180deg, rgba(36, 40, 48, 0.46) 0%, rgba(20, 22, 28, 0.52) 100%);
+            background: linear-gradient(180deg, rgba(36, 40, 48, var(--card-bg-opacity, 0.46)) 0%, rgba(20, 22, 28, calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
             border: 1px solid rgba(255, 255, 255, 0.09);
             backdrop-filter: blur(14px) saturate(140%);
             -webkit-backdrop-filter: blur(14px) saturate(140%);
@@ -196,6 +201,8 @@
             const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
             const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
             const fontSize = Math.max(12, Math.min(48, Number(appearance.fontSize) || 20));
+            const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
+            const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
             const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
             const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
             const root = document.documentElement.style;
@@ -204,6 +211,7 @@
             root.setProperty('--stroke', textStyle.strokeColor);
             root.setProperty('--stroke-width', strokeWidth + 'px');
             root.setProperty('--name-font-size', fontSize + 'px');
+            root.setProperty('--card-bg-opacity', String(backgroundOpacity));
             gridEl.classList.toggle('is-column', String(appearance.layout || '').trim().toLowerCase() === 'column');
         }
 

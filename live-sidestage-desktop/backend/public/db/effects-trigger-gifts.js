@@ -5,6 +5,7 @@ const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
 const triggerGiftsLayoutSelect = document.getElementById('trigger-gifts-layout');
+const triggerGiftsBgOpacityInput = document.getElementById('trigger-gifts-bg-opacity');
 
 const TRIGGER_GIFTS_FONT_OPTIONS = [
     { key: 'default', label: 'M PLUS Rounded 1c', family: '"M PLUS Rounded 1c", sans-serif' },
@@ -89,6 +90,7 @@ async function loadTriggerGiftsAppearance() {
         triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 3);
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
         triggerGiftsLayoutSelect.value = appearance.layout === 'column' ? 'column' : 'grid';
+        triggerGiftsBgOpacityInput.value = String(appearance.backgroundOpacity ?? 46);
     } catch {
         // 読み込み失敗時は既定値のまま
     }
@@ -105,7 +107,8 @@ async function saveTriggerGiftsAppearance() {
                     textStyleKey: triggerGiftsTextStyleSelect.value,
                     strokeWidth: triggerGiftsStrokeWidthInput.value,
                     fontSize: triggerGiftsFontSizeInput.value,
-                    layout: triggerGiftsLayoutSelect.value
+                    layout: triggerGiftsLayoutSelect.value,
+                    backgroundOpacity: triggerGiftsBgOpacityInput.value
                 }
             })
         });
@@ -127,5 +130,6 @@ triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearanc
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsLayoutSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsBgOpacityInput.addEventListener('change', saveTriggerGiftsAppearance);
 
 loadTriggerGiftsAppearance();
