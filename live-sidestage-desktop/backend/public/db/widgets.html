@@ -469,15 +469,16 @@
                                 <label for="tap-goal-target-count">目標タップ数</label>
                                 <input id="tap-goal-target-count" type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="100">
                             </div>
-                            <div class="field full">
-                                <label for="tap-goal-effect-event">到達時に発火するエフェクトイベント</label>
-                                <select id="tap-goal-effect-event"><option value="">未選択</option></select>
+                            <div class="field">
+                                <label for="tap-goal-sound-key">到達時の通知音</label>
+                                <select id="tap-goal-sound-key"></select>
                             </div>
                         </div>
                     </div>
 
                     <div class="action-row">
                         <div class="status" id="tap-goal-progress-label">進捗: 0 / 0</div>
+                        <button type="button" class="ghost-button" id="test-tap-goal-sound-button">通知音を試聴</button>
                         <button type="button" class="ghost-button" id="test-tap-goal-button">タップをテスト送信 (+10)</button>
                         <button type="button" class="ghost-button" id="reset-tap-goal-button">進捗をリセット</button>
                     </div>

@@ -9,8 +9,25 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     targetCount: 100,
     orientation: 'horizontal',
     headingText: 'タップチャレンジ',
-    effectEventId: '',
+    soundEnabled: true,
+    soundKey: 'business08',
 };
+
+const ALLOWED_TAP_GOAL_SOUND_KEYS = new Set([
+    'business08',
+    'business09',
+    'business10',
+    'business11',
+    'bush-warbler',
+    'cow',
+    'hyoshigi',
+    'xylophone',
+    'glocken01',
+    'glocken02',
+    'glocken03',
+    'electronic-chime02',
+    'electronic-chime03',
+]);
 
 module.exports = function createTapGoalState({
     getScopedStateValue, setScopedStateValue,
@@ -26,13 +43,14 @@ function normalizeTapGoalSettings(value) {
 
     const targetCount = Number.parseInt(String(source.targetCount ?? ''), 10);
     const orientation = String(source.orientation || '').trim().toLowerCase();
-    const effectEventId = String(source.effectEventId || '').trim().slice(0, 80);
+    const soundKey = String(source.soundKey || '').trim().toLowerCase();
 
     return {
         targetCount: Number.isInteger(targetCount) && targetCount >= 1 ? Math.min(targetCount, 1000000) : DEFAULT_TAP_GOAL_SETTINGS.targetCount,
         orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
         headingText: String(source.headingText ?? '').trim().slice(0, 40) || DEFAULT_TAP_GOAL_SETTINGS.headingText,
-        effectEventId,
+        soundEnabled: source.soundEnabled !== false,
+        soundKey: ALLOWED_TAP_GOAL_SOUND_KEYS.has(soundKey) ? soundKey : DEFAULT_TAP_GOAL_SETTINGS.soundKey,
     };
 }
 

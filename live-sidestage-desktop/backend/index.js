@@ -2648,7 +2648,6 @@ require('./lib/routes/widgets/goal-gifts')({
 
 require('./lib/routes/widgets/tap-goal')({
     app, io,
-    getEffectEvents, emitEffectPlayback,
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
@@ -3044,11 +3043,8 @@ function ensureTikTokConnection() {
                 const tapGoalResult = addTapGoalTaps(normalizeWholeNumber(data?.likeCount) || 0);
                 if (tapGoalResult.crossings > 0) {
                     const tapGoalSettings = getWidgetTapGoalSettings();
-                    const tapGoalEffectEvent = getEffectEvents().find((e) => e.id === tapGoalSettings.effectEventId);
-                    if (tapGoalEffectEvent) {
-                        for (let i = 0; i < tapGoalResult.crossings; i++) {
-                            emitEffectPlayback(tapGoalEffectEvent, null, normalizedComment);
-                        }
+                    if (tapGoalSettings.soundEnabled) {
+                        io.emit('widgets:tap-goal:reached', { soundKey: tapGoalSettings.soundKey });
                     }
                 }
                 io.emit('widgets:tap-goal:updated', buildTapGoalPayload());

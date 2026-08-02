@@ -37,7 +37,7 @@
         const tapGoalOrientationSelect = document.getElementById('tap-goal-orientation');
         const tapGoalHeadingTextInput = document.getElementById('tap-goal-heading-text');
         const tapGoalTargetCountInput = document.getElementById('tap-goal-target-count');
-        const tapGoalEffectEventSelect = document.getElementById('tap-goal-effect-event');
+        const tapGoalSoundKeySelect = document.getElementById('tap-goal-sound-key');
         const tapGoalUrl = document.getElementById('tap-goal-url');
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
@@ -1569,8 +1569,18 @@
             tapGoalOrientationSelect.value = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
             tapGoalHeadingTextInput.value = settings.headingText || '';
             tapGoalTargetCountInput.value = String(Number.parseInt(String(settings.targetCount ?? 100), 10) || 100);
-            tapGoalEffectEventSelect.value = settings.effectEventId || '';
+            syncTapGoalSoundKeyControl(settings.soundKey);
             refreshTapGoalPreview();
+        }
+
+        function syncTapGoalSoundKeyControl(soundKey) {
+            const normalizedKey = sharedFeedbackSoundOptionMap.has(String(soundKey || '').toLowerCase())
+                ? String(soundKey).toLowerCase()
+                : 'business08';
+            tapGoalSoundKeySelect.innerHTML = sharedFeedbackSoundOptions.map((option) => `
+                <option value="${escapeHtml(option.key)}" ${option.key === normalizedKey ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+            `).join('');
+            tapGoalSoundKeySelect.value = normalizedKey;
         }
 
         function buildTapGoalPreviewUrl() {
@@ -1594,27 +1604,12 @@
             tapGoalProgressLabel.textContent = `進捗: ${count.toLocaleString()} / ${target.toLocaleString()}`;
         }
 
-        async function loadTapGoalEffectEventOptions(selectedId) {
-            try {
-                const response = await fetch('/api/effects/config');
-                const payload = await response.json();
-                const events = Array.isArray(payload.events) ? payload.events : [];
-                const options = ['<option value="">未選択</option>'].concat(
-                    events.map((ev) => `<option value="${escapeHtml(ev.id)}">${escapeHtml(ev.name || ev.id)}</option>`)
-                );
-                tapGoalEffectEventSelect.innerHTML = options.join('');
-                tapGoalEffectEventSelect.value = selectedId || '';
-            } catch {
-                tapGoalEffectEventSelect.innerHTML = '<option value="">未選択</option>';
-            }
-        }
-
         function getDraftTapGoalSettings() {
             return {
                 orientation: tapGoalOrientationSelect.value === 'vertical' ? 'vertical' : 'horizontal',
                 headingText: tapGoalHeadingTextInput.value,
                 targetCount: Number.parseInt(tapGoalTargetCountInput.value, 10) || 100,
-                effectEventId: tapGoalEffectEventSelect.value || '',
+                soundKey: tapGoalSoundKeySelect.value || 'business08',
                 appearance: {
                     fontKey: normalizeDisplayFontKey(tapGoalFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(tapGoalTextStyleSelect.value),
@@ -2767,7 +2762,6 @@
             applyLikeContributionSettingsToForm(state.likeContributionSettings);
             applyTapListSettingsToForm(state.tapListSettings);
             applyTapGoalSettingsToForm(state.tapGoalSettings);
-            loadTapGoalEffectEventOptions(state.tapGoalSettings?.effectEventId).catch(() => {});
             updateTapGoalProgressLabel();
             applyTimerSettingsToForm(state.timerSettings);
             updateTimerStatusLabel();
@@ -3294,7 +3288,10 @@
         });
         tapGoalHeadingTextInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTargetCountInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
-        tapGoalEffectEventSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalSoundKeySelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        document.getElementById('test-tap-goal-sound-button').addEventListener('click', () => {
+            fetch('/api/widgets/tap-goal/test-sound', { method: 'POST' }).catch(() => {});
+        });
         tapGoalFontSelect.addEventListener('input', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); });
         tapGoalFontSelect.addEventListener('change', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTextStyleSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });

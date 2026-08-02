@@ -2,18 +2,13 @@
 
 module.exports = function registerTapGoalRoutes({
     app, io,
-    getEffectEvents, emitEffectPlayback,
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
 }) {
-    function fireTapGoalEffect(effectEventId, crossings) {
-        if (crossings <= 0 || !effectEventId) return;
-        const effectEvent = getEffectEvents().find((e) => e.id === effectEventId);
-        if (!effectEvent) return;
-        for (let i = 0; i < crossings; i++) {
-            emitEffectPlayback(effectEvent, null, null);
-        }
+    function emitTapGoalReached(settings) {
+        if (!settings.soundEnabled) return;
+        io.emit('widgets:tap-goal:reached', { soundKey: settings.soundKey });
     }
 
     app.get('/api/widgets/tap-goal/config', (req, res) => {
@@ -40,9 +35,17 @@ module.exports = function registerTapGoalRoutes({
         const result = addTapGoalTaps(amount);
         const payload = buildTapGoalPayload();
 
-        fireTapGoalEffect(payload.settings.effectEventId, result.crossings);
+        if (result.crossings > 0) {
+            emitTapGoalReached(payload.settings);
+        }
 
         io.emit('widgets:tap-goal:updated', payload);
+        res.json({ ok: true, ...payload });
+    });
+
+    app.post('/api/widgets/tap-goal/test-sound', (req, res) => {
+        const payload = buildTapGoalPayload();
+        io.emit('widgets:tap-goal:reached', { soundKey: payload.settings.soundKey });
         res.json({ ok: true, ...payload });
     });
 };
