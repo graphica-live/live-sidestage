@@ -277,10 +277,10 @@
         // メーターの根本から上方向 ±10度 の範囲でランダムにハートを拡散させる
         function spawnTapGoalHeart() {
             const angleDeg = (Math.random() * 20) - 10;
-            const travel = 90 + Math.random() * 60;
+            const travel = 180 + Math.random() * 100;
             const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
             const size = 16 + Math.random() * 14;
-            const duration = 1100 + Math.random() * 500;
+            const duration = 1500 + Math.random() * 600;
 
             const heartEl = document.createElement('div');
             heartEl.className = 'heart-particle';
