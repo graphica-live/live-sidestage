@@ -12,6 +12,8 @@ module.exports = function registerEffectsRoutes({
     getEffectEvents,
     getEffectTriggers,
     buildEffectOverlayUrls,
+    buildTriggerGiftsOverlayUrlBase,
+    cachedTikTokGiftCatalog,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
@@ -46,6 +48,7 @@ module.exports = function registerEffectsRoutes({
         const categories = setEffectCategories([...getEffectCategories(), { id, name }]);
         const category = categories.find((item) => item.id === id);
 
+        io.emit('effects:trigger-gifts:updated', {});
         return res.json({ ok: true, categories, category });
     });
 
@@ -76,6 +79,7 @@ module.exports = function registerEffectsRoutes({
 
         const categories = setEffectCategories(existing.map((item) => item.id === id ? { ...item, ...updates } : item));
 
+        io.emit('effects:trigger-gifts:updated', {});
         return res.json({ ok: true, categories });
     });
 
@@ -94,6 +98,7 @@ module.exports = function registerEffectsRoutes({
             item.categoryId === id ? { ...item, categoryId: EFFECT_DEFAULT_CATEGORY_ID } : item));
         const categories = setEffectCategories(existing.filter((item) => item.id !== id));
 
+        io.emit('effects:trigger-gifts:updated', {});
         return res.json({ ok: true, categories, events, triggers });
     });
 
@@ -123,7 +128,36 @@ module.exports = function registerEffectsRoutes({
         res.json({
             events: getEffectEvents(),
             triggers: getEffectTriggers(),
-            screenUrls: buildEffectOverlayUrls(req)
+            screenUrls: buildEffectOverlayUrls(req),
+            triggerGiftsOverlayUrlBase: buildTriggerGiftsOverlayUrlBase(req)
+        });
+    });
+
+    app.get('/api/effects/trigger-gifts', (req, res) => {
+        const categoryId = String(req.query.category || '').trim() || EFFECT_DEFAULT_CATEGORY_ID;
+        const category = getEffectCategories().find((item) => item.id === categoryId) || null;
+        const catalogGifts = Array.isArray(cachedTikTokGiftCatalog?.gifts) ? cachedTikTokGiftCatalog.gifts : [];
+
+        const items = getEffectTriggers()
+            .filter((trigger) => trigger.enabled
+                && trigger.giftName
+                && (trigger.categoryId || EFFECT_DEFAULT_CATEGORY_ID) === categoryId)
+            .map((trigger) => {
+                const matchedGift = catalogGifts.find((gift) =>
+                    String(gift.name || '').trim().toLowerCase() === trigger.giftName);
+
+                return {
+                    id: trigger.id,
+                    triggerName: trigger.name || matchedGift?.name || trigger.giftName,
+                    giftName: matchedGift?.name || trigger.giftName,
+                    giftImageUrl: matchedGift?.imageUrl || ''
+                };
+            });
+
+        return res.json({
+            ok: true,
+            category: category ? { id: category.id, name: category.name, enabled: category.enabled !== false } : null,
+            items
         });
     });
 
@@ -276,6 +310,7 @@ module.exports = function registerEffectsRoutes({
             }
         }
 
+        io.emit('effects:trigger-gifts:updated', {});
         return res.json({
             ok: true,
             events,

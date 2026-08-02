@@ -233,6 +233,14 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/timer');
     });
 
+    app.get(['/overlays/trigger-gifts', '/overlays/widgets/trigger-gifts'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'trigger-gifts.html'));
+    });
+    app.get(['/overlays/trigger-gifts/index.html', '/overlays/widgets/trigger-gifts/index.html'], (req, res) => {
+        return res.redirect('/overlays/trigger-gifts');
+    });
+
     app.get('/virtualdj', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));

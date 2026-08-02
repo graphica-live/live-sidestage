@@ -69,6 +69,17 @@
         </section>
 
         <section class="panel">
+            <h2>トリガーギフト一覧オーバーレイ</h2>
+            <p class="subtext">このカテゴリの有効なトリガー（ギフト画像 + トリガー名）を一覧表示するオーバーレイです。列数は OBS のブラウザソース解像度に応じて自動調整されます。</p>
+            <div class="url-item" id="trigger-gifts-url-item">
+                <div class="url-label">一覧オーバーレイ</div>
+                <input class="url-value" type="text" id="trigger-gifts-url-value" readonly value="読み込み中">
+                <button type="button" id="trigger-gifts-url-copy-button">URL をコピー</button>
+                <button type="button" id="trigger-gifts-url-preview-button">プレビュー表示</button>
+            </div>
+        </section>
+
+        <section class="panel">
             <h2>URL 一覧</h2>
             <p class="subtext">screen は 10 個固定です。イベント側ではこの screen 番号を指定して再生先を選びます。</p>
             <div class="url-list" id="url-list"></div>

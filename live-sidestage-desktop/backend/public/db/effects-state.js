@@ -80,6 +80,7 @@ let allTriggers = [];
 let currentEvents = [];
 let currentTriggers = [];
 let currentScreenUrls = [];
+let currentTriggerGiftsOverlayUrlBase = null;
 let eventFilterQuery = '';
 let triggerFilterQuery = '';
 let pendingEventModalVideoAsset = null;
@@ -134,11 +135,13 @@ async function loadConfig() {
     currentEvents = allEvents.filter(belongsToCurrentCategory);
     currentTriggers = allTriggers.filter(belongsToCurrentCategory);
     currentScreenUrls = payload.screenUrls || [];
+    currentTriggerGiftsOverlayUrlBase = payload.triggerGiftsOverlayUrlBase || currentTriggerGiftsOverlayUrlBase;
     syncEventModalOptions();
     syncTriggerModalOptions();
     renderEvents();
     renderTriggers();
     renderUrls();
+    renderTriggerGiftsUrl();
 }
 
 async function loadMidiDevices() {

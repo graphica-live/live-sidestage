@@ -276,6 +276,35 @@ function renderTriggers() {
     });
 }
 
+function renderTriggerGiftsUrl() {
+    const valueInput = document.getElementById('trigger-gifts-url-value');
+    const copyButton = document.getElementById('trigger-gifts-url-copy-button');
+    const previewButton = document.getElementById('trigger-gifts-url-preview-button');
+
+    if (!currentTriggerGiftsOverlayUrlBase) {
+        valueInput.value = '読み込み中';
+        return;
+    }
+
+    const overlayUrl = `${currentTriggerGiftsOverlayUrlBase.url}?category=${encodeURIComponent(currentCategoryId)}`;
+    const directOverlayUrl = `${currentTriggerGiftsOverlayUrlBase.directUrl}?category=${encodeURIComponent(currentCategoryId)}`;
+
+    valueInput.value = overlayUrl;
+
+    copyButton.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(overlayUrl);
+            setStatus('トリガーギフト一覧オーバーレイの URL をコピーしました。', 'ok');
+        } catch {
+            setStatus('URL のコピーに失敗しました。', 'error');
+        }
+    };
+
+    previewButton.onclick = () => {
+        window.open(`${directOverlayUrl}&preview=1`, 'trigger-gifts-overlay-preview', 'popup=yes,width=960,height=640');
+    };
+}
+
 function renderUrls() {
     urlList.innerHTML = '';
 
