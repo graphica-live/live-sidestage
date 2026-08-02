@@ -59,6 +59,9 @@
         const timerEndSoundVolumeInput = document.getElementById('timer-end-sound-volume');
         const timerEndSoundVolumeValueEl = document.getElementById('timer-end-sound-volume-value');
         const timerGiftRowsEl = document.getElementById('timer-gift-rows');
+        const timerReversalThresholdInput = document.getElementById('timer-reversal-threshold');
+        const timerReversalThresholdValueEl = document.getElementById('timer-reversal-threshold-value');
+        const timerReversalGiftRowsEl = document.getElementById('timer-reversal-gift-rows');
         const timerUrl = document.getElementById('timer-url');
         const timerPreviewFrame = document.getElementById('timer-preview-frame');
         const timerStatusLabel = document.getElementById('timer-status-label');
@@ -1651,7 +1654,8 @@
 
         const MAX_TIMER_GIFT_SLOTS = 3;
         let timerGiftSlots = [null, null, null];
-        let timerActivePicker = null; // {index, anchorEl}
+        let timerReversalSlots = [null, null, null];
+        let timerActivePicker = null; // {index, anchorEl, type: 'normal'|'reversal'}
         let timerActiveSuggestionIndex = -1;
         let visibleTimerSuggestions = [];
 
@@ -1689,16 +1693,16 @@
                 nameEl.maxLength = 80;
                 nameEl.addEventListener('focus', () => {
                     if (!state.giftCatalog.length) return;
-                    timerActivePicker = { index: i, anchorEl: nameEl };
+                    timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' };
                     renderTimerSuggestItems(nameEl.value);
                 });
                 nameEl.addEventListener('input', () => {
-                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl };
+                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' };
                     renderTimerSuggestItems(nameEl.value);
                 });
                 nameEl.addEventListener('keydown', (e) => {
                     if (timerSuggestPanel.hidden) {
-                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl }; renderTimerSuggestItems(nameEl.value); }
+                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' }; renderTimerSuggestItems(nameEl.value); }
                         return;
                     }
                     if (e.key === 'ArrowDown') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex + 1); }
@@ -1732,10 +1736,103 @@
             }
         }
 
+        function renderTimerReversalGiftRows() {
+            timerReversalGiftRowsEl.innerHTML = '';
+
+            for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
+                const gift = timerReversalSlots[i] || null;
+                const row = document.createElement('div');
+                row.className = 'push-pull-gift-row reversal-row';
+                row.dataset.index = String(i);
+
+                const imgEl = document.createElement('div');
+                imgEl.className = 'push-pull-gift-img' + (gift ? '' : ' empty');
+                imgEl.title = 'ギフトを選ぶ';
+                imgEl.tabIndex = 0;
+                imgEl.setAttribute('role', 'button');
+                if (gift && gift.giftImage) {
+                    const img = document.createElement('img');
+                    img.src = gift.giftImage;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:5px;';
+                    imgEl.appendChild(img);
+                } else {
+                    imgEl.textContent = '+';
+                }
+                imgEl.addEventListener('click', () => nameEl.focus());
+                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nameEl.focus(); } });
+
+                const nameEl = document.createElement('input');
+                nameEl.type = 'text';
+                nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
+                nameEl.value = gift ? gift.giftName : '';
+                nameEl.placeholder = 'ギフトを選ぶ';
+                nameEl.autocomplete = 'off';
+                nameEl.maxLength = 80;
+                nameEl.addEventListener('focus', () => {
+                    if (!state.giftCatalog.length) return;
+                    timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' };
+                    renderTimerSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('input', () => {
+                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' };
+                    renderTimerSuggestItems(nameEl.value);
+                });
+                nameEl.addEventListener('keydown', (e) => {
+                    if (timerSuggestPanel.hidden) {
+                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' }; renderTimerSuggestItems(nameEl.value); }
+                        return;
+                    }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex + 1); }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex - 1); }
+                    else if (e.key === 'Enter') { e.preventDefault(); if (timerActiveSuggestionIndex >= 0 && visibleTimerSuggestions[timerActiveSuggestionIndex]) selectTimerGift(visibleTimerSuggestions[timerActiveSuggestionIndex]); }
+                    else if (e.key === 'Escape') { closeTimerSuggestPanel(); }
+                });
+                nameEl.addEventListener('blur', () => {
+                    window.setTimeout(() => {
+                        if (!timerSuggestPanel.contains(document.activeElement)) closeTimerSuggestPanel();
+                    }, 100);
+                });
+
+                const belowMinutesEl = document.createElement('input');
+                belowMinutesEl.type = 'number';
+                belowMinutesEl.className = 'push-pull-points-input';
+                belowMinutesEl.min = '-180';
+                belowMinutesEl.max = '180';
+                belowMinutesEl.title = '境界未満の場合';
+                belowMinutesEl.placeholder = '未満';
+                belowMinutesEl.value = gift ? String(gift.belowMinutesDelta) : '';
+                belowMinutesEl.addEventListener('change', () => {
+                    if (!timerReversalSlots[i]) return;
+                    timerReversalSlots[i].belowMinutesDelta = Math.max(-180, Math.min(180, parseInt(belowMinutesEl.value, 10) || 0));
+                    scheduleTimerSave();
+                });
+
+                const aboveMinutesEl = document.createElement('input');
+                aboveMinutesEl.type = 'number';
+                aboveMinutesEl.className = 'push-pull-points-input';
+                aboveMinutesEl.min = '-180';
+                aboveMinutesEl.max = '180';
+                aboveMinutesEl.title = '境界以上の場合';
+                aboveMinutesEl.placeholder = '以上';
+                aboveMinutesEl.value = gift ? String(gift.aboveMinutesDelta) : '';
+                aboveMinutesEl.addEventListener('change', () => {
+                    if (!timerReversalSlots[i]) return;
+                    timerReversalSlots[i].aboveMinutesDelta = Math.max(-180, Math.min(180, parseInt(aboveMinutesEl.value, 10) || 0));
+                    scheduleTimerSave();
+                });
+
+                row.appendChild(imgEl);
+                row.appendChild(nameEl);
+                row.appendChild(belowMinutesEl);
+                row.appendChild(aboveMinutesEl);
+                timerReversalGiftRowsEl.appendChild(row);
+            }
+        }
+
         function renderTimerSuggestItems(query) {
             if (!timerActivePicker) return;
-            const { index, anchorEl } = timerActivePicker;
-            const current = timerGiftSlots[index];
+            const { index, anchorEl, type } = timerActivePicker;
+            const current = type === 'reversal' ? timerReversalSlots[index] : timerGiftSlots[index];
             visibleTimerSuggestions = getFilteredPushPullSuggestions(query).slice(0, 80);
             if (!visibleTimerSuggestions.length) { closeTimerSuggestPanel(); return; }
             timerActiveSuggestionIndex = 0;
@@ -1795,7 +1892,21 @@
 
         function selectTimerGift(catalogGift) {
             if (!timerActivePicker) return;
-            const { index } = timerActivePicker;
+            const { index, type } = timerActivePicker;
+            if (type === 'reversal') {
+                const existing = timerReversalSlots[index];
+                timerReversalSlots[index] = {
+                    giftId: String(catalogGift.id || ''),
+                    giftName: String(catalogGift.name || ''),
+                    giftImage: String(catalogGift.imageUrl || ''),
+                    belowMinutesDelta: existing ? existing.belowMinutesDelta : 1,
+                    aboveMinutesDelta: existing ? existing.aboveMinutesDelta : -1,
+                };
+                closeTimerSuggestPanel();
+                renderTimerReversalGiftRows();
+                scheduleTimerSave();
+                return;
+            }
             const existing = timerGiftSlots[index];
             timerGiftSlots[index] = {
                 giftId: String(catalogGift.id || ''),
@@ -1838,6 +1949,14 @@
                 return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
             });
             renderTimerGiftRows();
+            const threshold = Number.parseInt(String(settings.reversalThresholdMinutes ?? 5), 10) || 0;
+            timerReversalThresholdInput.value = String(threshold);
+            timerReversalThresholdValueEl.textContent = `${threshold}分`;
+            timerReversalSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
+                const slot = settings.reversalSlots?.[i];
+                return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, belowMinutesDelta: slot.belowMinutesDelta, aboveMinutesDelta: slot.aboveMinutesDelta } : null;
+            });
+            renderTimerReversalGiftRows();
             refreshTimerPreview();
         }
 
@@ -1886,6 +2005,8 @@
                 durationMinutes: Number.parseInt(timerDurationMinutesInput.value, 10) || 0,
                 durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
                 slots: timerGiftSlots.filter(Boolean).map((g) => ({ ...g })),
+                reversalThresholdMinutes: Number.parseInt(timerReversalThresholdInput.value, 10) || 0,
+                reversalSlots: timerReversalSlots.filter(Boolean).map((g) => ({ ...g })),
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
                 endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
                 appearance: {
@@ -2117,6 +2238,11 @@
             timerEndSoundVolumeValueEl.textContent = `${timerEndSoundVolumeInput.value}%`;
         });
         timerEndSoundVolumeInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+
+        timerReversalThresholdInput.addEventListener('input', () => {
+            timerReversalThresholdValueEl.textContent = `${timerReversalThresholdInput.value}分`;
+        });
+        timerReversalThresholdInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
         timerEndSoundClearButton.addEventListener('click', () => {
             state.timerSettings = { ...state.timerSettings, endSound: { name: '', url: '' } };

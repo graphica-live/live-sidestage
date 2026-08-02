@@ -978,6 +978,10 @@
 
         .push-pull-gift-row:last-child { border-bottom: none; }
 
+        .push-pull-gift-row.reversal-row {
+            grid-template-columns: 32px 1fr 64px 64px;
+        }
+
         .push-pull-gift-img {
             width: 32px;
             height: 32px;
