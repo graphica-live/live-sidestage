@@ -414,9 +414,12 @@
         }
 
         let lastTapGoalCount = null;
+        let lastTapGoalTarget = 1;
+        let isTapGoalCelebrating = false;
+        let pendingTapGoalProgress = null;
+        const TAP_GOAL_CELEBRATION_HOLD_MS = 750; // 点滅(600ms)が完全に終わってからゲージをリセットする
 
-        function applyProgress(progress) {
-            if (!progress) return;
+        function renderTapGoalBar(progress) {
             const target = Math.max(1, Number(progress.target) || 1);
             const count = Math.max(0, Number(progress.count) || 0);
             const ratio = Math.max(0, Math.min(1, count / target));
@@ -428,6 +431,23 @@
                 barFillEl.style.height = '';
             }
             barCountEl.textContent = `${count.toLocaleString()} / ${target.toLocaleString()}`;
+        }
+
+        function forceTapGoalBarFull() {
+            if (widgetEl.dataset.orientation === 'vertical') {
+                barFillEl.style.height = '100%';
+                barFillEl.style.width = '';
+            } else {
+                barFillEl.style.width = '100%';
+                barFillEl.style.height = '';
+            }
+            barCountEl.textContent = `${lastTapGoalTarget.toLocaleString()} / ${lastTapGoalTarget.toLocaleString()}`;
+        }
+
+        function applyProgress(progress) {
+            if (!progress) return;
+            const target = Math.max(1, Number(progress.target) || 1);
+            const count = Math.max(0, Number(progress.count) || 0);
 
             if (lastTapGoalCount !== null) {
                 let increment = count - lastTapGoalCount;
@@ -435,6 +455,14 @@
                 if (increment > 0) spawnTapGoalHearts(increment);
             }
             lastTapGoalCount = count;
+            lastTapGoalTarget = target;
+
+            // 満タン演出(点滅)中はゲージを即リセットせず、演出が終わってから反映する
+            if (isTapGoalCelebrating) {
+                pendingTapGoalProgress = progress;
+                return;
+            }
+            renderTapGoalBar(progress);
         }
 
         function applyPayload(payload) {
@@ -456,6 +484,17 @@
             playTapGoalSound(payload?.url, payload?.volume);
             triggerTapGoalFlash();
             renderTapGoalContributors(payload?.contributors);
+
+            isTapGoalCelebrating = true;
+            forceTapGoalBarFull();
+
+            window.setTimeout(() => {
+                isTapGoalCelebrating = false;
+                if (pendingTapGoalProgress) {
+                    renderTapGoalBar(pendingTapGoalProgress);
+                    pendingTapGoalProgress = null;
+                }
+            }, TAP_GOAL_CELEBRATION_HOLD_MS);
         });
     </script>
 </body>
