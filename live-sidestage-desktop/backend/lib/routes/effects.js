@@ -10,7 +10,7 @@ function normalizeTriggerGiftsFontSize(value) {
     if (!Number.isInteger(parsed) || parsed < 12) {
         return 20;
     }
-    return Math.min(parsed, 48);
+    return Math.min(parsed, 96);
 }
 
 function normalizeTriggerGiftsBackgroundOpacity(value) {
@@ -26,7 +26,7 @@ function normalizeTriggerGiftsImageSize(value) {
     if (!Number.isInteger(parsed) || parsed < 48) {
         return 132;
     }
-    return Math.min(parsed, 400);
+    return Math.min(parsed, 2000);
 }
 
 module.exports = function registerEffectsRoutes({

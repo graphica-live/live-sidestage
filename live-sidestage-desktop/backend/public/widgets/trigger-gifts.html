@@ -212,11 +212,11 @@
             const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
             const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
             const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
-            const fontSize = Math.max(12, Math.min(48, Number(appearance.fontSize) || 20));
+            const fontSize = Math.max(12, Math.min(96, Number(appearance.fontSize) || 20));
             const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
             const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
             const rawGiftImageSize = Number(appearance.giftImageSize);
-            const giftImageSize = Math.max(48, Math.min(400, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
+            const giftImageSize = Math.max(48, Math.min(2000, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
             const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
             const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
             const root = document.documentElement.style;
