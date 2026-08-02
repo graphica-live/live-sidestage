@@ -14,7 +14,15 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     soundEnabled: true,
     sound: { name: '', url: '' },
     soundVolume: 100,
+    soundTarget: 'tap-goal',
 };
+
+function normalizeSoundTarget(value) {
+    const trimmed = String(value || '').trim().toLowerCase();
+    if (trimmed === 'tap-goal') return 'tap-goal';
+    const match = /^screen([1-9]|10)$/.exec(trimmed);
+    return match ? `screen${match[1]}` : DEFAULT_TAP_GOAL_SETTINGS.soundTarget;
+}
 
 module.exports = function createTapGoalState({
     getScopedStateValue, setScopedStateValue,
@@ -41,6 +49,7 @@ function normalizeTapGoalSettings(value) {
         soundEnabled: source.soundEnabled !== false,
         sound: normalizeSoundAsset(source.sound),
         soundVolume: Number.isInteger(soundVolume) ? Math.max(0, Math.min(100, soundVolume)) : DEFAULT_TAP_GOAL_SETTINGS.soundVolume,
+        soundTarget: normalizeSoundTarget(source.soundTarget),
     };
 }
 

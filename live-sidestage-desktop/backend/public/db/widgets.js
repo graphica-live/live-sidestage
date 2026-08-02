@@ -45,6 +45,7 @@
         const tapGoalSoundNameEl = document.getElementById('tap-goal-sound-name');
         const tapGoalSoundVolumeInput = document.getElementById('tap-goal-sound-volume');
         const tapGoalSoundVolumeValueEl = document.getElementById('tap-goal-sound-volume-value');
+        const tapGoalSoundTargetSelect = document.getElementById('tap-goal-sound-target');
         const tapGoalUrl = document.getElementById('tap-goal-url');
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
@@ -1586,6 +1587,7 @@
             const volume = Number.isInteger(settings.soundVolume) ? settings.soundVolume : 100;
             tapGoalSoundVolumeInput.value = String(volume);
             tapGoalSoundVolumeValueEl.textContent = `${volume}%`;
+            tapGoalSoundTargetSelect.value = settings.soundTarget || 'tap-goal';
             refreshTapGoalPreview();
         }
 
@@ -1618,6 +1620,7 @@
                 iconSize: Number.parseInt(tapGoalIconSizeInput.value, 10) || 100,
                 sound: state.tapGoalSettings?.sound || { name: '', url: '' },
                 soundVolume: Number.parseInt(tapGoalSoundVolumeInput.value, 10) || 100,
+                soundTarget: tapGoalSoundTargetSelect.value || 'tap-goal',
                 appearance: {
                     fontKey: normalizeDisplayFontKey(tapGoalFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(tapGoalTextStyleSelect.value),
@@ -3465,6 +3468,7 @@
         tapGoalFontSelect.addEventListener('input', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); });
         tapGoalFontSelect.addEventListener('change', () => { tapGoalFontSelect.style.fontFamily = getWidgetFontFamily(tapGoalFontSelect.value); saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTextStyleSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalSoundTargetSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalStrokeWidthInput.addEventListener('input', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalStrokeWidthInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         document.getElementById('reset-tap-goal-button').addEventListener('click', () => {
