@@ -1261,7 +1261,6 @@ const {
     normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
     getTapGoalProgress, setTapGoalProgress,
     addTapGoalTaps, resetTapGoalProgress,
-    addTapGoalLapContribution, consumeTapGoalLapContributions,
     buildTapGoalPayload,
 } = require('./lib/tap-goal-state')({
     getScopedStateValue: (...args) => getScopedStateValue(...args),
@@ -2669,6 +2668,7 @@ require('./lib/routes/widgets/tap-goal')({
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
+    getLikeContributionUserAvatars, getLikeContributionUserNicknames,
 });
 
 require('./lib/routes/widgets/timer')({
@@ -3060,25 +3060,21 @@ function ensureTikTokConnection() {
 
                 const tapAmount = normalizeWholeNumber(data?.likeCount) || 0;
                 const tapActor = extractCommentFeedActor(data);
-                addTapGoalLapContribution({
-                    uniqueId: tapActor.uniqueId,
-                    nickname: tapActor.nickname,
-                    avatarUrl: tapActor.image,
-                    amount: tapAmount,
-                });
 
                 const tapGoalResult = addTapGoalTaps(tapAmount);
                 if (tapGoalResult.crossings > 0) {
                     const tapGoalSettings = getWidgetTapGoalSettings();
-                    const contributors = consumeTapGoalLapContributions();
-                    const reachedPayload = { contributors };
+                    const reachedPayload = {};
                     if (tapGoalSettings.soundEnabled && tapGoalSettings.sound?.url) {
                         reachedPayload.url = tapGoalSettings.sound.url;
                         reachedPayload.volume = tapGoalSettings.soundVolume;
                     }
                     io.emit('widgets:tap-goal:reached', reachedPayload);
                 }
-                io.emit('widgets:tap-goal:updated', buildTapGoalPayload());
+                io.emit('widgets:tap-goal:updated', {
+                    ...buildTapGoalPayload(),
+                    actor: { nickname: tapActor.nickname, avatarUrl: tapActor.image },
+                });
             }
 
             if (goalGiftCountsChanged) {

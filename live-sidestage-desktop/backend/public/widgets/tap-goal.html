@@ -149,49 +149,6 @@
             animation: tapGoalFlash 600ms ease-in-out;
         }
 
-        .contributors-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: flex-end;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 12px;
-        }
-
-        .contributor-icon {
-            flex-shrink: 0;
-            border-radius: 50%;
-            overflow: hidden;
-            border: 3px solid #ffffff;
-            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.9), 0 4px 12px rgba(0, 0, 0, 0.45);
-            background: rgba(30, 41, 59, 0.85);
-            animation: contributorIconFade 3000ms ease-in-out forwards;
-        }
-
-        .contributor-icon img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        .contributor-icon .contributor-letter {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 900;
-            color: #f1f5f9;
-        }
-
-        @keyframes contributorIconFade {
-            0%   { opacity: 0; transform: scale(0.6); }
-            12%  { opacity: 1; transform: scale(1); }
-            82%  { opacity: 1; transform: scale(1); }
-            100% { opacity: 0; transform: scale(0.8); }
-        }
-
         .bar-track-wrap {
             position: relative;
         }
@@ -215,16 +172,33 @@
             position: absolute;
             left: 50%;
             bottom: 0;
-            width: var(--size, 20px);
-            height: var(--size, 20px);
-            opacity: 0.7;
+            width: var(--size, 32px);
+            height: var(--size, 32px);
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+            opacity: 0.8;
             animation: heartRise var(--duration, 1300ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
         }
 
-        .heart-particle svg {
+        .heart-particle img {
             width: 100%;
             height: 100%;
+            object-fit: cover;
             display: block;
+        }
+
+        .heart-particle-letter {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: calc(var(--size, 32px) * 0.5);
+            color: #f1f5f9;
+            background: rgba(30, 41, 59, 0.85);
         }
 
         @keyframes heartRise {
@@ -246,7 +220,6 @@
             </div>
             <div class="bar-count" id="barCount">0 / 0</div>
         </div>
-        <div class="contributors-row" id="contributorsRow"></div>
     </div>
 
     <script>
@@ -264,22 +237,14 @@
         const barGroupEl = document.getElementById('barGroup');
         const barFillEl = document.getElementById('barFill');
         const barCountEl = document.getElementById('barCount');
-        const contributorsRowEl = document.getElementById('contributorsRow');
         const heartsLayerEl = document.getElementById('heartsLayer');
 
-        const CONTRIBUTOR_ICON_MIN_SIZE = 44;
-        const CONTRIBUTOR_ICON_MAX_SIZE = 100;
-
-        const HEART_SVG_MARKUP = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
-            '<path d="M12 21C12 21 3 13.5 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 5.5-9 13-9 13z" fill="#f87171"/>' +
-            '</svg>';
-
-        // メーターの根本から上方向 ±10度 の範囲でランダムにハートを拡散させる
-        function spawnTapGoalHeart() {
+        // メーターの根本から上方向 ±10度 の範囲でランダムに、タップ主のアイコンを拡散させる
+        function spawnTapGoalHeart(actor) {
             const angleDeg = (Math.random() * 20) - 10;
             const travel = 180 + Math.random() * 100;
             const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
-            const size = 16 + Math.random() * 14;
+            const size = 24 + Math.random() * 16;
             const duration = 1500 + Math.random() * 600;
 
             const heartEl = document.createElement('div');
@@ -288,15 +253,26 @@
             heartEl.style.setProperty('--dy', (-travel).toFixed(1) + 'px');
             heartEl.style.setProperty('--size', size.toFixed(0) + 'px');
             heartEl.style.setProperty('--duration', duration.toFixed(0) + 'ms');
-            heartEl.innerHTML = HEART_SVG_MARKUP;
+
+            const letter = escapeHtml(String(actor?.nickname || '?').charAt(0).toUpperCase());
+            if (actor?.avatarUrl) {
+                const proxied = `/api/proxy/avatar?url=${encodeURIComponent(actor.avatarUrl)}`;
+                heartEl.innerHTML =
+                    `<img src="${escapeAttr(proxied)}" alt="" ` +
+                    `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+                    `<span class="heart-particle-letter" style="display:none">${letter}</span>`;
+            } else {
+                heartEl.innerHTML = `<span class="heart-particle-letter">${letter}</span>`;
+            }
+
             heartEl.addEventListener('animationend', () => heartEl.remove(), { once: true });
             heartsLayerEl.appendChild(heartEl);
         }
 
-        function spawnTapGoalHearts(amount) {
+        function spawnTapGoalHearts(amount, actor) {
             const count = Math.max(1, Math.min(8, Math.round(amount / 3)));
             for (let i = 0; i < count; i++) {
-                window.setTimeout(spawnTapGoalHeart, i * 60);
+                window.setTimeout(() => spawnTapGoalHeart(actor), i * 60);
             }
         }
 
@@ -375,38 +351,6 @@
             barGroupEl.classList.add('is-flashing');
         }
 
-        function renderTapGoalContributors(contributors) {
-            if (!Array.isArray(contributors) || contributors.length === 0) return;
-
-            const maxAmount = Math.max(1, ...contributors.map((c) => Number(c.amount) || 0));
-            contributorsRowEl.innerHTML = '';
-
-            contributors.forEach((contributor) => {
-                const amount = Number(contributor.amount) || 0;
-                const ratio = Math.max(0, Math.min(1, amount / maxAmount));
-                const size = Math.round(CONTRIBUTOR_ICON_MIN_SIZE + (CONTRIBUTOR_ICON_MAX_SIZE - CONTRIBUTOR_ICON_MIN_SIZE) * ratio);
-
-                const iconEl = document.createElement('div');
-                iconEl.className = 'contributor-icon';
-                iconEl.style.width = size + 'px';
-                iconEl.style.height = size + 'px';
-
-                const letter = escapeHtml(String(contributor.nickname || '?').charAt(0).toUpperCase());
-                if (contributor.avatarUrl) {
-                    const proxied = `/api/proxy/avatar?url=${encodeURIComponent(contributor.avatarUrl)}`;
-                    iconEl.innerHTML =
-                        `<img src="${escapeAttr(proxied)}" alt="" ` +
-                        `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
-                        `<span class="contributor-letter" style="display:none">${letter}</span>`;
-                } else {
-                    iconEl.innerHTML = `<span class="contributor-letter">${letter}</span>`;
-                }
-
-                iconEl.addEventListener('animationend', () => iconEl.remove(), { once: true });
-                contributorsRowEl.appendChild(iconEl);
-            });
-        }
-
         function applySettings(settings) {
             if (!settings) return;
             widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
@@ -444,7 +388,7 @@
             barCountEl.textContent = `${lastTapGoalTarget.toLocaleString()} / ${lastTapGoalTarget.toLocaleString()}`;
         }
 
-        function applyProgress(progress) {
+        function applyProgress(progress, actor) {
             if (!progress) return;
             const target = Math.max(1, Number(progress.target) || 1);
             const count = Math.max(0, Number(progress.count) || 0);
@@ -452,7 +396,7 @@
             if (lastTapGoalCount !== null) {
                 let increment = count - lastTapGoalCount;
                 if (increment < 0) increment += target; // 周回ループでラップした分を補正
-                if (increment > 0) spawnTapGoalHearts(increment);
+                if (increment > 0) spawnTapGoalHearts(increment, actor);
             }
             lastTapGoalCount = count;
             lastTapGoalTarget = target;
@@ -469,7 +413,7 @@
             if (!payload) return;
             if (payload.settings) applySettings(payload.settings);
             if (payload.appearance) applyAppearance(payload.appearance);
-            if (payload.progress) applyProgress(payload.progress);
+            if (payload.progress) applyProgress(payload.progress, payload.actor);
         }
 
         socket.on('connect', () => {
@@ -483,7 +427,6 @@
         socket.on('widgets:tap-goal:reached', (payload) => {
             playTapGoalSound(payload?.url, payload?.volume);
             triggerTapGoalFlash();
-            renderTapGoalContributors(payload?.contributors);
 
             isTapGoalCelebrating = true;
             forceTapGoalBarFull();

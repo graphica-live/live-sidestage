@@ -5,14 +5,29 @@ module.exports = function registerTapGoalRoutes({
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
+    getLikeContributionUserAvatars, getLikeContributionUserNicknames,
 }) {
-    function buildReachedPayload(settings, contributors = []) {
-        const payload = { contributors };
+    function buildReachedPayload(settings) {
+        const payload = {};
         if (settings.soundEnabled && settings.sound?.url) {
             payload.url = settings.sound.url;
             payload.volume = settings.soundVolume;
         }
         return payload;
+    }
+
+    // タップテスト用: 既知のリスナーからランダムに1人選んでダミーのタップ主にする
+    function pickRandomKnownTapper() {
+        const nicknames = getLikeContributionUserNicknames();
+        const avatars = getLikeContributionUserAvatars();
+        const uniqueIds = Object.keys(nicknames);
+
+        if (uniqueIds.length === 0) {
+            return { nickname: 'テスト', avatarUrl: '' };
+        }
+
+        const pick = uniqueIds[Math.floor(Math.random() * uniqueIds.length)];
+        return { nickname: nicknames[pick] || pick, avatarUrl: avatars[pick] || '' };
     }
 
     app.get('/api/widgets/tap-goal/config', (req, res) => {
@@ -43,7 +58,7 @@ module.exports = function registerTapGoalRoutes({
             io.emit('widgets:tap-goal:reached', buildReachedPayload(payload.settings));
         }
 
-        io.emit('widgets:tap-goal:updated', payload);
+        io.emit('widgets:tap-goal:updated', { ...payload, actor: pickRandomKnownTapper() });
         res.json({ ok: true, ...payload });
     });
 
