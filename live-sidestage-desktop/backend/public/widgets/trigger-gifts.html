@@ -6,13 +6,14 @@
     <title>トリガーギフト一覧</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
 
         :root {
             --widget-font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
             --name-color: #f8fafc;
             --stroke: rgba(15, 23, 42, 0.96);
-            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 3px;
+            --name-font-size: 20px;
             --card-min-width: 200px;
             --gift-image-height: 132px;
         }
@@ -78,14 +79,24 @@
 
         .trigger-name {
             width: 100%;
+            display: flex;
+            justify-content: center;
+            font-family: var(--widget-font-family);
+        }
+
+        .trigger-name-badge {
+            display: inline-block;
+            max-width: 100%;
+            padding: 5px 14px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.55);
             text-align: center;
-            font-size: 20px;
+            font-size: var(--name-font-size);
             font-weight: 800;
             line-height: 1.3;
             color: var(--name-color);
-            -webkit-text-stroke: 3px var(--stroke);
+            -webkit-text-stroke: var(--stroke-width) var(--stroke);
             paint-order: stroke fill;
-            text-shadow: 0 4px 14px var(--shadow);
             overflow-wrap: break-word;
         }
 
@@ -104,6 +115,66 @@
     <div class="grid" id="grid"></div>
 
     <script>
+        const TRIGGER_GIFTS_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TRIGGER_GIFTS_TEXT_STYLES = {
+            'gold-night':      { nameColor: '#fbbf24', strokeColor: '#0f172a' },
+            'ice-night':       { nameColor: '#dbeafe', strokeColor: '#172554' },
+            'candy-pop':       { nameColor: '#f9a8d4', strokeColor: '#831843' },
+            'mint-lime':       { nameColor: '#d9f99d', strokeColor: '#14532d' },
+            'sunset-party':    { nameColor: '#fdba74', strokeColor: '#7c2d12' },
+            'violet-flash':    { nameColor: '#c4b5fd', strokeColor: '#312e81' },
+            'mono-impact':     { nameColor: '#ffffff', strokeColor: '#111827' },
+            'sakura-bloom':    { nameColor: '#fbcfe8', strokeColor: '#9d174d' },
+            'ocean-glow':      { nameColor: '#67e8f9', strokeColor: '#164e63' },
+            'emerald-city':    { nameColor: '#6ee7b7', strokeColor: '#064e3b' },
+            'ruby-flare':      { nameColor: '#fb7185', strokeColor: '#3f0d12' },
+            'lemon-pop':       { nameColor: '#fde047', strokeColor: '#1e3a8a' },
+            'midnight-aqua':   { nameColor: '#99f6e4', strokeColor: '#0f172a' },
+            'peach-fizz':      { nameColor: '#fdba74', strokeColor: '#7f1d1d' },
+            'festival-red':    { nameColor: '#fca5a5', strokeColor: '#1f2937' },
+            'rose-gold':       { nameColor: '#f8b4a6', strokeColor: '#5b342e' },
+            'cyber-teal':      { nameColor: '#67e8f9', strokeColor: '#0f2740' },
+            'aurora-dream':    { nameColor: '#e9d5ff', strokeColor: '#4c1d95' },
+            'coral-soda':      { nameColor: '#fb7185', strokeColor: '#7f1d1d' },
+            'platinum-pop':    { nameColor: '#e2e8f0', strokeColor: '#334155' },
+            'champagne-shine': { nameColor: '#f8e7b5', strokeColor: '#6b4f2a' },
+            'royal-velvet':    { nameColor: '#d8b4fe', strokeColor: '#312e81' },
+            'emerald-luxe':    { nameColor: '#a7f3d0', strokeColor: '#14532d' },
+            'sunrise-opal':    { nameColor: '#fdba74', strokeColor: '#9a3412' },
+            'prism-burst':     { nameColor: '#7dd3fc', strokeColor: '#4338ca' },
+            'tropical-punch':  { nameColor: '#fb7185', strokeColor: '#7f1d1d' },
+            'lagoon-shine':    { nameColor: '#2dd4bf', strokeColor: '#155e75' },
+            'berry-mist':      { nameColor: '#f472b6', strokeColor: '#701a75' },
+            'polar-neon':      { nameColor: '#67e8f9', strokeColor: '#1e293b' },
+            'citrus-splash':   { nameColor: '#a3e635', strokeColor: '#166534' }
+        };
+
         const socket = io();
         const searchParams = new URLSearchParams(window.location.search);
         const categoryId = searchParams.get('category') || '';
@@ -112,6 +183,22 @@
 
         if (previewMode) {
             document.body.classList.add('preview-card');
+        }
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
+            const fontSize = Math.max(12, Math.min(48, Number(appearance.fontSize) || 20));
+            const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
+            const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--name-color', textStyle.nameColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+            root.setProperty('--name-font-size', fontSize + 'px');
         }
 
         function escapeHtml(s) {
@@ -129,7 +216,7 @@
 
             return `<div class="card">` +
                 `<div class="gift-image-wrap">${imageHtml}</div>` +
-                `<div class="trigger-name">${escapeHtml(item.triggerName)}</div>` +
+                `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>` +
                 `</div>`;
         }
 
@@ -150,7 +237,10 @@
 
             fetch(`/api/effects/trigger-gifts?category=${encodeURIComponent(categoryId)}`)
                 .then((r) => r.json())
-                .then((payload) => render(payload.items))
+                .then((payload) => {
+                    applyAppearance(payload.appearance);
+                    render(payload.items);
+                })
                 .catch(() => {});
         }
 

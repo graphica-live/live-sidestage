@@ -3,7 +3,15 @@
 const { repairMojibakeFilename } = require('../utils');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
-const { EFFECT_DEFAULT_CATEGORY_ID } = require('../constants');
+const { EFFECT_DEFAULT_CATEGORY_ID, WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY } = require('../constants');
+
+function normalizeTriggerGiftsFontSize(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 12) {
+        return 20;
+    }
+    return Math.min(parsed, 48);
+}
 
 module.exports = function registerEffectsRoutes({
     app,
@@ -14,6 +22,11 @@ module.exports = function registerEffectsRoutes({
     buildEffectOverlayUrls,
     buildTriggerGiftsOverlayUrlBase,
     fetchTikTokGiftCatalog,
+    getScopedStateValue,
+    setScopedStateValue,
+    normalizeSharedWidgetFontKey,
+    normalizeDisplayColorTheme,
+    normalizeDisplayStrokeWidth,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
@@ -133,6 +146,49 @@ module.exports = function registerEffectsRoutes({
         });
     });
 
+    function normalizeTriggerGiftsAppearance(value) {
+        let source = value;
+
+        if (typeof source === 'string') {
+            try {
+                source = JSON.parse(source);
+            } catch {
+                source = null;
+            }
+        }
+
+        if (!source || typeof source !== 'object' || Array.isArray(source)) {
+            source = {};
+        }
+
+        return {
+            fontKey: normalizeSharedWidgetFontKey(source.fontKey),
+            textStyleKey: normalizeDisplayColorTheme(source.textStyleKey),
+            strokeWidth: normalizeDisplayStrokeWidth(source.strokeWidth),
+            fontSize: normalizeTriggerGiftsFontSize(source.fontSize)
+        };
+    }
+
+    function getTriggerGiftsAppearance() {
+        return normalizeTriggerGiftsAppearance(getScopedStateValue(WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY));
+    }
+
+    function setTriggerGiftsAppearance(value) {
+        const normalized = normalizeTriggerGiftsAppearance(value);
+        setScopedStateValue(WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY, JSON.stringify(normalized));
+        return normalized;
+    }
+
+    app.get('/api/effects/trigger-gifts/appearance', (req, res) => {
+        res.json({ ok: true, appearance: getTriggerGiftsAppearance() });
+    });
+
+    app.patch('/api/effects/trigger-gifts/appearance', (req, res) => {
+        const appearance = setTriggerGiftsAppearance(req.body?.appearance);
+        io.emit('effects:trigger-gifts:updated', {});
+        res.json({ ok: true, appearance });
+    });
+
     app.get('/api/effects/trigger-gifts', async (req, res) => {
         const categoryId = String(req.query.category || '').trim() || EFFECT_DEFAULT_CATEGORY_ID;
         const category = getEffectCategories().find((item) => item.id === categoryId) || null;
@@ -157,7 +213,8 @@ module.exports = function registerEffectsRoutes({
         return res.json({
             ok: true,
             category: category ? { id: category.id, name: category.name, enabled: category.enabled !== false } : null,
-            items
+            items,
+            appearance: getTriggerGiftsAppearance()
         });
     });
 

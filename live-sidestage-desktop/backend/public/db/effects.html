@@ -69,13 +69,39 @@
         </section>
 
         <section class="panel">
-            <h2>トリガーギフト一覧オーバーレイ</h2>
-            <p class="subtext">このカテゴリの有効なトリガー（ギフト画像 + トリガー名）を一覧表示するオーバーレイです。列数は OBS のブラウザソース解像度に応じて自動調整されます。</p>
+            <div class="panel-head">
+                <div>
+                    <h2>トリガーギフト一覧オーバーレイ</h2>
+                    <p class="subtext">このカテゴリの有効なトリガー（ギフト画像 + トリガー名）を一覧表示するオーバーレイです。列数は OBS のブラウザソース解像度に応じて自動調整されます。</p>
+                </div>
+                <button type="button" class="settings-toggle-btn" id="trigger-gifts-settings-toggle" data-panel-id="trigger-gifts-settings-panel" aria-expanded="false" title="表示設定を開く">⚙️</button>
+            </div>
             <div class="url-item" id="trigger-gifts-url-item">
                 <div class="url-label">一覧オーバーレイ</div>
                 <input class="url-value" type="text" id="trigger-gifts-url-value" readonly value="読み込み中">
                 <button type="button" id="trigger-gifts-url-copy-button">URL をコピー</button>
                 <button type="button" id="trigger-gifts-url-preview-button">プレビュー表示</button>
+            </div>
+
+            <div class="widget-settings-panel" id="trigger-gifts-settings-panel" hidden>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="trigger-gifts-font">フォント</label>
+                        <select id="trigger-gifts-font" aria-label="フォント"></select>
+                    </div>
+                    <div class="field">
+                        <label for="trigger-gifts-text-style">文字色と縁取り</label>
+                        <select id="trigger-gifts-text-style" aria-label="文字色と縁取り"></select>
+                    </div>
+                    <div class="field">
+                        <label for="trigger-gifts-stroke-width">縁取り太さ</label>
+                        <input id="trigger-gifts-stroke-width" type="number" min="0" max="24" step="1" inputmode="numeric" aria-label="縁取り太さ">
+                    </div>
+                    <div class="field">
+                        <label for="trigger-gifts-font-size">文字サイズ</label>
+                        <input id="trigger-gifts-font-size" type="number" min="12" max="48" step="1" inputmode="numeric" aria-label="文字サイズ">
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -402,6 +428,7 @@
     <script src="/db/effects-modal.js"></script>
     <script src="/db/effects-rows.js"></script>
     <script src="/db/effects-gift-suggest.js"></script>
+    <script src="/db/effects-trigger-gifts.js"></script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>
