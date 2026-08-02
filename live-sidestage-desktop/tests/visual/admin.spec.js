@@ -177,3 +177,16 @@ test.describe('widgets.html: モーダルが開ける', () => {
         await expect(page.locator('#myinstants-modal')).toHaveClass(/is-open/);
     });
 });
+
+// ── effects.html モーダル開閉テスト (自動生成) ──────────────────────────
+test.describe('effects.html: モーダルが開ける', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto(`${BASE_URL}/db/effects.html`);
+    await page.waitForLoadState('networkidle');
+    });
+
+    test('trigger-gifts-settings-modal', async ({ page }) => {
+        await page.click('#trigger-gifts-settings-button');
+        await expect(page.locator('#trigger-gifts-settings-modal')).toHaveClass(/is-open/);
+    });
+});

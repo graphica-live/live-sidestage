@@ -1,5 +1,5 @@
-const triggerGiftsSettingsToggle = document.getElementById('trigger-gifts-settings-toggle');
-const triggerGiftsSettingsPanel = document.getElementById('trigger-gifts-settings-panel');
+const triggerGiftsSettingsToggle = document.getElementById('trigger-gifts-settings-button');
+const triggerGiftsSettingsModal = document.getElementById('trigger-gifts-settings-modal');
 const triggerGiftsFontSelect = document.getElementById('trigger-gifts-font');
 const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-style');
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
@@ -112,10 +112,11 @@ async function saveTriggerGiftsAppearance() {
 }
 
 triggerGiftsSettingsToggle.addEventListener('click', () => {
-    const isOpen = !triggerGiftsSettingsPanel.hidden;
-    triggerGiftsSettingsPanel.hidden = isOpen;
-    triggerGiftsSettingsToggle.setAttribute('aria-expanded', String(!isOpen));
-    triggerGiftsSettingsToggle.classList.toggle('is-active', !isOpen);
+    openModal(triggerGiftsSettingsModal);
+});
+
+document.querySelectorAll('[data-action="close-trigger-gifts-settings-modal"]').forEach((button) => {
+    button.addEventListener('click', () => closeModal(triggerGiftsSettingsModal));
 });
 
 triggerGiftsFontSelect.addEventListener('change', saveTriggerGiftsAppearance);
