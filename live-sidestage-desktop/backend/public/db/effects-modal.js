@@ -200,7 +200,7 @@ function resetTriggerModal() {
     triggerModalSubmit.textContent = '追加';
     triggerModalName.value = '';
     triggerModalListOverlayName.value = '';
-    triggerModalEnabled.checked = true;
+    editingTriggerEnabled = true;
     triggerModalSelectedEventIds = [];
     triggerModalPlaySequential.checked = true;
     renderTriggerModalEventIdsList();
@@ -236,7 +236,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalSubmit.textContent = '更新';
     triggerModalName.value = triggerRecord.name || '';
     triggerModalListOverlayName.value = triggerRecord.listOverlayName || '';
-    triggerModalEnabled.checked = Boolean(triggerRecord.enabled);
+    editingTriggerEnabled = Boolean(triggerRecord.enabled);
     // eventIds 複数対応（旧フォーマット eventId も考慮）
     const ids = Array.isArray(triggerRecord.eventIds) && triggerRecord.eventIds.length > 0
         ? triggerRecord.eventIds
@@ -290,7 +290,7 @@ function collectTriggerFromModal() {
         commentMode: triggerModalCommentMode.value,
         commentText: triggerModalCommentText.value.trim(),
         userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),
-        enabled: triggerModalEnabled.checked,
+        enabled: editingTriggerEnabled,
         userTargetMode: isFilemap ? 'file-map' : 'list',
         userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : ''
     };
