@@ -348,12 +348,34 @@ async function loadUserSuggestions() {
 
 // バックエンドの EFFECT_TRIGGER_FOLLOW_GIFT_NAME（backend/lib/constants.js）と同期すること。
 const FOLLOW_TRIGGER_GIFT_NAME = 'フォロー・リフォロー';
+const FOLLOW_TRIGGER_GIFT_IMAGE_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+        <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8"/>
+                <stop offset="100%" stop-color="#14b8a6"/>
+            </linearGradient>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#164e63" flood-opacity="0.26"/>
+            </filter>
+        </defs>
+        <rect width="320" height="320" rx="72" fill="url(#bg)"/>
+        <circle cx="242" cy="94" r="56" fill="rgba(255,255,255,0.16)"/>
+        <g filter="url(#shadow)">
+            <circle cx="136" cy="118" r="42" fill="#ecfeff"/>
+            <path d="M64 244c0-36 29-65 65-65h14c36 0 65 29 65 65v14H64z" fill="#ecfeff"/>
+            <circle cx="230" cy="186" r="42" fill="#ffffff"/>
+            <path d="M230 162v48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+            <path d="M206 186h48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+        </g>
+    </svg>
+`)}`;
 const FOLLOW_TRIGGER_GIFT_SUGGESTION = {
     id: '__follow__',
     name: FOLLOW_TRIGGER_GIFT_NAME,
     describe: 'フォロー / リフォロー時に発火します（ギフト以外のイベント）',
     diamondCount: null,
-    imageUrl: ''
+    imageUrl: FOLLOW_TRIGGER_GIFT_IMAGE_URL
 };
 
 async function loadGiftSuggestions() {
