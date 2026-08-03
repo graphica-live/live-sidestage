@@ -55,6 +55,7 @@
         const timerHeadingTextInput = document.getElementById('timer-heading-text');
         const timerDurationMinutesInput = document.getElementById('timer-duration-minutes');
         const timerDurationSecondsInput = document.getElementById('timer-duration-seconds');
+        const timerMinFloorMinutesInput = document.getElementById('timer-min-floor-minutes');
         const timerEndSoundPickerButton = document.getElementById('timer-myinstants-button');
         const timerEndSoundPreviewButton = document.getElementById('timer-end-sound-preview-button');
         const timerEndSoundClearButton = document.getElementById('timer-end-sound-clear-button');
@@ -224,7 +225,7 @@
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
             timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
-            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100 },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, minFloorMinutes: 0 },
             timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
@@ -1949,6 +1950,7 @@
             timerHeadingTextInput.value = settings.headingText || '';
             timerDurationMinutesInput.value = String(Number.parseInt(String(settings.durationMinutes ?? 10), 10) || 0);
             timerDurationSecondsInput.value = String(Number.parseInt(String(settings.durationSeconds ?? 0), 10) || 0);
+            timerMinFloorMinutesInput.value = String(Number.parseInt(String(settings.minFloorMinutes ?? 0), 10) || 0);
             timerEndSoundNameEl.textContent = settings.endSound?.name || '未設定';
             const volume = Number.isFinite(Number(settings.endSoundVolume)) ? Math.max(0, Math.min(100, Number(settings.endSoundVolume))) : 100;
             timerEndSoundVolumeInput.value = String(volume);
@@ -2013,6 +2015,7 @@
                 headingText: timerHeadingTextInput.value,
                 durationMinutes: Number.parseInt(timerDurationMinutesInput.value, 10) || 0,
                 durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
+                minFloorMinutes: Number.parseInt(timerMinFloorMinutesInput.value, 10) || 0,
                 slots: timerGiftSlots.filter(Boolean).map((g) => ({ ...g })),
                 reversalThresholdMinutes: Number.parseInt(timerReversalThresholdInput.value, 10) || 0,
                 reversalSlots: timerReversalSlots.filter(Boolean).map((g) => ({ ...g })),
@@ -2095,6 +2098,7 @@
         timerHeadingTextInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerDurationMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerDurationSecondsInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerMinFloorMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerFontSelect.addEventListener('input', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); });
         timerFontSelect.addEventListener('change', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); saveTimerSettingsImmediately().catch(() => {}); });
         timerTextStyleSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });

@@ -20,6 +20,7 @@ const DEFAULT_TIMER_SETTINGS = {
     reversalSlots: [],
     endSound: { name: '', url: '' },
     endSoundVolume: 100,
+    minFloorMinutes: 0,
 };
 
 module.exports = function createTimerState({
@@ -82,6 +83,12 @@ function normalizeReversalThresholdMinutes(value) {
     return Math.max(0, Math.min(180, parsed));
 }
 
+function normalizeMinFloorMinutes(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.minFloorMinutes;
+    return Math.max(0, Math.min(1440, parsed));
+}
+
 function normalizeTimerSettings(value) {
     let source = value;
     if (typeof source === 'string') {
@@ -111,6 +118,7 @@ function normalizeTimerSettings(value) {
         reversalSlots,
         endSound: normalizeSoundAsset(source.endSound),
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
+        minFloorMinutes: normalizeMinFloorMinutes(source.minFloorMinutes),
     };
 }
 
@@ -252,15 +260,16 @@ function resetTimer() {
 // ギフト等でタイマーに分数を加算/減算する。稼働中は終了時刻を、停止中は残り時間を直接調整する。
 function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
+    const floorMs = getTimerSettings().minFloorMinutes * 60000;
     const runtime = getTimerRuntime();
     let next;
 
     if (runtime.running) {
         const now = Date.now();
-        const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now, runtime.endsAt + deltaMs));
+        const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now + floorMs, runtime.endsAt + deltaMs));
         next = setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextEndsAt - now });
     } else {
-        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(0, runtime.remainingMs + deltaMs));
+        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(floorMs, runtime.remainingMs + deltaMs));
         next = setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemaining });
     }
 
