@@ -130,13 +130,17 @@
 
         .trigger-name {
             position: absolute;
-            left: 12px;
-            right: 12px;
-            bottom: 16px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 35%;
             z-index: 2;
             min-width: 0;
             display: flex;
+            align-items: flex-end;
             justify-content: center;
+            padding: 0 12px 16px;
+            background: linear-gradient(to top, rgba(15, 23, 42, 0.78) 0%, rgba(15, 23, 42, 0) 100%);
             font-family: var(--widget-font-family);
         }
 
@@ -144,9 +148,6 @@
             display: inline-block;
             min-width: 0;
             max-width: 100%;
-            padding: 5px 14px;
-            border-radius: 10px;
-            background: rgba(0, 0, 0, 0.55);
             text-align: center;
             font-size: var(--name-font-size);
             font-weight: 800;
@@ -156,11 +157,42 @@
             paint-order: stroke fill;
             overflow-wrap: break-word;
             white-space: pre-line;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
         }
 
         .empty {
             font-size: 16px;
             color: rgba(241, 245, 249, 0.55);
+        }
+
+        .coin-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.55);
+        }
+
+        .coin-icon {
+            flex: 0 0 auto;
+            width: 16px;
+            height: 16px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='coin' cx='35%25' cy='30%25' r='70%25'%3E%3Cstop offset='0%25' stop-color='%23fff7b3'/%3E%3Cstop offset='55%25' stop-color='%23f5c542'/%3E%3Cstop offset='100%25' stop-color='%23d48a14'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23coin)'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23fff4a3' stroke-width='4'/%3E%3Cpath d='M32 18l6 10 10 4-10 4-6 10-6-10-10-4 10-4z' fill='%23fff8d6' opacity='.95'/%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .coin-count {
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1;
+            color: #fff8d6;
         }
 
         @keyframes cardIn {
@@ -271,14 +303,19 @@
             red:    '220 38 38'
         };
 
-        function buildCardHtml(item) {
+        function buildCardHtml(item, showCoinCount) {
             const imageHtml = item.giftImageUrl
                 ? `<img class="gift-image" src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'gift-image-placeholder'}))">`
                 : `<div class="gift-image-placeholder"></div>`;
             const bgRgb = TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()];
             const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
+            const diamondCount = Number(item.diamondCount) || 0;
+            const coinHtml = (showCoinCount && diamondCount > 0)
+                ? `<div class="coin-badge"><span class="coin-icon"></span><span class="coin-count">${diamondCount.toLocaleString()}</span></div>`
+                : '';
 
             return `<div class="card"${styleAttr}>` +
+                coinHtml +
                 `<div class="gift-image-wrap">${imageHtml}</div>` +
                 `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>` +
                 `</div>`;
@@ -307,11 +344,11 @@
                 // スライドOFF、またはあふれていない場合: 先頭capacity件のみ静的表示
                 stripEl.className = 'strip page';
                 stripEl.style.animation = 'none';
-                stripEl.innerHTML = items.slice(0, capacity).map(buildCardHtml).join('');
+                stripEl.innerHTML = items.slice(0, capacity).map((item) => buildCardHtml(item, appearance.showCoinCount)).join('');
                 return;
             }
 
-            const copyHtml = items.map(buildCardHtml).join('');
+            const copyHtml = items.map((item) => buildCardHtml(item, appearance.showCoinCount)).join('');
             stripEl.className = 'strip ' + (axisX ? 'axis-x' : 'axis-y');
             stripEl.style.animation = 'none';
             stripEl.innerHTML = copyHtml + copyHtml;
