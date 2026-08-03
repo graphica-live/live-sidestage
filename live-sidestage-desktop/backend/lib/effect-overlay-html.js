@@ -509,15 +509,17 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         // 連射モード: 再生中と同じトリガーの新しいイベントが順番待ちになったら、
         // 指定ms後に「その時点で再生中だったインスタンス」だけをキャンセルして次へ進める。
         // 他トリガーの再生中には一切干渉しない。
-        function maybeArmRapidFireCancel(payload) {
-            if (!payload || !payload.rapidFireEnabled) return;
-            if (!isPlaying || !activePlaybackPayload) return;
-            if (activePlaybackPayload.triggerId !== payload.triggerId) return;
+        // キューに同トリガーが複数積まれた状態（連射バースト）でも取りこぼさないよう、
+        // 新規イベント到着時だけでなく、キュー内の次アイテム再生開始時にも呼び出す。
+        function maybeArmRapidFireCancel(candidateTriggerId) {
+            if (!activePlaybackPayload || !activePlaybackPayload.rapidFireEnabled) return;
+            if (!isPlaying) return;
+            if (!candidateTriggerId || activePlaybackPayload.triggerId !== candidateTriggerId) return;
             if (rapidFireCancelTimer) return;
 
             const capturedToken = activePlaybackId;
-            const capturedTriggerId = payload.triggerId;
-            const ms = Math.max(0, Number(payload.rapidFireCancelMs) || 0);
+            const capturedTriggerId = activePlaybackPayload.triggerId;
+            const ms = Math.max(0, Number(activePlaybackPayload.rapidFireCancelMs) || 0);
 
             rapidFireCancelTimer = setTimeout(() => {
                 rapidFireCancelTimer = null;
@@ -673,6 +675,12 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             updateDebugLog((payload.eventName || 'event') + ' / ' + (payload.uniqueId || '') + ' / ' + (payload.giftName || ''));
             setReadAloudCredit(payload.readAloudCreditText || '');
 
+            // 連射バーストで既に同トリガーが後続に積まれている場合、ここで即座にキャンセルを予約する。
+            // （到着時点のアーム済みガードで後続イベントが取りこぼされていても、再生開始時に再チェックする）
+            if (playbackQueue.length > 0) {
+                maybeArmRapidFireCancel(playbackQueue[0].triggerId);
+            }
+
             try {
                 const resolvedVideo = payload.videoUrl ? awaitMediaUrl(payload.videoUrl) : null;
                 const resolvedAudio = payload.audioUrl ? awaitMediaUrl(payload.audioUrl) : null;
@@ -765,7 +773,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 });
             }
 
-            maybeArmRapidFireCancel(payload);
+            maybeArmRapidFireCancel(payload.triggerId);
             processPlaybackQueue();
         });
 
