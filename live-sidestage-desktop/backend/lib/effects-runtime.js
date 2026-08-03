@@ -65,10 +65,14 @@ module.exports = function createEffectsRuntime({
         return null;
     }
 
-    function createEffectPlaybackPayload(effectEvent, trigger, sourceEvent) {
-        const treatGiftComboAsSingle = trigger?.treatGiftComboAsSingle !== undefined
+    function resolveTreatGiftComboAsSingle(trigger, effectEvent) {
+        return trigger?.treatGiftComboAsSingle !== undefined
             ? trigger.treatGiftComboAsSingle !== false
             : effectEvent?.treatGiftComboAsSingle !== false;
+    }
+
+    function createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride) {
+        const treatGiftComboAsSingle = resolveTreatGiftComboAsSingle(trigger, effectEvent);
 
         return {
             playbackId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
@@ -78,7 +82,9 @@ module.exports = function createEffectsRuntime({
             videoUrl: effectEvent.videoEnabled ? effectEvent.videoAssetUrl : '',
             audioUrl: effectEvent.audioEnabled ? effectEvent.audioAssetUrl : '',
             mediaVolume: effectEvent.mediaVolume,
-            playbackCount: treatGiftComboAsSingle ? 1 : Math.max(1, Number(sourceEvent?.repeatCount || 1)),
+            playbackCount: typeof playbackCountOverride === 'number'
+                ? Math.max(1, playbackCountOverride)
+                : (treatGiftComboAsSingle ? 1 : Math.max(1, Number(sourceEvent?.repeatCount || 1))),
             triggerId: trigger?.id || 'preview-trigger',
             triggerName: trigger?.name || 'Preview',
             giftName: sourceEvent?.giftName || '',
@@ -91,9 +97,9 @@ module.exports = function createEffectsRuntime({
         };
     }
 
-    function emitEffectPlayback(effectEvent, trigger, sourceEvent) {
+    function emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride) {
         if (getEffectsGloballyPaused()) return;
-        io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent));
+        io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride));
         sendMidiForEffectEvent(effectEvent);
         sendVdjEffectForEvent(effectEvent);
     }
@@ -146,7 +152,7 @@ module.exports = function createEffectsRuntime({
         });
     }
 
-    function tryRunEffectTriggers(context, sourceEvent) {
+    function tryRunEffectTriggers(context, sourceEvent, giftComboState = null) {
         const effectEvents = getEffectEvents();
         const eventById = new Map(effectEvents.map((item) => [item.id, item]));
         const disabledCategoryIds = getDisabledCategoryIds();
@@ -178,6 +184,28 @@ module.exports = function createEffectsRuntime({
                     return;
                 }
 
+                // コンボ中呼び出し: 「まとめ投げ=1回」トリガーは初回tickのみ発火、
+                // それ以外（分割再生）は今回分の増分（deltaRepeat）だけ発火する。
+                let playbackCountOverride;
+
+                if (giftComboState) {
+                    const treatSingle = resolveTreatGiftComboAsSingle(trigger, effectEvent);
+
+                    if (treatSingle) {
+                        if (!giftComboState.isFirstTick) {
+                            return;
+                        }
+
+                        playbackCountOverride = 1;
+                    } else {
+                        if (!(giftComboState.deltaRepeat > 0)) {
+                            return;
+                        }
+
+                        playbackCountOverride = giftComboState.deltaRepeat;
+                    }
+                }
+
                 if (trigger.userTargetMode === 'file-map' && trigger.userIdToFileDir && context.userId) {
                     const videoInfo = findUserVideoFile(trigger.userIdToFileDir, context.userId);
 
@@ -186,7 +214,7 @@ module.exports = function createEffectsRuntime({
                     }
 
                     const normalizedUserId = normalizeUserIdForFilename(context.userId);
-                    const payload = createEffectPlaybackPayload(effectEvent, trigger, sourceEvent);
+                    const payload = createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride);
                     payload.videoUrl = effectEvent.videoEnabled
                         ? `/api/effects/user-video/${encodeURIComponent(trigger.id)}/${encodeURIComponent(normalizedUserId)}`
                         : '';
@@ -196,7 +224,7 @@ module.exports = function createEffectsRuntime({
                         sendVdjEffectForEvent(effectEvent);
                     }
                 } else {
-                    emitEffectPlayback(effectEvent, trigger, sourceEvent);
+                    emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride);
                 }
             });
         });
@@ -214,6 +242,24 @@ module.exports = function createEffectsRuntime({
             totalGifts: normalizeWholeNumber(giftEvent?.totalGifts) ?? 0,
             userId
         }, giftEvent);
+    }
+
+    // コンボギフト用: isFirstTick=true で早期発火（低遅延、まとめ投げ=1回トリガー向け）、
+    // それ以降は deltaRepeat 増分だけを分割再生トリガーに流す。
+    function tryRunEffectTriggersForGiftCombo(giftEvent, giftComboState) {
+        const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
+
+        if (giftComboState?.isFirstTick) {
+            speculativelyPreloadUserVideos(userId);
+        }
+
+        return tryRunEffectTriggers({
+            type: 'gift',
+            giftName: normalizeEffectText(giftEvent?.giftName, 80).toLowerCase(),
+            comment: '',
+            totalGifts: normalizeWholeNumber(giftEvent?.totalGifts) ?? 0,
+            userId
+        }, giftEvent, giftComboState);
     }
 
     function tryRunEffectTriggersForComment(commentEvent) {
@@ -253,6 +299,7 @@ module.exports = function createEffectsRuntime({
         speculativelyPreloadUserVideos,
         tryRunEffectTriggers,
         tryRunEffectTriggersForGift,
+        tryRunEffectTriggersForGiftCombo,
         tryRunEffectTriggersForComment,
         findUserVideoFile,
         normalizeUserIdForFilename,

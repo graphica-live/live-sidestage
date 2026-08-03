@@ -1343,6 +1343,7 @@ const {
     speculativelyPreloadUserVideos,
     tryRunEffectTriggers,
     tryRunEffectTriggersForGift,
+    tryRunEffectTriggersForGiftCombo,
     tryRunEffectTriggersForComment,
     findUserVideoFile,
     normalizeUserIdForFilename,
@@ -2913,21 +2914,23 @@ function ensureTikTokConnection() {
             ? Math.max(0, currentRepeat - previousRepeat)
             : currentRepeat;
 
-        // コンボ中（giftType===1 && !repeatEnd）: 初投時だけトリガーを早期発動、
+        // コンボ中（giftType===1 && !repeatEnd）: 「まとめ投げ=1回」トリガーは初回tickで早期発動、
+        // 「まとめ投げ=分割」トリガーは毎tick deltaRepeat 分だけ発火（低遅延を維持しつつ回数を反映）。
         // gift-jar には毎回 delta を即時 emit し、pending を最新 repeatCount に更新する。
         if (isCombo && !data.repeatEnd) {
-            if (!activeComboTriggerMap.has(comboKey)) {
-                if (activeComboTriggerMap.size >= ACTIVE_COMBO_TRIGGER_KEYS_MAX) {
-                    // サイズ上限に達したら最初のエントリを削除
-                    activeComboTriggerMap.delete(activeComboTriggerMap.keys().next().value);
-                }
-                const triggered = tryRunEffectTriggersForGift({
-                    giftName: data.giftName || null,
-                    totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
-                    uniqueId: data.uniqueId
-                });
-                activeComboTriggerMap.set(comboKey, triggered);
+            const isFirstTick = !activeComboTriggerMap.has(comboKey);
+
+            if (isFirstTick && activeComboTriggerMap.size >= ACTIVE_COMBO_TRIGGER_KEYS_MAX) {
+                // サイズ上限に達したら最初のエントリを削除
+                activeComboTriggerMap.delete(activeComboTriggerMap.keys().next().value);
             }
+
+            tryRunEffectTriggersForGiftCombo({
+                giftName: data.giftName || null,
+                totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
+                uniqueId: data.uniqueId
+            }, { isFirstTick, deltaRepeat });
+            activeComboTriggerMap.set(comboKey, true);
 
             if (deltaRepeat > 0) {
                 emitGiftJarFromRawData(data, deltaRepeat);
@@ -2958,8 +2961,8 @@ function ensureTikTokConnection() {
             return;
         }
 
-        // コンボ終了時: 早期発動済みならトリガーをスキップ
-        const alreadyTriggered = comboKey !== null && activeComboTriggerMap.get(comboKey) === true;
+        // コンボ終了時: 「まとめ投げ=1回」トリガーは初回tickで発火済みなのでスキップ、
+        // 「まとめ投げ=分割」トリガーは残り deltaRepeat 分を発火する。
         const wasTrackedAsCombo = previousPending !== null && previousPending !== undefined;
         if (comboKey !== null) {
             activeComboTriggerMap.delete(comboKey);
@@ -2971,7 +2974,9 @@ function ensureTikTokConnection() {
         // エフェクト発火は DB 書き込み（fsync）より先に行う。
         // storeRawGiftEvent は synchronous=FULL の fsync 待ちを伴うため、
         // これより後に発火するとプレビューボタン比で体感的な遅延が生じる。
-        if (!alreadyTriggered) {
+        if (wasTrackedAsCombo) {
+            tryRunEffectTriggersForGiftCombo(normalizedEvent, { isFirstTick: false, deltaRepeat });
+        } else {
             tryRunEffectTriggersForGift(normalizedEvent);
         }
         songBattleRuntime.registerVote(normalizedEvent);
