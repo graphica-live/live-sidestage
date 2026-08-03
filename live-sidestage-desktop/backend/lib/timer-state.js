@@ -9,6 +9,7 @@ const { normalizeSoundAsset } = require('./effect-helpers');
 
 const MAX_TIMER_GIFT_SLOTS = 3;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
+const TIMER_BLOCK_SOUND_URL = '/audio/feedback/business11.mp3';
 
 const DEFAULT_TIMER_SETTINGS = {
     durationMinutes: 10,
@@ -242,6 +243,33 @@ function emitTimerEndSound() {
     return true;
 }
 
+// 短縮下限でブロックされた際、終了音と同じ指定オーバーレイへブロック音を送る。
+function emitTimerBlockSound() {
+    if (!io) return false;
+    const settings = getTimerSettings();
+
+    io.emit('effects:playback', {
+        playbackId: `timer-block-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        eventId: 'timer-block-sound',
+        eventName: 'タイマー短縮ブロック',
+        screen: settings.endSoundScreen,
+        videoUrl: '',
+        audioUrl: TIMER_BLOCK_SOUND_URL,
+        mediaVolume: settings.endSoundVolume,
+        playbackCount: 1,
+        triggerId: 'timer',
+        triggerName: 'タイマー',
+        giftName: '',
+        comment: '',
+        totalGifts: 0,
+        repeatCount: 1,
+        uniqueId: '',
+        nickname: '',
+        timestamp: Date.now()
+    });
+    return true;
+}
+
 function startTimer() {
     const runtime = getTimerRuntime();
     const base = getTimerRemainingMs(runtime) > 0 ? getTimerRemainingMs(runtime) : getTimerDurationMs();
@@ -265,14 +293,17 @@ function resetTimer() {
 }
 
 // ギフト等でタイマーに分数を加算/減算する。稼働中は終了時刻を、停止中は残り時間を直接調整する。
+// 戻り値の blocked は、短縮下限によって要求どおりに短縮できなかった(据え置き/下限までのクランプ)ことを示す。
 function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
     const floorMs = getTimerSettings().minFloorMinutes * 60000;
     const runtime = getTimerRuntime();
+    const currentRemainingMs = getTimerRemainingMs(runtime);
+    const blocked = deltaMs < 0 && (currentRemainingMs + deltaMs < floorMs);
 
     // 短縮(マイナス)発動時点で既に下限以下なら、時間を変更しない。
-    if (deltaMs < 0 && getTimerRemainingMs(runtime) <= floorMs) {
-        return runtime;
+    if (deltaMs < 0 && currentRemainingMs <= floorMs) {
+        return { runtime, blocked };
     }
 
     let next;
@@ -287,7 +318,7 @@ function adjustTimerByMinutes(deltaMinutes) {
     }
 
     scheduleEndTimeout();
-    return next;
+    return { runtime: next, blocked };
 }
 
 // ギフトイベントを設定済みスロットと照合し、一致すればタイマーを調整する。
@@ -299,8 +330,9 @@ function applyTimerGiftEvent(giftId, repeatCount = 1) {
     const slot = settings.slots.find((s) => s.enabled && s.giftId === normalizedGiftId);
     if (slot && slot.minutesDelta) {
         const deltaMinutes = slot.minutesDelta * Math.max(1, Number(repeatCount) || 1);
-        const runtime = adjustTimerByMinutes(deltaMinutes);
-        return { slot, deltaMinutes, runtime };
+        const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
+        if (blocked) emitTimerBlockSound();
+        return { slot, deltaMinutes, runtime, blocked };
     }
 
     // 反転スロット: 残り時間が境界時間未満なら左(below)、以上なら右(above)の値を使う。
@@ -310,8 +342,9 @@ function applyTimerGiftEvent(giftId, repeatCount = 1) {
         const minutesDelta = isBelow ? reversalSlot.belowMinutesDelta : reversalSlot.aboveMinutesDelta;
         if (minutesDelta) {
             const deltaMinutes = minutesDelta * Math.max(1, Number(repeatCount) || 1);
-            const runtime = adjustTimerByMinutes(deltaMinutes);
-            return { slot: reversalSlot, deltaMinutes, runtime };
+            const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
+            if (blocked) emitTimerBlockSound();
+            return { slot: reversalSlot, deltaMinutes, runtime, blocked };
         }
     }
 
@@ -343,6 +376,7 @@ function buildTimerPayload() {
         startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
         applyTimerGiftEvent,
         emitTimerEndSound,
+        emitTimerBlockSound,
         buildTimerPayload,
     };
 };

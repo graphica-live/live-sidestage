@@ -1275,6 +1275,7 @@ const {
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
     applyTimerGiftEvent,
     emitTimerEndSound,
+    emitTimerBlockSound,
     buildTimerPayload,
 } = require('./lib/timer-state')({
     io,
@@ -2678,7 +2679,7 @@ require('./lib/routes/widgets/timer')({
     buildTimerPayload,
     setTimerSettings, setTimerWidgetTextAppearance,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
-    emitTimerEndSound,
+    emitTimerEndSound, emitTimerBlockSound,
 });
 
 require('./lib/routes/widgets/contributors')({
@@ -3020,7 +3021,8 @@ function ensureTikTokConnection() {
                 io.emit('widgets:timer:updated', buildTimerPayload());
                 io.emit('widgets:timer:adjusted', {
                     minutesDelta: timerMatch.deltaMinutes,
-                    giftName: timerMatch.slot.giftName
+                    giftName: timerMatch.slot.giftName,
+                    blocked: timerMatch.blocked
                 });
             }
         }

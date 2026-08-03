@@ -129,6 +129,17 @@
         .popup-chip.positive { color: #4ade80; }
         .popup-chip.negative { color: #f87171; }
 
+        .popup-chip.blocked::after {
+            content: '🛡️';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) rotate(-12deg);
+            font-size: 34px;
+            -webkit-text-stroke: 0;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+        }
+
         @keyframes popup-rise {
             0% { opacity: 0; transform: translate(-50%, 10px) scale(0.7); }
             15% { opacity: 1; transform: translate(-50%, -6px) scale(1.08); }
@@ -286,11 +297,11 @@
             return Math.max(0, baseRemainingMs - (performance.now() - baseAtPerf));
         }
 
-        function showAdjustPopup(minutesDelta) {
+        function showAdjustPopup(minutesDelta, blocked) {
             if (!minutesDelta) return;
             const chip = document.createElement('div');
             const isPositive = minutesDelta > 0;
-            chip.className = 'popup-chip ' + (isPositive ? 'positive' : 'negative');
+            chip.className = 'popup-chip ' + (isPositive ? 'positive' : 'negative') + (blocked ? ' blocked' : '');
             chip.textContent = (isPositive ? '+' : '-') + Math.abs(minutesDelta) + '分';
             chip.style.left = (Math.random() * 60 - 30) + 'px';
             popupLayerEl.appendChild(chip);
@@ -399,7 +410,7 @@
 
         socket.on('widgets:timer:updated', applyPayload);
         socket.on('widgets:timer:adjusted', (data) => {
-            showAdjustPopup(Number(data?.minutesDelta) || 0);
+            showAdjustPopup(Number(data?.minutesDelta) || 0, Boolean(data?.blocked));
         });
     </script>
 </body>
