@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>イベントトリガー</title>
     <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/sound-picker.css">
     <link rel="stylesheet" href="/db/effects.css">
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
@@ -91,6 +92,36 @@
             <h2>URL 一覧</h2>
             <p class="subtext">screen は 10 個固定です。イベント側ではこの screen 番号を指定して再生先を選びます。</p>
             <div class="url-list" id="url-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>ギフトテスト送信</h2>
+                    <p class="subtext">実際にギフトを受け取らなくても、ここから疑似的にギフトを送信してトリガーの動作を確認できます。ギフト名はトリガー登録と同じ検索候補から選べます。</p>
+                </div>
+            </div>
+            <div class="record-fields modal-fields-vertical" style="margin-top:14px;">
+                <div class="field full">
+                    <label>対象ギフト</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="gift-test-name" maxlength="80" autocomplete="off" placeholder="ギフト名で検索（フォロー等の疑似ギフトも可）">
+                        <div class="gift-suggestion-panel" id="gift-test-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>まとめ投げ回数</label>
+                    <input type="number" id="gift-test-repeat-count" min="1" step="1" value="1">
+                </div>
+                <div class="field">
+                    <label>送信ユーザーID（任意）</label>
+                    <input type="text" id="gift-test-unique-id" maxlength="80" placeholder="test_user">
+                </div>
+            </div>
+            <div class="action-row">
+                <button type="button" class="primary" id="gift-test-send-button">テスト送信</button>
+                <span class="status" id="gift-test-status"></span>
+            </div>
         </section>
     </div>
 
@@ -198,7 +229,7 @@
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
             <div>
                 <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
-                <p class="subtext"><a href="https://www.myinstants.com" target="_blank" rel="noopener noreferrer">myinstants.com</a> のサウンドを検索して取り込みます。</p>
+                <p class="subtext"><a href="https://www.myinstants.com" target="_blank" rel="noopener noreferrer">myinstants.com</a> と <a href="https://soundeffect-lab.info" target="_blank" rel="noopener noreferrer">効果音ラボ</a> のサウンドをまとめて検索して取り込みます。</p>
             </div>
             <div class="record-fields modal-fields-vertical">
                 <div class="field full">
@@ -263,6 +294,15 @@
                 <div class="field">
                     <label>最低コイン</label>
                     <input type="number" id="trigger-modal-min-coins" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field full">
+                    <label>連射モード</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-rapid-fire-enabled"><span>同じトリガーの再生待ちが発生したら現在の再生をキャンセルして高速連射する</span></label>
+                    </div>
+                    <label for="trigger-modal-rapid-fire-cancel-ms">キャンセルまでの時間 (ms)</label>
+                    <input type="number" id="trigger-modal-rapid-fire-cancel-ms" min="100" max="30000" step="50" placeholder="1500">
+                    <div class="field-hint">ONの場合、このトリガーのイベント再生中に同じトリガーの新しいイベントが順番待ちになると、指定時間後に再生中の動画・音声をキャンセルして次へ進みます。他のトリガーの再生には影響しません。</div>
                 </div>
                 <div class="field full">
                     <label>ギフトオプション</label>
@@ -425,21 +465,30 @@
                     <label for="trigger-gifts-font">フォント</label>
                     <select id="trigger-gifts-font" aria-label="フォント"></select>
                 </div>
+                <div class="field full">
+                    <label for="trigger-gifts-font-size">文字サイズ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-font-size" min="12" max="96" step="1" value="20" style="flex: 1;" aria-label="文字サイズ">
+                        <span class="subtext" id="trigger-gifts-font-size-value" style="margin-top: 0; width: 42px;">20px</span>
+                    </div>
+                </div>
                 <div class="field">
                     <label for="trigger-gifts-text-style">文字色と縁取り</label>
                     <select id="trigger-gifts-text-style" aria-label="文字色と縁取り"></select>
                 </div>
-                <div class="field">
+                <div class="field full">
                     <label for="trigger-gifts-stroke-width">縁取り太さ</label>
-                    <input id="trigger-gifts-stroke-width" type="number" min="0" max="24" step="1" inputmode="numeric" aria-label="縁取り太さ">
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-stroke-width" min="0" max="48" step="1" value="4" style="flex: 1;" aria-label="縁取り太さ">
+                        <span class="subtext" id="trigger-gifts-stroke-width-value" style="margin-top: 0; width: 42px;">4px</span>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="trigger-gifts-font-size">文字サイズ</label>
-                    <input id="trigger-gifts-font-size" type="number" min="12" max="96" step="1" inputmode="numeric" aria-label="文字サイズ">
-                </div>
-                <div class="field">
+                <div class="field full">
                     <label for="trigger-gifts-image-size">ギフト画像サイズ</label>
-                    <input id="trigger-gifts-image-size" type="number" min="48" max="2000" step="1" inputmode="numeric" aria-label="ギフト画像サイズ">
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-image-size" min="48" max="500" step="1" value="132" style="flex: 1;" aria-label="ギフト画像サイズ">
+                        <span class="subtext" id="trigger-gifts-image-size-value" style="margin-top: 0; width: 52px;">132px</span>
+                    </div>
                 </div>
                 <div class="field full">
                     <label for="trigger-gifts-bg-opacity">背景の不透明度</label>
@@ -448,13 +497,29 @@
                         <span class="subtext" id="trigger-gifts-bg-opacity-value" style="margin-top: 0; width: 42px;">46%</span>
                     </div>
                 </div>
-                <div class="field">
+                <div class="field full">
                     <label for="trigger-gifts-columns">列数</label>
-                    <input id="trigger-gifts-columns" type="number" min="1" max="20" step="1" inputmode="numeric" aria-label="列数">
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-columns" min="1" max="20" step="1" value="3" style="flex: 1;" aria-label="列数">
+                        <span class="subtext" id="trigger-gifts-columns-value" style="margin-top: 0; width: 42px;">3列</span>
+                    </div>
                 </div>
-                <div class="field">
+                <div class="field full">
                     <label for="trigger-gifts-rows">行数</label>
-                    <input id="trigger-gifts-rows" type="number" min="1" max="20" step="1" inputmode="numeric" aria-label="行数">
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-rows" min="1" max="20" step="1" value="2" style="flex: 1;" aria-label="行数">
+                        <span class="subtext" id="trigger-gifts-rows-value" style="margin-top: 0; width: 42px;">2行</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label class="toggle"><input type="checkbox" id="trigger-gifts-show-coin-count"><span>コイン数を表示（カード右上にコインマーク＋数字）</span></label>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-coin-count-size">コイン数の文字サイズ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-coin-count-size" min="10" max="64" step="1" value="14" style="flex: 1;" aria-label="コイン数の文字サイズ">
+                        <span class="subtext" id="trigger-gifts-coin-count-size-value" style="margin-top: 0; width: 42px;">14px</span>
+                    </div>
                 </div>
                 <div class="field full">
                     <label class="toggle"><input type="checkbox" id="trigger-gifts-slide-enabled"><span>スライド表示（あふれた分を定速無限スライド）</span></label>
@@ -495,6 +560,8 @@
 
     <script src="/db/effects-state.js"></script>
     <script src="/db/effects-media.js"></script>
+    <script src="/shared/sound-picker.js"></script>
+    <script src="/shared/gift-suggest.js"></script>
     <script src="/db/effects-myinstants.js"></script>
     <script src="/db/effects-modal.js"></script>
     <script src="/db/effects-rows.js"></script>

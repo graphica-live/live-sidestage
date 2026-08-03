@@ -29,9 +29,16 @@ const TRIGGER_LIST_BG_COLORS = {
 };
 
 function getTriggerGiftOptionSummary(triggerRecord) {
-    return triggerRecord.treatGiftComboAsSingle !== false
+    const comboSummary = triggerRecord.treatGiftComboAsSingle !== false
         ? 'ギフトまとめ投げを1回とする'
         : 'まとめ投げを回数分再生する';
+
+    if (!triggerRecord.rapidFireEnabled) {
+        return comboSummary;
+    }
+
+    const cancelMs = Number(triggerRecord.rapidFireCancelMs ?? 1500);
+    return `${comboSummary} ／ 連射モード: ON (${cancelMs}ms)`;
 }
 
 function formatUserIdsSummary(userIds) {

@@ -87,6 +87,8 @@ module.exports = function createEffectsRuntime({
                 : (treatGiftComboAsSingle ? 1 : Math.max(1, Number(sourceEvent?.repeatCount || 1))),
             triggerId: trigger?.id || 'preview-trigger',
             triggerName: trigger?.name || 'Preview',
+            rapidFireEnabled: Boolean(trigger?.rapidFireEnabled),
+            rapidFireCancelMs: Number(trigger?.rapidFireCancelMs ?? 1500),
             giftName: sourceEvent?.giftName || '',
             comment: sourceEvent?.comment || '',
             totalGifts: sourceEvent?.totalGifts || 0,

@@ -227,6 +227,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         let videoStallTimer = null;
         let audioStallTimer = null;
         const MEDIA_STALL_TIMEOUT_MS = 8000;
+        let rapidFireCancelTimer = null;
 
         // メディア Blob URL キャッシュ: 元の URL -> 解決済み Blob URL (ロード中は Promise)
         const mediaBlobCache = new Map();
@@ -495,6 +496,38 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             activePlaybackPayload = null;
             clearStallWatchdog('video');
             clearStallWatchdog('audio');
+            clearRapidFireCancelTimer();
+        }
+
+        function clearRapidFireCancelTimer() {
+            if (rapidFireCancelTimer) {
+                clearTimeout(rapidFireCancelTimer);
+                rapidFireCancelTimer = null;
+            }
+        }
+
+        // 連射モード: 再生中と同じトリガーの新しいイベントが順番待ちになったら、
+        // 指定ms後に「その時点で再生中だったインスタンス」だけをキャンセルして次へ進める。
+        // 他トリガーの再生中には一切干渉しない。
+        function maybeArmRapidFireCancel(payload) {
+            if (!payload || !payload.rapidFireEnabled) return;
+            if (!isPlaying || !activePlaybackPayload) return;
+            if (activePlaybackPayload.triggerId !== payload.triggerId) return;
+            if (rapidFireCancelTimer) return;
+
+            const capturedToken = activePlaybackId;
+            const capturedTriggerId = payload.triggerId;
+            const ms = Math.max(0, Number(payload.rapidFireCancelMs) || 0);
+
+            rapidFireCancelTimer = setTimeout(() => {
+                rapidFireCancelTimer = null;
+
+                if (activePlaybackId === capturedToken && isPlaying
+                    && activePlaybackPayload && activePlaybackPayload.triggerId === capturedTriggerId) {
+                    updateDebugLog('連射モード: 再生をキャンセルして次へ進みます。');
+                    finishPlayback();
+                }
+            }, ms);
         }
 
         // 一部の壊れた/非対応MP4は 'error' すら発火せず再生開始しないまま固まる。
@@ -732,6 +765,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 });
             }
 
+            maybeArmRapidFireCancel(payload);
             processPlaybackQueue();
         });
 

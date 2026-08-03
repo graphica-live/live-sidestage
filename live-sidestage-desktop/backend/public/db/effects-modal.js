@@ -207,6 +207,9 @@ function resetTriggerModal() {
     triggerModalEvent.value = '';
     triggerModalGiftName.value = '';
     triggerModalMinCoins.value = '0';
+    triggerModalRapidFireEnabled.checked = false;
+    triggerModalRapidFireCancelMs.value = '1500';
+    syncTriggerRapidFireField();
     triggerModalTreatComboSingle.checked = true;
     triggerModalExcludeFromOverlay.checked = false;
     triggerModalCommentMode.value = '';
@@ -246,6 +249,9 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalEvent.value = '';
     triggerModalGiftName.value = triggerRecord.giftName || '';
     triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
+    triggerModalRapidFireEnabled.checked = Boolean(triggerRecord.rapidFireEnabled);
+    triggerModalRapidFireCancelMs.value = String(triggerRecord.rapidFireCancelMs ?? 1500);
+    syncTriggerRapidFireField();
     triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
     triggerModalExcludeFromOverlay.checked = Boolean(triggerRecord.excludedFromListOverlay);
     triggerModalListOverlayBgColor.value = triggerRecord.listOverlayBgColor || '';
@@ -276,6 +282,8 @@ function collectTriggerFromModal() {
         eventPlayMode: triggerModalPlayRandom.checked ? 'random' : 'sequential',
         giftName: triggerModalGiftName.value.trim(),
         minCoins: Number(triggerModalMinCoins.value || 0),
+        rapidFireEnabled: triggerModalRapidFireEnabled.checked,
+        rapidFireCancelMs: Number(triggerModalRapidFireCancelMs.value || 1500),
         treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
         excludedFromListOverlay: triggerModalExcludeFromOverlay.checked,
         listOverlayBgColor: triggerModalListOverlayBgColor.value,
@@ -306,6 +314,10 @@ function syncTriggerCommentField() {
     triggerModalCommentText.placeholder = isExact
         ? '入力一致にするコメントを入力'
         : 'コメント条件を使わない場合は未入力のまま';
+}
+
+function syncTriggerRapidFireField() {
+    triggerModalRapidFireCancelMs.disabled = !triggerModalRapidFireEnabled.checked;
 }
 
 addEventButton.addEventListener('click', () => {
@@ -405,6 +417,10 @@ triggerModalSubmit.addEventListener('click', async () => {
 
 triggerModalCommentMode.addEventListener('change', () => {
     syncTriggerCommentField();
+});
+
+triggerModalRapidFireEnabled.addEventListener('change', () => {
+    syncTriggerRapidFireField();
 });
 
 triggerModalUserTargetList.addEventListener('change', () => {

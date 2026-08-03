@@ -75,7 +75,9 @@ function createDefaultEffectTrigger() {
         listOverlayName: '',
         listOverlayBgColor: '',
         userTargetMode: 'list',
-        userIdToFileDir: ''
+        userIdToFileDir: '',
+        rapidFireEnabled: false,
+        rapidFireCancelMs: 1500
     };
 }
 
@@ -151,6 +153,12 @@ function normalizeMidiByte(value, fallback) {
 
 function normalizeVdjCommand(value) {
     return normalizeEffectText(value, 200);
+}
+
+function normalizeEffectTriggerRapidFireCancelMs(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return 1500;
+    return Math.max(100, Math.min(30000, parsed));
 }
 
 function normalizeEffectEvent(value, index) {
@@ -239,7 +247,9 @@ function normalizeEffectTrigger(value) {
         listOverlayName: normalizeEffectText(value?.listOverlayName, 160),
         listOverlayBgColor: normalizeEffectTriggerListOverlayBgColor(value?.listOverlayBgColor),
         userTargetMode,
-        userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : ''
+        userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : '',
+        rapidFireEnabled: Boolean(value?.rapidFireEnabled),
+        rapidFireCancelMs: normalizeEffectTriggerRapidFireCancelMs(value?.rapidFireCancelMs)
     };
 }
 
