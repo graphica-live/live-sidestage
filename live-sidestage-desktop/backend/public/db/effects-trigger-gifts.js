@@ -3,12 +3,20 @@ const triggerGiftsSettingsModal = document.getElementById('trigger-gifts-setting
 const triggerGiftsFontSelect = document.getElementById('trigger-gifts-font');
 const triggerGiftsTextStyleSelect = document.getElementById('trigger-gifts-text-style');
 const triggerGiftsStrokeWidthInput = document.getElementById('trigger-gifts-stroke-width');
+const triggerGiftsStrokeWidthValue = document.getElementById('trigger-gifts-stroke-width-value');
 const triggerGiftsFontSizeInput = document.getElementById('trigger-gifts-font-size');
+const triggerGiftsFontSizeValue = document.getElementById('trigger-gifts-font-size-value');
 const triggerGiftsImageSizeInput = document.getElementById('trigger-gifts-image-size');
+const triggerGiftsImageSizeValue = document.getElementById('trigger-gifts-image-size-value');
 const triggerGiftsBgOpacityInput = document.getElementById('trigger-gifts-bg-opacity');
 const triggerGiftsBgOpacityValue = document.getElementById('trigger-gifts-bg-opacity-value');
 const triggerGiftsColumnsInput = document.getElementById('trigger-gifts-columns');
+const triggerGiftsColumnsValue = document.getElementById('trigger-gifts-columns-value');
 const triggerGiftsRowsInput = document.getElementById('trigger-gifts-rows');
+const triggerGiftsRowsValue = document.getElementById('trigger-gifts-rows-value');
+const triggerGiftsShowCoinCountInput = document.getElementById('trigger-gifts-show-coin-count');
+const triggerGiftsCoinCountSizeInput = document.getElementById('trigger-gifts-coin-count-size');
+const triggerGiftsCoinCountSizeValue = document.getElementById('trigger-gifts-coin-count-size-value');
 const triggerGiftsSlideEnabledInput = document.getElementById('trigger-gifts-slide-enabled');
 const triggerGiftsSlideSpeedInput = document.getElementById('trigger-gifts-slide-speed');
 const triggerGiftsSlideSpeedValue = document.getElementById('trigger-gifts-slide-speed-value');
@@ -94,13 +102,21 @@ async function loadTriggerGiftsAppearance() {
 
         triggerGiftsFontSelect.innerHTML = getTriggerGiftsFontOptionsMarkup(appearance.fontKey || 'default');
         triggerGiftsTextStyleSelect.innerHTML = getTriggerGiftsTextStyleOptionsMarkup(appearance.textStyleKey || 'gold-night');
-        triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 3);
+        triggerGiftsStrokeWidthInput.value = String(appearance.strokeWidth ?? 4);
+        triggerGiftsStrokeWidthValue.textContent = `${triggerGiftsStrokeWidthInput.value}px`;
         triggerGiftsFontSizeInput.value = String(appearance.fontSize ?? 20);
+        triggerGiftsFontSizeValue.textContent = `${triggerGiftsFontSizeInput.value}px`;
         triggerGiftsImageSizeInput.value = String(appearance.giftImageSize ?? 132);
+        triggerGiftsImageSizeValue.textContent = `${triggerGiftsImageSizeInput.value}px`;
         triggerGiftsBgOpacityInput.value = String(appearance.backgroundOpacity ?? 46);
         triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
         triggerGiftsColumnsInput.value = String(appearance.columns ?? 3);
+        triggerGiftsColumnsValue.textContent = `${triggerGiftsColumnsInput.value}列`;
         triggerGiftsRowsInput.value = String(appearance.rows ?? 2);
+        triggerGiftsRowsValue.textContent = `${triggerGiftsRowsInput.value}行`;
+        triggerGiftsShowCoinCountInput.checked = Boolean(appearance.showCoinCount);
+        triggerGiftsCoinCountSizeInput.value = String(appearance.coinCountSize ?? 14);
+        triggerGiftsCoinCountSizeValue.textContent = `${triggerGiftsCoinCountSizeInput.value}px`;
         triggerGiftsSlideEnabledInput.checked = Boolean(appearance.slideEnabled);
         triggerGiftsSlideSpeedInput.value = String(appearance.slideSpeed ?? 60);
         triggerGiftsSlideSpeedValue.textContent = `${triggerGiftsSlideSpeedInput.value}px/秒`;
@@ -125,6 +141,8 @@ async function saveTriggerGiftsAppearance() {
                     backgroundOpacity: triggerGiftsBgOpacityInput.value,
                     columns: triggerGiftsColumnsInput.value,
                     rows: triggerGiftsRowsInput.value,
+                    showCoinCount: triggerGiftsShowCoinCountInput.checked,
+                    coinCountSize: triggerGiftsCoinCountSizeInput.value,
                     slideEnabled: triggerGiftsSlideEnabledInput.checked,
                     slideSpeed: triggerGiftsSlideSpeedInput.value,
                     slideDirection: triggerGiftsSlideDirectionSelect.value
@@ -146,15 +164,35 @@ document.querySelectorAll('[data-action="close-trigger-gifts-settings-modal"]').
 
 triggerGiftsFontSelect.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsTextStyleSelect.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsStrokeWidthInput.addEventListener('input', () => {
+    triggerGiftsStrokeWidthValue.textContent = `${triggerGiftsStrokeWidthInput.value}px`;
+});
 triggerGiftsStrokeWidthInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsFontSizeInput.addEventListener('input', () => {
+    triggerGiftsFontSizeValue.textContent = `${triggerGiftsFontSizeInput.value}px`;
+});
 triggerGiftsFontSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsImageSizeInput.addEventListener('input', () => {
+    triggerGiftsImageSizeValue.textContent = `${triggerGiftsImageSizeInput.value}px`;
+});
 triggerGiftsImageSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsBgOpacityInput.addEventListener('input', () => {
     triggerGiftsBgOpacityValue.textContent = `${triggerGiftsBgOpacityInput.value}%`;
 });
 triggerGiftsBgOpacityInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsColumnsInput.addEventListener('input', () => {
+    triggerGiftsColumnsValue.textContent = `${triggerGiftsColumnsInput.value}列`;
+});
 triggerGiftsColumnsInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsRowsInput.addEventListener('input', () => {
+    triggerGiftsRowsValue.textContent = `${triggerGiftsRowsInput.value}行`;
+});
 triggerGiftsRowsInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsShowCoinCountInput.addEventListener('change', saveTriggerGiftsAppearance);
+triggerGiftsCoinCountSizeInput.addEventListener('input', () => {
+    triggerGiftsCoinCountSizeValue.textContent = `${triggerGiftsCoinCountSizeInput.value}px`;
+});
+triggerGiftsCoinCountSizeInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsSlideEnabledInput.addEventListener('change', saveTriggerGiftsAppearance);
 triggerGiftsSlideSpeedInput.addEventListener('input', () => {
     triggerGiftsSlideSpeedValue.textContent = `${triggerGiftsSlideSpeedInput.value}px/秒`;

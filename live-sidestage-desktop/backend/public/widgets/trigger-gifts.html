@@ -172,16 +172,17 @@
             z-index: 3;
             display: flex;
             align-items: center;
-            gap: 4px;
-            padding: 3px 9px;
+            gap: 0.3em;
+            padding: 0.25em 0.65em;
             border-radius: 999px;
             background: rgba(0, 0, 0, 0.55);
+            font-size: var(--coin-count-size, 14px);
         }
 
         .coin-icon {
             flex: 0 0 auto;
-            width: 16px;
-            height: 16px;
+            width: 1.15em;
+            height: 1.15em;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='coin' cx='35%25' cy='30%25' r='70%25'%3E%3Cstop offset='0%25' stop-color='%23fff7b3'/%3E%3Cstop offset='55%25' stop-color='%23f5c542'/%3E%3Cstop offset='100%25' stop-color='%23d48a14'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23coin)'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23fff4a3' stroke-width='4'/%3E%3Cpath d='M32 18l6 10 10 4-10 4-6 10-6-10-10-4 10-4z' fill='%23fff8d6' opacity='.95'/%3E%3C/svg%3E");
             background-size: contain;
             background-repeat: no-repeat;
@@ -189,10 +190,44 @@
         }
 
         .coin-count {
-            font-size: 14px;
+            font-size: 1em;
             font-weight: 800;
             line-height: 1;
             color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.35)) var(--stroke);
+            paint-order: stroke fill;
+        }
+
+        .total-coin-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.05em;
+            padding: 0.25em 0.6em;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.55);
+            font-size: var(--coin-count-size, 14px);
+            line-height: 1.15;
+        }
+
+        .total-coin-label {
+            font-size: 0.68em;
+            font-weight: 700;
+            color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.3)) var(--stroke);
+            paint-order: stroke fill;
+        }
+
+        .total-coin-count {
+            font-size: 1em;
+            font-weight: 800;
+            color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.35)) var(--stroke);
+            paint-order: stroke fill;
         }
 
         @keyframes cardIn {
@@ -313,9 +348,14 @@
             const coinHtml = (showCoinCount && diamondCount > 0)
                 ? `<div class="coin-badge"><span class="coin-icon"></span><span class="coin-count">${diamondCount.toLocaleString()}</span></div>`
                 : '';
+            const dailyCoinTotal = Number(item.dailyCoinTotal) || 0;
+            const totalCoinHtml = dailyCoinTotal > 0
+                ? `<div class="total-coin-badge"><span class="total-coin-label">累計</span><span class="total-coin-count">${dailyCoinTotal.toLocaleString()}</span></div>`
+                : '';
 
             return `<div class="card"${styleAttr}>` +
                 coinHtml +
+                totalCoinHtml +
                 `<div class="gift-image-wrap">${imageHtml}</div>` +
                 `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>` +
                 `</div>`;
@@ -369,14 +409,16 @@
 
             const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
             const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
-            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 3));
+            const strokeWidth = Math.max(0, Math.min(48, Number(appearance.strokeWidth) || 4));
             const fontSize = Math.max(12, Math.min(96, Number(appearance.fontSize) || 20));
             const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
             const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
             const rawGiftImageSize = Number(appearance.giftImageSize);
-            const giftImageSize = Math.max(48, Math.min(2000, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
+            const giftImageSize = Math.max(48, Math.min(500, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
             const cols = Math.max(1, Number.parseInt(appearance.columns, 10) || 1);
             const rows = Math.max(1, Number.parseInt(appearance.rows, 10) || 1);
+            const rawCoinCountSize = Number(appearance.coinCountSize);
+            const coinCountSize = Math.max(10, Math.min(64, Number.isFinite(rawCoinCountSize) ? rawCoinCountSize : 14));
             const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
             const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
             const root = document.documentElement.style;
@@ -389,6 +431,7 @@
             root.setProperty('--gift-image-size', giftImageSize + 'px');
             root.setProperty('--cols', String(cols));
             root.setProperty('--rows', String(rows));
+            root.setProperty('--coin-count-size', coinCountSize + 'px');
         }
 
         function loadSnapshot() {
