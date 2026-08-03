@@ -12,6 +12,7 @@
     "prebackend:start": "npm rebuild better-sqlite3 sherpa-onnx",
     "backend:start": "chcp 65001>nul & node backend/index.js",
     "generate:windows-launchers": "chcp 65001>nul & node scripts/generate-windows-launchers.js",
+    "worktree:new": "powershell -ExecutionPolicy Bypass -File .\\scripts\\new-worktree.ps1",
     "rebuild:electron": "electron-rebuild -f better-sqlite3",
     "loader": "chcp 65001>nul & node loader-server/index.js",
     "run": "concurrently -n loader,electron -c yellow,cyan \"npm:loader\" \"npm:electron\"",

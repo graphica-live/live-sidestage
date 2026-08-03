@@ -68,6 +68,22 @@ Get-Process | Where-Object { $_.Name -match '^(electron|node)$' } | Stop-Process
 3. 設定ページUI行要素（iframeではない）は `background: var(--panel)`
 4. 参考実装: `top-gift.html` の `body.preview-card` CSS rule
 
+## 並行作業ルール（複数タブ）
+
+複数タブ/セッションで同時に修正作業する場合、同一ディレクトリを共有するとファイル競合が起きる。**タブごとに `git worktree` で作業ディレクトリを分離すること。**
+
+```powershell
+npm run worktree:new -- -Name <task-name>
+```
+
+- `.worktrees/<task-name>` に `wt/<task-name>` ブランチで新規ワークツリーが作成される
+- `node_modules` は junction で共有（ネイティブモジュール再ビルド不要）、`.env` は自動コピーされる
+- 新しいタブ（Claude Codeセッション）はそのディレクトリを作業ディレクトリとして開始する
+- 作業完了後は通常どおりPRを作成してmainにマージ
+- 不要になったworktreeは `git worktree remove .worktrees/<task-name>` で削除
+
+**Why:** 同一ディレクトリを複数タブで同時編集すると、Editツールの内容衝突や意図しない上書きが発生する。worktreeでブランチごと分離すれば「他タブの完了を待つ」必要がなく真の並行作業ができる。
+
 ## フロントエンドの完了条件
 
 - package.jsonに定義済みのlint、test、buildを実行する
