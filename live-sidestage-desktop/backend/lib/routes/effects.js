@@ -3,7 +3,12 @@
 const { repairMojibakeFilename } = require('../utils');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
-const { EFFECT_DEFAULT_CATEGORY_ID, WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY } = require('../constants');
+const {
+    EFFECT_DEFAULT_CATEGORY_ID,
+    WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY,
+    EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
+    EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL
+} = require('../constants');
 
 function normalizeTriggerGiftsFontSize(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -244,6 +249,15 @@ module.exports = function registerEffectsRoutes({
                 && !trigger.excludedFromListOverlay
                 && (trigger.categoryId || EFFECT_DEFAULT_CATEGORY_ID) === categoryId)
             .map((trigger) => {
+                if (trigger.giftName === EFFECT_TRIGGER_FOLLOW_GIFT_NAME) {
+                    return {
+                        id: trigger.id,
+                        triggerName: trigger.name || trigger.giftName,
+                        giftName: trigger.giftName,
+                        giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL
+                    };
+                }
+
                 const matchedGift = catalogGifts.find((gift) =>
                     String(gift.name || '').trim().toLowerCase() === trigger.giftName);
 
