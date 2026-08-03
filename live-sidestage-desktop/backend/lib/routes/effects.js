@@ -254,7 +254,8 @@ module.exports = function registerEffectsRoutes({
                         id: trigger.id,
                         triggerName: trigger.name || trigger.giftName,
                         giftName: trigger.giftName,
-                        giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL
+                        giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
+                        listOverlayBgColor: trigger.listOverlayBgColor || ''
                     };
                 }
 
@@ -265,7 +266,8 @@ module.exports = function registerEffectsRoutes({
                     id: trigger.id,
                     triggerName: trigger.name || matchedGift?.name || trigger.giftName,
                     giftName: matchedGift?.name || trigger.giftName,
-                    giftImageUrl: matchedGift?.imageUrl || ''
+                    giftImageUrl: matchedGift?.imageUrl || '',
+                    listOverlayBgColor: trigger.listOverlayBgColor || ''
                 };
             });
 

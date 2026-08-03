@@ -72,6 +72,7 @@ function createDefaultEffectTrigger() {
         userIds: [],
         treatGiftComboAsSingle: true,
         excludedFromListOverlay: false,
+        listOverlayBgColor: '',
         userTargetMode: 'list',
         userIdToFileDir: ''
     };
@@ -81,6 +82,13 @@ function createDefaultEffectTrigger() {
 function normalizeEffectTriggerCommentMode(value) {
     const normalized = normalizeEffectText(value, 16).toLowerCase();
     return normalized === 'any' || normalized === 'exact' ? normalized : 'disabled';
+}
+
+const EFFECT_TRIGGER_LIST_OVERLAY_BG_COLORS = ['black', 'white', 'blue', 'green', 'yellow', 'purple', 'red'];
+
+function normalizeEffectTriggerListOverlayBgColor(value) {
+    const normalized = normalizeEffectText(value, 16).toLowerCase();
+    return EFFECT_TRIGGER_LIST_OVERLAY_BG_COLORS.includes(normalized) ? normalized : '';
 }
 
 function normalizeEffectScreen(value) {
@@ -227,6 +235,7 @@ function normalizeEffectTrigger(value) {
         userIds: normalizeUserIdList(value?.userIds),
         treatGiftComboAsSingle: value?.treatGiftComboAsSingle !== false,
         excludedFromListOverlay: Boolean(value?.excludedFromListOverlay),
+        listOverlayBgColor: normalizeEffectTriggerListOverlayBgColor(value?.listOverlayBgColor),
         userTargetMode,
         userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : ''
     };

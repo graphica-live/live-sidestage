@@ -19,6 +19,7 @@
             --gift-image-size: 132px;
             --cols: 3;
             --rows: 2;
+            --card-bg-rgb: 36 40 48;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -97,7 +98,7 @@
             overflow: hidden;
             padding: 16px 12px;
             border-radius: 20px;
-            background: linear-gradient(180deg, rgba(36, 40, 48, var(--card-bg-opacity, 0.46)) 0%, rgba(20, 22, 28, calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
+            background: linear-gradient(180deg, rgba(var(--card-bg-rgb) / var(--card-bg-opacity, 0.46)) 0%, rgba(var(--card-bg-rgb) / calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
             border: 1px solid rgba(255, 255, 255, 0.09);
             backdrop-filter: blur(14px) saturate(140%);
             -webkit-backdrop-filter: blur(14px) saturate(140%);
@@ -259,12 +260,24 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        const TRIGGER_GIFTS_BG_COLORS = {
+            black:  '15 23 42',
+            white:  '248 250 252',
+            blue:   '37 99 235',
+            green:  '22 163 74',
+            yellow: '234 179 8',
+            purple: '147 51 234',
+            red:    '220 38 38'
+        };
+
         function buildCardHtml(item) {
             const imageHtml = item.giftImageUrl
                 ? `<img class="gift-image" src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'gift-image-placeholder'}))">`
                 : `<div class="gift-image-placeholder"></div>`;
+            const bgRgb = TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()];
+            const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
 
-            return `<div class="card">` +
+            return `<div class="card"${styleAttr}>` +
                 `<div class="gift-image-wrap">${imageHtml}</div>` +
                 `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>` +
                 `</div>`;
