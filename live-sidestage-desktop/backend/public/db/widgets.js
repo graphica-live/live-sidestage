@@ -288,13 +288,12 @@
                         </filter>
                     </defs>
                     <rect width="320" height="320" rx="72" fill="url(#bg)"/>
-                    <circle cx="242" cy="94" r="56" fill="rgba(255,255,255,0.16)"/>
                     <g filter="url(#shadow)">
-                        <circle cx="136" cy="118" r="42" fill="#ecfeff"/>
-                        <path d="M64 244c0-36 29-65 65-65h14c36 0 65 29 65 65v14H64z" fill="#ecfeff"/>
-                        <circle cx="230" cy="186" r="42" fill="#ffffff"/>
-                        <path d="M230 162v48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
-                        <path d="M206 186h48" stroke="#0f766e" stroke-width="14" stroke-linecap="round"/>
+                        <circle cx="130" cy="150" r="40" fill="#ecfeff"/>
+                        <path d="M62 246c0-36 28-64 64-64h8c36 0 64 28 64 64v10H62z" fill="#ecfeff"/>
+                        <circle cx="234" cy="86" r="64" fill="#ffffff"/>
+                        <path d="M234 46v80" stroke="#0f766e" stroke-width="20" stroke-linecap="round"/>
+                        <path d="M194 86h80" stroke="#0f766e" stroke-width="20" stroke-linecap="round"/>
                     </g>
                 </svg>
             `)}`
