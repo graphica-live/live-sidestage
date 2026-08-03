@@ -297,7 +297,7 @@
                         <label class="toggle"><input type="checkbox" id="trigger-modal-rapid-fire-enabled"><span>同じトリガーの再生待ちが発生したら現在の再生をキャンセルして高速連射する</span></label>
                     </div>
                     <label for="trigger-modal-rapid-fire-cancel-ms">キャンセルまでの時間 (ms)</label>
-                    <input type="number" id="trigger-modal-rapid-fire-cancel-ms" min="100" max="30000" step="50" placeholder="1500">
+                    <input type="number" id="trigger-modal-rapid-fire-cancel-ms" min="10" max="30000" step="10" placeholder="1500">
                     <div class="field-hint">ONの場合、このトリガーのイベント再生中に同じトリガーの新しいイベントが順番待ちになると、指定時間後に再生中の動画・音声をキャンセルして次へ進みます。他のトリガーの再生には影響しません。</div>
                 </div>
                 <div class="field full">

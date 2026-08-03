@@ -158,7 +158,7 @@ function normalizeVdjCommand(value) {
 function normalizeEffectTriggerRapidFireCancelMs(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed)) return 1500;
-    return Math.max(100, Math.min(30000, parsed));
+    return Math.max(10, Math.min(30000, parsed));
 }
 
 function normalizeEffectEvent(value, index) {
