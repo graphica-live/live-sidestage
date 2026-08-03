@@ -357,6 +357,12 @@ const FOLLOW_TRIGGER_GIFT_SUGGESTION = {
 };
 
 async function loadGiftSuggestions() {
+    knownGiftSuggestions = [FOLLOW_TRIGGER_GIFT_SUGGESTION];
+
+    if (currentTriggers.length) {
+        renderTriggers();
+    }
+
     const response = await fetch('/api/tiktok/gifts');
     const payload = await response.json();
 
