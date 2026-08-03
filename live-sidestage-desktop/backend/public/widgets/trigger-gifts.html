@@ -313,6 +313,7 @@
         }
 
         let currentAppearance = null;
+        let lastRenderSignature = null;
 
         function clampInt(value, min, max, fallback) {
             const parsed = Number.parseInt(value, 10);
@@ -338,12 +339,10 @@
             red:    '220 38 38'
         };
 
-        function buildCardHtml(item, showCoinCount) {
+        function buildCardInnerHtml(item, showCoinCount) {
             const imageHtml = item.giftImageUrl
                 ? `<img class="gift-image" src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'gift-image-placeholder'}))">`
                 : `<div class="gift-image-placeholder"></div>`;
-            const bgRgb = TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()];
-            const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
             const diamondCount = Number(item.diamondCount) || 0;
             const coinHtml = (showCoinCount && diamondCount > 0)
                 ? `<div class="coin-badge"><span class="coin-icon"></span><span class="coin-count">${diamondCount.toLocaleString()}</span></div>`
@@ -353,12 +352,62 @@
                 ? `<div class="total-coin-badge"><span class="total-coin-label">累計</span><span class="total-coin-count">${dailyCoinTotal.toLocaleString()}</span></div>`
                 : '';
 
-            return `<div class="card"${styleAttr}>` +
-                coinHtml +
+            return coinHtml +
                 totalCoinHtml +
                 `<div class="gift-image-wrap">${imageHtml}</div>` +
-                `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>` +
+                `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>`;
+        }
+
+        function getCardBgRgb(item) {
+            return TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()] || '';
+        }
+
+        function buildCardHtml(item, showCoinCount) {
+            const bgRgb = getCardBgRgb(item);
+            const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
+
+            return `<div class="card" data-trigger-id="${escapeAttr(item.id)}"${styleAttr}>` +
+                buildCardInnerHtml(item, showCoinCount) +
                 `</div>`;
+        }
+
+        // ギフト受信のたびに再描画すると、その都度スライドアニメーションを
+        // 作り直すことになりスクロール位置が先頭へ戻ってしまう。トリガー構成
+        // (件数・並び・表示件数・スライド設定)が前回と同じ場合は要素を作り直さず、
+        // 各カードの中身(累計コインなど)だけを差し替えてアニメーションを継続させる。
+        function computeRenderSignature(items, appearance, capacity, slideActive, axisX, reverse, speed) {
+            return JSON.stringify({
+                ids: items.map((item) => item.id),
+                capacity,
+                slideActive,
+                axisX,
+                reverse,
+                speed
+            });
+        }
+
+        function updateCardContents(items, appearance) {
+            const cardsById = new Map();
+            stripEl.querySelectorAll('.card[data-trigger-id]').forEach((cardEl) => {
+                const id = cardEl.dataset.triggerId;
+                if (!cardsById.has(id)) {
+                    cardsById.set(id, []);
+                }
+                cardsById.get(id).push(cardEl);
+            });
+
+            items.forEach((item) => {
+                const innerHtml = buildCardInnerHtml(item, appearance.showCoinCount);
+                const bgRgb = getCardBgRgb(item);
+                (cardsById.get(String(item.id)) || []).forEach((cardEl) => {
+                    cardEl.innerHTML = innerHtml;
+                    if (bgRgb) {
+                        cardEl.style.setProperty('--card-bg-rgb', bgRgb);
+                    } else {
+                        cardEl.style.removeProperty('--card-bg-rgb');
+                    }
+                });
+            });
         }
 
         // 定速無限マーキー: 全アイテムを2連結して描画し、その半分の実測サイズを
@@ -370,6 +419,7 @@
             const capacity = cols * rows;
 
             if (!items.length) {
+                lastRenderSignature = null;
                 stripEl.className = 'strip';
                 stripEl.style.animation = 'none';
                 stripEl.innerHTML = previewMode ? '<div class="empty">有効なトリガーがありません</div>' : '';
@@ -379,8 +429,18 @@
             const overflowing = items.length > capacity;
             const axisX = appearance.slideDirection === 'left' || appearance.slideDirection === 'right';
             const reverse = appearance.slideDirection === 'right' || appearance.slideDirection === 'down';
+            const slideActive = Boolean(appearance.slideEnabled) && overflowing;
+            const speed = Math.max(5, Number(appearance.slideSpeed) || 60); // px/秒
 
-            if (!appearance.slideEnabled || !overflowing) {
+            const signature = computeRenderSignature(items, appearance, capacity, slideActive, axisX, reverse, speed);
+            if (signature === lastRenderSignature) {
+                // 構成に変化なし: カードの中身だけ更新してアニメーションはそのまま継続する
+                updateCardContents(items, appearance);
+                return;
+            }
+            lastRenderSignature = signature;
+
+            if (!slideActive) {
                 // スライドOFF、またはあふれていない場合: 先頭capacity件のみ静的表示
                 stripEl.className = 'strip page';
                 stripEl.style.animation = 'none';
@@ -397,7 +457,6 @@
             void stripEl.offsetWidth;
             const fullLength = axisX ? stripEl.scrollWidth : stripEl.scrollHeight;
             const halfLength = fullLength / 2;
-            const speed = Math.max(5, Number(appearance.slideSpeed) || 60); // px/秒
             const duration = Math.max(2, halfLength / speed);
             const keyframeName = axisX ? 'triggerGiftsMarqueeX' : 'triggerGiftsMarqueeY';
             stripEl.style.animation = `${keyframeName} ${duration}s linear infinite${reverse ? ' reverse' : ''}`;
