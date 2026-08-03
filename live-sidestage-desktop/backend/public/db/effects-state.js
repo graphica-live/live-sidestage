@@ -43,6 +43,7 @@ const triggerModal = document.getElementById('trigger-modal');
 const triggerModalTitle = document.getElementById('trigger-modal-title');
 const triggerModalDescription = document.getElementById('trigger-modal-description');
 const triggerModalName = document.getElementById('trigger-modal-name');
+const triggerModalListOverlayName = document.getElementById('trigger-modal-list-overlay-name');
 const triggerModalEvent = document.getElementById('trigger-modal-event');
 const triggerEventSuggestionPanel = document.getElementById('trigger-event-suggestion-panel');
 const triggerModalPlaySequential = document.getElementById('trigger-modal-play-sequential');

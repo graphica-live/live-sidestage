@@ -72,6 +72,7 @@ function createDefaultEffectTrigger() {
         userIds: [],
         treatGiftComboAsSingle: true,
         excludedFromListOverlay: false,
+        listOverlayName: '',
         listOverlayBgColor: '',
         userTargetMode: 'list',
         userIdToFileDir: ''
@@ -235,6 +236,7 @@ function normalizeEffectTrigger(value) {
         userIds: normalizeUserIdList(value?.userIds),
         treatGiftComboAsSingle: value?.treatGiftComboAsSingle !== false,
         excludedFromListOverlay: Boolean(value?.excludedFromListOverlay),
+        listOverlayName: normalizeEffectText(value?.listOverlayName, 160),
         listOverlayBgColor: normalizeEffectTriggerListOverlayBgColor(value?.listOverlayBgColor),
         userTargetMode,
         userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : ''

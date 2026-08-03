@@ -252,7 +252,7 @@ module.exports = function registerEffectsRoutes({
                 if (trigger.giftName === EFFECT_TRIGGER_FOLLOW_GIFT_NAME) {
                     return {
                         id: trigger.id,
-                        triggerName: trigger.name || trigger.giftName,
+                        triggerName: trigger.listOverlayName || trigger.name || trigger.giftName,
                         giftName: trigger.giftName,
                         giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
                         listOverlayBgColor: trigger.listOverlayBgColor || ''
@@ -264,7 +264,7 @@ module.exports = function registerEffectsRoutes({
 
                 return {
                     id: trigger.id,
-                    triggerName: trigger.name || matchedGift?.name || trigger.giftName,
+                    triggerName: trigger.listOverlayName || trigger.name || matchedGift?.name || trigger.giftName,
                     giftName: matchedGift?.name || trigger.giftName,
                     giftImageUrl: matchedGift?.imageUrl || '',
                     listOverlayBgColor: trigger.listOverlayBgColor || ''
