@@ -18,6 +18,16 @@ function showConfirm(message, okLabel = '削除する') {
     });
 }
 
+const TRIGGER_LIST_BG_COLORS = {
+    black:  '15 23 42',
+    white:  '248 250 252',
+    blue:   '37 99 235',
+    green:  '22 163 74',
+    yellow: '234 179 8',
+    purple: '147 51 234',
+    red:    '220 38 38'
+};
+
 function getTriggerGiftOptionSummary(triggerRecord) {
     return triggerRecord.treatGiftComboAsSingle !== false
         ? 'ギフトまとめ投げを1回とする'
@@ -221,6 +231,12 @@ function renderTriggers() {
         const enabledCheckbox = fragment.querySelector('[data-role="enabled"]');
 
         card.dataset.triggerId = triggerRecord.id;
+        const bgRgb = TRIGGER_LIST_BG_COLORS[String(triggerRecord.listOverlayBgColor || '').trim().toLowerCase()];
+        if (bgRgb) {
+            card.style.setProperty('background', `rgba(${bgRgb.split(' ').join(', ')}, 0.28)`, 'important');
+        } else {
+            card.style.removeProperty('background');
+        }
         nameValue.textContent = getTriggerLabel(triggerRecord, index);
         eventNameValue.textContent = formatEventIdsSummary(triggerRecord);
         const giftText = triggerRecord.giftName || '全ギフト';
