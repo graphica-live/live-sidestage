@@ -9,7 +9,6 @@ const { normalizeSoundAsset } = require('./effect-helpers');
 
 const MAX_TIMER_GIFT_SLOTS = 3;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
-const TIMER_END_SOUND_SCREEN = 1;
 
 const DEFAULT_TIMER_SETTINGS = {
     durationMinutes: 10,
@@ -20,6 +19,7 @@ const DEFAULT_TIMER_SETTINGS = {
     reversalSlots: [],
     endSound: { name: '', url: '' },
     endSoundVolume: 100,
+    endSoundScreen: 1,
     minFloorMinutes: 0,
 };
 
@@ -89,6 +89,12 @@ function normalizeMinFloorMinutes(value) {
     return Math.max(0, Math.min(1440, parsed));
 }
 
+function normalizeEndSoundScreen(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) return DEFAULT_TIMER_SETTINGS.endSoundScreen;
+    return parsed;
+}
+
 function normalizeTimerSettings(value) {
     let source = value;
     if (typeof source === 'string') {
@@ -118,6 +124,7 @@ function normalizeTimerSettings(value) {
         reversalSlots,
         endSound: normalizeSoundAsset(source.endSound),
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
+        endSoundScreen: normalizeEndSoundScreen(source.endSoundScreen),
         minFloorMinutes: normalizeMinFloorMinutes(source.minFloorMinutes),
     };
 }
@@ -207,7 +214,7 @@ function fireTimerEnded() {
     emitTimerEndSound();
 }
 
-// screen 1 (overlay1) の効果音オーバーレイへ終了音を直接送る。管理画面からの手動テストにも使う。
+// 設定された screen (overlay) の効果音オーバーレイへ終了音を直接送る。管理画面からの手動テストにも使う。
 function emitTimerEndSound() {
     if (!io) return false;
     const settings = getTimerSettings();
@@ -217,7 +224,7 @@ function emitTimerEndSound() {
         playbackId: `timer-end-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         eventId: 'timer-end-sound',
         eventName: 'タイマー終了',
-        screen: TIMER_END_SOUND_SCREEN,
+        screen: settings.endSoundScreen,
         videoUrl: '',
         audioUrl: settings.endSound.url,
         mediaVolume: settings.endSoundVolume,

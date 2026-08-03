@@ -62,6 +62,7 @@
         const timerEndSoundNameEl = document.getElementById('timer-end-sound-name');
         const timerEndSoundVolumeInput = document.getElementById('timer-end-sound-volume');
         const timerEndSoundVolumeValueEl = document.getElementById('timer-end-sound-volume-value');
+        const timerEndSoundScreenSelect = document.getElementById('timer-end-sound-screen');
         const timerGiftRowsEl = document.getElementById('timer-gift-rows');
         const timerReversalThresholdInput = document.getElementById('timer-reversal-threshold');
         const timerReversalThresholdValueEl = document.getElementById('timer-reversal-threshold-value');
@@ -225,7 +226,7 @@
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
             timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
-            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, minFloorMinutes: 0 },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, endSoundScreen: 1, minFloorMinutes: 0 },
             timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
@@ -1955,6 +1956,7 @@
             const volume = Number.isFinite(Number(settings.endSoundVolume)) ? Math.max(0, Math.min(100, Number(settings.endSoundVolume))) : 100;
             timerEndSoundVolumeInput.value = String(volume);
             timerEndSoundVolumeValueEl.textContent = `${volume}%`;
+            timerEndSoundScreenSelect.value = String(Number.parseInt(String(settings.endSoundScreen ?? 1), 10) || 1);
             timerGiftSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
                 const slot = settings.slots?.[i];
                 return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
@@ -2021,6 +2023,7 @@
                 reversalSlots: timerReversalSlots.filter(Boolean).map((g) => ({ ...g })),
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
                 endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
+                endSoundScreen: Number.parseInt(timerEndSoundScreenSelect.value, 10) || 1,
                 appearance: {
                     fontKey: normalizeDisplayFontKey(timerFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(timerTextStyleSelect.value),
@@ -2251,6 +2254,7 @@
             timerEndSoundVolumeValueEl.textContent = `${timerEndSoundVolumeInput.value}%`;
         });
         timerEndSoundVolumeInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerEndSoundScreenSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
         timerReversalThresholdInput.addEventListener('input', () => {
             timerReversalThresholdValueEl.textContent = `${timerReversalThresholdInput.value}分`;
