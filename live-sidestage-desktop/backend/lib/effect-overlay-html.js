@@ -224,6 +224,9 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         let readAloudCreditClearTimer = null;
         let overlayRecoveryTimer = null;
         let overlayRecoveryInFlight = false;
+        let videoStallTimer = null;
+        let audioStallTimer = null;
+        const MEDIA_STALL_TIMEOUT_MS = 8000;
 
         // メディア Blob URL キャッシュ: 元の URL -> 解決済み Blob URL (ロード中は Promise)
         const mediaBlobCache = new Map();
@@ -490,6 +493,39 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             activeVideoUrl = null;
             activeAudioUrl = null;
             activePlaybackPayload = null;
+            clearStallWatchdog('video');
+            clearStallWatchdog('audio');
+        }
+
+        // 一部の壊れた/非対応MP4は 'error' すら発火せず再生開始しないまま固まる。
+        // その場合でもキューが永久停止しないよう、一定時間 'playing' が来なければ失敗扱いにする。
+        function armStallWatchdog(kind) {
+            clearStallWatchdog(kind);
+            const timer = setTimeout(() => {
+                if (kind === 'video') {
+                    if (videoEnded) return;
+                    emitPlaybackError('video', 'メディアの読み込みがタイムアウトしました（ファイル破損または非対応の形式の可能性があります）');
+                    videoEnded = true;
+                    if (audioEnded) finishPlayback();
+                } else {
+                    if (audioEnded) return;
+                    emitPlaybackError('audio', 'メディアの読み込みがタイムアウトしました（ファイル破損または非対応の形式の可能性があります）');
+                    audioEnded = true;
+                    if (videoEnded) finishPlayback();
+                }
+            }, MEDIA_STALL_TIMEOUT_MS);
+            if (kind === 'video') videoStallTimer = timer; else audioStallTimer = timer;
+        }
+
+        function clearStallWatchdog(kind) {
+            if (kind === 'video' && videoStallTimer) {
+                clearTimeout(videoStallTimer);
+                videoStallTimer = null;
+            }
+            if (kind === 'audio' && audioStallTimer) {
+                clearTimeout(audioStallTimer);
+                audioStallTimer = null;
+            }
         }
 
         function mediaErrorMessage(code) {
@@ -515,7 +551,11 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             socket.emit('effects:playback-error', info);
         }
 
+        video.addEventListener('playing', () => clearStallWatchdog('video'));
+        audio.addEventListener('playing', () => clearStallWatchdog('audio'));
+
         video.addEventListener('ended', () => {
+            clearStallWatchdog('video');
             videoEnded = true;
 
             if (audioEnded) {
@@ -524,6 +564,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         });
 
         audio.addEventListener('ended', () => {
+            clearStallWatchdog('audio');
             audioEnded = true;
 
             if (videoEnded) {
@@ -534,6 +575,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         // 'error' を捕捉しないと再生キューが isPlaying=true のまま止まり、以降のイベントが一切再生されなくなる。
         video.addEventListener('error', () => {
             if (!activeVideoUrl) return;
+            clearStallWatchdog('video');
             emitPlaybackError('video', mediaErrorMessage(video.error && video.error.code));
             videoEnded = true;
 
@@ -544,6 +586,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
 
         audio.addEventListener('error', () => {
             if (!activeAudioUrl) return;
+            clearStallWatchdog('audio');
             emitPlaybackError('audio', mediaErrorMessage(audio.error && audio.error.code));
             audioEnded = true;
 
@@ -587,6 +630,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
 
             isPlaying = true;
             activePlaybackId = payload.playbackId || String(Date.now());
+            const playbackToken = activePlaybackId;
             activePlaybackEventId = payload.eventId || '';
             activeVideoUrl = payload.videoUrl || null;
             activeAudioUrl = payload.audioUrl || null;
@@ -605,14 +649,20 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     video.currentTime = 0;
                     video.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     video.style.display = 'block';
+                    armStallWatchdog('video');
                     try {
                         await video.play();
                     } catch (playError) {
                         // play() が拒否された場合は 'error'/'ended' も発火しないことがあるため、
                         // ここで明示的に ended 扱いにしないとキューが永久に止まる。
+                        if (activePlaybackId !== playbackToken) return;
+                        clearStallWatchdog('video');
                         videoEnded = true;
                         emitPlaybackError('video', playError && playError.message ? playError.message : String(playError), resolvedVideo);
                     }
+                    // play() 自体が解決しても、その間に watchdog が発火して次の再生へ進んでいることがある。
+                    // その場合はこの再生枠はもう存在しないので、以降の処理を続けない。
+                    if (activePlaybackId !== playbackToken) return;
                 } else {
                     video.style.display = 'none';
                 }
@@ -622,14 +672,19 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     audio.currentTime = 0;
                     audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     await _audioCtx.resume().catch(() => null);
+                    armStallWatchdog('audio');
                     try {
                         await audio.play();
                     } catch (playError) {
+                        if (activePlaybackId !== playbackToken) return;
+                        clearStallWatchdog('audio');
                         audioEnded = true;
                         emitPlaybackError('audio', playError && playError.message ? playError.message : String(playError), resolvedAudio);
                     }
+                    if (activePlaybackId !== playbackToken) return;
                 }
             } catch (error) {
+                if (activePlaybackId !== playbackToken) return;
                 updateDebugLog(error && error.message ? error.message : 'playback failed');
                 emitPlaybackError('unknown', error && error.message ? error.message : String(error));
                 videoEnded = true;
