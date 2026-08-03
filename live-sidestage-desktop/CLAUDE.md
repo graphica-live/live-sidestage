@@ -67,3 +67,13 @@ Get-Process | Where-Object { $_.Name -match '^(electron|node)$' } | Stop-Process
    ```
 3. 設定ページUI行要素（iframeではない）は `background: var(--panel)`
 4. 参考実装: `top-gift.html` の `body.preview-card` CSS rule
+
+## フロントエンドの完了条件
+
+- package.jsonに定義済みのlint、test、buildを実行する
+- 存在しないコマンドを捏造しない
+- 開発サーバーを起動し、実際のブラウザで確認する
+- コンソールエラー、画像404、ネットワークエラーを確認する
+- 画像のアスペクト比を維持し、意図しない引き伸ばしをしない
+- PC表示とスマートフォン表示を確認する
+- 動作確認していない状態で「完了」と報告しない
