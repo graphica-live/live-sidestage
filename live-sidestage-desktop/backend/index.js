@@ -2153,6 +2153,7 @@ function insertCustomTestGiftEventForDay(dayKey, input = {}) {
 
     flushRawGiftEvents();
     emitDayStateChanges(requestedDayKey);
+    io.emit('effects:trigger-gifts:updated', {});
 
     return {
         dayKey: requestedDayKey,
