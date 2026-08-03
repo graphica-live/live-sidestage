@@ -408,6 +408,18 @@ function createDbStore(options) {
                 LIMIT ?
         `);
 
+    const giftCoinTotalsByDayStmt = db.prepare(`
+        SELECT
+            LOWER(TRIM(gift_name)) AS giftNameKey,
+            COALESCE(SUM(coin_amount), 0) AS totalCoins
+        FROM raw_gift_events
+        WHERE broadcaster_id = ?
+          AND day_key = ?
+          AND gift_name IS NOT NULL
+          AND TRIM(gift_name) <> ''
+        GROUP BY LOWER(TRIM(gift_name))
+    `);
+
     const recentGiftSendersStmt = db.prepare(`
         SELECT
             dc.unique_id AS uniqueId,
@@ -501,6 +513,9 @@ function createDbStore(options) {
         },
         getKnownGiftNames(broadcasterId, limit = 100) {
             return knownGiftNamesStmt.all(broadcasterId, Number(limit) || 100);
+        },
+        getGiftCoinTotalsByDay(dayKey, broadcasterId) {
+            return giftCoinTotalsByDayStmt.all(broadcasterId, dayKey);
         },
         getRecentGiftSenders(broadcasterId, sinceDay, limit = 200) {
             return recentGiftSendersStmt.all(broadcasterId, sinceDay, Number(limit) || 200);
