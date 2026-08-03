@@ -13,152 +13,22 @@ function getPlaybackSummary(eventRecord) {
 }
 
 function findGiftSuggestionForTrigger(giftName) {
-    const normalizedGiftName = String(giftName || '').trim();
-    if (!normalizedGiftName) {
-        return null;
-    }
-
-    const loweredGiftName = normalizedGiftName.toLowerCase();
-    const compactGiftName = normalizedGiftName.replace(/\s+/g, '');
-
-    return knownGiftSuggestions.find((gift) => {
-        const suggestionName = String(gift?.name || '').trim();
-        const suggestionId = String(gift?.id || '').trim();
-
-        if (!suggestionName && !suggestionId) {
-            return false;
-        }
-
-        return suggestionName === normalizedGiftName
-            || suggestionId === normalizedGiftName
-            || suggestionName.toLowerCase() === loweredGiftName
-            || suggestionName.replace(/\s+/g, '') === compactGiftName;
-    }) || null;
+    return GiftSuggest.findByNameOrId(knownGiftSuggestions, giftName);
 }
 
-function positionGiftSuggestionPanel() {
-    const rect = triggerModalGiftName.getBoundingClientRect();
-    const spaceAbove = rect.top - 8;
-    triggerGiftSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-    triggerGiftSuggestionPanel.style.top = '';
-    triggerGiftSuggestionPanel.style.maxHeight = `${Math.min(260, spaceAbove)}px`;
-    triggerGiftSuggestionPanel.style.left = `${rect.left}px`;
-    triggerGiftSuggestionPanel.style.width = `${rect.width}px`;
-}
+const triggerGiftSuggestPicker = GiftSuggest.attachSuggestField({
+    input: triggerModalGiftName,
+    panel: triggerGiftSuggestionPanel,
+    getGifts: () => knownGiftSuggestions,
+    onSelect: (gift) => {
+        triggerModalGiftName.value = gift.name || '';
+    },
+    escapeHtml
+});
 
+// effects-modal.js からモーダルの開閉時に呼ばれる（トリガーモーダルを閉じる際にサジェストパネルも閉じる）。
 function hideGiftSuggestionPanel() {
-    triggerGiftSuggestionPanel.hidden = true;
-    triggerGiftSuggestionPanel.innerHTML = '';
-    visibleGiftSuggestions = [];
-    activeGiftSuggestionIndex = -1;
-}
-
-function applyGiftSuggestion(gift) {
-    if (!gift) {
-        return;
-    }
-
-    triggerModalGiftName.value = gift.name || '';
-    hideGiftSuggestionPanel();
-}
-
-function parseCoinFilter(query) {
-    // >= N
-    let m = query.match(/^>=\s*(\d+)$/);
-    if (m) return (c) => c >= Number(m[1]);
-    // <= N
-    m = query.match(/^<=\s*(\d+)$/);
-    if (m) return (c) => c <= Number(m[1]);
-    // > N
-    m = query.match(/^>\s*(\d+)$/);
-    if (m) return (c) => c > Number(m[1]);
-    // < N
-    m = query.match(/^<\s*(\d+)$/);
-    if (m) return (c) => c < Number(m[1]);
-    // N-M または N~M
-    m = query.match(/^(\d+)\s*[-~]\s*(\d+)$/);
-    if (m) { const lo = Number(m[1]); const hi = Number(m[2]); return (c) => c >= lo && c <= hi; }
-    // 純粋な数値 → 完全一致
-    m = query.match(/^\d+$/);
-    if (m) { const n = Number(m[0]); return (c) => c === n; }
-    return null;
-}
-
-function getFilteredGiftSuggestions(query) {
-    const normalizedQuery = String(query || '').trim().toLowerCase();
-
-    if (!normalizedQuery) {
-        return knownGiftSuggestions;
-    }
-
-    const coinFilter = parseCoinFilter(normalizedQuery);
-    if (coinFilter) {
-        return knownGiftSuggestions.filter((gift) => Number.isFinite(gift.diamondCount) && coinFilter(gift.diamondCount));
-    }
-
-    return knownGiftSuggestions.filter((gift) => {
-        const name = String(gift.name || '').toLowerCase();
-        const description = String(gift.describe || '').toLowerCase();
-        return name.includes(normalizedQuery) || description.includes(normalizedQuery);
-    });
-}
-
-function renderTriggerGiftSuggestions(query = triggerModalGiftName.value) {
-    visibleGiftSuggestions = getFilteredGiftSuggestions(query);
-
-    if (!visibleGiftSuggestions.length) {
-        hideGiftSuggestionPanel();
-        return;
-    }
-
-    activeGiftSuggestionIndex = 0;
-    triggerGiftSuggestionPanel.innerHTML = visibleGiftSuggestions.map((gift, index) => {
-        const imageMarkup = gift.imageUrl
-            ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(gift.name)}">`
-            : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
-        const idPart = gift.id ? `ID: ${escapeHtml(String(gift.id))}` : '';
-        const descPart = gift.describe ? escapeHtml(gift.describe) : '';
-        const description = [idPart, descPart].filter(Boolean).join('  ·  ') || '&nbsp;';
-        const costText = Number.isFinite(gift.diamondCount) ? `${gift.diamondCount} coins` : '-';
-
-        return `
-            <button type="button" class="gift-suggestion-item${index === activeGiftSuggestionIndex ? ' is-active' : ''}" data-gift-index="${index}">
-                ${imageMarkup}
-                <div class="gift-suggestion-meta">
-                    <div class="gift-suggestion-name">${escapeHtml(gift.name)}</div>
-                    <div class="gift-suggestion-desc">${description}</div>
-                </div>
-                <div class="gift-suggestion-cost">${escapeHtml(costText)}</div>
-            </button>
-        `;
-    }).join('');
-
-    triggerGiftSuggestionPanel.hidden = false;
-    positionGiftSuggestionPanel();
-
-    triggerGiftSuggestionPanel.querySelectorAll('[data-gift-index]').forEach((button) => {
-        button.addEventListener('mousedown', (event) => {
-            event.preventDefault();
-            const selectedGift = visibleGiftSuggestions[Number(button.dataset.giftIndex)];
-            applyGiftSuggestion(selectedGift);
-        });
-    });
-}
-
-function updateActiveGiftSuggestion(nextIndex) {
-    if (!visibleGiftSuggestions.length) {
-        return;
-    }
-
-    activeGiftSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleGiftSuggestions.length - 1));
-
-    triggerGiftSuggestionPanel.querySelectorAll('[data-gift-index]').forEach((button, index) => {
-        button.classList.toggle('is-active', index === activeGiftSuggestionIndex);
-
-        if (index === activeGiftSuggestionIndex) {
-            button.scrollIntoView({ block: 'nearest' });
-        }
-    });
+    triggerGiftSuggestPicker.hide();
 }
 
 function positionEventSuggestionPanel() {
@@ -441,71 +311,13 @@ triggerModalEvent.addEventListener('keydown', (event) => {
     }
 });
 
-triggerModalGiftName.addEventListener('focus', () => {
-    if (knownGiftSuggestions.length) {
-        renderTriggerGiftSuggestions();
-    }
-});
-
-triggerModalGiftName.addEventListener('input', () => {
-    renderTriggerGiftSuggestions(triggerModalGiftName.value);
-});
-
-triggerModalGiftName.addEventListener('keydown', (event) => {
-    if (triggerGiftSuggestionPanel.hidden) {
-        if (event.key === 'ArrowDown' && knownGiftSuggestions.length) {
-            event.preventDefault();
-            renderTriggerGiftSuggestions(triggerModalGiftName.value);
-        }
-        return;
-    }
-
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        updateActiveGiftSuggestion(activeGiftSuggestionIndex + 1);
-        return;
-    }
-
-    if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        updateActiveGiftSuggestion(activeGiftSuggestionIndex - 1);
-        return;
-    }
-
-    if (event.key === 'Enter') {
-        const selectedGift = visibleGiftSuggestions[activeGiftSuggestionIndex];
-
-        if (selectedGift) {
-            event.preventDefault();
-            applyGiftSuggestion(selectedGift);
-        }
-        return;
-    }
-
-    if (event.key === 'Escape') {
-        hideGiftSuggestionPanel();
-    }
-});
-
-document.addEventListener('click', (event) => {
-    if (!event.target.closest('.gift-suggest-shell') && !triggerGiftSuggestionPanel.contains(event.target)) {
-        hideGiftSuggestionPanel();
-    }
-});
-
 window.addEventListener('resize', () => {
-    if (!triggerGiftSuggestionPanel.hidden) {
-        positionGiftSuggestionPanel();
-    }
     if (!triggerEventSuggestionPanel.hidden) {
         positionEventSuggestionPanel();
     }
 });
 
 window.addEventListener('scroll', () => {
-    if (!triggerGiftSuggestionPanel.hidden) {
-        positionGiftSuggestionPanel();
-    }
     if (!triggerUserSuggestionPanel.hidden) {
         positionUserSuggestionPanel();
     }
@@ -560,6 +372,75 @@ triggerModalUserIds.addEventListener('keydown', (event) => {
     }
     if (event.key === 'Escape') {
         hideUserSuggestionPanel();
+    }
+});
+
+let giftTestSelectedGift = null;
+
+function setGiftTestStatus(text, tone = '') {
+    giftTestStatus.className = 'status' + (tone ? ` ${tone}` : '');
+    giftTestStatus.textContent = text;
+}
+
+GiftSuggest.attachSuggestField({
+    input: giftTestNameInput,
+    panel: giftTestSuggestionPanel,
+    getGifts: () => knownGiftSuggestions,
+    onSelect: (gift) => {
+        giftTestNameInput.value = gift.name || '';
+        giftTestSelectedGift = gift;
+    },
+    escapeHtml
+});
+
+giftTestNameInput.addEventListener('input', () => {
+    giftTestSelectedGift = null;
+});
+
+giftTestSendButton.addEventListener('click', async () => {
+    const giftName = giftTestNameInput.value.trim();
+
+    if (!giftName) {
+        setGiftTestStatus('ギフト名を入力してください。', 'error');
+        return;
+    }
+
+    const matchedGift = (giftTestSelectedGift && giftTestSelectedGift.name === giftName)
+        ? giftTestSelectedGift
+        : findGiftSuggestionForTrigger(giftName);
+
+    const repeatCount = Math.max(1, Number.parseInt(giftTestRepeatCountInput.value, 10) || 1);
+    const uniqueId = giftTestUniqueIdInput.value.trim();
+
+    giftTestSendButton.disabled = true;
+    setGiftTestStatus('送信中…');
+
+    try {
+        const response = await fetch('/api/effects/gift-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                giftName,
+                giftId: matchedGift?.id ?? null,
+                diamondCount: Number.isFinite(matchedGift?.diamondCount) ? matchedGift.diamondCount : 0,
+                repeatCount,
+                uniqueId
+            })
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+            throw new Error(payload.error || 'テスト送信に失敗しました。');
+        }
+
+        setGiftTestStatus(
+            payload.triggered ? '送信しました。条件に合致するトリガーが発火しました。' : '送信しました。ただし条件に合致するトリガーはありませんでした。',
+            payload.triggered ? 'ok' : ''
+        );
+    } catch (error) {
+        setGiftTestStatus(error.message || 'テスト送信に失敗しました。', 'error');
+    } finally {
+        giftTestSendButton.disabled = false;
     }
 });
 

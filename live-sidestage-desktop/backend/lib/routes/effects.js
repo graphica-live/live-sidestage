@@ -3,12 +3,21 @@
 const { repairMojibakeFilename } = require('../utils');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
+const { searchSoundEffectLab, downloadSoundEffectLabSound, SOUNDEFFECT_LAB_HOST } = require('../soundeffect-lab');
 const {
     EFFECT_DEFAULT_CATEGORY_ID,
     WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY,
     EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL
 } = require('../constants');
+
+function normalizeTriggerGiftsStrokeWidth(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        return 4;
+    }
+    return Math.min(parsed, 48);
+}
 
 function normalizeTriggerGiftsFontSize(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -31,7 +40,7 @@ function normalizeTriggerGiftsImageSize(value) {
     if (!Number.isInteger(parsed) || parsed < 48) {
         return 132;
     }
-    return Math.min(parsed, 2000);
+    return Math.min(parsed, 500);
 }
 
 function normalizeTriggerGiftsGridCount(value, fallback) {
@@ -50,6 +59,14 @@ function normalizeTriggerGiftsSlideSpeed(value) {
     return Math.min(parsed, 500);
 }
 
+function normalizeTriggerGiftsCoinSize(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 10) {
+        return 14;
+    }
+    return Math.min(parsed, 64);
+}
+
 function normalizeTriggerGiftsSlideDirection(value) {
     const normalized = String(value || '').trim().toLowerCase();
     return ['left', 'right', 'up', 'down'].includes(normalized) ? normalized : 'left';
@@ -59,6 +76,8 @@ module.exports = function registerEffectsRoutes({
     app,
     io,
     getTimestamp,
+    getTodayDayKey,
+    getTriggerGiftsDailyCoinTotals,
     getEffectEvents,
     getEffectTriggers,
     buildEffectOverlayUrls,
@@ -68,7 +87,6 @@ module.exports = function registerEffectsRoutes({
     setScopedStateValue,
     normalizeSharedWidgetFontKey,
     normalizeDisplayColorTheme,
-    normalizeDisplayStrokeWidth,
     normalizeEffectEvent,
     emitEffectPlayback,
     effectMediaUpload,
@@ -85,6 +103,7 @@ module.exports = function registerEffectsRoutes({
     getEffectMediaDirectory,
     getEffectCategories,
     setEffectCategories,
+    tryRunEffectTriggersForGift,
     path,
     fs,
 }) {
@@ -206,7 +225,7 @@ module.exports = function registerEffectsRoutes({
         return {
             fontKey: normalizeSharedWidgetFontKey(source.fontKey),
             textStyleKey: normalizeDisplayColorTheme(source.textStyleKey),
-            strokeWidth: normalizeDisplayStrokeWidth(source.strokeWidth),
+            strokeWidth: normalizeTriggerGiftsStrokeWidth(source.strokeWidth),
             fontSize: normalizeTriggerGiftsFontSize(source.fontSize),
             backgroundOpacity: normalizeTriggerGiftsBackgroundOpacity(source.backgroundOpacity),
             giftImageSize: normalizeTriggerGiftsImageSize(source.giftImageSize),
@@ -214,7 +233,9 @@ module.exports = function registerEffectsRoutes({
             rows: normalizeTriggerGiftsGridCount(source.rows, 2),
             slideEnabled: Boolean(source.slideEnabled),
             slideSpeed: normalizeTriggerGiftsSlideSpeed(source.slideSpeed),
-            slideDirection: normalizeTriggerGiftsSlideDirection(source.slideDirection)
+            slideDirection: normalizeTriggerGiftsSlideDirection(source.slideDirection),
+            showCoinCount: Boolean(source.showCoinCount),
+            coinCountSize: normalizeTriggerGiftsCoinSize(source.coinCountSize)
         };
     }
 
@@ -242,6 +263,7 @@ module.exports = function registerEffectsRoutes({
         const categoryId = String(req.query.category || '').trim() || EFFECT_DEFAULT_CATEGORY_ID;
         const category = getEffectCategories().find((item) => item.id === categoryId) || null;
         const catalogGifts = await fetchTikTokGiftCatalog().catch(() => []);
+        const dailyCoinTotals = getTriggerGiftsDailyCoinTotals(getTodayDayKey());
 
         const items = getEffectTriggers()
             .filter((trigger) => trigger.enabled
@@ -255,19 +277,24 @@ module.exports = function registerEffectsRoutes({
                         triggerName: trigger.listOverlayName || trigger.name || trigger.giftName,
                         giftName: trigger.giftName,
                         giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
-                        listOverlayBgColor: trigger.listOverlayBgColor || ''
+                        listOverlayBgColor: trigger.listOverlayBgColor || '',
+                        diamondCount: 0,
+                        dailyCoinTotal: 0
                     };
                 }
 
                 const matchedGift = catalogGifts.find((gift) =>
                     String(gift.name || '').trim().toLowerCase() === trigger.giftName);
+                const giftNameKey = String(matchedGift?.name || trigger.giftName || '').trim().toLowerCase();
 
                 return {
                     id: trigger.id,
                     triggerName: trigger.listOverlayName || trigger.name || matchedGift?.name || trigger.giftName,
                     giftName: matchedGift?.name || trigger.giftName,
                     giftImageUrl: matchedGift?.imageUrl || '',
-                    listOverlayBgColor: trigger.listOverlayBgColor || ''
+                    listOverlayBgColor: trigger.listOverlayBgColor || '',
+                    diamondCount: Number.isFinite(matchedGift?.diamondCount) ? matchedGift.diamondCount : 0,
+                    dailyCoinTotal: dailyCoinTotals.get(giftNameKey) || 0
                 };
             });
 
@@ -289,6 +316,35 @@ module.exports = function registerEffectsRoutes({
         emitEffectPlayback(effectEvent, null, null);
 
         return res.json({ ok: true, event: effectEvent });
+    });
+
+    app.post('/api/effects/gift-test', (req, res) => {
+        const giftName = String(req.body?.giftName || '').trim();
+
+        if (!giftName) {
+            return res.status(400).json({ ok: false, error: 'ギフト名を入力してください。' });
+        }
+
+        const diamondCount = Math.max(0, Number(req.body?.diamondCount) || 0);
+        const repeatCount = Math.max(1, Number.parseInt(req.body?.repeatCount, 10) || 1);
+        const uniqueId = String(req.body?.uniqueId || '').trim() || 'test_user';
+        const nickname = String(req.body?.nickname || '').trim() || uniqueId;
+
+        const giftEvent = {
+            giftName,
+            giftId: req.body?.giftId ? String(req.body.giftId) : null,
+            totalGifts: diamondCount * repeatCount,
+            repeatCount,
+            uniqueId,
+            nickname,
+            image: '',
+            comment: '',
+            timestamp: getTimestamp()
+        };
+
+        const triggered = tryRunEffectTriggersForGift(giftEvent);
+
+        return res.json({ ok: true, triggered });
     });
 
     app.post('/api/effects/media', (req, res) => {
@@ -324,12 +380,21 @@ module.exports = function registerEffectsRoutes({
             return res.status(400).json({ ok: false, error: '検索キーワードを入力してください。' });
         }
 
-        try {
-            const results = await searchMyinstants(query);
-            return res.json({ ok: true, results });
-        } catch (error) {
-            return res.status(502).json({ ok: false, error: error.message || 'myinstants検索に失敗しました。' });
+        const [myinstantsResult, soundEffectLabResult] = await Promise.allSettled([
+            searchMyinstants(query),
+            searchSoundEffectLab(query),
+        ]);
+
+        const results = [
+            ...(myinstantsResult.status === 'fulfilled' ? myinstantsResult.value.map((r) => ({ ...r, source: 'myinstants' })) : []),
+            ...(soundEffectLabResult.status === 'fulfilled' ? soundEffectLabResult.value.map((r) => ({ ...r, source: 'soundeffect-lab' })) : []),
+        ];
+
+        if (myinstantsResult.status === 'rejected' && soundEffectLabResult.status === 'rejected') {
+            return res.status(502).json({ ok: false, error: myinstantsResult.reason?.message || '検索に失敗しました。' });
         }
+
+        return res.json({ ok: true, results });
     });
 
     app.post('/api/effects/myinstants/import', async (req, res) => {
@@ -342,7 +407,11 @@ module.exports = function registerEffectsRoutes({
         }
 
         try {
-            const buffer = await downloadMyinstantsSound(mp3Url);
+            let hostname = '';
+            try { hostname = new URL(mp3Url).hostname; } catch { /* downloadで検証・エラー化される */ }
+            const buffer = hostname === SOUNDEFFECT_LAB_HOST
+                ? await downloadSoundEffectLabSound(mp3Url)
+                : await downloadMyinstantsSound(mp3Url);
             const directory = getEffectMediaDirectory('audio');
             fs.mkdirSync(directory, { recursive: true });
 

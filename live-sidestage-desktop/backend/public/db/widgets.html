@@ -9,7 +9,9 @@
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/sound-picker.css">
     <link rel="stylesheet" href="/db/widgets.css">
+    <script src="/shared/gift-suggest.js"></script>
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
     </script>
@@ -603,6 +605,47 @@
                                 </select>
                             </div>
                             <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="timer-countdown-sound-enabled">
+                                    <label for="timer-countdown-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">カウントダウン音を有効化 <span style="font-weight:400;opacity:0.7;">— 「24」のような秒読み音を残り指定秒数から鳴らす</span></label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="timer-countdown-sound-threshold">残り何秒からカウント音を鳴らすか</label>
+                                <div class="action-row">
+                                    <input type="range" id="timer-countdown-sound-threshold" min="1" max="60" step="1" value="5" style="flex: 1;">
+                                    <span class="subtext" id="timer-countdown-sound-threshold-value" style="margin-top: 0; width: 42px;">5秒</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>カウントダウン音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="timer-countdown-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-countdown-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-countdown-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="timer-countdown-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="timer-countdown-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="timer-countdown-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="timer-countdown-sound-screen">カウントダウン音を再生するオーバーレイ</label>
+                                <select id="timer-countdown-sound-screen">
+                                    <option value="1">screen 1</option>
+                                    <option value="2">screen 2</option>
+                                    <option value="3">screen 3</option>
+                                    <option value="4">screen 4</option>
+                                    <option value="5">screen 5</option>
+                                    <option value="6">screen 6</option>
+                                    <option value="7">screen 7</option>
+                                    <option value="8">screen 8</option>
+                                    <option value="9">screen 9</option>
+                                    <option value="10">screen 10</option>
+                                </select>
+                            </div>
+                            <div class="field full">
                                 <label>ギフトで時間を延長/短縮（最大3件・分単位、マイナスで短縮）</label>
                                 <div id="timer-gift-rows"></div>
                             </div>
@@ -628,6 +671,7 @@
                         <button type="button" class="ghost-button" id="test-timer-plus-button">テスト +1分</button>
                         <button type="button" class="ghost-button" id="test-timer-minus-button">テスト -1分</button>
                         <button type="button" class="ghost-button" id="test-timer-end-sound-button">終了音をテスト再生</button>
+                        <button type="button" class="ghost-button" id="test-timer-countdown-sound-button">カウントダウン音をテスト再生</button>
                     </div>
 
                     <div class="widget-preview">
@@ -901,7 +945,7 @@
             <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
                 <div>
                     <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
-                    <p class="subtext"><a href="https://www.myinstants.com/ja/index/jp/" target="_blank" rel="noopener noreferrer">myinstants.com</a> のサウンドを検索して取り込みます。</p>
+                    <p class="subtext"><a href="https://www.myinstants.com/ja/index/jp/" target="_blank" rel="noopener noreferrer">myinstants.com</a> と <a href="https://soundeffect-lab.info" target="_blank" rel="noopener noreferrer">効果音ラボ</a> のサウンドをまとめて検索して取り込みます。</p>
                 </div>
                 <div class="record-fields modal-fields-vertical">
                     <div class="field full">
@@ -1133,6 +1177,7 @@
         </div>
     </div>
 
+    <script src="/shared/sound-picker.js"></script>
     <script src="/db/widgets.js"></script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>

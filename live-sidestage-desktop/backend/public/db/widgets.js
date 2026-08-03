@@ -63,6 +63,16 @@
         const timerEndSoundVolumeInput = document.getElementById('timer-end-sound-volume');
         const timerEndSoundVolumeValueEl = document.getElementById('timer-end-sound-volume-value');
         const timerEndSoundScreenSelect = document.getElementById('timer-end-sound-screen');
+        const timerCountdownSoundEnabledInput = document.getElementById('timer-countdown-sound-enabled');
+        const timerCountdownSoundThresholdInput = document.getElementById('timer-countdown-sound-threshold');
+        const timerCountdownSoundThresholdValueEl = document.getElementById('timer-countdown-sound-threshold-value');
+        const timerCountdownSoundPickerButton = document.getElementById('timer-countdown-sound-picker-button');
+        const timerCountdownSoundPreviewButton = document.getElementById('timer-countdown-sound-preview-button');
+        const timerCountdownSoundClearButton = document.getElementById('timer-countdown-sound-clear-button');
+        const timerCountdownSoundNameEl = document.getElementById('timer-countdown-sound-name');
+        const timerCountdownSoundVolumeInput = document.getElementById('timer-countdown-sound-volume');
+        const timerCountdownSoundVolumeValueEl = document.getElementById('timer-countdown-sound-volume-value');
+        const timerCountdownSoundScreenSelect = document.getElementById('timer-countdown-sound-screen');
         const timerGiftRowsEl = document.getElementById('timer-gift-rows');
         const timerReversalThresholdInput = document.getElementById('timer-reversal-threshold');
         const timerReversalThresholdValueEl = document.getElementById('timer-reversal-threshold-value');
@@ -71,11 +81,6 @@
         const timerPreviewFrame = document.getElementById('timer-preview-frame');
         const timerStatusLabel = document.getElementById('timer-status-label');
         const timerSuggestPanel = document.getElementById('timer-suggest-panel');
-        const myinstantsModal = document.getElementById('myinstants-modal');
-        const myinstantsSearchInput = document.getElementById('myinstants-search-input');
-        const myinstantsSearchButton = document.getElementById('myinstants-search-button');
-        const myinstantsStatus = document.getElementById('myinstants-status');
-        const myinstantsResults = document.getElementById('myinstants-results');
         const goalGiftFontSelect = document.getElementById('goal-gift-font');
         const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
         const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
@@ -226,7 +231,7 @@
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
             timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
-            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, endSoundScreen: 1, minFloorMinutes: 0 },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, endSoundScreen: 1, minFloorMinutes: 0, countdownSoundEnabled: false, countdownSoundThresholdSeconds: 5, countdownSound: { name: '', url: '' }, countdownSoundVolume: 100, countdownSoundScreen: 1 },
             timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
@@ -1956,6 +1961,15 @@
             timerEndSoundVolumeInput.value = String(volume);
             timerEndSoundVolumeValueEl.textContent = `${volume}%`;
             timerEndSoundScreenSelect.value = String(Number.parseInt(String(settings.endSoundScreen ?? 1), 10) || 1);
+            timerCountdownSoundEnabledInput.checked = Boolean(settings.countdownSoundEnabled);
+            const countdownThreshold = Number.parseInt(String(settings.countdownSoundThresholdSeconds ?? 5), 10) || 5;
+            timerCountdownSoundThresholdInput.value = String(countdownThreshold);
+            timerCountdownSoundThresholdValueEl.textContent = `${countdownThreshold}秒`;
+            timerCountdownSoundNameEl.textContent = settings.countdownSound?.name || '未設定';
+            const countdownVolume = Number.isFinite(Number(settings.countdownSoundVolume)) ? Math.max(0, Math.min(100, Number(settings.countdownSoundVolume))) : 100;
+            timerCountdownSoundVolumeInput.value = String(countdownVolume);
+            timerCountdownSoundVolumeValueEl.textContent = `${countdownVolume}%`;
+            timerCountdownSoundScreenSelect.value = String(Number.parseInt(String(settings.countdownSoundScreen ?? 1), 10) || 1);
             timerGiftSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
                 const slot = settings.slots?.[i];
                 return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
@@ -2023,6 +2037,11 @@
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
                 endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
                 endSoundScreen: Number.parseInt(timerEndSoundScreenSelect.value, 10) || 1,
+                countdownSoundEnabled: timerCountdownSoundEnabledInput.checked,
+                countdownSoundThresholdSeconds: Number.parseInt(timerCountdownSoundThresholdInput.value, 10) || 5,
+                countdownSound: state.timerSettings.countdownSound || { name: '', url: '' },
+                countdownSoundVolume: Number.parseInt(timerCountdownSoundVolumeInput.value, 10),
+                countdownSoundScreen: Number.parseInt(timerCountdownSoundScreenSelect.value, 10) || 1,
                 appearance: {
                     fontKey: normalizeDisplayFontKey(timerFontSelect.value),
                     textStyleKey: normalizeDisplayTextStyleKey(timerTextStyleSelect.value),
@@ -2088,6 +2107,7 @@
         document.getElementById('test-timer-plus-button').addEventListener('click', () => { callTimerAction('test', { minutes: 1 }).catch(() => {}); });
         document.getElementById('test-timer-minus-button').addEventListener('click', () => { callTimerAction('test', { minutes: -1 }).catch(() => {}); });
         document.getElementById('test-timer-end-sound-button').addEventListener('click', () => { callTimerAction('test-end-sound').catch(() => {}); });
+        document.getElementById('test-timer-countdown-sound-button').addEventListener('click', () => { callTimerAction('test-countdown-sound').catch(() => {}); });
 
         document.getElementById('open-timer-overlay-button').addEventListener('click', () => {
             const url = state.widgetUrls.timerOverlayUrl || '/overlays/timer';
@@ -2107,105 +2127,12 @@
         timerStrokeWidthInput.addEventListener('input', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerStrokeWidthInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
-        // --- myinstants.com 音声ピッカー（複数機能で共有） ---
-        // 使い方: openMyinstantsPicker({ eventIdHint, onImported: (asset) => { ... } })
-        // asset は { name, url } (取り込み後にサーバー側で保存されたローカルアセット)
-        let myinstantsPickerContext = null;
-
-        function openMyinstantsPicker({ eventIdHint = 'sound', onImported }) {
-            myinstantsPickerContext = { eventIdHint, onImported };
-            myinstantsSearchInput.value = '';
-            myinstantsStatus.textContent = '';
-            myinstantsResults.innerHTML = '';
-            myinstantsModal.classList.add('is-open');
-            myinstantsModal.setAttribute('aria-hidden', 'false');
-            myinstantsSearchInput.focus();
-        }
-
-        function closeMyinstantsPicker() {
-            myinstantsModal.classList.remove('is-open');
-            myinstantsModal.setAttribute('aria-hidden', 'true');
-            myinstantsPickerContext = null;
-        }
-
-        function renderMyinstantsResults(results) {
-            if (!results.length) {
-                myinstantsResults.innerHTML = '';
-                myinstantsStatus.textContent = '該当するサウンドが見つかりませんでした。';
-                return;
-            }
-            myinstantsStatus.textContent = `${results.length}件見つかりました。`;
-            myinstantsResults.innerHTML = results.map((result, index) => `
-                <div class="myinstants-result-item">
-                    <span class="myinstants-result-name">${escapeHtml(result.name)}</span>
-                    <div class="myinstants-result-actions">
-                        <button type="button" class="ghost-button icon-button" data-preview-index="${index}" title="試聴" aria-label="試聴">▶</button>
-                        <button type="button" class="ghost-button" data-import-index="${index}">これを使う</button>
-                    </div>
-                </div>
-            `).join('');
-
-            myinstantsResults.querySelectorAll('[data-preview-index]').forEach((button) => {
-                button.addEventListener('click', () => {
-                    const result = results[Number(button.dataset.previewIndex)];
-                    if (!result) return;
-                    new Audio(result.mp3Url).play().catch(() => {});
-                });
-            });
-
-            myinstantsResults.querySelectorAll('[data-import-index]').forEach((button) => {
-                button.addEventListener('click', async () => {
-                    const result = results[Number(button.dataset.importIndex)];
-                    const context = myinstantsPickerContext;
-                    if (!result || !context) return;
-                    myinstantsStatus.textContent = `${result.name} を取り込み中です。`;
-                    try {
-                        const params = `?eventId=${encodeURIComponent(context.eventIdHint)}`;
-                        const response = await fetch(`/api/effects/myinstants/import${params}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ mp3Url: result.mp3Url, name: result.name })
-                        });
-                        const payload = await response.json();
-                        if (!payload.ok) throw new Error(payload.error || '音声の取り込みに失敗しました。');
-                        context.onImported?.(payload.asset);
-                        closeMyinstantsPicker();
-                    } catch (error) {
-                        myinstantsStatus.textContent = error.message || '音声の取り込みに失敗しました。';
-                    }
-                });
-            });
-        }
-
-        async function runMyinstantsSearch() {
-            const query = myinstantsSearchInput.value.trim();
-            if (!query) {
-                myinstantsStatus.textContent = 'キーワードを入力してください。';
-                return;
-            }
-            myinstantsStatus.textContent = '検索中です。';
-            myinstantsResults.innerHTML = '';
-            try {
-                const response = await fetch(`/api/effects/myinstants/search?q=${encodeURIComponent(query)}`);
-                const payload = await response.json();
-                if (!payload.ok) throw new Error(payload.error || '検索に失敗しました。');
-                renderMyinstantsResults(payload.results || []);
-            } catch (error) {
-                myinstantsStatus.textContent = error.message || '検索に失敗しました。';
-            }
-        }
-
-        myinstantsSearchButton.addEventListener('click', runMyinstantsSearch);
-        myinstantsSearchInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') { event.preventDefault(); runMyinstantsSearch(); }
-        });
-        document.querySelectorAll('[data-action="close-myinstants-modal"]').forEach((button) => {
-            button.addEventListener('click', closeMyinstantsPicker);
-        });
+        // myinstants.com / 効果音ラボの音声ピッカーは /shared/sound-picker.js に共通化済み。
+        // 呼び出し方: openSoundPicker({ eventIdHint, onImported: (asset) => { ... } })
 
         timerEndSoundPickerButton.addEventListener('click', () => {
             closeTimerSuggestPanel();
-            openMyinstantsPicker({
+            openSoundPicker({
                 eventIdHint: 'timer-end-sound',
                 onImported: (asset) => {
                     state.timerSettings = { ...state.timerSettings, endSound: { name: asset.name, url: asset.url } };
@@ -2216,7 +2143,7 @@
         });
 
         tapGoalSoundPickerButton.addEventListener('click', () => {
-            openMyinstantsPicker({
+            openSoundPicker({
                 eventIdHint: 'tap-goal-sound',
                 onImported: (asset) => {
                     state.tapGoalSettings = { ...state.tapGoalSettings, sound: { name: asset.name, url: asset.url } };
@@ -2263,6 +2190,45 @@
         timerEndSoundClearButton.addEventListener('click', () => {
             state.timerSettings = { ...state.timerSettings, endSound: { name: '', url: '' } };
             timerEndSoundNameEl.textContent = '未設定';
+            saveTimerSettingsImmediately().catch(() => {});
+        });
+
+        timerCountdownSoundEnabledInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+
+        timerCountdownSoundThresholdInput.addEventListener('input', () => {
+            timerCountdownSoundThresholdValueEl.textContent = `${timerCountdownSoundThresholdInput.value}秒`;
+        });
+        timerCountdownSoundThresholdInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+
+        timerCountdownSoundPickerButton.addEventListener('click', () => {
+            closeTimerSuggestPanel();
+            openSoundPicker({
+                eventIdHint: 'timer-countdown-sound',
+                onImported: (asset) => {
+                    state.timerSettings = { ...state.timerSettings, countdownSound: { name: asset.name, url: asset.url } };
+                    timerCountdownSoundNameEl.textContent = asset.name;
+                    saveTimerSettingsImmediately().catch(() => {});
+                }
+            });
+        });
+
+        timerCountdownSoundPreviewButton.addEventListener('click', () => {
+            const url = state.timerSettings?.countdownSound?.url;
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(timerCountdownSoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
+        });
+
+        timerCountdownSoundVolumeInput.addEventListener('input', () => {
+            timerCountdownSoundVolumeValueEl.textContent = `${timerCountdownSoundVolumeInput.value}%`;
+        });
+        timerCountdownSoundVolumeInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerCountdownSoundScreenSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+
+        timerCountdownSoundClearButton.addEventListener('click', () => {
+            state.timerSettings = { ...state.timerSettings, countdownSound: { name: '', url: '' } };
+            timerCountdownSoundNameEl.textContent = '未設定';
             saveTimerSettingsImmediately().catch(() => {});
         });
 
@@ -2378,47 +2344,17 @@
                 || null;
         }
 
-        function parseCoinFilter(query) {
-            let match = query.match(/^>=\s*(\d+)$/);
-            if (match) return (coins) => coins >= Number(match[1]);
-            match = query.match(/^<=\s*(\d+)$/);
-            if (match) return (coins) => coins <= Number(match[1]);
-            match = query.match(/^>\s*(\d+)$/);
-            if (match) return (coins) => coins > Number(match[1]);
-            match = query.match(/^<\s*(\d+)$/);
-            if (match) return (coins) => coins < Number(match[1]);
-            match = query.match(/^(\d+)\s*[-~]\s*(\d+)$/);
-            if (match) {
-                const minimum = Number(match[1]);
-                const maximum = Number(match[2]);
-                return (coins) => coins >= minimum && coins <= maximum;
-            }
-            match = query.match(/^\d+$/);
-            if (match) {
-                const exact = Number(match[0]);
-                return (coins) => coins === exact;
-            }
-            return null;
-        }
-
         function getFilteredGoalGiftSuggestions(query) {
             const normalizedQuery = String(query || '').trim().toLowerCase();
-            const catalog = [...goalGiftSystemSuggestions, ...state.giftCatalog];
 
             if (!normalizedQuery) {
-                return catalog;
+                return [...goalGiftSystemSuggestions, ...state.giftCatalog];
             }
 
-            const coinFilter = parseCoinFilter(normalizedQuery);
-            if (coinFilter) {
-                return state.giftCatalog.filter((gift) => Number.isFinite(gift.diamondCount) && coinFilter(gift.diamondCount));
-            }
-
-            return catalog.filter((gift) => {
-                const name = String(gift.name || '').toLowerCase();
-                const description = String(gift.describe || '').toLowerCase();
-                return name.includes(normalizedQuery) || description.includes(normalizedQuery);
-            });
+            // コイン数条件のときはシステム候補（フォロー等、コイン数を持たない項目）を対象外にする。
+            const isCoinQuery = Boolean(GiftSuggest.parseCoinFilter(normalizedQuery));
+            const catalog = isCoinQuery ? state.giftCatalog : [...goalGiftSystemSuggestions, ...state.giftCatalog];
+            return GiftSuggest.filterGifts(catalog, query);
         }
 
         function positionGoalGiftSuggestionPanel() {
@@ -2467,7 +2403,7 @@
             }
 
             activeGoalGiftSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleGoalGiftSuggestions.length - 1));
-            goalGiftSuggestionPanel.querySelectorAll('[data-goal-gift-index]').forEach((button, index) => {
+            goalGiftSuggestionPanel.querySelectorAll('[data-suggest-index]').forEach((button, index) => {
                 button.classList.toggle('is-active', index === activeGoalGiftSuggestionIndex);
                 if (index === activeGoalGiftSuggestionIndex) {
                     button.scrollIntoView({ block: 'nearest' });
@@ -2490,34 +2426,17 @@
             }
 
             activeGoalGiftSuggestionIndex = 0;
-            goalGiftSuggestionPanel.innerHTML = visibleGoalGiftSuggestions.map((gift, index) => {
-                const imageMarkup = gift.imageUrl
-                    ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(gift.name)}">`
-                    : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
-                const idPart = gift.id ? `ID: ${escapeHtml(String(gift.id))}` : '';
-                const descPart = gift.describe ? escapeHtml(gift.describe) : '';
-                const description = [idPart, descPart].filter(Boolean).join('  ·  ') || '&nbsp;';
-                const costText = Number.isFinite(gift.diamondCount) ? `${gift.diamondCount} coins` : '-';
-
-                return `
-                    <button type="button" class="gift-suggestion-item${index === activeGoalGiftSuggestionIndex ? ' is-active' : ''}" data-goal-gift-index="${index}">
-                        ${imageMarkup}
-                        <div class="gift-suggestion-meta">
-                            <div class="gift-suggestion-name">${escapeHtml(gift.name)}</div>
-                            <div class="gift-suggestion-desc">${description}</div>
-                        </div>
-                        <div class="gift-suggestion-cost">${escapeHtml(costText)}</div>
-                    </button>
-                `;
-            }).join('');
+            goalGiftSuggestionPanel.innerHTML = visibleGoalGiftSuggestions
+                .map((gift, index) => GiftSuggest.renderItemHtml(gift, index, index === activeGoalGiftSuggestionIndex, escapeHtml))
+                .join('');
 
             goalGiftSuggestionPanel.hidden = false;
             positionGoalGiftSuggestionPanel();
 
-            goalGiftSuggestionPanel.querySelectorAll('[data-goal-gift-index]').forEach((button) => {
+            goalGiftSuggestionPanel.querySelectorAll('[data-suggest-index]').forEach((button) => {
                 button.addEventListener('mousedown', (event) => {
                     event.preventDefault();
-                    const selectedGift = visibleGoalGiftSuggestions[Number(button.dataset.goalGiftIndex)];
+                    const selectedGift = visibleGoalGiftSuggestions[Number(button.dataset.suggestIndex)];
                     applyGoalGiftSuggestion(selectedGift);
                 });
             });
@@ -4055,11 +3974,7 @@
 
         function getFilteredPushPullSuggestions(query) {
             const catalog = (state.giftCatalog || []).filter((g) => g.imageUrl);
-            const normalizedQuery = String(query || '').trim().toLowerCase();
-            if (!normalizedQuery) return catalog;
-            const coinFilter = parseCoinFilter(normalizedQuery);
-            if (coinFilter) return catalog.filter((g) => Number.isFinite(g.diamondCount) && coinFilter(g.diamondCount));
-            return catalog.filter((g) => String(g.name || '').toLowerCase().includes(normalizedQuery));
+            return GiftSuggest.filterGifts(catalog, query);
         }
 
         function renderPushPullSuggestItems(query) {

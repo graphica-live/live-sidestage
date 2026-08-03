@@ -1276,6 +1276,7 @@ const {
     applyTimerGiftEvent,
     emitTimerEndSound,
     emitTimerBlockSound,
+    emitTimerCountdownSound,
     buildTimerPayload,
 } = require('./lib/timer-state')({
     io,
@@ -1692,6 +1693,22 @@ function getSingleGiftValue(gift) {
     }
 
     return totalGifts / repeatCount;
+}
+
+function getTriggerGiftsDailyCoinTotals(dayKey = getTodayDayKey()) {
+    const requestedDayKey = normalizeDayKey(dayKey) || getTodayDayKey();
+    const broadcasterId = getBroadcasterId();
+    const totals = new Map();
+
+    if (!broadcasterId) {
+        return totals;
+    }
+
+    dbStore.getGiftCoinTotalsByDay(requestedDayKey, broadcasterId).forEach((row) => {
+        totals.set(row.giftNameKey, Number(row.totalCoins) || 0);
+    });
+
+    return totals;
 }
 
 function buildTopGiftSnapshot(dayKey = getTodayDayKey()) {
@@ -2530,6 +2547,8 @@ require('./lib/routes/effects')({
     app,
     io,
     getTimestamp,
+    getTodayDayKey,
+    getTriggerGiftsDailyCoinTotals,
     getEffectEvents,
     getEffectTriggers,
     buildEffectOverlayUrls,
@@ -2556,6 +2575,7 @@ require('./lib/routes/effects')({
     getEffectMediaDirectory,
     getEffectCategories,
     setEffectCategories,
+    tryRunEffectTriggersForGift,
     path,
     fs,
 });
@@ -2680,7 +2700,7 @@ require('./lib/routes/widgets/timer')({
     buildTimerPayload,
     setTimerSettings, setTimerWidgetTextAppearance,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
-    emitTimerEndSound, emitTimerBlockSound,
+    emitTimerEndSound, emitTimerBlockSound, emitTimerCountdownSound,
 });
 
 require('./lib/routes/widgets/contributors')({
@@ -3000,6 +3020,7 @@ function ensureTikTokConnection() {
             snapshot: buildGoalGiftProgressSnapshot(getTodayDayKey())
         });
         io.emit('widgets:coin-list:updated', buildCoinListPayload());
+        io.emit('effects:trigger-gifts:updated', {});
 
         if (duplicateSlots.length) {
             io.emit('widgets:goal-gifts:duplicate-feedback', { slots: duplicateSlots });
