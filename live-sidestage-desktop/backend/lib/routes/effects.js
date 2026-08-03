@@ -104,6 +104,7 @@ module.exports = function registerEffectsRoutes({
     getEffectCategories,
     setEffectCategories,
     tryRunEffectTriggersForGift,
+    tryRunEffectTriggersForGiftCombo,
     path,
     fs,
 }) {
@@ -329,20 +330,46 @@ module.exports = function registerEffectsRoutes({
         const repeatCount = Math.max(1, Number.parseInt(req.body?.repeatCount, 10) || 1);
         const uniqueId = String(req.body?.uniqueId || '').trim() || 'test_user';
         const nickname = String(req.body?.nickname || '').trim() || uniqueId;
+        const giftId = req.body?.giftId ? String(req.body.giftId) : null;
 
-        const giftEvent = {
-            giftName,
-            giftId: req.body?.giftId ? String(req.body.giftId) : null,
-            totalGifts: diamondCount * repeatCount,
-            repeatCount,
-            uniqueId,
-            nickname,
-            image: '',
-            comment: '',
-            timestamp: getTimestamp()
-        };
+        let triggered = false;
 
-        const triggered = tryRunEffectTriggersForGift(giftEvent);
+        if (repeatCount > 1) {
+            // 実際のコンボギフトは tick ごとに個別の効果発火イベントが飛ぶため、
+            // 1回にまとめて repeatCount 分の playbackCount を積むと「連射」（rapidFireEnabled）
+            // のキャンセル挙動が働かない。tick を分けて発火させ、本番のコンボと同じ経路で検証できるようにする。
+            for (let tick = 1; tick <= repeatCount; tick += 1) {
+                const tickEvent = {
+                    giftName,
+                    giftId,
+                    totalGifts: diamondCount * tick,
+                    repeatCount: tick,
+                    uniqueId,
+                    nickname,
+                    image: '',
+                    comment: '',
+                    timestamp: getTimestamp()
+                };
+
+                if (tryRunEffectTriggersForGiftCombo(tickEvent, { isFirstTick: tick === 1, deltaRepeat: 1 })) {
+                    triggered = true;
+                }
+            }
+        } else {
+            const giftEvent = {
+                giftName,
+                giftId,
+                totalGifts: diamondCount,
+                repeatCount: 1,
+                uniqueId,
+                nickname,
+                image: '',
+                comment: '',
+                timestamp: getTimestamp()
+            };
+
+            triggered = tryRunEffectTriggersForGift(giftEvent);
+        }
 
         return res.json({ ok: true, triggered });
     });

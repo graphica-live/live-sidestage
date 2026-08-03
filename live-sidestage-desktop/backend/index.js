@@ -2576,6 +2576,7 @@ require('./lib/routes/effects')({
     getEffectCategories,
     setEffectCategories,
     tryRunEffectTriggersForGift,
+    tryRunEffectTriggersForGiftCombo,
     path,
     fs,
 });
