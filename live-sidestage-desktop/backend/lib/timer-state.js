@@ -22,6 +22,11 @@ const DEFAULT_TIMER_SETTINGS = {
     endSoundVolume: 100,
     endSoundScreen: 1,
     minFloorMinutes: 0,
+    countdownSoundEnabled: false,
+    countdownSoundThresholdSeconds: 5,
+    countdownSound: { name: '', url: '' },
+    countdownSoundVolume: 100,
+    countdownSoundScreen: 1,
 };
 
 module.exports = function createTimerState({
@@ -31,6 +36,7 @@ module.exports = function createTimerState({
 }) {
 
 let endTimeoutHandle = null;
+let countdownTimeoutHandle = null;
 
 function normalizeSignedMinutes(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -96,6 +102,18 @@ function normalizeEndSoundScreen(value) {
     return parsed;
 }
 
+function normalizeCountdownSoundScreen(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) return DEFAULT_TIMER_SETTINGS.countdownSoundScreen;
+    return parsed;
+}
+
+function normalizeCountdownThresholdSeconds(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.countdownSoundThresholdSeconds;
+    return Math.max(1, Math.min(60, parsed));
+}
+
 function normalizeTimerSettings(value) {
     let source = value;
     if (typeof source === 'string') {
@@ -127,6 +145,11 @@ function normalizeTimerSettings(value) {
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
         endSoundScreen: normalizeEndSoundScreen(source.endSoundScreen),
         minFloorMinutes: normalizeMinFloorMinutes(source.minFloorMinutes),
+        countdownSoundEnabled: normalizeBooleanInput(source.countdownSoundEnabled, DEFAULT_TIMER_SETTINGS.countdownSoundEnabled),
+        countdownSoundThresholdSeconds: normalizeCountdownThresholdSeconds(source.countdownSoundThresholdSeconds),
+        countdownSound: normalizeSoundAsset(source.countdownSound),
+        countdownSoundVolume: normalizeTimerSoundVolume(source.countdownSoundVolume),
+        countdownSoundScreen: normalizeCountdownSoundScreen(source.countdownSoundScreen),
     };
 }
 
@@ -141,6 +164,7 @@ function getTimerSettings() {
 function setTimerSettings(settings) {
     const normalized = normalizeTimerSettings(settings);
     setScopedStateValue(WIDGET_TIMER_SETTINGS_STATE_KEY, JSON.stringify(normalized));
+    scheduleCountdownTick();
     return normalized;
 }
 
@@ -189,6 +213,7 @@ function clearEndTimeout() {
 
 function scheduleEndTimeout() {
     clearEndTimeout();
+    scheduleCountdownTick();
     const runtime = getTimerRuntime();
     if (!runtime.running || runtime.endsAt === null) return;
 
@@ -213,6 +238,67 @@ function fireTimerEnded() {
     if (!io) return;
     io.emit('widgets:timer:updated', buildTimerPayload());
     emitTimerEndSound();
+}
+
+// 24のようなカウントダウン音。指定秒数以下になったら残り秒数が1つ減るたびに1回鳴らす。
+// 終了音と同様、多重再生を避けるためサーバー側で発火を一元管理する。
+function clearCountdownTimeout() {
+    if (countdownTimeoutHandle) {
+        clearTimeout(countdownTimeoutHandle);
+        countdownTimeoutHandle = null;
+    }
+}
+
+function scheduleCountdownTick() {
+    clearCountdownTimeout();
+    const settings = getTimerSettings();
+    if (!settings.countdownSoundEnabled || !settings.countdownSound.url) return;
+
+    const runtime = getTimerRuntime();
+    if (!runtime.running || runtime.endsAt === null) return;
+
+    const remainingMs = runtime.endsAt - Date.now();
+    if (remainingMs <= 0) return;
+
+    const thresholdMs = settings.countdownSoundThresholdSeconds * 1000;
+    if (remainingMs > thresholdMs) {
+        countdownTimeoutHandle = setTimeout(scheduleCountdownTick, Math.min(remainingMs - thresholdMs, MAX_TIMER_MS));
+        return;
+    }
+
+    const secondsLeft = Math.ceil(remainingMs / 1000);
+    emitTimerCountdownSound();
+
+    const delay = runtime.endsAt - (secondsLeft - 1) * 1000 - Date.now();
+    countdownTimeoutHandle = setTimeout(scheduleCountdownTick, Math.max(0, delay));
+}
+
+// 設定された screen (overlay) のカウントダウン音を1回再生する。管理画面からの手動テストにも使う。
+function emitTimerCountdownSound() {
+    if (!io) return false;
+    const settings = getTimerSettings();
+    if (!settings.countdownSound.url) return false;
+
+    io.emit('effects:playback', {
+        playbackId: `timer-countdown-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        eventId: 'timer-countdown-sound',
+        eventName: 'タイマーカウントダウン',
+        screen: settings.countdownSoundScreen,
+        videoUrl: '',
+        audioUrl: settings.countdownSound.url,
+        mediaVolume: settings.countdownSoundVolume,
+        playbackCount: 1,
+        triggerId: 'timer',
+        triggerName: 'タイマー',
+        giftName: '',
+        comment: '',
+        totalGifts: 0,
+        repeatCount: 1,
+        uniqueId: '',
+        nickname: '',
+        timestamp: Date.now()
+    });
+    return true;
 }
 
 // 設定された screen (overlay) の効果音オーバーレイへ終了音を直接送る。管理画面からの手動テストにも使う。
@@ -377,6 +463,7 @@ function buildTimerPayload() {
         applyTimerGiftEvent,
         emitTimerEndSound,
         emitTimerBlockSound,
+        emitTimerCountdownSound,
         buildTimerPayload,
     };
 };

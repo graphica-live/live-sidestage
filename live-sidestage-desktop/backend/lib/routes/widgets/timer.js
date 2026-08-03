@@ -5,7 +5,7 @@ module.exports = function registerTimerRoutes({
     buildTimerPayload,
     setTimerSettings, setTimerWidgetTextAppearance,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
-    emitTimerEndSound, emitTimerBlockSound,
+    emitTimerEndSound, emitTimerBlockSound, emitTimerCountdownSound,
 }) {
     function emitTimerUpdate() {
         const payload = buildTimerPayload();
@@ -50,6 +50,11 @@ module.exports = function registerTimerRoutes({
 
     app.post('/api/widgets/timer/test-end-sound', (req, res) => {
         const played = emitTimerEndSound();
+        res.json({ ok: true, played });
+    });
+
+    app.post('/api/widgets/timer/test-countdown-sound', (req, res) => {
+        const played = emitTimerCountdownSound();
         res.json({ ok: true, played });
     });
 };
