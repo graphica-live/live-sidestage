@@ -229,13 +229,16 @@ function renderTriggers() {
         const commentSummaryValue = fragment.querySelector('[data-role="comment-summary"]');
         const userIdsValue = fragment.querySelector('[data-role="user-ids"]');
         const enabledCheckbox = fragment.querySelector('[data-role="enabled"]');
+        const dragHandle = fragment.querySelector('.drag-handle');
 
         card.dataset.triggerId = triggerRecord.id;
         const bgRgb = TRIGGER_LIST_BG_COLORS[String(triggerRecord.listOverlayBgColor || '').trim().toLowerCase()];
         if (bgRgb) {
-            card.style.setProperty('background', `rgba(${bgRgb.split(' ').join(', ')}, 0.28)`, 'important');
+            dragHandle.style.setProperty('background', `rgb(${bgRgb.split(' ').join(', ')})`, 'important');
+            dragHandle.style.setProperty('color', '#ffffff', 'important');
         } else {
-            card.style.removeProperty('background');
+            dragHandle.style.removeProperty('background');
+            dragHandle.style.removeProperty('color');
         }
         nameValue.textContent = getTriggerLabel(triggerRecord, index);
         eventNameValue.textContent = formatEventIdsSummary(triggerRecord);
