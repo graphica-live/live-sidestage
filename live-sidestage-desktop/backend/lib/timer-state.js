@@ -262,6 +262,12 @@ function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
     const floorMs = getTimerSettings().minFloorMinutes * 60000;
     const runtime = getTimerRuntime();
+
+    // 短縮(マイナス)発動時点で既に下限以下なら、時間を変更しない。
+    if (deltaMs < 0 && getTimerRemainingMs(runtime) <= floorMs) {
+        return runtime;
+    }
+
     let next;
 
     if (runtime.running) {
