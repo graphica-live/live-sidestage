@@ -1135,40 +1135,4 @@
             flex-wrap: wrap;
         }
 
-        .myinstants-status {
-            color: var(--muted);
-            font-size: 13px;
-            min-height: 18px;
-        }
-
-        .myinstants-results {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-height: 320px;
-            overflow-y: auto;
-        }
-
-        .myinstants-result-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 8px 12px;
-            border: 1px solid var(--line);
-            background: var(--panel);
-            color: var(--text);
-        }
-
-        .myinstants-result-name {
-            flex: 1 1 auto;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .myinstants-result-actions {
-            display: flex;
-            gap: 8px;
-            flex: 0 0 auto;
-        }
+        /* サウンド検索ピッカー(myinstants/効果音ラボ)のスタイルは /shared/sound-picker.css に共通化済み */
