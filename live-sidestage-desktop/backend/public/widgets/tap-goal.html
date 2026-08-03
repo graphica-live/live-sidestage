@@ -222,6 +222,7 @@
             <div class="bar-count" id="barCount">0 / 0</div>
         </div>
     </div>
+    <audio id="tapGoalAudio"></audio>
 
     <script>
         const socket = io();
@@ -331,12 +332,17 @@
             root.setProperty('--stroke-width', strokeWidth + 'px');
         }
 
+        const tapGoalAudioEl = document.getElementById('tapGoalAudio');
+
         function playTapGoalSound(url, volume) {
             if (!url) return;
-            const audio = new Audio(url);
-            audio.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
-            audio.play().catch(() => {
-                // 自動再生ブロック等は無視
+            // new Audio() を毎回生成すると要素が解放されずに蓄積し、
+            // しばらく再生を繰り返した後に無音化することがあるため使い回す
+            if (tapGoalAudioEl.src !== url) tapGoalAudioEl.src = url;
+            tapGoalAudioEl.currentTime = 0;
+            tapGoalAudioEl.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
+            tapGoalAudioEl.play().catch((err) => {
+                console.warn('[tap-goal] sound playback failed', err);
             });
         }
 
