@@ -8,7 +8,9 @@
     <script src="/shared/utils.js"></script>
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/gift-suggest.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/gift-suggest.css">
     <style>
         :root {
             --bg: #e6edf4;
@@ -495,7 +497,10 @@
                 </div>
                 <div class="field">
                     <label for="modal-gift-name">ギフト名</label>
-                    <input id="modal-gift-name" type="text" maxlength="80" list="gift-name-list" placeholder="Rose">
+                    <div class="gift-suggest-shell">
+                        <input id="modal-gift-name" type="text" maxlength="80" autocomplete="off" placeholder="Rose">
+                        <div class="gift-suggestion-panel" id="modal-gift-suggestion-panel" hidden></div>
+                    </div>
                 </div>
                 <div class="field">
                     <label for="modal-gift-id">ギフトID</label>
@@ -526,7 +531,6 @@
         </div>
     </div>
 
-    <datalist id="gift-name-list"></datalist>
     <datalist id="recent-user-id-list"></datalist>
     <datalist id="recent-user-name-list"></datalist>
 
@@ -581,7 +585,7 @@
         const modalGiftImageInput = document.getElementById('modal-gift-image');
         const modalDiamondCountInput = document.getElementById('modal-diamond-count');
         const modalRepeatCountInput = document.getElementById('modal-repeat-count');
-        const giftNameList = document.getElementById('gift-name-list');
+        const modalGiftSuggestionPanel = document.getElementById('modal-gift-suggestion-panel');
         const recentUserIdList = document.getElementById('recent-user-id-list');
         const recentUserNameList = document.getElementById('recent-user-name-list');
         const userSuggestionPanel = document.getElementById('gifts-user-suggestion-panel');
@@ -597,6 +601,7 @@
         let activeUserSuggestionIndex = -1;
 
         const referenceData = {
+            gifts: [],
             giftsByName: new Map(),
             usersById: new Map(),
             usersByName: new Map()
@@ -736,10 +741,8 @@
         }
 
         function populateGiftSuggestions(gifts) {
-            giftNameList.innerHTML = Array.isArray(gifts)
-                ? gifts.map((gift) => `<option value="${escapeHtml(gift.name || '')}" label="${escapeHtml(`${gift.id || '-'} / ${gift.diamondCount || 0} coins`)}"></option>`).join('')
-                : '';
-            referenceData.giftsByName = new Map((gifts || []).map((gift) => [String(gift.name || ''), gift]));
+            referenceData.gifts = Array.isArray(gifts) ? gifts : [];
+            referenceData.giftsByName = new Map(referenceData.gifts.map((gift) => [String(gift.name || ''), gift]));
         }
 
         function populateRecentUsers(users) {
@@ -846,9 +849,7 @@
             }
         }
 
-        function syncGiftDraftFromCatalog() {
-            const matchedGift = referenceData.giftsByName.get(modalGiftNameInput.value.trim());
-
+        function applyGiftDraftFromCatalog(matchedGift) {
             if (!matchedGift) {
                 updateDraftTotalStatus();
                 return;
@@ -861,6 +862,21 @@
             }
             updateDraftTotalStatus();
         }
+
+        function syncGiftDraftFromCatalog() {
+            applyGiftDraftFromCatalog(referenceData.giftsByName.get(modalGiftNameInput.value.trim()));
+        }
+
+        GiftSuggest.attachSuggestField({
+            input: modalGiftNameInput,
+            panel: modalGiftSuggestionPanel,
+            getGifts: () => referenceData.gifts,
+            onSelect: (gift) => {
+                modalGiftNameInput.value = gift.name || '';
+                applyGiftDraftFromCatalog(gift);
+            },
+            escapeHtml
+        });
 
         function syncUserDraftFromSuggestions() {
             const idValue = modalUniqueIdInput.value.trim();
