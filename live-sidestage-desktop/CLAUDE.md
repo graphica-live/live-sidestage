@@ -70,19 +70,14 @@ Get-Process | Where-Object { $_.Name -match '^(electron|node)$' } | Stop-Process
 
 ## 並行作業ルール（複数タブ）
 
-複数タブ/セッションで同時に修正作業する場合、同一ディレクトリを共有するとファイル競合が起きる。**タブごとに `git worktree` で作業ディレクトリを分離すること。**
+**コード変更を伴うタスクを開始する際は、ユーザーに確認せず自動的に `EnterWorktree` ツールを使って作業ブランチを分離すること。** 同一ディレクトリを複数タブで同時編集すると、Editツールの内容衝突や意図しない上書きが発生するため。
 
-```powershell
-npm run worktree:new -- -Name <task-name>
-```
+- `EnterWorktree` は `.claude/worktrees/` 配下に新規ブランチを作成しセッションの作業ディレクトリを切り替える。`node_modules` は設定済みのsymlinkDirectoriesにより自動共有される
+- 単純な確認・調査のみのタスク（コード変更なし）では不要
+- 作業完了後、ユーザーがPR作成やマージを終えたら `ExitWorktree`（`keep` or `remove`）で終了する
+- ユーザーからの明示的な指示がなくても、このCLAUDE.mdの指示によりworktree使用がトリガーされる（EnterWorktreeツールの仕様）
 
-- `.worktrees/<task-name>` に `wt/<task-name>` ブランチで新規ワークツリーが作成される
-- `node_modules` は junction で共有（ネイティブモジュール再ビルド不要）、`.env` は自動コピーされる
-- 新しいタブ（Claude Codeセッション）はそのディレクトリを作業ディレクトリとして開始する
-- 作業完了後は通常どおりPRを作成してmainにマージ
-- 不要になったworktreeは `git worktree remove .worktrees/<task-name>` で削除
-
-**Why:** 同一ディレクトリを複数タブで同時編集すると、Editツールの内容衝突や意図しない上書きが発生する。worktreeでブランチごと分離すれば「他タブの完了を待つ」必要がなく真の並行作業ができる。
+**Why:** 複数タブが同じディレクトリを共有すると、ファイル競合や意図しない上書きが起きる。タスク開始時に自動でworktree分離すれば、ユーザーが毎回コマンドを打つ必要がなく、他タブの完了を待たずに真の並行作業ができる。
 
 ## フロントエンドの完了条件
 
