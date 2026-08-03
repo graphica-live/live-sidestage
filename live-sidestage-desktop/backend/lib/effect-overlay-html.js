@@ -214,6 +214,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         let activePlaybackEventId = null;
         let activeVideoUrl = null;
         let activeAudioUrl = null;
+        let activePlaybackPayload = null;
         let playbackQueue = [];
         let isPlaying = false;
         let audioEnded = true;
@@ -488,6 +489,30 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             activePlaybackEventId = null;
             activeVideoUrl = null;
             activeAudioUrl = null;
+            activePlaybackPayload = null;
+        }
+
+        function mediaErrorMessage(code) {
+            switch (code) {
+                case 1: return '再生が中断されました';
+                case 2: return 'ネットワークエラー';
+                case 3: return 'デコードエラー（ファイルが壊れているか非対応の形式です）';
+                case 4: return 'ファイル形式が非対応、またはファイルが見つかりません';
+                default: return '不明な再生エラー';
+            }
+        }
+
+        function emitPlaybackError(kind, message, url) {
+            const info = {
+                screen: slot,
+                eventName: (activePlaybackPayload && activePlaybackPayload.eventName) || '',
+                giftName: (activePlaybackPayload && activePlaybackPayload.giftName) || '',
+                kind,
+                message: message || '',
+                url: url || (kind === 'video' ? activeVideoUrl : activeAudioUrl) || ''
+            };
+            updateDebugLog((kind === 'video' ? '動画' : '音声') + 'の再生に失敗しました: ' + info.message + (info.url ? ' (' + info.url + ')' : ''));
+            socket.emit('effects:playback-error', info);
         }
 
         video.addEventListener('ended', () => {
@@ -499,6 +524,27 @@ function buildEffectOverlayHtml(slot, config, options = null) {
         });
 
         audio.addEventListener('ended', () => {
+            audioEnded = true;
+
+            if (videoEnded) {
+                finishPlayback();
+            }
+        });
+
+        // 'error' を捕捉しないと再生キューが isPlaying=true のまま止まり、以降のイベントが一切再生されなくなる。
+        video.addEventListener('error', () => {
+            if (!activeVideoUrl) return;
+            emitPlaybackError('video', mediaErrorMessage(video.error && video.error.code));
+            videoEnded = true;
+
+            if (audioEnded) {
+                finishPlayback();
+            }
+        });
+
+        audio.addEventListener('error', () => {
+            if (!activeAudioUrl) return;
+            emitPlaybackError('audio', mediaErrorMessage(audio.error && audio.error.code));
             audioEnded = true;
 
             if (videoEnded) {
@@ -544,6 +590,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             activePlaybackEventId = payload.eventId || '';
             activeVideoUrl = payload.videoUrl || null;
             activeAudioUrl = payload.audioUrl || null;
+            activePlaybackPayload = payload;
             videoEnded = !payload.videoUrl;
             audioEnded = !payload.audioUrl;
             updateDebugLog((payload.eventName || 'event') + ' / ' + (payload.uniqueId || '') + ' / ' + (payload.giftName || ''));
@@ -558,7 +605,14 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     video.currentTime = 0;
                     video.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     video.style.display = 'block';
-                    await video.play().catch(() => null);
+                    try {
+                        await video.play();
+                    } catch (playError) {
+                        // play() が拒否された場合は 'error'/'ended' も発火しないことがあるため、
+                        // ここで明示的に ended 扱いにしないとキューが永久に止まる。
+                        videoEnded = true;
+                        emitPlaybackError('video', playError && playError.message ? playError.message : String(playError), resolvedVideo);
+                    }
                 } else {
                     video.style.display = 'none';
                 }
@@ -568,10 +622,18 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                     audio.currentTime = 0;
                     audio.volume = Math.max(0, Math.min(1, Number(payload.mediaVolume ?? 100) / 100));
                     await _audioCtx.resume().catch(() => null);
-                    await audio.play().catch(() => null);
+                    try {
+                        await audio.play();
+                    } catch (playError) {
+                        audioEnded = true;
+                        emitPlaybackError('audio', playError && playError.message ? playError.message : String(playError), resolvedAudio);
+                    }
                 }
             } catch (error) {
                 updateDebugLog(error && error.message ? error.message : 'playback failed');
+                emitPlaybackError('unknown', error && error.message ? error.message : String(error));
+                videoEnded = true;
+                audioEnded = true;
                 finishPlayback();
                 return;
             }

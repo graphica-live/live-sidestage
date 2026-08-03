@@ -67,6 +67,11 @@ module.exports = function registerSocketHandlers({
         socket.on('debug:event-received', ({ event, mode, url }) => {
             console.log('[debug:event-received] socket', socket.id, '| mode:', mode, '| url:', url, '| event:', event);
         });
+        // オーバーレイ側の動画/音声再生エラーを管理画面へ中継し、原因不明な無反応を可視化する。
+        socket.on('effects:playback-error', (payload) => {
+            console.warn('[effects:playback-error]', payload);
+            socket.broadcast.emit('effects:playback-error', payload);
+        });
         socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
         const pendingUpdateInfo = getPendingUpdateInfo();
         if (pendingUpdateInfo) {
