@@ -25,6 +25,7 @@ interface ListenerInstance {
   heartbeatInterval: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
   stopped: boolean;
+  lastEventAt: number;
 }
 
 export interface GiftLogEntry {
@@ -126,6 +127,7 @@ function updateState(
 
   // Manage heartbeat interval
   if (status === "connected") {
+    inst.lastEventAt = Date.now();
     if (!inst.heartbeatInterval) {
       inst.heartbeatInterval = setInterval(() => {
         persistState(inst.state.streamerId, "connected", inst.state.message);
@@ -266,7 +268,17 @@ async function connectInstance(streamerId: string) {
     );
   });
 
+  const markAlive = () => {
+    inst.lastEventAt = Date.now();
+  };
+  conn.on("chat", markAlive);
+  conn.on("member", markAlive);
+  conn.on("roomUser", markAlive);
+  conn.on("social", markAlive);
+  conn.on("like", markAlive);
+
   conn.on("gift", (data: Record<string, unknown>) => {
+    markAlive();
     const isCombo = data.giftType === 1;
     const groupId = data.groupId ? String(data.groupId) : null;
     const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
@@ -402,6 +414,7 @@ export async function startListener(streamerId: string, tiktokId: string) {
     heartbeatInterval: null,
     pendingCombos,
     stopped: false,
+    lastEventAt: Date.now(),
   };
 
   listeners.set(streamerId, inst);
@@ -470,4 +483,28 @@ export async function ensureAllListenersAlive() {
       );
     }
   }
+}
+
+const WATCHDOG_SILENCE_MS = 10_000;
+
+// Detects zombie WebSocket connections: status stays "connected" but no
+// events (gift/chat/member/...) have arrived, meaning the socket died
+// without firing disconnected/streamEnd.
+export function checkWatchdogs() {
+  const now = Date.now();
+  listeners.forEach((inst, streamerId) => {
+    if (inst.stopped) return;
+    if (inst.state.status !== "connected") return;
+    if (inst.connectPromise) return;
+
+    const silentFor = now - inst.lastEventAt;
+    if (silentFor > WATCHDOG_SILENCE_MS) {
+      console.warn(
+        `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect`
+      );
+      connectInstance(streamerId).catch((err) =>
+        console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
+      );
+    }
+  });
 }
