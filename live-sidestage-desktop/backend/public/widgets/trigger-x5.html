@@ -90,6 +90,13 @@
             animation: glovePunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
         }
 
+        .glove img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
         @keyframes glovePunch {
             0%          { transform: scale(0) rotate(-40deg); }
             16%         { transform: scale(1.3) rotate(10deg); }
@@ -247,17 +254,7 @@
             document.body.classList.add('preview-card');
         }
 
-        const GLOVE_SVG = `
-            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <g>
-                    <path d="M34 22c0-8 6-14 15-14s16 6 16 14v20l10 6c5 3 8 8 8 14v6c0 11-9 20-20 20H44c-12 0-22-10-22-22V44c0-6 3-11 8-14z" fill="#e11d2f"/>
-                    <path d="M34 22c0-8 6-14 15-14s16 6 16 14v20l10 6c5 3 8 8 8 14v6c0 11-9 20-20 20H44c-12 0-22-10-22-22V44c0-6 3-11 8-14z" fill="none" stroke="#7c1017" stroke-width="3"/>
-                    <path d="M30 46c8-4 24-4 32 0" fill="none" stroke="#7c1017" stroke-width="3" stroke-linecap="round"/>
-                    <rect x="26" y="70" width="40" height="18" rx="9" fill="#f8fafc"/>
-                    <rect x="26" y="70" width="40" height="18" rx="9" fill="none" stroke="#94a3b8" stroke-width="2"/>
-                </g>
-            </svg>
-        `;
+        const GLOVE_IMG = `<img src="/widgets/glove-x5.png" alt="">`;
 
         function escapeHtml(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -275,7 +272,7 @@
             card.innerHTML = `
                 <div class="avatar-glove-wrap">
                     <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
-                    <div class="glove">${GLOVE_SVG}</div>
+                    <div class="glove">${GLOVE_IMG}</div>
                     <div class="x5-badge">×5</div>
                 </div>
                 <div class="nickname">${escapeHtml(nickname)}</div>
@@ -300,7 +297,7 @@
             card.className = 'active-card';
             card.innerHTML = `
                 <div class="glove-wrap">
-                    <div class="glove">${GLOVE_SVG}</div>
+                    <div class="glove">${GLOVE_IMG}</div>
                     <div class="countdown-badge">${durationSeconds}</div>
                 </div>
             `;
