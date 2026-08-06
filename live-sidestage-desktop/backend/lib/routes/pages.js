@@ -157,6 +157,18 @@ module.exports = function registerPageRoutes({
         return res.redirect(`/overlays/effects/${req.params.slot}`);
     });
 
+    app.get(['/overlays/trigger-pending/:screen', '/overlays/widgets/trigger-pending/:screen'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        const slot = Number.parseInt(req.params.screen, 10);
+        if (!Number.isInteger(slot) || slot < 1 || slot > EFFECT_SCREEN_COUNT) {
+            return res.status(404).send('Trigger pending overlay screen not found');
+        }
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'trigger-pending.html'));
+    });
+    app.get(['/overlays/trigger-pending/:screen/index.html', '/overlays/widgets/trigger-pending/:screen/index.html'], (req, res) => {
+        return res.redirect(`/overlays/trigger-pending/${req.params.screen}`);
+    });
+
     app.get(['/overlays/top-gift', '/overlays/widgets/top-gift'], (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'top-gift.html'));

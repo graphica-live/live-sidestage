@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トリガー保留オーバーレイ</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+            overflow: hidden;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            min-height: 100vh;
+            padding: 28px;
+        }
+
+        .current-wrap {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .current-label {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            color: #ffe9a8;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+
+        .current-chip {
+            width: 220px;
+            height: 220px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.18), rgba(15, 23, 42, 0.6));
+            border: 3px solid rgba(255, 214, 102, 0.92);
+            box-shadow: 0 0 0 7px rgba(255, 214, 102, 0.18), 0 18px 40px rgba(0, 0, 0, 0.45);
+            animation: pendingCurrentPulse 1.4s ease-in-out infinite;
+        }
+
+        .current-chip img {
+            width: 76%;
+            height: 76%;
+            object-fit: contain;
+            filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5));
+        }
+
+        .current-chip .placeholder-dot {
+            width: 40%;
+            height: 40%;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        @keyframes pendingCurrentPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+
+        .queue-strip {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            align-items: flex-start;
+            gap: 12px;
+            max-height: calc(100vh - 56px);
+            overflow: hidden;
+        }
+
+        .queue-chip {
+            position: relative;
+            flex: 0 0 auto;
+            width: var(--chip-size, 96px);
+            height: var(--chip-size, 96px);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+            transition: width 220ms ease, height 220ms ease, opacity 200ms ease;
+            animation: pendingQueueIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .queue-chip img {
+            width: 72%;
+            height: 72%;
+            object-fit: contain;
+        }
+
+        .queue-chip .placeholder-dot {
+            width: 38%;
+            height: 38%;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .queue-chip .order-badge {
+            position: absolute;
+            top: -7px;
+            left: -7px;
+            min-width: 1.7em;
+            height: 1.7em;
+            padding: 0 0.3em;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: #fff8d6;
+            font-size: 0.6em;
+            font-weight: 800;
+            line-height: 1.7em;
+            text-align: center;
+        }
+
+        .queue-chip.overflow-chip {
+            background: rgba(0, 0, 0, 0.62);
+            border-style: dashed;
+            color: #f8fafc;
+            font-weight: 800;
+            font-size: calc(var(--chip-size, 96px) * 0.22);
+        }
+
+        @keyframes pendingQueueIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        .empty-hint {
+            font-size: 15px;
+            color: rgba(241, 245, 249, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage">
+        <div class="current-wrap" id="current-wrap" hidden>
+            <div class="current-label">消化中</div>
+            <div class="current-chip" id="current-chip"></div>
+        </div>
+        <div class="queue-strip" id="queue-strip"></div>
+    </div>
+
+    <script>
+        // 保留(パチンコの保留球)演出: サーバー側はトリガー発火を都度ブロードキャストするだけで
+        // 「再生中/待機中」というキュー状態は持っていない。各 screen のエフェクトオーバーレイ
+        // (effect-overlay-html.js) がクライアント側でキューを再現しているのと同じ考え方で、
+        // このオーバーレイも effects:playback / effects:playback:stop を購読して独自にキューを
+        // 再現する。実際の動画再生はしないため、再生時間は非表示の video/audio で
+        // loadedmetadata の duration を測って見積もる。
+        const PATH_SEGMENTS = window.location.pathname.split('/').filter(Boolean);
+        const screenSlot = Number.parseInt(PATH_SEGMENTS[PATH_SEGMENTS.length - 1], 10) || 1;
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const currentWrapEl = document.getElementById('current-wrap');
+        const currentChipEl = document.getElementById('current-chip');
+        const queueStripEl = document.getElementById('queue-strip');
+
+        const DEFAULT_DURATION_MS = 6000;
+        const DURATION_PROBE_TIMEOUT_MS = 5000;
+        const MAX_VISIBLE_QUEUE_ITEMS = 30;
+        const QUEUE_CHIP_SIZE_TIERS = [
+            { max: 4, size: 120 },
+            { max: 8, size: 100 },
+            { max: 14, size: 82 },
+            { max: 24, size: 66 },
+            { max: Infinity, size: 52 }
+        ];
+
+        let imageMap = {};
+        let current = null;
+        let currentToken = 0;
+        let currentTimer = null;
+        let rapidFireTimer = null;
+        let queue = [];
+
+        function escapeAttr(value) {
+            return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function pickChipSize(count) {
+            const tier = QUEUE_CHIP_SIZE_TIERS.find((entry) => count <= entry.max);
+            return tier ? tier.size : QUEUE_CHIP_SIZE_TIERS[QUEUE_CHIP_SIZE_TIERS.length - 1].size;
+        }
+
+        function chipInnerHtml(item) {
+            if (item.giftImageUrl) {
+                return `<img src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'placeholder-dot'}))">`;
+            }
+            return '<div class="placeholder-dot"></div>';
+        }
+
+        function render() {
+            if (current) {
+                currentWrapEl.style.display = 'flex';
+                currentChipEl.innerHTML = chipInnerHtml(current);
+            } else {
+                // .current-wrap は表示時に display:flex を持つため、[hidden] の既定 display:none は
+                // 詳細度で負けて上書きされない。inline style で明示的に隠す必要がある。
+                currentWrapEl.style.display = 'none';
+                currentChipEl.innerHTML = '';
+            }
+
+            if (!current && queue.length === 0) {
+                queueStripEl.innerHTML = previewMode ? '<div class="empty-hint">保留はありません</div>' : '';
+                queueStripEl.style.removeProperty('--chip-size');
+                return;
+            }
+
+            const visibleCount = Math.min(queue.length, MAX_VISIBLE_QUEUE_ITEMS + 1);
+            queueStripEl.style.setProperty('--chip-size', `${pickChipSize(visibleCount)}px`);
+
+            const overflowCount = queue.length - MAX_VISIBLE_QUEUE_ITEMS;
+            const visibleItems = overflowCount > 0 ? queue.slice(0, MAX_VISIBLE_QUEUE_ITEMS) : queue;
+
+            const chipsHtml = visibleItems.map((item, index) => `
+                <div class="queue-chip">
+                    <span class="order-badge">${index + 1}</span>
+                    ${chipInnerHtml(item)}
+                </div>
+            `).join('');
+
+            const overflowHtml = overflowCount > 0
+                ? `<div class="queue-chip overflow-chip">+${overflowCount}</div>`
+                : '';
+
+            queueStripEl.innerHTML = chipsHtml + overflowHtml;
+        }
+
+        function enrichPayload(payload) {
+            const info = imageMap[payload.triggerId] || null;
+            return {
+                eventId: payload.eventId || '',
+                triggerId: payload.triggerId || '',
+                triggerName: payload.triggerName || info?.giftName || '',
+                giftImageUrl: info?.giftImageUrl || '',
+                videoUrl: payload.videoUrl || '',
+                audioUrl: payload.audioUrl || '',
+                rapidFireEnabled: Boolean(payload.rapidFireEnabled),
+                rapidFireCancelMs: Number(payload.rapidFireCancelMs) || 1500
+            };
+        }
+
+        // 実際に再生はしないが、同じメディアの duration を測って「消化にかかる時間」を見積もる。
+        // メディアが無い/取得に失敗した場合は既定の待ち時間にフォールバックする。
+        function estimateDurationMs(item) {
+            return new Promise((resolve) => {
+                const probes = [];
+                if (item.videoUrl) probes.push({ tag: 'video', url: item.videoUrl });
+                if (item.audioUrl) probes.push({ tag: 'audio', url: item.audioUrl });
+
+                if (probes.length === 0) {
+                    resolve(DEFAULT_DURATION_MS);
+                    return;
+                }
+
+                let remaining = probes.length;
+                let maxDuration = 0;
+                let settled = false;
+
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(fallbackTimer);
+                    resolve(maxDuration > 0 ? maxDuration * 1000 : DEFAULT_DURATION_MS);
+                };
+
+                const fallbackTimer = setTimeout(finish, DURATION_PROBE_TIMEOUT_MS);
+
+                probes.forEach(({ tag, url }) => {
+                    const el = document.createElement(tag);
+                    el.preload = 'metadata';
+                    el.muted = true;
+                    el.src = url;
+
+                    const onSettle = () => {
+                        if (Number.isFinite(el.duration) && el.duration > 0) {
+                            maxDuration = Math.max(maxDuration, el.duration);
+                        }
+                        remaining -= 1;
+                        if (remaining <= 0) finish();
+                    };
+
+                    el.addEventListener('loadedmetadata', onSettle, { once: true });
+                    el.addEventListener('error', onSettle, { once: true });
+                });
+            });
+        }
+
+        function setCurrent(item) {
+            clearTimeout(currentTimer);
+            clearTimeout(rapidFireTimer);
+            rapidFireTimer = null;
+            current = item;
+            currentToken += 1;
+            const token = currentToken;
+            render();
+
+            estimateDurationMs(item).then((durationMs) => {
+                if (token !== currentToken) return;
+                currentTimer = setTimeout(advanceQueue, durationMs);
+            });
+        }
+
+        function advanceQueue() {
+            clearTimeout(currentTimer);
+            clearTimeout(rapidFireTimer);
+            rapidFireTimer = null;
+            const next = queue.shift() || null;
+
+            if (next) {
+                setCurrent(next);
+            } else {
+                current = null;
+                currentToken += 1;
+                render();
+            }
+        }
+
+        // 連射モード: 再生中と同じトリガーが後続に積まれたら、指定ms後に現在の消化を打ち切って
+        // 次へ進める（effect-overlay-html.js の maybeArmRapidFireCancel と同じ考え方）。
+        function armRapidFireIfNeeded(item) {
+            if (!current || !current.rapidFireEnabled) return;
+            if (current.triggerId !== item.triggerId) return;
+            if (rapidFireTimer) return;
+
+            const token = currentToken;
+            rapidFireTimer = setTimeout(() => {
+                rapidFireTimer = null;
+                if (token !== currentToken) return;
+                advanceQueue();
+            }, current.rapidFireCancelMs);
+        }
+
+        function handlePlayback(payload) {
+            if (!payload || Number(payload.screen) !== screenSlot) return;
+
+            const item = enrichPayload(payload);
+            const playbackCount = Math.max(1, Number(payload.playbackCount || 1));
+
+            for (let index = 0; index < playbackCount; index += 1) {
+                const instance = { ...item, playbackId: `${payload.playbackId || Date.now()}-${index}` };
+
+                if (!current) {
+                    setCurrent(instance);
+                } else {
+                    queue.push(instance);
+                    armRapidFireIfNeeded(instance);
+                }
+            }
+
+            render();
+        }
+
+        function handlePlaybackStop(payload) {
+            if (!payload || Number(payload.screen) !== screenSlot) return;
+
+            const eventId = typeof payload.eventId === 'string' ? payload.eventId : '';
+
+            if (eventId) {
+                queue = queue.filter((item) => item.eventId !== eventId);
+
+                if (current && current.eventId === eventId) {
+                    advanceQueue();
+                    return;
+                }
+            } else {
+                queue = [];
+
+                if (current) {
+                    clearTimeout(currentTimer);
+                    clearTimeout(rapidFireTimer);
+                    rapidFireTimer = null;
+                    current = null;
+                    currentToken += 1;
+                }
+            }
+
+            render();
+        }
+
+        async function loadImageMap() {
+            try {
+                const response = await fetch('/api/effects/trigger-gift-images');
+                const payload = await response.json();
+                imageMap = payload.images || {};
+            } catch {
+                imageMap = {};
+            }
+        }
+
+        function buildPreviewSample() {
+            const sampleImage = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+                '<circle cx="32" cy="32" r="28" fill="#f5c542"/>' +
+                '<path d="M32 16l7 12 12 5-12 5-7 12-7-12-12-5 12-5z" fill="#fff8d6"/>' +
+                '</svg>'
+            );
+
+            const sampleCount = Math.max(1, Math.min(80, Number.parseInt(searchParams.get('count'), 10) || 9));
+
+            current = { triggerId: 'preview-current', triggerName: 'サンプル', giftImageUrl: sampleImage, eventId: '' };
+            queue = Array.from({ length: sampleCount }, (_, index) => ({
+                triggerId: `preview-${index}`,
+                triggerName: `サンプル${index + 1}`,
+                giftImageUrl: sampleImage,
+                eventId: ''
+            }));
+            render();
+        }
+
+        if (previewMode) {
+            buildPreviewSample();
+        } else {
+            const socket = io();
+            loadImageMap();
+            socket.on('effects:trigger-gifts:updated', loadImageMap);
+            socket.on('effects:playback', handlePlayback);
+            socket.on('effects:playback:stop', handlePlaybackStop);
+            render();
+        }
+    </script>
+</body>
+</html>

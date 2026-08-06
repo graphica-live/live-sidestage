@@ -89,6 +89,7 @@ let currentEvents = [];
 let currentTriggers = [];
 let currentScreenUrls = [];
 let currentTriggerGiftsOverlayUrlBase = null;
+let currentTriggerPendingScreenUrls = [];
 let eventFilterQuery = '';
 let triggerFilterQuery = '';
 let pendingEventModalVideoAsset = null;
@@ -146,12 +147,14 @@ async function loadConfig() {
     currentTriggers = allTriggers.filter(belongsToCurrentCategory);
     currentScreenUrls = payload.screenUrls || [];
     currentTriggerGiftsOverlayUrlBase = payload.triggerGiftsOverlayUrlBase || currentTriggerGiftsOverlayUrlBase;
+    currentTriggerPendingScreenUrls = payload.triggerPendingScreenUrls || currentTriggerPendingScreenUrls;
     syncEventModalOptions();
     syncTriggerModalOptions();
     renderEvents();
     renderTriggers();
     renderUrls();
     renderTriggerGiftsUrl();
+    renderTriggerPendingUrl();
 }
 
 async function loadMidiDevices() {

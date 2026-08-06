@@ -90,6 +90,27 @@
         </section>
 
         <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>トリガー保留オーバーレイ</h2>
+                    <p class="subtext">指定した screen で消化中（再生中）のトリガーを大きく、その右に保留（再生待ち）のトリガーを待機順に並べるオーバーレイです。パチンコの保留球のイメージで、保留数が増えるほど画像は縮小し、収まらない分は折り返して表示します。</p>
+                </div>
+            </div>
+            <div class="record-fields" style="margin-top:14px;">
+                <div class="field">
+                    <label for="trigger-pending-screen-select">対象 screen</label>
+                    <select id="trigger-pending-screen-select"></select>
+                </div>
+            </div>
+            <div class="url-item" id="trigger-pending-url-item" style="margin-top:14px;">
+                <div class="url-label">保留オーバーレイ</div>
+                <input class="url-value" type="text" id="trigger-pending-url-value" readonly value="読み込み中">
+                <button type="button" id="trigger-pending-url-copy-button">URL をコピー</button>
+                <button type="button" id="trigger-pending-url-preview-button">プレビュー表示</button>
+            </div>
+        </section>
+
+        <section class="panel">
             <h2>URL 一覧</h2>
             <p class="subtext">screen は 10 個固定です。イベント側ではこの screen 番号を指定して再生先を選びます。</p>
             <div class="url-list" id="url-list"></div>
@@ -576,6 +597,7 @@
     <script src="/db/effects-rows.js"></script>
     <script src="/db/effects-gift-suggest.js"></script>
     <script src="/db/effects-trigger-gifts.js"></script>
+    <script src="/db/effects-trigger-pending.js"></script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>
 </html>

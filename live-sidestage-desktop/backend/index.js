@@ -501,6 +501,17 @@ function buildTriggerGiftsOverlayUrlBase(req) {
     };
 }
 
+function buildTriggerPendingOverlayUrls(req) {
+    const origin = getStudioCompatibleOrigin(req);
+    const loaderOrigin = getLoaderOrigin(req);
+
+    return Array.from({ length: EFFECT_SCREEN_COUNT }, (_, index) => ({
+        slot: index + 1,
+        url: `${loaderOrigin}/overlays/trigger-pending/${index + 1}`,
+        directUrl: `${origin}/overlays/trigger-pending/${index + 1}`
+    }));
+}
+
 function buildWidgetUrls(req) {
     const origin = getStudioCompatibleOrigin(req);
     const loaderOrigin = getLoaderOrigin(req);
@@ -2575,6 +2586,7 @@ require('./lib/routes/effects')({
     getEffectTriggers,
     buildEffectOverlayUrls,
     buildTriggerGiftsOverlayUrlBase,
+    buildTriggerPendingOverlayUrls,
     fetchTikTokGiftCatalog,
     getScopedStateValue: (...args) => getScopedStateValue(...args),
     setScopedStateValue: (...args) => setScopedStateValue(...args),

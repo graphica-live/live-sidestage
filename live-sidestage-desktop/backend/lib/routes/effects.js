@@ -82,6 +82,7 @@ module.exports = function registerEffectsRoutes({
     getEffectTriggers,
     buildEffectOverlayUrls,
     buildTriggerGiftsOverlayUrlBase,
+    buildTriggerPendingOverlayUrls,
     fetchTikTokGiftCatalog,
     getScopedStateValue,
     setScopedStateValue,
@@ -204,8 +205,44 @@ module.exports = function registerEffectsRoutes({
             events: getEffectEvents(),
             triggers: getEffectTriggers(),
             screenUrls: buildEffectOverlayUrls(req),
-            triggerGiftsOverlayUrlBase: buildTriggerGiftsOverlayUrlBase(req)
+            triggerGiftsOverlayUrlBase: buildTriggerGiftsOverlayUrlBase(req),
+            triggerPendingScreenUrls: buildTriggerPendingOverlayUrls(req)
         });
+    });
+
+    // トリガー保留オーバーレイ用: triggerId → ギフト画像の解決。
+    // トリガー一覧オーバーレイと違い、無効化/カテゴリ変更後のトリガーが
+    // 発火した直後の残像（保留中）を表示する可能性があるため、
+    // enabled や categoryId でのフィルタは行わない。
+    async function buildTriggerGiftImageMap() {
+        const catalogGifts = await fetchTikTokGiftCatalog().catch(() => []);
+        const map = {};
+
+        getEffectTriggers().forEach((trigger) => {
+            if (!trigger.giftName) return;
+
+            if (trigger.giftName === EFFECT_TRIGGER_FOLLOW_GIFT_NAME) {
+                map[trigger.id] = {
+                    giftName: trigger.giftName,
+                    giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL
+                };
+                return;
+            }
+
+            const matchedGift = catalogGifts.find((gift) =>
+                String(gift.name || '').trim().toLowerCase() === trigger.giftName);
+
+            map[trigger.id] = {
+                giftName: matchedGift?.name || trigger.giftName,
+                giftImageUrl: matchedGift?.imageUrl || ''
+            };
+        });
+
+        return map;
+    }
+
+    app.get('/api/effects/trigger-gift-images', async (req, res) => {
+        res.json({ ok: true, images: await buildTriggerGiftImageMap() });
     });
 
     function normalizeTriggerGiftsAppearance(value) {
