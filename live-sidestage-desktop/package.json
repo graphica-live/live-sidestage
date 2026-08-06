@@ -14,6 +14,7 @@
     "generate:windows-launchers": "chcp 65001>nul & node scripts/generate-windows-launchers.js",
     "rebuild:electron": "electron-rebuild -f better-sqlite3",
     "loader": "chcp 65001>nul & node loader-server/index.js",
+    "prerun": "powershell -ExecutionPolicy Bypass -File .\\scripts\\kill-installed-loader.ps1",
     "run": "concurrently -n loader,electron -c yellow,cyan \"npm:loader\" \"npm:electron\"",
     "preelectron": "powershell -ExecutionPolicy Bypass -File .\\scripts\\prepare-electron.ps1",
     "electron": "chcp 65001>nul & electron .",
