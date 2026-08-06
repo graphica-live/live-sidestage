@@ -265,19 +265,6 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        // 発動時の効果音。new Audio() を毎回生成すると要素が蓄積するため使い回す（tap-goalウィジェットと同様）。
-        const activationSoundEl = new Audio();
-
-        function playActivationSound(url, volume) {
-            if (!url) return;
-            if (activationSoundEl.src !== url) activationSoundEl.src = url;
-            activationSoundEl.currentTime = 0;
-            activationSoundEl.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
-            activationSoundEl.play().catch((err) => {
-                console.warn('[trigger-x5] activation sound playback failed', err);
-            });
-        }
-
         function showWin(data) {
             const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
             const image = String(data?.image || '');
@@ -353,6 +340,9 @@
         }
 
         function playZapSound() {
+            // プレビューiframeはウィジェット一覧ページ(Electron本体)に常駐するため、
+            // デモ再生で実配信オーバーレイと同じ効果音を鳴らしてはいけない
+            if (previewMode) return;
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 const ctx = new AudioCtx();
@@ -433,7 +423,7 @@
             } else {
                 if (activeCardEl) activeCardEl.remove();
                 activeCardEl = createActiveCard(remainingSeconds);
-                playActivationSound(data.audioUrl, data.audioVolume);
+                // 発動音は指定オーバーレイ(screen)へサーバーから直接送られるため、ここでは再生しない
                 // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
                 activePopTimeoutHandle = window.setTimeout(() => {
                     activePopTimeoutHandle = null;

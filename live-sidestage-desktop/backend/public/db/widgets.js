@@ -61,6 +61,7 @@
         const triggerX5SoundNameEl = document.getElementById('trigger-x5-sound-name');
         const triggerX5SoundVolumeInput = document.getElementById('trigger-x5-sound-volume');
         const triggerX5SoundVolumeValueEl = document.getElementById('trigger-x5-sound-volume-value');
+        const triggerX5SoundScreenSelect = document.getElementById('trigger-x5-sound-screen');
         const triggerX5StatusLabel = document.getElementById('trigger-x5-status-label');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
@@ -1683,7 +1684,7 @@
         }
 
         function applyTriggerX5SettingsToForm(settings) {
-            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100 };
+            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100, soundScreen: 1 };
             triggerX5EnabledInput.checked = Boolean(s.enabled);
             triggerX5GiftNameInput.value = s.giftName || '';
             triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
@@ -1693,6 +1694,7 @@
             const soundVolume = Number.isFinite(Number(s.soundVolume)) ? Math.max(0, Math.min(100, Number(s.soundVolume))) : 100;
             triggerX5SoundVolumeInput.value = String(soundVolume);
             triggerX5SoundVolumeValueEl.textContent = `${soundVolume}%`;
+            triggerX5SoundScreenSelect.value = String(Number.parseInt(String(s.soundScreen ?? 1), 10) || 1);
             updateTriggerX5StatusLabel();
             refreshTriggerX5Preview();
         }
@@ -1724,7 +1726,8 @@
                 winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30,
                 soundEnabled: triggerX5SoundEnabledInput.checked,
                 sound: state.triggerX5Settings?.sound || { name: '', url: '' },
-                soundVolume: Number.parseInt(triggerX5SoundVolumeInput.value, 10) || 100
+                soundVolume: Number.parseInt(triggerX5SoundVolumeInput.value, 10) || 100,
+                soundScreen: Number.parseInt(triggerX5SoundScreenSelect.value, 10) || 1
             };
         }
 
@@ -3492,6 +3495,7 @@
             triggerX5SoundVolumeValueEl.textContent = `${triggerX5SoundVolumeInput.value}%`;
         });
         triggerX5SoundVolumeInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5SoundScreenSelect.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5SoundPickerButton.addEventListener('click', () => {
             openSoundPicker({
                 eventIdHint: 'trigger-x5-sound',

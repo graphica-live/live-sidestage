@@ -2,7 +2,7 @@
 
 const { WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY } = require('./constants');
 const { normalizeEffectText } = require('./utils');
-const { normalizeSoundAsset } = require('./effect-helpers');
+const { normalizeSoundAsset, normalizeEffectScreen } = require('./effect-helpers');
 
 const TRIGGER_X5_MULTIPLIER = 5;
 
@@ -14,6 +14,7 @@ const DEFAULT_TRIGGER_X5_SETTINGS = {
     soundEnabled: false,
     sound: { name: '', url: '' },
     soundVolume: 100,
+    soundScreen: 1,
 };
 
 function normalizeTriggerX5DurationSeconds(value) {
@@ -63,6 +64,7 @@ function normalizeTriggerX5Settings(value) {
         soundEnabled: Boolean(source.soundEnabled),
         sound: normalizeSoundAsset(source.sound),
         soundVolume: normalizeTriggerX5SoundVolume(source.soundVolume),
+        soundScreen: normalizeEffectScreen(source.soundScreen),
     };
 }
 
@@ -111,18 +113,39 @@ module.exports = function createTriggerX5State({
         const base = extended ? activeUntil : Date.now();
         activeUntil = base + settings.durationSeconds * 1000;
 
-        // 効果音は新規発動時のみ鳴らす。延長時は既存の電撃演出（合成音）と役割が重なるため対象外にする。
-        const hasSound = !extended && settings.soundEnabled && Boolean(settings.sound.url);
-
         io.emit('widgets:trigger-x5:window', {
             active: true,
             extended,
             durationSeconds: settings.durationSeconds,
             remainingSeconds: Math.max(1, Math.ceil((activeUntil - Date.now()) / 1000)),
-            audioUrl: hasSound ? settings.sound.url : '',
-            audioVolume: settings.soundVolume,
             timestamp: getTimestamp(),
         });
+
+        // 効果音は新規発動時のみ、設定した screen (オーバーレイ) へ直接送る。延長時は
+        // 既存の電撃演出（合成音）と役割が重なるため対象外にする。
+        // トリガー5倍オーバーレイ自身では再生しない — 同じソケットイベントは管理画面の
+        // プレビューiframeにも届くため、直接再生させるとElectron本体からも音が出てしまう。
+        if (!extended && settings.soundEnabled && settings.sound.url) {
+            io.emit('effects:playback', {
+                playbackId: `trigger-x5-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                eventId: 'trigger-x5-sound',
+                eventName: 'トリガー5倍',
+                screen: settings.soundScreen,
+                videoUrl: '',
+                audioUrl: settings.sound.url,
+                mediaVolume: settings.soundVolume,
+                playbackCount: 1,
+                triggerId: 'trigger-x5',
+                triggerName: 'トリガー5倍',
+                giftName: settings.giftName,
+                comment: '',
+                totalGifts: 0,
+                repeatCount: 1,
+                uniqueId: '',
+                nickname: '',
+                timestamp: getTimestamp(),
+            });
+        }
     }
 
     // イベントトリガー発火のたびに呼ぶ抽選。ウィンドウが非アクティブなら常にfalse。
