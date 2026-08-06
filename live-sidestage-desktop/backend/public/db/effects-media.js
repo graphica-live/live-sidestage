@@ -38,7 +38,7 @@ eventModalVideoFile.addEventListener('change', async () => {
     setStatus(`動画 ${file.name} を取り込み中です。`);
 
     try {
-        const asset = await uploadMedia(file, 'video', editingEventId);
+        const asset = await uploadMedia(file, 'video', editingEventId || pendingNewEventUploadId);
         pendingEventModalVideoAsset = asset;
         eventModalVideoEnabled.checked = true;
         eventModalVideoName.textContent = asset.name;
@@ -71,7 +71,7 @@ eventModalAudioFile.addEventListener('change', async () => {
     setStatus(`音声 ${file.name} を取り込み中です。`);
 
     try {
-        const asset = await uploadMedia(file, 'audio', editingEventId);
+        const asset = await uploadMedia(file, 'audio', editingEventId || pendingNewEventUploadId);
         pendingEventModalAudioAsset = asset;
         eventModalAudioEnabled.checked = true;
         eventModalAudioName.textContent = asset.name;
