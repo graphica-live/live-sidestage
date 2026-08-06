@@ -93,6 +93,11 @@ let triggerFilterQuery = '';
 let pendingEventModalVideoAsset = null;
 let pendingEventModalAudioAsset = null;
 let editingEventId = null;
+// 新規イベント作成モーダルを開いている間、まだイベントIDが確定していない状態で
+// 音声/動画を取り込む際に使う一時ID。resetEventModal() で毎回発行し直す。
+// これがないと、複数の新規イベントで固定のフォールバック名が使われてファイルが
+// 衝突・上書きされてしまう（例: 「野球」と「中断」が同じ音声ファイルを指す）。
+let pendingNewEventUploadId = null;
 let editingTriggerId = null;
 let editingTriggerEnabled = true;
 let knownGiftSuggestions = [];

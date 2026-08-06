@@ -3,7 +3,7 @@
 
 eventModalTemplateAudioButton.addEventListener('click', () => {
     openSoundPicker({
-        eventIdHint: editingEventId || 'event-audio',
+        eventIdHint: editingEventId || pendingNewEventUploadId,
         onImported: (asset) => {
             pendingEventModalAudioAsset = asset;
             eventModalAudioEnabled.checked = true;

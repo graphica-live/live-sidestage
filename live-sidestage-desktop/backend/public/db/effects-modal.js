@@ -22,6 +22,7 @@ function syncEventModalMidiFields() {
 
 function resetEventModal() {
     editingEventId = null;
+    pendingNewEventUploadId = createId('event');
     eventModalTitle.textContent = 'イベントを新規追加';
     eventModalDescription.textContent = '表示名と再生先 screen を決め、動画と音声もこの画面で設定します。';
     eventModalSubmit.textContent = '追加';
@@ -88,7 +89,7 @@ function openEventModalForEdit(eventRecord) {
 
 function collectEventFromModal() {
     return {
-        id: editingEventId || createId('event'),
+        id: editingEventId || pendingNewEventUploadId,
         name: eventModalName.value.trim(),
         screen: Number(eventModalScreen.value || currentScreenUrls[0]?.slot || 1),
         videoEnabled: eventModalVideoEnabled.checked,
