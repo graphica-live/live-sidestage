@@ -2967,11 +2967,14 @@ function ensureTikTokConnection() {
 
         const isCombo = data.giftType === 1;
         // コンボ中の各イベントは同一ストリームでも data.createTime が変わることがあるため、
-        // comboKey には含めない。uniqueId+giftId だけで同一ストリークを追跡する。
+        // comboKey には含めない。TikTokがコンボごとに払い出す groupId を優先的に使う
+        // （uniqueId+giftId だけだと、同じユーザーが同じギフトで立て続けに別コンボを
+        //   送った場合に前のコンボの残留 repeatCount と衝突し、delta が 0 にクランプされて
+        //   新しいコンボが計上漏れになる）。groupId が無い場合のみ uniqueId+giftId にフォールバック。
         // （createTime を含めると repeatEnd=false の pending エントリが
         //   repeatEnd=true で消えず、admin gift history に2行表示される。）
         const comboKey = isCombo
-            ? [data.uniqueId || '', data.giftId || ''].join(':')
+            ? (data.groupId ? String(data.groupId) : [data.uniqueId || '', data.giftId || ''].join(':'))
             : null;
         const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
         const previousPending = comboKey ? pendingGiftsByComboKey.get(comboKey) : null;
