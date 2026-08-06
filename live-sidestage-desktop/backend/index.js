@@ -1264,8 +1264,10 @@ const {
     normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
     getTapGoalProgress, setTapGoalProgress,
     addTapGoalTaps, resetTapGoalProgress,
+    emitTapGoalReached,
     buildTapGoalPayload,
 } = require('./lib/tap-goal-state')({
+    io,
     getScopedStateValue: (...args) => getScopedStateValue(...args),
     setScopedStateValue: (...args) => setScopedStateValue(...args),
     getTapGoalWidgetTextAppearance: (...args) => getTapGoalWidgetTextAppearance(...args),
@@ -2714,6 +2716,7 @@ require('./lib/routes/widgets/tap-goal')({
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
+    emitTapGoalReached,
     getLikeContributionUserAvatars, getLikeContributionUserNicknames,
 });
 
@@ -3122,13 +3125,7 @@ function ensureTikTokConnection() {
 
                 const tapGoalResult = addTapGoalTaps(tapAmount);
                 if (tapGoalResult.crossings > 0) {
-                    const tapGoalSettings = getWidgetTapGoalSettings();
-                    const reachedPayload = {};
-                    if (tapGoalSettings.soundEnabled && tapGoalSettings.sound?.url) {
-                        reachedPayload.url = tapGoalSettings.sound.url;
-                        reachedPayload.volume = tapGoalSettings.soundVolume;
-                    }
-                    io.emit('widgets:tap-goal:reached', reachedPayload);
+                    emitTapGoalReached();
                 }
                 io.emit('widgets:tap-goal:updated', {
                     ...buildTapGoalPayload(),

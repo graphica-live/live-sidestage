@@ -5,31 +5,9 @@ module.exports = function registerTapGoalRoutes({
     buildTapGoalPayload,
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
+    emitTapGoalReached,
     getLikeContributionUserAvatars, getLikeContributionUserNicknames,
 }) {
-    function emitTapGoalReached(settings) {
-        const target = settings.soundTarget || 'tap-goal';
-        const hasSound = Boolean(settings.soundEnabled && settings.sound?.url);
-        const playsOnWidget = hasSound && target === 'tap-goal';
-
-        io.emit('widgets:tap-goal:reached', playsOnWidget
-            ? { url: settings.sound.url, volume: settings.soundVolume }
-            : {});
-
-        if (hasSound && target !== 'tap-goal') {
-            const screen = Number(String(target).replace('screen', ''));
-            if (screen >= 1 && screen <= 10) {
-                io.emit('effects:playback', {
-                    screen,
-                    audioUrl: settings.sound.url,
-                    mediaVolume: settings.soundVolume,
-                    eventName: 'タップ目標達成',
-                    playbackId: `tap-goal-${Date.now()}`,
-                });
-            }
-        }
-    }
-
     // タップテスト用: 既知のリスナーからランダムに1人選んでダミーのタップ主にする
     function pickRandomKnownTapper() {
         const nicknames = getLikeContributionUserNicknames();
@@ -69,7 +47,7 @@ module.exports = function registerTapGoalRoutes({
         const payload = buildTapGoalPayload();
 
         if (result.crossings > 0) {
-            emitTapGoalReached(payload.settings);
+            emitTapGoalReached();
         }
 
         io.emit('widgets:tap-goal:updated', { ...payload, actor: pickRandomKnownTapper() });
@@ -79,7 +57,7 @@ module.exports = function registerTapGoalRoutes({
     app.post('/api/widgets/tap-goal/test-sound', (req, res) => {
         const payload = buildTapGoalPayload();
         if (payload.settings.soundEnabled && payload.settings.sound?.url) {
-            emitTapGoalReached(payload.settings);
+            emitTapGoalReached();
         }
         res.json({ ok: true, ...payload });
     });

@@ -25,6 +25,7 @@ function normalizeSoundTarget(value) {
 }
 
 module.exports = function createTapGoalState({
+    io,
     getScopedStateValue, setScopedStateValue,
     getTapGoalWidgetTextAppearance,
 }) {
@@ -107,6 +108,34 @@ function resetTapGoalProgress() {
     return setTapGoalProgress({ count: 0 });
 }
 
+// タップ目標到達のたびに呼ぶ。ウィジェット自身では soundTarget が 'tap-goal' の
+// ときだけ再生し、screenN 指定時は effects:playback で該当オーバーレイへ直接送る。
+// ウィジェット側で無条件に鳴らすと、管理画面のプレビューiframeにも同じソケット
+// イベントが届いてElectron本体からも音が出てしまう（トリガー5倍と同種の不具合）。
+function emitTapGoalReached() {
+    const settings = getWidgetTapGoalSettings();
+    const target = settings.soundTarget || 'tap-goal';
+    const hasSound = Boolean(settings.soundEnabled && settings.sound?.url);
+    const playsOnWidget = hasSound && target === 'tap-goal';
+
+    io.emit('widgets:tap-goal:reached', playsOnWidget
+        ? { url: settings.sound.url, volume: settings.soundVolume }
+        : {});
+
+    if (hasSound && target !== 'tap-goal') {
+        const screen = Number(String(target).replace('screen', ''));
+        if (screen >= 1 && screen <= 10) {
+            io.emit('effects:playback', {
+                screen,
+                audioUrl: settings.sound.url,
+                mediaVolume: settings.soundVolume,
+                eventName: 'タップ目標達成',
+                playbackId: `tap-goal-${Date.now()}`,
+            });
+        }
+    }
+}
+
 function buildTapGoalPayload() {
     const settings = getWidgetTapGoalSettings();
     const progress = getTapGoalProgress();
@@ -121,6 +150,7 @@ function buildTapGoalPayload() {
         normalizeTapGoalSettings, getWidgetTapGoalSettings, setWidgetTapGoalSettings,
         getTapGoalProgress, setTapGoalProgress,
         addTapGoalTaps, resetTapGoalProgress,
+        emitTapGoalReached,
         buildTapGoalPayload,
     };
 };
