@@ -221,6 +221,13 @@
                         <div class="range-value" id="event-modal-media-volume-value">100%</div>
                     </div>
                 </div>
+                <div class="field full">
+                    <label>再生時の動作</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="event-modal-force-interrupt-enabled"><span>全イベント強制中断</span></label>
+                    </div>
+                    <div class="field-hint">ONの場合、このイベントが再生されるとき、トリガーで指定された screen の現在待機中のイベントを即時削除してから再生します。</div>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" data-action="close-event-modal">キャンセル</button>

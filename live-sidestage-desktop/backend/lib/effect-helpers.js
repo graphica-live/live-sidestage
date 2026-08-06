@@ -53,7 +53,8 @@ function createDefaultEffectEvent(slot = 1) {
         midiData1: 60,
         midiData2: 127,
         vdjEffectEnabled: false,
-        vdjCommand: ''
+        vdjCommand: '',
+        forceInterruptAllEvents: false
     };
 }
 
@@ -186,7 +187,8 @@ function normalizeEffectEvent(value, index) {
         midiData1: normalizeMidiByte(value?.midiData1, fallback.midiData1),
         midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2),
         vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
-        vdjCommand: normalizeVdjCommand(value?.vdjCommand)
+        vdjCommand: normalizeVdjCommand(value?.vdjCommand),
+        forceInterruptAllEvents: Boolean(value?.forceInterruptAllEvents)
     };
 }
 

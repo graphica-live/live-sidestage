@@ -103,8 +103,16 @@ module.exports = function createEffectsRuntime({
         };
     }
 
+    // 「全イベント強制中断」フラグ付きイベント発火時、そのイベントの再生先 screen で
+    // 現在待機中（キュー内）のイベントを即時削除する。再生中のイベントも中断対象に含む。
+    function maybeForceInterruptScreen(effectEvent) {
+        if (!effectEvent?.forceInterruptAllEvents) return;
+        io.emit('effects:playback:stop', { screen: effectEvent.screen, timestamp: getTimestamp() });
+    }
+
     function emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride) {
         if (getEffectsGloballyPaused()) return;
+        maybeForceInterruptScreen(effectEvent);
         io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride));
         sendMidiForEffectEvent(effectEvent);
         sendVdjEffectForEvent(effectEvent);
@@ -240,6 +248,7 @@ module.exports = function createEffectsRuntime({
                         ? `/api/effects/user-video/${encodeURIComponent(trigger.id)}/${encodeURIComponent(normalizedUserId)}`
                         : '';
                     if (!getEffectsGloballyPaused()) {
+                        maybeForceInterruptScreen(effectEvent);
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
                         sendVdjEffectForEvent(effectEvent);
