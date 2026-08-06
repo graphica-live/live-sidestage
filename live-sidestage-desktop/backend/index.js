@@ -116,6 +116,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const BACKEND_ROOT = __dirname;
 const APP_ROOT = PROJECT_ROOT;
 const SHUTDOWN_FORCE_TIMEOUT_MS = 10000;
+const TIKTOK_WATCHDOG_CHECK_INTERVAL_MS = 15000;
+const TIKTOK_WATCHDOG_SILENCE_MS = 45000;
 
 loadEnvFile(path.join(APP_ROOT, '.env'));
 
@@ -2912,6 +2914,7 @@ function ensureTikTokConnection() {
 
     tiktokState.liveConnection = new WebcastPushConnection(broadcasterId, tiktokConnectionOptions);
     tiktokState.activeUsername = broadcasterId;
+    tiktokState.lastEventAt = Date.now();
 
     tiktokState.liveConnection.on('disconnected', () => {
         // connect() の実行中は catch ブロックが処理を担う。
@@ -2959,6 +2962,7 @@ function ensureTikTokConnection() {
     });
 
     tiktokState.liveConnection.on('gift', (data) => {
+        tiktokState.lastEventAt = Date.now();
         logWsEventLatency('gift', data);
 
         const isCombo = data.giftType === 1;
@@ -3102,6 +3106,7 @@ function ensureTikTokConnection() {
 
     COMMENT_FEED_EVENT_DEFINITIONS.forEach(({ type }) => {
         tiktokState.liveConnection.on(type, (data) => {
+            tiktokState.lastEventAt = Date.now();
             logWsEventLatency(type, data);
             const normalizedComment = normalizeTikTokCommentEvent(type, data);
 
@@ -3223,6 +3228,7 @@ async function connectToTikTok() {
                 websocketReasonDetail: 'この配信は WebSocket で受信中です。追加の対応は不要です。'
             };
             const transport = 'websocket';
+            tiktokState.lastEventAt = Date.now();
             setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。`, connectedStateOptions);
             startContributorsSession();
             emitSnapshot(getDisplayDayKey());
@@ -3231,6 +3237,7 @@ async function connectToTikTok() {
             return state;
         } catch (err) {
             if (isTikTokAlreadyConnectedError(err)) {
+                tiktokState.lastEventAt = Date.now();
                 setTikTokConnectionState('connected', `@${broadcasterId} に接続中です。`, {
                     transportMethod: 'websocket',
                     websocketReasonCode: 'websocket_active',
@@ -3332,6 +3339,7 @@ async function startHttpServer() {
     console.log(`📂 User data: ${USER_DATA_DIRECTORY}`);
     console.log(`💾 SQLite DB: ${DB_PATH}`);
     scheduleRawEventFlush(0);
+    setInterval(checkTikTokZombieConnection, TIKTOK_WATCHDOG_CHECK_INTERVAL_MS).unref();
 
     if (AUTO_OPEN_BROWSER) {
         setTimeout(() => {
@@ -3354,6 +3362,25 @@ async function startHttpServer() {
             websocketReasonDetail: 'セットアップ画面で TikTok ユーザーIDを入力すると接続を開始します。'
         });
         console.log('ℹ️ Broadcaster ID is not configured yet.');
+    }
+}
+
+// WebSocket は disconnected/streamEnd/error を一切発火せずに死ぬことがある（tiktok-live-connector の既知の挙動）。
+// その場合 connectionState.status は 'connected' のまま固定され、gift の repeatEnd も届かなくなるため
+// pending 中のコンボギフトが確定処理に進まず、ギフト履歴・集計に計上されない。
+// 一定時間イベントが来なければ強制的に再接続する。
+function checkTikTokZombieConnection() {
+    if (isShuttingDown) {
+        return;
+    }
+    if (tiktokState.connectionState.status !== 'connected' || tiktokState.connectPromise || tiktokState.reconnectTimer) {
+        return;
+    }
+
+    const silentFor = Date.now() - tiktokState.lastEventAt;
+    if (silentFor > TIKTOK_WATCHDOG_SILENCE_MS) {
+        console.warn(`⚠️ TikTok watchdog: no events for ${silentFor}ms while connected. Forcing reconnect.`);
+        scheduleReconnect('zombie_watchdog');
     }
 }
 
