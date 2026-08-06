@@ -139,17 +139,22 @@
             text-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
         }
 
-        /* 発動中インジケーター: 発動ギフト検知でポップインし、残り秒数をカウントダウン表示する */
+        /* 発動中インジケーター: 発動ギフト検知で一旦大きく表示され、その後定位置のサイズへ縮小しながら
+           落ち着く。縮小が終わるまではJS側でカウントダウン開始を待つ（tick開始をアニメーション完了後に遅延）。
+           transform-origin を right/top に固定し、拡大時に画面外へはみ出さず角から膨らむようにする。 */
         .active-card {
             position: absolute;
             right: 36px;
             top: 36px;
-            animation: activeCardPop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+            transform-origin: top right;
+            animation: activeCardPop 0.8s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         @keyframes activeCardPop {
-            0%   { opacity: 0; transform: scale(0.4) rotate(-16deg); }
-            60%  { opacity: 1; transform: scale(1.15) rotate(5deg); }
+            0%   { opacity: 0; transform: scale(2.4) rotate(-10deg); }
+            18%  { opacity: 1; transform: scale(2.6) rotate(4deg); }
+            55%  { opacity: 1; transform: scale(2.5) rotate(2deg); }
+            82%  { opacity: 1; transform: scale(0.92) rotate(-2deg); }
             100% { opacity: 1; transform: scale(1) rotate(0deg); }
         }
 
@@ -291,6 +296,11 @@
         let activeCardEl = null;
         let activeDeadline = 0;
         let activeTickHandle = null;
+        let activePopTimeoutHandle = null;
+
+        // activeCardPop アニメーションの尺（CSS側と一致させる）。
+        // この間はカウントダウンの数字を動かさず、大きく表示→縮小の演出を見せきってから開始する。
+        const ACTIVE_CARD_POP_MS = 800;
 
         function createActiveCard(durationSeconds) {
             const card = document.createElement('div');
@@ -399,17 +409,24 @@
             const remainingSeconds = Math.max(1, Number(data.remainingSeconds) || fallbackSeconds);
             activeDeadline = Date.now() + remainingSeconds * 1000;
 
+            if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
+            if (activePopTimeoutHandle) window.clearTimeout(activePopTimeoutHandle);
+
             if (data.extended && activeCardEl) {
                 playZapEffect();
                 const badge = activeCardEl.querySelector('.countdown-badge');
                 if (badge) badge.textContent = String(remainingSeconds);
+                activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
             } else {
                 if (activeCardEl) activeCardEl.remove();
                 activeCardEl = createActiveCard(remainingSeconds);
+                // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
+                activePopTimeoutHandle = window.setTimeout(() => {
+                    activePopTimeoutHandle = null;
+                    if (!activeCardEl) return;
+                    activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+                }, ACTIVE_CARD_POP_MS);
             }
-
-            if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
-            activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
         }
 
         socket.on('widgets:trigger-x5:window', handleTriggerX5Window);
