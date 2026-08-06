@@ -83,11 +83,15 @@ module.exports = function createTriggerX5State({
         // オーバーレイ側で電撃演出（新規ポップインではなく延長エフェクト）を出し分けられるようにする。
         const extended = isTriggerX5WindowActive();
 
-        activeUntil = Date.now() + settings.durationSeconds * 1000;
+        // 延長は残り時間に加算する（上限なし）。非アクティブな状態からの発動は現在時刻を起点にする。
+        const base = extended ? activeUntil : Date.now();
+        activeUntil = base + settings.durationSeconds * 1000;
+
         io.emit('widgets:trigger-x5:window', {
             active: true,
             extended,
             durationSeconds: settings.durationSeconds,
+            remainingSeconds: Math.max(1, Math.ceil((activeUntil - Date.now()) / 1000)),
             timestamp: getTimestamp(),
         });
     }
