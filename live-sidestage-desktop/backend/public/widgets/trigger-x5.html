@@ -396,14 +396,19 @@
         function handleTriggerX5Window(data) {
             if (!data?.active) return;
 
-            const durationSeconds = Math.max(1, Number(data.durationSeconds) || 15);
-            activeDeadline = Date.now() + durationSeconds * 1000;
+            // remainingSeconds はサーバー側で加算済みの実際の残り時間（延長時は上限なく積み上がる）。
+            // 古いペイロード（remainingSeconds未対応）向けに durationSeconds へフォールバックする。
+            const fallbackSeconds = Math.max(1, Number(data.durationSeconds) || 15);
+            const remainingSeconds = Math.max(1, Number(data.remainingSeconds) || fallbackSeconds);
+            activeDeadline = Date.now() + remainingSeconds * 1000;
 
             if (data.extended && activeCardEl) {
                 playZapEffect();
+                const badge = activeCardEl.querySelector('.countdown-badge');
+                if (badge) badge.textContent = String(remainingSeconds);
             } else {
                 if (activeCardEl) activeCardEl.remove();
-                activeCardEl = createActiveCard(durationSeconds);
+                activeCardEl = createActiveCard(remainingSeconds);
             }
 
             if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
@@ -418,9 +423,10 @@
             window.setInterval(runSample, 3200);
 
             const runActiveDemo = () => {
-                handleTriggerX5Window({ active: true, durationSeconds: 15, extended: false });
+                handleTriggerX5Window({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
                 window.setTimeout(() => {
-                    handleTriggerX5Window({ active: true, durationSeconds: 15, extended: true });
+                    // 延長は加算・上限なしであることをプレビューでも示す（15秒残っている状態に+15秒）
+                    handleTriggerX5Window({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
                 }, 4000);
             };
             runActiveDemo();
