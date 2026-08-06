@@ -189,8 +189,9 @@
             left: 50%;
             bottom: -12px;
             transform: translateX(-50%);
-            min-width: 34px;
+            min-width: 54px;
             padding: 2px 9px;
+            font-variant-numeric: tabular-nums;
             border-radius: 999px;
             background: #0f172a;
             border: 3px solid #fff566;
@@ -302,13 +303,20 @@
         // この間はカウントダウンの数字を動かさず、大きく表示→縮小の演出を見せきってから開始する。
         const ACTIVE_CARD_POP_MS = 3000;
 
+        function formatCountdown(totalSeconds) {
+            const s = Math.max(0, Math.floor(totalSeconds));
+            const minutes = Math.floor(s / 60);
+            const seconds = s % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
         function createActiveCard(durationSeconds) {
             const card = document.createElement('div');
             card.className = 'active-card';
             card.innerHTML = `
                 <div class="glove-wrap">
                     <div class="glove">${GLOVE_IMG}</div>
-                    <div class="countdown-badge">${durationSeconds}</div>
+                    <div class="countdown-badge">${formatCountdown(durationSeconds)}</div>
                 </div>
             `;
             stageEl.appendChild(card);
@@ -329,7 +337,7 @@
             const remainingMs = activeDeadline - Date.now();
             const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
             const badge = activeCardEl.querySelector('.countdown-badge');
-            if (badge) badge.textContent = String(remainingSeconds);
+            if (badge) badge.textContent = formatCountdown(remainingSeconds);
 
             if (remainingMs <= 0) {
                 removeActiveCard();
@@ -418,7 +426,7 @@
             if (data.extended && activeCardEl) {
                 playZapEffect();
                 const badge = activeCardEl.querySelector('.countdown-badge');
-                if (badge) badge.textContent = String(remainingSeconds);
+                if (badge) badge.textContent = formatCountdown(remainingSeconds);
                 activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
             } else {
                 if (activeCardEl) activeCardEl.remove();
