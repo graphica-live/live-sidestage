@@ -260,25 +260,6 @@
         <section class="panel quick-card">
             <div class="quick-card-head">
                 <div class="quick-card-copy">
-                    <h2>コメント読み上げ</h2>
-                </div>
-            </div>
-
-            <div class="quick-actions">
-                <div class="check-row">
-                    <label class="check-label">
-                        <input type="checkbox" id="read-aloud-checkbox">
-                        読み上げ ON
-                    </label>
-                </div>
-                <button type="button" class="ghost-button" id="reset-random-voice-button">🎲 ランダムボイス更新</button>
-            </div>
-
-        </section>
-
-        <section class="panel quick-card">
-            <div class="quick-card-head">
-                <div class="quick-card-copy">
                     <h2>エフェクト制御</h2>
                 </div>
                 <div class="state-chip" id="effects-pause-chip">再生中</div>
@@ -298,63 +279,16 @@
 
     <script>
         const socket = io({ transports: ['websocket'] });
-        const readAloudCheckbox = document.getElementById('read-aloud-checkbox');
-        const resetRandomVoiceButton = document.getElementById('reset-random-voice-button');
 
         const effectsPauseCheckbox = document.getElementById('effects-pause-checkbox');
         const effectsPauseChip = document.getElementById('effects-pause-chip');
 
-        let currentSettings = null;
-        let updatingReadAloud = false;
         let updatingEffectsPause = false;
-
-        function syncReadAloudUi() {
-            readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
-            resetRandomVoiceButton.disabled = currentSettings?.readAloudRandomVoiceEnabled !== true;
-        }
 
         function syncEffectsPauseUi(paused) {
             effectsPauseCheckbox.checked = paused;
             effectsPauseChip.textContent = paused ? '停止中' : '再生中';
             effectsPauseChip.classList.toggle('is-on', paused);
-        }
-
-        async function loadCommentConfig() {
-            const response = await fetch('/api/comments/config');
-
-            if (!response.ok) {
-                throw new Error('コメント設定の取得に失敗しました。');
-            }
-
-            const payload = await response.json();
-            currentSettings = payload?.settings || {};
-            syncReadAloudUi();
-        }
-
-        async function saveCommentConfig(nextSettings) {
-            const response = await fetch('/api/comments/config', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(nextSettings)
-            });
-
-            if (!response.ok) {
-                throw new Error('コメント設定の保存に失敗しました。');
-            }
-
-            const payload = await response.json();
-            currentSettings = payload?.settings || nextSettings;
-            syncReadAloudUi();
-        }
-
-        async function stopCommentReadAloudImmediately() {
-            const response = await fetch('/api/comments/read-aloud-stop', {
-                method: 'POST'
-            });
-
-            if (!response.ok) {
-                throw new Error('コメント読み上げの停止に失敗しました。');
-            }
         }
 
         async function loadEffectsGlobalPause() {
@@ -368,44 +302,6 @@
             syncEffectsPauseUi(payload.paused === true);
             setEffectsFeedback('全エフェクトの停止をここから切り替えられます。');
         }
-
-        readAloudCheckbox.addEventListener('change', async () => {
-            if (!currentSettings || updatingReadAloud) {
-                readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
-                return;
-            }
-
-            updatingReadAloud = true;
-            const nextEnabled = readAloudCheckbox.checked;
-
-            try {
-                if (!nextEnabled) {
-                    await stopCommentReadAloudImmediately();
-                }
-
-                await saveCommentConfig({ ...currentSettings, readAloudEnabled: nextEnabled });
-            } catch (error) {
-                readAloudCheckbox.checked = currentSettings?.readAloudEnabled === true;
-            } finally {
-                updatingReadAloud = false;
-            }
-        });
-
-        resetRandomVoiceButton.addEventListener('click', async () => {
-            resetRandomVoiceButton.disabled = true;
-
-            try {
-                const response = await fetch('/api/comments/read-aloud-random-voices/reset', { method: 'POST' });
-
-                if (!response.ok) {
-                    throw new Error('ランダムボイスのリセットに失敗しました。');
-                }
-
-            } catch (error) {
-            } finally {
-                resetRandomVoiceButton.disabled = false;
-            }
-        });
 
         effectsPauseCheckbox.addEventListener('change', async () => {
             if (updatingEffectsPause) {
@@ -436,16 +332,10 @@
         });
 
 
-        socket.on('admin_comments_updated', (payload) => {
-            currentSettings = payload?.settings || currentSettings;
-            syncReadAloudUi();
-        });
-
         socket.on('effects:global-pause-changed', (payload) => {
             syncEffectsPauseUi(payload?.paused === true);
         });
 
-        loadCommentConfig().catch(() => {});
         loadEffectsGlobalPause().catch(() => {});
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
