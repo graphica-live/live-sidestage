@@ -121,6 +121,19 @@
             object-fit: contain;
         }
 
+        @keyframes triggerGiftsHeartbeat {
+            0%, 100% { transform: scale(1); }
+            15% { transform: scale(1.18); }
+            30% { transform: scale(1); }
+            45% { transform: scale(1.12); }
+            60% { transform: scale(1); }
+        }
+
+        .gift-image-wrap.highlight {
+            transform-origin: center;
+            animation: triggerGiftsHeartbeat 1.6s ease-in-out infinite;
+        }
+
         .gift-image-placeholder {
             width: 72px;
             height: 72px;
@@ -352,9 +365,11 @@
                 ? `<div class="total-coin-badge"><span class="total-coin-label">累計</span><span class="total-coin-count">${dailyCoinTotal.toLocaleString()}</span></div>`
                 : '';
 
+            const highlightClass = item.listOverlayHighlight ? ' highlight' : '';
+
             return coinHtml +
                 totalCoinHtml +
-                `<div class="gift-image-wrap">${imageHtml}</div>` +
+                `<div class="gift-image-wrap${highlightClass}">${imageHtml}</div>` +
                 `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>`;
         }
 

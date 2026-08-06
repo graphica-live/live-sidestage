@@ -53,6 +53,7 @@ const triggerModalRapidFireCancelMs = document.getElementById('trigger-modal-rap
 const triggerModalTreatComboSingle = document.getElementById('trigger-modal-treat-combo-single');
 const triggerModalExcludeFromOverlay = document.getElementById('trigger-modal-exclude-from-overlay');
 const triggerModalListOverlayBgColor = document.getElementById('trigger-modal-list-overlay-bg-color');
+const triggerModalListOverlayHighlight = document.getElementById('trigger-modal-list-overlay-highlight');
 const triggerModalCommentMode = document.getElementById('trigger-modal-comment-mode');
 const triggerModalCommentText = document.getElementById('trigger-modal-comment-text');
 const triggerModalUserIds = document.getElementById('trigger-modal-user-ids');
