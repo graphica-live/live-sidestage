@@ -79,9 +79,14 @@ module.exports = function createTriggerX5State({
             return;
         }
 
+        // 既にウィンドウが有効な状態での再検知は「延長」として区別し、
+        // オーバーレイ側で電撃演出（新規ポップインではなく延長エフェクト）を出し分けられるようにする。
+        const extended = isTriggerX5WindowActive();
+
         activeUntil = Date.now() + settings.durationSeconds * 1000;
         io.emit('widgets:trigger-x5:window', {
             active: true,
+            extended,
             durationSeconds: settings.durationSeconds,
             timestamp: getTimestamp(),
         });

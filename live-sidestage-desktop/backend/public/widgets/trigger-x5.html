@@ -131,6 +131,107 @@
             paint-order: stroke fill;
             text-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
         }
+
+        /* 発動中インジケーター: 発動ギフト検知でポップインし、残り秒数をカウントダウン表示する */
+        .active-card {
+            position: absolute;
+            right: 36px;
+            top: 36px;
+            animation: activeCardPop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        @keyframes activeCardPop {
+            0%   { opacity: 0; transform: scale(0.4) rotate(-16deg); }
+            60%  { opacity: 1; transform: scale(1.15) rotate(5deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        .active-card.is-ending {
+            animation: activeCardEnd 0.9s ease-in-out forwards;
+        }
+
+        @keyframes activeCardEnd {
+            0%   { opacity: 1; }
+            15%  { opacity: 0.15; }
+            30%  { opacity: 1; }
+            45%  { opacity: 0.15; }
+            60%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(0.85); }
+        }
+
+        .active-card .glove-wrap {
+            position: relative;
+            width: 128px;
+            height: 128px;
+        }
+
+        .active-card .glove-wrap .glove {
+            position: static;
+            width: 100%;
+            height: 100%;
+            animation: none;
+        }
+
+        .active-card .countdown-badge {
+            position: absolute;
+            left: 50%;
+            bottom: -12px;
+            transform: translateX(-50%);
+            min-width: 34px;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: #0f172a;
+            border: 3px solid #fff566;
+            color: #fff566;
+            font-size: 18px;
+            font-weight: 900;
+            text-align: center;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 発動中の追加検知（延長）: 電撃フラッシュ + 稲妻アイコン */
+        .zap-flash {
+            position: absolute;
+            inset: -24px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(191, 219, 254, 0.9) 0%, rgba(96, 165, 250, 0.45) 45%, rgba(96, 165, 250, 0) 72%);
+            animation: zapFlash 0.6s ease-out forwards;
+        }
+
+        @keyframes zapFlash {
+            0%   { opacity: 0; }
+            10%  { opacity: 1; }
+            25%  { opacity: 0.2; }
+            40%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* 回転は静的な親要素で固定し、拡大縮小・点滅アニメーションは子要素側で行う
+           （同じ要素のtransformをkeyframeで上書きすると回転が消えてしまうため分離） */
+        .zap-bolt {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+        }
+
+        .zap-bolt.a { top: -14px; left: -18px; transform: rotate(-18deg); }
+        .zap-bolt.b { bottom: -14px; right: -18px; transform: rotate(162deg); }
+
+        .zap-bolt svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 8px #facc15);
+            animation: zapBoltJitter 0.6s ease-out forwards;
+        }
+
+        @keyframes zapBoltJitter {
+            0%   { opacity: 0; transform: scale(0.6); }
+            20%  { opacity: 1; transform: scale(1.3); }
+            45%  { opacity: 0.3; transform: scale(1); }
+            60%  { opacity: 1; transform: scale(1.15); }
+            100% { opacity: 0; transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -187,10 +288,143 @@
 
         socket.on('widgets:trigger-x5:won', showWin);
 
+        // 発動中インジケーター: 発動ギフト検知でグローブがポップインし、残り秒数をカウントダウン表示。
+        // 0になったら軽く点滅してからフェードアウトする。発動中に再検知した場合は
+        // 電撃エフェクト＋効果音とともに残り時間を延長する。
+        let activeCardEl = null;
+        let activeDeadline = 0;
+        let activeTickHandle = null;
+
+        function createActiveCard(durationSeconds) {
+            const card = document.createElement('div');
+            card.className = 'active-card';
+            card.innerHTML = `
+                <div class="glove-wrap">
+                    <div class="glove">${GLOVE_SVG}</div>
+                    <div class="countdown-badge">${durationSeconds}</div>
+                </div>
+            `;
+            stageEl.appendChild(card);
+            return card;
+        }
+
+        function removeActiveCard() {
+            if (!activeCardEl) return;
+            const el = activeCardEl;
+            activeCardEl = null;
+            el.classList.add('is-ending');
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+            window.setTimeout(() => { if (el.isConnected) el.remove(); }, 1000);
+        }
+
+        function tickActiveCountdown() {
+            if (!activeCardEl) return;
+            const remainingMs = activeDeadline - Date.now();
+            const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            const badge = activeCardEl.querySelector('.countdown-badge');
+            if (badge) badge.textContent = String(remainingSeconds);
+
+            if (remainingMs <= 0) {
+                removeActiveCard();
+                return;
+            }
+
+            activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+        }
+
+        function playZapSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                const duration = 0.25;
+                const bufferSize = Math.floor(ctx.sampleRate * duration);
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i += 1) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) ** 2;
+                }
+
+                const noise = ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const bandpass = ctx.createBiquadFilter();
+                bandpass.type = 'bandpass';
+                bandpass.Q.value = 6;
+                bandpass.frequency.setValueAtTime(1800, ctx.currentTime);
+                bandpass.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + duration - 0.02);
+
+                const gainNode = ctx.createGain();
+                gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+                noise.connect(bandpass).connect(gainNode).connect(ctx.destination);
+                noise.start();
+                noise.stop(ctx.currentTime + duration);
+                noise.onended = () => {
+                    if (ctx.state !== 'closed') ctx.close().catch(() => {});
+                };
+            } catch {
+                // AudioContext が利用できない環境では無音のまま演出のみ続行する
+            }
+        }
+
+        const LIGHTNING_SVG = `
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 2 3 14h7l-1 8 11-14h-7z" fill="#fef08a" stroke="#78350f" stroke-width="1"/>
+            </svg>
+        `;
+
+        function playZapEffect() {
+            if (!activeCardEl) return;
+            const gloveWrap = activeCardEl.querySelector('.glove-wrap');
+            if (!gloveWrap) return;
+
+            const zap = document.createElement('div');
+            zap.innerHTML = `
+                <div class="zap-flash"></div>
+                <div class="zap-bolt a">${LIGHTNING_SVG}</div>
+                <div class="zap-bolt b">${LIGHTNING_SVG}</div>
+            `;
+
+            gloveWrap.appendChild(zap);
+            window.setTimeout(() => { if (zap.isConnected) zap.remove(); }, 700);
+
+            playZapSound();
+        }
+
+        function handleTriggerX5Window(data) {
+            if (!data?.active) return;
+
+            const durationSeconds = Math.max(1, Number(data.durationSeconds) || 15);
+            activeDeadline = Date.now() + durationSeconds * 1000;
+
+            if (data.extended && activeCardEl) {
+                playZapEffect();
+            } else {
+                if (activeCardEl) activeCardEl.remove();
+                activeCardEl = createActiveCard(durationSeconds);
+            }
+
+            if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
+            activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+        }
+
+        socket.on('widgets:trigger-x5:window', handleTriggerX5Window);
+
         if (previewMode) {
             const runSample = () => showWin({ nickname: 'サンプルリスナー', image: '' });
             runSample();
             window.setInterval(runSample, 3200);
+
+            const runActiveDemo = () => {
+                handleTriggerX5Window({ active: true, durationSeconds: 15, extended: false });
+                window.setTimeout(() => {
+                    handleTriggerX5Window({ active: true, durationSeconds: 15, extended: true });
+                }, 4000);
+            };
+            runActiveDemo();
+            window.setInterval(runActiveDemo, 16000);
         }
     </script>
 </body>
