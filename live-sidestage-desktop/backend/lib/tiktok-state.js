@@ -26,6 +26,7 @@ const tiktokState = {
     autoReconnect: false,
     connectPromise: null,
     connectAttempts: 0,
+    lastEventAt: 0,
 };
 
 module.exports = tiktokState;
