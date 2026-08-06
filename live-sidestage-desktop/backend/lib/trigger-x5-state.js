@@ -121,11 +121,10 @@ module.exports = function createTriggerX5State({
             timestamp: getTimestamp(),
         });
 
-        // 効果音は新規発動時のみ、設定した screen (オーバーレイ) へ直接送る。延長時は
-        // 既存の電撃演出（合成音）と役割が重なるため対象外にする。
+        // 効果音は新規発動・延長（発動中の再発動）のどちらでも設定した screen (オーバーレイ) へ直接送る。
         // トリガー5倍オーバーレイ自身では再生しない — 同じソケットイベントは管理画面の
         // プレビューiframeにも届くため、直接再生させるとElectron本体からも音が出てしまう。
-        if (!extended && settings.soundEnabled && settings.sound.url) {
+        if (settings.soundEnabled && settings.sound.url) {
             io.emit('effects:playback', {
                 playbackId: `trigger-x5-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
                 eventId: 'trigger-x5-sound',
