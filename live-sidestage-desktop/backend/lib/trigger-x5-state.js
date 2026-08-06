@@ -2,6 +2,7 @@
 
 const { WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY } = require('./constants');
 const { normalizeEffectText } = require('./utils');
+const { normalizeSoundAsset } = require('./effect-helpers');
 
 const TRIGGER_X5_MULTIPLIER = 5;
 
@@ -10,6 +11,9 @@ const DEFAULT_TRIGGER_X5_SETTINGS = {
     giftName: '',
     durationSeconds: 15,
     winRatePercent: 30,
+    soundEnabled: false,
+    sound: { name: '', url: '' },
+    soundVolume: 100,
 };
 
 function normalizeTriggerX5DurationSeconds(value) {
@@ -26,6 +30,14 @@ function normalizeTriggerX5WinRatePercent(value) {
         return DEFAULT_TRIGGER_X5_SETTINGS.winRatePercent;
     }
     return Math.min(parsed, 100);
+}
+
+function normalizeTriggerX5SoundVolume(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) {
+        return DEFAULT_TRIGGER_X5_SETTINGS.soundVolume;
+    }
+    return Math.max(0, Math.min(100, parsed));
 }
 
 function normalizeTriggerX5Settings(value) {
@@ -48,6 +60,9 @@ function normalizeTriggerX5Settings(value) {
         giftName: normalizeEffectText(source.giftName, 80).toLowerCase(),
         durationSeconds: normalizeTriggerX5DurationSeconds(source.durationSeconds),
         winRatePercent: normalizeTriggerX5WinRatePercent(source.winRatePercent),
+        soundEnabled: Boolean(source.soundEnabled),
+        sound: normalizeSoundAsset(source.sound),
+        soundVolume: normalizeTriggerX5SoundVolume(source.soundVolume),
     };
 }
 
@@ -96,11 +111,16 @@ module.exports = function createTriggerX5State({
         const base = extended ? activeUntil : Date.now();
         activeUntil = base + settings.durationSeconds * 1000;
 
+        // 効果音は新規発動時のみ鳴らす。延長時は既存の電撃演出（合成音）と役割が重なるため対象外にする。
+        const hasSound = !extended && settings.soundEnabled && Boolean(settings.sound.url);
+
         io.emit('widgets:trigger-x5:window', {
             active: true,
             extended,
             durationSeconds: settings.durationSeconds,
             remainingSeconds: Math.max(1, Math.ceil((activeUntil - Date.now()) / 1000)),
+            audioUrl: hasSound ? settings.sound.url : '',
+            audioVolume: settings.soundVolume,
             timestamp: getTimestamp(),
         });
     }

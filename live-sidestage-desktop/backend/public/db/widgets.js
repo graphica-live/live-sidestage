@@ -54,6 +54,13 @@
         const triggerX5GiftSuggestionPanel = document.getElementById('trigger-x5-gift-suggestion-panel');
         const triggerX5DurationSecondsInput = document.getElementById('trigger-x5-duration-seconds');
         const triggerX5WinRateInput = document.getElementById('trigger-x5-win-rate');
+        const triggerX5SoundEnabledInput = document.getElementById('trigger-x5-sound-enabled');
+        const triggerX5SoundPickerButton = document.getElementById('trigger-x5-sound-picker-button');
+        const triggerX5SoundPreviewButton = document.getElementById('trigger-x5-sound-preview-button');
+        const triggerX5SoundClearButton = document.getElementById('trigger-x5-sound-clear-button');
+        const triggerX5SoundNameEl = document.getElementById('trigger-x5-sound-name');
+        const triggerX5SoundVolumeInput = document.getElementById('trigger-x5-sound-volume');
+        const triggerX5SoundVolumeValueEl = document.getElementById('trigger-x5-sound-volume-value');
         const triggerX5StatusLabel = document.getElementById('trigger-x5-status-label');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
@@ -1676,11 +1683,16 @@
         }
 
         function applyTriggerX5SettingsToForm(settings) {
-            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30 };
+            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100 };
             triggerX5EnabledInput.checked = Boolean(s.enabled);
             triggerX5GiftNameInput.value = s.giftName || '';
             triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
             triggerX5WinRateInput.value = String(Number.parseInt(String(s.winRatePercent ?? 30), 10) || 30);
+            triggerX5SoundEnabledInput.checked = Boolean(s.soundEnabled);
+            triggerX5SoundNameEl.textContent = s.sound?.name || '未設定';
+            const soundVolume = Number.isFinite(Number(s.soundVolume)) ? Math.max(0, Math.min(100, Number(s.soundVolume))) : 100;
+            triggerX5SoundVolumeInput.value = String(soundVolume);
+            triggerX5SoundVolumeValueEl.textContent = `${soundVolume}%`;
             updateTriggerX5StatusLabel();
             refreshTriggerX5Preview();
         }
@@ -1709,7 +1721,10 @@
                 enabled: triggerX5EnabledInput.checked,
                 giftName: triggerX5GiftNameInput.value,
                 durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15,
-                winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30
+                winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30,
+                soundEnabled: triggerX5SoundEnabledInput.checked,
+                sound: state.triggerX5Settings?.sound || { name: '', url: '' },
+                soundVolume: Number.parseInt(triggerX5SoundVolumeInput.value, 10) || 100
             };
         }
 
@@ -3472,6 +3487,34 @@
         triggerX5GiftNameInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5DurationSecondsInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5WinRateInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5SoundEnabledInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5SoundVolumeInput.addEventListener('input', () => {
+            triggerX5SoundVolumeValueEl.textContent = `${triggerX5SoundVolumeInput.value}%`;
+        });
+        triggerX5SoundVolumeInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5SoundPickerButton.addEventListener('click', () => {
+            openSoundPicker({
+                eventIdHint: 'trigger-x5-sound',
+                onImported: (asset) => {
+                    state.triggerX5Settings = { ...state.triggerX5Settings, sound: { name: asset.name, url: asset.url } };
+                    triggerX5SoundNameEl.textContent = asset.name;
+                    triggerX5SoundEnabledInput.checked = true;
+                    saveTriggerX5SettingsImmediately().catch(() => {});
+                }
+            });
+        });
+        triggerX5SoundPreviewButton.addEventListener('click', () => {
+            const url = state.triggerX5Settings?.sound?.url;
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(triggerX5SoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
+        });
+        triggerX5SoundClearButton.addEventListener('click', () => {
+            state.triggerX5Settings = { ...state.triggerX5Settings, sound: { name: '', url: '' } };
+            triggerX5SoundNameEl.textContent = '未設定';
+            saveTriggerX5SettingsImmediately().catch(() => {});
+        });
         document.getElementById('test-trigger-x5-button').addEventListener('click', () => {
             fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
         });

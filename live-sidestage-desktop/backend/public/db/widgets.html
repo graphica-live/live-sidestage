@@ -726,6 +726,25 @@
                                 <label for="trigger-x5-win-rate">当選確率（%）</label>
                                 <input id="trigger-x5-win-rate" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="30">
                             </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-sound-enabled">
+                                    <label for="trigger-x5-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">発動時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>発動時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x5-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x5-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x5-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x5-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
