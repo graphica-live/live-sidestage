@@ -450,12 +450,21 @@ module.exports = function registerEffectsRoutes({
 
             fs.writeFileSync(path.join(directory, fileName), buffer);
 
+            const assetUrl = buildEffectMediaUrl('audio', fileName);
+
+            // eventIdHint 由来の固定ファイル名は再取り込み時に同じURLを上書きするため、
+            // オーバーレイ側の mediaBlobCache が旧音声のBlobを保持したままになる。
+            // 該当URLのキャッシュを破棄させて新しい音声を再取得させる。
+            if (safeEventId.length >= 4) {
+                io.emit('effects:media-updated', { url: assetUrl });
+            }
+
             return res.json({
                 ok: true,
                 asset: {
                     kind: 'audio',
                     name: repairMojibakeFilename(`${name}.mp3`),
-                    url: buildEffectMediaUrl('audio', fileName),
+                    url: assetUrl,
                     mimeType: 'audio/mpeg',
                     size: buffer.length
                 }

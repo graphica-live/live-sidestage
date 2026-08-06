@@ -751,6 +751,17 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             if (payload.audioUrl) preloadMediaBlob(payload.audioUrl);
         });
 
+        // 固定ファイル名（トリガー5倍の効果音など）を再取り込みした際、
+        // mediaBlobCache が旧内容のBlobを保持し続けないよう該当URLを破棄して再取得する。
+        socket.on('effects:media-updated', (payload) => {
+            const url = payload && payload.url;
+            if (!url) return;
+            const cached = mediaBlobCache.get(url);
+            if (typeof cached === 'string' && cached.startsWith('blob:')) URL.revokeObjectURL(cached);
+            mediaBlobCache.delete(url);
+            preloadMediaBlob(url);
+        });
+
         socket.on('effects:playback', async (payload) => {
             if (!payload || payload.screen !== slot) {
                 return;
