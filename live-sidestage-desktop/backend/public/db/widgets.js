@@ -51,7 +51,7 @@
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
         const triggerX5EnabledInput = document.getElementById('trigger-x5-enabled');
         const triggerX5GiftNameInput = document.getElementById('trigger-x5-gift-name');
-        const triggerX5GiftOptionsEl = document.getElementById('trigger-x5-gift-options');
+        const triggerX5GiftSuggestionPanel = document.getElementById('trigger-x5-gift-suggestion-panel');
         const triggerX5DurationSecondsInput = document.getElementById('trigger-x5-duration-seconds');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
@@ -1722,6 +1722,17 @@
             }
         }
 
+        GiftSuggest.attachSuggestField({
+            input: triggerX5GiftNameInput,
+            panel: triggerX5GiftSuggestionPanel,
+            getGifts: () => state.giftCatalog,
+            onSelect: (gift) => {
+                triggerX5GiftNameInput.value = gift.name || '';
+                saveTriggerX5SettingsImmediately().catch(() => {});
+            },
+            escapeHtml
+        });
+
         const MAX_TIMER_GIFT_SLOTS = 3;
         let timerGiftSlots = [null, null, null];
         let timerReversalSlots = [null, null, null];
@@ -2837,11 +2848,6 @@
             } catch {
                 state.giftCatalog = [];
                 state.giftCatalogByName = new Map();
-            }
-            if (triggerX5GiftOptionsEl) {
-                triggerX5GiftOptionsEl.innerHTML = state.giftCatalog
-                    .map((gift) => `<option value="${String(gift.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></option>`)
-                    .join('');
             }
         }
 

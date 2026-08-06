@@ -713,8 +713,10 @@
                             </div>
                             <div class="field">
                                 <label for="trigger-x5-gift-name">発動ギフト</label>
-                                <input id="trigger-x5-gift-name" type="text" list="trigger-x5-gift-options" maxlength="80" placeholder="ギフト名を入力">
-                                <datalist id="trigger-x5-gift-options"></datalist>
+                                <div class="gift-suggest-shell">
+                                    <input id="trigger-x5-gift-name" type="text" maxlength="80" autocomplete="off" placeholder="ギフト名を入力">
+                                    <div class="gift-suggestion-panel" id="trigger-x5-gift-suggestion-panel" hidden></div>
+                                </div>
                             </div>
                             <div class="field">
                                 <label for="trigger-x5-duration-seconds">継続時間（秒）</label>
