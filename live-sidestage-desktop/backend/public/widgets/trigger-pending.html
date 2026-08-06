@@ -68,6 +68,7 @@
         .queue-strip {
             flex: 1 1 auto;
             min-width: 0;
+            max-width: var(--queue-row-max-width, none);
             display: flex;
             flex-direction: row-reverse;
             flex-wrap: wrap-reverse;
@@ -125,11 +126,14 @@
         }
 
         .queue-chip.overflow-chip {
+            /* 通常チップ1個分ではなく2列分の幅を占有し、+xx を大きく読みやすく表示する */
+            width: calc(var(--chip-size, 96px) * 2 + 12px);
             background: rgba(0, 0, 0, 0.62);
             border-style: dashed;
             color: #f8fafc;
             font-weight: 800;
-            font-size: calc(var(--chip-size, 96px) * 0.22);
+            font-size: calc(var(--chip-size, 96px) * 0.42);
+            white-space: nowrap;
         }
 
         @keyframes pendingQueueIn {
@@ -174,6 +178,8 @@
         const DEFAULT_DURATION_MS = 6000;
         const DURATION_PROBE_TIMEOUT_MS = 5000;
         const MAX_VISIBLE_QUEUE_ITEMS = 30;
+        const MAX_QUEUE_COLUMNS_PER_ROW = 10;
+        const QUEUE_CHIP_GAP_PX = 12;
         const QUEUE_CHIP_SIZE_TIERS = [
             { max: 4, size: 120 },
             { max: 8, size: 100 },
@@ -219,11 +225,19 @@
             if (!current && queue.length === 0) {
                 queueStripEl.innerHTML = previewMode ? '<div class="empty-hint">保留はありません</div>' : '';
                 queueStripEl.style.removeProperty('--chip-size');
+                queueStripEl.style.removeProperty('--queue-row-max-width');
                 return;
             }
 
             const visibleCount = Math.min(queue.length, MAX_VISIBLE_QUEUE_ITEMS + 1);
-            queueStripEl.style.setProperty('--chip-size', `${pickChipSize(visibleCount)}px`);
+            const chipSize = pickChipSize(visibleCount);
+            queueStripEl.style.setProperty('--chip-size', `${chipSize}px`);
+
+            // 1行あたり最大 MAX_QUEUE_COLUMNS_PER_ROW 列に制限し、空いた分を
+            // overflow-chip（+xx）の表示幅として使えるようにする。
+            const rowMaxWidth = MAX_QUEUE_COLUMNS_PER_ROW * chipSize
+                + (MAX_QUEUE_COLUMNS_PER_ROW - 1) * QUEUE_CHIP_GAP_PX;
+            queueStripEl.style.setProperty('--queue-row-max-width', `${rowMaxWidth}px`);
 
             const overflowCount = queue.length - MAX_VISIBLE_QUEUE_ITEMS;
             const visibleItems = overflowCount > 0 ? queue.slice(0, MAX_VISIBLE_QUEUE_ITEMS) : queue;
