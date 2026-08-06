@@ -24,7 +24,8 @@
 
         .stage {
             display: flex;
-            align-items: center;
+            flex-direction: row-reverse;
+            align-items: flex-end;
             gap: 30px;
             min-height: 100vh;
             padding: 28px;
@@ -33,30 +34,15 @@
         .current-wrap {
             flex: 0 0 auto;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .current-label {
-            font-size: 15px;
-            font-weight: 800;
-            letter-spacing: 0.06em;
-            color: #ffe9a8;
-            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
         }
 
         .current-chip {
             width: 220px;
             height: 220px;
-            border-radius: 30px;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
-            background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.18), rgba(15, 23, 42, 0.6));
-            border: 3px solid rgba(255, 214, 102, 0.92);
-            box-shadow: 0 0 0 7px rgba(255, 214, 102, 0.18), 0 18px 40px rgba(0, 0, 0, 0.45);
             animation: pendingCurrentPulse 1.4s ease-in-out infinite;
         }
 
@@ -83,9 +69,10 @@
             flex: 1 1 auto;
             min-width: 0;
             display: flex;
-            flex-wrap: wrap;
+            flex-direction: row-reverse;
+            flex-wrap: wrap-reverse;
             align-content: flex-start;
-            align-items: flex-start;
+            align-items: flex-end;
             gap: 12px;
             max-height: calc(100vh - 56px);
             overflow: hidden;
@@ -159,7 +146,6 @@
 <body>
     <div class="stage" id="stage">
         <div class="current-wrap" id="current-wrap" hidden>
-            <div class="current-label">消化中</div>
             <div class="current-chip" id="current-chip"></div>
         </div>
         <div class="queue-strip" id="queue-strip"></div>
