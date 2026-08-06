@@ -44,6 +44,7 @@ function resetEventModal() {
     syncEventModalMidiFields();
     eventModalVdjEnabled.checked = false;
     eventModalVdjCommand.value = '';
+    eventModalForceInterruptEnabled.checked = false;
 }
 
 function openEventModalForCreate() {
@@ -80,6 +81,7 @@ function openEventModalForEdit(eventRecord) {
     syncEventModalMidiFields();
     eventModalVdjEnabled.checked = Boolean(eventRecord.vdjEffectEnabled);
     eventModalVdjCommand.value = eventRecord.vdjCommand || '';
+    eventModalForceInterruptEnabled.checked = Boolean(eventRecord.forceInterruptAllEvents);
     openModal(eventModal);
     eventModalName.focus();
 }
@@ -103,7 +105,8 @@ function collectEventFromModal() {
         midiData1: Number(eventModalMidiData1.value || 0),
         midiData2: Number(eventModalMidiData2.value || 0),
         vdjEffectEnabled: eventModalVdjEnabled.checked,
-        vdjCommand: eventModalVdjCommand.value.trim()
+        vdjCommand: eventModalVdjCommand.value.trim(),
+        forceInterruptAllEvents: eventModalForceInterruptEnabled.checked
     };
 }
 

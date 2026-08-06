@@ -33,6 +33,7 @@ const eventModalMidiData1Label = document.getElementById('event-modal-midi-data1
 const eventModalMidiData2Label = document.getElementById('event-modal-midi-data2-label');
 const eventModalVdjEnabled = document.getElementById('event-modal-vdj-enabled');
 const eventModalVdjCommand = document.getElementById('event-modal-vdj-command');
+const eventModalForceInterruptEnabled = document.getElementById('event-modal-force-interrupt-enabled');
 const eventModalSubmit = document.getElementById('event-modal-submit');
 const triggerModal = document.getElementById('trigger-modal');
 const triggerModalTitle = document.getElementById('trigger-modal-title');
