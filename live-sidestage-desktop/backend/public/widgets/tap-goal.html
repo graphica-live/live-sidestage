@@ -333,9 +333,18 @@
         }
 
         const tapGoalAudioEl = document.getElementById('tapGoalAudio');
+        let tapGoalLastSoundAt = 0;
+        const TAP_GOAL_SOUND_MIN_INTERVAL_MS = 250; // 連続いいねで再生要求が連打され要素が無音のまま固まるのを防ぐ
+
+        // 再生失敗後に固まったままにならないよう要素をリセットしておく(次回トリガーで自動復帰させる)
+        tapGoalAudioEl.addEventListener('error', () => tapGoalAudioEl.load());
 
         function playTapGoalSound(url, volume) {
             if (!url) return;
+            const now = Date.now();
+            if (now - tapGoalLastSoundAt < TAP_GOAL_SOUND_MIN_INTERVAL_MS) return;
+            tapGoalLastSoundAt = now;
+
             // new Audio() を毎回生成すると要素が解放されずに蓄積し、
             // しばらく再生を繰り返した後に無音化することがあるため使い回す
             if (tapGoalAudioEl.src !== url) tapGoalAudioEl.src = url;
@@ -343,6 +352,7 @@
             tapGoalAudioEl.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
             tapGoalAudioEl.play().catch((err) => {
                 console.warn('[tap-goal] sound playback failed', err);
+                tapGoalAudioEl.load();
             });
         }
 
