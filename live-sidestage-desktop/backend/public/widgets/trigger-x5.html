@@ -147,7 +147,7 @@
             right: 36px;
             top: 36px;
             transform-origin: top right;
-            animation: activeCardPop 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+            animation: activeCardPop 3s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         @keyframes activeCardPop {
@@ -300,7 +300,7 @@
 
         // activeCardPop アニメーションの尺（CSS側と一致させる）。
         // この間はカウントダウンの数字を動かさず、大きく表示→縮小の演出を見せきってから開始する。
-        const ACTIVE_CARD_POP_MS = 800;
+        const ACTIVE_CARD_POP_MS = 3000;
 
         function createActiveCard(durationSeconds) {
             const card = document.createElement('div');
