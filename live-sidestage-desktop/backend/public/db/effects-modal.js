@@ -216,6 +216,7 @@ function resetTriggerModal() {
     syncTriggerRapidFireField();
     triggerModalTreatComboSingle.checked = true;
     triggerModalExcludeFromOverlay.checked = false;
+    triggerModalListOverlayHighlight.checked = false;
     triggerModalCommentMode.value = '';
     triggerModalCommentText.value = '';
     triggerModalUserIds.value = '';
@@ -259,6 +260,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
     triggerModalExcludeFromOverlay.checked = Boolean(triggerRecord.excludedFromListOverlay);
     triggerModalListOverlayBgColor.value = triggerRecord.listOverlayBgColor || '';
+    triggerModalListOverlayHighlight.checked = Boolean(triggerRecord.listOverlayHighlight);
     triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
     triggerModalCommentText.value = triggerRecord.commentText || '';
     triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
@@ -291,6 +293,7 @@ function collectTriggerFromModal() {
         treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
         excludedFromListOverlay: triggerModalExcludeFromOverlay.checked,
         listOverlayBgColor: triggerModalListOverlayBgColor.value,
+        listOverlayHighlight: triggerModalListOverlayHighlight.checked,
         commentMode: triggerModalCommentMode.value,
         commentText: triggerModalCommentText.value.trim(),
         userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),

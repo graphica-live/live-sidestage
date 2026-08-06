@@ -279,6 +279,7 @@ module.exports = function registerEffectsRoutes({
                         giftName: trigger.giftName,
                         giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
                         listOverlayBgColor: trigger.listOverlayBgColor || '',
+                        listOverlayHighlight: Boolean(trigger.listOverlayHighlight),
                         diamondCount: 0,
                         dailyCoinTotal: 0
                     };
@@ -294,6 +295,7 @@ module.exports = function registerEffectsRoutes({
                     giftName: matchedGift?.name || trigger.giftName,
                     giftImageUrl: matchedGift?.imageUrl || '',
                     listOverlayBgColor: trigger.listOverlayBgColor || '',
+                    listOverlayHighlight: Boolean(trigger.listOverlayHighlight),
                     diamondCount: Number.isFinite(matchedGift?.diamondCount) ? matchedGift.diamondCount : 0,
                     dailyCoinTotal: dailyCoinTotals.get(giftNameKey) || 0
                 };
