@@ -689,7 +689,7 @@
                     <div class="card-head">
                         <div>
                             <h2>トリガー5倍</h2>
-                            <p class="subtext">設定したギフトが飛ぶと「5倍タイム」が始まります。指定秒数の間に発火したイベントトリガーが30%の確率で5倍（動画なら5回再生）になり、当選したリスナーがオーバーレイに表示されます。</p>
+                            <p class="subtext">設定したギフトが飛ぶと「5倍タイム」が始まります。指定秒数の間に発火したイベントトリガーが設定した確率で5倍（動画なら5回再生）になり、当選したリスナーがオーバーレイに表示されます。</p>
                         </div>
                         <button type="button" class="settings-toggle-btn" data-panel-id="trigger-x5-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
@@ -722,11 +722,15 @@
                                 <label for="trigger-x5-duration-seconds">継続時間（秒）</label>
                                 <input id="trigger-x5-duration-seconds" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="15">
                             </div>
+                            <div class="field">
+                                <label for="trigger-x5-win-rate">当選確率（%）</label>
+                                <input id="trigger-x5-win-rate" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="30">
+                            </div>
                         </div>
                     </div>
 
                     <div class="action-row">
-                        <div class="status" id="trigger-x5-status-label">当選確率: 30% ／ 倍率: ×5</div>
+                        <div class="status" id="trigger-x5-status-label">当選確率: -% ／ 倍率: ×5</div>
                         <button type="button" class="ghost-button" id="test-trigger-x5-button">当選演出をテスト表示</button>
                     </div>
 

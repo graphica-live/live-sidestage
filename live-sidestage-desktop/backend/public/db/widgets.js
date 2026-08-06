@@ -53,6 +53,8 @@
         const triggerX5GiftNameInput = document.getElementById('trigger-x5-gift-name');
         const triggerX5GiftSuggestionPanel = document.getElementById('trigger-x5-gift-suggestion-panel');
         const triggerX5DurationSecondsInput = document.getElementById('trigger-x5-duration-seconds');
+        const triggerX5WinRateInput = document.getElementById('trigger-x5-win-rate');
+        const triggerX5StatusLabel = document.getElementById('trigger-x5-status-label');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
         const timerFontSelect = document.getElementById('timer-font');
@@ -1674,11 +1676,17 @@
         }
 
         function applyTriggerX5SettingsToForm(settings) {
-            const s = settings || { enabled: false, giftName: '', durationSeconds: 15 };
+            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30 };
             triggerX5EnabledInput.checked = Boolean(s.enabled);
             triggerX5GiftNameInput.value = s.giftName || '';
             triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
+            triggerX5WinRateInput.value = String(Number.parseInt(String(s.winRatePercent ?? 30), 10) || 30);
+            updateTriggerX5StatusLabel();
             refreshTriggerX5Preview();
+        }
+
+        function updateTriggerX5StatusLabel() {
+            triggerX5StatusLabel.textContent = `当選確率: ${triggerX5WinRateInput.value || 30}% ／ 倍率: ×5`;
         }
 
         function buildTriggerX5PreviewUrl() {
@@ -1700,7 +1708,8 @@
             return {
                 enabled: triggerX5EnabledInput.checked,
                 giftName: triggerX5GiftNameInput.value,
-                durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15
+                durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15,
+                winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30
             };
         }
 
@@ -3462,6 +3471,7 @@
         triggerX5EnabledInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5GiftNameInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5DurationSecondsInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5WinRateInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         document.getElementById('test-trigger-x5-button').addEventListener('click', () => {
             fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
         });
