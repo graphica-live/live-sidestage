@@ -111,99 +111,60 @@ function updateActiveEventSuggestion(nextIndex) {
     });
 }
 
-function positionUserSuggestionPanel() {
-    const rect = triggerModalUserIds.getBoundingClientRect();
-    const spaceAbove = rect.top - 8;
-    triggerUserSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
-    triggerUserSuggestionPanel.style.top = '';
-    triggerUserSuggestionPanel.style.maxHeight = `${Math.min(260, spaceAbove)}px`;
-    triggerUserSuggestionPanel.style.left = `${rect.left}px`;
-    triggerUserSuggestionPanel.style.width = `${rect.width}px`;
-}
-
-function hideUserSuggestionPanel() {
-    triggerUserSuggestionPanel.hidden = true;
-    triggerUserSuggestionPanel.innerHTML = '';
-    visibleUserSuggestions = [];
-    activeUserSuggestionIndex = -1;
-}
-
-function getActiveUserToken() {
-    const val = triggerModalUserIds.value;
-    const pos = triggerModalUserIds.selectionStart ?? val.length;
+// トリガー登録の「対象ユーザー」欄（カンマ・改行区切りで複数指定）。
+// カーソル位置の入力中トークンだけを検索クエリとして使い、選択したユーザーIDを
+// そのトークン部分に差し込む。
+function getActiveUserToken(input) {
+    const val = input.value;
+    const pos = input.selectionStart ?? val.length;
     const before = val.slice(0, pos);
     const match = before.match(/[^,\n]+$/);
     return match ? match[0] : '';
 }
 
-function applyUserSuggestion(user) {
+function applyUserSuggestion(user, input) {
     if (!user) {
         return;
     }
-    const val = triggerModalUserIds.value;
-    const pos = triggerModalUserIds.selectionStart ?? val.length;
+    const val = input.value;
+    const pos = input.selectionStart ?? val.length;
     const before = val.slice(0, pos);
     const after = val.slice(pos);
     const tokenMatch = before.match(/[^,\n]+$/);
     const prefix = tokenMatch ? before.slice(0, before.length - tokenMatch[0].length) : before;
     const needsSep = prefix.length > 0 && !/[\n,]\s*$/.test(prefix);
-    triggerModalUserIds.value = prefix + (needsSep ? '\n' : '') + user.uniqueId + '\n' + after.replace(/^[^,\n]*/, '');
-    hideUserSuggestionPanel();
-    triggerModalUserIds.focus();
+    input.value = prefix + (needsSep ? '\n' : '') + user.uniqueId + '\n' + after.replace(/^[^,\n]*/, '');
+    input.focus();
 }
 
-function renderUserSuggestions(token) {
-    const q = String(token || '').trim().toLowerCase();
-    if (!q) {
-        hideUserSuggestionPanel();
-        return;
-    }
-    visibleUserSuggestions = knownUserSuggestions.filter((u) => {
-        return String(u.uniqueId || '').toLowerCase().includes(q)
-            || String(u.nickname || '').toLowerCase().includes(q);
-    }).slice(0, 20);
-    if (!visibleUserSuggestions.length) {
-        hideUserSuggestionPanel();
-        return;
-    }
-    activeUserSuggestionIndex = 0;
-    triggerUserSuggestionPanel.innerHTML = visibleUserSuggestions.map((user, index) => {
-        const imgMarkup = user.image
-            ? `<img class="gift-suggestion-image" src="${escapeHtml(user.image)}" alt="">`
-            : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
-        return `
-            <button type="button" class="gift-suggestion-item${index === activeUserSuggestionIndex ? ' is-active' : ''}" data-user-index="${index}">
-                ${imgMarkup}
-                <div class="gift-suggestion-meta">
-                    <div class="gift-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div>
-                    <div class="gift-suggestion-desc">@${escapeHtml(user.uniqueId)}</div>
-                </div>
-                <div class="gift-suggestion-cost"></div>
-            </button>
-        `;
-    }).join('');
-    triggerUserSuggestionPanel.hidden = false;
-    positionUserSuggestionPanel();
-    triggerUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
-        button.addEventListener('mousedown', (event) => {
-            event.preventDefault();
-            applyUserSuggestion(visibleUserSuggestions[Number(button.dataset.userIndex)]);
-        });
-    });
-}
+const triggerUserSuggestPicker = UserSuggest.attachSuggestField({
+    input: triggerModalUserIds,
+    panel: triggerUserSuggestionPanel,
+    getUsers: () => knownUserSuggestions,
+    getQuery: getActiveUserToken,
+    hideOnEmptyQuery: true,
+    onSelect: applyUserSuggestion,
+    escapeHtml
+});
 
-function updateActiveUserSuggestion(nextIndex) {
-    if (!visibleUserSuggestions.length) {
-        return;
-    }
-    activeUserSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleUserSuggestions.length - 1));
-    triggerUserSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
-        button.classList.toggle('is-active', index === activeUserSuggestionIndex);
-        if (index === activeUserSuggestionIndex) {
-            button.scrollIntoView({ block: 'nearest' });
-        }
-    });
-}
+// ギフトテスト送信の「送信ユーザーID」欄（単一選択）。選択したリスナーの
+// nickname/image を保持しておき、送信時に疑似ギフトイベントへ含める。
+let giftTestSelectedUser = null;
+
+const giftTestUserSuggestPicker = UserSuggest.attachSuggestField({
+    input: giftTestUniqueIdInput,
+    panel: giftTestUniqueIdSuggestionPanel,
+    getUsers: () => knownUserSuggestions,
+    onSelect: (user) => {
+        giftTestUniqueIdInput.value = user.uniqueId || '';
+        giftTestSelectedUser = user;
+    },
+    escapeHtml
+});
+
+giftTestUniqueIdInput.addEventListener('input', () => {
+    giftTestSelectedUser = null;
+});
 
 async function loadUserSuggestions() {
     const response = await fetch('/api/users/recent');
@@ -318,60 +279,14 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('scroll', () => {
-    if (!triggerUserSuggestionPanel.hidden) {
-        positionUserSuggestionPanel();
-    }
     if (!triggerEventSuggestionPanel.hidden) {
         positionEventSuggestionPanel();
     }
 }, true);
 
-window.addEventListener('resize', () => {
-    if (!triggerUserSuggestionPanel.hidden) {
-        positionUserSuggestionPanel();
-    }
-});
-
-document.addEventListener('click', (event) => {
-    if (!event.target.closest('.gift-suggest-shell') && !triggerUserSuggestionPanel.contains(event.target)) {
-        hideUserSuggestionPanel();
-    }
-});
-
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.gift-suggest-shell') && !triggerEventSuggestionPanel.contains(event.target)) {
         hideEventSuggestionPanel();
-    }
-});
-
-triggerModalUserIds.addEventListener('input', () => {
-    renderUserSuggestions(getActiveUserToken());
-});
-
-triggerModalUserIds.addEventListener('keydown', (event) => {
-    if (triggerUserSuggestionPanel.hidden) {
-        return;
-    }
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        updateActiveUserSuggestion(activeUserSuggestionIndex + 1);
-        return;
-    }
-    if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        updateActiveUserSuggestion(activeUserSuggestionIndex - 1);
-        return;
-    }
-    if (event.key === 'Enter') {
-        const selected = visibleUserSuggestions[activeUserSuggestionIndex];
-        if (selected) {
-            event.preventDefault();
-            applyUserSuggestion(selected);
-        }
-        return;
-    }
-    if (event.key === 'Escape') {
-        hideUserSuggestionPanel();
     }
 });
 
@@ -412,6 +327,12 @@ giftTestSendButton.addEventListener('click', async () => {
     const repeatCount = Math.max(1, Number.parseInt(giftTestRepeatCountInput.value, 10) || 1);
     const uniqueId = giftTestUniqueIdInput.value.trim();
 
+    // サジェストで選んだリスナーと入力値が一致すればそのまま使い、手入力で一致する
+    // 既知リスナーがいればそちらから逆引きする（アイコン表示をシミュレートするため）。
+    const matchedUser = (giftTestSelectedUser && giftTestSelectedUser.uniqueId === uniqueId)
+        ? giftTestSelectedUser
+        : UserSuggest.findByUniqueId(knownUserSuggestions, uniqueId);
+
     giftTestSendButton.disabled = true;
     setGiftTestStatus('送信中…');
 
@@ -424,7 +345,9 @@ giftTestSendButton.addEventListener('click', async () => {
                 giftId: matchedGift?.id ?? null,
                 diamondCount: Number.isFinite(matchedGift?.diamondCount) ? matchedGift.diamondCount : 0,
                 repeatCount,
-                uniqueId
+                uniqueId,
+                nickname: matchedUser?.nickname || '',
+                image: matchedUser?.image || ''
             })
         });
         const payload = await response.json();

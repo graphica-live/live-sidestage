@@ -116,7 +116,10 @@
                 </div>
                 <div class="field">
                     <label>送信ユーザーID（任意）</label>
-                    <input type="text" id="gift-test-unique-id" maxlength="80" placeholder="test_user">
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="gift-test-unique-id" maxlength="80" autocomplete="off" placeholder="test_user（既存リスナーを検索できます）">
+                        <div class="gift-suggestion-panel" id="gift-test-unique-id-suggestion-panel" hidden></div>
+                    </div>
                 </div>
             </div>
             <div class="action-row">
@@ -559,6 +562,7 @@
     <script src="/db/effects-media.js"></script>
     <script src="/shared/sound-picker.js"></script>
     <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/user-suggest.js"></script>
     <script src="/db/effects-myinstants.js"></script>
     <script src="/db/effects-modal.js"></script>
     <script src="/db/effects-rows.js"></script>

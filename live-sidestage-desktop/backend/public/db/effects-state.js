@@ -70,6 +70,7 @@ const giftTestNameInput = document.getElementById('gift-test-name');
 const giftTestSuggestionPanel = document.getElementById('gift-test-suggestion-panel');
 const giftTestRepeatCountInput = document.getElementById('gift-test-repeat-count');
 const giftTestUniqueIdInput = document.getElementById('gift-test-unique-id');
+const giftTestUniqueIdSuggestionPanel = document.getElementById('gift-test-unique-id-suggestion-panel');
 const giftTestSendButton = document.getElementById('gift-test-send-button');
 const giftTestStatus = document.getElementById('gift-test-status');
 
@@ -95,8 +96,6 @@ let editingTriggerId = null;
 let editingTriggerEnabled = true;
 let knownGiftSuggestions = [];
 let knownUserSuggestions = [];
-let visibleUserSuggestions = [];
-let activeUserSuggestionIndex = -1;
 let visibleEventSuggestions = [];
 let activeEventSuggestionIndex = -1;
 let knownMidiDevices = [];

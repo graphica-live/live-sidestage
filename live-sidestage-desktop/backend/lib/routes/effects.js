@@ -330,6 +330,7 @@ module.exports = function registerEffectsRoutes({
         const repeatCount = Math.max(1, Number.parseInt(req.body?.repeatCount, 10) || 1);
         const uniqueId = String(req.body?.uniqueId || '').trim() || 'test_user';
         const nickname = String(req.body?.nickname || '').trim() || uniqueId;
+        const image = String(req.body?.image || '').trim().slice(0, 500);
         const giftId = req.body?.giftId ? String(req.body.giftId) : null;
 
         let triggered = false;
@@ -346,7 +347,7 @@ module.exports = function registerEffectsRoutes({
                     repeatCount: tick,
                     uniqueId,
                     nickname,
-                    image: '',
+                    image,
                     comment: '',
                     timestamp: getTimestamp()
                 };
@@ -363,7 +364,7 @@ module.exports = function registerEffectsRoutes({
                 repeatCount: 1,
                 uniqueId,
                 nickname,
-                image: '',
+                image,
                 comment: '',
                 timestamp: getTimestamp()
             };
