@@ -49,6 +49,12 @@
         const tapGoalUrl = document.getElementById('tap-goal-url');
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
+        const triggerX5EnabledInput = document.getElementById('trigger-x5-enabled');
+        const triggerX5GiftNameInput = document.getElementById('trigger-x5-gift-name');
+        const triggerX5GiftOptionsEl = document.getElementById('trigger-x5-gift-options');
+        const triggerX5DurationSecondsInput = document.getElementById('trigger-x5-duration-seconds');
+        const triggerX5Url = document.getElementById('trigger-x5-url');
+        const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
         const timerFontSelect = document.getElementById('timer-font');
         const timerTextStyleSelect = document.getElementById('timer-text-style');
         const timerStrokeWidthInput = document.getElementById('timer-stroke-width');
@@ -1667,6 +1673,55 @@
             return tapGoalAutosavePromise;
         }
 
+        function applyTriggerX5SettingsToForm(settings) {
+            const s = settings || { enabled: false, giftName: '', durationSeconds: 15 };
+            triggerX5EnabledInput.checked = Boolean(s.enabled);
+            triggerX5GiftNameInput.value = s.giftName || '';
+            triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
+            refreshTriggerX5Preview();
+        }
+
+        function buildTriggerX5PreviewUrl() {
+            const baseUrl = state.widgetUrls.triggerX5OverlayUrl || '/overlays/trigger-x5';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?preview=1`;
+            }
+        }
+
+        function refreshTriggerX5Preview(options = {}) {
+            updatePreviewFrame(triggerX5PreviewFrame, buildTriggerX5PreviewUrl(), options);
+        }
+
+        function getDraftTriggerX5Settings() {
+            return {
+                enabled: triggerX5EnabledInput.checked,
+                giftName: triggerX5GiftNameInput.value,
+                durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15
+            };
+        }
+
+        async function saveTriggerX5SettingsImmediately() {
+            setStatus(saveStatus, '設定状態: トリガー5倍を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/trigger-x5', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTriggerX5Settings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'トリガー5倍の保存に失敗しました。');
+                state.triggerX5Settings = payload.settings || state.triggerX5Settings;
+                applyTriggerX5SettingsToForm(state.triggerX5Settings);
+                setStatus(saveStatus, '設定状態: トリガー5倍を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
         const MAX_TIMER_GIFT_SLOTS = 3;
         let timerGiftSlots = [null, null, null];
         let timerReversalSlots = [null, null, null];
@@ -2783,6 +2838,11 @@
                 state.giftCatalog = [];
                 state.giftCatalogByName = new Map();
             }
+            if (triggerX5GiftOptionsEl) {
+                triggerX5GiftOptionsEl.innerHTML = state.giftCatalog
+                    .map((gift) => `<option value="${String(gift.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></option>`)
+                    .join('');
+            }
         }
 
         async function loadConfig() {
@@ -2826,6 +2886,7 @@
             state.tapGoalProgress = payload.tapGoalPayload?.progress || state.tapGoalProgress;
             state.timerSettings = payload.timerPayload?.settings || state.timerSettings;
             state.timerRuntime = payload.timerPayload?.runtime || state.timerRuntime;
+            state.triggerX5Settings = payload.triggerX5Payload?.settings || state.triggerX5Settings;
             state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -2852,6 +2913,7 @@
             tapListUrl.textContent = state.widgetUrls.tapListLoaderUrl || state.widgetUrls.tapListOverlayUrl || '未取得';
             tapGoalUrl.textContent = state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '未取得';
             timerUrl.textContent = state.widgetUrls.timerLoaderUrl || state.widgetUrls.timerOverlayUrl || '未取得';
+            triggerX5Url.textContent = state.widgetUrls.triggerX5LoaderUrl || state.widgetUrls.triggerX5OverlayUrl || '未取得';
             coinListUrl.textContent = state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
@@ -2866,6 +2928,7 @@
             updateTapGoalProgressLabel();
             applyTimerSettingsToForm(state.timerSettings);
             updateTimerStatusLabel();
+            applyTriggerX5SettingsToForm(state.triggerX5Settings);
             applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();
@@ -3382,6 +3445,19 @@
         });
         document.getElementById('copy-tap-goal-url-button').addEventListener('click', async () => {
             await copyText(state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '');
+        });
+        document.getElementById('open-trigger-x5-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.triggerX5OverlayUrl || '/overlays/trigger-x5';
+            openWindow(url, 'trigger-x5-overlay-window', { width: 480, height: 480 });
+        });
+        document.getElementById('copy-trigger-x5-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.triggerX5LoaderUrl || state.widgetUrls.triggerX5OverlayUrl || '');
+        });
+        triggerX5EnabledInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5GiftNameInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        triggerX5DurationSecondsInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
+        document.getElementById('test-trigger-x5-button').addEventListener('click', () => {
+            fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
         });
         tapGoalOrientationSelect.addEventListener('change', () => {
             saveTapGoalSettingsImmediately().catch(() => {});

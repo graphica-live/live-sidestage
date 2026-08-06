@@ -16,6 +16,10 @@ module.exports = function createEffectsRuntime({
     getTimestamp,
     sendVdjEffectForEvent,
     followTriggerGiftName,
+    maybeActivateTriggerX5Window,
+    rollTriggerX5,
+    emitTriggerX5Win,
+    TRIGGER_X5_MULTIPLIER,
 }) {
     // カテゴリ単位のON/OFF。個々のトリガーの enabled 値には一切干渉しない。
     function getDisabledCategoryIds() {
@@ -169,6 +173,11 @@ module.exports = function createEffectsRuntime({
 
             anyTriggered = true;
 
+            // トリガー5倍タイム中: このトリガーの発火全体に対して1回だけ抽選する
+            // （イベントごとに抽選し直すと、同一トリガー内で当落が割れて分かりにくくなるため）。
+            const isTriggerX5Won = rollTriggerX5();
+            let anyPlaybackEmitted = false;
+
             // 再生するイベントを決定（順次 or ランダム）
             let targetEventIds;
 
@@ -208,6 +217,10 @@ module.exports = function createEffectsRuntime({
                     }
                 }
 
+                if (isTriggerX5Won) {
+                    playbackCountOverride = (typeof playbackCountOverride === 'number' ? playbackCountOverride : 1) * TRIGGER_X5_MULTIPLIER;
+                }
+
                 if (trigger.userTargetMode === 'file-map' && trigger.userIdToFileDir && context.userId) {
                     const videoInfo = findUserVideoFile(trigger.userIdToFileDir, context.userId);
 
@@ -224,11 +237,17 @@ module.exports = function createEffectsRuntime({
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
                         sendVdjEffectForEvent(effectEvent);
+                        anyPlaybackEmitted = true;
                     }
-                } else {
+                } else if (!getEffectsGloballyPaused()) {
                     emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride);
+                    anyPlaybackEmitted = true;
                 }
             });
+
+            if (isTriggerX5Won && anyPlaybackEmitted) {
+                emitTriggerX5Win(sourceEvent);
+            }
         });
 
         return anyTriggered;
@@ -236,6 +255,7 @@ module.exports = function createEffectsRuntime({
 
     function tryRunEffectTriggersForGift(giftEvent) {
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
+        maybeActivateTriggerX5Window(giftEvent?.giftName);
         speculativelyPreloadUserVideos(userId);
         return tryRunEffectTriggers({
             type: 'gift',
@@ -252,6 +272,7 @@ module.exports = function createEffectsRuntime({
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
 
         if (giftComboState?.isFirstTick) {
+            maybeActivateTriggerX5Window(giftEvent?.giftName);
             speculativelyPreloadUserVideos(userId);
         }
 

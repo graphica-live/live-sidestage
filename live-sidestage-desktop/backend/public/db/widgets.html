@@ -684,6 +684,59 @@
                 </article>
                 </div><!-- /jar-pair -->
 
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>トリガー5倍</h2>
+                            <p class="subtext">設定したギフトが飛ぶと「5倍タイム」が始まります。指定秒数の間に発火したイベントトリガーが30%の確率で5倍（動画なら5回再生）になり、当選したリスナーがオーバーレイに表示されます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="trigger-x5-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="trigger-x5-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-trigger-x5-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-trigger-x5-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="trigger-x5-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-enabled">
+                                    <label for="trigger-x5-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">トリガー5倍を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x5-gift-name">発動ギフト</label>
+                                <input id="trigger-x5-gift-name" type="text" list="trigger-x5-gift-options" maxlength="80" placeholder="ギフト名を入力">
+                                <datalist id="trigger-x5-gift-options"></datalist>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x5-duration-seconds">継続時間（秒）</label>
+                                <input id="trigger-x5-duration-seconds" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="15">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="trigger-x5-status-label">当選確率: 30% ／ 倍率: ×5</div>
+                        <button type="button" class="ghost-button" id="test-trigger-x5-button">当選演出をテスト表示</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="trigger-x5-preview-frame" title="トリガー5倍プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
                 <div class="jar-pair" style="display:none"><!-- 瓶詰め/オリジナル瓶詰めウィジェット非表示 -->
                 <article class="card">
                     <div class="card-head">

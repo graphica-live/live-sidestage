@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トリガー5倍</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", sans-serif;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        .win-card {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            opacity: 0;
+            animation: winCardLife 2.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes winCardLife {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.35) rotate(-6deg); }
+            14%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(2deg); }
+            24%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            82%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.88) rotate(0deg); }
+        }
+
+        .avatar-glove-wrap {
+            position: relative;
+            width: 176px;
+            height: 176px;
+        }
+
+        .avatar-circle {
+            width: 148px;
+            height: 148px;
+            margin: 14px 14px 0 0;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 5px solid #fff8e1;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        }
+
+        .avatar-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .avatar-circle.is-empty::after {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, #64748b 0%, #334155 100%);
+        }
+
+        .glove {
+            position: absolute;
+            right: -10px;
+            bottom: -6px;
+            width: 104px;
+            height: 104px;
+            filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5));
+            animation: glovePunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        @keyframes glovePunch {
+            0%          { transform: scale(0) rotate(-40deg); }
+            16%         { transform: scale(1.3) rotate(10deg); }
+            26%, 82%    { transform: scale(1) rotate(-8deg); }
+            100%        { transform: scale(0.92) rotate(-8deg); }
+        }
+
+        .x5-badge {
+            position: absolute;
+            left: 50%;
+            top: -8px;
+            transform: translate(-50%, -50%);
+            font-size: 46px;
+            font-weight: 900;
+            color: #fff566;
+            -webkit-text-stroke: 5px #7c2d12;
+            paint-order: stroke fill;
+            text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+            letter-spacing: 1px;
+            white-space: nowrap;
+            animation: x5Pop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards;
+        }
+
+        @keyframes x5Pop {
+            0%          { transform: translate(-50%, -50%) scale(0); }
+            20%         { transform: translate(-50%, -50%) scale(1.35) rotate(-6deg); }
+            30%, 82%    { transform: translate(-50%, -50%) scale(1) rotate(-6deg); }
+            100%        { transform: translate(-50%, -50%) scale(0.85) rotate(-6deg); }
+        }
+
+        .nickname {
+            max-width: 320px;
+            text-align: center;
+            overflow-wrap: break-word;
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            -webkit-text-stroke: 3px rgba(15, 23, 42, 0.92);
+            paint-order: stroke fill;
+            text-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage"></div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        const stageEl = document.getElementById('stage');
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const GLOVE_SVG = `
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <g>
+                    <path d="M34 22c0-8 6-14 15-14s16 6 16 14v20l10 6c5 3 8 8 8 14v6c0 11-9 20-20 20H44c-12 0-22-10-22-22V44c0-6 3-11 8-14z" fill="#e11d2f"/>
+                    <path d="M34 22c0-8 6-14 15-14s16 6 16 14v20l10 6c5 3 8 8 8 14v6c0 11-9 20-20 20H44c-12 0-22-10-22-22V44c0-6 3-11 8-14z" fill="none" stroke="#7c1017" stroke-width="3"/>
+                    <path d="M30 46c8-4 24-4 32 0" fill="none" stroke="#7c1017" stroke-width="3" stroke-linecap="round"/>
+                    <rect x="26" y="70" width="40" height="18" rx="9" fill="#f8fafc"/>
+                    <rect x="26" y="70" width="40" height="18" rx="9" fill="none" stroke="#94a3b8" stroke-width="2"/>
+                </g>
+            </svg>
+        `;
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function showWin(data) {
+            const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
+            const image = String(data?.image || '');
+            const avatarHtml = image
+                ? `<img src="/api/proxy/avatar?url=${encodeURIComponent(image)}" alt="" onerror="this.parentElement.classList.add('is-empty');this.remove();">`
+                : '';
+
+            const card = document.createElement('div');
+            card.className = 'win-card';
+            card.innerHTML = `
+                <div class="avatar-glove-wrap">
+                    <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                    <div class="glove">${GLOVE_SVG}</div>
+                    <div class="x5-badge">×5</div>
+                </div>
+                <div class="nickname">${escapeHtml(nickname)}</div>
+            `;
+
+            stageEl.appendChild(card);
+            card.addEventListener('animationend', () => card.remove());
+            window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
+        }
+
+        socket.on('widgets:trigger-x5:won', showWin);
+
+        if (previewMode) {
+            const runSample = () => showWin({ nickname: 'サンプルリスナー', image: '' });
+            runSample();
+            window.setInterval(runSample, 3200);
+        }
+    </script>
+</body>
+</html>

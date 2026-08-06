@@ -44,6 +44,7 @@ module.exports = function registerWidgetsConfigRoutes({
     buildTapGoalPayload,
     getTimerWidgetTextAppearance,
     buildTimerPayload,
+    buildTriggerX5Payload,
 }) {
     app.get('/api/widgets/config', (req, res) => {
         const sharedWidgetAppearance = getSharedWidgetTextAppearance();
@@ -96,7 +97,8 @@ module.exports = function registerWidgetsConfigRoutes({
             tapGoalAppearance: getTapGoalWidgetTextAppearance(),
             tapGoalPayload: buildTapGoalPayload(),
             timerAppearance: getTimerWidgetTextAppearance(),
-            timerPayload: buildTimerPayload()
+            timerPayload: buildTimerPayload(),
+            triggerX5Payload: buildTriggerX5Payload()
         });
     });
 

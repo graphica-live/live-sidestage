@@ -248,6 +248,14 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/trigger-gifts');
     });
 
+    app.get(['/overlays/trigger-x5', '/overlays/widgets/trigger-x5'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'trigger-x5.html'));
+    });
+    app.get(['/overlays/trigger-x5/index.html', '/overlays/widgets/trigger-x5/index.html'], (req, res) => {
+        return res.redirect('/overlays/trigger-x5');
+    });
+
     app.get('/virtualdj', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));

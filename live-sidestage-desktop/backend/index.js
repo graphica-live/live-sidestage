@@ -527,7 +527,9 @@ function buildWidgetUrls(req) {
         tapGoalOverlayUrl: `${origin}/overlays/tap-goal`,
         tapGoalLoaderUrl: `${loaderOrigin}/overlays/tap-goal`,
         timerOverlayUrl: `${origin}/overlays/timer`,
-        timerLoaderUrl: `${loaderOrigin}/overlays/timer`
+        timerLoaderUrl: `${loaderOrigin}/overlays/timer`,
+        triggerX5OverlayUrl: `${origin}/overlays/trigger-x5`,
+        triggerX5LoaderUrl: `${loaderOrigin}/overlays/trigger-x5`
     };
 }
 
@@ -1270,6 +1272,19 @@ const {
 });
 
 const {
+    getWidgetTriggerX5Settings, setWidgetTriggerX5Settings,
+    isTriggerX5WindowActive, maybeActivateTriggerX5Window,
+    rollTriggerX5, emitTriggerX5Win,
+    buildTriggerX5Payload,
+    TRIGGER_X5_MULTIPLIER,
+} = require('./lib/trigger-x5-state')({
+    io,
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTimestamp: (...args) => getTimestamp(...args),
+});
+
+const {
     getTimerSettings, setTimerSettings, getTimerDurationMs,
     getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
@@ -1362,6 +1377,10 @@ const {
     getTimestamp,
     sendVdjEffectForEvent,
     followTriggerGiftName: EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
+    maybeActivateTriggerX5Window,
+    rollTriggerX5,
+    emitTriggerX5Win,
+    TRIGGER_X5_MULTIPLIER,
 });
 
 function getStoredBroadcasterId() {
@@ -2605,6 +2624,7 @@ require('./lib/routes/widgets/config')({
     buildGoalGiftProgressSnapshot,
     getWidgetTapGoalSettings, getTapGoalWidgetTextAppearance, buildTapGoalPayload,
     getTimerWidgetTextAppearance, buildTimerPayload,
+    buildTriggerX5Payload,
 });
 
 require('./lib/routes/widgets/top-gift')({
@@ -2695,6 +2715,13 @@ require('./lib/routes/widgets/tap-goal')({
     setWidgetTapGoalSettings, setTapGoalWidgetTextAppearance,
     addTapGoalTaps, resetTapGoalProgress,
     getLikeContributionUserAvatars, getLikeContributionUserNicknames,
+});
+
+require('./lib/routes/widgets/trigger-x5')({
+    app, io,
+    setWidgetTriggerX5Settings,
+    buildTriggerX5Payload,
+    emitTriggerX5Win,
 });
 
 require('./lib/routes/widgets/timer')({
