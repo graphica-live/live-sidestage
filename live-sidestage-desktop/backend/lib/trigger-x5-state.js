@@ -3,13 +3,13 @@
 const { WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY } = require('./constants');
 const { normalizeEffectText } = require('./utils');
 
-const TRIGGER_X5_WIN_RATE = 0.3;
 const TRIGGER_X5_MULTIPLIER = 5;
 
 const DEFAULT_TRIGGER_X5_SETTINGS = {
     enabled: false,
     giftName: '',
     durationSeconds: 15,
+    winRatePercent: 30,
 };
 
 function normalizeTriggerX5DurationSeconds(value) {
@@ -18,6 +18,14 @@ function normalizeTriggerX5DurationSeconds(value) {
         return DEFAULT_TRIGGER_X5_SETTINGS.durationSeconds;
     }
     return Math.min(parsed, 600);
+}
+
+function normalizeTriggerX5WinRatePercent(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return DEFAULT_TRIGGER_X5_SETTINGS.winRatePercent;
+    }
+    return Math.min(parsed, 100);
 }
 
 function normalizeTriggerX5Settings(value) {
@@ -39,11 +47,12 @@ function normalizeTriggerX5Settings(value) {
         enabled: Boolean(source.enabled),
         giftName: normalizeEffectText(source.giftName, 80).toLowerCase(),
         durationSeconds: normalizeTriggerX5DurationSeconds(source.durationSeconds),
+        winRatePercent: normalizeTriggerX5WinRatePercent(source.winRatePercent),
     };
 }
 
 // トリガー5倍ウィジェット: 設定したギフトが飛ぶと一定秒数だけ「5倍タイム」が始まり、
-// その間に発火したイベントトリガーが30%の確率で5倍（動画なら5回再生）になる。
+// その間に発火したイベントトリガーが設定した確率（デフォルト30%）で5倍（動画なら5回再生）になる。
 module.exports = function createTriggerX5State({
     io,
     getScopedStateValue,
@@ -89,7 +98,11 @@ module.exports = function createTriggerX5State({
 
     // イベントトリガー発火のたびに呼ぶ抽選。ウィンドウが非アクティブなら常にfalse。
     function rollTriggerX5() {
-        return isTriggerX5WindowActive() && Math.random() < TRIGGER_X5_WIN_RATE;
+        if (!isTriggerX5WindowActive()) {
+            return false;
+        }
+        const settings = getWidgetTriggerX5Settings();
+        return Math.random() < settings.winRatePercent / 100;
     }
 
     function emitTriggerX5Win(sourceEvent) {
