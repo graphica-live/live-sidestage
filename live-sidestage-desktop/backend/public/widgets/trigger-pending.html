@@ -325,6 +325,15 @@
             const token = currentToken;
             render();
 
+            // 連射バーストで既に同トリガーが後続に積まれている場合、新規イベント到着を待たずに
+            // ここ（次アイテムの再生開始時）でも再アームする。到着時点のアーム済みガード
+            // （armRapidFireIfNeeded 内の if (rapidFireTimer) return）により、バーストが
+            // 一度に大量に届いた際は2件目以降で再アームされないため、これが無いと
+            // キューに積まれた分は連射キャンセルが効かず通常の消化時間で1件ずつ処理されてしまう。
+            if (queue.length > 0) {
+                armRapidFireIfNeeded(queue[0]);
+            }
+
             estimateDurationMs(item).then((durationMs) => {
                 if (token !== currentToken) return;
                 currentTimer = setTimeout(advanceQueue, durationMs);
