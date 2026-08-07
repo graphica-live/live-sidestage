@@ -52,6 +52,14 @@ function createDefaultEffectEvent(slot = 1) {
         midiChannel: 1,
         midiData1: 60,
         midiData2: 127,
+        lsEnabled: false,
+        lsActionType: 'cameraeffects',
+        lsScene: '',
+        lsCameraSource: '',
+        lsCameraEffectType: '',
+        lsCameraEffectId: '',
+        lsSoundEffect: '',
+        lsVibeId: '',
         vdjEffectEnabled: false,
         vdjCommand: '',
         forceInterruptAllEvents: false
@@ -157,6 +165,13 @@ function normalizeVdjCommand(value) {
     return normalizeEffectText(value, 200);
 }
 
+const LIVESTUDIO_ACTION_TYPES = ['scene', 'cameraeffects', 'soundeffect', 'vibe'];
+
+function normalizeLiveStudioActionType(value) {
+    const normalized = normalizeEffectText(value, 24).toLowerCase();
+    return LIVESTUDIO_ACTION_TYPES.includes(normalized) ? normalized : 'cameraeffects';
+}
+
 function normalizeEffectTriggerRapidFireCancelMs(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed)) return 1500;
@@ -187,6 +202,14 @@ function normalizeEffectEvent(value, index) {
         midiChannel: normalizeMidiChannel(value?.midiChannel),
         midiData1: normalizeMidiByte(value?.midiData1, fallback.midiData1),
         midiData2: normalizeMidiByte(value?.midiData2, fallback.midiData2),
+        lsEnabled: Boolean(value?.lsEnabled),
+        lsActionType: normalizeLiveStudioActionType(value?.lsActionType),
+        lsScene: normalizeEffectText(value?.lsScene, 120),
+        lsCameraSource: normalizeEffectText(value?.lsCameraSource, 120),
+        lsCameraEffectType: normalizeEffectText(value?.lsCameraEffectType, 60),
+        lsCameraEffectId: normalizeEffectText(value?.lsCameraEffectId, 60),
+        lsSoundEffect: normalizeEffectText(value?.lsSoundEffect, 120),
+        lsVibeId: normalizeEffectText(value?.lsVibeId, 60),
         vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
         vdjCommand: normalizeVdjCommand(value?.vdjCommand),
         forceInterruptAllEvents: Boolean(value?.forceInterruptAllEvents)

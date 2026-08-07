@@ -493,6 +493,10 @@ input[type="range"] {
     width: 100%;
 }
 
+.modal-inline-row[hidden] {
+    display: none;
+}
+
 .modal-asset-name {
     color: var(--muted);
     font-size: 13px;
@@ -532,7 +536,7 @@ input[type="range"] {
     flex: 0 0 auto;
 }
 
-.midi-accordion > summary {
+.accordion-field > summary {
     cursor: pointer;
     list-style: none;
     display: flex;
@@ -545,18 +549,26 @@ input[type="range"] {
     user-select: none;
 }
 
-.midi-accordion > summary::-webkit-details-marker {
+.accordion-field > summary::-webkit-details-marker {
     display: none;
 }
 
-.midi-accordion > summary::before {
+.accordion-field > summary::before {
     content: '▶';
     font-size: 9px;
     transition: transform 0.15s;
 }
 
-.midi-accordion[open] > summary::before {
+.accordion-field[open] > summary::before {
     transform: rotate(90deg);
+}
+
+#event-modal-ls-status {
+    margin-left: auto;
+}
+
+#event-modal-ls-status.is-connected {
+    color: var(--ok);
 }
 
 .modal-media-item .modal-inline-row {
