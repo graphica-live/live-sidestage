@@ -15,6 +15,10 @@ const DEFAULT_TRIGGER_X5_SETTINGS = {
     sound: { name: '', url: '' },
     soundVolume: 100,
     soundScreen: 1,
+    winSoundEnabled: false,
+    winSound: { name: '', url: '' },
+    winSoundVolume: 100,
+    winSoundScreen: 1,
 };
 
 function normalizeTriggerX5DurationSeconds(value) {
@@ -65,6 +69,10 @@ function normalizeTriggerX5Settings(value) {
         sound: normalizeSoundAsset(source.sound),
         soundVolume: normalizeTriggerX5SoundVolume(source.soundVolume),
         soundScreen: normalizeEffectScreen(source.soundScreen),
+        winSoundEnabled: Boolean(source.winSoundEnabled),
+        winSound: normalizeSoundAsset(source.winSound),
+        winSoundVolume: normalizeTriggerX5SoundVolume(source.winSoundVolume),
+        winSoundScreen: normalizeEffectScreen(source.winSoundScreen),
     };
 }
 
@@ -91,6 +99,35 @@ module.exports = function createTriggerX5State({
 
     function isTriggerX5WindowActive() {
         return Date.now() < activeUntil;
+    }
+
+    // トリガー5倍の効果音（発動時／5倍成功時で共通）を指定オーバーレイ(screen)へ直接送る。
+    // トリガー5倍オーバーレイ自身では再生しない — 同じソケットイベントは管理画面の
+    // プレビューiframeにも届くため、直接再生させるとElectron本体からも音が出てしまう。
+    function emitTriggerX5Sound({ enabled, sound, volume, screen, idSuffix, giftName, nickname, uniqueId }) {
+        if (!enabled || !sound?.url) {
+            return;
+        }
+
+        io.emit('effects:playback', {
+            playbackId: `trigger-x5-${idSuffix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+            eventId: `trigger-x5-${idSuffix}`,
+            eventName: 'トリガー5倍',
+            screen,
+            videoUrl: '',
+            audioUrl: sound.url,
+            mediaVolume: volume,
+            playbackCount: 1,
+            triggerId: 'trigger-x5',
+            triggerName: 'トリガー5倍',
+            giftName: giftName || '',
+            comment: '',
+            totalGifts: 0,
+            repeatCount: 1,
+            uniqueId: uniqueId || '',
+            nickname: nickname || '',
+            timestamp: getTimestamp(),
+        });
     }
 
     // 発動条件のギフトを受け取るたびに呼ぶ。設定と一致すればウィンドウを(再)開始する。
@@ -121,30 +158,15 @@ module.exports = function createTriggerX5State({
             timestamp: getTimestamp(),
         });
 
-        // 効果音は新規発動・延長（発動中の再発動）のどちらでも設定した screen (オーバーレイ) へ直接送る。
-        // トリガー5倍オーバーレイ自身では再生しない — 同じソケットイベントは管理画面の
-        // プレビューiframeにも届くため、直接再生させるとElectron本体からも音が出てしまう。
-        if (settings.soundEnabled && settings.sound.url) {
-            io.emit('effects:playback', {
-                playbackId: `trigger-x5-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-                eventId: 'trigger-x5-sound',
-                eventName: 'トリガー5倍',
-                screen: settings.soundScreen,
-                videoUrl: '',
-                audioUrl: settings.sound.url,
-                mediaVolume: settings.soundVolume,
-                playbackCount: 1,
-                triggerId: 'trigger-x5',
-                triggerName: 'トリガー5倍',
-                giftName: settings.giftName,
-                comment: '',
-                totalGifts: 0,
-                repeatCount: 1,
-                uniqueId: '',
-                nickname: '',
-                timestamp: getTimestamp(),
-            });
-        }
+        // 効果音は新規発動・延長（発動中の再発動）のどちらでも再生する。
+        emitTriggerX5Sound({
+            enabled: settings.soundEnabled,
+            sound: settings.sound,
+            volume: settings.soundVolume,
+            screen: settings.soundScreen,
+            idSuffix: 'sound',
+            giftName: settings.giftName,
+        });
     }
 
     // イベントトリガー発火のたびに呼ぶ抽選。ウィンドウが非アクティブなら常にfalse。
@@ -157,10 +179,23 @@ module.exports = function createTriggerX5State({
     }
 
     function emitTriggerX5Win(sourceEvent) {
+        const settings = getWidgetTriggerX5Settings();
+        const nickname = sourceEvent?.nickname || sourceEvent?.uniqueId || 'リスナー';
+
         io.emit('widgets:trigger-x5:won', {
-            nickname: sourceEvent?.nickname || sourceEvent?.uniqueId || 'リスナー',
+            nickname,
             image: sourceEvent?.image || '',
             timestamp: getTimestamp(),
+        });
+
+        emitTriggerX5Sound({
+            enabled: settings.winSoundEnabled,
+            sound: settings.winSound,
+            volume: settings.winSoundVolume,
+            screen: settings.winSoundScreen,
+            idSuffix: 'win-sound',
+            nickname,
+            uniqueId: sourceEvent?.uniqueId || '',
         });
     }
 

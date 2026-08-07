@@ -760,6 +760,40 @@
                                     <option value="10">screen 10</option>
                                 </select>
                             </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-win-sound-enabled">
+                                    <label for="trigger-x5-win-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">5倍成功時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>5倍成功時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x5-win-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-win-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-win-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x5-win-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x5-win-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x5-win-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x5-win-sound-screen">再生するオーバーレイ</label>
+                                <select id="trigger-x5-win-sound-screen">
+                                    <option value="1">screen 1</option>
+                                    <option value="2">screen 2</option>
+                                    <option value="3">screen 3</option>
+                                    <option value="4">screen 4</option>
+                                    <option value="5">screen 5</option>
+                                    <option value="6">screen 6</option>
+                                    <option value="7">screen 7</option>
+                                    <option value="8">screen 8</option>
+                                    <option value="9">screen 9</option>
+                                    <option value="10">screen 10</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
