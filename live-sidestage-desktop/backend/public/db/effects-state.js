@@ -31,6 +31,20 @@ const eventModalMidiData1 = document.getElementById('event-modal-midi-data1');
 const eventModalMidiData2 = document.getElementById('event-modal-midi-data2');
 const eventModalMidiData1Label = document.getElementById('event-modal-midi-data1-label');
 const eventModalMidiData2Label = document.getElementById('event-modal-midi-data2-label');
+const eventModalLsAccordion = document.getElementById('event-modal-ls-accordion');
+const eventModalLsEnabled = document.getElementById('event-modal-ls-enabled');
+const eventModalLsStatus = document.getElementById('event-modal-ls-status');
+const eventModalLsActionType = document.getElementById('event-modal-ls-action-type');
+const eventModalLsSceneRow = document.getElementById('event-modal-ls-scene-row');
+const eventModalLsScene = document.getElementById('event-modal-ls-scene');
+const eventModalLsCameraRow = document.getElementById('event-modal-ls-camera-row');
+const eventModalLsCameraSource = document.getElementById('event-modal-ls-camera-source');
+const eventModalLsCameraType = document.getElementById('event-modal-ls-camera-type');
+const eventModalLsCameraEffect = document.getElementById('event-modal-ls-camera-effect');
+const eventModalLsSoundRow = document.getElementById('event-modal-ls-sound-row');
+const eventModalLsSoundEffect = document.getElementById('event-modal-ls-sound-effect');
+const eventModalLsVibeRow = document.getElementById('event-modal-ls-vibe-row');
+const eventModalLsVibe = document.getElementById('event-modal-ls-vibe');
 const eventModalVdjEnabled = document.getElementById('event-modal-vdj-enabled');
 const eventModalVdjCommand = document.getElementById('event-modal-vdj-command');
 const eventModalForceInterruptEnabled = document.getElementById('event-modal-force-interrupt-enabled');
@@ -107,6 +121,8 @@ let knownUserSuggestions = [];
 let visibleEventSuggestions = [];
 let activeEventSuggestionIndex = -1;
 let knownMidiDevices = [];
+let livestudioConnected = false;
+let livestudioSettings = null;
 
 // トリガーモーダルの選択済みイベントIDリスト（表示順）
 let triggerModalSelectedEventIds = [];
@@ -164,6 +180,18 @@ async function loadMidiDevices() {
         knownMidiDevices = payload.devices || [];
     } catch {
         knownMidiDevices = [];
+    }
+}
+
+async function loadLiveStudioSettings() {
+    try {
+        const response = await fetch('/api/effects/livestudio/settings');
+        const payload = await response.json();
+        livestudioConnected = Boolean(payload.connected);
+        livestudioSettings = payload.settings || null;
+    } catch {
+        livestudioConnected = false;
+        livestudioSettings = null;
     }
 }
 

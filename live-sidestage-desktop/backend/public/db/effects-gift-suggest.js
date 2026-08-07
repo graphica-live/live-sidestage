@@ -377,6 +377,8 @@ loadUserSuggestions().catch(() => {});
 
 loadMidiDevices().catch(() => {});
 
+loadLiveStudioSettings().catch(() => {});
+
 loadConfig().catch((error) => {
     setStatus(error.message || '設定の読み込みに失敗しました。', 'error');
 });

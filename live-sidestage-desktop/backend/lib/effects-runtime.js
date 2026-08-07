@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { sendMidiForEffectEvent } = require('./midi-helpers');
+const { sendLiveStudioActionForEffectEvent } = require('./livestudio-helpers');
 
 module.exports = function createEffectsRuntime({
     io,
@@ -115,6 +116,7 @@ module.exports = function createEffectsRuntime({
         maybeForceInterruptScreen(effectEvent);
         io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride));
         sendMidiForEffectEvent(effectEvent);
+        sendLiveStudioActionForEffectEvent(effectEvent);
         sendVdjEffectForEvent(effectEvent);
     }
 
@@ -251,6 +253,7 @@ module.exports = function createEffectsRuntime({
                         maybeForceInterruptScreen(effectEvent);
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
+                        sendLiveStudioActionForEffectEvent(effectEvent);
                         sendVdjEffectForEvent(effectEvent);
                         anyPlaybackEmitted = true;
                     }

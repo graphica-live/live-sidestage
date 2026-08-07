@@ -195,7 +195,7 @@
                         </div>
                     </div>
                 </div>
-                <details class="field midi-accordion">
+                <details class="field accordion-field">
                     <summary>MIDI送信</summary>
                     <div class="modal-media-item">
                         <div class="modal-media-head">
@@ -223,8 +223,40 @@
                         </div>
                     </div>
                 </details>
-                <div class="field">
-                    <label>VDJコマンド</label>
+                <details class="field accordion-field" id="event-modal-ls-accordion">
+                    <summary>LIVE Studio連携</summary>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-ls-enabled"><span>LIVE Studioアクションを実行</span></label>
+                            <span class="field-hint" id="event-modal-ls-status">確認中…</span>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-ls-action-type">
+                                <option value="cameraeffects">カメラエフェクト</option>
+                                <option value="scene">シーン切替</option>
+                                <option value="soundeffect">サウンドエフェクト</option>
+                                <option value="vibe">バイブエフェクト</option>
+                            </select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-scene-row">
+                            <select id="event-modal-ls-scene"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-camera-row">
+                            <select id="event-modal-ls-camera-source"></select>
+                            <select id="event-modal-ls-camera-type"></select>
+                            <select id="event-modal-ls-camera-effect"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-sound-row">
+                            <select id="event-modal-ls-sound-effect"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-vibe-row">
+                            <select id="event-modal-ls-vibe"></select>
+                        </div>
+                        <div class="field-hint">TikTok LIVE Studioを起動している間だけ動作します（Stream Deck不要・直接連携）。</div>
+                    </div>
+                </details>
+                <details class="field accordion-field">
+                    <summary>VDJコマンド</summary>
                     <div class="modal-media-item">
                         <div class="modal-media-head">
                             <label class="toggle"><input type="checkbox" id="event-modal-vdj-enabled"><span>VDJコマンドを実行</span></label>
@@ -234,7 +266,7 @@
                         </div>
                         <div class="field-hint">VDJScript コマンドをそのまま入力します（対象デッキもコマンド内で指定）。内部で VirtualDJ の API に渡されます。</div>
                     </div>
-                </div>
+                </details>
                 <div class="field">
                     <label>メディアの音量</label>
                     <div class="range-row">

@@ -106,6 +106,8 @@ module.exports = function registerEffectsRoutes({
     setEffectCategories,
     tryRunEffectTriggersForGift,
     tryRunEffectTriggersForGiftCombo,
+    getLiveStudioStatus,
+    getLiveStudioSettings,
     path,
     fs,
 }) {
@@ -180,6 +182,14 @@ module.exports = function registerEffectsRoutes({
 
     app.get('/api/effects/midi/devices', (req, res) => {
         res.json({ devices: listMidiOutputDevices() });
+    });
+
+    app.get('/api/effects/livestudio/status', (req, res) => {
+        res.json({ ok: true, ...getLiveStudioStatus() });
+    });
+
+    app.get('/api/effects/livestudio/settings', (req, res) => {
+        res.json({ ok: true, ...getLiveStudioStatus(), settings: getLiveStudioSettings() });
     });
 
     app.get('/api/effects/global-pause', (req, res) => {

@@ -20,6 +20,75 @@ function syncEventModalMidiFields() {
     eventModalMidiData2.disabled = messageType === 'pc';
 }
 
+function updateLiveStudioStatusLabel() {
+    eventModalLsStatus.textContent = livestudioConnected ? '● 接続中' : '○ 未接続（LIVE Studioを起動してください）';
+    eventModalLsStatus.classList.toggle('is-connected', livestudioConnected);
+}
+
+function getLiveStudioCameraEffectOptions(typeName) {
+    const list = livestudioSettings?.camera_effect?.effectList || [];
+    return list.find((item) => item.name === typeName)?.effects || [];
+}
+
+function populateLiveStudioCameraEffectSelect(typeName, selectedId) {
+    const effects = getLiveStudioCameraEffectOptions(typeName);
+    eventModalLsCameraEffect.innerHTML = effects.length
+        ? effects.map((effect) =>
+            `<option value="${escapeHtml(effect.value)}"${effect.value === selectedId ? ' selected' : ''}>${escapeHtml(effect.label)}</option>`
+        ).join('')
+        : '<option value="">(選択肢なし)</option>';
+}
+
+function populateLiveStudioSelects(selected = {}) {
+    updateLiveStudioStatusLabel();
+
+    const sceneList = livestudioSettings?.scene_list || [];
+    eventModalLsScene.innerHTML = sceneList.length
+        ? sceneList.map((scene) =>
+            `<option value="${escapeHtml(scene.name)}"${scene.name === selected.lsScene ? ' selected' : ''}>${escapeHtml(scene.name)}</option>`
+        ).join('')
+        : '<option value="">(LIVE Studio未接続)</option>';
+
+    const cameraEffect = livestudioSettings?.camera_effect;
+    const sourceList = cameraEffect?.sourceList || [];
+    eventModalLsCameraSource.innerHTML = sourceList.length
+        ? sourceList.map((source) =>
+            `<option value="${escapeHtml(source.value)}"${source.value === selected.lsCameraSource ? ' selected' : ''}>${escapeHtml(source.label)}</option>`
+        ).join('')
+        : '<option value="">(LIVE Studio未接続)</option>';
+
+    const typeList = cameraEffect?.typeList || [];
+    const selectedType = typeList.includes(selected.lsCameraEffectType) ? selected.lsCameraEffectType : (typeList[0] || '');
+    eventModalLsCameraType.innerHTML = typeList.length
+        ? typeList.map((type) =>
+            `<option value="${escapeHtml(type)}"${type === selectedType ? ' selected' : ''}>${escapeHtml(type)}</option>`
+        ).join('')
+        : '<option value="">(LIVE Studio未接続)</option>';
+    populateLiveStudioCameraEffectSelect(selectedType, selected.lsCameraEffectId);
+
+    const soundList = livestudioSettings?.sound_effect?.sound_Info || [];
+    eventModalLsSoundEffect.innerHTML = soundList.length
+        ? soundList.map((name) =>
+            `<option value="${escapeHtml(name)}"${name === selected.lsSoundEffect ? ' selected' : ''}>${escapeHtml(name)}</option>`
+        ).join('')
+        : '<option value="">(LIVE Studio未接続)</option>';
+
+    const vibeList = livestudioSettings?.vibeList || [];
+    eventModalLsVibe.innerHTML = vibeList.length
+        ? vibeList.map((vibe) =>
+            `<option value="${escapeHtml(vibe.id)}"${vibe.id === selected.lsVibeId ? ' selected' : ''}>${escapeHtml(vibe.name)}</option>`
+        ).join('')
+        : '<option value="">(LIVE Studio未接続)</option>';
+}
+
+function syncLiveStudioActionTypeRows() {
+    const type = eventModalLsActionType.value;
+    eventModalLsSceneRow.hidden = type !== 'scene';
+    eventModalLsCameraRow.hidden = type !== 'cameraeffects';
+    eventModalLsSoundRow.hidden = type !== 'soundeffect';
+    eventModalLsVibeRow.hidden = type !== 'vibe';
+}
+
 function resetEventModal() {
     editingEventId = null;
     pendingNewEventUploadId = createId('event');
@@ -43,6 +112,10 @@ function resetEventModal() {
     eventModalMidiData1.value = '60';
     eventModalMidiData2.value = '127';
     syncEventModalMidiFields();
+    eventModalLsEnabled.checked = false;
+    eventModalLsActionType.value = 'cameraeffects';
+    populateLiveStudioSelects({});
+    syncLiveStudioActionTypeRows();
     eventModalVdjEnabled.checked = false;
     eventModalVdjCommand.value = '';
     eventModalForceInterruptEnabled.checked = false;
@@ -80,6 +153,17 @@ function openEventModalForEdit(eventRecord) {
     eventModalMidiData1.value = String(eventRecord.midiData1 ?? 60);
     eventModalMidiData2.value = String(eventRecord.midiData2 ?? 127);
     syncEventModalMidiFields();
+    eventModalLsEnabled.checked = Boolean(eventRecord.lsEnabled);
+    eventModalLsActionType.value = eventRecord.lsActionType || 'cameraeffects';
+    populateLiveStudioSelects({
+        lsScene: eventRecord.lsScene,
+        lsCameraSource: eventRecord.lsCameraSource,
+        lsCameraEffectType: eventRecord.lsCameraEffectType,
+        lsCameraEffectId: eventRecord.lsCameraEffectId,
+        lsSoundEffect: eventRecord.lsSoundEffect,
+        lsVibeId: eventRecord.lsVibeId
+    });
+    syncLiveStudioActionTypeRows();
     eventModalVdjEnabled.checked = Boolean(eventRecord.vdjEffectEnabled);
     eventModalVdjCommand.value = eventRecord.vdjCommand || '';
     eventModalForceInterruptEnabled.checked = Boolean(eventRecord.forceInterruptAllEvents);
@@ -105,6 +189,14 @@ function collectEventFromModal() {
         midiChannel: Number(eventModalMidiChannel.value || 1),
         midiData1: Number(eventModalMidiData1.value || 0),
         midiData2: Number(eventModalMidiData2.value || 0),
+        lsEnabled: eventModalLsEnabled.checked,
+        lsActionType: eventModalLsActionType.value,
+        lsScene: eventModalLsScene.value || '',
+        lsCameraSource: eventModalLsCameraSource.value || '',
+        lsCameraEffectType: eventModalLsCameraType.value || '',
+        lsCameraEffectId: eventModalLsCameraEffect.value || '',
+        lsSoundEffect: eventModalLsSoundEffect.value || '',
+        lsVibeId: eventModalLsVibe.value || '',
         vdjEffectEnabled: eventModalVdjEnabled.checked,
         vdjCommand: eventModalVdjCommand.value.trim(),
         forceInterruptAllEvents: eventModalForceInterruptEnabled.checked
@@ -492,6 +584,27 @@ eventModalMediaVolume.addEventListener('input', () => {
 
 eventModalMidiMessageType.addEventListener('change', () => {
     syncEventModalMidiFields();
+});
+
+eventModalLsActionType.addEventListener('change', () => {
+    syncLiveStudioActionTypeRows();
+});
+
+eventModalLsCameraType.addEventListener('change', () => {
+    populateLiveStudioCameraEffectSelect(eventModalLsCameraType.value, '');
+});
+
+eventModalLsAccordion.addEventListener('toggle', () => {
+    if (!eventModalLsAccordion.open) return;
+
+    loadLiveStudioSettings().then(() => populateLiveStudioSelects({
+        lsScene: eventModalLsScene.value,
+        lsCameraSource: eventModalLsCameraSource.value,
+        lsCameraEffectType: eventModalLsCameraType.value,
+        lsCameraEffectId: eventModalLsCameraEffect.value,
+        lsSoundEffect: eventModalLsSoundEffect.value,
+        lsVibeId: eventModalLsVibe.value
+    }));
 });
 
 eventModalName.addEventListener('input', () => {

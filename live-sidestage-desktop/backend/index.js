@@ -1316,6 +1316,12 @@ const {
 });
 
 const { closeAllMidiOutputs } = require('./lib/midi-helpers');
+const {
+    startLiveStudioConnection,
+    closeLiveStudioConnection,
+    getLiveStudioStatus,
+    getLiveStudioSettings,
+} = require('./lib/livestudio-helpers');
 
 function setGlobalStateValue(stateKey, stateValue) {
     dbStore.setGlobalStateValue(stateKey, stateValue, getTimestamp());
@@ -2517,6 +2523,7 @@ async function shutdownApplication(reason = 'manual') {
         });
 
         closeAllMidiOutputs();
+        closeLiveStudioConnection();
 
         await closeHttpServer();
 
@@ -2613,6 +2620,8 @@ require('./lib/routes/effects')({
     setEffectCategories,
     tryRunEffectTriggersForGift,
     tryRunEffectTriggersForGiftCombo,
+    getLiveStudioStatus,
+    getLiveStudioSettings,
     path,
     fs,
 });
@@ -3341,6 +3350,8 @@ async function startHttpServer() {
     console.log(`🚀 Server running on http://localhost:${listenPort}`);
     console.log(`📂 User data: ${USER_DATA_DIRECTORY}`);
     console.log(`💾 SQLite DB: ${DB_PATH}`);
+
+    startLiveStudioConnection();
     scheduleRawEventFlush(0);
     setInterval(checkTikTokZombieConnection, TIKTOK_WATCHDOG_CHECK_INTERVAL_MS).unref();
 
