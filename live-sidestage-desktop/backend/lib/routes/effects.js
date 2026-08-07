@@ -436,13 +436,23 @@ module.exports = function registerEffectsRoutes({
 
             const isVideo = String(req.file.mimetype || '').toLowerCase().startsWith('video/');
             const kind = isVideo ? 'video' : 'audio';
+            const assetUrl = buildEffectMediaUrl(kind, req.file.filename);
+
+            // eventIdHint 由来の固定ファイル名（テンプレート音声取り込み等と同じ命名規則）は
+            // 再アップロード時に同じURLを上書きするため、オーバーレイ側の mediaBlobCache が
+            // 旧メディアのBlobを保持したままになる。該当URLのキャッシュを破棄させて再取得させる。
+            const rawEventId = String(req.query.eventId || '').trim();
+            const safeEventId = rawEventId.replace(/[^a-zA-Z0-9\-_]/g, '').slice(0, 80);
+            if (safeEventId.length >= 4) {
+                io.emit('effects:media-updated', { url: assetUrl });
+            }
 
             return res.json({
                 ok: true,
                 asset: {
                     kind,
                     name: repairMojibakeFilename(req.file.originalname),
-                    url: buildEffectMediaUrl(kind, req.file.filename),
+                    url: assetUrl,
                     mimeType: req.file.mimetype,
                     size: req.file.size
                 }
