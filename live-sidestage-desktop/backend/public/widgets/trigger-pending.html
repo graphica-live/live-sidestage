@@ -211,15 +211,82 @@
             return '<div class="placeholder-dot"></div>';
         }
 
+        // キューの並び替え（先頭消化で全員繰り上がる）が起きても同一チップとして
+        // 使い回せるよう、キューの位置(index)を含まないアイテム固有の識別子にする。
+        function chipKey(item) {
+            return String(item.playbackId || item.eventId || item.triggerId || '');
+        }
+
+        function makeQueueChip(item, index) {
+            const el = document.createElement('div');
+            el.className = 'queue-chip';
+            el.dataset.key = chipKey(item);
+            el.innerHTML = `<span class="order-badge">${index + 1}</span>${chipInnerHtml(item)}`;
+            return el;
+        }
+
+        // 毎回 innerHTML で全チップを作り直すと、既存チップも含めて
+        // pendingQueueIn の登場アニメーションが同時に再生され「全体が点滅」して見える。
+        // 既存チップは data-key で使い回し、増減した分だけ DOM を足し引きする。
+        function updateQueueStrip(visibleItems) {
+            const existingByKey = new Map();
+            queueStripEl.querySelectorAll('.queue-chip[data-key]').forEach((el) => {
+                existingByKey.set(el.dataset.key, el);
+            });
+
+            visibleItems.forEach((item, index) => {
+                const key = chipKey(item);
+                let el = existingByKey.get(key);
+                if (el) {
+                    existingByKey.delete(key);
+                    const badge = el.querySelector('.order-badge');
+                    const badgeText = String(index + 1);
+                    if (badge && badge.textContent !== badgeText) {
+                        badge.textContent = badgeText;
+                    }
+                } else {
+                    el = makeQueueChip(item, index);
+                }
+                // 既存ノードなら appendChild は「末尾へ移動」として働くため、
+                // 作り直さずに正しい順序へ並べ替えられる。
+                queueStripEl.appendChild(el);
+            });
+
+            existingByKey.forEach((el) => el.remove());
+        }
+
+        function updateOverflowChip(overflowCount) {
+            let overflowEl = queueStripEl.querySelector('.overflow-chip');
+            if (overflowCount > 0) {
+                if (!overflowEl) {
+                    overflowEl = document.createElement('div');
+                    overflowEl.className = 'queue-chip overflow-chip';
+                    queueStripEl.appendChild(overflowEl);
+                } else {
+                    queueStripEl.appendChild(overflowEl);
+                }
+                overflowEl.textContent = `+${overflowCount}`;
+            } else if (overflowEl) {
+                overflowEl.remove();
+            }
+        }
+
+        let lastRenderedCurrentKey = null;
+
         function render() {
             if (current) {
                 currentWrapEl.style.display = 'flex';
-                currentChipEl.innerHTML = chipInnerHtml(current);
+                const key = current.playbackId || current.eventId || current.triggerId || '';
+                if (key !== lastRenderedCurrentKey) {
+                    currentChipEl.innerHTML = chipInnerHtml(current);
+                    lastRenderedCurrentKey = key;
+                }
             } else {
                 // .current-wrap は表示時に display:flex を持つため、[hidden] の既定 display:none は
                 // 詳細度で負けて上書きされない。inline style で明示的に隠す必要がある。
                 currentWrapEl.style.display = 'none';
                 currentChipEl.innerHTML = '';
+                lastRenderedCurrentKey = null;
             }
 
             if (!current && queue.length === 0) {
@@ -228,6 +295,9 @@
                 queueStripEl.style.removeProperty('--queue-row-max-width');
                 return;
             }
+
+            const emptyHint = queueStripEl.querySelector('.empty-hint');
+            if (emptyHint) emptyHint.remove();
 
             const visibleCount = Math.min(queue.length, MAX_VISIBLE_QUEUE_ITEMS + 1);
             const chipSize = pickChipSize(visibleCount);
@@ -242,18 +312,8 @@
             const overflowCount = queue.length - MAX_VISIBLE_QUEUE_ITEMS;
             const visibleItems = overflowCount > 0 ? queue.slice(0, MAX_VISIBLE_QUEUE_ITEMS) : queue;
 
-            const chipsHtml = visibleItems.map((item, index) => `
-                <div class="queue-chip">
-                    <span class="order-badge">${index + 1}</span>
-                    ${chipInnerHtml(item)}
-                </div>
-            `).join('');
-
-            const overflowHtml = overflowCount > 0
-                ? `<div class="queue-chip overflow-chip">+${overflowCount}</div>`
-                : '';
-
-            queueStripEl.innerHTML = chipsHtml + overflowHtml;
+            updateQueueStrip(visibleItems);
+            updateOverflowChip(overflowCount);
         }
 
         function enrichPayload(payload) {
