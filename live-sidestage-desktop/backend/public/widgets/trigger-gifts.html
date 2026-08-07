@@ -155,24 +155,7 @@
             padding: 0 12px 16px;
             background: linear-gradient(to top, rgba(15, 23, 42, 0.78) 0%, rgba(15, 23, 42, 0) 100%);
             font-family: var(--widget-font-family);
-            overflow-x: auto;
-            overflow-y: hidden;
-            overscroll-behavior: contain;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
-        }
-
-        .trigger-name::-webkit-scrollbar {
-            height: 5px;
-        }
-
-        .trigger-name::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.45);
-            border-radius: 999px;
-        }
-
-        .trigger-name::-webkit-scrollbar-track {
-            background: transparent;
+            overflow: hidden;
         }
 
         .trigger-name-badge {
@@ -188,6 +171,16 @@
             paint-order: stroke fill;
             white-space: nowrap;
             text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+
+        .trigger-name-badge.marquee {
+            animation: triggerNameMarquee var(--name-marquee-duration, 6s) ease-in-out infinite;
+        }
+
+        @keyframes triggerNameMarquee {
+            0%, 12% { transform: translateX(0); }
+            50% { transform: translateX(var(--name-marquee-distance, 0px)); }
+            88%, 100% { transform: translateX(0); }
         }
 
         .empty {
@@ -418,6 +411,27 @@
             });
         }
 
+        // 表示名がカード幅に収まらない場合、はみ出た分だけ左右に自動でスライドさせて
+        // 全文を見せる(視聴者は配信オーバーレイを手動スクロールできないため)。
+        function applyNameMarquee(cardEl) {
+            const wrap = cardEl.querySelector('.trigger-name');
+            const badge = cardEl.querySelector('.trigger-name-badge');
+            if (!wrap || !badge) return;
+            badge.classList.remove('marquee');
+            badge.style.removeProperty('--name-marquee-distance');
+            badge.style.removeProperty('--name-marquee-duration');
+            const overflow = badge.scrollWidth - wrap.clientWidth;
+            if (overflow > 2) {
+                badge.style.setProperty('--name-marquee-distance', `-${overflow + 4}px`);
+                badge.style.setProperty('--name-marquee-duration', `${Math.max(4, Math.min(14, overflow / 30 + 4))}s`);
+                badge.classList.add('marquee');
+            }
+        }
+
+        function applyNameMarqueeAll(root) {
+            root.querySelectorAll('.card').forEach(applyNameMarquee);
+        }
+
         function updateCardContents(items, appearance) {
             const cardsById = new Map();
             stripEl.querySelectorAll('.card[data-trigger-id]').forEach((cardEl) => {
@@ -438,6 +452,7 @@
                     } else {
                         cardEl.style.removeProperty('--card-bg-rgb');
                     }
+                    applyNameMarquee(cardEl);
                 });
             });
         }
@@ -477,6 +492,7 @@
                 stripEl.className = 'strip page';
                 stripEl.style.animation = 'none';
                 stripEl.innerHTML = items.slice(0, capacity).map((item) => buildCardHtml(item, appearance.showCoinCount)).join('');
+                applyNameMarqueeAll(stripEl);
                 return;
             }
 
@@ -487,6 +503,7 @@
 
             // 複製後の全長を実測してからアニメーションを開始する(強制リフロー)
             void stripEl.offsetWidth;
+            applyNameMarqueeAll(stripEl);
             const fullLength = axisX ? stripEl.scrollWidth : stripEl.scrollHeight;
             const halfLength = fullLength / 2;
             const duration = Math.max(2, halfLength / speed);
