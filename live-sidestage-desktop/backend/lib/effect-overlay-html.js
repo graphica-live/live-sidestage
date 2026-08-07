@@ -679,6 +679,10 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             activePlaybackPayload = payload;
             videoEnded = !payload.videoUrl;
             audioEnded = !payload.audioUrl;
+            // このSCREENの再生キューで実際に順番が来たタイミングをバックエンドへ通知する。
+            // LIVE Studio連携（TLS）のアクション送信はこの通知を待ってから行われるため、
+            // イベント連続発火時にTLS操作だけが再生を追い越して先走ることがなくなる。
+            socket.emit('effects:playback-started', { playbackId: activePlaybackId, eventId: activePlaybackEventId });
             updateDebugLog((payload.eventName || 'event') + ' / ' + (payload.uniqueId || '') + ' / ' + (payload.giftName || ''));
             setReadAloudCredit(payload.readAloudCreditText || '');
 
