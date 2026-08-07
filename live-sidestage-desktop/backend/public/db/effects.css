@@ -532,6 +532,33 @@ input[type="range"] {
     flex: 0 0 auto;
 }
 
+.midi-accordion > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.midi-accordion > summary::-webkit-details-marker {
+    display: none;
+}
+
+.midi-accordion > summary::before {
+    content: '▶';
+    font-size: 9px;
+    transition: transform 0.15s;
+}
+
+.midi-accordion[open] > summary::before {
+    transform: rotate(90deg);
+}
+
 .modal-media-item .modal-inline-row {
     align-items: center;
 }
