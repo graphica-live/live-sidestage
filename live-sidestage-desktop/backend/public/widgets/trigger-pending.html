@@ -91,7 +91,7 @@
             background: rgba(15, 23, 42, 0.55);
             border: 2px solid rgba(255, 255, 255, 0.18);
             box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-            transition: width 220ms ease, height 220ms ease, opacity 200ms ease;
+            transition: opacity 200ms ease;
         }
 
         /* 登場アニメーションは生成直後だけ付与する一時クラス。
@@ -206,6 +206,43 @@
             return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // FLIP (First-Last-Invert-Play) で位置・サイズの変化をなめらかなアニメーションに変換する。
+        // キューの並べ替えや「保留→処理中」の遷移は、appendChild による瞬間移動や
+        // innerHTML の書き換えで実現しているため、そのままではカット切り替えに見える。
+        // 移動前の矩形(prevRect)を渡すと、移動後の位置から逆算した transform を
+        // 一度適用し、次のフレームで transition 付きで解除することで実際に移動して
+        // 見えるようにする。current-chip には pendingCurrentPulse の常時アニメーションが
+        // かかっているため、FLIP 中だけ一時的に無効化する。
+        function playFlip(el, prevRect) {
+            if (!prevRect) return;
+            const newRect = el.getBoundingClientRect();
+            if (!newRect.width || !newRect.height) return;
+
+            const dx = prevRect.left - newRect.left;
+            const dy = prevRect.top - newRect.top;
+            const sx = prevRect.width / newRect.width;
+            const sy = prevRect.height / newRect.height;
+            if (!dx && !dy && sx === 1 && sy === 1) return;
+
+            el.style.animation = 'none';
+            el.style.transition = 'none';
+            el.style.transformOrigin = 'top left';
+            el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+            el.offsetWidth; // force reflow
+
+            requestAnimationFrame(() => {
+                el.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
+                el.style.transform = '';
+                el.addEventListener('transitionend', function cleanup(ev) {
+                    if (ev.target !== el || ev.propertyName !== 'transform') return;
+                    el.removeEventListener('transitionend', cleanup);
+                    el.style.transition = '';
+                    el.style.transformOrigin = '';
+                    el.style.removeProperty('animation');
+                });
+            });
+        }
+
         function pickChipSize(count) {
             const tier = QUEUE_CHIP_SIZE_TIERS.find((entry) => count <= entry.max);
             return tier ? tier.size : QUEUE_CHIP_SIZE_TIERS[QUEUE_CHIP_SIZE_TIERS.length - 1].size;
@@ -237,8 +274,11 @@
         // 既存チップは data-key で使い回し、増減した分だけ DOM を足し引きする。
         function updateQueueStrip(visibleItems) {
             const existingByKey = new Map();
+            const prevRects = new Map();
             queueStripEl.querySelectorAll('.queue-chip[data-key]').forEach((el) => {
                 existingByKey.set(el.dataset.key, el);
+                // 並べ替え・チップサイズ変化前の矩形を控えておき、後で FLIP に使う。
+                prevRects.set(el.dataset.key, el.getBoundingClientRect());
             });
 
             visibleItems.forEach((item, index) => {
@@ -265,6 +305,12 @@
             });
 
             existingByKey.forEach((el) => el.remove());
+
+            // 並べ替え・チップサイズ変化後の新しい位置へ、瞬間移動ではなく FLIP でなめらかに寄せる。
+            // 新規チップ(chip-enter)は prevRects に矩形が無いため対象外（既存の登場演出のまま）。
+            queueStripEl.querySelectorAll('.queue-chip[data-key]').forEach((el) => {
+                playFlip(el, prevRects.get(el.dataset.key));
+            });
         }
 
         function updateOverflowChip(overflowCount) {
@@ -388,7 +434,7 @@
             });
         }
 
-        function setCurrent(item) {
+        function setCurrent(item, prevRect) {
             clearTimeout(currentTimer);
             clearTimeout(rapidFireTimer);
             rapidFireTimer = null;
@@ -396,6 +442,13 @@
             currentToken += 1;
             const token = currentToken;
             render();
+
+            // prevRect はキュー先頭にいた時点の矩形。処理待ち → 処理中の切り替わりが
+            // innerHTML の差し替えによるカット表示にならないよう、FLIP でキュー位置から
+            // current-chip の位置へ実際に動いたように見せる。
+            if (prevRect) {
+                playFlip(currentChipEl, prevRect);
+            }
 
             // 連射バーストで既に同トリガーが後続に積まれている場合、新規イベント到着を待たずに
             // ここ（次アイテムの再生開始時）でも再アームする。到着時点のアーム済みガード
@@ -419,7 +472,12 @@
             const next = queue.shift() || null;
 
             if (next) {
-                setCurrent(next);
+                // render() でキュー側の DOM が消える前に、次にcurrentになるチップの
+                // 現在位置を記録しておく(FLIP のPre-state)。
+                const key = chipKey(next);
+                const existingEl = key ? queueStripEl.querySelector(`.queue-chip[data-key="${CSS.escape(key)}"]`) : null;
+                const prevRect = existingEl ? existingEl.getBoundingClientRect() : null;
+                setCurrent(next, prevRect);
             } else {
                 current = null;
                 currentToken += 1;
