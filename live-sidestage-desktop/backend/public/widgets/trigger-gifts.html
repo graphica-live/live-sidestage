@@ -158,10 +158,20 @@
             overflow: hidden;
         }
 
+        .trigger-name-track {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 56px;
+            min-width: 0;
+        }
+
+        .trigger-name-track.marquee {
+            animation: triggerNameMarquee var(--name-marquee-duration, 8s) linear infinite;
+        }
+
         .trigger-name-badge {
             display: inline-block;
-            min-width: 0;
-            flex-shrink: 0;
+            flex: 0 0 auto;
             text-align: center;
             font-size: var(--name-font-size);
             font-weight: 800;
@@ -173,14 +183,17 @@
             text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
         }
 
-        .trigger-name-badge.marquee {
-            animation: triggerNameMarquee var(--name-marquee-duration, 6s) ease-in-out infinite;
+        .trigger-name-badge-dup {
+            display: none;
+        }
+
+        .trigger-name-track.marquee .trigger-name-badge-dup {
+            display: inline-block;
         }
 
         @keyframes triggerNameMarquee {
-            0%, 12% { transform: translateX(0); }
-            50% { transform: translateX(var(--name-marquee-distance, 0px)); }
-            88%, 100% { transform: translateX(0); }
+            from { transform: translateX(0); }
+            to   { transform: translateX(var(--name-marquee-distance, 0px)); }
         }
 
         .empty {
@@ -376,11 +389,15 @@
                 : '';
 
             const highlightClass = item.listOverlayHighlight ? ' highlight' : '';
+            const nameHtml = escapeHtml(item.triggerName);
 
             return coinHtml +
                 totalCoinHtml +
                 `<div class="gift-image-wrap${highlightClass}">${imageHtml}</div>` +
-                `<div class="trigger-name"><span class="trigger-name-badge">${escapeHtml(item.triggerName)}</span></div>`;
+                `<div class="trigger-name"><div class="trigger-name-track">` +
+                `<span class="trigger-name-badge">${nameHtml}</span>` +
+                `<span class="trigger-name-badge trigger-name-badge-dup" aria-hidden="true">${nameHtml}</span>` +
+                `</div></div>`;
         }
 
         function getCardBgRgb(item) {
@@ -411,20 +428,27 @@
             });
         }
 
-        // 表示名がカード幅に収まらない場合、はみ出た分だけ左右に自動でスライドさせて
-        // 全文を見せる(視聴者は配信オーバーレイを手動スクロールできないため)。
+        // 表示名がカード幅に収まらない場合、名前を複製して(.trigger-name-track の
+        // gapぶん間隔をあけ)0 → -(1件分の幅+gap) へ linear infinite でスライドさせ、
+        // 継ぎ目のない一方向の無限ループ表示にする(視聴者は配信オーバーレイを
+        // 手動スクロールできないため)。
+        const TRIGGER_NAME_MARQUEE_GAP = 56; // .trigger-name-track の gap と合わせる
+        const TRIGGER_NAME_MARQUEE_SPEED = 60; // px/秒
+
         function applyNameMarquee(cardEl) {
             const wrap = cardEl.querySelector('.trigger-name');
-            const badge = cardEl.querySelector('.trigger-name-badge');
-            if (!wrap || !badge) return;
-            badge.classList.remove('marquee');
-            badge.style.removeProperty('--name-marquee-distance');
-            badge.style.removeProperty('--name-marquee-duration');
-            const overflow = badge.scrollWidth - wrap.clientWidth;
+            const track = cardEl.querySelector('.trigger-name-track');
+            const primary = cardEl.querySelector('.trigger-name-badge:not(.trigger-name-badge-dup)');
+            if (!wrap || !track || !primary) return;
+            track.classList.remove('marquee');
+            track.style.removeProperty('--name-marquee-distance');
+            track.style.removeProperty('--name-marquee-duration');
+            const overflow = primary.scrollWidth - wrap.clientWidth;
             if (overflow > 2) {
-                badge.style.setProperty('--name-marquee-distance', `-${overflow + 4}px`);
-                badge.style.setProperty('--name-marquee-duration', `${Math.max(4, Math.min(14, overflow / 30 + 4))}s`);
-                badge.classList.add('marquee');
+                const distance = primary.offsetWidth + TRIGGER_NAME_MARQUEE_GAP;
+                track.style.setProperty('--name-marquee-distance', `-${distance}px`);
+                track.style.setProperty('--name-marquee-duration', `${Math.max(3, distance / TRIGGER_NAME_MARQUEE_SPEED)}s`);
+                track.classList.add('marquee');
             }
         }
 
