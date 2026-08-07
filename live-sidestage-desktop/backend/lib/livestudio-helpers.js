@@ -112,6 +112,8 @@ function closeLiveStudioConnection() {
         clearTimeout(rescanTimer);
         rescanTimer = null;
     }
+    pendingCameraOffByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
+    pendingCameraOffByPlaybackId.clear();
     clearPendingSockets();
     if (activeSocket) {
         try { activeSocket.close(); } catch { /* noop */ }
@@ -153,7 +155,50 @@ const ACTION_BUILDERS = {
     })
 };
 
-function sendLiveStudioActionForEffectEvent(effectEvent) {
+function emitAction(action) {
+    if (!activeSocket || !connected) return;
+
+    try {
+        activeSocket.emit(channel('action_emit'), JSON.stringify(action));
+    } catch (error) {
+        console.warn('⚠️ LIVE Studio へのアクション送信に失敗しました:', error.message);
+    }
+}
+
+// カメラエフェクトは同じ cameraSource/cameraEffectType/cameraEffectId をもう一度
+// 送るとトグルでOFFになる（LIVE Studio側の仕様）。専用の「OFF」ペイロードは
+// 存在しないため、ON時と全く同じアクションを再送することでOFFにする。
+//
+// 「イベント終了後にオフ」は、そのイベントの動画/音声再生が実際に終わった
+// タイミング（オーバーレイ側からの effects:playback-finished 通知）に合わせて
+// OFFを送る。通知が来ない場合（オーバーレイが開かれていない等）にエフェクトが
+// 永久にONのまま残らないよう、フォールバックのタイムアウトも併せて仕込む。
+const CAMERA_AUTO_OFF_FALLBACK_MS = 2 * 60 * 1000;
+const pendingCameraOffByPlaybackId = new Map();
+
+function fireCameraOff(playbackId) {
+    const pending = pendingCameraOffByPlaybackId.get(playbackId);
+    if (!pending) return;
+
+    pendingCameraOffByPlaybackId.delete(playbackId);
+    clearTimeout(pending.fallbackTimer);
+    emitAction({ ...pending.action, context: `${pending.action.context}-off` });
+}
+
+function registerCameraAutoOff(playbackId, action) {
+    if (!playbackId) return;
+
+    const fallbackTimer = setTimeout(() => fireCameraOff(playbackId), CAMERA_AUTO_OFF_FALLBACK_MS);
+    pendingCameraOffByPlaybackId.set(playbackId, { action, fallbackTimer });
+}
+
+// 再生終了通知（effects:playback-finished）を受けてOFFを送る。socket-handlers.js から呼ばれる。
+function notifyLiveStudioPlaybackFinished(playbackId) {
+    if (!playbackId) return;
+    fireCameraOff(playbackId);
+}
+
+function sendLiveStudioActionForEffectEvent(effectEvent, playbackId) {
     if (!effectEvent?.lsEnabled || !activeSocket || !connected) {
         return;
     }
@@ -164,10 +209,10 @@ function sendLiveStudioActionForEffectEvent(effectEvent) {
     const context = `tikeffect-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const action = { ...build(effectEvent), context };
 
-    try {
-        activeSocket.emit(channel('action_emit'), JSON.stringify(action));
-    } catch (error) {
-        console.warn('⚠️ LIVE Studio へのアクション送信に失敗しました:', error.message);
+    emitAction(action);
+
+    if (effectEvent.lsActionType === 'cameraeffects' && effectEvent.lsCameraAutoOffEnabled) {
+        registerCameraAutoOff(playbackId, action);
     }
 }
 
@@ -176,5 +221,6 @@ module.exports = {
     closeLiveStudioConnection,
     getLiveStudioStatus,
     getLiveStudioSettings,
-    sendLiveStudioActionForEffectEvent
+    sendLiveStudioActionForEffectEvent,
+    notifyLiveStudioPlaybackFinished
 };

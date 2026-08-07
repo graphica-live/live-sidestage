@@ -447,11 +447,17 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             synth.speak(utterance);
         }
 
+        function notifyPlaybackFinished() {
+            if (!activePlaybackId) return;
+            socket.emit('effects:playback-finished', { playbackId: activePlaybackId, eventId: activePlaybackEventId });
+        }
+
         function finishPlayback() {
             if (!isPlaying) {
                 return;
             }
 
+            notifyPlaybackFinished();
             stopMedia();
             isPlaying = false;
 
@@ -473,6 +479,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 playbackQueue = [];
             }
 
+            notifyPlaybackFinished();
             stopMedia();
             isPlaying = false;
             videoEnded = true;

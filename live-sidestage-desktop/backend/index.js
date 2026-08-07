@@ -1321,6 +1321,7 @@ const {
     closeLiveStudioConnection,
     getLiveStudioStatus,
     getLiveStudioSettings,
+    notifyLiveStudioPlaybackFinished,
 } = require('./lib/livestudio-helpers');
 
 function setGlobalStateValue(stateKey, stateValue) {
@@ -2557,6 +2558,7 @@ require('./lib/socket-handlers')({
     buildCustomJarPayload,
     buildPushPullSnapshot,
     getPendingUpdateInfo,
+    notifyLiveStudioPlaybackFinished,
 });
 
 

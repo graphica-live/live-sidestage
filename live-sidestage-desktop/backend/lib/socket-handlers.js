@@ -17,6 +17,7 @@ module.exports = function registerSocketHandlers({
     buildCustomJarPayload,
     buildPushPullSnapshot,
     getPendingUpdateInfo,
+    notifyLiveStudioPlaybackFinished,
 }) {
     io.on('connection', (socket) => {
         const displayDayKey = getDisplayDayKey();
@@ -71,6 +72,11 @@ module.exports = function registerSocketHandlers({
         socket.on('effects:playback-error', (payload) => {
             console.warn('[effects:playback-error]', payload);
             socket.broadcast.emit('effects:playback-error', payload);
+        });
+        // オーバーレイ側の動画/音声再生が終わったタイミングで、
+        // LIVE Studioの「イベント終了後にオフ」待ちのカメラエフェクトを解除する。
+        socket.on('effects:playback-finished', ({ playbackId } = {}) => {
+            notifyLiveStudioPlaybackFinished(playbackId);
         });
         socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
         const pendingUpdateInfo = getPendingUpdateInfo();

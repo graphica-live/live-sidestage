@@ -58,6 +58,7 @@ function createDefaultEffectEvent(slot = 1) {
         lsCameraSource: '',
         lsCameraEffectType: '',
         lsCameraEffectId: '',
+        lsCameraAutoOffEnabled: false,
         lsSoundEffect: '',
         lsVibeId: '',
         vdjEffectEnabled: false,
@@ -172,6 +173,7 @@ function normalizeLiveStudioActionType(value) {
     return LIVESTUDIO_ACTION_TYPES.includes(normalized) ? normalized : 'cameraeffects';
 }
 
+
 function normalizeEffectTriggerRapidFireCancelMs(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed)) return 1500;
@@ -208,6 +210,7 @@ function normalizeEffectEvent(value, index) {
         lsCameraSource: normalizeEffectText(value?.lsCameraSource, 120),
         lsCameraEffectType: normalizeEffectText(value?.lsCameraEffectType, 60),
         lsCameraEffectId: normalizeEffectText(value?.lsCameraEffectId, 60),
+        lsCameraAutoOffEnabled: Boolean(value?.lsCameraAutoOffEnabled),
         lsSoundEffect: normalizeEffectText(value?.lsSoundEffect, 120),
         lsVibeId: normalizeEffectText(value?.lsVibeId, 60),
         vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
