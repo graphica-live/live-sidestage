@@ -111,13 +111,21 @@ module.exports = function createEffectsRuntime({
         io.emit('effects:playback:stop', { screen: effectEvent.screen, timestamp: getTimestamp() });
     }
 
+    // オーバーレイ側(effect-overlay-html.js)は payload.playbackId をそのまま使わず、
+    // playbackCount回分キューに積む際に `${playbackId}-${index}` へ振り直す。
+    // 「イベント終了後にオフ」はそのオーバーレイ側IDと突き合わせて判定するため、
+    // 1回目の再生に対応する `-0` を付けた同じ形に揃える必要がある。
+    function overlayPlaybackId(payload) {
+        return `${payload.playbackId}-0`;
+    }
+
     function emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride) {
         if (getEffectsGloballyPaused()) return;
         maybeForceInterruptScreen(effectEvent);
         const payload = createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride);
         io.emit('effects:playback', payload);
         sendMidiForEffectEvent(effectEvent);
-        sendLiveStudioActionForEffectEvent(effectEvent, payload.playbackId);
+        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
         sendVdjEffectForEvent(effectEvent);
     }
 
@@ -254,7 +262,7 @@ module.exports = function createEffectsRuntime({
                         maybeForceInterruptScreen(effectEvent);
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
-                        sendLiveStudioActionForEffectEvent(effectEvent, payload.playbackId);
+                        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
                         sendVdjEffectForEvent(effectEvent);
                         anyPlaybackEmitted = true;
                     }
