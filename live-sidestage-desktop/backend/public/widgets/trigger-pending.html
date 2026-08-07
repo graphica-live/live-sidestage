@@ -92,6 +92,13 @@
             border: 2px solid rgba(255, 255, 255, 0.18);
             box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
             transition: width 220ms ease, height 220ms ease, opacity 200ms ease;
+        }
+
+        /* 登場アニメーションは生成直後だけ付与する一時クラス。
+           .queue-chip 側の常設プロパティにすると、既存チップを appendChild で
+           並べ替えるたびに「一度DOM接続が切れて再接続された」扱いとなり、
+           アニメーションが再発火して全体が点滅して見える。 */
+        .queue-chip.chip-enter {
             animation: pendingQueueIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
@@ -219,7 +226,7 @@
 
         function makeQueueChip(item, index) {
             const el = document.createElement('div');
-            el.className = 'queue-chip';
+            el.className = 'queue-chip chip-enter';
             el.dataset.key = chipKey(item);
             el.innerHTML = `<span class="order-badge">${index + 1}</span>${chipInnerHtml(item)}`;
             return el;
@@ -239,6 +246,11 @@
                 let el = existingByKey.get(key);
                 if (el) {
                     existingByKey.delete(key);
+                    // 連射で消化が速いと 220ms の登場アニメーションが終わる前に次の
+                    // 並べ替えが来てしまい、animationend 待ちでは chip-enter を
+                    // 外しきれない（アニメーションが完了せず何度も再発火し続ける）。
+                    // 既存チップとして再利用すると分かった時点で即座に外す。
+                    el.classList.remove('chip-enter');
                     const badge = el.querySelector('.order-badge');
                     const badgeText = String(index + 1);
                     if (badge && badge.textContent !== badgeText) {
@@ -260,11 +272,11 @@
             if (overflowCount > 0) {
                 if (!overflowEl) {
                     overflowEl = document.createElement('div');
-                    overflowEl.className = 'queue-chip overflow-chip';
-                    queueStripEl.appendChild(overflowEl);
+                    overflowEl.className = 'queue-chip overflow-chip chip-enter';
                 } else {
-                    queueStripEl.appendChild(overflowEl);
+                    overflowEl.classList.remove('chip-enter');
                 }
+                queueStripEl.appendChild(overflowEl);
                 overflowEl.textContent = `+${overflowCount}`;
             } else if (overflowEl) {
                 overflowEl.remove();
