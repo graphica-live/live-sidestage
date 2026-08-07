@@ -114,9 +114,10 @@ module.exports = function createEffectsRuntime({
     function emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride) {
         if (getEffectsGloballyPaused()) return;
         maybeForceInterruptScreen(effectEvent);
-        io.emit('effects:playback', createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride));
+        const payload = createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride);
+        io.emit('effects:playback', payload);
         sendMidiForEffectEvent(effectEvent);
-        sendLiveStudioActionForEffectEvent(effectEvent);
+        sendLiveStudioActionForEffectEvent(effectEvent, payload.playbackId);
         sendVdjEffectForEvent(effectEvent);
     }
 
@@ -253,7 +254,7 @@ module.exports = function createEffectsRuntime({
                         maybeForceInterruptScreen(effectEvent);
                         io.emit('effects:playback', payload);
                         sendMidiForEffectEvent(effectEvent);
-                        sendLiveStudioActionForEffectEvent(effectEvent);
+                        sendLiveStudioActionForEffectEvent(effectEvent, payload.playbackId);
                         sendVdjEffectForEvent(effectEvent);
                         anyPlaybackEmitted = true;
                     }

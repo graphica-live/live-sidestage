@@ -85,6 +85,7 @@ function syncLiveStudioActionTypeRows() {
     const type = eventModalLsActionType.value;
     eventModalLsSceneRow.hidden = type !== 'scene';
     eventModalLsCameraRow.hidden = type !== 'cameraeffects';
+    eventModalLsCameraAutoOffRow.hidden = type !== 'cameraeffects';
     eventModalLsSoundRow.hidden = type !== 'soundeffect';
     eventModalLsVibeRow.hidden = type !== 'vibe';
 }
@@ -114,6 +115,7 @@ function resetEventModal() {
     syncEventModalMidiFields();
     eventModalLsEnabled.checked = false;
     eventModalLsActionType.value = 'cameraeffects';
+    eventModalLsCameraAutoOffEnabled.checked = false;
     populateLiveStudioSelects({});
     syncLiveStudioActionTypeRows();
     eventModalVdjEnabled.checked = false;
@@ -155,6 +157,7 @@ function openEventModalForEdit(eventRecord) {
     syncEventModalMidiFields();
     eventModalLsEnabled.checked = Boolean(eventRecord.lsEnabled);
     eventModalLsActionType.value = eventRecord.lsActionType || 'cameraeffects';
+    eventModalLsCameraAutoOffEnabled.checked = Boolean(eventRecord.lsCameraAutoOffEnabled);
     populateLiveStudioSelects({
         lsScene: eventRecord.lsScene,
         lsCameraSource: eventRecord.lsCameraSource,
@@ -195,6 +198,7 @@ function collectEventFromModal() {
         lsCameraSource: eventModalLsCameraSource.value || '',
         lsCameraEffectType: eventModalLsCameraType.value || '',
         lsCameraEffectId: eventModalLsCameraEffect.value || '',
+        lsCameraAutoOffEnabled: eventModalLsCameraAutoOffEnabled.checked,
         lsSoundEffect: eventModalLsSoundEffect.value || '',
         lsVibeId: eventModalLsVibe.value || '',
         vdjEffectEnabled: eventModalVdjEnabled.checked,
