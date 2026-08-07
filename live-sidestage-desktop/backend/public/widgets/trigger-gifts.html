@@ -151,18 +151,19 @@
             min-width: 0;
             display: flex;
             align-items: flex-end;
-            justify-content: center;
+            justify-content: safe center;
             padding: 0 12px 16px;
             background: linear-gradient(to top, rgba(15, 23, 42, 0.78) 0%, rgba(15, 23, 42, 0) 100%);
             font-family: var(--widget-font-family);
-            overflow-y: auto;
+            overflow-x: auto;
+            overflow-y: hidden;
             overscroll-behavior: contain;
             scrollbar-width: thin;
             scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
         }
 
         .trigger-name::-webkit-scrollbar {
-            width: 5px;
+            height: 5px;
         }
 
         .trigger-name::-webkit-scrollbar-thumb {
@@ -177,7 +178,7 @@
         .trigger-name-badge {
             display: inline-block;
             min-width: 0;
-            max-width: 100%;
+            flex-shrink: 0;
             text-align: center;
             font-size: var(--name-font-size);
             font-weight: 800;
@@ -185,8 +186,7 @@
             color: var(--name-color);
             -webkit-text-stroke: var(--stroke-width) var(--stroke);
             paint-order: stroke fill;
-            overflow-wrap: break-word;
-            white-space: pre-line;
+            white-space: nowrap;
             text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
         }
 
