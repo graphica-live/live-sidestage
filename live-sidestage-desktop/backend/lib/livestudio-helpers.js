@@ -114,6 +114,8 @@ function closeLiveStudioConnection() {
     }
     pendingCameraOffByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
     pendingCameraOffByPlaybackId.clear();
+    pendingQueuedActionByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
+    pendingQueuedActionByPlaybackId.clear();
     clearPendingSockets();
     if (activeSocket) {
         try { activeSocket.close(); } catch { /* noop */ }
@@ -198,6 +200,35 @@ function notifyLiveStudioPlaybackFinished(playbackId) {
     fireCameraOff(playbackId);
 }
 
+// イベントが連続発火すると、対象SCREENのオーバーレイ再生キューには複数件が積まれ
+// 順番に再生される。ここで即座にTLSアクションを送ると、まだ再生中の先行イベントを
+// 追い越して後続イベントのTLS操作（シーン切替・カメラエフェクト等）が先に届いてしまう。
+// そのためTLSアクションは即時送信せずキューに積んでおき、オーバーレイ側からの
+// effects:playback-started（そのキューアイテムの再生順が実際に来たタイミング）を
+// 受けて初めて送信する。オーバーレイが開かれていない等で通知が来ないケースに備え、
+// OFF側（CAMERA_AUTO_OFF_FALLBACK_MS）と同様のフォールバックタイムアウトも仕込む。
+const QUEUED_ACTION_FALLBACK_MS = 2 * 60 * 1000;
+const pendingQueuedActionByPlaybackId = new Map();
+
+function firePendingQueuedAction(playbackId) {
+    const pending = pendingQueuedActionByPlaybackId.get(playbackId);
+    if (!pending) return;
+
+    pendingQueuedActionByPlaybackId.delete(playbackId);
+    clearTimeout(pending.fallbackTimer);
+    emitAction(pending.action);
+
+    if (pending.autoOff) {
+        registerCameraAutoOff(playbackId, pending.action);
+    }
+}
+
+// 再生開始通知（effects:playback-started）を受けてONを送る。socket-handlers.js から呼ばれる。
+function notifyLiveStudioPlaybackStarted(playbackId) {
+    if (!playbackId) return;
+    firePendingQueuedAction(playbackId);
+}
+
 function sendLiveStudioActionForEffectEvent(effectEvent, playbackId) {
     if (!effectEvent?.lsEnabled || !activeSocket || !connected) {
         return;
@@ -208,12 +239,10 @@ function sendLiveStudioActionForEffectEvent(effectEvent, playbackId) {
 
     const context = `tikeffect-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const action = { ...build(effectEvent), context };
+    const autoOff = effectEvent.lsActionType === 'cameraeffects' && effectEvent.lsCameraAutoOffEnabled;
 
-    emitAction(action);
-
-    if (effectEvent.lsActionType === 'cameraeffects' && effectEvent.lsCameraAutoOffEnabled) {
-        registerCameraAutoOff(playbackId, action);
-    }
+    const fallbackTimer = setTimeout(() => firePendingQueuedAction(playbackId), QUEUED_ACTION_FALLBACK_MS);
+    pendingQueuedActionByPlaybackId.set(playbackId, { action, autoOff, fallbackTimer });
 }
 
 module.exports = {
@@ -222,5 +251,6 @@ module.exports = {
     getLiveStudioStatus,
     getLiveStudioSettings,
     sendLiveStudioActionForEffectEvent,
-    notifyLiveStudioPlaybackFinished
+    notifyLiveStudioPlaybackFinished,
+    notifyLiveStudioPlaybackStarted
 };
