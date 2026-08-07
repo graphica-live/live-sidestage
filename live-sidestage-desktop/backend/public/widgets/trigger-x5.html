@@ -266,6 +266,22 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
+        // トリガー5倍の各種効果音（発動時／5倍成功時で共通）はこのオーバーレイ自身が再生する。
+        // プレビューiframeはウィジェット一覧ページ(Electron本体)に常駐するため、
+        // デモ再生で実配信オーバーレイと同じ効果音を鳴らしてはいけない。
+        function playConfiguredSound(sound) {
+            if (previewMode) return;
+            if (!sound?.enabled || !sound?.url) return;
+            try {
+                const audio = new Audio(sound.url);
+                const volume = Number(sound.volume);
+                audio.volume = Math.max(0, Math.min(100, Number.isFinite(volume) ? volume : 100)) / 100;
+                audio.play().catch(() => {});
+            } catch {
+                // Audio再生に失敗しても演出は継続する
+            }
+        }
+
         function showWin(data) {
             const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
             const image = String(data?.image || '');
@@ -287,6 +303,8 @@
             stageEl.appendChild(card);
             card.addEventListener('animationend', () => card.remove());
             window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
+
+            playConfiguredSound(data?.sound);
         }
 
         socket.on('widgets:trigger-x5:won', showWin);
@@ -423,6 +441,9 @@
             if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
             if (activePopTimeoutHandle) window.clearTimeout(activePopTimeoutHandle);
 
+            // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
+            playConfiguredSound(data.sound);
+
             if (data.extended && activeCardEl) {
                 playZapEffect();
                 const badge = activeCardEl.querySelector('.countdown-badge');
@@ -431,7 +452,6 @@
             } else {
                 if (activeCardEl) activeCardEl.remove();
                 activeCardEl = createActiveCard(remainingSeconds);
-                // 発動音は指定オーバーレイ(screen)へサーバーから直接送られるため、ここでは再生しない
                 // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
                 activePopTimeoutHandle = window.setTimeout(() => {
                     activePopTimeoutHandle = null;
