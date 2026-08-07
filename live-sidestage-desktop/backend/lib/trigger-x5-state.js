@@ -109,14 +109,14 @@ module.exports = function createTriggerX5State({
     }
 
     // 発動条件のギフトを受け取るたびに呼ぶ。設定と一致すればウィンドウを(再)開始する。
-    function maybeActivateTriggerX5Window(giftName) {
+    function maybeActivateTriggerX5Window(giftEvent) {
         const settings = getWidgetTriggerX5Settings();
 
         if (!settings.enabled || !settings.giftName) {
             return;
         }
 
-        if (normalizeEffectText(giftName, 80).toLowerCase() !== settings.giftName) {
+        if (normalizeEffectText(giftEvent?.giftName, 80).toLowerCase() !== settings.giftName) {
             return;
         }
 
@@ -134,6 +134,8 @@ module.exports = function createTriggerX5State({
             extended,
             durationSeconds: settings.durationSeconds,
             remainingSeconds: Math.max(1, Math.ceil((activeUntil - Date.now()) / 1000)),
+            nickname: giftEvent?.nickname || giftEvent?.uniqueId || 'リスナー',
+            image: giftEvent?.image || '',
             timestamp: getTimestamp(),
             sound: buildTriggerX5SoundPayload({
                 enabled: settings.soundEnabled,

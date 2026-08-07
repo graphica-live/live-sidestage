@@ -282,7 +282,7 @@ module.exports = function createEffectsRuntime({
 
     function tryRunEffectTriggersForGift(giftEvent) {
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
-        maybeActivateTriggerX5Window(giftEvent?.giftName);
+        maybeActivateTriggerX5Window(giftEvent);
         speculativelyPreloadUserVideos(userId);
         return tryRunEffectTriggers({
             type: 'gift',
@@ -299,7 +299,7 @@ module.exports = function createEffectsRuntime({
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
 
         if (giftComboState?.isFirstTick) {
-            maybeActivateTriggerX5Window(giftEvent?.giftName);
+            maybeActivateTriggerX5Window(giftEvent);
             speculativelyPreloadUserVideos(userId);
         }
 

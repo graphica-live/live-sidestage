@@ -3012,7 +3012,9 @@ function ensureTikTokConnection() {
             tryRunEffectTriggersForGiftCombo({
                 giftName: data.giftName || null,
                 totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
-                uniqueId: data.uniqueId
+                uniqueId: data.uniqueId,
+                nickname: data.nickname || data.uniqueId || '',
+                image: data.profilePictureUrl || ''
             }, { isFirstTick, deltaRepeat });
             activeComboTriggerMap.set(comboKey, true);
 

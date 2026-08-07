@@ -177,6 +177,34 @@
             height: 128px;
         }
 
+        .active-card .avatar-mini {
+            position: absolute;
+            left: -16px;
+            top: -16px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 3px solid #fff566;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+
+        .active-card .avatar-mini img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .active-card .avatar-mini.is-empty::after {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, #64748b 0%, #334155 100%);
+        }
+
         /* 発動中インジケーターの心音風エフェクト。トリガー一覧(イベントトリガー)の
            heartbeat演出(triggerGiftsHeartbeat: scale 1.18/1.12, 1.6s)より、
            拡大率・発光・テンポの全てを強めて「5倍タイム」の高揚感を出す。 */
@@ -329,12 +357,16 @@
             }
         }
 
+        function buildAvatarHtml(image) {
+            return image
+                ? `<img src="/api/proxy/avatar?url=${encodeURIComponent(image)}" alt="" onerror="this.parentElement.classList.add('is-empty');this.remove();">`
+                : '';
+        }
+
         function showWin(data) {
             const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
             const image = String(data?.image || '');
-            const avatarHtml = image
-                ? `<img src="/api/proxy/avatar?url=${encodeURIComponent(image)}" alt="" onerror="this.parentElement.classList.add('is-empty');this.remove();">`
-                : '';
+            const avatarHtml = buildAvatarHtml(image);
 
             const card = document.createElement('div');
             card.className = 'win-card';
@@ -375,17 +407,25 @@
             return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
 
-        function createActiveCard(durationSeconds) {
+        function createActiveCard(durationSeconds, avatarHtml) {
             const card = document.createElement('div');
             card.className = 'active-card';
             card.innerHTML = `
                 <div class="glove-wrap">
+                    <div class="avatar-mini${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
                     <div class="glove">${GLOVE_IMG}</div>
                     <div class="countdown-badge">${formatCountdown(durationSeconds)}</div>
                 </div>
             `;
             stageEl.appendChild(card);
             return card;
+        }
+
+        function updateActiveCardAvatar(card, avatarHtml) {
+            const avatarEl = card?.querySelector('.avatar-mini');
+            if (!avatarEl) return;
+            avatarEl.classList.toggle('is-empty', !avatarHtml);
+            avatarEl.innerHTML = avatarHtml;
         }
 
         function removeActiveCard() {
@@ -491,14 +531,17 @@
             // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
             playConfiguredSound(data.sound);
 
+            const avatarHtml = buildAvatarHtml(String(data?.image || ''));
+
             if (data.extended && activeCardEl) {
                 playZapEffect();
                 const badge = activeCardEl.querySelector('.countdown-badge');
                 if (badge) badge.textContent = formatCountdown(remainingSeconds);
+                updateActiveCardAvatar(activeCardEl, avatarHtml);
                 activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
             } else {
                 if (activeCardEl) activeCardEl.remove();
-                activeCardEl = createActiveCard(remainingSeconds);
+                activeCardEl = createActiveCard(remainingSeconds, avatarHtml);
                 // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
                 activePopTimeoutHandle = window.setTimeout(() => {
                     activePopTimeoutHandle = null;
