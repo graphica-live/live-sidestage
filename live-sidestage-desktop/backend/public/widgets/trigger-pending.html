@@ -504,6 +504,13 @@
             if (!payload || Number(payload.screen) !== screenSlot) return;
 
             const item = enrichPayload(payload);
+
+            // 動画・音声を持たないイベント（「待機イベント削除」専用イベントなど、副作用だけが
+            // 目的のアクション）は effect-overlay-html.js 側では即座に消化されて表示されないため、
+            // ここでもキューに乗せない。乗せてしまうと既定時間（6秒）分、画像の無い
+            // 背景だけのチップが保留に居座って見える。
+            if (!item.videoUrl && !item.audioUrl) return;
+
             const playbackCount = Math.max(1, Number(payload.playbackCount || 1));
 
             for (let index = 0; index < playbackCount; index += 1) {
