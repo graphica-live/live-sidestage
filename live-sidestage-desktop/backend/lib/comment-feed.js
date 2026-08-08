@@ -1015,7 +1015,7 @@ function pushTikTokComment(commentEvent) {
     const activeComments = getRecentTikTokComments();
     recentTikTokComments = [commentEvent, ...activeComments].slice(0, LIVE_COMMENT_HISTORY_LIMIT);
     updateObservedCommentAssetCaches(commentEvent);
-    emitAdminCommentsUpdate();
+    emitAdminCommentAppended(commentEvent);
     emitCommentReadAloud(commentEvent);
 }
 
