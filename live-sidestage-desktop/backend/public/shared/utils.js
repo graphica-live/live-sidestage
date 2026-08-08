@@ -16,6 +16,14 @@ function escapeHtml(value) {
 }
 
 /**
+ * TikTok のユーザープロフィールURLを組み立てる。uniqueId が無い場合は null を返す。
+ */
+function buildTikTokProfileUrl(uniqueId) {
+    const trimmed = String(uniqueId ?? '').trim();
+    return trimmed ? `https://www.tiktok.com/@${encodeURIComponent(trimmed)}` : null;
+}
+
+/**
  * テキストカラー設定を正規化する。
  * - 配列の場合: 空でない文字列要素のみ残して返す（グラデーション指定）
  * - 文字列の場合: trim して返す（単色指定）

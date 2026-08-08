@@ -372,6 +372,18 @@
             <p class="popout-hint">コメント欄・ギフト履歴をそれぞれ独立したウィンドウで開けます。ウィンドウの位置とサイズは次回起動時も記憶されます。</p>
 
             <div class="popout-row">
+                <span class="popout-row-label">コメント＆ギフト</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-gifts-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <button type="button" class="ghost-button" id="open-comments-gifts-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+            <p class="popout-hint">1つのウィンドウを左右に分割し、左にコメント欄・右にギフト履歴を表示します。表示設定はそれぞれの「表示設定」から変更したものがそのまま反映されます。</p>
+
+            <div class="popout-row">
                 <span class="popout-row-label">コメント欄</span>
                 <div class="quick-actions">
                     <label class="check-label">
@@ -513,11 +525,13 @@
         (function () {
             const openButtons = {
                 comments: document.getElementById('open-comments-popout-btn'),
-                gifts: document.getElementById('open-gifts-popout-btn')
+                gifts: document.getElementById('open-gifts-popout-btn'),
+                'comments-gifts': document.getElementById('open-comments-gifts-popout-btn')
             };
             const autoOpenCheckboxes = {
                 comments: document.getElementById('comments-auto-open-checkbox'),
-                gifts: document.getElementById('gifts-auto-open-checkbox')
+                gifts: document.getElementById('gifts-auto-open-checkbox'),
+                'comments-gifts': document.getElementById('comments-gifts-auto-open-checkbox')
             };
             const statusEl = document.getElementById('popout-windows-status');
 

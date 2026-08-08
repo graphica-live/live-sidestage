@@ -222,6 +222,12 @@
             align-items: center;
             gap: 10px;
             min-width: 0;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        a.user-cell:hover {
+            opacity: 0.8;
         }
 
         .user-avatar {
@@ -298,6 +304,10 @@
             font-size: 10px;
         }
 
+        .popout-gift-user-link {
+            display: contents;
+        }
+
         .popout-gift-user-name {
             flex: 0 1 auto;
             min-width: 0;
@@ -307,6 +317,13 @@
             white-space: nowrap;
             font-size: 13px;
             font-weight: 600;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .popout-gift-user-link:hover .popout-gift-user-name,
+        .popout-gift-user-link:hover .popout-gift-avatar {
+            opacity: 0.8;
         }
 
         .popout-gift-name {
@@ -894,17 +911,22 @@
                 const userAvatarMarkup = gift.image
                     ? `<img class="user-avatar" src="${escapeHtml(gift.image)}" alt="">`
                     : '<div class="user-avatar is-empty">?</div>';
+                const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+                const userCellTag = profileUrl ? 'a' : 'div';
+                const userCellAttrs = profileUrl
+                    ? ` href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer"`
+                    : '';
 
                 row.innerHTML = `
                     <td>${escapeHtml(formatTimestamp(gift.timestamp))}</td>
                     <td>
-                        <div class="user-cell">
+                        <${userCellTag} class="user-cell"${userCellAttrs}>
                             ${userAvatarMarkup}
                             <div class="user-meta">
                                 <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
                                 <span>@${escapeHtml(gift.uniqueId || '-')}</span>
                             </div>
-                        </div>
+                        </${userCellTag}>
                     </td>
                     <td>
                         <div class="gift-cell">
@@ -945,10 +967,16 @@
                 const giftImageMarkup = gift.giftImage
                     ? `<img class="popout-gift-image" src="${escapeHtml(gift.giftImage)}" alt="">`
                     : '<div class="popout-gift-image is-empty">No Image</div>';
-
-                item.innerHTML = `
+                const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+                const userLinkMarkup = `
                     ${avatarMarkup}
                     <span class="popout-gift-user-name">${escapeHtml(gift.nickname || gift.uniqueId || '-')}</span>
+                `;
+
+                item.innerHTML = `
+                    ${profileUrl
+                        ? `<a class="popout-gift-user-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${userLinkMarkup}</a>`
+                        : userLinkMarkup}
                     <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
                     ${giftImageMarkup}
                     <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>

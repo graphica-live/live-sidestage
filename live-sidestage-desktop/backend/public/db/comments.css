@@ -154,6 +154,15 @@
             grid-column: 1 / span 2;
         }
 
+        a.comment-card-header.comment-profile-link {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        a.comment-card-header.comment-profile-link:hover {
+            opacity: 0.8;
+        }
+
         .comment-avatar {
             width: 28px;
             height: 28px;

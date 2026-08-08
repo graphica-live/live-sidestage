@@ -1442,14 +1442,20 @@
         function createCommentCardElement(item) {
             const card = document.createElement('article');
             card.className = `comment-card${item.system ? ' is-system' : ''}`;
-            card.innerHTML = `
-                <div class="comment-card-header">
-                    <img class="comment-avatar" src="${escapeHtml(item.image || '')}" alt="">
-                    <div class="comment-author">
-                        <strong>${escapeHtml(item.nickname || item.uniqueId || 'system')}</strong>
-                        <span>${item.uniqueId ? `@${escapeHtml(item.uniqueId)}` : 'system'}</span>
-                    </div>
+            const headerInner = `
+                <img class="comment-avatar" src="${escapeHtml(item.image || '')}" alt="">
+                <div class="comment-author">
+                    <strong>${escapeHtml(item.nickname || item.uniqueId || 'system')}</strong>
+                    <span>${item.uniqueId ? `@${escapeHtml(item.uniqueId)}` : 'system'}</span>
                 </div>
+            `;
+            const profileUrl = buildTikTokProfileUrl(item.uniqueId);
+            const headerMarkup = profileUrl
+                ? `<a class="comment-card-header comment-profile-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${headerInner}</a>`
+                : `<div class="comment-card-header">${headerInner}</div>`;
+
+            card.innerHTML = `
+                ${headerMarkup}
                 <div class="comment-kind">${escapeHtml(item.typeLabel || item.type || 'コメント')}</div>
                     <div class="comment-body">${renderCommentBody(item.comment || '', item.emotes)}</div>
                 <div class="comment-time">${escapeHtml(formatTimestamp(item.timestamp))}</div>

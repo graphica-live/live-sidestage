@@ -131,8 +131,8 @@ let mainWindow = null;
 let tray = null;
 let loginWindow = null;
 let commentReadAloudWindow = null;
-const popoutWindows = { comments: null, gifts: null };
-const popoutBoundsSaveTimers = { comments: null, gifts: null };
+const popoutWindows = { comments: null, gifts: null, 'comments-gifts': null };
+const popoutBoundsSaveTimers = { comments: null, gifts: null, 'comments-gifts': null };
 let readAloudProcess = null;
 let readAloudQueue = [];
 let autoUpdateCheckTimer = null;
@@ -174,7 +174,8 @@ const MAIN_WINDOW_BOUNDS = {
 
 const POPOUT_WINDOW_CONFIG = {
     comments: { path: '/comments', title: 'TikEffect - コメント欄', width: 480, height: 760 },
-    gifts: { path: '/gifts', title: 'TikEffect - ギフト履歴', width: 480, height: 760 }
+    gifts: { path: '/gifts', title: 'TikEffect - ギフト履歴', width: 480, height: 760 },
+    'comments-gifts': { path: '/comments-gifts', title: 'TikEffect - コメント＆ギフト', width: 900, height: 760 }
 };
 
 function popoutBoundsStateKey(kind) {
@@ -268,6 +269,15 @@ function ensurePopoutWindow(kind) {
 
     popoutWindow.setMenuBarVisibility(false);
     popoutWindow.loadURL(`http://localhost:${PORT}${config.path}?popout=1`);
+
+    // 外部リンク（TikTokプロフィールなど）はシステムブラウザで開く
+    popoutWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (!url.startsWith(`http://localhost:${PORT}`)) {
+            shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        return { action: 'allow' };
+    });
 
     popoutWindow.on('resize', () => schedulePopoutBoundsSave(kind, popoutWindow));
     popoutWindow.on('move', () => schedulePopoutBoundsSave(kind, popoutWindow));
