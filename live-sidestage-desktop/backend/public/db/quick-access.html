@@ -378,7 +378,6 @@
                         <input type="checkbox" id="comments-auto-open-checkbox">
                         起動時に自動的に開く
                     </label>
-                    <button type="button" class="ghost-button" id="comments-sort-toggle-button">並び順: 新しい順</button>
                     <button type="button" class="ghost-button" id="comments-popout-settings-button">表示設定</button>
                     <button type="button" class="ghost-button" id="open-comments-popout-btn">別ウィンドウで開く</button>
                 </div>
@@ -402,6 +401,13 @@
     <div class="modal-overlay" id="comments-popout-settings-overlay" hidden>
         <div class="modal-card">
             <h3>コメント欄（別ウィンドウ）の表示設定</h3>
+            <div class="modal-field">
+                <label for="popout-sort-order-select">並び順</label>
+                <select id="popout-sort-order-select" aria-label="並び順">
+                    <option value="desc">新しい順</option>
+                    <option value="asc">古い順</option>
+                </select>
+            </div>
             <div class="modal-field">
                 <label for="popout-font-select">フォント</label>
                 <select id="popout-font-select" aria-label="フォント"></select>
@@ -560,77 +566,36 @@
 
     <script>
         (function () {
-            const sortToggleButton = document.getElementById('comments-sort-toggle-button');
-            let currentCommentSettings = null;
-
-            function syncButtonLabel() {
-                if (!currentCommentSettings) return;
-                sortToggleButton.textContent = currentCommentSettings.sortOrder === 'asc'
-                    ? '並び順: 古い順'
-                    : '並び順: 新しい順';
-            }
-
-            async function loadCommentSettings() {
-                try {
-                    const res = await fetch('/api/comments/config');
-                    const data = await res.json();
-                    currentCommentSettings = data.settings || null;
-                    syncButtonLabel();
-                } catch {
-                    sortToggleButton.disabled = true;
-                }
-            }
-
-            sortToggleButton.addEventListener('click', async () => {
-                if (!currentCommentSettings) return;
-                sortToggleButton.disabled = true;
-                try {
-                    const nextSettings = {
-                        ...currentCommentSettings,
-                        sortOrder: currentCommentSettings.sortOrder === 'asc' ? 'desc' : 'asc'
-                    };
-                    const res = await fetch('/api/comments/config', {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(nextSettings)
-                    });
-                    if (!res.ok) throw new Error('サーバーエラー');
-                    const data = await res.json();
-                    currentCommentSettings = data.settings || nextSettings;
-                    syncButtonLabel();
-                } catch {
-                    // 失敗時は次回読み込みで実際の状態に再同期される
-                } finally {
-                    sortToggleButton.disabled = false;
-                }
-            });
-
-            socket.on('admin_comments_updated', (payload) => {
-                if (payload && payload.settings) {
-                    currentCommentSettings = payload.settings;
-                    syncButtonLabel();
-                }
-            });
-
-            loadCommentSettings();
-        }());
-    </script>
-
-    <script>
-        (function () {
             const settingsButton = document.getElementById('comments-popout-settings-button');
             const overlay = document.getElementById('comments-popout-settings-overlay');
             const closeButton = document.getElementById('comments-popout-settings-close');
+            const sortOrderSelect = document.getElementById('popout-sort-order-select');
             const fontSelect = document.getElementById('popout-font-select');
             const fontSizeInput = document.getElementById('popout-font-size-input');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
 
-            let saveTimer = null;
+            let currentCommentSettings = null;
+            let styleSaveTimer = null;
+
+            function applySortOrder() {
+                if (!currentCommentSettings) return;
+                const nextSettings = { ...currentCommentSettings, sortOrder: sortOrderSelect.value };
+                fetch('/api/comments/config', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(nextSettings)
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        currentCommentSettings = data.settings || nextSettings;
+                    })
+                    .catch(() => {});
+            }
 
             function applyStyle() {
-                clearTimeout(saveTimer);
-                saveTimer = setTimeout(() => {
+                clearTimeout(styleSaveTimer);
+                styleSaveTimer = setTimeout(() => {
                     fetch('/api/settings/popout-comment-style', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -643,19 +608,19 @@
             }
 
             function openModal() {
-                fetch('/api/settings/popout-comment-style')
-                    .then((res) => res.json())
-                    .then((data) => {
-                        fontSelect.innerHTML = buildWidgetFontOptionsMarkup(data.fontKey || 'default');
-                        fontSizeInput.value = data.fontSize || 13;
-                    })
-                    .catch(() => {
-                        fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
-                        fontSizeInput.value = 13;
-                    })
-                    .finally(() => {
-                        overlay.hidden = false;
-                    });
+                Promise.all([
+                    fetch('/api/comments/config').then((res) => res.json()).catch(() => null),
+                    fetch('/api/settings/popout-comment-style').then((res) => res.json()).catch(() => null)
+                ]).then(([commentsData, styleData]) => {
+                    currentCommentSettings = commentsData?.settings || null;
+                    sortOrderSelect.value = currentCommentSettings?.sortOrder === 'asc' ? 'asc' : 'desc';
+
+                    const fontKey = styleData?.fontKey || 'default';
+                    fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
+                    fontSizeInput.value = styleData?.fontSize || 13;
+                }).finally(() => {
+                    overlay.hidden = false;
+                });
             }
 
             function closeModal() {
@@ -668,8 +633,15 @@
                 if (event.target === overlay) closeModal();
             });
 
+            sortOrderSelect.addEventListener('change', applySortOrder);
             fontSelect.addEventListener('change', applyStyle);
             fontSizeInput.addEventListener('input', applyStyle);
+
+            socket.on('admin_comments_updated', (payload) => {
+                if (payload && payload.settings) {
+                    currentCommentSettings = payload.settings;
+                }
+            });
         }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>

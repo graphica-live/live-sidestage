@@ -107,6 +107,17 @@
             font-family: var(--popout-comment-font-family) !important;
             font-size: var(--popout-comment-font-size) !important;
         }
+
+        /* 透明カード上でも背景を問わず読めるよう、名前・本文に強めのコントラストと縁取りを付ける */
+        html.is-popout .comment-author strong {
+            color: #ffffff !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        html.is-popout .comment-body-text {
+            color: #f1f5f9 !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
     </style>
 </head>
 <body>
