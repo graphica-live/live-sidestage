@@ -28,6 +28,63 @@ module.exports = function createEffectsRuntime({
     function getDisabledCategoryIds() {
         return new Set(getEffectCategories().filter((category) => category.enabled === false).map((category) => category.id));
     }
+
+    // トリガー5倍の抽選結果・当選演出発火済みフラグ（コンボ×トリガー単位）。コンボは
+    // 1回の投げで何度もtickが来るため、tickごとに再抽選すると設定した勝率より実質的な
+    // 当選率が跳ね上がり（例: 30%設定でも10tick投げれば累積で約97%当たる）、さらに
+    // 当選演出（emitTriggerX5Win）もtickの数だけ重複発火してしまう。同一コンボ・同一
+    // トリガーでは最初のtickで出た結果を使い回し、当選演出も1回だけに絞る。
+    const triggerX5RollState = new Map();
+
+    function getTriggerX5RollState(trigger, giftComboState) {
+        if (!giftComboState?.comboKey) {
+            return null;
+        }
+
+        const cacheKey = `${giftComboState.comboKey}::${trigger.id}`;
+        let state = triggerX5RollState.get(cacheKey);
+        if (!state) {
+            state = { won: null, emitted: false };
+            triggerX5RollState.set(cacheKey, state);
+        }
+        return state;
+    }
+
+    function resolveTriggerX5Win(trigger, giftComboState) {
+        const state = getTriggerX5RollState(trigger, giftComboState);
+        if (!state) {
+            return rollTriggerX5();
+        }
+        if (state.won === null) {
+            state.won = rollTriggerX5();
+        }
+        return state.won;
+    }
+
+    // 非コンボ（stateなし）は呼び出し自体が1回だけなので常に発火してよい。
+    function shouldEmitTriggerX5Win(trigger, giftComboState) {
+        const state = getTriggerX5RollState(trigger, giftComboState);
+        if (!state) {
+            return true;
+        }
+        if (state.emitted) {
+            return false;
+        }
+        state.emitted = true;
+        return true;
+    }
+
+    // コンボ完結（repeatEnd）時に呼ぶ。呼び忘れてもcomboKeyがTikTok側で使い回されることは
+    // ほぼ無いため実害は薄いが、長時間配信でのMapの肥大化を防ぐために掃除する。
+    function clearTriggerX5RollCacheForCombo(comboKey) {
+        if (!comboKey) return;
+        const prefix = `${comboKey}::`;
+        for (const key of triggerX5RollState.keys()) {
+            if (key.startsWith(prefix)) {
+                triggerX5RollState.delete(key);
+            }
+        }
+    }
     const USER_VIDEO_EXTENSIONS = ['mp4', 'vp9', 'mov'];
     const USER_VIDEO_MIME_TYPES = { mp4: 'video/mp4', vp9: 'video/webm', mov: 'video/quicktime' };
 
@@ -228,7 +285,7 @@ module.exports = function createEffectsRuntime({
 
             // トリガー5倍タイム中: このトリガーの発火全体に対して1回だけ抽選する
             // （イベントごとに抽選し直すと、同一トリガー内で当落が割れて分かりにくくなるため）。
-            const isTriggerX5Won = isEligibleForTriggerX5 && rollTriggerX5();
+            const isTriggerX5Won = isEligibleForTriggerX5 && resolveTriggerX5Win(trigger, giftComboState);
             let anyPlaybackEmitted = false;
 
             // 再生するイベントを決定（順次 or ランダム）
@@ -298,7 +355,7 @@ module.exports = function createEffectsRuntime({
                 }
             });
 
-            if (isTriggerX5Won && anyPlaybackEmitted) {
+            if (isTriggerX5Won && anyPlaybackEmitted && shouldEmitTriggerX5Win(trigger, giftComboState)) {
                 emitTriggerX5Win(sourceEvent);
             }
         });
@@ -373,6 +430,7 @@ module.exports = function createEffectsRuntime({
         emitEffectPlayback,
         matchesEffectTrigger,
         speculativelyPreloadUserVideos,
+        clearTriggerX5RollCacheForCombo,
         tryRunEffectTriggers,
         tryRunEffectTriggersForGift,
         tryRunEffectTriggersForGiftCombo,
