@@ -1380,6 +1380,7 @@ const {
     emitEffectPlayback,
     matchesEffectTrigger,
     speculativelyPreloadUserVideos,
+    clearTriggerX5RollCacheForCombo,
     tryRunEffectTriggers,
     tryRunEffectTriggersForGift,
     tryRunEffectTriggersForGiftCombo,
@@ -3019,7 +3020,7 @@ function ensureTikTokConnection() {
                 nickname: data.nickname || data.uniqueId || '',
                 image: data.profilePictureUrl || '',
                 giftImage: typeof data.giftPictureUrl === 'string' ? data.giftPictureUrl : getTikTokGiftImageUrl(data) || ''
-            }, { isFirstTick, deltaRepeat });
+            }, { isFirstTick, deltaRepeat, comboKey });
             activeComboTriggerMap.set(comboKey, true);
 
             if (deltaRepeat > 0) {
@@ -3065,7 +3066,8 @@ function ensureTikTokConnection() {
         // storeRawGiftEvent は synchronous=FULL の fsync 待ちを伴うため、
         // これより後に発火するとプレビューボタン比で体感的な遅延が生じる。
         if (wasTrackedAsCombo) {
-            tryRunEffectTriggersForGiftCombo(normalizedEvent, { isFirstTick: false, deltaRepeat });
+            tryRunEffectTriggersForGiftCombo(normalizedEvent, { isFirstTick: false, deltaRepeat, comboKey });
+            clearTriggerX5RollCacheForCombo(comboKey);
         } else {
             tryRunEffectTriggersForGift(normalizedEvent);
         }
