@@ -11,7 +11,25 @@
     <script src="/shared/gift-suggest.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <link rel="stylesheet" href="/shared/gift-suggest.css">
+    <script>
+        if (new URLSearchParams(location.search).get('popout') === '1') {
+            document.documentElement.classList.add('is-popout');
+        }
+    </script>
     <style>
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・日付・テスト追加ボタンを非表示にし、並び順トグルのみ残す */
+        html.is-popout .page-hero-main,
+        html.is-popout #day-input,
+        html.is-popout #add-test-gifts-button,
+        html.is-popout #message-box,
+        html.is-popout #sort-order-select {
+            display: none !important;
+        }
+
+        html.is-popout #popout-sort-toggle-button {
+            display: inline-flex !important;
+        }
+
         :root {
             --bg: #e6edf4;
             --panel: #f6f9fc;
@@ -438,6 +456,7 @@
                                 <option value="coins-desc">コイン数の大きい順</option>
                                 <option value="coins-asc">コイン数の小さい順</option>
                             </select>
+                            <button type="button" id="popout-sort-toggle-button" style="display:none;">並び順: 新しい順</button>
                         </div>
                         <button type="button" class="primary-button hero-primary-action" id="add-test-gifts-button">データを追加</button>
                         <div class="status message-inline" id="message-box" hidden>操作待ち</div>
@@ -567,6 +586,7 @@
         const socket = io();
         const dayInput = document.getElementById('day-input');
         const sortOrderSelect = document.getElementById('sort-order-select');
+        const popoutSortToggleButton = document.getElementById('popout-sort-toggle-button');
         const addTestGiftsButton = document.getElementById('add-test-gifts-button');
         const messageBox = document.getElementById('message-box');
         const tableBody = document.getElementById('table-body');
@@ -638,6 +658,7 @@
 
         function syncSortOrderSelect() {
             sortOrderSelect.value = currentSortOrder;
+            popoutSortToggleButton.textContent = currentSortOrder === 'timestamp-asc' ? '並び順: 古い順' : '並び順: 新しい順';
         }
 
         function getSortedGifts(gifts) {
@@ -1062,6 +1083,12 @@
 
         sortOrderSelect.addEventListener('change', () => {
             currentSortOrder = sortOrderSelect.value;
+            syncSortOrderSelect();
+            renderTable(currentGifts);
+        });
+
+        popoutSortToggleButton.addEventListener('click', () => {
+            currentSortOrder = currentSortOrder === 'timestamp-asc' ? 'timestamp-desc' : 'timestamp-asc';
             syncSortOrderSelect();
             renderTable(currentGifts);
         });

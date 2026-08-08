@@ -12,8 +12,20 @@
     <link rel="stylesheet" href="/db/comments.css">
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+        if (new URLSearchParams(location.search).get('popout') === '1') {
+            document.documentElement.classList.add('is-popout');
+        }
     </script>
     <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <style>
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・設定系ボタンを非表示にし、並び順切り替えのみ残す */
+        html.is-popout .page-hero,
+        html.is-popout .toolbar-sections .control-panel:nth-of-type(2),
+        html.is-popout .toolbar-sections .control-panel:nth-of-type(3),
+        html.is-popout #comment-settings-button {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
     <div class="layout">
