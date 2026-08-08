@@ -3,7 +3,43 @@
 const express = require('express');
 const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS } = require('../constants');
 
-module.exports = function registerSettingsRoutes({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
+const POPOUT_WINDOW_KINDS = ['comments', 'gifts'];
+
+function popoutAutoOpenStateKey(kind) {
+    return `popout_auto_open_${kind}`;
+}
+
+module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvents, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
+    app.get('/api/settings/popout-windows', (req, res) => {
+        const windows = {};
+        for (const kind of POPOUT_WINDOW_KINDS) {
+            windows[kind] = { autoOpenOnStartup: dbStore.getGlobalStateValue(popoutAutoOpenStateKey(kind)) === '1' };
+        }
+        res.json({ available: IS_ELECTRON, windows });
+    });
+
+    app.post('/api/settings/popout-windows/auto-open', express.json(), (req, res) => {
+        const kind = String((req.body || {}).kind || '');
+        if (!POPOUT_WINDOW_KINDS.includes(kind)) {
+            return res.status(400).json({ ok: false, error: 'invalid kind' });
+        }
+        const enabled = Boolean((req.body || {}).enabled);
+        dbStore.setGlobalStateValue(popoutAutoOpenStateKey(kind), enabled ? '1' : '0', getTimestamp());
+        res.json({ ok: true, enabled });
+    });
+
+    app.post('/api/settings/popout-windows/open', express.json(), (req, res) => {
+        if (!IS_ELECTRON) {
+            return res.status(400).json({ ok: false, error: 'インストール版でのみ利用できます' });
+        }
+        const kind = String((req.body || {}).kind || '');
+        if (!POPOUT_WINDOW_KINDS.includes(kind)) {
+            return res.status(400).json({ ok: false, error: 'invalid kind' });
+        }
+        res.json({ ok: true });
+        serverEvents.emit('popout-window-open-requested', kind);
+    });
+
     app.get('/api/settings/auto-launch', (req, res) => {
         if (!IS_ELECTRON || !IS_PACKAGED_ELECTRON) {
             return res.json({ available: false, enabled: false });

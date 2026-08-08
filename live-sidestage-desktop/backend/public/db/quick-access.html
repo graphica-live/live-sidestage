@@ -222,6 +222,31 @@
             border-color: #b91c1c;
         }
 
+        .popout-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .popout-row:first-of-type {
+            border-top: none;
+        }
+
+        .popout-row-label {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .popout-hint {
+            margin: -6px 0 4px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
         @media (max-width: 640px) {
             body {
                 padding: 16px 12px;
@@ -274,6 +299,39 @@
                 </div>
             </div>
 
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>別ウィンドウ表示</h2>
+                </div>
+            </div>
+            <p class="popout-hint">コメント欄・ギフト履歴をそれぞれ独立したウィンドウで開けます。ウィンドウの位置とサイズは次回起動時も記憶されます。</p>
+
+            <div class="popout-row">
+                <span class="popout-row-label">コメント欄</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <button type="button" class="ghost-button" id="open-comments-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+
+            <div class="popout-row">
+                <span class="popout-row-label">ギフト履歴</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="gifts-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <button type="button" class="ghost-button" id="open-gifts-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+
+            <p class="popout-hint" id="popout-windows-status" hidden></p>
         </section>
     </main>
 
@@ -337,6 +395,86 @@
         });
 
         loadEffectsGlobalPause().catch(() => {});
+    </script>
+
+    <script>
+        (function () {
+            const openButtons = {
+                comments: document.getElementById('open-comments-popout-btn'),
+                gifts: document.getElementById('open-gifts-popout-btn')
+            };
+            const autoOpenCheckboxes = {
+                comments: document.getElementById('comments-auto-open-checkbox'),
+                gifts: document.getElementById('gifts-auto-open-checkbox')
+            };
+            const statusEl = document.getElementById('popout-windows-status');
+
+            function showStatus(message) {
+                statusEl.textContent = message;
+                statusEl.hidden = !message;
+            }
+
+            async function loadState() {
+                try {
+                    const res = await fetch('/api/settings/popout-windows');
+                    const data = await res.json();
+
+                    if (!data.available) {
+                        for (const kind of Object.keys(autoOpenCheckboxes)) {
+                            autoOpenCheckboxes[kind].disabled = true;
+                            openButtons[kind].disabled = true;
+                        }
+                        showStatus('インストール版でのみ利用できます。');
+                        return;
+                    }
+
+                    for (const [kind, checkbox] of Object.entries(autoOpenCheckboxes)) {
+                        checkbox.checked = Boolean(data.windows?.[kind]?.autoOpenOnStartup);
+                    }
+                } catch {
+                    showStatus('状態を取得できませんでした。');
+                }
+            }
+
+            for (const [kind, button] of Object.entries(openButtons)) {
+                button.addEventListener('click', async () => {
+                    button.disabled = true;
+                    try {
+                        const res = await fetch('/api/settings/popout-windows/open', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind })
+                        });
+                        if (!res.ok) throw new Error('サーバーエラー');
+                    } catch (e) {
+                        showStatus('ウィンドウを開けませんでした: ' + e.message);
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            }
+
+            for (const [kind, checkbox] of Object.entries(autoOpenCheckboxes)) {
+                checkbox.addEventListener('change', async () => {
+                    checkbox.disabled = true;
+                    try {
+                        const res = await fetch('/api/settings/popout-windows/auto-open', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind, enabled: checkbox.checked })
+                        });
+                        if (!res.ok) throw new Error('サーバーエラー');
+                    } catch (e) {
+                        showStatus('保存に失敗しました: ' + e.message);
+                        checkbox.checked = !checkbox.checked;
+                    } finally {
+                        checkbox.disabled = false;
+                    }
+                });
+            }
+
+            loadState();
+        }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
 </body>
