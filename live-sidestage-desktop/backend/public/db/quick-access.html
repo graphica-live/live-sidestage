@@ -430,10 +430,6 @@
                 <input type="number" id="popout-font-size-input" min="10" max="48" step="1">
             </div>
             <div class="modal-field">
-                <label for="popout-sticker-size-input">ステッカーサイズ (px)</label>
-                <input type="number" id="popout-sticker-size-input" min="12" max="80" step="1">
-            </div>
-            <div class="modal-field">
                 <label class="check-label">
                     <input type="checkbox" id="popout-flash-new-checkbox" checked>
                     新着を2回点滅させる
@@ -627,7 +623,6 @@
             const sortOrderSelect = document.getElementById('popout-sort-order-select');
             const fontSelect = document.getElementById('popout-font-select');
             const fontSizeInput = document.getElementById('popout-font-size-input');
-            const stickerSizeInput = document.getElementById('popout-sticker-size-input');
             const flashNewCheckbox = document.getElementById('popout-flash-new-checkbox');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
@@ -659,7 +654,6 @@
                         body: JSON.stringify({
                             fontKey: fontSelect.value,
                             fontSize: Number(fontSizeInput.value) || 13,
-                            stickerSize: Number(stickerSizeInput.value) || 26,
                             flashNew: flashNewCheckbox.checked
                         })
                     }).catch(() => {});
@@ -677,7 +671,6 @@
                     const fontKey = styleData?.fontKey || 'default';
                     fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
                     fontSizeInput.value = styleData?.fontSize || 13;
-                    stickerSizeInput.value = styleData?.stickerSize || 26;
                     flashNewCheckbox.checked = styleData?.flashNew !== false;
                 }).finally(() => {
                     overlay.hidden = false;
@@ -697,7 +690,6 @@
             sortOrderSelect.addEventListener('change', applySortOrder);
             fontSelect.addEventListener('change', applyStyle);
             fontSizeInput.addEventListener('input', applyStyle);
-            stickerSizeInput.addEventListener('input', applyStyle);
             flashNewCheckbox.addEventListener('change', applyStyle);
 
             socket.on('admin_comments_updated', (payload) => {

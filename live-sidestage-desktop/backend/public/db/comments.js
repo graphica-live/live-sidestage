@@ -4,16 +4,14 @@
         let popoutFlashNewEnabled = true;
         let hiddenNewCommentsCount = 0;
 
-        // 別ウィンドウ表示（popout）専用: フォント・フォントサイズ・ステッカーサイズ・新着点滅設定をHome側の設定画面から反映する
+        // 別ウィンドウ表示（popout）専用: フォント・フォントサイズ・新着点滅設定をHome側の設定画面から反映する
+        // （ステッカー・ギフト画像・リスナーアイコンのサイズはフォントサイズから自動計算するため個別設定はない）
         if (isPopoutWindow) {
             function applyPopoutCommentStyle(style) {
                 if (!style) return;
                 document.documentElement.style.setProperty('--popout-comment-font-family', getWidgetFontFamilyByKey(style.fontKey));
                 if (style.fontSize) {
                     document.documentElement.style.setProperty('--popout-comment-font-size', `${style.fontSize}px`);
-                }
-                if (style.stickerSize) {
-                    document.documentElement.style.setProperty('--popout-comment-sticker-size', `${style.stickerSize}px`);
                 }
                 if (typeof style.flashNew === 'boolean') {
                     popoutFlashNewEnabled = style.flashNew;

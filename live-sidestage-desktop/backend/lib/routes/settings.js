@@ -45,27 +45,22 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         const fontKey = dbStore.getGlobalStateValue('popout_comments_font_key') || 'default';
         const storedFontSize = Number(dbStore.getGlobalStateValue('popout_comments_font_size'));
         const fontSize = Number.isFinite(storedFontSize) && storedFontSize > 0 ? storedFontSize : 13;
-        const storedStickerSize = Number(dbStore.getGlobalStateValue('popout_comments_sticker_size'));
-        const stickerSize = Number.isFinite(storedStickerSize) && storedStickerSize > 0 ? storedStickerSize : 26;
         const flashNew = dbStore.getGlobalStateValue('popout_comments_flash_new') !== '0';
-        res.json({ fontKey, fontSize, stickerSize, flashNew });
+        res.json({ fontKey, fontSize, flashNew });
     });
 
     app.post('/api/settings/popout-comment-style', express.json(), (req, res) => {
         const fontKey = String((req.body || {}).fontKey || 'default').trim().slice(0, 60) || 'default';
         const rawFontSize = Number((req.body || {}).fontSize);
         const fontSize = Number.isFinite(rawFontSize) ? Math.max(10, Math.min(48, Math.round(rawFontSize))) : 13;
-        const rawStickerSize = Number((req.body || {}).stickerSize);
-        const stickerSize = Number.isFinite(rawStickerSize) ? Math.max(12, Math.min(80, Math.round(rawStickerSize))) : 26;
         const flashNew = (req.body || {}).flashNew !== false;
 
         dbStore.setGlobalStateValue('popout_comments_font_key', fontKey, getTimestamp());
         dbStore.setGlobalStateValue('popout_comments_font_size', String(fontSize), getTimestamp());
-        dbStore.setGlobalStateValue('popout_comments_sticker_size', String(stickerSize), getTimestamp());
         dbStore.setGlobalStateValue('popout_comments_flash_new', flashNew ? '1' : '0', getTimestamp());
 
-        io.emit('popout-comment-style-changed', { fontKey, fontSize, stickerSize, flashNew });
-        res.json({ ok: true, fontKey, fontSize, stickerSize, flashNew });
+        io.emit('popout-comment-style-changed', { fontKey, fontSize, flashNew });
+        res.json({ ok: true, fontKey, fontSize, flashNew });
     });
 
     app.get('/api/settings/popout-gift-style', (req, res) => {

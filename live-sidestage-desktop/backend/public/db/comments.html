@@ -61,20 +61,27 @@
             flex-direction: column;
         }
 
-        /* コメントカードを最小表示にする: アイコン・名前・本文のみ残し、ID・種別・時刻は非表示 */
+        /* コメントカードを最小表示にする: アイコン・名前・本文のみ残し、ID・種別・時刻は非表示。
+           ステッカー・アイコンのサイズは個別設定を持たず、フォントサイズから自動計算する。 */
         :root {
             --popout-comment-font-family: inherit;
             --popout-comment-font-size: 13px;
-            --popout-comment-sticker-size: 26px;
+            /* リスナーアイコンは「名前1行+本文1行」ぶんの縦領域を占有できる大きさにする */
+            --popout-comment-avatar-size: calc(var(--popout-comment-font-size) * 2.8);
         }
 
         html.is-popout .comment-emote {
-            width: var(--popout-comment-sticker-size) !important;
-            height: var(--popout-comment-sticker-size) !important;
+            width: calc(var(--popout-comment-font-size) * 2) !important;
+            height: calc(var(--popout-comment-font-size) * 2) !important;
         }
 
         html.is-popout .comment-card {
-            display: block !important;
+            /* 1列目=アイコン（2行分の縦領域）、2列目=名前(1行目)+本文(2行目) の2列グリッド */
+            display: grid !important;
+            grid-template-columns: var(--popout-comment-avatar-size) minmax(0, 1fr);
+            column-gap: 8px;
+            row-gap: 2px;
+            align-items: start;
             flex: 0 0 auto;
             height: auto !important;
             padding: 4px 2px 10px !important;
@@ -93,10 +100,23 @@
             border-left: none !important;
         }
 
+        /* アイコンと名前をまとめる要素(<div>または<a>)自体はボックスを持たせず、
+           中身のアイコン・名前を直接 .comment-card のグリッドセルに配置する */
         html.is-popout .comment-card-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            display: contents;
+        }
+
+        html.is-popout .comment-avatar {
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            width: var(--popout-comment-avatar-size) !important;
+            height: var(--popout-comment-avatar-size) !important;
+            align-self: start;
+        }
+
+        html.is-popout .comment-author {
+            grid-column: 2;
+            grid-row: 1;
         }
 
         html.is-popout .comment-author span,
@@ -106,10 +126,19 @@
         }
 
         html.is-popout .comment-body {
-            margin: 2px 0 0 34px;
+            grid-column: 2;
+            grid-row: 2;
+            margin: 0;
             white-space: normal;
             overflow: visible;
             text-overflow: clip;
+        }
+
+        /* display: contents の要素自体はホバーしても表示上のボックスが無いため、
+           中身のアイコン・名前に直接ホバー効果をつける */
+        html.is-popout .comment-profile-link:hover .comment-avatar,
+        html.is-popout .comment-profile-link:hover .comment-author strong {
+            opacity: 0.8;
         }
 
         html.is-popout .comment-card,

@@ -380,12 +380,10 @@
         }
 
         .popout-gift-image {
-            width: 26px;
-            height: 26px;
-            border-radius: 6px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.6);
-            object-fit: cover;
+            width: calc(var(--popout-gift-font-size) * 2);
+            height: calc(var(--popout-gift-font-size) * 2);
+            /* 背景・枠なしの透過画像として表示する（アイコン部分だけが見えるように contain） */
+            object-fit: contain;
             flex: 0 0 auto;
         }
 
@@ -1126,7 +1124,7 @@
                     : userLinkMarkup}
                 <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
                 ${giftImageMarkup}
-                <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>
+                <span class="popout-gift-coins">🪙 ${escapeHtml(formatNumber(gift.totalGifts))}</span>
             `;
             return item;
         }
