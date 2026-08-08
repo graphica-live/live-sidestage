@@ -347,7 +347,8 @@ giftTestSendButton.addEventListener('click', async () => {
                 repeatCount,
                 uniqueId,
                 nickname: matchedUser?.nickname || '',
-                image: matchedUser?.image || ''
+                image: matchedUser?.image || '',
+                giftImage: matchedGift?.imageUrl || ''
             })
         });
         const payload = await response.json();
