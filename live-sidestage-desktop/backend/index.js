@@ -2754,6 +2754,7 @@ require('./lib/routes/widgets/trigger-x5')({
     setWidgetTriggerX5Settings,
     buildTriggerX5Payload,
     emitTriggerX5Win,
+    cachedTikTokGiftCatalog: tiktokState.giftCatalog,
 });
 
 require('./lib/routes/widgets/timer')({
@@ -3016,7 +3017,8 @@ function ensureTikTokConnection() {
                 totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
                 uniqueId: data.uniqueId,
                 nickname: data.nickname || data.uniqueId || '',
-                image: data.profilePictureUrl || ''
+                image: data.profilePictureUrl || '',
+                giftImage: typeof data.giftPictureUrl === 'string' ? data.giftPictureUrl : getTikTokGiftImageUrl(data) || ''
             }, { isFirstTick, deltaRepeat });
             activeComboTriggerMap.set(comboKey, true);
 
