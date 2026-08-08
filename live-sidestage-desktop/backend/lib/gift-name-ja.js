@@ -8,6 +8,7 @@
 // 対訳は必ず実際のTikTok（日本語環境）で確認できたものだけを追加すること。
 // 推測での翻訳は追加しない（例: "TikTok Universe" は日本語環境でも英語表記のまま）。
 const GIFT_NAME_JA_MAP = {
+    'rosa': 'ローザ'
 };
 
 function normalizeGiftNameKey(name) {
