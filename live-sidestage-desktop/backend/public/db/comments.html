@@ -51,7 +51,9 @@
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
-            padding: 4px;
+            /* admin-theme-presets.css の html[data-admin-theme] .panel { padding: var(--panel-padding) !important; }
+               が非!importantの指定を上書きしてしまうため !important が必須 */
+            padding: 4px !important;
         }
 
         html.is-popout .comment-stream {
