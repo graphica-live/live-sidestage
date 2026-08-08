@@ -17,29 +17,23 @@
         }
     </script>
     <style>
-        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・日付・テスト追加ボタン・並び順UIを隠し、
-           時刻・回数・操作列も隠してリスナーアイコン/名前・ギフト画像/名・コイン数のみ表示する。
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出しカード(page-hero)を丸ごと隠し、
+           管理画面用テーブルの代わりに1ギフト=1行のシンプルなリスト(#popout-gift-list)を表示する。
            並び順と表示項目のON/OFFは表示設定モーダル(quick-access.html)から制御する。 */
-        html.is-popout .page-hero-main,
-        html.is-popout #day-input,
-        html.is-popout #add-test-gifts-button,
-        html.is-popout #message-box,
-        html.is-popout #sort-order-select,
-        html.is-popout th:nth-child(1),
-        html.is-popout td:nth-child(1),
-        html.is-popout th:nth-child(4),
-        html.is-popout td:nth-child(4),
-        html.is-popout th.actions-cell,
-        html.is-popout td.actions-cell {
+        html.is-popout .layout > .panel:first-child,
+        html.is-popout table {
             display: none !important;
         }
 
-        html.is-popout.hide-avatar .user-avatar { display: none !important; }
-        html.is-popout.hide-name .user-meta { display: none !important; }
-        html.is-popout.hide-gift-image .gift-image { display: none !important; }
-        html.is-popout.hide-gift-name .gift-meta { display: none !important; }
-        html.is-popout.hide-coins th:nth-child(5),
-        html.is-popout.hide-coins td:nth-child(5) { display: none !important; }
+        html.is-popout .popout-gift-list {
+            display: flex !important;
+        }
+
+        html.is-popout.hide-avatar .popout-gift-avatar { display: none !important; }
+        html.is-popout.hide-name .popout-gift-user-name { display: none !important; }
+        html.is-popout.hide-gift-name .popout-gift-name { display: none !important; }
+        html.is-popout.hide-gift-image .popout-gift-image { display: none !important; }
+        html.is-popout.hide-coins .popout-gift-coins { display: none !important; }
 
         :root {
             --bg: #e6edf4;
@@ -252,6 +246,92 @@
             min-width: 0;
             display: grid;
             gap: 4px;
+        }
+
+        .popout-gift-list {
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .popout-gift-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 4px;
+            border-bottom: 1px solid var(--line);
+            min-width: 0;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+        }
+
+        .popout-gift-item:last-child {
+            border-bottom: none;
+        }
+
+        .popout-gift-avatar {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-avatar.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .popout-gift-user-name {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 30%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .popout-gift-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .popout-gift-image {
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 9px;
+        }
+
+        .popout-gift-coins {
+            flex: 0 0 auto;
+            font-size: 13px;
+            font-weight: 600;
         }
 
         .icon-button {
@@ -514,6 +594,7 @@
                 </thead>
                 <tbody id="table-body"></tbody>
             </table>
+            <ul class="popout-gift-list" id="popout-gift-list"></ul>
             <div class="empty" id="empty-state" hidden>この日付のギフト履歴はまだありません。</div>
         </section>
     </div>
@@ -624,7 +705,9 @@
         const addTestGiftsButton = document.getElementById('add-test-gifts-button');
         const messageBox = document.getElementById('message-box');
         const tableBody = document.getElementById('table-body');
+        const popoutGiftList = document.getElementById('popout-gift-list');
         const emptyState = document.getElementById('empty-state');
+        const isPopoutWindow = document.documentElement.classList.contains('is-popout');
         const giftModalBackdrop = document.getElementById('gift-modal-backdrop');
         const closeGiftModalButton = document.getElementById('close-gift-modal-button');
         const cancelGiftModalButton = document.getElementById('cancel-gift-modal-button');
@@ -704,7 +787,7 @@
         }
 
         function loadPopoutGiftStyle() {
-            if (!document.documentElement.classList.contains('is-popout')) {
+            if (!isPopoutWindow) {
                 return;
             }
 
@@ -773,15 +856,24 @@
 
         function renderTable(gifts) {
             currentGifts = Array.isArray(gifts) ? [...gifts] : [];
-            tableBody.innerHTML = '';
             emptyState.hidden = currentGifts.length > 0;
+            const sortedGifts = getSortedGifts(currentGifts);
 
-            if (!currentGifts.length) {
+            if (isPopoutWindow) {
+                renderPopoutGiftList(sortedGifts);
+            } else {
+                renderAdminGiftTable(sortedGifts);
+            }
+        }
+
+        function renderAdminGiftTable(sortedGifts) {
+            tableBody.innerHTML = '';
+
+            if (!sortedGifts.length) {
                 return;
             }
 
             const fragment = document.createDocumentFragment();
-            const sortedGifts = getSortedGifts(currentGifts);
 
             sortedGifts.forEach((gift) => {
                 const row = document.createElement('tr');
@@ -823,6 +915,38 @@
             });
 
             tableBody.appendChild(fragment);
+        }
+
+        function renderPopoutGiftList(sortedGifts) {
+            popoutGiftList.innerHTML = '';
+
+            if (!sortedGifts.length) {
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            sortedGifts.forEach((gift) => {
+                const item = document.createElement('li');
+                item.className = 'popout-gift-item';
+                const avatarMarkup = gift.image
+                    ? `<img class="popout-gift-avatar" src="${escapeHtml(gift.image)}" alt="">`
+                    : '<div class="popout-gift-avatar is-empty">?</div>';
+                const giftImageMarkup = gift.giftImage
+                    ? `<img class="popout-gift-image" src="${escapeHtml(gift.giftImage)}" alt="">`
+                    : '<div class="popout-gift-image is-empty">No Image</div>';
+
+                item.innerHTML = `
+                    ${avatarMarkup}
+                    <span class="popout-gift-user-name">${escapeHtml(gift.nickname || gift.uniqueId || '-')}</span>
+                    <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
+                    ${giftImageMarkup}
+                    <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>
+                `;
+                fragment.appendChild(item);
+            });
+
+            popoutGiftList.appendChild(fragment);
         }
 
         function populateGiftSuggestions(gifts) {
@@ -1218,7 +1342,7 @@
         });
 
         socket.on('popout-gift-style-changed', (payload) => {
-            if (!document.documentElement.classList.contains('is-popout')) {
+            if (!isPopoutWindow) {
                 return;
             }
             currentSortOrder = payload?.sortOrder || currentSortOrder;
