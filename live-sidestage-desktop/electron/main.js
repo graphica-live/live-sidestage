@@ -10,7 +10,7 @@ process.on('uncaughtException', (err) => {
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog, screen } = require('electron');
 let autoUpdater = null;
 
 const PORT = 38100;
@@ -131,6 +131,8 @@ let mainWindow = null;
 let tray = null;
 let loginWindow = null;
 let commentReadAloudWindow = null;
+const popoutWindows = { comments: null, gifts: null };
+const popoutBoundsSaveTimers = { comments: null, gifts: null };
 let readAloudProcess = null;
 let readAloudQueue = [];
 let autoUpdateCheckTimer = null;
@@ -169,6 +171,129 @@ const MAIN_WINDOW_BOUNDS = {
     minWidth: 1280,
     minHeight: 680
 };
+
+const POPOUT_WINDOW_CONFIG = {
+    comments: { path: '/comments', title: 'TikEffect - コメント欄', width: 480, height: 760 },
+    gifts: { path: '/gifts', title: 'TikEffect - ギフト履歴', width: 480, height: 760 }
+};
+
+function popoutBoundsStateKey(kind) {
+    return `popout_window_bounds_${kind}`;
+}
+
+function popoutAutoOpenStateKey(kind) {
+    return `popout_auto_open_${kind}`;
+}
+
+function loadPopoutBounds(kind) {
+    const config = POPOUT_WINDOW_CONFIG[kind];
+    const defaults = { width: config.width, height: config.height };
+
+    if (typeof server.getGlobalStateValue !== 'function') {
+        return defaults;
+    }
+
+    let stored = null;
+    try {
+        const raw = server.getGlobalStateValue(popoutBoundsStateKey(kind));
+        stored = raw ? JSON.parse(raw) : null;
+    } catch {
+        stored = null;
+    }
+
+    if (!stored || !Number.isFinite(stored.width) || !Number.isFinite(stored.height)) {
+        return defaults;
+    }
+
+    const bounds = {
+        width: Math.max(360, Math.round(stored.width)),
+        height: Math.max(320, Math.round(stored.height))
+    };
+
+    if (Number.isFinite(stored.x) && Number.isFinite(stored.y)) {
+        const visible = screen.getAllDisplays().some((display) => {
+            return stored.x < display.workArea.x + display.workArea.width &&
+                stored.x + bounds.width > display.workArea.x &&
+                stored.y < display.workArea.y + display.workArea.height &&
+                stored.y + bounds.height > display.workArea.y;
+        });
+
+        if (visible) {
+            bounds.x = Math.round(stored.x);
+            bounds.y = Math.round(stored.y);
+        }
+    }
+
+    return bounds;
+}
+
+function savePopoutBounds(kind, popoutWindow) {
+    if (typeof server.setGlobalStateValue !== 'function' || popoutWindow.isDestroyed()) {
+        return;
+    }
+
+    server.setGlobalStateValue(popoutBoundsStateKey(kind), JSON.stringify(popoutWindow.getBounds()));
+}
+
+function schedulePopoutBoundsSave(kind, popoutWindow) {
+    clearTimeout(popoutBoundsSaveTimers[kind]);
+    popoutBoundsSaveTimers[kind] = setTimeout(() => savePopoutBounds(kind, popoutWindow), 400);
+}
+
+function ensurePopoutWindow(kind) {
+    const config = POPOUT_WINDOW_CONFIG[kind];
+
+    if (!config) {
+        return null;
+    }
+
+    if (popoutWindows[kind] && !popoutWindows[kind].isDestroyed()) {
+        popoutWindows[kind].show();
+        popoutWindows[kind].focus();
+        return popoutWindows[kind];
+    }
+
+    const popoutWindow = new BrowserWindow({
+        ...loadPopoutBounds(kind),
+        minWidth: 360,
+        minHeight: 320,
+        title: config.title,
+        icon: iconPath,
+        autoHideMenuBar: true,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    popoutWindow.setMenuBarVisibility(false);
+    popoutWindow.loadURL(`http://localhost:${PORT}${config.path}`);
+
+    popoutWindow.on('resize', () => schedulePopoutBoundsSave(kind, popoutWindow));
+    popoutWindow.on('move', () => schedulePopoutBoundsSave(kind, popoutWindow));
+    popoutWindow.on('close', () => {
+        clearTimeout(popoutBoundsSaveTimers[kind]);
+        savePopoutBounds(kind, popoutWindow);
+    });
+    popoutWindow.on('closed', () => {
+        popoutWindows[kind] = null;
+    });
+
+    popoutWindows[kind] = popoutWindow;
+    return popoutWindow;
+}
+
+function openPopoutWindowsMarkedForAutoOpen() {
+    if (typeof server.getGlobalStateValue !== 'function') {
+        return;
+    }
+
+    for (const kind of Object.keys(POPOUT_WINDOW_CONFIG)) {
+        if (server.getGlobalStateValue(popoutAutoOpenStateKey(kind)) === '1') {
+            ensurePopoutWindow(kind);
+        }
+    }
+}
 
 function resolveAutoUpdateUrl() {
     const configuredUrl = process.env.TIKEFFECT_AUTO_UPDATE_URL || DEFAULT_AUTO_UPDATE_URL;
@@ -751,6 +876,10 @@ if (server.serverEvents) {
         });
         resolve(result.canceled ? null : (result.filePaths[0] || null));
     });
+
+    server.serverEvents.on('popout-window-open-requested', (kind) => {
+        ensurePopoutWindow(kind);
+    });
 }
 
 if (typeof server.setCommentReadAloudVoiceProvider === 'function') {
@@ -901,6 +1030,7 @@ app.whenReady().then(() => {
     createMainWindow();
     console.log('[DEBUG] configureAutoUpdater...');
     configureAutoUpdater();
+    openPopoutWindowsMarkedForAutoOpen();
     console.log('[DEBUG] whenReady done');
 }).catch((err) => {
     console.error('❌ app.whenReady failed:', err);
@@ -958,6 +1088,12 @@ app.on('before-quit', (event) => {
 
                 if (commentReadAloudWindow && !commentReadAloudWindow.isDestroyed()) {
                     commentReadAloudWindow.destroy();
+                }
+
+                for (const popoutWindow of Object.values(popoutWindows)) {
+                    if (popoutWindow && !popoutWindow.isDestroyed()) {
+                        popoutWindow.destroy();
+                    }
                 }
 
                 if (mainWindow && !mainWindow.isDestroyed()) {

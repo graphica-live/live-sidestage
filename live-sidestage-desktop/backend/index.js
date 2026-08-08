@@ -2862,7 +2862,7 @@ require('./lib/routes/data')({
 
 
 
-require('./lib/routes/settings')({ app, dbStore, io, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON });
+require('./lib/routes/settings')({ app, dbStore, io, serverEvents, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON });
 
 
 currentBroadcasterId = getInitialBroadcasterId();
@@ -3473,6 +3473,8 @@ module.exports = {
     notifyUpdateReady,
     setCommentReadAloudAudioProvider,
     setCommentReadAloudVoiceProvider,
+    getGlobalStateValue,
+    setGlobalStateValue,
     shutdownServer: () => {
         return shutdownApplication('electron_quit').catch((err) => {
             console.error('❌ Shutdown error:', err);
