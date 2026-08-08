@@ -281,7 +281,8 @@ module.exports = function createEffectsRuntime({
             // ギフト名未指定のトリガー（コメント/フォロー/無条件トリガーなど）は関係のないギフトでも
             // マッチしてしまうため、5倍抽選の対象からは除外する
             // （＝5倍タイム中に無関係なギフトを投げても5倍表記が出ないようにする）。
-            const isEligibleForTriggerX5 = context.type === 'gift' && Boolean(trigger.giftName);
+            const isEligibleForTriggerX5 = context.type === 'gift' && Boolean(trigger.giftName)
+                && !trigger.triggerX5ExcludedFromLottery;
 
             // トリガー5倍タイム中: このトリガーの発火全体に対して1回だけ抽選する
             // （イベントごとに抽選し直すと、同一トリガー内で当落が割れて分かりにくくなるため）。

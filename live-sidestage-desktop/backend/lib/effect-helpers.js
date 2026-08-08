@@ -91,7 +91,8 @@ function createDefaultEffectTrigger() {
         userTargetMode: 'list',
         userIdToFileDir: '',
         rapidFireEnabled: false,
-        rapidFireCancelMs: 1500
+        rapidFireCancelMs: 1500,
+        triggerX5ExcludedFromLottery: false
     };
 }
 
@@ -301,7 +302,8 @@ function normalizeEffectTrigger(value) {
         userTargetMode,
         userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : '',
         rapidFireEnabled: Boolean(value?.rapidFireEnabled),
-        rapidFireCancelMs: normalizeEffectTriggerRapidFireCancelMs(value?.rapidFireCancelMs)
+        rapidFireCancelMs: normalizeEffectTriggerRapidFireCancelMs(value?.rapidFireCancelMs),
+        triggerX5ExcludedFromLottery: Boolean(value?.triggerX5ExcludedFromLottery)
     };
 }
 

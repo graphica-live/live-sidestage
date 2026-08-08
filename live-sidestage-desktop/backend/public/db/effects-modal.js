@@ -349,6 +349,7 @@ function resetTriggerModal() {
     triggerModalCommentText.value = '';
     triggerModalUserIds.value = '';
     triggerModalUserTargetList.checked = true;
+    triggerModalX5Excluded.checked = false;
     setFilemapDir('');
     syncUserTargetMode();
     syncTriggerCommentField();
@@ -393,6 +394,7 @@ function openTriggerModalForEdit(triggerRecord) {
     const isFilemap = triggerRecord.userTargetMode === 'file-map';
     triggerModalUserTargetFilemap.checked = isFilemap;
     triggerModalUserTargetList.checked = !isFilemap;
+    triggerModalX5Excluded.checked = Boolean(triggerRecord.triggerX5ExcludedFromLottery);
     setFilemapDir(isFilemap ? (triggerRecord.userIdToFileDir || '') : '');
     syncUserTargetMode();
     syncTriggerCommentField();
@@ -419,7 +421,8 @@ function collectTriggerFromModal() {
         userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),
         enabled: editingTriggerEnabled,
         userTargetMode: isFilemap ? 'file-map' : 'list',
-        userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : ''
+        userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : '',
+        triggerX5ExcludedFromLottery: triggerModalX5Excluded.checked
     };
 }
 
