@@ -316,17 +316,14 @@ module.exports = function registerEffectsRoutes({
         const items = getEffectTriggers()
             .filter((trigger) => trigger.enabled
                 && trigger.giftName
-                && !trigger.excludedFromListOverlay
                 && (trigger.categoryId || EFFECT_DEFAULT_CATEGORY_ID) === categoryId)
             .map((trigger) => {
                 if (trigger.giftName === EFFECT_TRIGGER_FOLLOW_GIFT_NAME) {
                     return {
                         id: trigger.id,
-                        triggerName: trigger.listOverlayName || trigger.name || trigger.giftName,
+                        triggerName: trigger.name || trigger.giftName,
                         giftName: trigger.giftName,
                         giftImageUrl: EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
-                        listOverlayBgColor: trigger.listOverlayBgColor || '',
-                        listOverlayHighlight: Boolean(trigger.listOverlayHighlight),
                         diamondCount: 0,
                         dailyCoinTotal: 0
                     };
@@ -338,11 +335,9 @@ module.exports = function registerEffectsRoutes({
 
                 return {
                     id: trigger.id,
-                    triggerName: trigger.listOverlayName || trigger.name || matchedGift?.name || trigger.giftName,
+                    triggerName: trigger.name || matchedGift?.name || trigger.giftName,
                     giftName: matchedGift?.name || trigger.giftName,
                     giftImageUrl: matchedGift?.imageUrl || '',
-                    listOverlayBgColor: trigger.listOverlayBgColor || '',
-                    listOverlayHighlight: Boolean(trigger.listOverlayHighlight),
                     diamondCount: Number.isFinite(matchedGift?.diamondCount) ? matchedGift.diamondCount : 0,
                     dailyCoinTotal: dailyCoinTotals.get(giftNameKey) || 0
                 };

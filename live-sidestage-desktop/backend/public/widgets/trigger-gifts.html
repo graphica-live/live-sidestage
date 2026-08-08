@@ -121,19 +121,6 @@
             object-fit: contain;
         }
 
-        @keyframes triggerGiftsHeartbeat {
-            0%, 100% { transform: scale(1); }
-            15% { transform: scale(1.18); }
-            30% { transform: scale(1); }
-            45% { transform: scale(1.12); }
-            60% { transform: scale(1); }
-        }
-
-        .gift-image-wrap.highlight {
-            transform-origin: center;
-            animation: triggerGiftsHeartbeat 1.6s ease-in-out infinite;
-        }
-
         .gift-image-placeholder {
             width: 72px;
             height: 72px;
@@ -365,16 +352,6 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
-        const TRIGGER_GIFTS_BG_COLORS = {
-            black:  '15 23 42',
-            white:  '248 250 252',
-            blue:   '37 99 235',
-            green:  '22 163 74',
-            yellow: '234 179 8',
-            purple: '147 51 234',
-            red:    '220 38 38'
-        };
-
         function buildCardInnerHtml(item, showCoinCount) {
             const imageHtml = item.giftImageUrl
                 ? `<img class="gift-image" src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'gift-image-placeholder'}))">`
@@ -388,27 +365,19 @@
                 ? `<div class="total-coin-badge"><span class="total-coin-label">累計</span><span class="total-coin-count">${dailyCoinTotal.toLocaleString()}</span></div>`
                 : '';
 
-            const highlightClass = item.listOverlayHighlight ? ' highlight' : '';
             const nameHtml = escapeHtml(item.triggerName);
 
             return coinHtml +
                 totalCoinHtml +
-                `<div class="gift-image-wrap${highlightClass}">${imageHtml}</div>` +
+                `<div class="gift-image-wrap">${imageHtml}</div>` +
                 `<div class="trigger-name"><div class="trigger-name-track">` +
                 `<span class="trigger-name-badge">${nameHtml}</span>` +
                 `<span class="trigger-name-badge trigger-name-badge-dup" aria-hidden="true">${nameHtml}</span>` +
                 `</div></div>`;
         }
 
-        function getCardBgRgb(item) {
-            return TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()] || '';
-        }
-
         function buildCardHtml(item, showCoinCount) {
-            const bgRgb = getCardBgRgb(item);
-            const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
-
-            return `<div class="card" data-trigger-id="${escapeAttr(item.id)}"${styleAttr}>` +
+            return `<div class="card" data-trigger-id="${escapeAttr(item.id)}">` +
                 buildCardInnerHtml(item, showCoinCount) +
                 `</div>`;
         }
@@ -468,14 +437,8 @@
 
             items.forEach((item) => {
                 const innerHtml = buildCardInnerHtml(item, appearance.showCoinCount);
-                const bgRgb = getCardBgRgb(item);
                 (cardsById.get(String(item.id)) || []).forEach((cardEl) => {
                     cardEl.innerHTML = innerHtml;
-                    if (bgRgb) {
-                        cardEl.style.setProperty('--card-bg-rgb', bgRgb);
-                    } else {
-                        cardEl.style.removeProperty('--card-bg-rgb');
-                    }
                     applyNameMarquee(cardEl);
                 });
             });
