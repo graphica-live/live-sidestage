@@ -17,18 +17,29 @@
         }
     </script>
     <style>
-        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・日付・テスト追加ボタンを非表示にし、並び順トグルのみ残す */
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・日付・テスト追加ボタン・並び順UIを隠し、
+           時刻・回数・操作列も隠してリスナーアイコン/名前・ギフト画像/名・コイン数のみ表示する。
+           並び順と表示項目のON/OFFは表示設定モーダル(quick-access.html)から制御する。 */
         html.is-popout .page-hero-main,
         html.is-popout #day-input,
         html.is-popout #add-test-gifts-button,
         html.is-popout #message-box,
-        html.is-popout #sort-order-select {
+        html.is-popout #sort-order-select,
+        html.is-popout th:nth-child(1),
+        html.is-popout td:nth-child(1),
+        html.is-popout th:nth-child(4),
+        html.is-popout td:nth-child(4),
+        html.is-popout th.actions-cell,
+        html.is-popout td.actions-cell {
             display: none !important;
         }
 
-        html.is-popout #popout-sort-toggle-button {
-            display: inline-flex !important;
-        }
+        html.is-popout.hide-avatar .user-avatar { display: none !important; }
+        html.is-popout.hide-name .user-meta { display: none !important; }
+        html.is-popout.hide-gift-image .gift-image { display: none !important; }
+        html.is-popout.hide-gift-name .gift-meta { display: none !important; }
+        html.is-popout.hide-coins th:nth-child(5),
+        html.is-popout.hide-coins td:nth-child(5) { display: none !important; }
 
         :root {
             --bg: #e6edf4;
@@ -200,20 +211,45 @@
 
         .gift-meta strong,
         .gift-meta span,
-        .user-cell strong,
-        .user-cell span {
+        .user-meta strong,
+        .user-meta span {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
         .gift-meta span,
-        .user-cell span {
+        .user-meta span {
             color: var(--muted);
             font-size: 12px;
         }
 
         .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .user-avatar.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .user-meta {
+            min-width: 0;
             display: grid;
             gap: 4px;
         }
@@ -456,7 +492,6 @@
                                 <option value="coins-desc">コイン数の大きい順</option>
                                 <option value="coins-asc">コイン数の小さい順</option>
                             </select>
-                            <button type="button" id="popout-sort-toggle-button" style="display:none;">並び順: 新しい順</button>
                         </div>
                         <button type="button" class="primary-button hero-primary-action" id="add-test-gifts-button">データを追加</button>
                         <div class="status message-inline" id="message-box" hidden>操作待ち</div>
@@ -586,7 +621,6 @@
         const socket = io();
         const dayInput = document.getElementById('day-input');
         const sortOrderSelect = document.getElementById('sort-order-select');
-        const popoutSortToggleButton = document.getElementById('popout-sort-toggle-button');
         const addTestGiftsButton = document.getElementById('add-test-gifts-button');
         const messageBox = document.getElementById('message-box');
         const tableBody = document.getElementById('table-body');
@@ -658,7 +692,31 @@
 
         function syncSortOrderSelect() {
             sortOrderSelect.value = currentSortOrder;
-            popoutSortToggleButton.textContent = currentSortOrder === 'timestamp-asc' ? '並び順: 古い順' : '並び順: 新しい順';
+        }
+
+        function applyPopoutDisplayFlags(display) {
+            const flags = display || {};
+            document.documentElement.classList.toggle('hide-avatar', flags.showAvatar === false);
+            document.documentElement.classList.toggle('hide-name', flags.showName === false);
+            document.documentElement.classList.toggle('hide-gift-image', flags.showGiftImage === false);
+            document.documentElement.classList.toggle('hide-gift-name', flags.showGiftName === false);
+            document.documentElement.classList.toggle('hide-coins', flags.showCoins === false);
+        }
+
+        function loadPopoutGiftStyle() {
+            if (!document.documentElement.classList.contains('is-popout')) {
+                return;
+            }
+
+            fetch('/api/settings/popout-gift-style')
+                .then((res) => res.json())
+                .then((data) => {
+                    currentSortOrder = data?.sortOrder || currentSortOrder;
+                    syncSortOrderSelect();
+                    applyPopoutDisplayFlags(data?.display);
+                    renderTable(currentGifts);
+                })
+                .catch(() => {});
         }
 
         function getSortedGifts(gifts) {
@@ -731,13 +789,19 @@
                 const giftImageMarkup = gift.giftImage
                     ? `<img class="gift-image" src="${escapeHtml(gift.giftImage)}" alt="${escapeHtml(gift.giftName || 'gift')}">`
                     : '<div class="gift-image is-empty">No Image</div>';
+                const userAvatarMarkup = gift.image
+                    ? `<img class="user-avatar" src="${escapeHtml(gift.image)}" alt="">`
+                    : '<div class="user-avatar is-empty">?</div>';
 
                 row.innerHTML = `
                     <td>${escapeHtml(formatTimestamp(gift.timestamp))}</td>
                     <td>
                         <div class="user-cell">
-                            <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
-                            <span>@${escapeHtml(gift.uniqueId || '-')}</span>
+                            ${userAvatarMarkup}
+                            <div class="user-meta">
+                                <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
+                                <span>@${escapeHtml(gift.uniqueId || '-')}</span>
+                            </div>
                         </div>
                     </td>
                     <td>
@@ -1087,12 +1151,6 @@
             renderTable(currentGifts);
         });
 
-        popoutSortToggleButton.addEventListener('click', () => {
-            currentSortOrder = currentSortOrder === 'timestamp-asc' ? 'timestamp-desc' : 'timestamp-asc';
-            syncSortOrderSelect();
-            renderTable(currentGifts);
-        });
-
         addTestGiftsButton.addEventListener('click', () => {
             openGiftModal();
         });
@@ -1159,10 +1217,21 @@
             }
         });
 
+        socket.on('popout-gift-style-changed', (payload) => {
+            if (!document.documentElement.classList.contains('is-popout')) {
+                return;
+            }
+            currentSortOrder = payload?.sortOrder || currentSortOrder;
+            syncSortOrderSelect();
+            applyPopoutDisplayFlags(payload?.display);
+            renderTable(currentGifts);
+        });
+
         Promise.all([loadReferenceData(), refreshState()]).catch(() => {
         });
 
         syncSortOrderSelect();
+        loadPopoutGiftStyle();
         updateDraftTotalStatus();
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
