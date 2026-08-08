@@ -1592,9 +1592,9 @@
                     commentStream.firstElementChild?.remove();
                 }
                 if (wasAtLatestEdge) {
-                    requestAnimationFrame(() => {
-                        card.scrollIntoView({ block: 'end' });
-                    });
+                    // rAF で遅延させると連続発火時に「まだスクロールし終えていない」状態で
+                    // 次のコメントの最新端判定が走ってしまい、バッジ誤表示の原因になるため同期的に行う。
+                    commentStream.scrollTop = commentStream.scrollHeight;
                 } else if (isPopoutWindow) {
                     showNewCommentsBadge();
                 }

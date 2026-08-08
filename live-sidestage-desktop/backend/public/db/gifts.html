@@ -397,9 +397,10 @@
             bottom: 10px;
         }
 
+        /* background-color ではなく box-shadow でフラッシュさせる（他要素の !important 背景指定と衝突させないため） */
         @keyframes popout-flash-new {
-            0%, 100% { background-color: transparent; }
-            25%, 75% { background-color: rgba(255, 196, 0, 0.35); }
+            0%, 100% { box-shadow: none; }
+            25%, 75% { box-shadow: inset 0 0 0 999px rgba(255, 196, 0, 0.35); }
         }
 
         .popout-flash-new {
@@ -966,10 +967,11 @@
         }
 
         function scrollToLatestGift() {
-            requestAnimationFrame(() => {
-                const top = currentSortOrder === 'timestamp-asc' ? document.documentElement.scrollHeight : 0;
-                window.scrollTo({ top, behavior: 'smooth' });
-            });
+            // rAFで遅延させたりsmoothスクロールを使うと、連続発火時に「まだスクロールし終えていない」
+            // 状態で次のギフトの最新端判定が走ってしまい、着地がずれたりバッジ誤表示の原因になるため
+            // 同期的に即時スクロールする。
+            const top = currentSortOrder === 'timestamp-asc' ? document.documentElement.scrollHeight : 0;
+            window.scrollTo({ top, behavior: 'auto' });
         }
 
         function renderTable(gifts, options = {}) {
