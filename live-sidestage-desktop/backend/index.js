@@ -32,6 +32,7 @@ const {
     switchBroadcasterId,
 } = tikTokHelpers;
 const { firstDefinedString, normalizeBooleanInput, normalizeHexColor, normalizeEffectText, hasJapaneseText, normalizeWholeNumber, normalizeBroadcasterId } = require('./lib/utils');
+const { getGiftDisplayNameJa } = require('./lib/gift-name-ja');
 const giftCatalogModule = require('./lib/tiktok-gift-catalog');
 const {
     getTikTokGiftImageUrl,
@@ -1705,18 +1706,21 @@ function setContributorNickname(uniqueId, nickname) {
 }
 
 function hydrateStoredGiftEvent(gift) {
+    const giftNameJa = getGiftDisplayNameJa(gift.giftName);
+
     if (gift.giftImage) {
-        return gift;
+        return { ...gift, giftNameJa };
     }
 
     try {
         const rawPayload = JSON.parse(gift.rawPayload || '{}');
         return {
             ...gift,
-            giftImage: typeof rawPayload.giftPictureUrl === 'string' ? rawPayload.giftPictureUrl : null
+            giftImage: typeof rawPayload.giftPictureUrl === 'string' ? rawPayload.giftPictureUrl : null,
+            giftNameJa
         };
     } catch {
-        return gift;
+        return { ...gift, giftNameJa };
     }
 }
 
@@ -1830,7 +1834,7 @@ function buildTopGiftSnapshot(dayKey = getTodayDayKey()) {
             nickname: topGift.nickname,
             image: topGift.image,
             giftId: topGift.giftId || '',
-            giftName: topGift.giftName || 'ギフト名未取得',
+            giftName: getGiftDisplayNameJa(topGift.giftName) || 'ギフト名未取得',
             giftImage: topGift.giftImage || null,
             giftValue: topGiftAmount,
             totalGifts: Number(topGift.totalGifts || 0),

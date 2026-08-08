@@ -1,6 +1,7 @@
 'use strict';
 
 const { repairMojibakeFilename } = require('../utils');
+const { getGiftDisplayNameJa } = require('../gift-name-ja');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
 const { searchSoundEffectLab, downloadSoundEffectLabSound, SOUNDEFFECT_LAB_HOST } = require('../soundeffect-lab');
@@ -261,7 +262,7 @@ module.exports = function registerEffectsRoutes({
                 String(gift.name || '').trim().toLowerCase() === trigger.giftName);
 
             map[trigger.id] = {
-                giftName: matchedGift?.name || trigger.giftName,
+                giftName: matchedGift?.nameJa || getGiftDisplayNameJa(trigger.giftName),
                 giftImageUrl: matchedGift?.imageUrl || ''
             };
         });
@@ -353,11 +354,12 @@ module.exports = function registerEffectsRoutes({
                 const matchedGift = catalogGifts.find((gift) =>
                     String(gift.name || '').trim().toLowerCase() === trigger.giftName);
                 const giftNameKey = String(matchedGift?.name || trigger.giftName || '').trim().toLowerCase();
+                const giftNameJa = matchedGift?.nameJa || getGiftDisplayNameJa(trigger.giftName);
 
                 return {
                     id: trigger.id,
-                    triggerName: trigger.listOverlayName || trigger.name || matchedGift?.name || trigger.giftName,
-                    giftName: matchedGift?.name || trigger.giftName,
+                    triggerName: trigger.listOverlayName || trigger.name || giftNameJa,
+                    giftName: giftNameJa,
                     giftImageUrl: matchedGift?.imageUrl || '',
                     listOverlayBgColor: trigger.listOverlayBgColor || '',
                     listOverlayHighlight: Boolean(trigger.listOverlayHighlight),

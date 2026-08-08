@@ -855,7 +855,6 @@
 
         const referenceData = {
             gifts: [],
-            giftsByName: new Map(),
             usersById: new Map(),
             usersByName: new Map()
         };
@@ -1053,8 +1052,9 @@
             sortedGifts.forEach((gift) => {
                 const row = document.createElement('tr');
                 row.dataset.giftEventId = String(gift.id || '');
+                const giftDisplayName = gift.giftNameJa || gift.giftName;
                 const giftImageMarkup = gift.giftImage
-                    ? `<img class="gift-image" src="${escapeHtml(gift.giftImage)}" alt="${escapeHtml(gift.giftName || 'gift')}">`
+                    ? `<img class="gift-image" src="${escapeHtml(gift.giftImage)}" alt="${escapeHtml(giftDisplayName || 'gift')}">`
                     : '<div class="gift-image is-empty">No Image</div>';
                 const userAvatarMarkup = gift.image
                     ? `<img class="user-avatar" src="${escapeHtml(gift.image)}" alt="">`
@@ -1080,7 +1080,7 @@
                         <div class="gift-cell">
                             ${giftImageMarkup}
                             <div class="gift-meta">
-                                <strong>${escapeHtml(gift.giftName || '不明')}</strong>
+                                <strong>${escapeHtml(giftDisplayName || '不明')}</strong>
                                 <span>ID: ${escapeHtml(gift.giftId || '-')}</span>
                             </div>
                         </div>
@@ -1117,7 +1117,7 @@
                 ${profileUrl
                     ? `<a class="popout-gift-user-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${userLinkMarkup}</a>`
                     : userLinkMarkup}
-                <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
+                <span class="popout-gift-name">${escapeHtml(gift.giftNameJa || gift.giftName || '不明')}</span>
                 ${giftImageMarkup}
                 <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>
             `;
@@ -1171,7 +1171,6 @@
 
         function populateGiftSuggestions(gifts) {
             referenceData.gifts = Array.isArray(gifts) ? gifts : [];
-            referenceData.giftsByName = new Map(referenceData.gifts.map((gift) => [String(gift.name || ''), gift]));
         }
 
         function populateRecentUsers(users) {
@@ -1293,7 +1292,8 @@
         }
 
         function syncGiftDraftFromCatalog() {
-            applyGiftDraftFromCatalog(referenceData.giftsByName.get(modalGiftNameInput.value.trim()));
+            const giftKey = (modalGiftNameInput.dataset.giftKey || modalGiftNameInput.value).trim();
+            applyGiftDraftFromCatalog(GiftSuggest.findByNameOrId(referenceData.gifts, giftKey));
         }
 
         GiftSuggest.attachSuggestField({
@@ -1301,10 +1301,21 @@
             panel: modalGiftSuggestionPanel,
             getGifts: () => referenceData.gifts,
             onSelect: (gift) => {
-                modalGiftNameInput.value = gift.name || '';
+                modalGiftNameInput.value = gift.nameJa || gift.name || '';
+                modalGiftNameInput.dataset.giftKey = gift.name || '';
+                modalGiftNameInput.setCustomValidity('');
+                modalGiftNameInput.classList.remove('gift-suggest-invalid');
                 applyGiftDraftFromCatalog(gift);
             },
             escapeHtml
+        });
+
+        GiftSuggest.attachSelectOnlyGuard(modalGiftNameInput, {
+            getGifts: () => referenceData.gifts,
+            invalidMessage: 'ギフト候補一覧から選択してください。',
+            onValid: (matched) => {
+                modalGiftNameInput.dataset.giftKey = matched ? (matched.name || '') : '';
+            }
         });
 
         function syncUserDraftFromSuggestions() {
@@ -1340,6 +1351,9 @@
             modalNicknameInput.value = '';
             modalProfileImageInput.value = '';
             modalGiftNameInput.value = '';
+            modalGiftNameInput.dataset.giftKey = '';
+            modalGiftNameInput.setCustomValidity('');
+            modalGiftNameInput.classList.remove('gift-suggest-invalid');
             modalGiftIdInput.value = '';
             modalGiftImageInput.value = '';
             modalDiamondCountInput.value = '1';
@@ -1417,6 +1431,11 @@
                 return;
             }
 
+            if (!modalGiftNameInput.checkValidity()) {
+                modalGiftNameInput.reportValidity();
+                return;
+            }
+
             isSubmittingGift = true;
             submitGiftModalButton.disabled = true;
 
@@ -1431,7 +1450,7 @@
                         uniqueId: modalUniqueIdInput.value.trim(),
                         nickname: modalNicknameInput.value.trim(),
                         profilePictureUrl: modalProfileImageInput.value.trim(),
-                        giftName: modalGiftNameInput.value.trim(),
+                        giftName: (modalGiftNameInput.dataset.giftKey || modalGiftNameInput.value).trim(),
                         giftId: modalGiftIdInput.value.trim(),
                         giftPictureUrl: modalGiftImageInput.value.trim(),
                         diamondCount: modalDiamondCountInput.value,
@@ -1447,7 +1466,8 @@
                 closeGiftModal();
                 await loadGifts(selectedDayKey, { scrollToLatest: true });
                 await loadReferenceData();
-                setMessage(`${selectedDayKey} に ${payload.gift?.giftName || 'ギフト'} を追加しました。`);
+                const addedGiftName = GiftSuggest.findByNameOrId(referenceData.gifts, payload.gift?.giftName)?.nameJa || payload.gift?.giftName;
+                setMessage(`${selectedDayKey} に ${addedGiftName || 'ギフト'} を追加しました。`);
             } catch (error) {
                 setMessage(error.message || 'テストデータの追加に失敗しました。', true);
             } finally {

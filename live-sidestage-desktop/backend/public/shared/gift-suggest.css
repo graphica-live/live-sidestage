@@ -90,3 +90,20 @@
     color: var(--muted);
     white-space: nowrap;
 }
+
+/* 選択必須ガード（GiftSuggest.attachSelectOnlyGuard）が不一致と判定した入力欄に付与する。
+   既存の input 要素へクラスを追加するだけで使えるよう、専用クラス名にしている。 */
+.gift-suggest-invalid {
+    border-color: #e5484d !important;
+    outline-color: #e5484d;
+}
+
+.gift-suggest-error {
+    color: #e5484d;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.gift-suggest-error[hidden] {
+    display: none;
+}

@@ -16,14 +16,46 @@ function findGiftSuggestionForTrigger(giftName) {
     return GiftSuggest.findByNameOrId(knownGiftSuggestions, giftName);
 }
 
+// トリガー保存に使う値は常に英語のマッチングキー（ライブイベントの giftName と同じ表記）。
+// 表示は日本語名（あれば）にしつつ、実際の値は input.dataset.giftKey に保持する。
+function setTriggerModalGiftNameValue(englishName) {
+    const trimmed = String(englishName || '').trim();
+    triggerModalGiftName.dataset.giftKey = trimmed;
+    triggerModalGiftName.setCustomValidity('');
+    triggerModalGiftName.classList.remove('gift-suggest-invalid');
+
+    if (!trimmed) {
+        triggerModalGiftName.value = '';
+        return;
+    }
+
+    const matched = findGiftSuggestionForTrigger(trimmed);
+    triggerModalGiftName.value = matched?.nameJa || trimmed;
+}
+
+function getTriggerModalGiftNameValue() {
+    return (triggerModalGiftName.dataset.giftKey || triggerModalGiftName.value || '').trim();
+}
+
 const triggerGiftSuggestPicker = GiftSuggest.attachSuggestField({
     input: triggerModalGiftName,
     panel: triggerGiftSuggestionPanel,
     getGifts: () => knownGiftSuggestions,
     onSelect: (gift) => {
-        triggerModalGiftName.value = gift.name || '';
+        triggerModalGiftName.value = gift.nameJa || gift.name || '';
+        triggerModalGiftName.dataset.giftKey = gift.name || '';
+        triggerModalGiftName.setCustomValidity('');
+        triggerModalGiftName.classList.remove('gift-suggest-invalid');
     },
     escapeHtml
+});
+
+GiftSuggest.attachSelectOnlyGuard(triggerModalGiftName, {
+    getGifts: () => knownGiftSuggestions,
+    invalidMessage: 'ギフト候補一覧から選択してください。',
+    onValid: (matched) => {
+        triggerModalGiftName.dataset.giftKey = matched ? (matched.name || '') : '';
+    }
 });
 
 // effects-modal.js からモーダルの開閉時に呼ばれる（トリガーモーダルを閉じる際にサジェストパネルも閉じる）。
@@ -302,10 +334,22 @@ GiftSuggest.attachSuggestField({
     panel: giftTestSuggestionPanel,
     getGifts: () => knownGiftSuggestions,
     onSelect: (gift) => {
-        giftTestNameInput.value = gift.name || '';
+        giftTestNameInput.value = gift.nameJa || gift.name || '';
+        giftTestNameInput.dataset.giftKey = gift.name || '';
+        giftTestNameInput.setCustomValidity('');
+        giftTestNameInput.classList.remove('gift-suggest-invalid');
         giftTestSelectedGift = gift;
     },
     escapeHtml
+});
+
+GiftSuggest.attachSelectOnlyGuard(giftTestNameInput, {
+    getGifts: () => knownGiftSuggestions,
+    invalidMessage: 'ギフト候補一覧から選択してください。',
+    onValid: (matched) => {
+        giftTestNameInput.dataset.giftKey = matched ? (matched.name || '') : '';
+        giftTestSelectedGift = matched;
+    }
 });
 
 giftTestNameInput.addEventListener('input', () => {
@@ -313,7 +357,12 @@ giftTestNameInput.addEventListener('input', () => {
 });
 
 giftTestSendButton.addEventListener('click', async () => {
-    const giftName = giftTestNameInput.value.trim();
+    if (!giftTestNameInput.checkValidity()) {
+        giftTestNameInput.reportValidity();
+        return;
+    }
+
+    const giftName = (giftTestNameInput.dataset.giftKey || giftTestNameInput.value).trim();
 
     if (!giftName) {
         setGiftTestStatus('ギフト名を入力してください。', 'error');
