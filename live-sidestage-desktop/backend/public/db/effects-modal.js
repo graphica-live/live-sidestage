@@ -334,6 +334,7 @@ function resetTriggerModal() {
     triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。';
     triggerModalSubmit.textContent = '追加';
     triggerModalName.value = '';
+    triggerModalListOverlayName.value = '';
     editingTriggerEnabled = true;
     triggerModalSelectedEventIds = [];
     triggerModalPlaySequential.checked = true;
@@ -345,6 +346,8 @@ function resetTriggerModal() {
     triggerModalRapidFireCancelMs.value = '1500';
     syncTriggerRapidFireField();
     triggerModalTreatComboSingle.checked = true;
+    triggerModalExcludeFromOverlay.checked = false;
+    triggerModalListOverlayHighlight.checked = false;
     triggerModalCommentMode.value = '';
     triggerModalCommentText.value = '';
     triggerModalUserIds.value = '';
@@ -369,6 +372,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalDescription.textContent = 'トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をここで更新します。';
     triggerModalSubmit.textContent = '更新';
     triggerModalName.value = triggerRecord.name || '';
+    triggerModalListOverlayName.value = triggerRecord.listOverlayName || '';
     editingTriggerEnabled = Boolean(triggerRecord.enabled);
     // eventIds 複数対応（旧フォーマット eventId も考慮）
     const ids = Array.isArray(triggerRecord.eventIds) && triggerRecord.eventIds.length > 0
@@ -386,6 +390,9 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalRapidFireCancelMs.value = String(triggerRecord.rapidFireCancelMs ?? 1500);
     syncTriggerRapidFireField();
     triggerModalTreatComboSingle.checked = triggerRecord.treatGiftComboAsSingle !== false;
+    triggerModalExcludeFromOverlay.checked = Boolean(triggerRecord.excludedFromListOverlay);
+    triggerModalListOverlayBgColor.value = triggerRecord.listOverlayBgColor || '';
+    triggerModalListOverlayHighlight.checked = Boolean(triggerRecord.listOverlayHighlight);
     triggerModalCommentMode.value = triggerRecord.commentMode === 'disabled' ? '' : (triggerRecord.commentMode || '');
     triggerModalCommentText.value = triggerRecord.commentText || '';
     triggerModalUserIds.value = Array.isArray(triggerRecord.userIds)
@@ -409,6 +416,7 @@ function collectTriggerFromModal() {
     return {
         id: editingTriggerId || createId('trigger'),
         name: triggerModalName.value.trim(),
+        listOverlayName: triggerModalListOverlayName.value.trim(),
         eventIds: [...triggerModalSelectedEventIds],
         eventPlayMode: triggerModalPlayRandom.checked ? 'random' : 'sequential',
         giftName: triggerModalGiftName.value.trim(),
@@ -416,6 +424,9 @@ function collectTriggerFromModal() {
         rapidFireEnabled: triggerModalRapidFireEnabled.checked,
         rapidFireCancelMs: Number(triggerModalRapidFireCancelMs.value || 1500),
         treatGiftComboAsSingle: triggerModalTreatComboSingle.checked,
+        excludedFromListOverlay: triggerModalExcludeFromOverlay.checked,
+        listOverlayBgColor: triggerModalListOverlayBgColor.value,
+        listOverlayHighlight: triggerModalListOverlayHighlight.checked,
         commentMode: triggerModalCommentMode.value,
         commentText: triggerModalCommentText.value.trim(),
         userIds: isFilemap ? [] : normalizeUserIdsInput(triggerModalUserIds.value),

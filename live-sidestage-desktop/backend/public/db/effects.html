@@ -361,6 +361,11 @@
                     <input type="text" id="trigger-modal-name" maxlength="80" placeholder="例: Rose 用トリガー">
                 </div>
                 <div class="field full">
+                    <label>一覧オーバーレイ表示名</label>
+                    <textarea id="trigger-modal-list-overlay-name" maxlength="160" placeholder="空欄ならトリガー名を表示。改行可"></textarea>
+                    <div class="field-hint">トリガーギフト一覧オーバーレイのカードにのみ表示されます。改行を入れて複数行にできます。</div>
+                </div>
+                <div class="field full">
                     <label>再生イベント</label>
                     <div class="event-ids-play-mode-row">
                         <label class="toggle"><input type="radio" name="event-play-mode" id="trigger-modal-play-sequential" value="sequential" checked><span>順次起動</span></label>
@@ -398,7 +403,22 @@
                     <label>ギフトオプション</label>
                     <div class="modal-check-list">
                         <label class="toggle"><input type="checkbox" id="trigger-modal-treat-combo-single" checked><span>ギフトまとめ投げを1回とする</span></label>
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-exclude-from-overlay"><span>トリガーギフト一覧オーバーレイの対象外にする</span></label>
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-list-overlay-highlight"><span>トリガー一覧で強調する（心音のように拡大）</span></label>
                     </div>
+                </div>
+                <div class="field">
+                    <label>一覧オーバーレイ背景色</label>
+                    <select id="trigger-modal-list-overlay-bg-color">
+                        <option value="">指定なし</option>
+                        <option value="black">⚫ 黒</option>
+                        <option value="white">⚪ 白</option>
+                        <option value="blue">🔵 青</option>
+                        <option value="green">🟢 緑</option>
+                        <option value="yellow">🟡 黄色</option>
+                        <option value="purple">🟣 紫</option>
+                        <option value="red">🔴 赤</option>
+                    </select>
                 </div>
                 <div class="field full">
                     <label>コメント</label>
