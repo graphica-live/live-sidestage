@@ -104,6 +104,35 @@
             100%        { transform: scale(0.92) rotate(-8deg); }
         }
 
+        /* グローブ（右下）の左右対称位置に、当選を引き当てたギフトの画像を表示する */
+        .win-gift {
+            position: absolute;
+            left: -10px;
+            bottom: -6px;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 4px solid #fff8e1;
+            box-shadow: 0 10px 16px rgba(0, 0, 0, 0.5);
+            animation: winGiftPunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        .win-gift img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        @keyframes winGiftPunch {
+            0%          { transform: scale(0) rotate(40deg); }
+            16%         { transform: scale(1.3) rotate(-10deg); }
+            26%, 82%    { transform: scale(1) rotate(8deg); }
+            100%        { transform: scale(0.92) rotate(8deg); }
+        }
+
         .x5-badge {
             position: absolute;
             left: 190px;
@@ -363,10 +392,18 @@
                 : '';
         }
 
+        // 当選ギフトの画像はTikTok公式CDNから直接取得できるため、アバターと違いプロキシ不要
+        function buildGiftImgHtml(image) {
+            return image
+                ? `<img src="${escapeHtml(image)}" alt="" onerror="this.closest('.win-gift')?.remove();">`
+                : '';
+        }
+
         function showWin(data) {
             const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
             const image = String(data?.image || '');
             const avatarHtml = buildAvatarHtml(image);
+            const giftImgHtml = buildGiftImgHtml(String(data?.giftImage || ''));
 
             const card = document.createElement('div');
             card.className = 'win-card';
@@ -374,6 +411,7 @@
                 <div class="avatar-glove-wrap">
                     <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
                     <div class="glove">${GLOVE_IMG}</div>
+                    ${giftImgHtml ? `<div class="win-gift">${giftImgHtml}</div>` : ''}
                     <div class="x5-badge">×5</div>
                 </div>
                 <div class="nickname">${escapeHtml(nickname)}</div>

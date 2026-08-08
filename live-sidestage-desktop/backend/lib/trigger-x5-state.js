@@ -161,6 +161,7 @@ module.exports = function createTriggerX5State({
         io.emit('widgets:trigger-x5:won', {
             nickname,
             image: sourceEvent?.image || '',
+            giftImage: sourceEvent?.giftImage || '',
             timestamp: getTimestamp(),
             sound: buildTriggerX5SoundPayload({
                 enabled: settings.winSoundEnabled,
