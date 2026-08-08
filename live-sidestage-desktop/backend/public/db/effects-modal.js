@@ -90,6 +90,16 @@ function syncLiveStudioActionTypeRows() {
     eventModalLsVibeRow.hidden = type !== 'vibe';
 }
 
+function syncEventModalForceInterruptField() {
+    eventModalForceInterruptCountRow.hidden = !eventModalForceInterruptEnabled.checked;
+}
+
+function syncEventModalTimerWidgetRows() {
+    const isReversal = eventModalTimerWidgetMode.value === 'reversal';
+    eventModalTimerWidgetFixedRow.hidden = isReversal;
+    eventModalTimerWidgetReversalRow.hidden = !isReversal;
+}
+
 function resetEventModal() {
     editingEventId = null;
     pendingNewEventUploadId = createId('event');
@@ -120,7 +130,16 @@ function resetEventModal() {
     syncLiveStudioActionTypeRows();
     eventModalVdjEnabled.checked = false;
     eventModalVdjCommand.value = '';
+    eventModalTimerWidgetEnabled.checked = false;
+    eventModalTimerWidgetMode.value = 'fixed';
+    eventModalTimerWidgetMinutes.value = '0';
+    eventModalTimerWidgetThreshold.value = '5';
+    eventModalTimerWidgetBelowMinutes.value = '0';
+    eventModalTimerWidgetAboveMinutes.value = '0';
+    syncEventModalTimerWidgetRows();
     eventModalForceInterruptEnabled.checked = false;
+    eventModalForceInterruptCount.value = '0';
+    syncEventModalForceInterruptField();
 }
 
 function openEventModalForCreate() {
@@ -169,7 +188,16 @@ function openEventModalForEdit(eventRecord) {
     syncLiveStudioActionTypeRows();
     eventModalVdjEnabled.checked = Boolean(eventRecord.vdjEffectEnabled);
     eventModalVdjCommand.value = eventRecord.vdjCommand || '';
+    eventModalTimerWidgetEnabled.checked = Boolean(eventRecord.timerWidgetEnabled);
+    eventModalTimerWidgetMode.value = eventRecord.timerWidgetMode === 'reversal' ? 'reversal' : 'fixed';
+    eventModalTimerWidgetMinutes.value = String(eventRecord.timerWidgetMinutesDelta ?? 0);
+    eventModalTimerWidgetThreshold.value = String(eventRecord.timerWidgetReversalThresholdMinutes ?? 5);
+    eventModalTimerWidgetBelowMinutes.value = String(eventRecord.timerWidgetBelowMinutesDelta ?? 0);
+    eventModalTimerWidgetAboveMinutes.value = String(eventRecord.timerWidgetAboveMinutesDelta ?? 0);
+    syncEventModalTimerWidgetRows();
     eventModalForceInterruptEnabled.checked = Boolean(eventRecord.forceInterruptAllEvents);
+    eventModalForceInterruptCount.value = String(eventRecord.forceInterruptCount ?? 0);
+    syncEventModalForceInterruptField();
     openModal(eventModal);
     eventModalName.focus();
 }
@@ -203,7 +231,14 @@ function collectEventFromModal() {
         lsVibeId: eventModalLsVibe.value || '',
         vdjEffectEnabled: eventModalVdjEnabled.checked,
         vdjCommand: eventModalVdjCommand.value.trim(),
-        forceInterruptAllEvents: eventModalForceInterruptEnabled.checked
+        timerWidgetEnabled: eventModalTimerWidgetEnabled.checked,
+        timerWidgetMode: eventModalTimerWidgetMode.value,
+        timerWidgetMinutesDelta: Number(eventModalTimerWidgetMinutes.value || 0),
+        timerWidgetReversalThresholdMinutes: Number(eventModalTimerWidgetThreshold.value || 0),
+        timerWidgetBelowMinutesDelta: Number(eventModalTimerWidgetBelowMinutes.value || 0),
+        timerWidgetAboveMinutesDelta: Number(eventModalTimerWidgetAboveMinutes.value || 0),
+        forceInterruptAllEvents: eventModalForceInterruptEnabled.checked,
+        forceInterruptCount: Number(eventModalForceInterruptCount.value || 0)
     };
 }
 
@@ -588,6 +623,14 @@ eventModalMediaVolume.addEventListener('input', () => {
 
 eventModalMidiMessageType.addEventListener('change', () => {
     syncEventModalMidiFields();
+});
+
+eventModalForceInterruptEnabled.addEventListener('change', () => {
+    syncEventModalForceInterruptField();
+});
+
+eventModalTimerWidgetMode.addEventListener('change', () => {
+    syncEventModalTimerWidgetRows();
 });
 
 eventModalLsActionType.addEventListener('change', () => {

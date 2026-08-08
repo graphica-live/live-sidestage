@@ -532,7 +532,7 @@
                     <div class="card-head">
                         <div>
                             <h2>タイマー</h2>
-                            <p class="subtext">指定時間のカウントダウンを表示します。設定したギフトが飛ぶと時間を延長/短縮でき、終了時に紙吹雪と効果音が再生されます。</p>
+                            <p class="subtext">指定時間のカウントダウンを表示します。終了時に紙吹雪と効果音が再生されます。ギフトによる時間延長/短縮は「イベント」の「TikEffectウィジェット連携」→「タイマーウィジェット」から設定できます。</p>
                         </div>
                         <button type="button" class="settings-toggle-btn" data-panel-id="timer-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
                     </div>
@@ -645,21 +645,6 @@
                                     <option value="9">screen 9</option>
                                     <option value="10">screen 10</option>
                                 </select>
-                            </div>
-                            <div class="field full">
-                                <label>ギフトで時間を延長/短縮（最大3件・分単位、マイナスで短縮）</label>
-                                <div id="timer-gift-rows"></div>
-                            </div>
-                            <div class="field full">
-                                <label for="timer-reversal-threshold">反転境界時間（分）</label>
-                                <div class="action-row">
-                                    <input type="range" id="timer-reversal-threshold" min="0" max="180" step="1" value="5" style="flex: 1;">
-                                    <span class="subtext" id="timer-reversal-threshold-value" style="margin-top: 0; width: 48px;">5分</span>
-                                </div>
-                            </div>
-                            <div class="field full">
-                                <label>境界時間で延長/短縮を反転（残り時間が境界未満なら左、以上なら右の値を使用・最大3件）</label>
-                                <div id="timer-reversal-gift-rows"></div>
                             </div>
                         </div>
                     </div>
@@ -1037,8 +1022,6 @@
         </section>
 
         <div class="push-pull-suggest-panel" id="push-pull-suggest-panel" hidden></div>
-        <div class="push-pull-suggest-panel" id="timer-suggest-panel" hidden></div>
-
         <div class="modal-shell" id="myinstants-modal" aria-hidden="true">
             <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
                 <div>

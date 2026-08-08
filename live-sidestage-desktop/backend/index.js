@@ -1303,7 +1303,7 @@ const {
     getTimerSettings, setTimerSettings, getTimerDurationMs,
     getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
-    applyTimerGiftEvent,
+    applyTimerWidgetAction,
     emitTimerEndSound,
     emitTimerBlockSound,
     emitTimerCountdownSound,
@@ -1404,6 +1404,8 @@ const {
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
+    applyTimerWidgetAction,
+    buildTimerPayload,
 });
 
 function getStoredBroadcasterId() {
@@ -3106,16 +3108,6 @@ function ensureTikTokConnection() {
                 pushPullState.pullPoints += pullMatch.points * repeatCount;
                 persistPushPullState();
                 io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
-            }
-
-            const timerMatch = applyTimerGiftEvent(giftId, repeatCount);
-            if (timerMatch) {
-                io.emit('widgets:timer:updated', buildTimerPayload());
-                io.emit('widgets:timer:adjusted', {
-                    minutesDelta: timerMatch.deltaMinutes,
-                    giftName: timerMatch.slot.giftName,
-                    blocked: timerMatch.blocked
-                });
             }
         }
 

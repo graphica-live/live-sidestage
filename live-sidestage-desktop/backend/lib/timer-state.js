@@ -7,7 +7,6 @@ const {
 const { normalizeEffectText, normalizeWholeNumber, normalizeBooleanInput } = require('./utils');
 const { normalizeSoundAsset } = require('./effect-helpers');
 
-const MAX_TIMER_GIFT_SLOTS = 3;
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
 const TIMER_BLOCK_SOUND_URL = '/audio/feedback/business11.mp3';
 
@@ -15,9 +14,6 @@ const DEFAULT_TIMER_SETTINGS = {
     durationMinutes: 10,
     durationSeconds: 0,
     headingText: 'カウントダウン',
-    slots: [],
-    reversalThresholdMinutes: 5,
-    reversalSlots: [],
     endSound: { name: '', url: '' },
     endSoundVolume: 100,
     endSoundScreen: 1,
@@ -38,56 +34,10 @@ module.exports = function createTimerState({
 let endTimeoutHandle = null;
 let countdownTimeoutHandle = null;
 
-function normalizeSignedMinutes(value) {
-    const parsed = Number.parseInt(String(value ?? ''), 10);
-    if (!Number.isInteger(parsed)) return 0;
-    return Math.max(-180, Math.min(180, parsed));
-}
-
 function normalizeTimerSoundVolume(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.endSoundVolume;
     return Math.max(0, Math.min(100, parsed));
-}
-
-function normalizeTimerGiftSlot(value) {
-    const source = value && typeof value === 'object' ? value : {};
-    const giftId = normalizeEffectText(source.giftId, 80);
-    const giftName = normalizeEffectText(source.giftName, 80);
-    const giftImage = normalizeEffectText(source.giftImage, 400);
-    const minutesDelta = normalizeSignedMinutes(source.minutesDelta);
-
-    return {
-        enabled: Boolean(giftId),
-        giftId,
-        giftName,
-        giftImage,
-        minutesDelta,
-    };
-}
-
-function normalizeTimerReversalGiftSlot(value) {
-    const source = value && typeof value === 'object' ? value : {};
-    const giftId = normalizeEffectText(source.giftId, 80);
-    const giftName = normalizeEffectText(source.giftName, 80);
-    const giftImage = normalizeEffectText(source.giftImage, 400);
-    const belowMinutesDelta = normalizeSignedMinutes(source.belowMinutesDelta);
-    const aboveMinutesDelta = normalizeSignedMinutes(source.aboveMinutesDelta);
-
-    return {
-        enabled: Boolean(giftId),
-        giftId,
-        giftName,
-        giftImage,
-        belowMinutesDelta,
-        aboveMinutesDelta,
-    };
-}
-
-function normalizeReversalThresholdMinutes(value) {
-    const parsed = Number.parseInt(String(value ?? ''), 10);
-    if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.reversalThresholdMinutes;
-    return Math.max(0, Math.min(180, parsed));
 }
 
 function normalizeMinFloorMinutes(value) {
@@ -123,24 +73,11 @@ function normalizeTimerSettings(value) {
 
     const durationMinutes = normalizeWholeNumber(source.durationMinutes);
     const durationSeconds = normalizeWholeNumber(source.durationSeconds);
-    const rawSlots = Array.isArray(source.slots) ? source.slots : [];
-    const slots = [];
-    for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
-        slots.push(normalizeTimerGiftSlot(rawSlots[i]));
-    }
-    const rawReversalSlots = Array.isArray(source.reversalSlots) ? source.reversalSlots : [];
-    const reversalSlots = [];
-    for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
-        reversalSlots.push(normalizeTimerReversalGiftSlot(rawReversalSlots[i]));
-    }
 
     return {
         durationMinutes: durationMinutes !== null ? Math.min(durationMinutes, 1440) : DEFAULT_TIMER_SETTINGS.durationMinutes,
         durationSeconds: durationSeconds !== null ? Math.min(durationSeconds, 59) : DEFAULT_TIMER_SETTINGS.durationSeconds,
         headingText: normalizeEffectText(source.headingText, 40) || DEFAULT_TIMER_SETTINGS.headingText,
-        slots,
-        reversalThresholdMinutes: normalizeReversalThresholdMinutes(source.reversalThresholdMinutes),
-        reversalSlots,
         endSound: normalizeSoundAsset(source.endSound),
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
         endSoundScreen: normalizeEndSoundScreen(source.endSoundScreen),
@@ -407,34 +344,25 @@ function adjustTimerByMinutes(deltaMinutes) {
     return { runtime: next, blocked };
 }
 
-// ギフトイベントを設定済みスロットと照合し、一致すればタイマーを調整する。
-function applyTimerGiftEvent(giftId, repeatCount = 1) {
-    const normalizedGiftId = String(giftId || '');
-    if (!normalizedGiftId) return null;
+// TikEffectウィジェット連携イベント（タイマーウィジェットカテゴリ）から、タイマーへ分数を加算/減算する。
+function applyTimerWidgetAction(effectEvent, repeatCount = 1) {
+    if (!effectEvent?.timerWidgetEnabled) return null;
 
-    const settings = getTimerSettings();
-    const slot = settings.slots.find((s) => s.enabled && s.giftId === normalizedGiftId);
-    if (slot && slot.minutesDelta) {
-        const deltaMinutes = slot.minutesDelta * Math.max(1, Number(repeatCount) || 1);
-        const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
-        if (blocked) emitTimerBlockSound();
-        return { slot, deltaMinutes, runtime, blocked };
+    let minutesDelta;
+    if (effectEvent.timerWidgetMode === 'reversal') {
+        const thresholdMs = (Number(effectEvent.timerWidgetReversalThresholdMinutes) || 0) * 60000;
+        const isBelow = getTimerRemainingMs() < thresholdMs;
+        minutesDelta = Number(isBelow ? effectEvent.timerWidgetBelowMinutesDelta : effectEvent.timerWidgetAboveMinutesDelta) || 0;
+    } else {
+        minutesDelta = Number(effectEvent.timerWidgetMinutesDelta) || 0;
     }
 
-    // 反転スロット: 残り時間が境界時間未満なら左(below)、以上なら右(above)の値を使う。
-    const reversalSlot = settings.reversalSlots.find((s) => s.enabled && s.giftId === normalizedGiftId);
-    if (reversalSlot) {
-        const isBelow = getTimerRemainingMs() < settings.reversalThresholdMinutes * 60000;
-        const minutesDelta = isBelow ? reversalSlot.belowMinutesDelta : reversalSlot.aboveMinutesDelta;
-        if (minutesDelta) {
-            const deltaMinutes = minutesDelta * Math.max(1, Number(repeatCount) || 1);
-            const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
-            if (blocked) emitTimerBlockSound();
-            return { slot: reversalSlot, deltaMinutes, runtime, blocked };
-        }
-    }
+    if (!minutesDelta) return null;
 
-    return null;
+    const deltaMinutes = minutesDelta * Math.max(1, Number(repeatCount) || 1);
+    const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
+    if (blocked) emitTimerBlockSound();
+    return { deltaMinutes, runtime, blocked };
 }
 
 function buildTimerPayload() {
@@ -456,11 +384,10 @@ function buildTimerPayload() {
     scheduleEndTimeout();
 
     return {
-        MAX_TIMER_GIFT_SLOTS,
         normalizeTimerSettings, getTimerSettings, setTimerSettings, getTimerDurationMs,
         normalizeTimerRuntime, getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
         startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
-        applyTimerGiftEvent,
+        applyTimerWidgetAction,
         emitTimerEndSound,
         emitTimerBlockSound,
         emitTimerCountdownSound,

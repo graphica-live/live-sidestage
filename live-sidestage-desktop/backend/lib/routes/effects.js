@@ -359,8 +359,8 @@ module.exports = function registerEffectsRoutes({
     app.post('/api/effects/preview', (req, res) => {
         const effectEvent = normalizeEffectEvent(req.body?.event, 0);
 
-        if (!effectEvent.videoAssetUrl && !effectEvent.audioAssetUrl && !effectEvent.midiEnabled) {
-            return res.status(400).json({ ok: false, error: '動画・音声・MIDIのいずれかを設定したイベントだけ再生できます。' });
+        if (!effectEvent.videoAssetUrl && !effectEvent.audioAssetUrl && !effectEvent.midiEnabled && !effectEvent.timerWidgetEnabled) {
+            return res.status(400).json({ ok: false, error: '動画・音声・MIDI・タイマーウィジェット連携のいずれかを設定したイベントだけ再生できます。' });
         }
 
         emitEffectPlayback(effectEvent, null, null);

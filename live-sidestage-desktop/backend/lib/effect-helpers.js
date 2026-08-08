@@ -63,7 +63,14 @@ function createDefaultEffectEvent(slot = 1) {
         lsVibeId: '',
         vdjEffectEnabled: false,
         vdjCommand: '',
-        forceInterruptAllEvents: false
+        timerWidgetEnabled: false,
+        timerWidgetMode: 'fixed',
+        timerWidgetMinutesDelta: 0,
+        timerWidgetReversalThresholdMinutes: 5,
+        timerWidgetBelowMinutesDelta: 0,
+        timerWidgetAboveMinutesDelta: 0,
+        forceInterruptAllEvents: false,
+        forceInterruptCount: 0
     };
 }
 
@@ -173,11 +180,34 @@ function normalizeLiveStudioActionType(value) {
     return LIVESTUDIO_ACTION_TYPES.includes(normalized) ? normalized : 'cameraeffects';
 }
 
+function normalizeEffectTimerWidgetMode(value) {
+    return normalizeEffectText(value, 16).toLowerCase() === 'reversal' ? 'reversal' : 'fixed';
+}
+
+function normalizeEffectTimerWidgetMinutes(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return 0;
+    return Math.max(-180, Math.min(180, parsed));
+}
+
+function normalizeEffectTimerWidgetThresholdMinutes(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return 5;
+    return Math.max(0, Math.min(180, parsed));
+}
+
 
 function normalizeEffectTriggerRapidFireCancelMs(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed)) return 1500;
     return Math.max(10, Math.min(30000, parsed));
+}
+
+// 「待機イベント削除」の削除件数。0 = 全件削除（既定・後方互換）、1以上 = 待機列の先頭からその件数のみ削除。
+function normalizeEffectForceInterruptCount(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) return 0;
+    return Math.min(999, parsed);
 }
 
 function normalizeEffectEvent(value, index) {
@@ -215,7 +245,14 @@ function normalizeEffectEvent(value, index) {
         lsVibeId: normalizeEffectText(value?.lsVibeId, 60),
         vdjEffectEnabled: Boolean(value?.vdjEffectEnabled),
         vdjCommand: normalizeVdjCommand(value?.vdjCommand),
-        forceInterruptAllEvents: Boolean(value?.forceInterruptAllEvents)
+        timerWidgetEnabled: Boolean(value?.timerWidgetEnabled),
+        timerWidgetMode: normalizeEffectTimerWidgetMode(value?.timerWidgetMode),
+        timerWidgetMinutesDelta: normalizeEffectTimerWidgetMinutes(value?.timerWidgetMinutesDelta),
+        timerWidgetReversalThresholdMinutes: normalizeEffectTimerWidgetThresholdMinutes(value?.timerWidgetReversalThresholdMinutes),
+        timerWidgetBelowMinutesDelta: normalizeEffectTimerWidgetMinutes(value?.timerWidgetBelowMinutesDelta),
+        timerWidgetAboveMinutesDelta: normalizeEffectTimerWidgetMinutes(value?.timerWidgetAboveMinutesDelta),
+        forceInterruptAllEvents: Boolean(value?.forceInterruptAllEvents),
+        forceInterruptCount: normalizeEffectForceInterruptCount(value?.forceInterruptCount)
     };
 }
 

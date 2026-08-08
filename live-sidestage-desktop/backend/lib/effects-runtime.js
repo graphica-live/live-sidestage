@@ -21,6 +21,8 @@ module.exports = function createEffectsRuntime({
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
+    applyTimerWidgetAction,
+    buildTimerPayload,
 }) {
     // カテゴリ単位のON/OFF。個々のトリガーの enabled 値には一切干渉しない。
     function getDisabledCategoryIds() {
@@ -104,11 +106,13 @@ module.exports = function createEffectsRuntime({
         };
     }
 
-    // 「全イベント強制中断」フラグ付きイベント発火時、そのイベントの再生先 screen で
-    // 現在待機中（キュー内）のイベントを即時削除する。再生中のイベントも中断対象に含む。
+    // 「待機イベント削除」フラグ付きイベント発火時、そのイベントの再生先 screen で
+    // 現在待機中（キュー内）のイベントを削除する。count=0（既定）は全件削除で再生中も中断、
+    // count>=1 は待機列の先頭からその件数のみ削除し再生中のイベントは継続する。
     function maybeForceInterruptScreen(effectEvent) {
         if (!effectEvent?.forceInterruptAllEvents) return;
-        io.emit('effects:playback:stop', { screen: effectEvent.screen, timestamp: getTimestamp() });
+        const count = Math.max(0, Number(effectEvent.forceInterruptCount) || 0);
+        io.emit('effects:playback:stop', { screen: effectEvent.screen, count, timestamp: getTimestamp() });
     }
 
     // オーバーレイ側(effect-overlay-html.js)は payload.playbackId をそのまま使わず、
@@ -119,14 +123,31 @@ module.exports = function createEffectsRuntime({
         return `${payload.playbackId}-0`;
     }
 
+    // MIDI/LIVE Studio/VDJ/タイマーウィジェットなど、動画・音声再生とは別枠のイベント副作用をまとめて実行する。
+    function runEffectEventSideEffects(effectEvent, payload, sourceEvent) {
+        sendMidiForEffectEvent(effectEvent);
+        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
+        sendVdjEffectForEvent(effectEvent);
+
+        if (effectEvent.timerWidgetEnabled) {
+            const timerResult = applyTimerWidgetAction(effectEvent, payload.playbackCount);
+            if (timerResult) {
+                io.emit('widgets:timer:updated', buildTimerPayload());
+                io.emit('widgets:timer:adjusted', {
+                    minutesDelta: timerResult.deltaMinutes,
+                    giftName: sourceEvent?.giftName || '',
+                    blocked: timerResult.blocked
+                });
+            }
+        }
+    }
+
     function emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride) {
         if (getEffectsGloballyPaused()) return;
         maybeForceInterruptScreen(effectEvent);
         const payload = createEffectPlaybackPayload(effectEvent, trigger, sourceEvent, playbackCountOverride);
         io.emit('effects:playback', payload);
-        sendMidiForEffectEvent(effectEvent);
-        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
-        sendVdjEffectForEvent(effectEvent);
+        runEffectEventSideEffects(effectEvent, payload, sourceEvent);
     }
 
     function matchesEffectTrigger(trigger, context) {
@@ -261,9 +282,7 @@ module.exports = function createEffectsRuntime({
                     if (!getEffectsGloballyPaused()) {
                         maybeForceInterruptScreen(effectEvent);
                         io.emit('effects:playback', payload);
-                        sendMidiForEffectEvent(effectEvent);
-                        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
-                        sendVdjEffectForEvent(effectEvent);
+                        runEffectEventSideEffects(effectEvent, payload, sourceEvent);
                         anyPlaybackEmitted = true;
                     }
                 } else if (!getEffectsGloballyPaused()) {

@@ -95,14 +95,9 @@
         const timerCountdownSoundVolumeInput = document.getElementById('timer-countdown-sound-volume');
         const timerCountdownSoundVolumeValueEl = document.getElementById('timer-countdown-sound-volume-value');
         const timerCountdownSoundScreenSelect = document.getElementById('timer-countdown-sound-screen');
-        const timerGiftRowsEl = document.getElementById('timer-gift-rows');
-        const timerReversalThresholdInput = document.getElementById('timer-reversal-threshold');
-        const timerReversalThresholdValueEl = document.getElementById('timer-reversal-threshold-value');
-        const timerReversalGiftRowsEl = document.getElementById('timer-reversal-gift-rows');
         const timerUrl = document.getElementById('timer-url');
         const timerPreviewFrame = document.getElementById('timer-preview-frame');
         const timerStatusLabel = document.getElementById('timer-status-label');
-        const timerSuggestPanel = document.getElementById('timer-suggest-panel');
         const goalGiftFontSelect = document.getElementById('goal-gift-font');
         const goalGiftTextStyleSelect = document.getElementById('goal-gift-text-style');
         const goalGiftStrokeWidthInput = document.getElementById('goal-gift-stroke-width');
@@ -1772,288 +1767,6 @@
             escapeHtml
         });
 
-        const MAX_TIMER_GIFT_SLOTS = 3;
-        let timerGiftSlots = [null, null, null];
-        let timerReversalSlots = [null, null, null];
-        let timerActivePicker = null; // {index, anchorEl, type: 'normal'|'reversal'}
-        let timerActiveSuggestionIndex = -1;
-        let visibleTimerSuggestions = [];
-
-        function renderTimerGiftRows() {
-            timerGiftRowsEl.innerHTML = '';
-
-            for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
-                const gift = timerGiftSlots[i] || null;
-                const row = document.createElement('div');
-                row.className = 'push-pull-gift-row';
-                row.dataset.index = String(i);
-
-                const imgEl = document.createElement('div');
-                imgEl.className = 'push-pull-gift-img' + (gift ? '' : ' empty');
-                imgEl.title = 'ギフトを選ぶ';
-                imgEl.tabIndex = 0;
-                imgEl.setAttribute('role', 'button');
-                if (gift && gift.giftImage) {
-                    const img = document.createElement('img');
-                    img.src = gift.giftImage;
-                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:5px;';
-                    imgEl.appendChild(img);
-                } else {
-                    imgEl.textContent = '+';
-                }
-                imgEl.addEventListener('click', () => nameEl.focus());
-                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nameEl.focus(); } });
-
-                const nameEl = document.createElement('input');
-                nameEl.type = 'text';
-                nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
-                nameEl.value = gift ? gift.giftName : '';
-                nameEl.placeholder = 'ギフトを選ぶ';
-                nameEl.autocomplete = 'off';
-                nameEl.maxLength = 80;
-                nameEl.addEventListener('focus', () => {
-                    if (!state.giftCatalog.length) return;
-                    timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' };
-                    renderTimerSuggestItems(nameEl.value);
-                });
-                nameEl.addEventListener('input', () => {
-                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' };
-                    renderTimerSuggestItems(nameEl.value);
-                });
-                nameEl.addEventListener('keydown', (e) => {
-                    if (timerSuggestPanel.hidden) {
-                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl, type: 'normal' }; renderTimerSuggestItems(nameEl.value); }
-                        return;
-                    }
-                    if (e.key === 'ArrowDown') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex + 1); }
-                    else if (e.key === 'ArrowUp') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex - 1); }
-                    else if (e.key === 'Enter') { e.preventDefault(); if (timerActiveSuggestionIndex >= 0 && visibleTimerSuggestions[timerActiveSuggestionIndex]) selectTimerGift(visibleTimerSuggestions[timerActiveSuggestionIndex]); }
-                    else if (e.key === 'Escape') { closeTimerSuggestPanel(); }
-                });
-                nameEl.addEventListener('blur', () => {
-                    window.setTimeout(() => {
-                        if (!timerSuggestPanel.contains(document.activeElement)) closeTimerSuggestPanel();
-                    }, 100);
-                });
-
-                const minutesEl = document.createElement('input');
-                minutesEl.type = 'number';
-                minutesEl.className = 'push-pull-points-input';
-                minutesEl.min = '-180';
-                minutesEl.max = '180';
-                minutesEl.placeholder = '分';
-                minutesEl.value = gift ? String(gift.minutesDelta) : '';
-                minutesEl.addEventListener('change', () => {
-                    if (!timerGiftSlots[i]) return;
-                    timerGiftSlots[i].minutesDelta = Math.max(-180, Math.min(180, parseInt(minutesEl.value, 10) || 0));
-                    scheduleTimerSave();
-                });
-
-                row.appendChild(imgEl);
-                row.appendChild(nameEl);
-                row.appendChild(minutesEl);
-                timerGiftRowsEl.appendChild(row);
-            }
-        }
-
-        function renderTimerReversalGiftRows() {
-            timerReversalGiftRowsEl.innerHTML = '';
-
-            for (let i = 0; i < MAX_TIMER_GIFT_SLOTS; i++) {
-                const gift = timerReversalSlots[i] || null;
-                const row = document.createElement('div');
-                row.className = 'push-pull-gift-row reversal-row';
-                row.dataset.index = String(i);
-
-                const imgEl = document.createElement('div');
-                imgEl.className = 'push-pull-gift-img' + (gift ? '' : ' empty');
-                imgEl.title = 'ギフトを選ぶ';
-                imgEl.tabIndex = 0;
-                imgEl.setAttribute('role', 'button');
-                if (gift && gift.giftImage) {
-                    const img = document.createElement('img');
-                    img.src = gift.giftImage;
-                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:5px;';
-                    imgEl.appendChild(img);
-                } else {
-                    imgEl.textContent = '+';
-                }
-                imgEl.addEventListener('click', () => nameEl.focus());
-                imgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nameEl.focus(); } });
-
-                const nameEl = document.createElement('input');
-                nameEl.type = 'text';
-                nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
-                nameEl.value = gift ? gift.giftName : '';
-                nameEl.placeholder = 'ギフトを選ぶ';
-                nameEl.autocomplete = 'off';
-                nameEl.maxLength = 80;
-                nameEl.addEventListener('focus', () => {
-                    if (!state.giftCatalog.length) return;
-                    timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' };
-                    renderTimerSuggestItems(nameEl.value);
-                });
-                nameEl.addEventListener('input', () => {
-                    if (!timerActivePicker) timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' };
-                    renderTimerSuggestItems(nameEl.value);
-                });
-                nameEl.addEventListener('keydown', (e) => {
-                    if (timerSuggestPanel.hidden) {
-                        if (e.key === 'ArrowDown' && state.giftCatalog.length) { e.preventDefault(); timerActivePicker = { index: i, anchorEl: nameEl, type: 'reversal' }; renderTimerSuggestItems(nameEl.value); }
-                        return;
-                    }
-                    if (e.key === 'ArrowDown') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex + 1); }
-                    else if (e.key === 'ArrowUp') { e.preventDefault(); updateTimerActiveSuggestion(timerActiveSuggestionIndex - 1); }
-                    else if (e.key === 'Enter') { e.preventDefault(); if (timerActiveSuggestionIndex >= 0 && visibleTimerSuggestions[timerActiveSuggestionIndex]) selectTimerGift(visibleTimerSuggestions[timerActiveSuggestionIndex]); }
-                    else if (e.key === 'Escape') { closeTimerSuggestPanel(); }
-                });
-                nameEl.addEventListener('blur', () => {
-                    window.setTimeout(() => {
-                        if (!timerSuggestPanel.contains(document.activeElement)) closeTimerSuggestPanel();
-                    }, 100);
-                });
-
-                const belowMinutesEl = document.createElement('input');
-                belowMinutesEl.type = 'number';
-                belowMinutesEl.className = 'push-pull-points-input';
-                belowMinutesEl.min = '-180';
-                belowMinutesEl.max = '180';
-                belowMinutesEl.title = '境界未満の場合';
-                belowMinutesEl.placeholder = '未満';
-                belowMinutesEl.value = gift ? String(gift.belowMinutesDelta) : '';
-                belowMinutesEl.addEventListener('change', () => {
-                    if (!timerReversalSlots[i]) return;
-                    timerReversalSlots[i].belowMinutesDelta = Math.max(-180, Math.min(180, parseInt(belowMinutesEl.value, 10) || 0));
-                    scheduleTimerSave();
-                });
-
-                const aboveMinutesEl = document.createElement('input');
-                aboveMinutesEl.type = 'number';
-                aboveMinutesEl.className = 'push-pull-points-input';
-                aboveMinutesEl.min = '-180';
-                aboveMinutesEl.max = '180';
-                aboveMinutesEl.title = '境界以上の場合';
-                aboveMinutesEl.placeholder = '以上';
-                aboveMinutesEl.value = gift ? String(gift.aboveMinutesDelta) : '';
-                aboveMinutesEl.addEventListener('change', () => {
-                    if (!timerReversalSlots[i]) return;
-                    timerReversalSlots[i].aboveMinutesDelta = Math.max(-180, Math.min(180, parseInt(aboveMinutesEl.value, 10) || 0));
-                    scheduleTimerSave();
-                });
-
-                row.appendChild(imgEl);
-                row.appendChild(nameEl);
-                row.appendChild(belowMinutesEl);
-                row.appendChild(aboveMinutesEl);
-                timerReversalGiftRowsEl.appendChild(row);
-            }
-        }
-
-        function renderTimerSuggestItems(query) {
-            if (!timerActivePicker) return;
-            const { index, anchorEl, type } = timerActivePicker;
-            const current = type === 'reversal' ? timerReversalSlots[index] : timerGiftSlots[index];
-            visibleTimerSuggestions = getFilteredPushPullSuggestions(query).slice(0, 80);
-            if (!visibleTimerSuggestions.length) { closeTimerSuggestPanel(); return; }
-            timerActiveSuggestionIndex = 0;
-            timerSuggestPanel.innerHTML = '';
-            for (const [idx, gift] of visibleTimerSuggestions.entries()) {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                const isCurrentGift = current && current.giftId === String(gift.id || '');
-                btn.className = 'push-pull-suggest-item' + (isCurrentGift || idx === 0 ? ' is-active' : '');
-                const img = document.createElement('img');
-                img.src = gift.imageUrl;
-                img.className = 'push-pull-suggest-img';
-                img.alt = '';
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'push-pull-suggest-name';
-                nameSpan.textContent = gift.name || '(名前なし)';
-                const costSpan = document.createElement('span');
-                costSpan.className = 'push-pull-suggest-cost';
-                costSpan.textContent = gift.diamondCount != null ? `${gift.diamondCount}コイン` : '';
-                btn.appendChild(img);
-                btn.appendChild(nameSpan);
-                btn.appendChild(costSpan);
-                btn.addEventListener('mousedown', (e) => e.preventDefault());
-                btn.addEventListener('click', () => selectTimerGift(gift));
-                timerSuggestPanel.appendChild(btn);
-            }
-            if (current) {
-                const activeIdx = visibleTimerSuggestions.findIndex((g) => String(g.id || '') === current.giftId);
-                if (activeIdx >= 0) {
-                    timerActiveSuggestionIndex = activeIdx;
-                    const items = timerSuggestPanel.querySelectorAll('.push-pull-suggest-item');
-                    items.forEach((btn, i) => btn.classList.toggle('is-active', i === activeIdx));
-                }
-            }
-            timerSuggestPanel.hidden = false;
-            positionTimerSuggestPanel(anchorEl);
-        }
-
-        function updateTimerActiveSuggestion(nextIndex) {
-            const items = [...timerSuggestPanel.querySelectorAll('.push-pull-suggest-item')];
-            if (!items.length) return;
-            const clampedIndex = Math.max(0, Math.min(nextIndex, items.length - 1));
-            items.forEach((btn, i) => btn.classList.toggle('is-active', i === clampedIndex));
-            timerActiveSuggestionIndex = clampedIndex;
-            items[clampedIndex]?.scrollIntoView({ block: 'nearest' });
-        }
-
-        function positionTimerSuggestPanel(anchorEl) {
-            const rect = anchorEl.getBoundingClientRect();
-            const panelH = Math.min(240, timerSuggestPanel.scrollHeight);
-            const spaceBelow = window.innerHeight - rect.bottom - 8;
-            const top = spaceBelow >= panelH ? rect.bottom + 4 : rect.top - panelH - 4;
-            timerSuggestPanel.style.left = rect.left + 'px';
-            timerSuggestPanel.style.top = Math.max(4, top) + 'px';
-            timerSuggestPanel.style.width = Math.max(260, rect.width + 100) + 'px';
-        }
-
-        function selectTimerGift(catalogGift) {
-            if (!timerActivePicker) return;
-            const { index, type } = timerActivePicker;
-            if (type === 'reversal') {
-                const existing = timerReversalSlots[index];
-                timerReversalSlots[index] = {
-                    giftId: String(catalogGift.id || ''),
-                    giftName: String(catalogGift.name || ''),
-                    giftImage: String(catalogGift.imageUrl || ''),
-                    belowMinutesDelta: existing ? existing.belowMinutesDelta : 1,
-                    aboveMinutesDelta: existing ? existing.aboveMinutesDelta : -1,
-                };
-                closeTimerSuggestPanel();
-                renderTimerReversalGiftRows();
-                scheduleTimerSave();
-                return;
-            }
-            const existing = timerGiftSlots[index];
-            timerGiftSlots[index] = {
-                giftId: String(catalogGift.id || ''),
-                giftName: String(catalogGift.name || ''),
-                giftImage: String(catalogGift.imageUrl || ''),
-                minutesDelta: existing ? existing.minutesDelta : 1,
-            };
-            closeTimerSuggestPanel();
-            renderTimerGiftRows();
-            scheduleTimerSave();
-        }
-
-        function closeTimerSuggestPanel() {
-            timerSuggestPanel.hidden = true;
-            timerActivePicker = null;
-            timerActiveSuggestionIndex = -1;
-            visibleTimerSuggestions = [];
-        }
-
-        document.addEventListener('click', (e) => {
-            if (!timerSuggestPanel.hidden &&
-                !timerSuggestPanel.contains(e.target) &&
-                !e.target.closest('.push-pull-gift-name') &&
-                !e.target.closest('.push-pull-gift-img')) {
-                closeTimerSuggestPanel();
-            }
-        });
 
         function applyTimerSettingsToForm(settings) {
             if (!settings) return;
@@ -2075,19 +1788,6 @@
             timerCountdownSoundVolumeInput.value = String(countdownVolume);
             timerCountdownSoundVolumeValueEl.textContent = `${countdownVolume}%`;
             timerCountdownSoundScreenSelect.value = String(Number.parseInt(String(settings.countdownSoundScreen ?? 1), 10) || 1);
-            timerGiftSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
-                const slot = settings.slots?.[i];
-                return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, minutesDelta: slot.minutesDelta } : null;
-            });
-            renderTimerGiftRows();
-            const threshold = Number.parseInt(String(settings.reversalThresholdMinutes ?? 5), 10) || 0;
-            timerReversalThresholdInput.value = String(threshold);
-            timerReversalThresholdValueEl.textContent = `${threshold}分`;
-            timerReversalSlots = Array.from({ length: MAX_TIMER_GIFT_SLOTS }, (_, i) => {
-                const slot = settings.reversalSlots?.[i];
-                return slot && slot.giftId ? { giftId: slot.giftId, giftName: slot.giftName, giftImage: slot.giftImage, belowMinutesDelta: slot.belowMinutesDelta, aboveMinutesDelta: slot.aboveMinutesDelta } : null;
-            });
-            renderTimerReversalGiftRows();
             refreshTimerPreview();
         }
 
@@ -2136,9 +1836,6 @@
                 durationMinutes: Number.parseInt(timerDurationMinutesInput.value, 10) || 0,
                 durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
                 minFloorMinutes: Number.parseInt(timerMinFloorMinutesInput.value, 10) || 0,
-                slots: timerGiftSlots.filter(Boolean).map((g) => ({ ...g })),
-                reversalThresholdMinutes: Number.parseInt(timerReversalThresholdInput.value, 10) || 0,
-                reversalSlots: timerReversalSlots.filter(Boolean).map((g) => ({ ...g })),
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
                 endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
                 endSoundScreen: Number.parseInt(timerEndSoundScreenSelect.value, 10) || 1,
@@ -2236,7 +1933,6 @@
         // 呼び出し方: openSoundPicker({ eventIdHint, onImported: (asset) => { ... } })
 
         timerEndSoundPickerButton.addEventListener('click', () => {
-            closeTimerSuggestPanel();
             openSoundPicker({
                 eventIdHint: 'timer-end-sound',
                 onImported: (asset) => {
@@ -2287,11 +1983,6 @@
         timerEndSoundVolumeInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerEndSoundScreenSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
-        timerReversalThresholdInput.addEventListener('input', () => {
-            timerReversalThresholdValueEl.textContent = `${timerReversalThresholdInput.value}分`;
-        });
-        timerReversalThresholdInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
-
         timerEndSoundClearButton.addEventListener('click', () => {
             state.timerSettings = { ...state.timerSettings, endSound: { name: '', url: '' } };
             timerEndSoundNameEl.textContent = '未設定';
@@ -2306,7 +1997,6 @@
         timerCountdownSoundThresholdInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
 
         timerCountdownSoundPickerButton.addEventListener('click', () => {
-            closeTimerSuggestPanel();
             openSoundPicker({
                 eventIdHint: 'timer-countdown-sound',
                 onImported: (asset) => {

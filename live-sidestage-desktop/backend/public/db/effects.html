@@ -270,6 +270,34 @@
                         <div class="field-hint">VDJScript コマンドをそのまま入力します（対象デッキもコマンド内で指定）。内部で VirtualDJ の API に渡されます。</div>
                     </div>
                 </details>
+                <details class="field accordion-field">
+                    <summary>TikEffectウィジェット連携</summary>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">タイマーウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-timer-widget-enabled"><span>タイマーの残り時間を延長/短縮</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-timer-widget-mode">
+                                <option value="fixed">固定の分数で延長/短縮</option>
+                                <option value="reversal">残り時間の境界で切り替え</option>
+                            </select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-timer-widget-fixed-row">
+                            <span class="field-hint">分（マイナスで短縮）</span>
+                            <input type="number" id="event-modal-timer-widget-minutes" min="-180" max="180" step="1" value="0" style="width:90px;">
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-timer-widget-reversal-row" hidden>
+                            <span class="field-hint">境界(分)</span>
+                            <input type="number" id="event-modal-timer-widget-threshold" min="0" max="180" step="1" value="5" style="width:70px;">
+                            <span class="field-hint">未満</span>
+                            <input type="number" id="event-modal-timer-widget-below-minutes" min="-180" max="180" step="1" value="0" style="width:70px;">
+                            <span class="field-hint">以上</span>
+                            <input type="number" id="event-modal-timer-widget-above-minutes" min="-180" max="180" step="1" value="0" style="width:70px;">
+                        </div>
+                        <div class="field-hint">このイベントが再生されるとタイマーウィジェットの残り時間を調整します。対象ギフトはトリガー側の「対象ギフト名」で指定してください。</div>
+                    </div>
+                </details>
                 <div class="field">
                     <label>メディアの音量</label>
                     <div class="range-row">
@@ -280,9 +308,13 @@
                 <div class="field full">
                     <label>再生時の動作</label>
                     <div class="modal-check-list">
-                        <label class="toggle"><input type="checkbox" id="event-modal-force-interrupt-enabled"><span>全イベント強制中断</span></label>
+                        <label class="toggle"><input type="checkbox" id="event-modal-force-interrupt-enabled"><span>待機イベント削除</span></label>
                     </div>
-                    <div class="field-hint">ONの場合、このイベントが再生されるとき、このイベントで指定された screen の現在待機中のイベントを即時削除してから再生します。</div>
+                    <div class="modal-inline-row" id="event-modal-force-interrupt-count-row">
+                        <label>削除数（0で全件削除）</label>
+                        <input type="number" id="event-modal-force-interrupt-count" min="0" step="1" value="0" style="width:100px;">
+                    </div>
+                    <div class="field-hint">ONの場合、このイベントが再生されるとき、このイベントで指定された screen の現在待機中のイベントを先頭から指定件数だけ削除してから再生します（0で全件削除、再生中のイベントも中断）。1件以上を指定した場合、再生中のイベントは中断せず待機中のみ削除します。</div>
                 </div>
             </div>
             <div class="modal-actions">
