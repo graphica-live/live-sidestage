@@ -1,7 +1,11 @@
         const socket = io({ transports: ['websocket'] });
 
-        // 別ウィンドウ表示（popout）専用: フォント・フォントサイズ設定をHome側の設定画面から反映する
-        if (document.documentElement.classList.contains('is-popout')) {
+        const isPopoutWindow = document.documentElement.classList.contains('is-popout');
+        let popoutFlashNewEnabled = true;
+        let hiddenNewCommentsCount = 0;
+
+        // 別ウィンドウ表示（popout）専用: フォント・フォントサイズ・ステッカーサイズ・新着点滅設定をHome側の設定画面から反映する
+        if (isPopoutWindow) {
             function applyPopoutCommentStyle(style) {
                 if (!style) return;
                 document.documentElement.style.setProperty('--popout-comment-font-family', getWidgetFontFamilyByKey(style.fontKey));
@@ -10,6 +14,9 @@
                 }
                 if (style.stickerSize) {
                     document.documentElement.style.setProperty('--popout-comment-sticker-size', `${style.stickerSize}px`);
+                }
+                if (typeof style.flashNew === 'boolean') {
+                    popoutFlashNewEnabled = style.flashNew;
                 }
             }
 
@@ -23,6 +30,7 @@
 
         const commentFeedback = document.getElementById('comment-feedback');
         const commentStream = document.getElementById('comment-stream');
+        const newCommentsBadge = document.getElementById('comment-new-items-badge');
         const sortOrderButton = document.getElementById('sort-order-button');
         const filterSummary = document.getElementById('filter-summary');
         const commentSettingsButton = document.getElementById('comment-settings-button');
@@ -1506,6 +1514,53 @@
             }
         }
 
+        // ポップアウトのコメント一覧が「最新側の端」を表示中かどうかを判定する。
+        // asc(古い順)は末尾が最新、desc(新しい順)は先頭が最新。
+        function isCommentStreamAtLatestEdge() {
+            if (currentSettings.sortOrder === 'asc') {
+                return commentStream.scrollTop + commentStream.clientHeight >= commentStream.scrollHeight - 24;
+            }
+            return commentStream.scrollTop <= 24;
+        }
+
+        function hideNewCommentsBadge() {
+            hiddenNewCommentsCount = 0;
+            if (newCommentsBadge) {
+                newCommentsBadge.hidden = true;
+            }
+        }
+
+        function showNewCommentsBadge() {
+            hiddenNewCommentsCount += 1;
+            if (!newCommentsBadge) return;
+            newCommentsBadge.textContent = `新しいコメント${hiddenNewCommentsCount}件`;
+            newCommentsBadge.hidden = false;
+            newCommentsBadge.classList.toggle('is-at-top', currentSettings.sortOrder !== 'asc');
+            newCommentsBadge.classList.toggle('is-at-bottom', currentSettings.sortOrder === 'asc');
+        }
+
+        function flashNewCard(card) {
+            if (!popoutFlashNewEnabled) return;
+            card.classList.add('popout-flash-new');
+            card.addEventListener('animationend', () => card.classList.remove('popout-flash-new'), { once: true });
+        }
+
+        if (isPopoutWindow && newCommentsBadge) {
+            newCommentsBadge.addEventListener('click', () => {
+                if (currentSettings.sortOrder === 'asc') {
+                    commentStream.scrollTop = commentStream.scrollHeight;
+                } else {
+                    commentStream.scrollTop = 0;
+                }
+                hideNewCommentsBadge();
+            });
+            commentStream.addEventListener('scroll', () => {
+                if (hiddenNewCommentsCount > 0 && isCommentStreamAtLatestEdge()) {
+                    hideNewCommentsBadge();
+                }
+            });
+        }
+
         // 1コメントだけ DOM に差分追加する。全件再描画を避けて高頻度イベント時の複数画面描画コストを下げる。
         function appendLiveComment(commentEvent) {
             if (!commentEvent || typeof commentEvent !== 'object') {
@@ -1515,10 +1570,9 @@
             // データ側は「new first」で先頭追加し、上限を超えた末尾を落とす
             currentComments = [commentEvent, ...currentComments].slice(0, 100);
 
-            const isPopout = document.documentElement.classList.contains('is-popout');
             const enabledTypes = new Set(currentSettings.enabledTypes);
             const commentType = commentEvent.type || 'chat';
-            if (isPopout ? commentType !== 'chat' : !enabledTypes.has(commentType)) {
+            if (isPopoutWindow ? commentType !== 'chat' : !enabledTypes.has(commentType)) {
                 return; // 表示フィルタで除外されるタイプは DOM 操作不要
             }
 
@@ -1528,6 +1582,7 @@
                 placeholder.remove();
             }
 
+            const wasAtLatestEdge = isPopoutWindow ? isCommentStreamAtLatestEdge() : true;
             const card = createCommentCardElement(commentEvent);
 
             if (currentSettings.sortOrder === 'asc') {
@@ -1536,15 +1591,27 @@
                 while (commentStream.children.length > 100) {
                     commentStream.firstElementChild?.remove();
                 }
-                requestAnimationFrame(() => {
-                    card.scrollIntoView({ block: 'end' });
-                });
+                if (wasAtLatestEdge) {
+                    requestAnimationFrame(() => {
+                        card.scrollIntoView({ block: 'end' });
+                    });
+                } else if (isPopoutWindow) {
+                    showNewCommentsBadge();
+                }
             } else {
                 commentStream.insertBefore(card, commentStream.firstChild);
                 while (commentStream.children.length > 100) {
                     commentStream.lastElementChild?.remove();
                 }
-                commentStream.scrollTop = 0;
+                if (wasAtLatestEdge) {
+                    commentStream.scrollTop = 0;
+                } else if (isPopoutWindow) {
+                    showNewCommentsBadge();
+                }
+            }
+
+            if (isPopoutWindow) {
+                flashNewCard(card);
             }
 
             setCommentFeedback(`コメントを ${commentStream.children.length} 件表示中です。`);

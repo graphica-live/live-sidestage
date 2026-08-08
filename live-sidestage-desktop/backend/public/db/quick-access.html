@@ -433,6 +433,12 @@
                 <label for="popout-sticker-size-input">ステッカーサイズ (px)</label>
                 <input type="number" id="popout-sticker-size-input" min="12" max="80" step="1">
             </div>
+            <div class="modal-field">
+                <label class="check-label">
+                    <input type="checkbox" id="popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
+                </label>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="primary" id="comments-popout-settings-close">閉じる</button>
             </div>
@@ -456,6 +462,12 @@
             <div class="modal-field">
                 <label for="gifts-popout-font-size-input">フォントサイズ (px)</label>
                 <input type="number" id="gifts-popout-font-size-input" min="10" max="48" step="1">
+            </div>
+            <div class="modal-field">
+                <label class="check-label">
+                    <input type="checkbox" id="gifts-popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
+                </label>
             </div>
             <div class="modal-actions">
                 <button type="button" class="primary" id="gifts-popout-settings-close">閉じる</button>
@@ -616,6 +628,7 @@
             const fontSelect = document.getElementById('popout-font-select');
             const fontSizeInput = document.getElementById('popout-font-size-input');
             const stickerSizeInput = document.getElementById('popout-sticker-size-input');
+            const flashNewCheckbox = document.getElementById('popout-flash-new-checkbox');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
 
@@ -646,7 +659,8 @@
                         body: JSON.stringify({
                             fontKey: fontSelect.value,
                             fontSize: Number(fontSizeInput.value) || 13,
-                            stickerSize: Number(stickerSizeInput.value) || 26
+                            stickerSize: Number(stickerSizeInput.value) || 26,
+                            flashNew: flashNewCheckbox.checked
                         })
                     }).catch(() => {});
                 }, 300);
@@ -664,6 +678,7 @@
                     fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
                     fontSizeInput.value = styleData?.fontSize || 13;
                     stickerSizeInput.value = styleData?.stickerSize || 26;
+                    flashNewCheckbox.checked = styleData?.flashNew !== false;
                 }).finally(() => {
                     overlay.hidden = false;
                 });
@@ -683,6 +698,7 @@
             fontSelect.addEventListener('change', applyStyle);
             fontSizeInput.addEventListener('input', applyStyle);
             stickerSizeInput.addEventListener('input', applyStyle);
+            flashNewCheckbox.addEventListener('change', applyStyle);
 
             socket.on('admin_comments_updated', (payload) => {
                 if (payload && payload.settings) {
@@ -700,6 +716,7 @@
             const sortOrderSelect = document.getElementById('gifts-popout-sort-order-select');
             const fontSelect = document.getElementById('gifts-popout-font-select');
             const fontSizeInput = document.getElementById('gifts-popout-font-size-input');
+            const flashNewCheckbox = document.getElementById('gifts-popout-flash-new-checkbox');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
 
@@ -714,7 +731,8 @@
                         body: JSON.stringify({
                             sortOrder: sortOrderSelect.value,
                             fontKey: fontSelect.value,
-                            fontSize: Number(fontSizeInput.value) || 13
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            flashNew: flashNewCheckbox.checked
                         })
                     }).catch(() => {});
                 }, 300);
@@ -727,6 +745,7 @@
                     const fontKey = data?.fontKey || 'default';
                     fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
                     fontSizeInput.value = data?.fontSize || 13;
+                    flashNewCheckbox.checked = data?.flashNew !== false;
                 }).catch(() => {}).finally(() => {
                     overlay.hidden = false;
                 });
@@ -745,6 +764,7 @@
             sortOrderSelect.addEventListener('change', saveGiftStyle);
             fontSelect.addEventListener('change', saveGiftStyle);
             fontSizeInput.addEventListener('input', saveGiftStyle);
+            flashNewCheckbox.addEventListener('change', saveGiftStyle);
         }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
