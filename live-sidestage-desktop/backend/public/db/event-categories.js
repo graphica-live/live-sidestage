@@ -91,13 +91,21 @@ function renderCategories() {
 
     displayCategories.forEach((category) => {
         const fragment = categoryTemplate.content.cloneNode(true);
+        const card = fragment.querySelector('.record-card');
         const nameButton = fragment.querySelector('[data-role="name"]');
         const metaEl = fragment.querySelector('[data-role="meta"]');
+        const dragHandle = fragment.querySelector('.drag-handle');
         const eventCount = eventCountByCategory[category.id] || 0;
         const triggerCount = triggerCountByCategory[category.id] || 0;
 
+        card.dataset.categoryId = category.id;
         nameButton.textContent = category.name;
         metaEl.textContent = `イベント ${eventCount} / トリガー ${triggerCount}`;
+
+        if (category.isOrphan) {
+            dragHandle.disabled = true;
+            dragHandle.hidden = true;
+        }
 
         nameButton.addEventListener('click', () => {
             window.location.href = `/effects?category=${encodeURIComponent(category.id)}`;
@@ -246,6 +254,34 @@ document.addEventListener('keydown', (event) => {
 
 categoryModalName.addEventListener('input', () => {
     categoryModalName.setCustomValidity('');
+});
+
+attachDragReorder(categoryList, (card) => card.dataset.categoryId, async (orderedIds) => {
+    const knownIds = new Set(currentCategories.map((category) => category.id));
+    const orderedKnownIds = orderedIds.filter((id) => knownIds.has(id));
+    const newOrder = reorderByVisibleIds(currentCategories, orderedKnownIds);
+    if (newOrder.every((item, i) => item.id === currentCategories[i].id)) return;
+
+    currentCategories = newOrder;
+    renderCategories();
+
+    try {
+        const response = await fetch('/api/effects/categories/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderedIds: orderedKnownIds })
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+            throw new Error(payload.error || 'カテゴリの並び替えに失敗しました。');
+        }
+
+        currentCategories = payload.categories || currentCategories;
+    } catch (error) {
+        alert(error.message || 'カテゴリの並び替えに失敗しました。');
+        await loadCategories();
+    }
 });
 
 loadCategories().catch((error) => {

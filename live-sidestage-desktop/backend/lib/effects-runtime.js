@@ -266,8 +266,16 @@ module.exports = function createEffectsRuntime({
         const effectEvents = getEffectEvents();
         const eventById = new Map(effectEvents.map((item) => [item.id, item]));
         const disabledCategoryIds = getDisabledCategoryIds();
-        const triggers = getEffectTriggers().filter((item) => item.enabled && item.eventIds.length > 0
-            && !disabledCategoryIds.has(item.categoryId));
+        // 発火順序はカテゴリ一覧の表示順（上から下）を優先し、同一カテゴリ内では
+        // 従来どおりトリガーの並び順を維持する（Array.sort は安定ソート）。
+        const categoryOrderIndex = new Map(getEffectCategories().map((category, index) => [category.id, index]));
+        const triggers = getEffectTriggers()
+            .filter((item) => item.enabled && item.eventIds.length > 0 && !disabledCategoryIds.has(item.categoryId))
+            .sort((a, b) => {
+                const orderA = categoryOrderIndex.has(a.categoryId) ? categoryOrderIndex.get(a.categoryId) : categoryOrderIndex.size;
+                const orderB = categoryOrderIndex.has(b.categoryId) ? categoryOrderIndex.get(b.categoryId) : categoryOrderIndex.size;
+                return orderA - orderB;
+            });
         let anyTriggered = false;
 
         triggers.forEach((trigger) => {
