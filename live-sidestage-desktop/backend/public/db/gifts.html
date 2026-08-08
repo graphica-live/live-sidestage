@@ -9,17 +9,22 @@
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
     <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/font-options.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <link rel="stylesheet" href="/shared/gift-suggest.css">
     <script>
         if (new URLSearchParams(location.search).get('popout') === '1') {
             document.documentElement.classList.add('is-popout');
+            const popoutFontLink = document.createElement('link');
+            popoutFontLink.rel = 'stylesheet';
+            popoutFontLink.href = WIDGET_FONT_GOOGLE_FONTS_URL;
+            document.head.appendChild(popoutFontLink);
         }
     </script>
     <style>
         /* 別ウィンドウ表示時は最小限の表示にする: 見出しカード(page-hero)を丸ごと隠し、
            管理画面用テーブルの代わりに1ギフト=1行のシンプルなリスト(#popout-gift-list)を表示する。
-           並び順と表示項目のON/OFFは表示設定モーダル(quick-access.html)から制御する。 */
+           並び順・フォント・フォントサイズは表示設定モーダル(quick-access.html)から制御する。 */
         html.is-popout .layout > .panel:first-child,
         html.is-popout table {
             display: none !important;
@@ -28,12 +33,6 @@
         html.is-popout .popout-gift-list {
             display: flex !important;
         }
-
-        html.is-popout.hide-avatar .popout-gift-avatar { display: none !important; }
-        html.is-popout.hide-name .popout-gift-user-name { display: none !important; }
-        html.is-popout.hide-gift-name .popout-gift-name { display: none !important; }
-        html.is-popout.hide-gift-image .popout-gift-image { display: none !important; }
-        html.is-popout.hide-coins .popout-gift-coins { display: none !important; }
 
         :root {
             --bg: #e6edf4;
@@ -256,6 +255,15 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
+            --popout-gift-font-family: inherit;
+            --popout-gift-font-size: 13px;
+        }
+
+        .popout-gift-user-name,
+        .popout-gift-name,
+        .popout-gift-coins {
+            font-family: var(--popout-gift-font-family) !important;
+            font-size: var(--popout-gift-font-size) !important;
         }
 
         .popout-gift-item {
@@ -302,7 +310,7 @@
         }
 
         .popout-gift-name {
-            flex: 1 1 auto;
+            flex: 0 1 auto;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -330,6 +338,9 @@
 
         .popout-gift-coins {
             flex: 0 0 auto;
+            min-width: 5ch;
+            margin-left: auto;
+            text-align: right;
             font-size: 13px;
             font-weight: 600;
         }
@@ -777,13 +788,12 @@
             sortOrderSelect.value = currentSortOrder;
         }
 
-        function applyPopoutDisplayFlags(display) {
-            const flags = display || {};
-            document.documentElement.classList.toggle('hide-avatar', flags.showAvatar === false);
-            document.documentElement.classList.toggle('hide-name', flags.showName === false);
-            document.documentElement.classList.toggle('hide-gift-image', flags.showGiftImage === false);
-            document.documentElement.classList.toggle('hide-gift-name', flags.showGiftName === false);
-            document.documentElement.classList.toggle('hide-coins', flags.showCoins === false);
+        function applyPopoutGiftFontStyle(style) {
+            if (!style) return;
+            document.documentElement.style.setProperty('--popout-gift-font-family', getWidgetFontFamilyByKey(style.fontKey));
+            if (style.fontSize) {
+                document.documentElement.style.setProperty('--popout-gift-font-size', `${style.fontSize}px`);
+            }
         }
 
         function loadPopoutGiftStyle() {
@@ -796,7 +806,7 @@
                 .then((data) => {
                     currentSortOrder = data?.sortOrder || currentSortOrder;
                     syncSortOrderSelect();
-                    applyPopoutDisplayFlags(data?.display);
+                    applyPopoutGiftFontStyle(data);
                     renderTable(currentGifts);
                 })
                 .catch(() => {});
@@ -1347,7 +1357,7 @@
             }
             currentSortOrder = payload?.sortOrder || currentSortOrder;
             syncSortOrderSelect();
-            applyPopoutDisplayFlags(payload?.display);
+            applyPopoutGiftFontStyle(payload);
             renderTable(currentGifts);
         });
 

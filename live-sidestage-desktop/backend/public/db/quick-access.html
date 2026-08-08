@@ -429,34 +429,17 @@
             <div class="modal-field">
                 <label for="gifts-popout-sort-order-select">並び順</label>
                 <select id="gifts-popout-sort-order-select" aria-label="並び順">
-                    <option value="timestamp-asc">昇順</option>
-                    <option value="timestamp-desc">降順</option>
-                    <option value="coins-desc">コイン数の大きい順</option>
-                    <option value="coins-asc">コイン数の小さい順</option>
+                    <option value="timestamp-desc">新しい順</option>
+                    <option value="timestamp-asc">古い順</option>
                 </select>
             </div>
             <div class="modal-field">
-                <label>表示内容</label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-avatar" checked>
-                    リスナーアイコン
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-name" checked>
-                    リスナー名
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-gift-name" checked>
-                    ギフト名
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-gift-image" checked>
-                    ギフト画像
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-coins" checked>
-                    コイン数
-                </label>
+                <label for="gifts-popout-font-select">フォント</label>
+                <select id="gifts-popout-font-select" aria-label="フォント"></select>
+            </div>
+            <div class="modal-field">
+                <label for="gifts-popout-font-size-input">フォントサイズ (px)</label>
+                <input type="number" id="gifts-popout-font-size-input" min="10" max="48" step="1">
             </div>
             <div class="modal-actions">
                 <button type="button" class="primary" id="gifts-popout-settings-close">閉じる</button>
@@ -693,36 +676,35 @@
             const overlay = document.getElementById('gifts-popout-settings-overlay');
             const closeButton = document.getElementById('gifts-popout-settings-close');
             const sortOrderSelect = document.getElementById('gifts-popout-sort-order-select');
-            const displayCheckboxes = {
-                showAvatar: document.getElementById('gifts-popout-show-avatar'),
-                showName: document.getElementById('gifts-popout-show-name'),
-                showGiftName: document.getElementById('gifts-popout-show-gift-name'),
-                showGiftImage: document.getElementById('gifts-popout-show-gift-image'),
-                showCoins: document.getElementById('gifts-popout-show-coins')
-            };
+            const fontSelect = document.getElementById('gifts-popout-font-select');
+            const fontSizeInput = document.getElementById('gifts-popout-font-size-input');
 
-            function currentDisplayFlags() {
-                const display = {};
-                for (const [key, checkbox] of Object.entries(displayCheckboxes)) {
-                    display[key] = checkbox.checked;
-                }
-                return display;
-            }
+            fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+
+            let styleSaveTimer = null;
 
             function saveGiftStyle() {
-                fetch('/api/settings/popout-gift-style', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sortOrder: sortOrderSelect.value, display: currentDisplayFlags() })
-                }).catch(() => {});
+                clearTimeout(styleSaveTimer);
+                styleSaveTimer = setTimeout(() => {
+                    fetch('/api/settings/popout-gift-style', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sortOrder: sortOrderSelect.value,
+                            fontKey: fontSelect.value,
+                            fontSize: Number(fontSizeInput.value) || 13
+                        })
+                    }).catch(() => {});
+                }, 300);
             }
 
             function openModal() {
                 fetch('/api/settings/popout-gift-style').then((res) => res.json()).then((data) => {
-                    sortOrderSelect.value = data?.sortOrder || 'timestamp-asc';
-                    for (const [key, checkbox] of Object.entries(displayCheckboxes)) {
-                        checkbox.checked = data?.display?.[key] !== false;
-                    }
+                    sortOrderSelect.value = data?.sortOrder === 'timestamp-asc' ? 'timestamp-asc' : 'timestamp-desc';
+
+                    const fontKey = data?.fontKey || 'default';
+                    fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
+                    fontSizeInput.value = data?.fontSize || 13;
                 }).catch(() => {}).finally(() => {
                     overlay.hidden = false;
                 });
@@ -739,9 +721,8 @@
             });
 
             sortOrderSelect.addEventListener('change', saveGiftStyle);
-            for (const checkbox of Object.values(displayCheckboxes)) {
-                checkbox.addEventListener('change', saveGiftStyle);
-            }
+            fontSelect.addEventListener('change', saveGiftStyle);
+            fontSizeInput.addEventListener('input', saveGiftStyle);
         }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
