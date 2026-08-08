@@ -429,6 +429,10 @@
                 <label for="popout-font-size-input">フォントサイズ (px)</label>
                 <input type="number" id="popout-font-size-input" min="10" max="48" step="1">
             </div>
+            <div class="modal-field">
+                <label for="popout-sticker-size-input">ステッカーサイズ (px)</label>
+                <input type="number" id="popout-sticker-size-input" min="12" max="80" step="1">
+            </div>
             <div class="modal-actions">
                 <button type="button" class="primary" id="comments-popout-settings-close">閉じる</button>
             </div>
@@ -611,6 +615,7 @@
             const sortOrderSelect = document.getElementById('popout-sort-order-select');
             const fontSelect = document.getElementById('popout-font-select');
             const fontSizeInput = document.getElementById('popout-font-size-input');
+            const stickerSizeInput = document.getElementById('popout-sticker-size-input');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
 
@@ -640,7 +645,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             fontKey: fontSelect.value,
-                            fontSize: Number(fontSizeInput.value) || 13
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            stickerSize: Number(stickerSizeInput.value) || 26
                         })
                     }).catch(() => {});
                 }, 300);
@@ -657,6 +663,7 @@
                     const fontKey = styleData?.fontKey || 'default';
                     fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
                     fontSizeInput.value = styleData?.fontSize || 13;
+                    stickerSizeInput.value = styleData?.stickerSize || 26;
                 }).finally(() => {
                     overlay.hidden = false;
                 });
@@ -675,6 +682,7 @@
             sortOrderSelect.addEventListener('change', applySortOrder);
             fontSelect.addEventListener('change', applyStyle);
             fontSizeInput.addEventListener('input', applyStyle);
+            stickerSizeInput.addEventListener('input', applyStyle);
 
             socket.on('admin_comments_updated', (payload) => {
                 if (payload && payload.settings) {

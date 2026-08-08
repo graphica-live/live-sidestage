@@ -8,6 +8,9 @@
                 if (style.fontSize) {
                     document.documentElement.style.setProperty('--popout-comment-font-size', `${style.fontSize}px`);
                 }
+                if (style.stickerSize) {
+                    document.documentElement.style.setProperty('--popout-comment-sticker-size', `${style.stickerSize}px`);
+                }
             }
 
             fetch('/api/settings/popout-comment-style')
