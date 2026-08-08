@@ -375,6 +375,7 @@ module.exports = function registerEffectsRoutes({
         const uniqueId = String(req.body?.uniqueId || '').trim() || 'test_user';
         const nickname = String(req.body?.nickname || '').trim() || uniqueId;
         const image = String(req.body?.image || '').trim().slice(0, 500);
+        const giftImage = String(req.body?.giftImage || '').trim().slice(0, 500);
         const giftId = req.body?.giftId ? String(req.body.giftId) : null;
 
         let triggered = false;
@@ -392,6 +393,7 @@ module.exports = function registerEffectsRoutes({
                     uniqueId,
                     nickname,
                     image,
+                    giftImage,
                     comment: '',
                     timestamp: getTimestamp()
                 };
@@ -409,6 +411,7 @@ module.exports = function registerEffectsRoutes({
                 uniqueId,
                 nickname,
                 image,
+                giftImage,
                 comment: '',
                 timestamp: getTimestamp()
             };
