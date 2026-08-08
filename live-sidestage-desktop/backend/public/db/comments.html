@@ -36,7 +36,11 @@
 
         html.is-popout .layout {
             gap: 0;
-            min-height: auto;
+            /* auto のままだと flex item の「コンテンツに基づく自動最小サイズ」が効き、
+               .comment-stream (overflow-y: auto) がいくら中身を持っていても
+               .layout 自身がそのぶん際限なく伸びてしまい、内部スクロールが発生しない。
+               body 側の height 固定とあわせて 0 を指定し、素直に縮められるようにする。 */
+            min-height: 0;
         }
 
         html.is-popout .layout > .panel:first-child {
