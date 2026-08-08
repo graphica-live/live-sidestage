@@ -145,6 +145,13 @@
             bottom: 10px;
         }
 
+        /* admin-buttons.css の button:hover:not(:disabled) { transform: translateY(-1px); }
+           が中央寄せの translateX(-50%) を丸ごと上書きし、ホバー時にバッジが左へ飛んで
+           見えていたため、ホバー中も中央寄せを維持するよう固定する。 */
+        .popout-new-items-badge:hover:not(:disabled) {
+            transform: translateX(-50%);
+        }
+
         /* background-color ではなく box-shadow でフラッシュさせる。
            .comment-card に background: transparent !important が付いており、
            !important な静的値はCSSアニメーションで上書きできないため。 */
