@@ -316,6 +316,7 @@ function resetTimer() {
 }
 
 // ギフト等でタイマーに分数を加算/減算する。稼働中は終了時刻を、停止中は残り時間を直接調整する。
+// 下限は短縮(マイナス)にのみ作用し、延長(プラス)は下限に関係なく指定分そのまま加算する。
 // 戻り値の blocked は、短縮下限によって要求どおりに短縮できなかった(据え置き/下限までのクランプ)ことを示す。
 function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
@@ -329,14 +330,16 @@ function adjustTimerByMinutes(deltaMinutes) {
         return { runtime, blocked };
     }
 
+    // 延長(プラス/ゼロ)には下限を適用しない。下限が効くのは短縮方向のみ。
+    const minMs = deltaMs < 0 ? floorMs : 0;
     let next;
 
     if (runtime.running) {
         const now = Date.now();
-        const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now + floorMs, runtime.endsAt + deltaMs));
+        const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now + minMs, runtime.endsAt + deltaMs));
         next = setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextEndsAt - now });
     } else {
-        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(floorMs, runtime.remainingMs + deltaMs));
+        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(minMs, runtime.remainingMs + deltaMs));
         next = setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemaining });
     }
 
