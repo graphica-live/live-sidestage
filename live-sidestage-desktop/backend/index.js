@@ -1963,6 +1963,34 @@ function buildGiftEventKey(data) {
     ].join(':');
 }
 
+// TikTokの生ギフトイベントにはgiftPictureUrlが乗らないtickがある
+// （コンボ継続中はgiftDetailsを省略して送られてくることが多く、getTikTokGiftImageUrlの
+// 手がかりになるimage/icon構造も残っていない）。その場合はギフトカタログのキャッシュを
+// giftId/giftNameで引いて画像を補完する。キャッシュが空ならバックグラウンドで温めておき、
+// 同一コンボの後続tickや次回以降のギフトで拾えるようにする。
+function resolveLiveGiftImageUrl(data) {
+    if (typeof data.giftPictureUrl === 'string' && data.giftPictureUrl) {
+        return data.giftPictureUrl;
+    }
+
+    const fromRawStructure = getTikTokGiftImageUrl(data);
+    if (fromRawStructure) {
+        return fromRawStructure;
+    }
+
+    const catalog = Array.isArray(tiktokState.giftCatalog?.gifts) ? tiktokState.giftCatalog.gifts : [];
+    if (catalog.length === 0) {
+        fetchTikTokGiftCatalog().catch(() => {});
+        return '';
+    }
+
+    const giftId = data.giftId != null ? String(data.giftId) : '';
+    const giftNameLower = String(data.giftName || '').toLowerCase();
+    const matched = catalog.find((gift) => (giftId && String(gift.id) === giftId)
+        || (giftNameLower && String(gift.name || '').toLowerCase() === giftNameLower));
+    return matched?.imageUrl || '';
+}
+
 function normalizeGiftEvent(data) {
     const {
         uniqueId,
@@ -1973,7 +2001,6 @@ function normalizeGiftEvent(data) {
         giftType,
         repeatEnd,
         giftName,
-        giftPictureUrl,
         giftId,
         msgId,
         eventId,
@@ -2002,7 +2029,7 @@ function normalizeGiftEvent(data) {
         image: profilePictureUrl || '',
         giftId: giftId ? String(giftId) : null,
         giftName: giftName || null,
-        giftImage: typeof giftPictureUrl === 'string' ? giftPictureUrl : null,
+        giftImage: resolveLiveGiftImageUrl(data) || null,
         repeatCount: Number(repeatCount) || 1,
         totalGifts,
         rawPayload: JSON.stringify(data),
@@ -3019,7 +3046,7 @@ function ensureTikTokConnection() {
                 uniqueId: data.uniqueId,
                 nickname: data.nickname || data.uniqueId || '',
                 image: data.profilePictureUrl || '',
-                giftImage: typeof data.giftPictureUrl === 'string' ? data.giftPictureUrl : getTikTokGiftImageUrl(data) || ''
+                giftImage: resolveLiveGiftImageUrl(data)
             }, { isFirstTick, deltaRepeat, comboKey });
             activeComboTriggerMap.set(comboKey, true);
 
@@ -3036,7 +3063,7 @@ function ensureTikTokConnection() {
                 image: data.profilePictureUrl || '',
                 giftId: data.giftId ? String(data.giftId) : null,
                 giftName: data.giftName || null,
-                giftImage: typeof data.giftPictureUrl === 'string' ? data.giftPictureUrl : getTikTokGiftImageUrl(data) || '',
+                giftImage: resolveLiveGiftImageUrl(data),
                 totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
                 repeatCount: currentRepeat,
                 timestamp: previousPending ? previousPending.timestamp : getTimestamp(),
