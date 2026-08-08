@@ -1070,6 +1070,8 @@ input[type="range"] {
 }
 
 .category-record-card {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    align-items: center;
     padding: 10px 12px;
 }
 
@@ -1138,14 +1140,16 @@ input[type="range"] {
     }
 
     .event-record-card,
-    .trigger-record-card {
+    .trigger-record-card,
+    .category-record-card {
         grid-template-columns: 1fr;
         position: relative;
         padding-right: 40px;
     }
 
     .event-record-card .drag-handle,
-    .trigger-record-card .drag-handle {
+    .trigger-record-card .drag-handle,
+    .category-record-card .drag-handle {
         position: absolute;
         top: 6px;
         right: 4px;

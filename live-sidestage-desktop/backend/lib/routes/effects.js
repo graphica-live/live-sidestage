@@ -130,6 +130,24 @@ module.exports = function registerEffectsRoutes({
         return res.json({ ok: true, categories, category });
     });
 
+    app.post('/api/effects/categories/reorder', (req, res) => {
+        const orderedIds = Array.isArray(req.body?.orderedIds) ? req.body.orderedIds.map(String) : null;
+
+        if (!orderedIds) {
+            return res.status(400).json({ ok: false, error: '並び順が不正です。' });
+        }
+
+        const existing = getEffectCategories();
+        const byId = new Map(existing.map((item) => [item.id, item]));
+        const visibleIdSet = new Set(orderedIds);
+        const queue = [...orderedIds];
+        const reordered = existing.map((item) => (visibleIdSet.has(item.id) ? byId.get(queue.shift()) : item));
+        const categories = setEffectCategories(reordered);
+
+        io.emit('effects:trigger-gifts:updated', {});
+        return res.json({ ok: true, categories });
+    });
+
     app.patch('/api/effects/categories/:id', (req, res) => {
         const id = String(req.params.id || '');
         const existing = getEffectCategories();
