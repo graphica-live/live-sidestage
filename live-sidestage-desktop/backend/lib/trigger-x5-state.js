@@ -83,6 +83,12 @@ module.exports = function createTriggerX5State({
     // ウィンドウの終了時刻はセッション内メモリで保持する（DB永続化は不要な一時状態）。
     let activeUntil = 0;
 
+    // 延長のたびに積み上がる発動者の時間帯（発動順）。非アクティブからの新規発動でリセットし、
+    // 延長のたびに末尾へ追記する。各エントリの endsAt はその人が「発動者」として表示され続ける
+    // 終了時刻 — オーバーレイ側はこれを使い、カウントダウンが実際にその枠へ入ったタイミングで
+    // アイコンを切り替える（即時上書きすると残り時間と発動者アイコンが食い違って見えるため）。
+    let activatorQueue = [];
+
     function getWidgetTriggerX5Settings() {
         return normalizeTriggerX5Settings(getScopedStateValue(WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY));
     }
@@ -123,20 +129,39 @@ module.exports = function createTriggerX5State({
         // 既にウィンドウが有効な状態での再検知は「延長」として区別し、
         // オーバーレイ側で電撃演出（新規ポップインではなく延長エフェクト）を出し分けられるようにする。
         const extended = isTriggerX5WindowActive();
+        const now = Date.now();
 
         // 延長は残り時間に加算する（上限なし）。非アクティブな状態からの発動は現在時刻を起点にする。
-        const base = extended ? activeUntil : Date.now();
+        const base = extended ? activeUntil : now;
         activeUntil = base + settings.durationSeconds * 1000;
+
+        // 非アクティブからの新規発動はキューをリセット。延長は末尾に追記し、
+        // その人の枠が「それまでの残り時間 〜 今回追加した分」になるようにする。
+        if (!extended) {
+            activatorQueue = [];
+        }
+        activatorQueue.push({
+            nickname: giftEvent?.nickname || giftEvent?.uniqueId || 'リスナー',
+            image: giftEvent?.image || '',
+            endsAt: activeUntil,
+        });
 
         // 効果音は新規発動・延長（発動中の再発動）のどちらでも再生する。
         io.emit('widgets:trigger-x5:window', {
             active: true,
             extended,
             durationSeconds: settings.durationSeconds,
-            remainingSeconds: Math.max(1, Math.ceil((activeUntil - Date.now()) / 1000)),
+            remainingSeconds: Math.max(1, Math.ceil((activeUntil - now) / 1000)),
             nickname: giftEvent?.nickname || giftEvent?.uniqueId || 'リスナー',
             image: giftEvent?.image || '',
             timestamp: getTimestamp(),
+            // 延長のたびに積み上がる発動者の時間帯。オーバーレイ側はこれを使って、
+            // カウントダウンが実際にその人の枠に入ったタイミングでアイコンを切り替える。
+            activators: activatorQueue.map((entry) => ({
+                nickname: entry.nickname,
+                image: entry.image,
+                endsInSeconds: Math.max(1, Math.ceil((entry.endsAt - now) / 1000)),
+            })),
             sound: buildTriggerX5SoundPayload({
                 enabled: settings.soundEnabled,
                 sound: settings.sound,

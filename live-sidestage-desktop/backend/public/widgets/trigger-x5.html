@@ -434,6 +434,12 @@
         let activeTickHandle = null;
         let activePopTimeoutHandle = null;
 
+        // 延長のたびに積み上がる発動者の時間帯（サーバーから毎回フルスナップショットで届く）。
+        // 「今どの枠のカウントダウンなのか」に応じてアイコンを切り替えるため、延長を受信しても
+        // ここでは即座にアイコンを差し替えず、tickActiveCountdown側で毎フレーム判定する。
+        let activeAvatarSegments = [];
+        let appliedActiveAvatarHtml = null;
+
         // activeCardPop アニメーションの尺（CSS側と一致させる）。
         // この間はカウントダウンの数字を動かさず、大きく表示→縮小の演出を見せきってから開始する。
         const ACTIVE_CARD_POP_MS = 3000;
@@ -466,6 +472,40 @@
             avatarEl.innerHTML = avatarHtml;
         }
 
+        // data.activators（延長のたびに積み上がる発動者の時間帯）から、ローカル時計基準の
+        // 締切付きセグメント列を組み立てる。古いペイロード（activators未対応）は
+        // nickname/image/remainingSecondsから単一セグメントとしてフォールバックする。
+        function buildActiveAvatarSegments(data, remainingSeconds) {
+            const now = Date.now();
+            const list = Array.isArray(data?.activators) && data.activators.length > 0
+                ? data.activators
+                : [{ image: data?.image, endsInSeconds: remainingSeconds }];
+
+            return list.map((entry) => ({
+                avatarHtml: buildAvatarHtml(String(entry?.image || '')),
+                deadline: now + Math.max(0, Number(entry?.endsInSeconds) || 0) * 1000,
+            }));
+        }
+
+        // セグメントは発動順（締切が早い順）に並んでいる。まだ締切が来ていない最初の枠が
+        // 「現在カウントダウン中の発動者」＝表示すべきアイコン。
+        function currentActiveAvatarSegment() {
+            if (activeAvatarSegments.length === 0) return null;
+            const now = Date.now();
+            return activeAvatarSegments.find((seg) => seg.deadline > now)
+                || activeAvatarSegments[activeAvatarSegments.length - 1];
+        }
+
+        // 残り時間の進みに合わせて、必要なときだけアイコンを差し替える
+        // （即時上書きすると残り時間と発動者アイコンが食い違って見えるため）。
+        function syncActiveCardAvatarToSegment(card) {
+            const segment = currentActiveAvatarSegment();
+            const avatarHtml = segment ? segment.avatarHtml : '';
+            if (avatarHtml === appliedActiveAvatarHtml) return;
+            appliedActiveAvatarHtml = avatarHtml;
+            updateActiveCardAvatar(card, avatarHtml);
+        }
+
         function removeActiveCard() {
             if (!activeCardEl) return;
             const el = activeCardEl;
@@ -477,6 +517,7 @@
 
         function tickActiveCountdown() {
             if (!activeCardEl) return;
+            syncActiveCardAvatarToSegment(activeCardEl);
             const remainingMs = activeDeadline - Date.now();
             const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
             const badge = activeCardEl.querySelector('.countdown-badge');
@@ -569,16 +610,23 @@
             // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
             playConfiguredSound(data.sound);
 
-            const avatarHtml = buildAvatarHtml(String(data?.image || ''));
+            // サーバーから届く発動者の時間帯（延長のたびに末尾が積み上がったフルスナップショット）。
+            // ここでは登録するだけで、実際にアイコンへ反映するのはtickActiveCountdown側 —
+            // 延長を受けた瞬間に上書きすると、まだ前の発動者の枠なのにアイコンだけ次の人に
+            // 変わってしまい、残り時間と食い違って見える。
+            activeAvatarSegments = buildActiveAvatarSegments(data, remainingSeconds);
 
             if (data.extended && activeCardEl) {
                 playZapEffect();
                 const badge = activeCardEl.querySelector('.countdown-badge');
                 if (badge) badge.textContent = formatCountdown(remainingSeconds);
-                updateActiveCardAvatar(activeCardEl, avatarHtml);
                 activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
             } else {
                 if (activeCardEl) activeCardEl.remove();
+                appliedActiveAvatarHtml = null;
+                const initialSegment = currentActiveAvatarSegment();
+                const avatarHtml = initialSegment ? initialSegment.avatarHtml : '';
+                appliedActiveAvatarHtml = avatarHtml;
                 activeCardEl = createActiveCard(remainingSeconds, avatarHtml);
                 // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
                 activePopTimeoutHandle = window.setTimeout(() => {
