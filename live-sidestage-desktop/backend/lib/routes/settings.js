@@ -40,6 +40,25 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         serverEvents.emit('popout-window-open-requested', kind);
     });
 
+    app.get('/api/settings/popout-comment-style', (req, res) => {
+        const fontKey = dbStore.getGlobalStateValue('popout_comments_font_key') || 'default';
+        const storedFontSize = Number(dbStore.getGlobalStateValue('popout_comments_font_size'));
+        const fontSize = Number.isFinite(storedFontSize) && storedFontSize > 0 ? storedFontSize : 13;
+        res.json({ fontKey, fontSize });
+    });
+
+    app.post('/api/settings/popout-comment-style', express.json(), (req, res) => {
+        const fontKey = String((req.body || {}).fontKey || 'default').trim().slice(0, 60) || 'default';
+        const rawFontSize = Number((req.body || {}).fontSize);
+        const fontSize = Number.isFinite(rawFontSize) ? Math.max(10, Math.min(48, Math.round(rawFontSize))) : 13;
+
+        dbStore.setGlobalStateValue('popout_comments_font_key', fontKey, getTimestamp());
+        dbStore.setGlobalStateValue('popout_comments_font_size', String(fontSize), getTimestamp());
+
+        io.emit('popout-comment-style-changed', { fontKey, fontSize });
+        res.json({ ok: true, fontKey, fontSize });
+    });
+
     app.get('/api/settings/auto-launch', (req, res) => {
         if (!IS_ELECTRON || !IS_PACKAGED_ELECTRON) {
             return res.json({ available: false, enabled: false });
