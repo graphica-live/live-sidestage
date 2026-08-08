@@ -267,7 +267,7 @@ function ensurePopoutWindow(kind) {
     });
 
     popoutWindow.setMenuBarVisibility(false);
-    popoutWindow.loadURL(`http://localhost:${PORT}${config.path}`);
+    popoutWindow.loadURL(`http://localhost:${PORT}${config.path}?popout=1`);
 
     popoutWindow.on('resize', () => schedulePopoutBoundsSave(kind, popoutWindow));
     popoutWindow.on('move', () => schedulePopoutBoundsSave(kind, popoutWindow));
