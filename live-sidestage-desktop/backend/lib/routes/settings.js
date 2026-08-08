@@ -3,9 +3,8 @@
 const express = require('express');
 const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS } = require('../constants');
 
-const POPOUT_WINDOW_KINDS = ['comments', 'gifts'];
-const GIFT_SORT_ORDERS = ['timestamp-asc', 'timestamp-desc', 'coins-desc', 'coins-asc'];
-const GIFT_DISPLAY_FLAG_KEYS = ['showAvatar', 'showName', 'showGiftImage', 'showGiftName', 'showCoins'];
+const POPOUT_WINDOW_KINDS = ['comments', 'gifts', 'comments-gifts'];
+const GIFT_SORT_ORDERS = ['timestamp-asc', 'timestamp-desc'];
 
 function popoutAutoOpenStateKey(kind) {
     return `popout_auto_open_${kind}`;
@@ -46,51 +45,56 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         const fontKey = dbStore.getGlobalStateValue('popout_comments_font_key') || 'default';
         const storedFontSize = Number(dbStore.getGlobalStateValue('popout_comments_font_size'));
         const fontSize = Number.isFinite(storedFontSize) && storedFontSize > 0 ? storedFontSize : 13;
-        res.json({ fontKey, fontSize });
+        const storedStickerSize = Number(dbStore.getGlobalStateValue('popout_comments_sticker_size'));
+        const stickerSize = Number.isFinite(storedStickerSize) && storedStickerSize > 0 ? storedStickerSize : 26;
+        const flashNew = dbStore.getGlobalStateValue('popout_comments_flash_new') !== '0';
+        res.json({ fontKey, fontSize, stickerSize, flashNew });
     });
 
     app.post('/api/settings/popout-comment-style', express.json(), (req, res) => {
         const fontKey = String((req.body || {}).fontKey || 'default').trim().slice(0, 60) || 'default';
         const rawFontSize = Number((req.body || {}).fontSize);
         const fontSize = Number.isFinite(rawFontSize) ? Math.max(10, Math.min(48, Math.round(rawFontSize))) : 13;
+        const rawStickerSize = Number((req.body || {}).stickerSize);
+        const stickerSize = Number.isFinite(rawStickerSize) ? Math.max(12, Math.min(80, Math.round(rawStickerSize))) : 26;
+        const flashNew = (req.body || {}).flashNew !== false;
 
         dbStore.setGlobalStateValue('popout_comments_font_key', fontKey, getTimestamp());
         dbStore.setGlobalStateValue('popout_comments_font_size', String(fontSize), getTimestamp());
+        dbStore.setGlobalStateValue('popout_comments_sticker_size', String(stickerSize), getTimestamp());
+        dbStore.setGlobalStateValue('popout_comments_flash_new', flashNew ? '1' : '0', getTimestamp());
 
-        io.emit('popout-comment-style-changed', { fontKey, fontSize });
-        res.json({ ok: true, fontKey, fontSize });
+        io.emit('popout-comment-style-changed', { fontKey, fontSize, stickerSize, flashNew });
+        res.json({ ok: true, fontKey, fontSize, stickerSize, flashNew });
     });
 
     app.get('/api/settings/popout-gift-style', (req, res) => {
         const storedSortOrder = dbStore.getGlobalStateValue('popout_gifts_sort_order');
         const sortOrder = GIFT_SORT_ORDERS.includes(storedSortOrder) ? storedSortOrder : 'timestamp-asc';
+        const fontKey = dbStore.getGlobalStateValue('popout_gifts_font_key') || 'default';
+        const storedFontSize = Number(dbStore.getGlobalStateValue('popout_gifts_font_size'));
+        const fontSize = Number.isFinite(storedFontSize) && storedFontSize > 0 ? storedFontSize : 13;
+        const flashNew = dbStore.getGlobalStateValue('popout_gifts_flash_new') !== '0';
 
-        const display = {};
-        for (const key of GIFT_DISPLAY_FLAG_KEYS) {
-            const stored = dbStore.getGlobalStateValue(`popout_gifts_${key}`);
-            display[key] = stored === '0' ? false : true;
-        }
-
-        res.json({ sortOrder, display });
+        res.json({ sortOrder, fontKey, fontSize, flashNew });
     });
 
     app.post('/api/settings/popout-gift-style', express.json(), (req, res) => {
         const body = req.body || {};
         const rawSortOrder = String(body.sortOrder || '');
         const sortOrder = GIFT_SORT_ORDERS.includes(rawSortOrder) ? rawSortOrder : 'timestamp-asc';
-
-        const display = {};
-        for (const key of GIFT_DISPLAY_FLAG_KEYS) {
-            display[key] = body.display?.[key] !== false;
-        }
+        const fontKey = String(body.fontKey || 'default').trim().slice(0, 60) || 'default';
+        const rawFontSize = Number(body.fontSize);
+        const fontSize = Number.isFinite(rawFontSize) ? Math.max(10, Math.min(48, Math.round(rawFontSize))) : 13;
+        const flashNew = body.flashNew !== false;
 
         dbStore.setGlobalStateValue('popout_gifts_sort_order', sortOrder, getTimestamp());
-        for (const key of GIFT_DISPLAY_FLAG_KEYS) {
-            dbStore.setGlobalStateValue(`popout_gifts_${key}`, display[key] ? '1' : '0', getTimestamp());
-        }
+        dbStore.setGlobalStateValue('popout_gifts_font_key', fontKey, getTimestamp());
+        dbStore.setGlobalStateValue('popout_gifts_font_size', String(fontSize), getTimestamp());
+        dbStore.setGlobalStateValue('popout_gifts_flash_new', flashNew ? '1' : '0', getTimestamp());
 
-        io.emit('popout-gift-style-changed', { sortOrder, display });
-        res.json({ ok: true, sortOrder, display });
+        io.emit('popout-gift-style-changed', { sortOrder, fontKey, fontSize, flashNew });
+        res.json({ ok: true, sortOrder, fontKey, fontSize, flashNew });
     });
 
     app.get('/api/settings/auto-launch', (req, res) => {

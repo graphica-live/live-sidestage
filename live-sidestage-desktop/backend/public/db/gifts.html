@@ -9,17 +9,22 @@
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
     <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/font-options.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <link rel="stylesheet" href="/shared/gift-suggest.css">
     <script>
         if (new URLSearchParams(location.search).get('popout') === '1') {
             document.documentElement.classList.add('is-popout');
+            const popoutFontLink = document.createElement('link');
+            popoutFontLink.rel = 'stylesheet';
+            popoutFontLink.href = WIDGET_FONT_GOOGLE_FONTS_URL;
+            document.head.appendChild(popoutFontLink);
         }
     </script>
     <style>
         /* 別ウィンドウ表示時は最小限の表示にする: 見出しカード(page-hero)を丸ごと隠し、
            管理画面用テーブルの代わりに1ギフト=1行のシンプルなリスト(#popout-gift-list)を表示する。
-           並び順と表示項目のON/OFFは表示設定モーダル(quick-access.html)から制御する。 */
+           並び順・フォント・フォントサイズは表示設定モーダル(quick-access.html)から制御する。 */
         html.is-popout .layout > .panel:first-child,
         html.is-popout table {
             display: none !important;
@@ -28,12 +33,6 @@
         html.is-popout .popout-gift-list {
             display: flex !important;
         }
-
-        html.is-popout.hide-avatar .popout-gift-avatar { display: none !important; }
-        html.is-popout.hide-name .popout-gift-user-name { display: none !important; }
-        html.is-popout.hide-gift-name .popout-gift-name { display: none !important; }
-        html.is-popout.hide-gift-image .popout-gift-image { display: none !important; }
-        html.is-popout.hide-coins .popout-gift-coins { display: none !important; }
 
         :root {
             --bg: #e6edf4;
@@ -223,6 +222,12 @@
             align-items: center;
             gap: 10px;
             min-width: 0;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        a.user-cell:hover {
+            opacity: 0.8;
         }
 
         .user-avatar {
@@ -256,6 +261,15 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
+            --popout-gift-font-family: inherit;
+            --popout-gift-font-size: 13px;
+        }
+
+        .popout-gift-user-name,
+        .popout-gift-name,
+        .popout-gift-coins {
+            font-family: var(--popout-gift-font-family) !important;
+            font-size: var(--popout-gift-font-size) !important;
         }
 
         .popout-gift-item {
@@ -290,6 +304,10 @@
             font-size: 10px;
         }
 
+        .popout-gift-user-link {
+            display: contents;
+        }
+
         .popout-gift-user-name {
             flex: 0 1 auto;
             min-width: 0;
@@ -299,10 +317,17 @@
             white-space: nowrap;
             font-size: 13px;
             font-weight: 600;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .popout-gift-user-link:hover .popout-gift-user-name,
+        .popout-gift-user-link:hover .popout-gift-avatar {
+            opacity: 0.8;
         }
 
         .popout-gift-name {
-            flex: 1 1 auto;
+            flex: 0 1 auto;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -330,8 +355,44 @@
 
         .popout-gift-coins {
             flex: 0 0 auto;
+            min-width: 5ch;
+            margin-left: auto;
+            text-align: right;
             font-size: 13px;
             font-weight: 600;
+        }
+
+        .popout-new-items-badge {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #ffffff;
+            background: var(--accent, #c2410c);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            cursor: pointer;
+        }
+
+        .popout-new-items-badge.is-at-top {
+            top: 10px;
+        }
+
+        .popout-new-items-badge.is-at-bottom {
+            bottom: 10px;
+        }
+
+        @keyframes popout-flash-new {
+            0%, 100% { background-color: transparent; }
+            25%, 75% { background-color: rgba(255, 196, 0, 0.35); }
+        }
+
+        .popout-flash-new {
+            animation: popout-flash-new 0.6s ease-in-out 2;
         }
 
         .icon-button {
@@ -595,6 +656,7 @@
                 <tbody id="table-body"></tbody>
             </table>
             <ul class="popout-gift-list" id="popout-gift-list"></ul>
+            <button type="button" class="popout-new-items-badge" id="gift-new-items-badge" hidden></button>
             <div class="empty" id="empty-state" hidden>この日付のギフト履歴はまだありません。</div>
         </section>
     </div>
@@ -706,6 +768,7 @@
         const messageBox = document.getElementById('message-box');
         const tableBody = document.getElementById('table-body');
         const popoutGiftList = document.getElementById('popout-gift-list');
+        const newGiftsBadge = document.getElementById('gift-new-items-badge');
         const emptyState = document.getElementById('empty-state');
         const isPopoutWindow = document.documentElement.classList.contains('is-popout');
         const giftModalBackdrop = document.getElementById('gift-modal-backdrop');
@@ -731,6 +794,8 @@
         let currentDisplayDayKey = null;
         let currentSortOrder = 'timestamp-asc';
         let currentGifts = [];
+        let popoutFlashNewEnabled = true;
+        let hiddenNewGiftsCount = 0;
         let isLoadingGifts = false;
         let isSubmittingGift = false;
         let knownUserSuggestions = [];
@@ -777,13 +842,57 @@
             sortOrderSelect.value = currentSortOrder;
         }
 
-        function applyPopoutDisplayFlags(display) {
-            const flags = display || {};
-            document.documentElement.classList.toggle('hide-avatar', flags.showAvatar === false);
-            document.documentElement.classList.toggle('hide-name', flags.showName === false);
-            document.documentElement.classList.toggle('hide-gift-image', flags.showGiftImage === false);
-            document.documentElement.classList.toggle('hide-gift-name', flags.showGiftName === false);
-            document.documentElement.classList.toggle('hide-coins', flags.showCoins === false);
+        function applyPopoutGiftFontStyle(style) {
+            if (!style) return;
+            document.documentElement.style.setProperty('--popout-gift-font-family', getWidgetFontFamilyByKey(style.fontKey));
+            if (style.fontSize) {
+                document.documentElement.style.setProperty('--popout-gift-font-size', `${style.fontSize}px`);
+            }
+            if (typeof style.flashNew === 'boolean') {
+                popoutFlashNewEnabled = style.flashNew;
+            }
+        }
+
+        // ポップアウトのギフト一覧が「最新側の端」を表示中かどうかを判定する（ウィンドウ全体でスクロールする構造のため）。
+        // timestamp-asc(古い順)は末尾が最新、timestamp-desc(新しい順)は先頭が最新。
+        function isGiftListAtLatestEdge() {
+            if (currentSortOrder === 'timestamp-asc') {
+                return window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 24;
+            }
+            return window.scrollY <= 24;
+        }
+
+        function hideNewGiftsBadge() {
+            hiddenNewGiftsCount = 0;
+            if (newGiftsBadge) {
+                newGiftsBadge.hidden = true;
+            }
+        }
+
+        function showNewGiftsBadge(count) {
+            hiddenNewGiftsCount += count;
+            if (!newGiftsBadge) return;
+            newGiftsBadge.textContent = `新しいギフト${hiddenNewGiftsCount}件`;
+            newGiftsBadge.hidden = false;
+            newGiftsBadge.classList.toggle('is-at-top', currentSortOrder !== 'timestamp-asc');
+            newGiftsBadge.classList.toggle('is-at-bottom', currentSortOrder === 'timestamp-asc');
+        }
+
+        function flashNewGiftItem(item) {
+            item.classList.add('popout-flash-new');
+            item.addEventListener('animationend', () => item.classList.remove('popout-flash-new'), { once: true });
+        }
+
+        if (isPopoutWindow && newGiftsBadge) {
+            newGiftsBadge.addEventListener('click', () => {
+                scrollToLatestGift();
+                hideNewGiftsBadge();
+            });
+            window.addEventListener('scroll', () => {
+                if (hiddenNewGiftsCount > 0 && isGiftListAtLatestEdge()) {
+                    hideNewGiftsBadge();
+                }
+            });
         }
 
         function loadPopoutGiftStyle() {
@@ -796,7 +905,7 @@
                 .then((data) => {
                     currentSortOrder = data?.sortOrder || currentSortOrder;
                     syncSortOrderSelect();
-                    applyPopoutDisplayFlags(data?.display);
+                    applyPopoutGiftFontStyle(data);
                     renderTable(currentGifts);
                 })
                 .catch(() => {});
@@ -847,20 +956,31 @@
 
         function scrollToLatestGift() {
             requestAnimationFrame(() => {
-                window.scrollTo({
-                    top: document.documentElement.scrollHeight,
-                    behavior: 'smooth'
-                });
+                const top = currentSortOrder === 'timestamp-asc' ? document.documentElement.scrollHeight : 0;
+                window.scrollTo({ top, behavior: 'smooth' });
             });
         }
 
-        function renderTable(gifts) {
+        function renderTable(gifts, options = {}) {
             currentGifts = Array.isArray(gifts) ? [...gifts] : [];
             emptyState.hidden = currentGifts.length > 0;
             const sortedGifts = getSortedGifts(currentGifts);
 
             if (isPopoutWindow) {
-                renderPopoutGiftList(sortedGifts);
+                const diff = options.diff === true;
+                const wasAtLatestEdge = diff ? isGiftListAtLatestEdge() : true;
+                const { addedItems } = renderPopoutGiftList(sortedGifts, { diff });
+
+                if (addedItems.length) {
+                    if (wasAtLatestEdge) {
+                        scrollToLatestGift();
+                    } else {
+                        showNewGiftsBadge(addedItems.length);
+                    }
+                    if (popoutFlashNewEnabled) {
+                        addedItems.forEach(flashNewGiftItem);
+                    }
+                }
             } else {
                 renderAdminGiftTable(sortedGifts);
             }
@@ -884,17 +1004,22 @@
                 const userAvatarMarkup = gift.image
                     ? `<img class="user-avatar" src="${escapeHtml(gift.image)}" alt="">`
                     : '<div class="user-avatar is-empty">?</div>';
+                const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+                const userCellTag = profileUrl ? 'a' : 'div';
+                const userCellAttrs = profileUrl
+                    ? ` href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer"`
+                    : '';
 
                 row.innerHTML = `
                     <td>${escapeHtml(formatTimestamp(gift.timestamp))}</td>
                     <td>
-                        <div class="user-cell">
+                        <${userCellTag} class="user-cell"${userCellAttrs}>
                             ${userAvatarMarkup}
                             <div class="user-meta">
                                 <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
                                 <span>@${escapeHtml(gift.uniqueId || '-')}</span>
                             </div>
-                        </div>
+                        </${userCellTag}>
                     </td>
                     <td>
                         <div class="gift-cell">
@@ -917,36 +1042,76 @@
             tableBody.appendChild(fragment);
         }
 
-        function renderPopoutGiftList(sortedGifts) {
-            popoutGiftList.innerHTML = '';
+        function buildPopoutGiftItem(gift) {
+            const item = document.createElement('li');
+            item.className = 'popout-gift-item';
+            item.dataset.giftEventId = String(gift.id || '');
+            const avatarMarkup = gift.image
+                ? `<img class="popout-gift-avatar" src="${escapeHtml(gift.image)}" alt="">`
+                : '<div class="popout-gift-avatar is-empty">?</div>';
+            const giftImageMarkup = gift.giftImage
+                ? `<img class="popout-gift-image" src="${escapeHtml(gift.giftImage)}" alt="">`
+                : '<div class="popout-gift-image is-empty">No Image</div>';
+            const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+            const userLinkMarkup = `
+                ${avatarMarkup}
+                <span class="popout-gift-user-name">${escapeHtml(gift.nickname || gift.uniqueId || '-')}</span>
+            `;
 
-            if (!sortedGifts.length) {
-                return;
+            item.innerHTML = `
+                ${profileUrl
+                    ? `<a class="popout-gift-user-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${userLinkMarkup}</a>`
+                    : userLinkMarkup}
+                <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
+                ${giftImageMarkup}
+                <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>
+            `;
+            return item;
+        }
+
+        // diff:false は全件作り直し（初期表示・日付切替・並び順/表示設定変更時）。
+        // diff:true は既存要素を保ったまま新規分だけ挿入する（ライブ更新時、画像の再読み込みによる
+        // チラつきを避けるため）。戻り値の addedItems は新規挿入された <li> 一覧。
+        function renderPopoutGiftList(sortedGifts, options = {}) {
+            if (!options.diff) {
+                popoutGiftList.innerHTML = '';
+                const fragment = document.createDocumentFragment();
+                sortedGifts.forEach((gift) => fragment.appendChild(buildPopoutGiftItem(gift)));
+                popoutGiftList.appendChild(fragment);
+                return { addedItems: [] };
             }
 
-            const fragment = document.createDocumentFragment();
-
-            sortedGifts.forEach((gift) => {
-                const item = document.createElement('li');
-                item.className = 'popout-gift-item';
-                const avatarMarkup = gift.image
-                    ? `<img class="popout-gift-avatar" src="${escapeHtml(gift.image)}" alt="">`
-                    : '<div class="popout-gift-avatar is-empty">?</div>';
-                const giftImageMarkup = gift.giftImage
-                    ? `<img class="popout-gift-image" src="${escapeHtml(gift.giftImage)}" alt="">`
-                    : '<div class="popout-gift-image is-empty">No Image</div>';
-
-                item.innerHTML = `
-                    ${avatarMarkup}
-                    <span class="popout-gift-user-name">${escapeHtml(gift.nickname || gift.uniqueId || '-')}</span>
-                    <span class="popout-gift-name">${escapeHtml(gift.giftName || '不明')}</span>
-                    ${giftImageMarkup}
-                    <span class="popout-gift-coins">${escapeHtml(formatNumber(gift.totalGifts))}</span>
-                `;
-                fragment.appendChild(item);
+            const existingById = new Map();
+            Array.from(popoutGiftList.children).forEach((li) => {
+                existingById.set(li.dataset.giftEventId, li);
             });
 
-            popoutGiftList.appendChild(fragment);
+            const nextIds = new Set(sortedGifts.map((gift) => String(gift.id || '')));
+            existingById.forEach((li, id) => {
+                if (!nextIds.has(id)) {
+                    li.remove();
+                    existingById.delete(id);
+                }
+            });
+
+            const addedItems = [];
+            let refNode = popoutGiftList.firstChild;
+            sortedGifts.forEach((gift) => {
+                const id = String(gift.id || '');
+                let li = existingById.get(id);
+                if (li) {
+                    if (refNode !== li) {
+                        popoutGiftList.insertBefore(li, refNode);
+                    }
+                    refNode = li.nextSibling;
+                } else {
+                    li = buildPopoutGiftItem(gift);
+                    popoutGiftList.insertBefore(li, refNode);
+                    addedItems.push(li);
+                }
+            });
+
+            return { addedItems };
         }
 
         function populateGiftSuggestions(gifts) {
@@ -1163,15 +1328,18 @@
                 const response = await fetch(`/api/gifts?dayKey=${encodeURIComponent(dayKey)}`);
                 const payload = await response.json();
                 const nextGifts = Array.isArray(payload.gifts) ? payload.gifts : [];
-                const shouldScrollToLatest = options.scrollToLatest === true
+                const isLiveUpdate = options.scrollToLatest === true;
+                const shouldScrollToLatest = isLiveUpdate
                     && currentSortOrder === 'timestamp-asc'
                     && nextGifts.length > previousGiftCount;
 
                 selectedDayKey = payload.dayKey;
                 dayInput.value = payload.dayKey;
-                renderTable(nextGifts);
+                renderTable(nextGifts, { diff: isLiveUpdate });
 
-                if (shouldScrollToLatest) {
+                // ポップアウトは renderTable 内で自前のスクロール/バッジ判定を行うため、
+                // 管理画面(テーブル表示)のときだけここで従来通りスクロールする。
+                if (shouldScrollToLatest && !isPopoutWindow) {
                     scrollToLatestGift();
                 }
             } finally {
@@ -1347,7 +1515,7 @@
             }
             currentSortOrder = payload?.sortOrder || currentSortOrder;
             syncSortOrderSelect();
-            applyPopoutDisplayFlags(payload?.display);
+            applyPopoutGiftFontStyle(payload);
             renderTable(currentGifts);
         });
 

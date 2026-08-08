@@ -372,6 +372,18 @@
             <p class="popout-hint">コメント欄・ギフト履歴をそれぞれ独立したウィンドウで開けます。ウィンドウの位置とサイズは次回起動時も記憶されます。</p>
 
             <div class="popout-row">
+                <span class="popout-row-label">コメント＆ギフト</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-gifts-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <button type="button" class="ghost-button" id="open-comments-gifts-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+            <p class="popout-hint">1つのウィンドウを左右に分割し、左にコメント欄・右にギフト履歴を表示します。表示設定はそれぞれの「表示設定」から変更したものがそのまま反映されます。</p>
+
+            <div class="popout-row">
                 <span class="popout-row-label">コメント欄</span>
                 <div class="quick-actions">
                     <label class="check-label">
@@ -417,6 +429,16 @@
                 <label for="popout-font-size-input">フォントサイズ (px)</label>
                 <input type="number" id="popout-font-size-input" min="10" max="48" step="1">
             </div>
+            <div class="modal-field">
+                <label for="popout-sticker-size-input">ステッカーサイズ (px)</label>
+                <input type="number" id="popout-sticker-size-input" min="12" max="80" step="1">
+            </div>
+            <div class="modal-field">
+                <label class="check-label">
+                    <input type="checkbox" id="popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
+                </label>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="primary" id="comments-popout-settings-close">閉じる</button>
             </div>
@@ -429,33 +451,22 @@
             <div class="modal-field">
                 <label for="gifts-popout-sort-order-select">並び順</label>
                 <select id="gifts-popout-sort-order-select" aria-label="並び順">
-                    <option value="timestamp-asc">昇順</option>
-                    <option value="timestamp-desc">降順</option>
-                    <option value="coins-desc">コイン数の大きい順</option>
-                    <option value="coins-asc">コイン数の小さい順</option>
+                    <option value="timestamp-desc">新しい順</option>
+                    <option value="timestamp-asc">古い順</option>
                 </select>
             </div>
             <div class="modal-field">
-                <label>表示内容</label>
+                <label for="gifts-popout-font-select">フォント</label>
+                <select id="gifts-popout-font-select" aria-label="フォント"></select>
+            </div>
+            <div class="modal-field">
+                <label for="gifts-popout-font-size-input">フォントサイズ (px)</label>
+                <input type="number" id="gifts-popout-font-size-input" min="10" max="48" step="1">
+            </div>
+            <div class="modal-field">
                 <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-avatar" checked>
-                    リスナーアイコン
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-name" checked>
-                    リスナー名
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-gift-name" checked>
-                    ギフト名
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-gift-image" checked>
-                    ギフト画像
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="gifts-popout-show-coins" checked>
-                    コイン数
+                    <input type="checkbox" id="gifts-popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
                 </label>
             </div>
             <div class="modal-actions">
@@ -530,11 +541,13 @@
         (function () {
             const openButtons = {
                 comments: document.getElementById('open-comments-popout-btn'),
-                gifts: document.getElementById('open-gifts-popout-btn')
+                gifts: document.getElementById('open-gifts-popout-btn'),
+                'comments-gifts': document.getElementById('open-comments-gifts-popout-btn')
             };
             const autoOpenCheckboxes = {
                 comments: document.getElementById('comments-auto-open-checkbox'),
-                gifts: document.getElementById('gifts-auto-open-checkbox')
+                gifts: document.getElementById('gifts-auto-open-checkbox'),
+                'comments-gifts': document.getElementById('comments-gifts-auto-open-checkbox')
             };
             const statusEl = document.getElementById('popout-windows-status');
 
@@ -614,6 +627,8 @@
             const sortOrderSelect = document.getElementById('popout-sort-order-select');
             const fontSelect = document.getElementById('popout-font-select');
             const fontSizeInput = document.getElementById('popout-font-size-input');
+            const stickerSizeInput = document.getElementById('popout-sticker-size-input');
+            const flashNewCheckbox = document.getElementById('popout-flash-new-checkbox');
 
             fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
 
@@ -643,7 +658,9 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             fontKey: fontSelect.value,
-                            fontSize: Number(fontSizeInput.value) || 13
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            stickerSize: Number(stickerSizeInput.value) || 26,
+                            flashNew: flashNewCheckbox.checked
                         })
                     }).catch(() => {});
                 }, 300);
@@ -660,6 +677,8 @@
                     const fontKey = styleData?.fontKey || 'default';
                     fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
                     fontSizeInput.value = styleData?.fontSize || 13;
+                    stickerSizeInput.value = styleData?.stickerSize || 26;
+                    flashNewCheckbox.checked = styleData?.flashNew !== false;
                 }).finally(() => {
                     overlay.hidden = false;
                 });
@@ -678,6 +697,8 @@
             sortOrderSelect.addEventListener('change', applySortOrder);
             fontSelect.addEventListener('change', applyStyle);
             fontSizeInput.addEventListener('input', applyStyle);
+            stickerSizeInput.addEventListener('input', applyStyle);
+            flashNewCheckbox.addEventListener('change', applyStyle);
 
             socket.on('admin_comments_updated', (payload) => {
                 if (payload && payload.settings) {
@@ -693,36 +714,38 @@
             const overlay = document.getElementById('gifts-popout-settings-overlay');
             const closeButton = document.getElementById('gifts-popout-settings-close');
             const sortOrderSelect = document.getElementById('gifts-popout-sort-order-select');
-            const displayCheckboxes = {
-                showAvatar: document.getElementById('gifts-popout-show-avatar'),
-                showName: document.getElementById('gifts-popout-show-name'),
-                showGiftName: document.getElementById('gifts-popout-show-gift-name'),
-                showGiftImage: document.getElementById('gifts-popout-show-gift-image'),
-                showCoins: document.getElementById('gifts-popout-show-coins')
-            };
+            const fontSelect = document.getElementById('gifts-popout-font-select');
+            const fontSizeInput = document.getElementById('gifts-popout-font-size-input');
+            const flashNewCheckbox = document.getElementById('gifts-popout-flash-new-checkbox');
 
-            function currentDisplayFlags() {
-                const display = {};
-                for (const [key, checkbox] of Object.entries(displayCheckboxes)) {
-                    display[key] = checkbox.checked;
-                }
-                return display;
-            }
+            fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+
+            let styleSaveTimer = null;
 
             function saveGiftStyle() {
-                fetch('/api/settings/popout-gift-style', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sortOrder: sortOrderSelect.value, display: currentDisplayFlags() })
-                }).catch(() => {});
+                clearTimeout(styleSaveTimer);
+                styleSaveTimer = setTimeout(() => {
+                    fetch('/api/settings/popout-gift-style', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sortOrder: sortOrderSelect.value,
+                            fontKey: fontSelect.value,
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            flashNew: flashNewCheckbox.checked
+                        })
+                    }).catch(() => {});
+                }, 300);
             }
 
             function openModal() {
                 fetch('/api/settings/popout-gift-style').then((res) => res.json()).then((data) => {
-                    sortOrderSelect.value = data?.sortOrder || 'timestamp-asc';
-                    for (const [key, checkbox] of Object.entries(displayCheckboxes)) {
-                        checkbox.checked = data?.display?.[key] !== false;
-                    }
+                    sortOrderSelect.value = data?.sortOrder === 'timestamp-asc' ? 'timestamp-asc' : 'timestamp-desc';
+
+                    const fontKey = data?.fontKey || 'default';
+                    fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
+                    fontSizeInput.value = data?.fontSize || 13;
+                    flashNewCheckbox.checked = data?.flashNew !== false;
                 }).catch(() => {}).finally(() => {
                     overlay.hidden = false;
                 });
@@ -739,9 +762,9 @@
             });
 
             sortOrderSelect.addEventListener('change', saveGiftStyle);
-            for (const checkbox of Object.values(displayCheckboxes)) {
-                checkbox.addEventListener('change', saveGiftStyle);
-            }
+            fontSelect.addEventListener('change', saveGiftStyle);
+            fontSizeInput.addEventListener('input', saveGiftStyle);
+            flashNewCheckbox.addEventListener('change', saveGiftStyle);
         }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
