@@ -53,12 +53,13 @@
 
         return list.filter((gift) => {
             const name = String(gift.name || '').toLowerCase();
+            const nameJa = String(gift.nameJa || '').toLowerCase();
             const description = String(gift.describe || '').toLowerCase();
-            return name.includes(normalizedQuery) || description.includes(normalizedQuery);
+            return name.includes(normalizedQuery) || nameJa.includes(normalizedQuery) || description.includes(normalizedQuery);
         });
     }
 
-    // name または id が完全一致するギフトを探す（トリガー保存済み値からの逆引き用）。
+    // name / nameJa / id のいずれかが完全一致するギフトを探す（保存済み値からの逆引き・選択必須チェック用）。
     function findByNameOrId(gifts, value) {
         const list = Array.isArray(gifts) ? gifts : [];
         const normalizedValue = String(value || '').trim();
@@ -72,23 +73,28 @@
 
         return list.find((gift) => {
             const name = String(gift?.name || '').trim();
+            const nameJa = String(gift?.nameJa || '').trim();
             const id = String(gift?.id || '').trim();
 
-            if (!name && !id) {
+            if (!name && !nameJa && !id) {
                 return false;
             }
 
             return name === normalizedValue
+                || nameJa === normalizedValue
                 || id === normalizedValue
                 || name.toLowerCase() === loweredValue
-                || name.replace(/\s+/g, '') === compactValue;
+                || nameJa.toLowerCase() === loweredValue
+                || name.replace(/\s+/g, '') === compactValue
+                || nameJa.replace(/\s+/g, '') === compactValue;
         }) || null;
     }
 
     // トリガー登録・ゴールギフトで共通の「画像＋名前/説明＋コイン数」の候補行マークアップ。
     function renderItemHtml(gift, index, isActive, escapeHtml) {
+        const displayName = gift.nameJa || gift.name;
         const imageMarkup = gift.imageUrl
-            ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(gift.name)}">`
+            ? `<img class="gift-suggestion-image" src="${escapeHtml(gift.imageUrl)}" alt="${escapeHtml(displayName)}">`
             : '<div class="gift-suggestion-image is-empty">NO IMG</div>';
         const idPart = gift.id ? `ID: ${escapeHtml(String(gift.id))}` : '';
         const descPart = gift.describe ? escapeHtml(gift.describe) : '';
@@ -99,7 +105,7 @@
             <button type="button" class="gift-suggestion-item${isActive ? ' is-active' : ''}" data-suggest-index="${index}">
                 ${imageMarkup}
                 <div class="gift-suggestion-meta">
-                    <div class="gift-suggestion-name">${escapeHtml(gift.name)}</div>
+                    <div class="gift-suggestion-name">${escapeHtml(displayName)}</div>
                     <div class="gift-suggestion-desc">${description}</div>
                 </div>
                 <div class="gift-suggestion-cost">${escapeHtml(costText)}</div>
@@ -266,12 +272,53 @@
         return picker;
     }
 
+    // 「サジェストは自由入力・最終確定はカタログに存在する候補のみ」を強制するガード。
+    // フォーカスが外れた時点で入力値が name/nameJa/id のいずれとも完全一致しなければ
+    // setCustomValidity + is-invalid クラスで不正状態にする（呼び出し側は保存前に
+    // input.checkValidity() / reportValidity() でブロックする）。一致・空欄なら valid に戻す。
+    // パネル項目クリックは mousedown で preventDefault 済みのため blur は発生せず、
+    // select() 側で明示的に検証状態をクリアする必要がある（呼び出し側の onSelect で行う）。
+    // 同期的に判定する（setTimeout で遅延すると、input の change イベントで即保存する
+    // 呼び出し側と競合し、無効な値のまま保存されてしまうため）。
+    function attachSelectOnlyGuard(input, { getGifts, onValid, onInvalid, allowEmpty = true, invalidMessage = 'サジェストの候補から選択してください。' }) {
+        function markValid(matched) {
+            input.setCustomValidity('');
+            input.classList.remove('gift-suggest-invalid');
+            if (onValid) onValid(matched);
+        }
+
+        function markInvalid() {
+            input.setCustomValidity(invalidMessage);
+            input.classList.add('gift-suggest-invalid');
+            if (onInvalid) onInvalid();
+        }
+
+        input.addEventListener('input', () => {
+            input.setCustomValidity('');
+            input.classList.remove('gift-suggest-invalid');
+        });
+
+        input.addEventListener('blur', () => {
+            const value = input.value.trim();
+
+            if (!value) {
+                if (allowEmpty) markValid(null); else markInvalid();
+                return;
+            }
+
+            const matched = findByNameOrId(getGifts(), value);
+
+            if (matched) markValid(matched); else markInvalid();
+        });
+    }
+
     global.GiftSuggest = {
         parseCoinFilter,
         filterGifts,
         findByNameOrId,
         renderItemHtml,
         createPicker,
-        attachSuggestField
+        attachSuggestField,
+        attachSelectOnlyGuard
     };
 })(window);

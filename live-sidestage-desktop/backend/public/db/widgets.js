@@ -1562,7 +1562,7 @@
         function applyTriggerX5SettingsToForm(settings) {
             const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100, winSoundEnabled: false, winSound: { name: '', url: '' }, winSoundVolume: 100 };
             triggerX5EnabledInput.checked = Boolean(s.enabled);
-            triggerX5GiftNameInput.value = s.giftName || '';
+            setTriggerX5GiftNameValue(s.giftName || '');
             triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
             triggerX5WinRateInput.value = String(Number.parseInt(String(s.winRatePercent ?? 30), 10) || 30);
             triggerX5SoundEnabledInput.checked = Boolean(s.soundEnabled);
@@ -1598,10 +1598,26 @@
             updatePreviewFrame(triggerX5PreviewFrame, buildTriggerX5PreviewUrl(), options);
         }
 
+        // 保存に使う値は常に英語のマッチングキー。表示は日本語名（カタログに一致すれば）。
+        function setTriggerX5GiftNameValue(englishName) {
+            const trimmed = String(englishName || '').trim();
+            triggerX5GiftNameInput.dataset.giftKey = trimmed;
+            triggerX5GiftNameInput.setCustomValidity('');
+            triggerX5GiftNameInput.classList.remove('gift-suggest-invalid');
+
+            if (!trimmed) {
+                triggerX5GiftNameInput.value = '';
+                return;
+            }
+
+            const matched = GiftSuggest.findByNameOrId(state.giftCatalog, trimmed);
+            triggerX5GiftNameInput.value = matched?.nameJa || trimmed;
+        }
+
         function getDraftTriggerX5Settings() {
             return {
                 enabled: triggerX5EnabledInput.checked,
-                giftName: triggerX5GiftNameInput.value,
+                giftName: (triggerX5GiftNameInput.dataset.giftKey || triggerX5GiftNameInput.value).trim(),
                 durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15,
                 winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30,
                 soundEnabled: triggerX5SoundEnabledInput.checked,
@@ -1614,6 +1630,11 @@
         }
 
         async function saveTriggerX5SettingsImmediately() {
+            if (!triggerX5GiftNameInput.checkValidity()) {
+                triggerX5GiftNameInput.reportValidity();
+                return;
+            }
+
             setStatus(saveStatus, '設定状態: トリガー5倍を保存中...', 'warn');
             try {
                 const response = await fetch('/api/widgets/trigger-x5', {
@@ -1636,10 +1657,21 @@
             panel: triggerX5GiftSuggestionPanel,
             getGifts: () => state.giftCatalog,
             onSelect: (gift) => {
-                triggerX5GiftNameInput.value = gift.name || '';
+                triggerX5GiftNameInput.value = gift.nameJa || gift.name || '';
+                triggerX5GiftNameInput.dataset.giftKey = gift.name || '';
+                triggerX5GiftNameInput.setCustomValidity('');
+                triggerX5GiftNameInput.classList.remove('gift-suggest-invalid');
                 saveTriggerX5SettingsImmediately().catch(() => {});
             },
             escapeHtml
+        });
+
+        GiftSuggest.attachSelectOnlyGuard(triggerX5GiftNameInput, {
+            getGifts: () => state.giftCatalog,
+            invalidMessage: 'ギフト候補一覧から選択してください。',
+            onValid: (matched) => {
+                triggerX5GiftNameInput.dataset.giftKey = matched ? (matched.name || '') : '';
+            }
         });
 
 
@@ -2014,6 +2046,30 @@
                 || null;
         }
 
+        // ゴールギフトの「対象ギフト」欄は、カタログの特定ギフト名だけでなく
+        // ">=100" のようなコイン数条件も受け付ける。どちらの場合も保存に使う値（key）は
+        // 英語のマッチングキー（またはコイン数条件の文字列そのもの）、画面表示（display）は
+        // 一致したギフトがあれば日本語名にする。カタログにもコイン数条件にも一致しなければ invalid。
+        function resolveGoalGiftNameEntry(rawValue) {
+            const trimmed = String(rawValue || '').trim();
+
+            if (!trimmed) {
+                return { display: '', key: '', valid: true };
+            }
+
+            if (GiftSuggest.parseCoinFilter(trimmed.toLowerCase())) {
+                return { display: trimmed, key: trimmed, valid: true };
+            }
+
+            const matched = GiftSuggest.findByNameOrId([...goalGiftSystemSuggestions, ...state.giftCatalog], trimmed);
+
+            if (matched) {
+                return { display: matched.nameJa || matched.name, key: matched.name, valid: true };
+            }
+
+            return { display: trimmed, key: trimmed, valid: false };
+        }
+
         function getFilteredGoalGiftSuggestions(query) {
             const normalizedQuery = String(query || '').trim().toLowerCase();
 
@@ -2060,7 +2116,10 @@
                 return;
             }
 
-            activeGoalGiftInput.value = gift.name || '';
+            activeGoalGiftInput.value = gift.nameJa || gift.name || '';
+            activeGoalGiftInput.dataset.giftKey = gift.name || '';
+            activeGoalGiftInput.setCustomValidity('');
+            activeGoalGiftInput.classList.remove('gift-suggest-invalid');
             syncGoalRowCatalogMatch(activeGoalGiftInput.closest('[data-goal-row]'));
             activeGoalGiftInput.focus();
             hideGoalGiftSuggestionPanel();
@@ -2227,7 +2286,7 @@
                         <div class="goal-name-main">
                             <img class="goal-gift-image" data-goal-image-preview src="${escapeHtml(item.giftImage || '')}" alt="gift" ${item.giftImage ? '' : 'style="visibility:hidden"'}>
                             <div class="gift-suggest-shell">
-                                <input type="text" data-goal-name maxlength="80" autocomplete="off" value="${escapeHtml(item.giftName || '')}" placeholder="例: Rose / 5 / 100-500 / >=100" aria-label="対象ギフト">
+                                <input type="text" data-goal-name data-gift-key="${escapeHtml(item.giftName || '')}" maxlength="80" autocomplete="off" value="${escapeHtml(resolveGoalGiftNameEntry(item.giftName).display)}" placeholder="例: ローズ / 5 / 100-500 / >=100" aria-label="対象ギフト">
                             </div>
                         </div>
                     </div>
@@ -2280,6 +2339,8 @@
                     }
                 });
                 input.addEventListener('input', (event) => {
+                    // 入力中は表示中の生テキストで候補・プレビューを追わせる（確定前のキーは無視）。
+                    event.target.dataset.giftKey = '';
                     renderGoalGiftSuggestions(event.target, event.target.value);
                     syncGoalRowCatalogMatch(event.target.closest('[data-goal-row]'));
                 });
@@ -2322,7 +2383,20 @@
                     scheduleGoalGiftAutosave();
                 });
                 input.addEventListener('blur', (event) => {
-                    syncGoalRowCatalogMatch(event.target.closest('[data-goal-row]'));
+                    const target = event.target;
+                    const entry = resolveGoalGiftNameEntry(target.value);
+
+                    if (entry.valid) {
+                        target.dataset.giftKey = entry.key;
+                        target.value = entry.display;
+                        target.setCustomValidity('');
+                        target.classList.remove('gift-suggest-invalid');
+                    } else {
+                        target.setCustomValidity('候補一覧から選択するか、コイン数条件（例: >=100）を入力してください。');
+                        target.classList.add('gift-suggest-invalid');
+                    }
+
+                    syncGoalRowCatalogMatch(target.closest('[data-goal-row]'));
                     scheduleGoalGiftAutosave();
                 });
             });
@@ -2383,7 +2457,7 @@
                 return;
             }
             const nameInput = row.querySelector('[data-goal-name]');
-            const catalogGift = resolveGiftFromCatalog(nameInput.value);
+            const catalogGift = resolveGiftFromCatalog(nameInput.dataset.giftKey || nameInput.value);
             const imagePreview = row.querySelector('[data-goal-image-preview]');
 
             if (!catalogGift) {
@@ -2408,10 +2482,10 @@
         function getDraftGoalGiftItems() {
             return Array.from(goalGiftList.querySelectorAll('[data-goal-row]')).map((row) => {
                 const nameInput = row.querySelector('[data-goal-name]');
-                const catalogGift = resolveGiftFromCatalog(nameInput.value);
+                const giftName = (nameInput.dataset.giftKey || nameInput.value).trim();
+                const catalogGift = resolveGiftFromCatalog(giftName);
                 const targetValue = Number.parseInt(row.querySelector('[data-goal-target]').value, 10);
                 const currentValue = Number.parseInt(row.querySelector('[data-goal-current]').value, 10);
-                const giftName = nameInput.value.trim();
                 const giftId = row.dataset.goalGiftId || String(catalogGift?.id || '');
                 const targetCount = Number.isInteger(targetValue) && targetValue > 0 ? targetValue : 1;
                 const missionUnitValue = Number.parseInt(row.querySelector('[data-goal-mission-unit-count]').value, 10);
@@ -3658,7 +3732,7 @@
                 const nameEl = document.createElement('input');
                 nameEl.type = 'text';
                 nameEl.className = 'push-pull-gift-name' + (gift ? '' : ' empty');
-                nameEl.value = gift ? gift.giftName : '';
+                nameEl.value = gift ? (GiftSuggest.findByNameOrId(state.giftCatalog, gift.giftName)?.nameJa || gift.giftName) : '';
                 nameEl.placeholder = 'ギフトを選ぶ';
                 nameEl.autocomplete = 'off';
                 nameEl.maxLength = 80;
@@ -3740,7 +3814,7 @@
                 img.alt = '';
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'push-pull-suggest-name';
-                nameSpan.textContent = gift.name || '(名前なし)';
+                nameSpan.textContent = gift.nameJa || gift.name || '(名前なし)';
                 const costSpan = document.createElement('span');
                 costSpan.className = 'push-pull-suggest-cost';
                 costSpan.textContent = gift.diamondCount != null ? `${gift.diamondCount}コイン` : '';

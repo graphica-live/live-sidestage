@@ -249,18 +249,15 @@ function renderTriggers() {
         }
         nameValue.textContent = getTriggerLabel(triggerRecord, index);
         eventNameValue.textContent = formatEventIdsSummary(triggerRecord);
-        const giftText = triggerRecord.giftName || '全ギフト';
-        giftLabel.textContent = giftText;
-        if (triggerRecord.giftName) {
-            const matchedGift = findGiftSuggestionForTrigger(triggerRecord.giftName);
-            if (matchedGift?.imageUrl) {
-                const img = document.createElement('img');
-                img.src = matchedGift.imageUrl;
-                img.alt = matchedGift.name || '';
-                img.className = 'trigger-gift-thumb';
-                giftImageWrap.appendChild(img);
-                giftImageWrap.hidden = false;
-            }
+        const matchedGift = triggerRecord.giftName ? findGiftSuggestionForTrigger(triggerRecord.giftName) : null;
+        giftLabel.textContent = matchedGift?.nameJa || triggerRecord.giftName || '全ギフト';
+        if (matchedGift?.imageUrl) {
+            const img = document.createElement('img');
+            img.src = matchedGift.imageUrl;
+            img.alt = matchedGift.nameJa || matchedGift.name || '';
+            img.className = 'trigger-gift-thumb';
+            giftImageWrap.appendChild(img);
+            giftImageWrap.hidden = false;
         }
         minCoinsValue.textContent = `${Number(triggerRecord.minCoins || 0)}`;
         giftOptionsValue.textContent = getTriggerGiftOptionSummary(triggerRecord);

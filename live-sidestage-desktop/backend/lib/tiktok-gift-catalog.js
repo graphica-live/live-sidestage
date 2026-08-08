@@ -4,6 +4,7 @@ const { WebcastPushConnection } = require('tiktok-live-connector');
 const { firstDefinedString, hasJapaneseText } = require('./utils');
 const { TIKTOK_GIFT_CACHE_TTL_MS, TIKTOK_JA_LOCALE_CLIENT_PARAMS } = require('./constants');
 const tiktokState = require('./tiktok-state');
+const { getGiftDisplayNameJa } = require('./gift-name-ja');
 
 let _dbStore = null;
 let _getBroadcasterId = null;
@@ -96,6 +97,7 @@ function normalizeTikTokGiftCatalog(gifts, options = {}) {
         return {
             id: giftId,
             name: preferredName,
+            nameJa: getGiftDisplayNameJa(preferredName),
             imageUrl: firstDefinedString([observedGift?.giftImage, getTikTokGiftImageUrl(gift)]),
             diamondCount: Number.isFinite(normalizedDiamondCount) ? normalizedDiamondCount : 0,
             describe: firstDefinedString([gift?.describe, gift?.description]) || '',

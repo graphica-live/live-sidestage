@@ -340,7 +340,7 @@ function resetTriggerModal() {
     triggerModalPlaySequential.checked = true;
     renderTriggerModalEventIdsList();
     triggerModalEvent.value = '';
-    triggerModalGiftName.value = '';
+    setTriggerModalGiftNameValue('');
     triggerModalMinCoins.value = '0';
     triggerModalRapidFireEnabled.checked = false;
     triggerModalRapidFireCancelMs.value = '1500';
@@ -384,7 +384,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalPlaySequential.checked = !isRandom;
     renderTriggerModalEventIdsList();
     triggerModalEvent.value = '';
-    triggerModalGiftName.value = triggerRecord.giftName || '';
+    setTriggerModalGiftNameValue(triggerRecord.giftName || '');
     triggerModalMinCoins.value = String(triggerRecord.minCoins || 0);
     triggerModalRapidFireEnabled.checked = Boolean(triggerRecord.rapidFireEnabled);
     triggerModalRapidFireCancelMs.value = String(triggerRecord.rapidFireCancelMs ?? 1500);
@@ -419,7 +419,7 @@ function collectTriggerFromModal() {
         listOverlayName: triggerModalListOverlayName.value.trim(),
         eventIds: [...triggerModalSelectedEventIds],
         eventPlayMode: triggerModalPlayRandom.checked ? 'random' : 'sequential',
-        giftName: triggerModalGiftName.value.trim(),
+        giftName: getTriggerModalGiftNameValue(),
         minCoins: Number(triggerModalMinCoins.value || 0),
         rapidFireEnabled: triggerModalRapidFireEnabled.checked,
         rapidFireCancelMs: Number(triggerModalRapidFireCancelMs.value || 1500),
@@ -507,6 +507,11 @@ eventModalSubmit.addEventListener('click', async () => {
 });
 
 triggerModalSubmit.addEventListener('click', async () => {
+    if (!triggerModalGiftName.checkValidity()) {
+        triggerModalGiftName.reportValidity();
+        return;
+    }
+
     const nextTrigger = collectTriggerFromModal();
 
     if (nextTrigger.name) {
