@@ -468,13 +468,19 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             processPlaybackQueue();
         }
 
-        function stopPlaybackQueue(eventId = '') {
+        function stopPlaybackQueue(eventId = '', count = 0) {
             if (eventId) {
                 playbackQueue = playbackQueue.filter((payload) => payload?.eventId !== eventId);
 
                 if (activePlaybackEventId && activePlaybackEventId !== eventId) {
                     return;
                 }
+            } else if (count > 0) {
+                // 「待機イベント削除」の件数指定: 待機列の先頭（次に再生される順）から間引くだけで、
+                // 再生中のイベントは中断しない。
+                playbackQueue = playbackQueue.slice(count);
+                updateDebugLog('待機中のイベントを' + count + '件削除しました。');
+                return;
             } else {
                 playbackQueue = [];
             }
@@ -825,7 +831,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
                 return;
             }
 
-            stopPlaybackQueue(typeof payload.eventId === 'string' ? payload.eventId : '');
+            stopPlaybackQueue(typeof payload.eventId === 'string' ? payload.eventId : '', Math.max(0, Number(payload.count) || 0));
         });
 
         socket.on('screen1:voicevox-warning', (payload) => {

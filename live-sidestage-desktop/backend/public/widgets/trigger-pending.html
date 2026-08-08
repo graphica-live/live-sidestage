@@ -524,6 +524,7 @@
             if (!payload || Number(payload.screen) !== screenSlot) return;
 
             const eventId = typeof payload.eventId === 'string' ? payload.eventId : '';
+            const count = Math.max(0, Number(payload.count) || 0);
 
             if (eventId) {
                 queue = queue.filter((item) => item.eventId !== eventId);
@@ -532,6 +533,10 @@
                     advanceQueue();
                     return;
                 }
+            } else if (count > 0) {
+                // 「待機イベント削除」の件数指定: 保留列の先頭（次に消化される順）から間引くだけで、
+                // 消化中(current)のトリガーはそのまま継続する。
+                queue = queue.slice(count);
             } else {
                 queue = [];
 
