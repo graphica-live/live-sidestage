@@ -8,22 +8,99 @@
     <script src="/shared/utils.js"></script>
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <link rel="stylesheet" href="/db/comments.css">
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
         if (new URLSearchParams(location.search).get('popout') === '1') {
             document.documentElement.classList.add('is-popout');
+            const popoutFontLink = document.createElement('link');
+            popoutFontLink.rel = 'stylesheet';
+            popoutFontLink.href = WIDGET_FONT_GOOGLE_FONTS_URL;
+            document.head.appendChild(popoutFontLink);
         }
     </script>
     <link rel="stylesheet" href="/db/admin-theme-presets.css">
     <style>
-        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・設定系ボタンを非表示にし、並び順切り替えのみ残す */
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・ツールバー一式を非表示（並び順はホーム側で操作する） */
         html.is-popout .page-hero,
-        html.is-popout .toolbar-sections .control-panel:nth-of-type(2),
-        html.is-popout .toolbar-sections .control-panel:nth-of-type(3),
-        html.is-popout #comment-settings-button {
+        html.is-popout .toolbar-sections {
             display: none !important;
+        }
+
+        html.is-popout body {
+            padding: 8px;
+            background: transparent;
+        }
+
+        html.is-popout .layout {
+            gap: 0;
+            min-height: auto;
+        }
+
+        html.is-popout .layout > .panel:first-child {
+            display: none !important;
+        }
+
+        html.is-popout .layout > .panel:last-child {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 4px;
+        }
+
+        html.is-popout .comment-stream {
+            display: flex !important;
+            flex-direction: column;
+        }
+
+        /* コメントカードを最小表示にする: アイコン・名前・本文のみ残し、ID・種別・時刻は非表示 */
+        :root {
+            --popout-comment-font-family: inherit;
+            --popout-comment-font-size: 13px;
+        }
+
+        html.is-popout .comment-card {
+            display: block !important;
+            flex: 0 0 auto;
+            height: auto !important;
+            padding: 4px 2px !important;
+            border: none !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+        }
+
+        html.is-popout .comment-card.is-system {
+            background: transparent !important;
+            border-left: none !important;
+        }
+
+        html.is-popout .comment-card-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        html.is-popout .comment-author span,
+        html.is-popout .comment-kind,
+        html.is-popout .comment-time {
+            display: none !important;
+        }
+
+        html.is-popout .comment-body {
+            margin: 2px 0 0 34px;
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        html.is-popout .comment-card,
+        html.is-popout .comment-author strong,
+        html.is-popout .comment-body,
+        html.is-popout .comment-body-text {
+            font-family: var(--popout-comment-font-family) !important;
+            font-size: var(--popout-comment-font-size) !important;
         }
     </style>
 </head>

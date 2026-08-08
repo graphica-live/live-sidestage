@@ -1,4 +1,23 @@
         const socket = io({ transports: ['websocket'] });
+
+        // 別ウィンドウ表示（popout）専用: フォント・フォントサイズ設定をHome側の設定画面から反映する
+        if (document.documentElement.classList.contains('is-popout')) {
+            function applyPopoutCommentStyle(style) {
+                if (!style) return;
+                document.documentElement.style.setProperty('--popout-comment-font-family', getWidgetFontFamilyByKey(style.fontKey));
+                if (style.fontSize) {
+                    document.documentElement.style.setProperty('--popout-comment-font-size', `${style.fontSize}px`);
+                }
+            }
+
+            fetch('/api/settings/popout-comment-style')
+                .then((res) => res.json())
+                .then(applyPopoutCommentStyle)
+                .catch(() => {});
+
+            socket.on('popout-comment-style-changed', applyPopoutCommentStyle);
+        }
+
         const commentFeedback = document.getElementById('comment-feedback');
         const commentStream = document.getElementById('comment-stream');
         const sortOrderButton = document.getElementById('sort-order-button');
@@ -1000,8 +1019,15 @@
         }
 
         function getFilteredComments(comments) {
+            const isPopout = document.documentElement.classList.contains('is-popout');
             const enabledTypes = new Set(currentSettings.enabledTypes);
-            return (Array.isArray(comments) ? comments : []).filter((item) => enabledTypes.has(item.type || 'chat'));
+            return (Array.isArray(comments) ? comments : []).filter((item) => {
+                const type = item.type || 'chat';
+                if (isPopout) {
+                    return type === 'chat';
+                }
+                return enabledTypes.has(type);
+            });
         }
 
         function getOrderedComments(comments) {
@@ -1480,8 +1506,10 @@
             // データ側は「new first」で先頭追加し、上限を超えた末尾を落とす
             currentComments = [commentEvent, ...currentComments].slice(0, 100);
 
+            const isPopout = document.documentElement.classList.contains('is-popout');
             const enabledTypes = new Set(currentSettings.enabledTypes);
-            if (!enabledTypes.has(commentEvent.type || 'chat')) {
+            const commentType = commentEvent.type || 'chat';
+            if (isPopout ? commentType !== 'chat' : !enabledTypes.has(commentType)) {
                 return; // 表示フィルタで除外されるタイプは DOM 操作不要
             }
 

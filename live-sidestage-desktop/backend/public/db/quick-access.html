@@ -7,6 +7,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
     <link rel="stylesheet" href="/db/admin-buttons.css">
     <style>
         :root {
@@ -247,6 +248,67 @@
             font-size: 13px;
         }
 
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .modal-overlay[hidden] {
+            display: none;
+        }
+
+        .modal-card {
+            width: min(420px, 90%);
+            background: var(--panel);
+            border: 1px solid var(--line-strong);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            padding: 22px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .modal-card h3 {
+            font-size: 17px;
+        }
+
+        .modal-field {
+            display: grid;
+            gap: 6px;
+        }
+
+        .modal-field label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        .modal-field input,
+        .modal-field select {
+            padding: 8px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 8px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.85);
+        }
+
+        .modal-field-hint {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
         @media (max-width: 640px) {
             body {
                 padding: 16px 12px;
@@ -316,6 +378,8 @@
                         <input type="checkbox" id="comments-auto-open-checkbox">
                         起動時に自動的に開く
                     </label>
+                    <button type="button" class="ghost-button" id="comments-sort-toggle-button">並び順: 新しい順</button>
+                    <button type="button" class="ghost-button" id="comments-popout-settings-button">表示設定</button>
                     <button type="button" class="ghost-button" id="open-comments-popout-btn">別ウィンドウで開く</button>
                 </div>
             </div>
@@ -334,6 +398,24 @@
             <p class="popout-hint" id="popout-windows-status" hidden></p>
         </section>
     </main>
+
+    <div class="modal-overlay" id="comments-popout-settings-overlay" hidden>
+        <div class="modal-card">
+            <h3>コメント欄（別ウィンドウ）の表示設定</h3>
+            <div class="modal-field">
+                <label for="popout-font-select">フォント</label>
+                <select id="popout-font-select" aria-label="フォント"></select>
+            </div>
+            <div class="modal-field">
+                <label for="popout-font-size-input">フォントサイズ (px)</label>
+                <input type="number" id="popout-font-size-input" min="10" max="48" step="1">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="ghost-button" id="comments-popout-settings-cancel">キャンセル</button>
+                <button type="button" class="primary" id="comments-popout-settings-save">保存</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const socket = io({ transports: ['websocket'] });
@@ -474,6 +556,123 @@
             }
 
             loadState();
+        }());
+    </script>
+
+    <script>
+        (function () {
+            const sortToggleButton = document.getElementById('comments-sort-toggle-button');
+            let currentCommentSettings = null;
+
+            function syncButtonLabel() {
+                if (!currentCommentSettings) return;
+                sortToggleButton.textContent = currentCommentSettings.sortOrder === 'asc'
+                    ? '並び順: 古い順'
+                    : '並び順: 新しい順';
+            }
+
+            async function loadCommentSettings() {
+                try {
+                    const res = await fetch('/api/comments/config');
+                    const data = await res.json();
+                    currentCommentSettings = data.settings || null;
+                    syncButtonLabel();
+                } catch {
+                    sortToggleButton.disabled = true;
+                }
+            }
+
+            sortToggleButton.addEventListener('click', async () => {
+                if (!currentCommentSettings) return;
+                sortToggleButton.disabled = true;
+                try {
+                    const nextSettings = {
+                        ...currentCommentSettings,
+                        sortOrder: currentCommentSettings.sortOrder === 'asc' ? 'desc' : 'asc'
+                    };
+                    const res = await fetch('/api/comments/config', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(nextSettings)
+                    });
+                    if (!res.ok) throw new Error('サーバーエラー');
+                    const data = await res.json();
+                    currentCommentSettings = data.settings || nextSettings;
+                    syncButtonLabel();
+                } catch {
+                    // 失敗時は次回読み込みで実際の状態に再同期される
+                } finally {
+                    sortToggleButton.disabled = false;
+                }
+            });
+
+            socket.on('admin_comments_updated', (payload) => {
+                if (payload && payload.settings) {
+                    currentCommentSettings = payload.settings;
+                    syncButtonLabel();
+                }
+            });
+
+            loadCommentSettings();
+        }());
+    </script>
+
+    <script>
+        (function () {
+            const settingsButton = document.getElementById('comments-popout-settings-button');
+            const overlay = document.getElementById('comments-popout-settings-overlay');
+            const cancelButton = document.getElementById('comments-popout-settings-cancel');
+            const saveButton = document.getElementById('comments-popout-settings-save');
+            const fontSelect = document.getElementById('popout-font-select');
+            const fontSizeInput = document.getElementById('popout-font-size-input');
+
+            fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+
+            function openModal() {
+                fetch('/api/settings/popout-comment-style')
+                    .then((res) => res.json())
+                    .then((data) => {
+                        fontSelect.innerHTML = buildWidgetFontOptionsMarkup(data.fontKey || 'default');
+                        fontSizeInput.value = data.fontSize || 13;
+                    })
+                    .catch(() => {
+                        fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+                        fontSizeInput.value = 13;
+                    })
+                    .finally(() => {
+                        overlay.hidden = false;
+                    });
+            }
+
+            function closeModal() {
+                overlay.hidden = true;
+            }
+
+            settingsButton.addEventListener('click', openModal);
+            cancelButton.addEventListener('click', closeModal);
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) closeModal();
+            });
+
+            saveButton.addEventListener('click', async () => {
+                saveButton.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/popout-comment-style', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fontKey: fontSelect.value,
+                            fontSize: Number(fontSizeInput.value) || 13
+                        })
+                    });
+                    if (!res.ok) throw new Error('サーバーエラー');
+                    closeModal();
+                } catch {
+                    // 失敗時はモーダルを開いたままにして再試行できるようにする
+                } finally {
+                    saveButton.disabled = false;
+                }
+            });
         }());
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
