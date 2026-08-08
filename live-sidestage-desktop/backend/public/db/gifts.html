@@ -429,6 +429,13 @@
             bottom: 10px;
         }
 
+        /* admin-buttons.css の button { display: inline-flex; } が hidden 属性のUA標準スタイル
+           ([hidden] { display: none; }) を常に上書きしてしまい、hidden を付けても消えず
+           表示され続けていたため、明示的に display: none を指定する。 */
+        .popout-new-items-badge[hidden] {
+            display: none;
+        }
+
         /* admin-buttons.css の button:hover:not(:disabled) { transform: translateY(-1px); }
            が中央寄せの translateX(-50%) を丸ごと上書きし、ホバー時にバッジが左へ飛んで
            見えていたため、ホバー中も中央寄せを維持するよう固定する。 */
