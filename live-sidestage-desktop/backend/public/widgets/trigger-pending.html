@@ -133,13 +133,18 @@
         }
 
         .queue-chip.overflow-chip {
-            /* 通常チップ1個分ではなく2列分の幅を占有し、+xx を大きく読みやすく表示する */
+            /* 通常チップ1個分ではなく2列分の幅を占有し、+xx を大きく読みやすく表示する。
+               overflow-chip はキューが MAX_VISIBLE_QUEUE_ITEMS を超えたときにしか出現せず、
+               その時点では chip-size が最小tier（52px）まで縮んでいるため、他チップと同じ
+               比率のフォントサイズだと相対的にとても小さく見づらい。そのため単独で
+               比率を大きく（0.42→0.72）し、フォントサイズの下限も設けて読みやすさを確保する。 */
             width: calc(var(--chip-size, 96px) * 2 + 12px);
             background: rgba(0, 0, 0, 0.62);
             border-style: dashed;
             color: #f8fafc;
-            font-weight: 800;
-            font-size: calc(var(--chip-size, 96px) * 0.42);
+            font-weight: 900;
+            font-size: max(30px, calc(var(--chip-size, 96px) * 0.72));
+            letter-spacing: -0.02em;
             white-space: nowrap;
         }
 
