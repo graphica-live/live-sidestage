@@ -57,6 +57,10 @@
             --danger-soft: rgba(180, 35, 24, 0.08);
             --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
             --overlay: rgba(15, 23, 42, 0.44);
+            /* JS が documentElement(html) にインラインで setProperty する値をここで確実に
+               上書きさせるため、既定値は :root に置く（子孫要素で再宣言すると継承が遮断される）。 */
+            --popout-gift-font-family: inherit;
+            --popout-gift-font-size: 13px;
         }
 
         * { box-sizing: border-box; }
@@ -272,8 +276,6 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
-            --popout-gift-font-family: inherit;
-            --popout-gift-font-size: 13px;
         }
 
         .popout-gift-user-name,
