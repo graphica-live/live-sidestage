@@ -117,16 +117,23 @@ module.exports = function createEffectsRuntime({
 
     // オーバーレイ側(effect-overlay-html.js)は payload.playbackId をそのまま使わず、
     // playbackCount回分キューに積む際に `${playbackId}-${index}` へ振り直す。
-    // 「イベント終了後にオフ」はそのオーバーレイ側IDと突き合わせて判定するため、
-    // 1回目の再生に対応する `-0` を付けた同じ形に揃える必要がある。
-    function overlayPlaybackId(payload) {
+    // TLS連携のONはバッチ1回目の再生開始（`-0`）に、OFF（自動解除）はバッチ最後の
+    // 再生終了（`-${playbackCount - 1}`）に紐付ける必要がある。両方とも `-0` にすると、
+    // playbackCount>1（トリガー5倍・コンボ分割再生）時にバッチ1回目が終わった時点で
+    // OFFが発火し、残りの再生中はエフェクトが解除されたままになってしまう。
+    function overlayPlaybackStartId(payload) {
         return `${payload.playbackId}-0`;
+    }
+
+    function overlayPlaybackFinishId(payload) {
+        const lastIndex = Math.max(1, Number(payload.playbackCount) || 1) - 1;
+        return `${payload.playbackId}-${lastIndex}`;
     }
 
     // MIDI/LIVE Studio/VDJ/タイマーウィジェットなど、動画・音声再生とは別枠のイベント副作用をまとめて実行する。
     function runEffectEventSideEffects(effectEvent, payload, sourceEvent) {
         sendMidiForEffectEvent(effectEvent);
-        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackId(payload));
+        sendLiveStudioActionForEffectEvent(effectEvent, overlayPlaybackStartId(payload), overlayPlaybackFinishId(payload));
         sendVdjEffectForEvent(effectEvent);
 
         if (effectEvent.timerWidgetEnabled) {

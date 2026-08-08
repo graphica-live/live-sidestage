@@ -116,6 +116,11 @@ function closeLiveStudioConnection() {
     pendingCameraOffByPlaybackId.clear();
     pendingQueuedActionByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
     pendingQueuedActionByPlaybackId.clear();
+    if (actionTimer) {
+        clearTimeout(actionTimer);
+        actionTimer = null;
+    }
+    actionQueue = [];
     clearPendingSockets();
     if (activeSocket) {
         try { activeSocket.close(); } catch { /* noop */ }
@@ -157,14 +162,46 @@ const ACTION_BUILDERS = {
     })
 };
 
+// OFF送信の直後に次のONを間髪入れずに送ると、LIVE Studio側のトグル処理が
+// 追いつかずOFFが無視される（＝エフェクトが解除されない）ことがある。
+// オーバーレイはキュー内アイテムの再生終了→次アイテムの再生開始をほぼ同一tickで
+// 通知してくるため、送信側で最低間隔を強制しFIFOで捌く。
+const MIN_ACTION_GAP_MS = 200;
+let lastActionSentAt = 0;
+let actionQueue = [];
+let actionTimer = null;
+
+function drainActionQueue() {
+    actionTimer = null;
+
+    if (!activeSocket || !connected) {
+        actionQueue = [];
+        return;
+    }
+
+    const next = actionQueue.shift();
+    if (next) {
+        lastActionSentAt = Date.now();
+        try {
+            activeSocket.emit(channel('action_emit'), JSON.stringify(next));
+        } catch (error) {
+            console.warn('⚠️ LIVE Studio へのアクション送信に失敗しました:', error.message);
+        }
+    }
+
+    if (actionQueue.length > 0) scheduleActionQueue();
+}
+
+function scheduleActionQueue() {
+    if (actionTimer) return;
+    const gap = Math.max(0, MIN_ACTION_GAP_MS - (Date.now() - lastActionSentAt));
+    actionTimer = setTimeout(drainActionQueue, gap);
+}
+
 function emitAction(action) {
     if (!activeSocket || !connected) return;
-
-    try {
-        activeSocket.emit(channel('action_emit'), JSON.stringify(action));
-    } catch (error) {
-        console.warn('⚠️ LIVE Studio へのアクション送信に失敗しました:', error.message);
-    }
+    actionQueue.push(action);
+    scheduleActionQueue();
 }
 
 // カメラエフェクトは同じ cameraSource/cameraEffectType/cameraEffectId をもう一度
@@ -219,7 +256,7 @@ function firePendingQueuedAction(playbackId) {
     emitAction(pending.action);
 
     if (pending.autoOff) {
-        registerCameraAutoOff(playbackId, pending.action);
+        registerCameraAutoOff(pending.finishPlaybackId, pending.action);
     }
 }
 
@@ -229,7 +266,12 @@ function notifyLiveStudioPlaybackStarted(playbackId) {
     firePendingQueuedAction(playbackId);
 }
 
-function sendLiveStudioActionForEffectEvent(effectEvent, playbackId) {
+// startPlaybackId: バッチ内1回目の再生開始（ONを送るタイミング）に対応するオーバーレイ側ID。
+// finishPlaybackId: バッチ内最後の再生終了（OFFを送るタイミング）に対応するオーバーレイ側ID。
+// playbackCount>1（トリガー5倍・コンボ分割再生）の場合、この2つは異なるIDになる。
+// 両方とも同じ`-0`扱いにすると、バッチ1回目の再生が終わった時点でOFFが発火してしまい、
+// 残りの再生中はエフェクトが解除されたままになる。
+function sendLiveStudioActionForEffectEvent(effectEvent, startPlaybackId, finishPlaybackId) {
     if (!effectEvent?.lsEnabled || !activeSocket || !connected) {
         return;
     }
@@ -241,8 +283,8 @@ function sendLiveStudioActionForEffectEvent(effectEvent, playbackId) {
     const action = { ...build(effectEvent), context };
     const autoOff = effectEvent.lsActionType === 'cameraeffects' && effectEvent.lsCameraAutoOffEnabled;
 
-    const fallbackTimer = setTimeout(() => firePendingQueuedAction(playbackId), QUEUED_ACTION_FALLBACK_MS);
-    pendingQueuedActionByPlaybackId.set(playbackId, { action, autoOff, fallbackTimer });
+    const fallbackTimer = setTimeout(() => firePendingQueuedAction(startPlaybackId), QUEUED_ACTION_FALLBACK_MS);
+    pendingQueuedActionByPlaybackId.set(startPlaybackId, { action, autoOff, finishPlaybackId, fallbackTimer });
 }
 
 module.exports = {
