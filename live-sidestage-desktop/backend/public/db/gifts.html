@@ -34,6 +34,30 @@
             display: flex !important;
         }
 
+        /* コメント欄ポップアウトと同じ、透明背景の最小限オーバーレイの見た目に統一する */
+        html.is-popout body {
+            padding: 8px;
+            background: transparent;
+        }
+
+        html.is-popout .layout {
+            gap: 0;
+            /* auto のままだと flex item の「コンテンツに基づく自動最小サイズ」が効き、
+               .popout-gift-list (overflow-y: auto) がいくら中身を持っていても
+               .layout 自身がそのぶん際限なく伸びてしまい、内部スクロールが発生しない。
+               body 側の height 固定とあわせて 0 を指定し、素直に縮められるようにする。 */
+            min-height: 0;
+        }
+
+        html.is-popout .layout > .panel:last-child {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            /* admin-theme-presets.css の html[data-admin-theme] .panel { padding: var(--panel-padding) !important; }
+               が非!importantの指定を上書きしてしまうため !important が必須 */
+            padding: 4px !important;
+        }
+
         /* 透明背景でも読めるよう、コメント欄と同じ強めのコントラストと縁取りを付ける */
         html.is-popout .popout-gift-user-name {
             color: #7dd3fc !important;
@@ -67,7 +91,7 @@
 
         body {
             margin: 0;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             padding: 24px 16px;
@@ -90,6 +114,8 @@
         .layout > main.panel:last-child {
             flex: 1 1 auto;
             min-height: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         .panel {
@@ -270,12 +296,16 @@
 
         .popout-gift-list {
             display: none;
+            flex: 1 1 auto;
             flex-direction: column;
             gap: 2px;
+            min-height: 0;
             list-style: none;
             margin: 0;
             padding: 0;
+            padding-right: 4px;
             overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .popout-gift-user-name,
@@ -867,13 +897,13 @@
             }
         }
 
-        // ポップアウトのギフト一覧が「最新側の端」を表示中かどうかを判定する（ウィンドウ全体でスクロールする構造のため）。
+        // ポップアウトのギフト一覧が「最新側の端」を表示中かどうかを判定する。
         // timestamp-asc(古い順)は末尾が最新、timestamp-desc(新しい順)は先頭が最新。
         function isGiftListAtLatestEdge() {
             if (currentSortOrder === 'timestamp-asc') {
-                return window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 24;
+                return popoutGiftList.scrollTop + popoutGiftList.clientHeight >= popoutGiftList.scrollHeight - 24;
             }
-            return window.scrollY <= 24;
+            return popoutGiftList.scrollTop <= 24;
         }
 
         function hideNewGiftsBadge() {
@@ -902,7 +932,7 @@
                 scrollToLatestGift();
                 hideNewGiftsBadge();
             });
-            window.addEventListener('scroll', () => {
+            popoutGiftList.addEventListener('scroll', () => {
                 if (hiddenNewGiftsCount > 0 && isGiftListAtLatestEdge()) {
                     hideNewGiftsBadge();
                 }
@@ -972,8 +1002,8 @@
             // rAFで遅延させたりsmoothスクロールを使うと、連続発火時に「まだスクロールし終えていない」
             // 状態で次のギフトの最新端判定が走ってしまい、着地がずれたりバッジ誤表示の原因になるため
             // 同期的に即時スクロールする。
-            const top = currentSortOrder === 'timestamp-asc' ? document.documentElement.scrollHeight : 0;
-            window.scrollTo({ top, behavior: 'auto' });
+            const top = currentSortOrder === 'timestamp-asc' ? popoutGiftList.scrollHeight : 0;
+            popoutGiftList.scrollTop = top;
         }
 
         function renderTable(gifts, options = {}) {
@@ -986,7 +1016,10 @@
                 const wasAtLatestEdge = diff ? isGiftListAtLatestEdge() : true;
                 const { addedItems } = renderPopoutGiftList(sortedGifts, { diff });
 
-                if (addedItems.length) {
+                if (!diff) {
+                    // 全件作り直し（初期表示・日付切替・並び順/表示設定変更時）は常に最新側へ着地させる。
+                    scrollToLatestGift();
+                } else if (addedItems.length) {
                     if (wasAtLatestEdge) {
                         scrollToLatestGift();
                     } else {
