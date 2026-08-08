@@ -34,6 +34,17 @@
             display: flex !important;
         }
 
+        /* 透明背景でも読めるよう、コメント欄と同じ強めのコントラストと縁取りを付ける */
+        html.is-popout .popout-gift-user-name {
+            color: #7dd3fc !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        html.is-popout .popout-gift-name {
+            color: #f1f5f9 !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
         :root {
             --bg: #e6edf4;
             --panel: #f6f9fc;
