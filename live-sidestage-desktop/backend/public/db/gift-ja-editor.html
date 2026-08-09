@@ -201,7 +201,7 @@
                 このページはナビゲーションから開けない直接URLです。
             </p>
             <div class="toolbar">
-                <input id="searchInput" type="search" placeholder="英語名・日本語名で検索…" />
+                <input id="searchInput" type="search" placeholder="英語名・日本語名・コイン数で検索…" />
                 <label class="toggle">
                     <input id="untranslatedOnly" type="checkbox" />
                     未翻訳のみ表示
@@ -350,7 +350,8 @@
             return gifts.filter(g => {
                 if (untranslatedOnly && isTranslated(g)) return false;
                 if (!q) return true;
-                return g.name.toLowerCase().includes(q) || (g.nameJa || '').toLowerCase().includes(q);
+                if (g.name.toLowerCase().includes(q) || (g.nameJa || '').toLowerCase().includes(q)) return true;
+                return String(g.diamondCount).includes(q);
             });
         }
 
