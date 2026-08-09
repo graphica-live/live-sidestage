@@ -919,8 +919,8 @@
 
         function syncSortOrderButton() {
             sortOrderButton.textContent = currentSettings.sortOrder === 'asc'
-                ? '並び順: 古い順'
-                : '並び順: 新しい順';
+                ? '並び順: 新着を下に'
+                : '並び順: 新着を上に';
         }
 
         function syncReadAloudVoiceButton() {
@@ -1513,7 +1513,7 @@
         }
 
         // ポップアウトのコメント一覧が「最新側の端」を表示中かどうかを判定する。
-        // asc(古い順)は末尾が最新、desc(新しい順)は先頭が最新。
+        // asc(新着を下に)は末尾が最新、desc(新着を上に)は先頭が最新。
         function isCommentStreamAtLatestEdge() {
             if (currentSettings.sortOrder === 'asc') {
                 return commentStream.scrollTop + commentStream.clientHeight >= commentStream.scrollHeight - 24;
