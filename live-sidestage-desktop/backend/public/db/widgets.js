@@ -1838,15 +1838,22 @@
                             ${userRecord.image
                                 ? `<img src="${escapeHtml(userRecord.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
                                 : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
-                            <div style="min-width:0;">
+                            <div style="min-width:0;flex:1;">
                                 <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(userRecord.nickname || uniqueId)}</div>
                                 <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
                             </div>
+                            <button type="button" class="ghost-button" data-shogo-test-user="${escapeHtml(uniqueId)}" style="padding:6px 12px;font-size:12px;white-space:nowrap;flex:0 0 auto;">▶ テスト再生</button>
                         </div>
                         ${rowsHtml}
                     </div>
                 `;
             }).join('');
+
+            shogoTitleList.querySelectorAll('[data-shogo-test-user]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    testShogoUser(button.dataset.shogoTestUser).catch(() => {});
+                });
+            });
 
             shogoTitleList.querySelectorAll('[data-shogo-delete]').forEach((button) => {
                 button.addEventListener('click', () => {
@@ -1960,6 +1967,18 @@
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
                 renderShogoTitleList(state.shogoTitles);
+            }
+        }
+
+        // そのユーザーが実際にハートミーを投げた時と同じ内容（登録済みの全称号）でテスト再生する。
+        async function testShogoUser(uniqueId) {
+            try {
+                const response = await fetch(`/api/widgets/shogo/users/${encodeURIComponent(uniqueId)}/test`, { method: 'POST' });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'テスト再生に失敗しました。');
+                setStatus(saveStatus, `設定状態: ${uniqueId} の称号をテスト再生しました。`, 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
             }
         }
 

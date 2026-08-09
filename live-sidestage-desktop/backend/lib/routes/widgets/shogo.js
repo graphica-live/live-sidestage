@@ -9,6 +9,7 @@ module.exports = function registerShogoRoutes({
     deleteShogoTitleEntry,
     reorderShogoTitleEntries,
     emitShogoTest,
+    emitShogoUserTest,
 }) {
     app.get('/api/widgets/shogo/config', (req, res) => {
         res.json(buildShogoPayload());
@@ -63,6 +64,18 @@ module.exports = function registerShogoRoutes({
 
     app.post('/api/widgets/shogo/test', (req, res) => {
         emitShogoTest();
+        res.json({ ok: true });
+    });
+
+    // ユーザー個別のテスト再生: そのユーザーが実際にハートミーを投げた時と同じ内容（登録済みの
+    // 全称号を登録順のまま）で表示する。
+    app.post('/api/widgets/shogo/users/:uniqueId/test', (req, res) => {
+        const didFire = emitShogoUserTest(req.params.uniqueId);
+
+        if (!didFire) {
+            return res.status(404).json({ error: '登録された称号が見つかりません。' });
+        }
+
         res.json({ ok: true });
     });
 };

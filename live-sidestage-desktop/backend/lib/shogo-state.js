@@ -279,6 +279,14 @@ module.exports = function createShogoState({
         });
     }
 
+    function buildEntriesForDisplay(userRecord) {
+        return userRecord.entries.map((entry) => ({
+            title: entry.title,
+            badgeImage: resolveShogoBadgeImage(entry.badgeKey),
+            size: entry.size,
+        }));
+    }
+
     // ギフト受信のたびに呼ぶ。「ハートミー」かつ、送り主に称号が登録されている場合のみ発火する。
     function maybeEmitShogoDisplay(giftEvent) {
         const settings = getWidgetShogoSettings();
@@ -307,11 +315,7 @@ module.exports = function createShogoState({
             uniqueId: normalizedUid,
             nickname: giftEvent?.nickname || userRecord.nickname || normalizedUid,
             image: giftEvent?.image || userRecord.image || '',
-            entries: userRecord.entries.map((entry) => ({
-                title: entry.title,
-                badgeImage: resolveShogoBadgeImage(entry.badgeKey),
-                size: entry.size,
-            })),
+            entries: buildEntriesForDisplay(userRecord),
             displaySeconds: settings.displaySeconds,
         });
     }
@@ -330,6 +334,27 @@ module.exports = function createShogoState({
         });
     }
 
+    // 管理画面の「テスト再生」用: 実際にそのユーザーがハートミーを投げた時と同じ内容
+    // （登録済みの全称号を登録順のまま）で表示する。ウィジェットの有効/無効設定に関わらず再生する。
+    function emitShogoUserTest(uniqueId) {
+        const normalizedUid = normalizeBroadcasterId(uniqueId);
+        const userRecord = normalizedUid ? getShogoTitles()[normalizedUid] : null;
+
+        if (!userRecord || !userRecord.entries.length) {
+            return false;
+        }
+
+        const settings = getWidgetShogoSettings();
+        emitShogoDisplay({
+            uniqueId: normalizedUid,
+            nickname: userRecord.nickname || normalizedUid,
+            image: userRecord.image || '',
+            entries: buildEntriesForDisplay(userRecord),
+            displaySeconds: settings.displaySeconds,
+        });
+        return true;
+    }
+
     return {
         normalizeShogoSettings,
         getWidgetShogoSettings,
@@ -342,5 +367,6 @@ module.exports = function createShogoState({
         buildShogoPayload,
         maybeEmitShogoDisplay,
         emitShogoTest,
+        emitShogoUserTest,
     };
 };

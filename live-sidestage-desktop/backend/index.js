@@ -1306,7 +1306,7 @@ const {
 const {
     getWidgetShogoSettings, setWidgetShogoSettings,
     getShogoTitles, addShogoTitleEntry, updateShogoTitleEntry, deleteShogoTitleEntry, reorderShogoTitleEntries,
-    buildShogoPayload, maybeEmitShogoDisplay, emitShogoTest,
+    buildShogoPayload, maybeEmitShogoDisplay, emitShogoTest, emitShogoUserTest,
 } = require('./lib/shogo-state')({
     io,
     getScopedStateValue: (...args) => getScopedStateValue(...args),
@@ -2814,6 +2814,7 @@ require('./lib/routes/widgets/shogo')({
     deleteShogoTitleEntry,
     reorderShogoTitleEntries,
     emitShogoTest,
+    emitShogoUserTest,
 });
 
 require('./lib/routes/widgets/timer')({
