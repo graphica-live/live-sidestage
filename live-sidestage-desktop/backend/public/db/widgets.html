@@ -807,16 +807,20 @@
                                         <div class="gift-suggestion-panel" id="shogo-add-user-suggestion-panel" hidden></div>
                                     </div>
                                     <input id="shogo-add-title" type="text" maxlength="40" placeholder="称号（例: 常連さん）" style="flex:1;min-width:120px;">
-                                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);white-space:nowrap;cursor:pointer;">
-                                        <input type="checkbox" id="shogo-add-badge-enabled" checked style="width:auto;">
-                                        バッジを表示
-                                    </label>
+                                    <div class="gift-suggest-shell" style="flex:0 0 auto;width:180px;">
+                                        <button type="button" class="ghost-button" id="shogo-add-badge-trigger" style="display:flex;align-items:center;gap:8px;width:100%;justify-content:flex-start;">
+                                            <img id="shogo-add-badge-thumb" src="" alt="" style="width:20px;height:20px;object-fit:contain;flex:0 0 auto;" hidden>
+                                            <span id="shogo-add-badge-label">バッジを選択</span>
+                                        </button>
+                                        <div class="gift-suggestion-panel" id="shogo-add-badge-panel" hidden></div>
+                                    </div>
                                     <button type="button" class="ghost-button" id="shogo-add-title-button">追加</button>
                                 </div>
                             </div>
                             <div class="field full">
                                 <label>登録済み称号一覧</label>
                                 <div class="shogo-title-list" id="shogo-title-list"></div>
+                                <div class="gift-suggestion-panel" id="shogo-row-badge-panel" hidden></div>
                             </div>
                         </div>
                     </div>

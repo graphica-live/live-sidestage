@@ -100,9 +100,9 @@
                     return;
                 }
 
-                const badgeEnabled = data?.badgeEnabled !== false;
-                const badgeHtml = badgeEnabled
-                    ? `<img class="shogo-badge" src="/widgets/badge.png" alt="">`
+                const badgeImage = String(data?.badgeImage || '');
+                const badgeHtml = badgeImage
+                    ? `<img class="shogo-badge" src="${escapeHtml(badgeImage)}" alt="">`
                     : '';
 
                 const holdSeconds = Math.max(1, Number(data?.displaySeconds) || DEFAULT_HOLD_SECONDS);
@@ -139,7 +139,7 @@
         socket.on('widgets:shogo:show', enqueueShow);
 
         if (previewMode) {
-            const runSample = () => enqueueShow({ title: '常連さん', badgeEnabled: true, displaySeconds: DEFAULT_HOLD_SECONDS });
+            const runSample = () => enqueueShow({ title: '常連さん', badgeImage: '/widgets/badge.png', displaySeconds: DEFAULT_HOLD_SECONDS });
             runSample();
             window.setInterval(runSample, (SLIDE_MS * 2 + DEFAULT_HOLD_SECONDS * 1000) + 1600);
         }

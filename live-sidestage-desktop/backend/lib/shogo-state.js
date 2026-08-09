@@ -8,6 +8,25 @@ const DEFAULT_SHOGO_SETTINGS = {
     displaySeconds: 6,
 };
 
+// 称号バッジの選択肢。新規追加時はここに1件足すだけで管理画面のドロップダウンにも反映される。
+const SHOGO_BADGE_LIBRARY = [
+    { key: 'none', label: 'バッジなし', image: '' },
+    { key: 'star', label: 'スター', image: '/widgets/badge.png' },
+    { key: 'tiktok-universe', label: 'TikTok Universe', image: '/widgets/badge-tiktok-universe.webp' },
+];
+const SHOGO_BADGE_KEYS = new Set(SHOGO_BADGE_LIBRARY.map((badge) => badge.key));
+const DEFAULT_SHOGO_BADGE_KEY = 'star';
+
+function normalizeShogoBadgeKey(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return SHOGO_BADGE_KEYS.has(normalized) ? normalized : DEFAULT_SHOGO_BADGE_KEY;
+}
+
+function resolveShogoBadgeImage(badgeKey) {
+    const badge = SHOGO_BADGE_LIBRARY.find((item) => item.key === normalizeShogoBadgeKey(badgeKey));
+    return badge?.image || '';
+}
+
 function normalizeShogoDisplaySeconds(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isInteger(parsed) || parsed < 1) {
@@ -66,7 +85,7 @@ function normalizeShogoTitlesState(value) {
             title,
             nickname: normalizeEffectText(typeof entry === 'string' ? '' : entry?.nickname, 80),
             image: normalizeEffectText(typeof entry === 'string' ? '' : entry?.image, 500),
-            badgeEnabled: typeof entry === 'string' ? true : normalizeBooleanInput(entry?.badgeEnabled, true),
+            badgeKey: normalizeShogoBadgeKey(typeof entry === 'string' ? '' : entry?.badgeKey),
         };
     });
 
@@ -96,7 +115,7 @@ module.exports = function createShogoState({
         return normalizeShogoTitlesState(getScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY));
     }
 
-    function setShogoTitle({ uniqueId, title, nickname, image, badgeEnabled }) {
+    function setShogoTitle({ uniqueId, title, nickname, image, badgeKey }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const normalizedTitle = normalizeEffectText(title, 40);
 
@@ -109,7 +128,7 @@ module.exports = function createShogoState({
             title: normalizedTitle,
             nickname: normalizeEffectText(nickname, 80),
             image: normalizeEffectText(image, 500),
-            badgeEnabled: normalizeBooleanInput(badgeEnabled, true),
+            badgeKey: normalizeShogoBadgeKey(badgeKey),
         };
         setScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY, JSON.stringify(current));
         return current[normalizedUid];
@@ -132,16 +151,17 @@ module.exports = function createShogoState({
         return {
             settings: getWidgetShogoSettings(),
             titles: getShogoTitles(),
+            badges: SHOGO_BADGE_LIBRARY,
         };
     }
 
-    function emitShogoDisplay({ uniqueId, nickname, image, title, badgeEnabled, displaySeconds }) {
+    function emitShogoDisplay({ uniqueId, nickname, image, title, badgeImage, displaySeconds }) {
         io.emit('widgets:shogo:show', {
             uniqueId,
             nickname: nickname || uniqueId,
             image: image || '',
             title,
-            badgeEnabled,
+            badgeImage: badgeImage || '',
             displaySeconds,
             timestamp: getTimestamp(),
         });
@@ -176,7 +196,7 @@ module.exports = function createShogoState({
             nickname: giftEvent?.nickname || entry.nickname || normalizedUid,
             image: giftEvent?.image || entry.image || '',
             title: entry.title,
-            badgeEnabled: entry.badgeEnabled,
+            badgeImage: resolveShogoBadgeImage(entry.badgeKey),
             displaySeconds: settings.displaySeconds,
         });
     }
@@ -188,7 +208,7 @@ module.exports = function createShogoState({
             nickname: 'テストリスナー',
             image: '',
             title: '常連さん',
-            badgeEnabled: true,
+            badgeImage: resolveShogoBadgeImage(DEFAULT_SHOGO_BADGE_KEY),
             displaySeconds: settings.displaySeconds,
         });
     }

@@ -76,7 +76,11 @@
         const shogoAddUserIdInput = document.getElementById('shogo-add-user-id');
         const shogoAddUserSuggestionPanel = document.getElementById('shogo-add-user-suggestion-panel');
         const shogoAddTitleInput = document.getElementById('shogo-add-title');
-        const shogoAddBadgeEnabledInput = document.getElementById('shogo-add-badge-enabled');
+        const shogoAddBadgeTrigger = document.getElementById('shogo-add-badge-trigger');
+        const shogoAddBadgeThumb = document.getElementById('shogo-add-badge-thumb');
+        const shogoAddBadgeLabel = document.getElementById('shogo-add-badge-label');
+        const shogoAddBadgePanel = document.getElementById('shogo-add-badge-panel');
+        const shogoRowBadgePanel = document.getElementById('shogo-row-badge-panel');
         const shogoAddTitleButton = document.getElementById('shogo-add-title-button');
         const shogoTitleList = document.getElementById('shogo-title-list');
         const shogoUrl = document.getElementById('shogo-url');
@@ -1709,31 +1713,107 @@
             }
         }
 
+        let shogoAddBadgeKey = 'star';
+        let shogoRowBadgeOpenUniqueId = null;
+
+        function findShogoBadge(badgeKey) {
+            return (state.shogoBadges || []).find((badge) => badge.key === badgeKey);
+        }
+
+        function renderBadgeOptionsHtml(badges, selectedKey) {
+            return (badges || []).map((badge) => `
+                <button type="button" class="gift-suggestion-item${badge.key === selectedKey ? ' is-active' : ''}" data-badge-key="${escapeHtml(badge.key)}">
+                    ${badge.image
+                        ? `<img class="gift-suggestion-image" src="${escapeHtml(badge.image)}" alt="">`
+                        : '<div class="gift-suggestion-image is-empty">NONE</div>'}
+                    <div class="gift-suggestion-meta">
+                        <div class="gift-suggestion-name">${escapeHtml(badge.label)}</div>
+                    </div>
+                </button>
+            `).join('');
+        }
+
+        function positionBadgePanel(trigger, panel) {
+            const rect = trigger.getBoundingClientRect();
+            const panelHeight = 220;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 120 || spaceBelow >= panelHeight) {
+                panel.style.top = `${rect.bottom + 4}px`;
+                panel.style.bottom = '';
+            } else {
+                panel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+                panel.style.top = '';
+            }
+            panel.style.left = `${rect.left}px`;
+            panel.style.width = `${Math.max(rect.width, 200)}px`;
+        }
+
+        function updateShogoAddBadgeTrigger() {
+            const badge = findShogoBadge(shogoAddBadgeKey);
+            if (badge?.image) {
+                shogoAddBadgeThumb.src = badge.image;
+                shogoAddBadgeThumb.hidden = false;
+            } else {
+                shogoAddBadgeThumb.hidden = true;
+            }
+            shogoAddBadgeLabel.textContent = badge?.label || 'バッジを選択';
+        }
+
+        function toggleShogoAddBadgePanel(forceShow) {
+            const shouldShow = forceShow ?? shogoAddBadgePanel.hidden;
+            if (!shouldShow) {
+                shogoAddBadgePanel.hidden = true;
+                return;
+            }
+            shogoAddBadgePanel.innerHTML = renderBadgeOptionsHtml(state.shogoBadges, shogoAddBadgeKey);
+            positionBadgePanel(shogoAddBadgeTrigger, shogoAddBadgePanel);
+            shogoAddBadgePanel.hidden = false;
+        }
+
+        function closeShogoRowBadgePanel() {
+            shogoRowBadgePanel.hidden = true;
+            shogoRowBadgeOpenUniqueId = null;
+        }
+
+        function openShogoRowBadgePanel(trigger, uniqueId) {
+            const entry = (state.shogoTitles || {})[uniqueId];
+            shogoRowBadgePanel.innerHTML = renderBadgeOptionsHtml(state.shogoBadges, entry?.badgeKey);
+            positionBadgePanel(trigger, shogoRowBadgePanel);
+            shogoRowBadgePanel.hidden = false;
+            shogoRowBadgeOpenUniqueId = uniqueId;
+        }
+
         function renderShogoTitleList(titles) {
             const entries = Object.entries(titles || {});
+            closeShogoRowBadgePanel();
 
             if (!entries.length) {
                 shogoTitleList.innerHTML = '<div class="subtext" style="padding:10px 0;">登録済みの称号はありません。</div>';
                 return;
             }
 
-            shogoTitleList.innerHTML = entries.map(([uniqueId, entry]) => `
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
-                    ${entry.image
-                        ? `<img src="${escapeHtml(entry.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
-                        : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(entry.nickname || uniqueId)}</div>
-                        <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
+            shogoTitleList.innerHTML = entries.map(([uniqueId, entry]) => {
+                const badge = findShogoBadge(entry.badgeKey);
+                const badgeThumbHtml = badge?.image
+                    ? `<img src="${escapeHtml(badge.image)}" alt="" style="width:18px;height:18px;object-fit:contain;flex:0 0 auto;">`
+                    : '<span style="width:18px;text-align:center;flex:0 0 auto;color:var(--muted);">—</span>';
+                return `
+                    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
+                        ${entry.image
+                            ? `<img src="${escapeHtml(entry.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
+                            : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(entry.nickname || uniqueId)}</div>
+                            <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
+                        </div>
+                        <div style="font-weight:700;color:var(--accent);white-space:nowrap;">${escapeHtml(entry.title)}</div>
+                        <button type="button" class="ghost-button" data-shogo-badge-trigger="${escapeHtml(uniqueId)}" style="display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:12px;white-space:nowrap;">
+                            ${badgeThumbHtml}<span>${escapeHtml(badge?.label || 'バッジ')}</span>
+                        </button>
+                        <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(uniqueId)}" title="削除" aria-label="削除">🗑</button>
                     </div>
-                    <div style="font-weight:700;color:var(--accent);white-space:nowrap;">${escapeHtml(entry.title)}</div>
-                    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;">
-                        <input type="checkbox" data-shogo-badge-toggle="${escapeHtml(uniqueId)}" ${entry.badgeEnabled ? 'checked' : ''} style="width:auto;">
-                        バッジ
-                    </label>
-                    <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(uniqueId)}" title="削除" aria-label="削除">🗑</button>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             shogoTitleList.querySelectorAll('[data-shogo-delete]').forEach((button) => {
                 button.addEventListener('click', () => {
@@ -1741,9 +1821,15 @@
                 });
             });
 
-            shogoTitleList.querySelectorAll('[data-shogo-badge-toggle]').forEach((checkbox) => {
-                checkbox.addEventListener('change', () => {
-                    toggleShogoBadgeEnabled(checkbox.dataset.shogoBadgeToggle, checkbox.checked).catch(() => {});
+            shogoTitleList.querySelectorAll('[data-shogo-badge-trigger]').forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const uniqueId = button.dataset.shogoBadgeTrigger;
+                    if (shogoRowBadgeOpenUniqueId === uniqueId) {
+                        closeShogoRowBadgePanel();
+                    } else {
+                        openShogoRowBadgePanel(button, uniqueId);
+                    }
                 });
             });
         }
@@ -1769,7 +1855,7 @@
                         title,
                         nickname: matched?.nickname || uniqueId,
                         image: matched?.image || '',
-                        badgeEnabled: shogoAddBadgeEnabledInput.checked
+                        badgeKey: shogoAddBadgeKey
                     })
                 });
                 const payload = await response.json();
@@ -1779,14 +1865,15 @@
                 shogoAddUserIdInput.value = '';
                 shogoAddUserIdInput.dataset.userKey = '';
                 shogoAddTitleInput.value = '';
-                shogoAddBadgeEnabledInput.checked = true;
+                shogoAddBadgeKey = 'star';
+                updateShogoAddBadgeTrigger();
                 setStatus(saveStatus, `設定状態: ${matched?.nickname || uniqueId} の称号を登録しました。`, 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
             }
         }
 
-        async function toggleShogoBadgeEnabled(uniqueId, badgeEnabled) {
+        async function updateShogoBadgeKey(uniqueId, badgeKey) {
             const entry = (state.shogoTitles || {})[uniqueId];
 
             if (!entry) {
@@ -1802,11 +1889,11 @@
                         title: entry.title,
                         nickname: entry.nickname,
                         image: entry.image,
-                        badgeEnabled
+                        badgeKey
                     })
                 });
                 const payload = await response.json();
-                if (!payload.ok) throw new Error(payload.error || 'バッジ表示の更新に失敗しました。');
+                if (!payload.ok) throw new Error(payload.error || 'バッジの更新に失敗しました。');
                 state.shogoTitles = payload.titles || state.shogoTitles;
                 renderShogoTitleList(state.shogoTitles);
             } catch (err) {
@@ -1837,6 +1924,46 @@
                 state.knownShogoUsers = [];
             }
         }
+
+        shogoAddBadgeTrigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            closeShogoRowBadgePanel();
+            toggleShogoAddBadgePanel();
+        });
+
+        shogoAddBadgePanel.addEventListener('click', (event) => {
+            const option = event.target.closest('[data-badge-key]');
+            if (!option) return;
+            shogoAddBadgeKey = option.dataset.badgeKey;
+            updateShogoAddBadgeTrigger();
+            toggleShogoAddBadgePanel(false);
+        });
+
+        shogoRowBadgePanel.addEventListener('click', (event) => {
+            const option = event.target.closest('[data-badge-key]');
+            if (!option || !shogoRowBadgeOpenUniqueId) return;
+            updateShogoBadgeKey(shogoRowBadgeOpenUniqueId, option.dataset.badgeKey).catch(() => {});
+            closeShogoRowBadgePanel();
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!shogoAddBadgePanel.hidden && !event.target.closest('#shogo-add-badge-trigger') && !shogoAddBadgePanel.contains(event.target)) {
+                toggleShogoAddBadgePanel(false);
+            }
+            if (!shogoRowBadgePanel.hidden && !event.target.closest('[data-shogo-badge-trigger]') && !shogoRowBadgePanel.contains(event.target)) {
+                closeShogoRowBadgePanel();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!shogoAddBadgePanel.hidden) toggleShogoAddBadgePanel(false);
+            if (!shogoRowBadgePanel.hidden) closeShogoRowBadgePanel();
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!shogoAddBadgePanel.hidden) toggleShogoAddBadgePanel(false);
+            if (!shogoRowBadgePanel.hidden) closeShogoRowBadgePanel();
+        }, true);
 
         UserSuggest.attachSuggestField({
             input: shogoAddUserIdInput,
@@ -2771,6 +2898,7 @@
             state.triggerX5Settings = payload.triggerX5Payload?.settings || state.triggerX5Settings;
             state.shogoSettings = payload.shogoPayload?.settings || state.shogoSettings;
             state.shogoTitles = payload.shogoPayload?.titles || state.shogoTitles || {};
+            state.shogoBadges = Array.isArray(payload.shogoPayload?.badges) ? payload.shogoPayload.badges : (state.shogoBadges || []);
             state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -2815,6 +2943,7 @@
             updateTimerStatusLabel();
             applyTriggerX5SettingsToForm(state.triggerX5Settings);
             applyShogoSettingsToForm(state.shogoSettings);
+            updateShogoAddBadgeTrigger();
             renderShogoTitleList(state.shogoTitles);
             applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
