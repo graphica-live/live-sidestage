@@ -3063,8 +3063,12 @@ function ensureTikTokConnection() {
             }
 
             // pending ギフトをメモリに登録してadmin gift historyを即座に更新
+            // id は null にすると全ての pending ギフトが同一キー('')に潰れてしまい、
+            // 同時進行中の複数まとめ投げがポップアウト一覧で1件に集約される（DOM要素が
+            // comboKey 単位ではなく空文字キーで奪い合われる）ため、comboKey 由来の
+            // 安定したユニークIDを割り当てる。
             pendingGiftsByComboKey.set(comboKey, {
-                id: null,
+                id: `pending:${comboKey}`,
                 dayKey: getTodayDayKey(),
                 uniqueId: data.uniqueId || '',
                 nickname: data.nickname || data.uniqueId || '',

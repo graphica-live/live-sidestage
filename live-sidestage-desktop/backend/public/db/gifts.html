@@ -1131,6 +1131,20 @@
             return item;
         }
 
+        // まとめ投げの pending 中は同じ li を使い回す（diff:true）ため、コイン数/ギフト名だけを
+        // 上書きして最新のカウントを反映する。アバター・ギフト画像は再読み込みのチラつきを
+        // 避けるためここでは触らない。
+        function updatePopoutGiftItem(item, gift) {
+            const nameEl = item.querySelector('.popout-gift-name');
+            if (nameEl) {
+                nameEl.textContent = gift.giftNameJa || gift.giftName || '不明';
+            }
+            const coinsEl = item.querySelector('.popout-gift-coins');
+            if (coinsEl) {
+                coinsEl.textContent = `🪙 ${formatNumber(gift.totalGifts)}`;
+            }
+        }
+
         // diff:false は全件作り直し（初期表示・日付切替・並び順/表示設定変更時）。
         // diff:true は既存要素を保ったまま新規分だけ挿入する（ライブ更新時、画像の再読み込みによる
         // チラつきを避けるため）。戻り値の addedItems は新規挿入された <li> 一覧。
@@ -1162,6 +1176,7 @@
                 const id = String(gift.id || '');
                 let li = existingById.get(id);
                 if (li) {
+                    updatePopoutGiftItem(li, gift);
                     if (refNode !== li) {
                         popoutGiftList.insertBefore(li, refNode);
                     }
