@@ -96,7 +96,7 @@ function createDefaultEffectTrigger() {
         userIdToFileDir: '',
         rapidFireEnabled: false,
         rapidFireCancelMs: 1500,
-        triggerX5ExcludedFromLottery: false
+        triggerX5Included: true
     };
 }
 
@@ -318,7 +318,10 @@ function normalizeEffectTrigger(value) {
         userIdToFileDir: userTargetMode === 'file-map' ? String(value?.userIdToFileDir || '').trim() : '',
         rapidFireEnabled: Boolean(value?.rapidFireEnabled),
         rapidFireCancelMs: normalizeEffectTriggerRapidFireCancelMs(value?.rapidFireCancelMs),
-        triggerX5ExcludedFromLottery: Boolean(value?.triggerX5ExcludedFromLottery)
+        // 旧フィールド（除外方式）からの移行: 新フィールド未設定時は旧フィールドを反転して従来の挙動を維持する。
+        triggerX5Included: value?.triggerX5Included !== undefined
+            ? Boolean(value.triggerX5Included)
+            : !Boolean(value?.triggerX5ExcludedFromLottery)
     };
 }
 
