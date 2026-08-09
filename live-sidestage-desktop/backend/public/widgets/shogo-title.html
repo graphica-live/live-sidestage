@@ -29,18 +29,23 @@
             pointer-events: none;
         }
 
+        /* 1つ目の称号が常に同じ位置から始まるよう、上端を固定したアンカー。
+           称号カードはこの中で top を個別に計算して上から下へ積み上げる。 */
         .shogo-slot {
             position: absolute;
             right: 32px;
-            top: 50%;
-            transform: translateY(-50%);
+            top: 80px;
         }
 
         .shogo-card {
+            --shogo-scale: 1;
+            position: absolute;
+            top: 0;
+            right: 0;
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 14px 26px 14px 18px;
+            gap: calc(12px * var(--shogo-scale));
+            padding: calc(14px * var(--shogo-scale)) calc(26px * var(--shogo-scale)) calc(14px * var(--shogo-scale)) calc(18px * var(--shogo-scale));
             border-radius: 999px;
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.88) 100%);
             border: 2px solid rgba(251, 191, 36, 0.65);
@@ -48,16 +53,20 @@
             white-space: nowrap;
         }
 
+        .shogo-card.is-large {
+            --shogo-scale: 1.2;
+        }
+
         .shogo-badge {
             flex: 0 0 auto;
-            width: 44px;
-            height: 44px;
+            width: calc(44px * var(--shogo-scale));
+            height: calc(44px * var(--shogo-scale));
             object-fit: contain;
             filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
         }
 
         .shogo-title-text {
-            font-size: 28px;
+            font-size: calc(28px * var(--shogo-scale));
             font-weight: 900;
             color: #fff8e1;
             -webkit-text-stroke: 3px rgba(15, 23, 42, 0.95);
@@ -87,61 +96,93 @@
         }
 
         const SLIDE_MS = 480;
+        const STAGGER_MS = 90;
+        const CARD_GAP = 10;
         const DEFAULT_HOLD_SECONDS = 6;
 
         let displayQueue = Promise.resolve();
 
-        function showOne(data) {
-            return new Promise((resolve) => {
-                const title = escapeHtml(String(data?.title || '').slice(0, 40));
+        function buildShogoCard(entry) {
+            const title = escapeHtml(String(entry?.title || '').slice(0, 40));
+            const badgeImage = String(entry?.badgeImage || '');
+            const badgeHtml = badgeImage ? `<img class="shogo-badge" src="${escapeHtml(badgeImage)}" alt="">` : '';
 
-                if (!title) {
+            const card = document.createElement('div');
+            card.className = 'shogo-card' + (entry?.size === 'large' ? ' is-large' : '');
+            card.innerHTML = `${badgeHtml}<div class="shogo-title-text">${title}</div>`;
+            return { card, hasTitle: Boolean(title) };
+        }
+
+        // 1人分の称号（複数）を、登録順に上から下へスタックしてまとめて表示する。
+        // 1つ目の称号は登録数によらず常に同じ位置（shogo-slot の top）から始まる。
+        function showStack(data) {
+            return new Promise((resolve) => {
+                const rawEntries = Array.isArray(data?.entries) ? data.entries : [];
+                const built = rawEntries.map(buildShogoCard).filter((item) => item.hasTitle);
+
+                if (!built.length) {
                     resolve();
                     return;
                 }
-
-                const badgeImage = String(data?.badgeImage || '');
-                const badgeHtml = badgeImage
-                    ? `<img class="shogo-badge" src="${escapeHtml(badgeImage)}" alt="">`
-                    : '';
 
                 const holdSeconds = Math.max(1, Number(data?.displaySeconds) || DEFAULT_HOLD_SECONDS);
                 const holdMs = holdSeconds * 1000;
                 const totalMs = SLIDE_MS * 2 + holdMs;
 
-                const card = document.createElement('div');
-                card.className = 'shogo-card';
-                card.innerHTML = `${badgeHtml}<div class="shogo-title-text">${title}</div>`;
-                slotEl.appendChild(card);
-
-                const animation = card.animate([
-                    { transform: 'translateX(140%)', opacity: 0, offset: 0 },
-                    { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs },
-                    { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs },
-                    { transform: 'translateX(140%)', opacity: 0, offset: 1 }
-                ], {
-                    duration: totalMs,
-                    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-                    fill: 'forwards'
+                // 先に不可視のまま挿入して実測の高さを取得し、大小サイズが混在しても
+                // 隙間なく積み上がるようにする（CSSの固定値に頼らない）。
+                built.forEach(({ card }) => {
+                    card.style.visibility = 'hidden';
+                    slotEl.appendChild(card);
                 });
 
-                animation.onfinish = () => {
-                    card.remove();
+                let cumulativeTop = 0;
+                const tops = built.map(({ card }) => {
+                    const top = cumulativeTop;
+                    cumulativeTop += card.offsetHeight + CARD_GAP;
+                    return top;
+                });
+
+                const animations = built.map(({ card }, index) => {
+                    card.style.top = `${tops[index]}px`;
+                    card.style.visibility = 'visible';
+
+                    return card.animate([
+                        { transform: 'translateX(140%)', opacity: 0, offset: 0 },
+                        { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs },
+                        { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs },
+                        { transform: 'translateX(140%)', opacity: 0, offset: 1 }
+                    ], {
+                        duration: totalMs,
+                        delay: index * STAGGER_MS,
+                        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                        fill: 'forwards'
+                    });
+                });
+
+                Promise.all(animations.map((animation) => new Promise((res) => { animation.onfinish = res; }))).then(() => {
+                    built.forEach(({ card }) => card.remove());
                     resolve();
-                };
+                });
             });
         }
 
         function enqueueShow(data) {
-            displayQueue = displayQueue.then(() => showOne(data)).catch(() => {});
+            displayQueue = displayQueue.then(() => showStack(data)).catch(() => {});
         }
 
         socket.on('widgets:shogo:show', enqueueShow);
 
         if (previewMode) {
-            const runSample = () => enqueueShow({ title: '常連さん', badgeImage: '/widgets/badge.png', displaySeconds: DEFAULT_HOLD_SECONDS });
+            const runSample = () => enqueueShow({
+                entries: [
+                    { title: '常連さん', badgeImage: '/widgets/badge.png', size: 'large' },
+                    { title: '古参', badgeImage: '/widgets/badge-tiktok-universe.webp', size: 'small' }
+                ],
+                displaySeconds: DEFAULT_HOLD_SECONDS
+            });
             runSample();
-            window.setInterval(runSample, (SLIDE_MS * 2 + DEFAULT_HOLD_SECONDS * 1000) + 1600);
+            window.setInterval(runSample, (SLIDE_MS * 2 + DEFAULT_HOLD_SECONDS * 1000) + STAGGER_MS + 1600);
         }
     </script>
 </body>

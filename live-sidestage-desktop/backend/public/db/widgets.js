@@ -80,6 +80,7 @@
         const shogoAddBadgeThumb = document.getElementById('shogo-add-badge-thumb');
         const shogoAddBadgeLabel = document.getElementById('shogo-add-badge-label');
         const shogoAddBadgePanel = document.getElementById('shogo-add-badge-panel');
+        const shogoAddSizeToggle = document.getElementById('shogo-add-size-toggle');
         const shogoRowBadgePanel = document.getElementById('shogo-row-badge-panel');
         const shogoAddTitleButton = document.getElementById('shogo-add-title-button');
         const shogoTitleList = document.getElementById('shogo-title-list');
@@ -1714,10 +1715,22 @@
         }
 
         let shogoAddBadgeKey = 'star';
-        let shogoRowBadgeOpenUniqueId = null;
+        let shogoAddSize = 'small';
+        let shogoRowBadgeOpenKey = null;
+        let shogoDragState = null;
 
         function findShogoBadge(badgeKey) {
             return (state.shogoBadges || []).find((badge) => badge.key === badgeKey);
+        }
+
+        // 一覧の各種操作ボタンは "uniqueId:entryId" の複合キーで対象の称号を特定する。
+        function parseShogoEntryKey(value) {
+            const raw = String(value || '');
+            const separatorIndex = raw.indexOf(':');
+            if (separatorIndex === -1) {
+                return { uniqueId: raw, entryId: '' };
+            }
+            return { uniqueId: raw.slice(0, separatorIndex), entryId: raw.slice(separatorIndex + 1) };
         }
 
         function renderBadgeOptionsHtml(badges, selectedKey) {
@@ -1772,64 +1785,94 @@
 
         function closeShogoRowBadgePanel() {
             shogoRowBadgePanel.hidden = true;
-            shogoRowBadgeOpenUniqueId = null;
+            shogoRowBadgeOpenKey = null;
         }
 
-        function openShogoRowBadgePanel(trigger, uniqueId) {
-            const entry = (state.shogoTitles || {})[uniqueId];
+        function openShogoRowBadgePanel(trigger, key) {
+            const { uniqueId, entryId } = parseShogoEntryKey(key);
+            const entry = (state.shogoTitles || {})[uniqueId]?.entries.find((item) => item.id === entryId);
             shogoRowBadgePanel.innerHTML = renderBadgeOptionsHtml(state.shogoBadges, entry?.badgeKey);
             positionBadgePanel(trigger, shogoRowBadgePanel);
             shogoRowBadgePanel.hidden = false;
-            shogoRowBadgeOpenUniqueId = uniqueId;
+            shogoRowBadgeOpenKey = key;
         }
 
-        function renderShogoTitleList(titles) {
-            const entries = Object.entries(titles || {});
+        // ユーザーごとにグループ化して表示する。各ユーザーの称号は登録順（=表示順）に
+        // 並び、行右端のハンドルをドラッグすると同じユーザー内で並び替えられる。
+        function renderShogoTitleList(titlesByUser) {
+            const userEntries = Object.entries(titlesByUser || {});
             closeShogoRowBadgePanel();
 
-            if (!entries.length) {
+            if (!userEntries.length) {
                 shogoTitleList.innerHTML = '<div class="subtext" style="padding:10px 0;">登録済みの称号はありません。</div>';
                 return;
             }
 
-            shogoTitleList.innerHTML = entries.map(([uniqueId, entry]) => {
-                const badge = findShogoBadge(entry.badgeKey);
-                const badgeThumbHtml = badge?.image
-                    ? `<img src="${escapeHtml(badge.image)}" alt="" style="width:18px;height:18px;object-fit:contain;flex:0 0 auto;">`
-                    : '<span style="width:18px;text-align:center;flex:0 0 auto;color:var(--muted);">—</span>';
-                return `
-                    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
-                        ${entry.image
-                            ? `<img src="${escapeHtml(entry.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
-                            : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(entry.nickname || uniqueId)}</div>
-                            <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
+            shogoTitleList.innerHTML = userEntries.map(([uniqueId, userRecord]) => {
+                const rowsHtml = (userRecord.entries || []).map((entry) => {
+                    const badge = findShogoBadge(entry.badgeKey);
+                    const badgeThumbHtml = badge?.image
+                        ? `<img src="${escapeHtml(badge.image)}" alt="" style="width:18px;height:18px;object-fit:contain;flex:0 0 auto;">`
+                        : '<span style="width:18px;text-align:center;flex:0 0 auto;color:var(--muted);">—</span>';
+                    const isLarge = entry.size === 'large';
+                    const entryKey = `${uniqueId}:${entry.id}`;
+                    return `
+                        <div class="shogo-entry-row" draggable="false" data-shogo-uid="${escapeHtml(uniqueId)}" data-shogo-entry-id="${escapeHtml(entry.id)}">
+                            <div style="font-weight:700;color:var(--accent);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isLarge ? 'font-size:17px;' : 'font-size:14px;'}">${escapeHtml(entry.title)}</div>
+                            <button type="button" class="ghost-button" data-shogo-badge-trigger="${escapeHtml(entryKey)}" style="display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:12px;white-space:nowrap;">
+                                ${badgeThumbHtml}<span>${escapeHtml(badge?.label || 'バッジ')}</span>
+                            </button>
+                            <div class="shogo-size-toggle" data-shogo-size-toggle="${escapeHtml(entryKey)}">
+                                <button type="button" class="ghost-button${!isLarge ? ' is-active' : ''}" data-shogo-size="small">小</button>
+                                <button type="button" class="ghost-button${isLarge ? ' is-active' : ''}" data-shogo-size="large">大</button>
+                            </div>
+                            <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(entryKey)}" title="削除" aria-label="削除">🗑</button>
+                            <button type="button" class="ghost-button icon-button shogo-drag-handle" data-shogo-drag-handle title="ドラッグして並び替え" aria-label="ドラッグして並び替え">☰</button>
                         </div>
-                        <div style="font-weight:700;color:var(--accent);white-space:nowrap;">${escapeHtml(entry.title)}</div>
-                        <button type="button" class="ghost-button" data-shogo-badge-trigger="${escapeHtml(uniqueId)}" style="display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:12px;white-space:nowrap;">
-                            ${badgeThumbHtml}<span>${escapeHtml(badge?.label || 'バッジ')}</span>
-                        </button>
-                        <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(uniqueId)}" title="削除" aria-label="削除">🗑</button>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="shogo-user-group">
+                        <div class="shogo-user-group-head">
+                            ${userRecord.image
+                                ? `<img src="${escapeHtml(userRecord.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
+                                : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
+                            <div style="min-width:0;">
+                                <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(userRecord.nickname || uniqueId)}</div>
+                                <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
+                            </div>
+                        </div>
+                        ${rowsHtml}
                     </div>
                 `;
             }).join('');
 
             shogoTitleList.querySelectorAll('[data-shogo-delete]').forEach((button) => {
                 button.addEventListener('click', () => {
-                    deleteShogoTitleEntry(button.dataset.shogoDelete).catch(() => {});
+                    const { uniqueId, entryId } = parseShogoEntryKey(button.dataset.shogoDelete);
+                    deleteShogoEntry(uniqueId, entryId).catch(() => {});
                 });
             });
 
             shogoTitleList.querySelectorAll('[data-shogo-badge-trigger]').forEach((button) => {
                 button.addEventListener('click', (event) => {
                     event.stopPropagation();
-                    const uniqueId = button.dataset.shogoBadgeTrigger;
-                    if (shogoRowBadgeOpenUniqueId === uniqueId) {
+                    const key = button.dataset.shogoBadgeTrigger;
+                    if (shogoRowBadgeOpenKey === key) {
                         closeShogoRowBadgePanel();
                     } else {
-                        openShogoRowBadgePanel(button, uniqueId);
+                        openShogoRowBadgePanel(button, key);
                     }
+                });
+            });
+
+            shogoTitleList.querySelectorAll('[data-shogo-size-toggle]').forEach((container) => {
+                container.querySelectorAll('[data-shogo-size]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const { uniqueId, entryId } = parseShogoEntryKey(container.dataset.shogoSizeToggle);
+                        updateShogoEntry(uniqueId, entryId, { size: button.dataset.shogoSize }).catch(() => {});
+                    });
                 });
             });
         }
@@ -1855,45 +1898,33 @@
                         title,
                         nickname: matched?.nickname || uniqueId,
                         image: matched?.image || '',
-                        badgeKey: shogoAddBadgeKey
+                        badgeKey: shogoAddBadgeKey,
+                        size: shogoAddSize
                     })
                 });
                 const payload = await response.json();
                 if (!payload.ok) throw new Error(payload.error || '称号の登録に失敗しました。');
                 state.shogoTitles = payload.titles || state.shogoTitles;
                 renderShogoTitleList(state.shogoTitles);
-                shogoAddUserIdInput.value = '';
-                shogoAddUserIdInput.dataset.userKey = '';
+                // ユーザーIDは残す。1人に複数の称号を続けて登録しやすくするため。
                 shogoAddTitleInput.value = '';
-                shogoAddBadgeKey = 'star';
-                updateShogoAddBadgeTrigger();
+                shogoAddTitleInput.focus();
                 setStatus(saveStatus, `設定状態: ${matched?.nickname || uniqueId} の称号を登録しました。`, 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
             }
         }
 
-        async function updateShogoBadgeKey(uniqueId, badgeKey) {
-            const entry = (state.shogoTitles || {})[uniqueId];
-
-            if (!entry) {
-                return;
-            }
-
+        // バッジ・サイズなど既存の称号エントリの属性を更新する（文言は変更しない）。
+        async function updateShogoEntry(uniqueId, entryId, patch) {
             try {
-                const response = await fetch('/api/widgets/shogo/titles', {
+                const response = await fetch('/api/widgets/shogo/titles/entry', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        uniqueId,
-                        title: entry.title,
-                        nickname: entry.nickname,
-                        image: entry.image,
-                        badgeKey
-                    })
+                    body: JSON.stringify({ uniqueId, entryId, ...patch })
                 });
                 const payload = await response.json();
-                if (!payload.ok) throw new Error(payload.error || 'バッジの更新に失敗しました。');
+                if (!payload.ok) throw new Error(payload.error || '称号の更新に失敗しました。');
                 state.shogoTitles = payload.titles || state.shogoTitles;
                 renderShogoTitleList(state.shogoTitles);
             } catch (err) {
@@ -1902,9 +1933,9 @@
             }
         }
 
-        async function deleteShogoTitleEntry(uniqueId) {
+        async function deleteShogoEntry(uniqueId, entryId) {
             try {
-                const response = await fetch(`/api/widgets/shogo/titles?uniqueId=${encodeURIComponent(uniqueId)}`, { method: 'DELETE' });
+                const response = await fetch(`/api/widgets/shogo/titles?uniqueId=${encodeURIComponent(uniqueId)}&entryId=${encodeURIComponent(entryId)}`, { method: 'DELETE' });
                 const payload = await response.json();
                 if (!payload.ok) throw new Error(payload.error || '称号の削除に失敗しました。');
                 state.shogoTitles = payload.titles || state.shogoTitles;
@@ -1912,6 +1943,23 @@
                 setStatus(saveStatus, '設定状態: 称号を削除しました。', 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        async function reorderShogoEntries(uniqueId, orderedEntryIds) {
+            try {
+                const response = await fetch('/api/widgets/shogo/titles/reorder', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uniqueId, orderedEntryIds })
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '並び替えに失敗しました。');
+                state.shogoTitles = payload.titles || state.shogoTitles;
+                renderShogoTitleList(state.shogoTitles);
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+                renderShogoTitleList(state.shogoTitles);
             }
         }
 
@@ -1941,9 +1989,71 @@
 
         shogoRowBadgePanel.addEventListener('click', (event) => {
             const option = event.target.closest('[data-badge-key]');
-            if (!option || !shogoRowBadgeOpenUniqueId) return;
-            updateShogoBadgeKey(shogoRowBadgeOpenUniqueId, option.dataset.badgeKey).catch(() => {});
+            if (!option || !shogoRowBadgeOpenKey) return;
+            const { uniqueId, entryId } = parseShogoEntryKey(shogoRowBadgeOpenKey);
+            updateShogoEntry(uniqueId, entryId, { badgeKey: option.dataset.badgeKey }).catch(() => {});
             closeShogoRowBadgePanel();
+        });
+
+        function updateShogoAddSizeToggle() {
+            shogoAddSizeToggle.querySelectorAll('[data-shogo-size]').forEach((button) => {
+                button.classList.toggle('is-active', button.dataset.shogoSize === shogoAddSize);
+            });
+        }
+
+        shogoAddSizeToggle.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-shogo-size]');
+            if (!button) return;
+            shogoAddSize = button.dataset.shogoSize;
+            updateShogoAddSizeToggle();
+        });
+
+        updateShogoAddSizeToggle();
+
+        // 称号一覧の並び替え: ドラッグ用ハンドル(☰)を掴んだ時だけ行全体をドラッグ可能にする
+        // （行内のバッジ/サイズ/削除ボタンのクリックとドラッグ開始が競合しないようにするため）。
+        shogoTitleList.addEventListener('mousedown', (event) => {
+            const row = event.target.closest('.shogo-entry-row');
+            if (!row) return;
+            row.draggable = Boolean(event.target.closest('[data-shogo-drag-handle]'));
+        });
+
+        shogoTitleList.addEventListener('dragstart', (event) => {
+            const row = event.target.closest('.shogo-entry-row');
+            if (!row || !row.draggable) {
+                event.preventDefault();
+                return;
+            }
+            shogoDragState = { uid: row.dataset.shogoUid };
+            row.classList.add('is-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            try { event.dataTransfer.setData('text/plain', row.dataset.shogoEntryId); } catch { /* noop */ }
+        });
+
+        shogoTitleList.addEventListener('dragover', (event) => {
+            if (!shogoDragState) return;
+            const overRow = event.target.closest('.shogo-entry-row');
+            if (!overRow || overRow.dataset.shogoUid !== shogoDragState.uid) return;
+            event.preventDefault();
+            const draggingRow = shogoTitleList.querySelector('.shogo-entry-row.is-dragging');
+            if (!draggingRow || draggingRow === overRow) return;
+            const rect = overRow.getBoundingClientRect();
+            const isAfter = (event.clientY - rect.top) > rect.height / 2;
+            overRow.parentElement.insertBefore(draggingRow, isAfter ? overRow.nextSibling : overRow);
+        });
+
+        shogoTitleList.addEventListener('dragend', () => {
+            const draggingRow = shogoTitleList.querySelector('.shogo-entry-row.is-dragging');
+            draggingRow?.classList.remove('is-dragging');
+            if (draggingRow) draggingRow.draggable = false;
+
+            if (!shogoDragState) return;
+            const uid = shogoDragState.uid;
+            shogoDragState = null;
+
+            const orderedEntryIds = Array.from(shogoTitleList.querySelectorAll(`.shogo-entry-row[data-shogo-uid="${CSS.escape(uid)}"]`))
+                .map((row) => row.dataset.shogoEntryId);
+            reorderShogoEntries(uid, orderedEntryIds).catch(() => {});
         });
 
         document.addEventListener('click', (event) => {

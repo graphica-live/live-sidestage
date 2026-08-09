@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { WIDGET_SHOGO_SETTINGS_STATE_KEY, WIDGET_SHOGO_TITLES_STATE_KEY, WIDGET_SHOGO_TRIGGER_GIFT_NAME } = require('./constants');
 const { normalizeBroadcasterId, normalizeEffectText, normalizeBooleanInput } = require('./utils');
 
@@ -25,6 +26,10 @@ function normalizeShogoBadgeKey(value) {
 function resolveShogoBadgeImage(badgeKey) {
     const badge = SHOGO_BADGE_LIBRARY.find((item) => item.key === normalizeShogoBadgeKey(badgeKey));
     return badge?.image || '';
+}
+
+function normalizeShogoSize(value) {
+    return String(value || '').trim().toLowerCase() === 'large' ? 'large' : 'small';
 }
 
 function normalizeShogoDisplaySeconds(value) {
@@ -56,6 +61,9 @@ function normalizeShogoSettings(value) {
     };
 }
 
+// 1ユーザーに複数の称号を登録できる。entries の並び順がそのままオーバーレイでの
+// 上から下への表示順になる。旧バージョン（1ユーザー1称号のフラットな形）のデータは
+// 読み込み時に自動的に entries 配列へ変換する。
 function normalizeShogoTitlesState(value) {
     let source = value;
 
@@ -73,19 +81,43 @@ function normalizeShogoTitlesState(value) {
 
     const normalized = {};
 
-    Object.entries(source).forEach(([uid, entry]) => {
+    Object.entries(source).forEach(([uid, userData]) => {
         const normalizedUid = normalizeBroadcasterId(uid);
-        const title = normalizeEffectText(typeof entry === 'string' ? entry : entry?.title, 40);
 
-        if (!normalizedUid || !title) {
+        if (!normalizedUid || !userData || typeof userData !== 'object') {
+            return;
+        }
+
+        const isLegacyFlatEntry = typeof userData.title === 'string' && !Array.isArray(userData.entries);
+        const rawEntries = isLegacyFlatEntry
+            ? [{ id: `${normalizedUid}-legacy-0`, title: userData.title, badgeKey: userData.badgeKey, size: 'small' }]
+            : (Array.isArray(userData.entries) ? userData.entries : []);
+
+        const entries = rawEntries
+            .map((entry, index) => {
+                const title = normalizeEffectText(entry?.title, 40);
+
+                if (!title) {
+                    return null;
+                }
+
+                return {
+                    id: normalizeEffectText(entry?.id, 60) || `${normalizedUid}-legacy-${index}`,
+                    title,
+                    badgeKey: normalizeShogoBadgeKey(entry?.badgeKey),
+                    size: normalizeShogoSize(entry?.size),
+                };
+            })
+            .filter(Boolean);
+
+        if (!entries.length) {
             return;
         }
 
         normalized[normalizedUid] = {
-            title,
-            nickname: normalizeEffectText(typeof entry === 'string' ? '' : entry?.nickname, 80),
-            image: normalizeEffectText(typeof entry === 'string' ? '' : entry?.image, 500),
-            badgeKey: normalizeShogoBadgeKey(typeof entry === 'string' ? '' : entry?.badgeKey),
+            nickname: normalizeEffectText(userData.nickname, 80),
+            image: normalizeEffectText(userData.image, 500),
+            entries,
         };
     });
 
@@ -93,7 +125,7 @@ function normalizeShogoTitlesState(value) {
 }
 
 // 称号ウィジェット: 視聴者が「ハートミー」を投げると、事前に管理画面で登録しておいた
-// その人の称号（自由入力テキスト）を右からスライドインで表示する。称号未登録のユーザーは無視する。
+// その人の称号（複数可）を、登録順に上から下へスライドインで表示する。称号未登録のユーザーは無視する。
 module.exports = function createShogoState({
     io,
     getScopedStateValue,
@@ -115,7 +147,13 @@ module.exports = function createShogoState({
         return normalizeShogoTitlesState(getScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY));
     }
 
-    function setShogoTitle({ uniqueId, title, nickname, image, badgeKey }) {
+    function persistShogoTitles(titles) {
+        setScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY, JSON.stringify(titles));
+        return titles;
+    }
+
+    // 新規称号を1件追加する（既存の称号があっても追加され、複数称号になる）。
+    function addShogoTitleEntry({ uniqueId, title, nickname, image, badgeKey, size }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const normalizedTitle = normalizeEffectText(title, 40);
 
@@ -124,27 +162,102 @@ module.exports = function createShogoState({
         }
 
         const current = getShogoTitles();
-        current[normalizedUid] = {
+        const userRecord = current[normalizedUid] || { nickname: '', image: '', entries: [] };
+
+        const entry = {
+            id: crypto.randomUUID(),
             title: normalizedTitle,
-            nickname: normalizeEffectText(nickname, 80),
-            image: normalizeEffectText(image, 500),
             badgeKey: normalizeShogoBadgeKey(badgeKey),
+            size: normalizeShogoSize(size),
         };
-        setScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY, JSON.stringify(current));
-        return current[normalizedUid];
+
+        current[normalizedUid] = {
+            nickname: normalizeEffectText(nickname, 80) || userRecord.nickname,
+            image: normalizeEffectText(image, 500) || userRecord.image,
+            entries: [...userRecord.entries, entry],
+        };
+
+        persistShogoTitles(current);
+        return entry;
     }
 
-    function deleteShogoTitle(uniqueId) {
+    // 既存の称号の見た目（バッジ・サイズ）だけを更新する。文言は変更しない。
+    function updateShogoTitleEntry({ uniqueId, entryId, badgeKey, size }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const current = getShogoTitles();
+        const userRecord = current[normalizedUid];
 
-        if (!normalizedUid || !current[normalizedUid]) {
+        if (!normalizedUid || !userRecord) {
+            return null;
+        }
+
+        let updatedEntry = null;
+        const entries = userRecord.entries.map((entry) => {
+            if (entry.id !== entryId) {
+                return entry;
+            }
+            updatedEntry = {
+                ...entry,
+                badgeKey: badgeKey !== undefined ? normalizeShogoBadgeKey(badgeKey) : entry.badgeKey,
+                size: size !== undefined ? normalizeShogoSize(size) : entry.size,
+            };
+            return updatedEntry;
+        });
+
+        if (!updatedEntry) {
+            return null;
+        }
+
+        current[normalizedUid] = { ...userRecord, entries };
+        persistShogoTitles(current);
+        return updatedEntry;
+    }
+
+    function deleteShogoTitleEntry({ uniqueId, entryId }) {
+        const normalizedUid = normalizeBroadcasterId(uniqueId);
+        const current = getShogoTitles();
+        const userRecord = current[normalizedUid];
+
+        if (!normalizedUid || !userRecord) {
             return current;
         }
 
-        delete current[normalizedUid];
-        setScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY, JSON.stringify(current));
-        return current;
+        const entries = userRecord.entries.filter((entry) => entry.id !== entryId);
+
+        if (entries.length) {
+            current[normalizedUid] = { ...userRecord, entries };
+        } else {
+            delete current[normalizedUid];
+        }
+
+        return persistShogoTitles(current);
+    }
+
+    // orderedEntryIds に従ってそのユーザーの称号表示順を並び替える。
+    // 未知のIDは無視し、抜けているIDは元の相対順のまま末尾に残す。
+    function reorderShogoTitleEntries({ uniqueId, orderedEntryIds }) {
+        const normalizedUid = normalizeBroadcasterId(uniqueId);
+        const current = getShogoTitles();
+        const userRecord = current[normalizedUid];
+
+        if (!normalizedUid || !userRecord || !Array.isArray(orderedEntryIds)) {
+            return current;
+        }
+
+        const entryById = new Map(userRecord.entries.map((entry) => [entry.id, entry]));
+        const reordered = [];
+
+        orderedEntryIds.forEach((id) => {
+            const entry = entryById.get(id);
+            if (entry) {
+                reordered.push(entry);
+                entryById.delete(id);
+            }
+        });
+        entryById.forEach((entry) => reordered.push(entry));
+
+        current[normalizedUid] = { ...userRecord, entries: reordered };
+        return persistShogoTitles(current);
     }
 
     function buildShogoPayload() {
@@ -155,13 +268,12 @@ module.exports = function createShogoState({
         };
     }
 
-    function emitShogoDisplay({ uniqueId, nickname, image, title, badgeImage, displaySeconds }) {
+    function emitShogoDisplay({ uniqueId, nickname, image, entries, displaySeconds }) {
         io.emit('widgets:shogo:show', {
             uniqueId,
             nickname: nickname || uniqueId,
             image: image || '',
-            title,
-            badgeImage: badgeImage || '',
+            entries,
             displaySeconds,
             timestamp: getTimestamp(),
         });
@@ -185,18 +297,21 @@ module.exports = function createShogoState({
             return;
         }
 
-        const entry = getShogoTitles()[normalizedUid];
+        const userRecord = getShogoTitles()[normalizedUid];
 
-        if (!entry) {
+        if (!userRecord || !userRecord.entries.length) {
             return;
         }
 
         emitShogoDisplay({
             uniqueId: normalizedUid,
-            nickname: giftEvent?.nickname || entry.nickname || normalizedUid,
-            image: giftEvent?.image || entry.image || '',
-            title: entry.title,
-            badgeImage: resolveShogoBadgeImage(entry.badgeKey),
+            nickname: giftEvent?.nickname || userRecord.nickname || normalizedUid,
+            image: giftEvent?.image || userRecord.image || '',
+            entries: userRecord.entries.map((entry) => ({
+                title: entry.title,
+                badgeImage: resolveShogoBadgeImage(entry.badgeKey),
+                size: entry.size,
+            })),
             displaySeconds: settings.displaySeconds,
         });
     }
@@ -207,8 +322,10 @@ module.exports = function createShogoState({
             uniqueId: '__preview__',
             nickname: 'テストリスナー',
             image: '',
-            title: '常連さん',
-            badgeImage: resolveShogoBadgeImage(DEFAULT_SHOGO_BADGE_KEY),
+            entries: [
+                { title: '常連さん', badgeImage: resolveShogoBadgeImage('star'), size: 'large' },
+                { title: '古参', badgeImage: resolveShogoBadgeImage('tiktok-universe'), size: 'small' },
+            ],
             displaySeconds: settings.displaySeconds,
         });
     }
@@ -218,8 +335,10 @@ module.exports = function createShogoState({
         getWidgetShogoSettings,
         setWidgetShogoSettings,
         getShogoTitles,
-        setShogoTitle,
-        deleteShogoTitle,
+        addShogoTitleEntry,
+        updateShogoTitleEntry,
+        deleteShogoTitleEntry,
+        reorderShogoTitleEntries,
         buildShogoPayload,
         maybeEmitShogoDisplay,
         emitShogoTest,

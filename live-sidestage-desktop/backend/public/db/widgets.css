@@ -1046,4 +1046,60 @@
             flex-wrap: wrap;
         }
 
+        .shogo-size-toggle {
+            display: flex;
+            gap: 4px;
+        }
+
+        .shogo-size-toggle .ghost-button {
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
+        .shogo-size-toggle .ghost-button.is-active {
+            border-color: rgba(194, 65, 12, 0.42);
+            background: rgba(255, 237, 213, 0.92);
+            color: var(--accent-strong);
+        }
+
+        .shogo-user-group {
+            padding: 10px 0;
+        }
+
+        .shogo-user-group + .shogo-user-group {
+            border-top: 1px solid var(--line);
+        }
+
+        .shogo-user-group-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 8px;
+        }
+
+        .shogo-entry-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0 6px 42px;
+            transition: opacity 0.15s ease;
+        }
+
+        .shogo-entry-row.is-dragging {
+            opacity: 0.35;
+        }
+
+        .shogo-entry-row.is-drag-over {
+            box-shadow: inset 0 2px 0 var(--accent);
+        }
+
+        .shogo-drag-handle {
+            cursor: grab;
+            flex: 0 0 auto;
+        }
+
+        .shogo-drag-handle:active {
+            cursor: grabbing;
+        }
+
         /* サウンド検索ピッカー(myinstants/効果音ラボ)のスタイルは /shared/sound-picker.css に共通化済み */
