@@ -244,6 +244,7 @@
 
         .comment-author strong {
             font-size: 10.4px;
+            font-weight: 400;
             line-height: 1.1;
         }
 
@@ -267,6 +268,7 @@
         }
 
         .comment-body-text {
+            font-weight: 600;
             white-space: pre-wrap;
             word-break: break-word;
         }
