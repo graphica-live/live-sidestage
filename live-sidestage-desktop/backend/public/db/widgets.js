@@ -71,6 +71,16 @@
         const triggerX5StatusLabel = document.getElementById('trigger-x5-status-label');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
+        const shogoEnabledInput = document.getElementById('shogo-enabled');
+        const shogoBadgeEnabledInput = document.getElementById('shogo-badge-enabled');
+        const shogoDisplaySecondsInput = document.getElementById('shogo-display-seconds');
+        const shogoAddUserIdInput = document.getElementById('shogo-add-user-id');
+        const shogoAddUserSuggestionPanel = document.getElementById('shogo-add-user-suggestion-panel');
+        const shogoAddTitleInput = document.getElementById('shogo-add-title');
+        const shogoAddTitleButton = document.getElementById('shogo-add-title-button');
+        const shogoTitleList = document.getElementById('shogo-title-list');
+        const shogoUrl = document.getElementById('shogo-url');
+        const shogoPreviewFrame = document.getElementById('shogo-preview-frame');
         const timerFontSelect = document.getElementById('timer-font');
         const timerTextStyleSelect = document.getElementById('timer-text-style');
         const timerStrokeWidthInput = document.getElementById('timer-stroke-width');
@@ -1652,6 +1662,155 @@
             }
         }
 
+        function applyShogoSettingsToForm(settings) {
+            const s = settings || { enabled: true, badgeEnabled: true, displaySeconds: 6 };
+            shogoEnabledInput.checked = Boolean(s.enabled);
+            shogoBadgeEnabledInput.checked = Boolean(s.badgeEnabled);
+            shogoDisplaySecondsInput.value = String(Number.parseInt(String(s.displaySeconds ?? 6), 10) || 6);
+            refreshShogoPreview();
+        }
+
+        function buildShogoPreviewUrl() {
+            const baseUrl = state.widgetUrls.shogoOverlayUrl || '/overlays/shogo-title';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?preview=1`;
+            }
+        }
+
+        function refreshShogoPreview(options = {}) {
+            updatePreviewFrame(shogoPreviewFrame, buildShogoPreviewUrl(), options);
+        }
+
+        function getDraftShogoSettings() {
+            return {
+                enabled: shogoEnabledInput.checked,
+                badgeEnabled: shogoBadgeEnabledInput.checked,
+                displaySeconds: Number.parseInt(shogoDisplaySecondsInput.value, 10) || 6
+            };
+        }
+
+        async function saveShogoSettingsImmediately() {
+            setStatus(saveStatus, '設定状態: 称号を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/shogo', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftShogoSettings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '称号の保存に失敗しました。');
+                state.shogoSettings = payload.settings || state.shogoSettings;
+                applyShogoSettingsToForm(state.shogoSettings);
+                setStatus(saveStatus, '設定状態: 称号を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function renderShogoTitleList(titles) {
+            const entries = Object.entries(titles || {});
+
+            if (!entries.length) {
+                shogoTitleList.innerHTML = '<div class="subtext" style="padding:10px 0;">登録済みの称号はありません。</div>';
+                return;
+            }
+
+            shogoTitleList.innerHTML = entries.map(([uniqueId, entry]) => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
+                    ${entry.image
+                        ? `<img src="${escapeHtml(entry.image)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto;">`
+                        : '<div style="width:32px;height:32px;border-radius:50%;background:rgba(120,120,120,0.2);flex:0 0 auto;"></div>'}
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(entry.nickname || uniqueId)}</div>
+                        <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
+                    </div>
+                    <div style="font-weight:700;color:var(--accent);white-space:nowrap;">${escapeHtml(entry.title)}</div>
+                    <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(uniqueId)}" title="削除" aria-label="削除">🗑</button>
+                </div>
+            `).join('');
+
+            shogoTitleList.querySelectorAll('[data-shogo-delete]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    deleteShogoTitleEntry(button.dataset.shogoDelete).catch(() => {});
+                });
+            });
+        }
+
+        async function addShogoTitle() {
+            const uniqueId = (shogoAddUserIdInput.dataset.userKey || shogoAddUserIdInput.value).trim().replace(/^@+/, '');
+            const title = shogoAddTitleInput.value.trim();
+
+            if (!uniqueId || !title) {
+                setStatus(saveStatus, '設定状態: ユーザーIDと称号を入力してください。', 'error');
+                return;
+            }
+
+            const matched = (state.knownShogoUsers || []).find((user) => String(user.uniqueId || '').toLowerCase() === uniqueId.toLowerCase());
+
+            setStatus(saveStatus, '設定状態: 称号を登録中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/shogo/titles', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        uniqueId,
+                        title,
+                        nickname: matched?.nickname || uniqueId,
+                        image: matched?.image || ''
+                    })
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '称号の登録に失敗しました。');
+                state.shogoTitles = payload.titles || state.shogoTitles;
+                renderShogoTitleList(state.shogoTitles);
+                shogoAddUserIdInput.value = '';
+                shogoAddUserIdInput.dataset.userKey = '';
+                shogoAddTitleInput.value = '';
+                setStatus(saveStatus, `設定状態: ${matched?.nickname || uniqueId} の称号を登録しました。`, 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        async function deleteShogoTitleEntry(uniqueId) {
+            try {
+                const response = await fetch(`/api/widgets/shogo/titles?uniqueId=${encodeURIComponent(uniqueId)}`, { method: 'DELETE' });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '称号の削除に失敗しました。');
+                state.shogoTitles = payload.titles || state.shogoTitles;
+                renderShogoTitleList(state.shogoTitles);
+                setStatus(saveStatus, '設定状態: 称号を削除しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        async function loadKnownShogoUsers() {
+            try {
+                const response = await fetch('/api/users/recent');
+                const payload = await response.json();
+                state.knownShogoUsers = Array.isArray(payload.users) ? payload.users : [];
+            } catch {
+                state.knownShogoUsers = [];
+            }
+        }
+
+        UserSuggest.attachSuggestField({
+            input: shogoAddUserIdInput,
+            panel: shogoAddUserSuggestionPanel,
+            getUsers: () => state.knownShogoUsers || [],
+            onSelect: (user) => {
+                shogoAddUserIdInput.value = user.uniqueId || '';
+                shogoAddUserIdInput.dataset.userKey = user.uniqueId || '';
+                shogoAddTitleInput.focus();
+            },
+            escapeHtml
+        });
+
         GiftSuggest.attachSuggestField({
             input: triggerX5GiftNameInput,
             panel: triggerX5GiftSuggestionPanel,
@@ -2571,6 +2730,8 @@
             state.timerSettings = payload.timerPayload?.settings || state.timerSettings;
             state.timerRuntime = payload.timerPayload?.runtime || state.timerRuntime;
             state.triggerX5Settings = payload.triggerX5Payload?.settings || state.triggerX5Settings;
+            state.shogoSettings = payload.shogoPayload?.settings || state.shogoSettings;
+            state.shogoTitles = payload.shogoPayload?.titles || state.shogoTitles || {};
             state.coinListSettings = payload.coinListSettings || state.coinListSettings;
             state.goalGiftItems = Array.isArray(payload.goalGiftItems) ? payload.goalGiftItems : [];
 
@@ -2598,6 +2759,7 @@
             tapGoalUrl.textContent = state.widgetUrls.tapGoalLoaderUrl || state.widgetUrls.tapGoalOverlayUrl || '未取得';
             timerUrl.textContent = state.widgetUrls.timerLoaderUrl || state.widgetUrls.timerOverlayUrl || '未取得';
             triggerX5Url.textContent = state.widgetUrls.triggerX5LoaderUrl || state.widgetUrls.triggerX5OverlayUrl || '未取得';
+            shogoUrl.textContent = state.widgetUrls.shogoLoaderUrl || state.widgetUrls.shogoOverlayUrl || '未取得';
             coinListUrl.textContent = state.widgetUrls.coinListLoaderUrl || state.widgetUrls.coinListOverlayUrl || '未取得';
             giftJarUrl.textContent = state.widgetUrls.giftJarLoaderUrl || state.widgetUrls.giftJarOverlayUrl || '未取得';
             if (customJarUrl) customJarUrl.textContent = window.location.origin + '/overlays/custom-jar?jar=custom';
@@ -2613,6 +2775,8 @@
             applyTimerSettingsToForm(state.timerSettings);
             updateTimerStatusLabel();
             applyTriggerX5SettingsToForm(state.triggerX5Settings);
+            applyShogoSettingsToForm(state.shogoSettings);
+            renderShogoTitleList(state.shogoTitles);
             applyCoinListSettingsToForm(state.coinListSettings);
             renderGoalGiftRows();
             refreshContributorsPreview();
@@ -3200,6 +3364,29 @@
         document.getElementById('test-trigger-x5-button').addEventListener('click', () => {
             fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
         });
+        shogoEnabledInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
+        shogoBadgeEnabledInput.addEventListener('change', () => {
+            saveShogoSettingsImmediately().catch(() => {});
+            refreshShogoPreview({ forceReload: true });
+        });
+        shogoDisplaySecondsInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
+        shogoAddTitleButton.addEventListener('click', () => { addShogoTitle().catch(() => {}); });
+        shogoAddTitleInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                addShogoTitle().catch(() => {});
+            }
+        });
+        document.getElementById('open-shogo-overlay-button').addEventListener('click', () => {
+            const url = state.widgetUrls.shogoOverlayUrl || '/overlays/shogo-title';
+            openWindow(url, 'shogo-overlay-window', { width: 480, height: 320 });
+        });
+        document.getElementById('copy-shogo-url-button').addEventListener('click', async () => {
+            await copyText(state.widgetUrls.shogoLoaderUrl || state.widgetUrls.shogoOverlayUrl || '');
+        });
+        document.getElementById('test-shogo-button').addEventListener('click', () => {
+            fetch('/api/widgets/shogo/test', { method: 'POST' }).catch(() => {});
+        });
         tapGoalOrientationSelect.addEventListener('change', () => {
             saveTapGoalSettingsImmediately().catch(() => {});
             refreshTapGoalPreview({ forceReload: true });
@@ -3545,7 +3732,7 @@
             }
         }, true);
 
-        Promise.all([loadGiftCatalog(), loadConfig()]).catch((error) => {
+        Promise.all([loadGiftCatalog(), loadConfig(), loadKnownShogoUsers()]).catch((error) => {
             setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
         });
 

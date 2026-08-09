@@ -81,6 +81,10 @@ const WIDGET_TIMER_TEXT_STYLE_STATE_KEY = 'widget_timer_text_style';
 const WIDGET_TIMER_STROKE_WIDTH_STATE_KEY = 'widget_timer_stroke_width';
 const WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY = 'widget_trigger_gifts_appearance';
 const WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY = 'widget_trigger_x5_settings';
+const WIDGET_SHOGO_SETTINGS_STATE_KEY = 'widget_shogo_settings';
+const WIDGET_SHOGO_TITLES_STATE_KEY = 'widget_shogo_titles';
+// 称号ウィジェットの発動条件ギフト（"ハートミー"の英語giftName、小文字比較）。
+const WIDGET_SHOGO_TRIGGER_GIFT_NAME = 'heart me';
 // イベントトリガーのギフト選択に表示する疑似ギフト名（フォロー/リフォロー発火用）。
 // フロント側の対応値: backend/public/db/effects-gift-suggest.js の FOLLOW_TRIGGER_GIFT_NAME と同期すること。
 const EFFECT_TRIGGER_FOLLOW_GIFT_NAME = 'フォロー・リフォロー';
@@ -509,6 +513,9 @@ module.exports = {
     WIDGET_TIMER_STROKE_WIDTH_STATE_KEY,
     WIDGET_TRIGGER_GIFTS_APPEARANCE_STATE_KEY,
     WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY,
+    WIDGET_SHOGO_SETTINGS_STATE_KEY,
+    WIDGET_SHOGO_TITLES_STATE_KEY,
+    WIDGET_SHOGO_TRIGGER_GIFT_NAME,
     EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
     EXPORTABLE_SCOPED_SETTINGS_KEYS,

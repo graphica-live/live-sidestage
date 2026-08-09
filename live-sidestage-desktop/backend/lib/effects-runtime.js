@@ -18,6 +18,7 @@ module.exports = function createEffectsRuntime({
     sendVdjEffectForEvent,
     followTriggerGiftName,
     maybeActivateTriggerX5Window,
+    maybeEmitShogoDisplay,
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
@@ -375,6 +376,7 @@ module.exports = function createEffectsRuntime({
     function tryRunEffectTriggersForGift(giftEvent) {
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
         maybeActivateTriggerX5Window(giftEvent);
+        maybeEmitShogoDisplay(giftEvent);
         speculativelyPreloadUserVideos(userId);
         return tryRunEffectTriggers({
             type: 'gift',
@@ -392,6 +394,7 @@ module.exports = function createEffectsRuntime({
 
         if (giftComboState?.isFirstTick) {
             maybeActivateTriggerX5Window(giftEvent);
+            maybeEmitShogoDisplay(giftEvent);
             speculativelyPreloadUserVideos(userId);
         }
 

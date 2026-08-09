@@ -278,6 +278,14 @@ module.exports = function registerPageRoutes({
         return res.redirect('/overlays/trigger-x5');
     });
 
+    app.get(['/overlays/shogo-title', '/overlays/widgets/shogo-title'], (req, res) => {
+        if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
+        return res.sendFile(path.join(PUBLIC_DIRECTORY, 'widgets', 'shogo-title.html'));
+    });
+    app.get(['/overlays/shogo-title/index.html', '/overlays/widgets/shogo-title/index.html'], (req, res) => {
+        return res.redirect('/overlays/shogo-title');
+    });
+
     app.get('/virtualdj', (req, res) => {
         if (!hasConfiguredBroadcasterId()) return res.redirect('/setup');
         return res.sendFile(path.join(DB_STATIC_DIRECTORY, 'virtualdj.html'));

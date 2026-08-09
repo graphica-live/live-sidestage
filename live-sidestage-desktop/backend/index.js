@@ -544,7 +544,9 @@ function buildWidgetUrls(req) {
         timerOverlayUrl: `${origin}/overlays/timer`,
         timerLoaderUrl: `${loaderOrigin}/overlays/timer`,
         triggerX5OverlayUrl: `${origin}/overlays/trigger-x5`,
-        triggerX5LoaderUrl: `${loaderOrigin}/overlays/trigger-x5`
+        triggerX5LoaderUrl: `${loaderOrigin}/overlays/trigger-x5`,
+        shogoOverlayUrl: `${origin}/overlays/shogo-title`,
+        shogoLoaderUrl: `${loaderOrigin}/overlays/shogo-title`
     };
 }
 
@@ -1302,6 +1304,17 @@ const {
 });
 
 const {
+    getWidgetShogoSettings, setWidgetShogoSettings,
+    getShogoTitles, setShogoTitle, deleteShogoTitle,
+    buildShogoPayload, maybeEmitShogoDisplay, emitShogoTest,
+} = require('./lib/shogo-state')({
+    io,
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTimestamp: (...args) => getTimestamp(...args),
+});
+
+const {
     getTimerSettings, setTimerSettings, getTimerDurationMs,
     getTimerRuntime, setTimerRuntime, getTimerRemainingMs,
     startTimer, pauseTimer, resetTimer, adjustTimerByMinutes,
@@ -1404,6 +1417,7 @@ const {
     sendVdjEffectForEvent,
     followTriggerGiftName: EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     maybeActivateTriggerX5Window,
+    maybeEmitShogoDisplay,
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
@@ -2689,6 +2703,7 @@ require('./lib/routes/widgets/config')({
     getWidgetTapGoalSettings, getTapGoalWidgetTextAppearance, buildTapGoalPayload,
     getTimerWidgetTextAppearance, buildTimerPayload,
     buildTriggerX5Payload,
+    buildShogoPayload,
 });
 
 require('./lib/routes/widgets/top-gift')({
@@ -2788,6 +2803,15 @@ require('./lib/routes/widgets/trigger-x5')({
     buildTriggerX5Payload,
     emitTriggerX5Win,
     cachedTikTokGiftCatalog: tiktokState.giftCatalog,
+});
+
+require('./lib/routes/widgets/shogo')({
+    app, io,
+    setWidgetShogoSettings,
+    buildShogoPayload,
+    setShogoTitle,
+    deleteShogoTitle,
+    emitShogoTest,
 });
 
 require('./lib/routes/widgets/timer')({

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>称号</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", "Yu Gothic UI", sans-serif;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        .shogo-slot {
+            position: absolute;
+            right: 32px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .shogo-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 26px 14px 18px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.88) 100%);
+            border: 2px solid rgba(251, 191, 36, 0.65);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            white-space: nowrap;
+        }
+
+        .shogo-badge {
+            flex: 0 0 auto;
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+        }
+
+        .shogo-title-text {
+            font-size: 28px;
+            font-weight: 900;
+            color: #fff8e1;
+            -webkit-text-stroke: 3px rgba(15, 23, 42, 0.95);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            letter-spacing: 0.02em;
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage">
+        <div class="shogo-slot" id="shogo-slot"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        const slotEl = document.getElementById('shogo-slot');
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        const SLIDE_MS = 480;
+        const DEFAULT_HOLD_SECONDS = 6;
+
+        let displayQueue = Promise.resolve();
+
+        function showOne(data) {
+            return new Promise((resolve) => {
+                const title = escapeHtml(String(data?.title || '').slice(0, 40));
+
+                if (!title) {
+                    resolve();
+                    return;
+                }
+
+                const badgeEnabled = data?.badgeEnabled !== false;
+                const badgeHtml = badgeEnabled
+                    ? `<img class="shogo-badge" src="/widgets/badge.png" alt="">`
+                    : '';
+
+                const holdSeconds = Math.max(1, Number(data?.displaySeconds) || DEFAULT_HOLD_SECONDS);
+                const holdMs = holdSeconds * 1000;
+                const totalMs = SLIDE_MS * 2 + holdMs;
+
+                const card = document.createElement('div');
+                card.className = 'shogo-card';
+                card.innerHTML = `${badgeHtml}<div class="shogo-title-text">${title}</div>`;
+                slotEl.appendChild(card);
+
+                const animation = card.animate([
+                    { transform: 'translateX(140%)', opacity: 0, offset: 0 },
+                    { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs },
+                    { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs },
+                    { transform: 'translateX(140%)', opacity: 0, offset: 1 }
+                ], {
+                    duration: totalMs,
+                    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                    fill: 'forwards'
+                });
+
+                animation.onfinish = () => {
+                    card.remove();
+                    resolve();
+                };
+            });
+        }
+
+        function enqueueShow(data) {
+            displayQueue = displayQueue.then(() => showOne(data)).catch(() => {});
+        }
+
+        socket.on('widgets:shogo:show', enqueueShow);
+
+        if (previewMode) {
+            const runSample = () => enqueueShow({ title: '常連さん', badgeEnabled: true, displaySeconds: DEFAULT_HOLD_SECONDS });
+            runSample();
+            window.setInterval(runSample, (SLIDE_MS * 2 + DEFAULT_HOLD_SECONDS * 1000) + 1600);
+        }
+    </script>
+</body>
+</html>
