@@ -12,17 +12,23 @@ const fs = require('fs');
 // このブロックは /db/gift-ja-editor.html からの手動入力で自動書き換えされる。
 // GIFT_NAME_JA_MAP:START
 const GIFT_NAME_JA_MAP = {
-    'rosa': 'ローザ',
-    'swan': '白鳥',
-    'train': '列車',
-    'fireworks': '花火',
-    'whale diving': 'クジラのダイビング',
-    'lili the leopard': 'ヒョウのリリー',
-    'sports car': 'スポーツカー',
-    'leon and lili': 'レオンとリリー',
-    'falcon': 'ハヤブサ',
-    'amusement park': '遊園地',
-    'dragon flame': 'ドラゴンの炎'
+    "amusement park": "遊園地",
+    "baseball": "野球",
+    "creeper": "クリーパー",
+    "dragon flame": "ドラゴンの炎",
+    "falcon": "ハヤブサ",
+    "finger heart": "フィンガーハート",
+    "fire phoenix": "ファイアフェニックス",
+    "fireworks": "花火",
+    "leon and lili": "レオンとリリー",
+    "lili the leopard": "ヒョウのリリー",
+    "overreact": "オーバーなリアクション",
+    "pegasus": "ホワイトペガサス",
+    "rosa": "ローザ",
+    "sports car": "スポーツカー",
+    "swan": "白鳥",
+    "train": "列車",
+    "whale diving": "クジラのダイビング"
 };
 // GIFT_NAME_JA_MAP:END
 
