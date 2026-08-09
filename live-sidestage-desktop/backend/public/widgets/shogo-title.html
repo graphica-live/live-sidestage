@@ -147,15 +147,20 @@
                     card.style.top = `${tops[index]}px`;
                     card.style.visibility = 'visible';
 
+                    // easing はキーフレームごとに指定する。トップレベルの単一 easing だと
+                    // 「登場(SLIDE_MS)」「保持(holdMs)」「退場(SLIDE_MS)」という長さの大きく違う
+                    // 区間全体に同じ曲線が伸び縮みして適用され、especially cubic-bezier(0.22,1,0.36,1)
+                    // のような両制御点がy=1の曲線だと登場区間がほぼ一瞬で終わって見えていた
+                    // （"速すぎる"の正体）。区間ごとに easing を持たせることで、SLIDE_MS の変更が
+                    // そのまま体感速度に反映される。
                     return card.animate([
-                        { transform: 'translateX(140%)', opacity: 0, offset: 0 },
-                        { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs },
-                        { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs },
+                        { transform: 'translateX(140%)', opacity: 0, offset: 0, easing: 'ease-out' },
+                        { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs, easing: 'linear' },
+                        { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs, easing: 'ease-in' },
                         { transform: 'translateX(140%)', opacity: 0, offset: 1 }
                     ], {
                         duration: totalMs,
                         delay: index * STAGGER_MS,
-                        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
                         // fill:'forwards' だと delay 中は未アニメーション状態（＝素の見た目）が
                         // 描画されてしまい、2枚目以降が本来のスライドインより先に一瞬フル表示される
                         // 「チラつき」の原因になっていた。'both' で delay 中も先頭キーフレーム
