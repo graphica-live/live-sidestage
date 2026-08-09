@@ -95,8 +95,8 @@
             return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        const SLIDE_MS = 480;
-        const STAGGER_MS = 90;
+        const SLIDE_MS = 650;
+        const STAGGER_MS = 220;
         const CARD_GAP = 10;
         const DEFAULT_HOLD_SECONDS = 6;
 
@@ -156,7 +156,11 @@
                         duration: totalMs,
                         delay: index * STAGGER_MS,
                         easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-                        fill: 'forwards'
+                        // fill:'forwards' だと delay 中は未アニメーション状態（＝素の見た目）が
+                        // 描画されてしまい、2枚目以降が本来のスライドインより先に一瞬フル表示される
+                        // 「チラつき」の原因になっていた。'both' で delay 中も先頭キーフレーム
+                        // （画面外・透明）を適用させる。
+                        fill: 'both'
                     });
                 });
 
