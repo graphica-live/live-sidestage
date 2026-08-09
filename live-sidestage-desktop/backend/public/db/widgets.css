@@ -1046,22 +1046,6 @@
             flex-wrap: wrap;
         }
 
-        .shogo-size-toggle {
-            display: flex;
-            gap: 4px;
-        }
-
-        .shogo-size-toggle .ghost-button {
-            padding: 8px 12px;
-            font-size: 13px;
-        }
-
-        .shogo-size-toggle .ghost-button.is-active {
-            border-color: rgba(194, 65, 12, 0.42);
-            background: rgba(255, 237, 213, 0.92);
-            color: var(--accent-strong);
-        }
-
         .shogo-user-group {
             padding: 10px 0;
         }

@@ -1822,10 +1822,7 @@
                             <button type="button" class="ghost-button" data-shogo-badge-trigger="${escapeHtml(entryKey)}" style="display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:12px;white-space:nowrap;">
                                 ${badgeThumbHtml}<span>${escapeHtml(badge?.label || 'バッジ')}</span>
                             </button>
-                            <div class="shogo-size-toggle" data-shogo-size-toggle="${escapeHtml(entryKey)}">
-                                <button type="button" class="ghost-button${!isLarge ? ' is-active' : ''}" data-shogo-size="small">小</button>
-                                <button type="button" class="ghost-button${isLarge ? ' is-active' : ''}" data-shogo-size="large">大</button>
-                            </div>
+                            <button type="button" class="ghost-button" data-shogo-size-toggle="${escapeHtml(entryKey)}" data-shogo-size="${isLarge ? 'large' : 'small'}" style="padding:5px 9px;font-size:12px;white-space:nowrap;">サイズ: ${isLarge ? '大' : '小'}</button>
                             <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(entryKey)}" title="削除" aria-label="削除">🗑</button>
                             <button type="button" class="ghost-button icon-button shogo-drag-handle" data-shogo-drag-handle title="ドラッグして並び替え" aria-label="ドラッグして並び替え">☰</button>
                         </div>
@@ -1874,12 +1871,11 @@
                 });
             });
 
-            shogoTitleList.querySelectorAll('[data-shogo-size-toggle]').forEach((container) => {
-                container.querySelectorAll('[data-shogo-size]').forEach((button) => {
-                    button.addEventListener('click', () => {
-                        const { uniqueId, entryId } = parseShogoEntryKey(container.dataset.shogoSizeToggle);
-                        updateShogoEntry(uniqueId, entryId, { size: button.dataset.shogoSize }).catch(() => {});
-                    });
+            shogoTitleList.querySelectorAll('[data-shogo-size-toggle]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const { uniqueId, entryId } = parseShogoEntryKey(button.dataset.shogoSizeToggle);
+                    const nextSize = button.dataset.shogoSize === 'large' ? 'small' : 'large';
+                    updateShogoEntry(uniqueId, entryId, { size: nextSize }).catch(() => {});
                 });
             });
         }
@@ -2015,15 +2011,12 @@
         });
 
         function updateShogoAddSizeToggle() {
-            shogoAddSizeToggle.querySelectorAll('[data-shogo-size]').forEach((button) => {
-                button.classList.toggle('is-active', button.dataset.shogoSize === shogoAddSize);
-            });
+            shogoAddSizeToggle.dataset.shogoSize = shogoAddSize;
+            shogoAddSizeToggle.textContent = shogoAddSize === 'large' ? 'サイズ: 大' : 'サイズ: 小';
         }
 
-        shogoAddSizeToggle.addEventListener('click', (event) => {
-            const button = event.target.closest('[data-shogo-size]');
-            if (!button) return;
-            shogoAddSize = button.dataset.shogoSize;
+        shogoAddSizeToggle.addEventListener('click', () => {
+            shogoAddSize = shogoAddSize === 'large' ? 'small' : 'large';
             updateShogoAddSizeToggle();
         });
 
