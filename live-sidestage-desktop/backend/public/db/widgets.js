@@ -1881,7 +1881,7 @@
         }
 
         async function addShogoTitle() {
-            const uniqueId = (shogoAddUserIdInput.dataset.userKey || shogoAddUserIdInput.value).trim().replace(/^@+/, '');
+            const uniqueId = shogoAddUserIdInput.value.trim().replace(/^@+/, '');
             const title = shogoAddTitleInput.value.trim();
 
             if (!uniqueId || !title) {
@@ -2093,7 +2093,6 @@
             getUsers: () => state.knownShogoUsers || [],
             onSelect: (user) => {
                 shogoAddUserIdInput.value = user.uniqueId || '';
-                shogoAddUserIdInput.dataset.userKey = user.uniqueId || '';
                 shogoAddTitleInput.focus();
             },
             escapeHtml
