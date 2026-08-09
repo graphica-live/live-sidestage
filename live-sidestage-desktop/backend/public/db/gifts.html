@@ -396,6 +396,26 @@
             font-size: 9px;
         }
 
+        .popout-gift-image-wrap {
+            position: relative;
+            display: inline-flex;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-repeat-badge {
+            position: absolute;
+            right: -4px;
+            bottom: -4px;
+            padding: 0 4px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.5;
+            pointer-events: none;
+        }
+
         .popout-gift-coins {
             flex: 0 0 auto;
             min-width: 5ch;
@@ -1104,6 +1124,14 @@
             tableBody.appendChild(fragment);
         }
 
+        // まとめ投げ（コンボ）の個数バッジ。1個だけの通常ギフトでは表示しない。
+        function buildGiftRepeatBadgeMarkup(gift) {
+            const repeatCount = Number(gift.repeatCount) || 1;
+            return repeatCount > 1
+                ? `<span class="popout-gift-repeat-badge">×${escapeHtml(formatNumber(repeatCount))}</span>`
+                : '';
+        }
+
         function buildPopoutGiftItem(gift) {
             const item = document.createElement('li');
             item.className = 'popout-gift-item';
@@ -1125,14 +1153,14 @@
                     ? `<a class="popout-gift-user-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${userLinkMarkup}</a>`
                     : userLinkMarkup}
                 <span class="popout-gift-name">${escapeHtml(gift.giftNameJa || gift.giftName || '不明')}</span>
-                ${giftImageMarkup}
+                <span class="popout-gift-image-wrap">${giftImageMarkup}${buildGiftRepeatBadgeMarkup(gift)}</span>
                 <span class="popout-gift-coins">🪙 ${escapeHtml(formatNumber(gift.totalGifts))}</span>
             `;
             return item;
         }
 
-        // まとめ投げの pending 中は同じ li を使い回す（diff:true）ため、コイン数/ギフト名だけを
-        // 上書きして最新のカウントを反映する。アバター・ギフト画像は再読み込みのチラつきを
+        // まとめ投げの pending 中は同じ li を使い回す（diff:true）ため、コイン数/ギフト名/個数バッジ
+        // だけを上書きして最新のカウントを反映する。アバター・ギフト画像は再読み込みのチラつきを
         // 避けるためここでは触らない。
         function updatePopoutGiftItem(item, gift) {
             const nameEl = item.querySelector('.popout-gift-name');
@@ -1142,6 +1170,21 @@
             const coinsEl = item.querySelector('.popout-gift-coins');
             if (coinsEl) {
                 coinsEl.textContent = `🪙 ${formatNumber(gift.totalGifts)}`;
+            }
+            const imageWrap = item.querySelector('.popout-gift-image-wrap');
+            if (imageWrap) {
+                let badgeEl = imageWrap.querySelector('.popout-gift-repeat-badge');
+                const repeatCount = Number(gift.repeatCount) || 1;
+                if (repeatCount > 1) {
+                    if (!badgeEl) {
+                        badgeEl = document.createElement('span');
+                        badgeEl.className = 'popout-gift-repeat-badge';
+                        imageWrap.appendChild(badgeEl);
+                    }
+                    badgeEl.textContent = `×${formatNumber(repeatCount)}`;
+                } else if (badgeEl) {
+                    badgeEl.remove();
+                }
             }
         }
 
