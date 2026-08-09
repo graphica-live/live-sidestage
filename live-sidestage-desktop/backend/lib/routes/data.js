@@ -28,6 +28,8 @@ module.exports = function registerDataRoutes({
     deleteGiftEvent,
     deleteContributor,
     resetContributorsForDay,
+    getGiftDisplayNameJa,
+    setGiftDisplayNameJa,
 }) {
     app.get('/api/days', (req, res) => {
         res.json({
@@ -138,6 +140,25 @@ module.exports = function registerDataRoutes({
             });
         } catch (error) {
             return res.status(500).json({ ok: false, error: error?.message || 'TikTok ギフト一覧の取得に失敗しました。' });
+        }
+    });
+
+    app.post('/api/gift-name-ja', (req, res) => {
+        const name = typeof req.body?.name === 'string' ? req.body.name : '';
+        const value = typeof req.body?.value === 'string' ? req.body.value : '';
+
+        if (!name.trim()) {
+            return res.status(400).json({ ok: false, error: 'name is required' });
+        }
+
+        try {
+            const result = setGiftDisplayNameJa(name, value);
+            if (!result.ok) {
+                return res.status(400).json(result);
+            }
+            return res.json({ ok: true, name, nameJa: getGiftDisplayNameJa(name) });
+        } catch (error) {
+            return res.status(500).json({ ok: false, error: error?.message || '保存に失敗しました。' });
         }
     });
 
