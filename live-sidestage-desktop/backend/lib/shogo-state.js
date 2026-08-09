@@ -5,7 +5,6 @@ const { normalizeBroadcasterId, normalizeEffectText, normalizeBooleanInput } = r
 
 const DEFAULT_SHOGO_SETTINGS = {
     enabled: true,
-    badgeEnabled: true,
     displaySeconds: 6,
 };
 
@@ -34,7 +33,6 @@ function normalizeShogoSettings(value) {
 
     return {
         enabled: normalizeBooleanInput(source.enabled, DEFAULT_SHOGO_SETTINGS.enabled),
-        badgeEnabled: normalizeBooleanInput(source.badgeEnabled, DEFAULT_SHOGO_SETTINGS.badgeEnabled),
         displaySeconds: normalizeShogoDisplaySeconds(source.displaySeconds),
     };
 }
@@ -68,6 +66,7 @@ function normalizeShogoTitlesState(value) {
             title,
             nickname: normalizeEffectText(typeof entry === 'string' ? '' : entry?.nickname, 80),
             image: normalizeEffectText(typeof entry === 'string' ? '' : entry?.image, 500),
+            badgeEnabled: typeof entry === 'string' ? true : normalizeBooleanInput(entry?.badgeEnabled, true),
         };
     });
 
@@ -97,7 +96,7 @@ module.exports = function createShogoState({
         return normalizeShogoTitlesState(getScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY));
     }
 
-    function setShogoTitle({ uniqueId, title, nickname, image }) {
+    function setShogoTitle({ uniqueId, title, nickname, image, badgeEnabled }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const normalizedTitle = normalizeEffectText(title, 40);
 
@@ -110,6 +109,7 @@ module.exports = function createShogoState({
             title: normalizedTitle,
             nickname: normalizeEffectText(nickname, 80),
             image: normalizeEffectText(image, 500),
+            badgeEnabled: normalizeBooleanInput(badgeEnabled, true),
         };
         setScopedStateValue(WIDGET_SHOGO_TITLES_STATE_KEY, JSON.stringify(current));
         return current[normalizedUid];
@@ -176,7 +176,7 @@ module.exports = function createShogoState({
             nickname: giftEvent?.nickname || entry.nickname || normalizedUid,
             image: giftEvent?.image || entry.image || '',
             title: entry.title,
-            badgeEnabled: settings.badgeEnabled,
+            badgeEnabled: entry.badgeEnabled,
             displaySeconds: settings.displaySeconds,
         });
     }
@@ -188,7 +188,7 @@ module.exports = function createShogoState({
             nickname: 'テストリスナー',
             image: '',
             title: '常連さん',
-            badgeEnabled: settings.badgeEnabled,
+            badgeEnabled: true,
             displaySeconds: settings.displaySeconds,
         });
     }

@@ -72,11 +72,11 @@
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
         const shogoEnabledInput = document.getElementById('shogo-enabled');
-        const shogoBadgeEnabledInput = document.getElementById('shogo-badge-enabled');
         const shogoDisplaySecondsInput = document.getElementById('shogo-display-seconds');
         const shogoAddUserIdInput = document.getElementById('shogo-add-user-id');
         const shogoAddUserSuggestionPanel = document.getElementById('shogo-add-user-suggestion-panel');
         const shogoAddTitleInput = document.getElementById('shogo-add-title');
+        const shogoAddBadgeEnabledInput = document.getElementById('shogo-add-badge-enabled');
         const shogoAddTitleButton = document.getElementById('shogo-add-title-button');
         const shogoTitleList = document.getElementById('shogo-title-list');
         const shogoUrl = document.getElementById('shogo-url');
@@ -1663,9 +1663,8 @@
         }
 
         function applyShogoSettingsToForm(settings) {
-            const s = settings || { enabled: true, badgeEnabled: true, displaySeconds: 6 };
+            const s = settings || { enabled: true, displaySeconds: 6 };
             shogoEnabledInput.checked = Boolean(s.enabled);
-            shogoBadgeEnabledInput.checked = Boolean(s.badgeEnabled);
             shogoDisplaySecondsInput.value = String(Number.parseInt(String(s.displaySeconds ?? 6), 10) || 6);
             refreshShogoPreview();
         }
@@ -1688,7 +1687,6 @@
         function getDraftShogoSettings() {
             return {
                 enabled: shogoEnabledInput.checked,
-                badgeEnabled: shogoBadgeEnabledInput.checked,
                 displaySeconds: Number.parseInt(shogoDisplaySecondsInput.value, 10) || 6
             };
         }
@@ -1729,6 +1727,10 @@
                         <div class="subtext" style="font-size:12px;">@${escapeHtml(uniqueId)}</div>
                     </div>
                     <div style="font-weight:700;color:var(--accent);white-space:nowrap;">${escapeHtml(entry.title)}</div>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;">
+                        <input type="checkbox" data-shogo-badge-toggle="${escapeHtml(uniqueId)}" ${entry.badgeEnabled ? 'checked' : ''} style="width:auto;">
+                        バッジ
+                    </label>
                     <button type="button" class="danger icon-button" data-shogo-delete="${escapeHtml(uniqueId)}" title="削除" aria-label="削除">🗑</button>
                 </div>
             `).join('');
@@ -1736,6 +1738,12 @@
             shogoTitleList.querySelectorAll('[data-shogo-delete]').forEach((button) => {
                 button.addEventListener('click', () => {
                     deleteShogoTitleEntry(button.dataset.shogoDelete).catch(() => {});
+                });
+            });
+
+            shogoTitleList.querySelectorAll('[data-shogo-badge-toggle]').forEach((checkbox) => {
+                checkbox.addEventListener('change', () => {
+                    toggleShogoBadgeEnabled(checkbox.dataset.shogoBadgeToggle, checkbox.checked).catch(() => {});
                 });
             });
         }
@@ -1760,7 +1768,8 @@
                         uniqueId,
                         title,
                         nickname: matched?.nickname || uniqueId,
-                        image: matched?.image || ''
+                        image: matched?.image || '',
+                        badgeEnabled: shogoAddBadgeEnabledInput.checked
                     })
                 });
                 const payload = await response.json();
@@ -1770,9 +1779,39 @@
                 shogoAddUserIdInput.value = '';
                 shogoAddUserIdInput.dataset.userKey = '';
                 shogoAddTitleInput.value = '';
+                shogoAddBadgeEnabledInput.checked = true;
                 setStatus(saveStatus, `設定状態: ${matched?.nickname || uniqueId} の称号を登録しました。`, 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        async function toggleShogoBadgeEnabled(uniqueId, badgeEnabled) {
+            const entry = (state.shogoTitles || {})[uniqueId];
+
+            if (!entry) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/widgets/shogo/titles', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        uniqueId,
+                        title: entry.title,
+                        nickname: entry.nickname,
+                        image: entry.image,
+                        badgeEnabled
+                    })
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'バッジ表示の更新に失敗しました。');
+                state.shogoTitles = payload.titles || state.shogoTitles;
+                renderShogoTitleList(state.shogoTitles);
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+                renderShogoTitleList(state.shogoTitles);
             }
         }
 
@@ -3365,10 +3404,6 @@
             fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
         });
         shogoEnabledInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
-        shogoBadgeEnabledInput.addEventListener('change', () => {
-            saveShogoSettingsImmediately().catch(() => {});
-            refreshShogoPreview({ forceReload: true });
-        });
         shogoDisplaySecondsInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
         shogoAddTitleButton.addEventListener('click', () => { addShogoTitle().catch(() => {}); });
         shogoAddTitleInput.addEventListener('keydown', (event) => {

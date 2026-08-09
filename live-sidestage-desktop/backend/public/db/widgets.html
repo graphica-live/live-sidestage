@@ -795,12 +795,6 @@
                                     <label for="shogo-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">称号ウィジェットを有効化</label>
                                 </div>
                             </div>
-                            <div class="field full">
-                                <div class="toggle" style="width:100%;box-sizing:border-box;">
-                                    <input type="checkbox" id="shogo-badge-enabled">
-                                    <label for="shogo-badge-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">称号バッジ画像を表示</label>
-                                </div>
-                            </div>
                             <div class="field">
                                 <label for="shogo-display-seconds">表示時間（秒）</label>
                                 <input id="shogo-display-seconds" type="number" min="1" max="30" step="1" inputmode="numeric" placeholder="6">
@@ -813,6 +807,10 @@
                                         <div class="gift-suggestion-panel" id="shogo-add-user-suggestion-panel" hidden></div>
                                     </div>
                                     <input id="shogo-add-title" type="text" maxlength="40" placeholder="称号（例: 常連さん）" style="flex:1;min-width:120px;">
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);white-space:nowrap;cursor:pointer;">
+                                        <input type="checkbox" id="shogo-add-badge-enabled" checked style="width:auto;">
+                                        バッジを表示
+                                    </label>
                                     <button type="button" class="ghost-button" id="shogo-add-title-button">追加</button>
                                 </div>
                             </div>
