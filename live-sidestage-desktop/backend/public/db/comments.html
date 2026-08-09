@@ -149,6 +149,11 @@
             font-size: var(--popout-comment-font-size) !important;
         }
 
+        /* リスナー名はコメント本文より20%小さく表示する */
+        html.is-popout .comment-author strong {
+            font-size: calc(var(--popout-comment-font-size) * 0.8) !important;
+        }
+
         /* 透明カード上でも背景を問わず読めるよう、名前・本文に強めのコントラストと縁取りを付ける */
         html.is-popout .comment-author strong {
             color: #7dd3fc !important;
