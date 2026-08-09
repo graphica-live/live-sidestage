@@ -30,6 +30,7 @@ module.exports = function registerDataRoutes({
     resetContributorsForDay,
     getGiftDisplayNameJa,
     setGiftDisplayNameJa,
+    giftNameJaReferenceList,
 }) {
     app.get('/api/days', (req, res) => {
         res.json({
@@ -141,6 +142,10 @@ module.exports = function registerDataRoutes({
         } catch (error) {
             return res.status(500).json({ ok: false, error: error?.message || 'TikTok ギフト一覧の取得に失敗しました。' });
         }
+    });
+
+    app.get('/api/gift-name-ja/reference-list', (req, res) => {
+        return res.json({ list: giftNameJaReferenceList || [] });
     });
 
     app.post('/api/gift-name-ja', (req, res) => {

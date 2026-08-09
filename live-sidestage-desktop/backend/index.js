@@ -33,6 +33,7 @@ const {
 } = tikTokHelpers;
 const { firstDefinedString, normalizeBooleanInput, normalizeHexColor, normalizeEffectText, hasJapaneseText, normalizeWholeNumber, normalizeBroadcasterId } = require('./lib/utils');
 const { getGiftDisplayNameJa, setGiftDisplayNameJa } = require('./lib/gift-name-ja');
+const { GIFT_NAME_JA_REFERENCE_LIST } = require('./lib/gift-name-ja-reference-list');
 const giftCatalogModule = require('./lib/tiktok-gift-catalog');
 const {
     getTikTokGiftImageUrl,
@@ -2864,6 +2865,7 @@ require('./lib/routes/data')({
     resetContributorsForDay,
     getGiftDisplayNameJa,
     setGiftDisplayNameJa,
+    giftNameJaReferenceList: GIFT_NAME_JA_REFERENCE_LIST,
 });
 
 
