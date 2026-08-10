@@ -870,6 +870,7 @@
 
         let selectedDayKey = null;
         let currentDisplayDayKey = null;
+        let isFollowingToday = true;
         let currentSortOrder = 'timestamp-asc';
         let currentGifts = [];
         let popoutFlashNewEnabled = true;
@@ -1572,6 +1573,7 @@
                 return;
             }
 
+            isFollowingToday = false;
             loadGifts(dayInput.value).catch(() => {
                 renderTable([]);
             });
@@ -1641,6 +1643,15 @@
             if (!selectedDayKey && payload?.displayDayKey) {
                 selectedDayKey = payload.displayDayKey;
                 dayInput.value = selectedDayKey;
+            }
+
+            // 「今日」を追従表示中に日付を跨いだ場合は選択日を新しい日付へ切り替える。
+            if (isFollowingToday && payload?.todayDayKey && payload.todayDayKey !== selectedDayKey) {
+                selectedDayKey = payload.todayDayKey;
+                dayInput.value = selectedDayKey;
+                loadGifts(selectedDayKey, { scrollToLatest: true }).catch(() => {
+                });
+                return;
             }
 
             if (payload?.dayKey && payload.dayKey === selectedDayKey) {
