@@ -82,6 +82,13 @@
         const shogoFilterTitleInput = document.getElementById('shogo-filter-title');
         const shogoUrl = document.getElementById('shogo-url');
         const shogoPreviewFrame = document.getElementById('shogo-preview-frame');
+        const shogoMonthlyMvpEnabledInput = document.getElementById('shogo-monthly-mvp-enabled');
+        const shogoMonthlyMvpBaseUrlInput = document.getElementById('shogo-monthly-mvp-base-url');
+        const shogoMonthlyMvpApiKeyInput = document.getElementById('shogo-monthly-mvp-api-key');
+        const shogoMonthlyMvpSaveButton = document.getElementById('shogo-monthly-mvp-save-button');
+        const shogoMonthlyMvpTestButton = document.getElementById('shogo-monthly-mvp-test-button');
+        const shogoMonthlyMvpRunNowButton = document.getElementById('shogo-monthly-mvp-run-now-button');
+        const shogoMonthlyMvpStatus = document.getElementById('shogo-monthly-mvp-status');
         const timerFontSelect = document.getElementById('timer-font');
         const timerTextStyleSelect = document.getElementById('timer-text-style');
         const timerStrokeWidthInput = document.getElementById('timer-stroke-width');
@@ -1707,6 +1714,82 @@
                 setStatus(saveStatus, '設定状態: 称号を保存しました。', 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function describeShogoMonthlyMvpStatus(status) {
+            const st = status || {};
+            if (st.lastError) {
+                setStatus(shogoMonthlyMvpStatus, `エラー: ${st.lastError}`, 'error');
+            } else if (st.lastComputedMonth) {
+                setStatus(shogoMonthlyMvpStatus, `最終反映月: ${st.lastComputedMonth}`, 'ok');
+            } else {
+                setStatus(shogoMonthlyMvpStatus, '未反映', '');
+            }
+        }
+
+        function applyShogoMonthlyMvpSettingsToForm(settings, status) {
+            const s = settings || {};
+            shogoMonthlyMvpEnabledInput.checked = Boolean(s.enabled);
+            shogoMonthlyMvpBaseUrlInput.value = s.baseUrl || '';
+            shogoMonthlyMvpApiKeyInput.value = s.apiKey || '';
+            describeShogoMonthlyMvpStatus(status);
+        }
+
+        async function loadShogoMonthlyMvpConfig() {
+            const response = await fetch('/api/widgets/shogo/monthly-mvp/settings');
+            const payload = await response.json();
+            applyShogoMonthlyMvpSettingsToForm(payload.settings, payload.status);
+        }
+
+        async function saveShogoMonthlyMvpSettings() {
+            setStatus(shogoMonthlyMvpStatus, '連携設定を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/shogo/monthly-mvp/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        enabled: shogoMonthlyMvpEnabledInput.checked,
+                        baseUrl: shogoMonthlyMvpBaseUrlInput.value,
+                        apiKey: shogoMonthlyMvpApiKeyInput.value
+                    })
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '保存に失敗しました。');
+                applyShogoMonthlyMvpSettingsToForm(payload.settings, payload.status);
+                setStatus(shogoMonthlyMvpStatus, '連携設定を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(shogoMonthlyMvpStatus, `エラー: ${err.message}`, 'error');
+            }
+        }
+
+        async function testShogoMonthlyMvpConnection() {
+            setStatus(shogoMonthlyMvpStatus, '接続テスト中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/shogo/monthly-mvp/test-connection', { method: 'POST' });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || '接続に失敗しました。');
+                setStatus(shogoMonthlyMvpStatus, '接続に成功しました。', 'ok');
+            } catch (err) {
+                setStatus(shogoMonthlyMvpStatus, `エラー: ${err.message}`, 'error');
+            }
+        }
+
+        async function runShogoMonthlyMvpNow() {
+            setStatus(shogoMonthlyMvpStatus, '集計を実行中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/shogo/monthly-mvp/run-now', { method: 'POST' });
+                const payload = await response.json();
+                if (!payload.ran) {
+                    const reasonText = payload.reason === 'disabled'
+                        ? '連携設定を有効化してBase URL/APIキーを保存してください。'
+                        : (payload.status?.lastError || '取得できるデータがありませんでした。');
+                    throw new Error(reasonText);
+                }
+                describeShogoMonthlyMvpStatus(payload.status);
+                await loadConfig();
+            } catch (err) {
+                setStatus(shogoMonthlyMvpStatus, `エラー: ${err.message}`, 'error');
             }
         }
 
@@ -3825,6 +3908,9 @@
         });
         shogoEnabledInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
         shogoDisplaySecondsInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
+        shogoMonthlyMvpSaveButton.addEventListener('click', () => { saveShogoMonthlyMvpSettings().catch(() => {}); });
+        shogoMonthlyMvpTestButton.addEventListener('click', () => { testShogoMonthlyMvpConnection().catch(() => {}); });
+        shogoMonthlyMvpRunNowButton.addEventListener('click', () => { runShogoMonthlyMvpNow().catch(() => {}); });
         shogoAddTitleButton.addEventListener('click', () => { registerShogoUserId().catch(() => {}); });
         shogoAddUserIdInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
@@ -4208,7 +4294,7 @@
             }
         }, true);
 
-        Promise.all([loadGiftCatalog(), loadConfig(), loadKnownShogoUsers()]).catch((error) => {
+        Promise.all([loadGiftCatalog(), loadConfig(), loadKnownShogoUsers(), loadShogoMonthlyMvpConfig()]).catch((error) => {
             setStatus(saveStatus, `設定状態: ${error.message}`, 'error');
         });
 

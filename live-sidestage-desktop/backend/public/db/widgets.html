@@ -819,6 +819,30 @@
                                 <div class="shogo-title-list" id="shogo-title-list"></div>
                                 <div class="gift-suggestion-panel" id="shogo-row-badge-panel" hidden></div>
                             </div>
+                            <div class="field full">
+                                <label>月間貢献自動集計連携（LiveAnalytics）</label>
+                                <p class="subtext">先月度のギフト累計ダイヤ数をLiveAnalyticsから取得し、MVP・TOP5称号を自動登録します。</p>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="shogo-monthly-mvp-enabled">
+                                    <label for="shogo-monthly-mvp-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">自動反映を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="shogo-monthly-mvp-base-url">LiveAnalytics Base URL</label>
+                                <input id="shogo-monthly-mvp-base-url" type="text" autocomplete="off" placeholder="https://your-app.railway.app">
+                            </div>
+                            <div class="field">
+                                <label for="shogo-monthly-mvp-api-key">APIキー</label>
+                                <input id="shogo-monthly-mvp-api-key" type="text" autocomplete="off" placeholder="LiveAnalyticsのsetup画面で発行したキー">
+                            </div>
+                            <div class="field full">
+                                <div class="action-row">
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-save-button">連携設定を保存</button>
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-test-button">接続テスト</button>
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-run-now-button">今すぐ集計して反映</button>
+                                </div>
+                                <div class="status" id="shogo-monthly-mvp-status">未設定</div>
+                            </div>
                         </div>
                     </div>
 

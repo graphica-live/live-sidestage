@@ -19,6 +19,13 @@ const SHOGO_BADGE_LIBRARY = [
 const SHOGO_BADGE_KEYS = new Set(SHOGO_BADGE_LIBRARY.map((badge) => badge.key));
 const DEFAULT_SHOGO_BADGE_KEY = 'star';
 
+// LiveAnalytics連携で自動登録された称号entryを識別するマーカー。手動登録entryはnull。
+const SHOGO_AUTO_ENTRY_SOURCES = new Set(['auto-monthly-mvp', 'auto-monthly-top5']);
+
+function normalizeShogoEntrySource(value) {
+    return SHOGO_AUTO_ENTRY_SOURCES.has(value) ? value : null;
+}
+
 function normalizeShogoBadgeKey(value) {
     const normalized = String(value || '').trim().toLowerCase();
     return SHOGO_BADGE_KEYS.has(normalized) ? normalized : DEFAULT_SHOGO_BADGE_KEY;
@@ -107,6 +114,7 @@ function normalizeShogoTitlesState(value) {
                     title,
                     badgeKey: normalizeShogoBadgeKey(entry?.badgeKey),
                     size: normalizeShogoSize(entry?.size),
+                    source: normalizeShogoEntrySource(entry?.source),
                 };
             })
             .filter(Boolean);
@@ -195,7 +203,8 @@ module.exports = function createShogoState({
     }
 
     // 新規称号を1件追加する（既存の称号があっても追加され、複数称号になる）。
-    function addShogoTitleEntry({ uniqueId, title, nickname, image, badgeKey, size }) {
+    // source は LiveAnalytics連携による自動登録entryを識別するためのマーカー（手動登録時は省略=null）。
+    function addShogoTitleEntry({ uniqueId, title, nickname, image, badgeKey, size, source }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const normalizedTitle = normalizeEffectText(title, 40);
 
@@ -211,6 +220,7 @@ module.exports = function createShogoState({
             title: normalizedTitle,
             badgeKey: normalizeShogoBadgeKey(badgeKey),
             size: normalizeShogoSize(size),
+            source: normalizeShogoEntrySource(source),
         };
 
         current[normalizedUid] = {
@@ -303,6 +313,47 @@ module.exports = function createShogoState({
 
         current[normalizedUid] = { ...userRecord, entries: reordered };
         return persistShogoTitles(current);
+    }
+
+    // LiveAnalytics連携の月次集計結果で自動称号を入れ替える。全ユーザーから前回のauto
+    // entry(source有り)を除去してから、MVP/TOP5対象ユーザーに新しいauto entryを追加する。
+    // mvpUsers/top5Usersは呼び出し元(LiveAnalytics API)側で既に排他的に算出済みの前提。
+    function replaceAutoMonthlyEntries({ mvpUsers = [], top5Users = [] } = {}) {
+        const stripped = getShogoTitles();
+
+        Object.keys(stripped).forEach((uid) => {
+            const userRecord = stripped[uid];
+            const entries = userRecord.entries.filter((entry) => !entry.source);
+
+            if (entries.length) {
+                stripped[uid] = { ...userRecord, entries };
+            } else {
+                delete stripped[uid];
+            }
+        });
+
+        persistShogoTitles(stripped);
+
+        function applyGroup(users, title, badgeKey, size, source) {
+            users.forEach((user) => {
+                addShogoTitleEntry({
+                    uniqueId: user?.uniqueId,
+                    title,
+                    nickname: user?.nickname,
+                    image: user?.profileImageUrl,
+                    badgeKey,
+                    size,
+                    source,
+                });
+            });
+        }
+
+        applyGroup(mvpUsers, '先月度貢献MVP', 'monthly', 'large', 'auto-monthly-mvp');
+        applyGroup(top5Users, '先月度貢献TOP5', 'none', 'small', 'auto-monthly-top5');
+
+        const payload = buildShogoPayload();
+        io.emit('widgets:shogo:config', payload);
+        return payload;
     }
 
     function buildShogoPayload() {
@@ -411,6 +462,7 @@ module.exports = function createShogoState({
         updateShogoTitleEntry,
         deleteShogoTitleEntry,
         reorderShogoTitleEntries,
+        replaceAutoMonthlyEntries,
         buildShogoPayload,
         maybeEmitShogoDisplay,
         emitShogoTest,
