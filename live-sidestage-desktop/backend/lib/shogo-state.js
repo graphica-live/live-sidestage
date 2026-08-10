@@ -14,6 +14,7 @@ const SHOGO_BADGE_LIBRARY = [
     { key: 'none', label: 'バッジなし', image: '' },
     { key: 'star', label: 'スター', image: '/widgets/badge.png' },
     { key: 'tiktok-universe', label: 'TikTok Universe', image: '/widgets/badge-tiktok-universe.webp' },
+    { key: 'monthly', label: '月間バッジ', image: '/widgets/monthly_badge.png' },
 ];
 const SHOGO_BADGE_KEYS = new Set(SHOGO_BADGE_LIBRARY.map((badge) => badge.key));
 const DEFAULT_SHOGO_BADGE_KEY = 'star';
