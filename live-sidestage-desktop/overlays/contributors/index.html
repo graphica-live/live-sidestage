@@ -37,8 +37,8 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 12px;
+            margin-bottom: 18px;
             line-height: 1.2;
             font-variant-numeric: tabular-nums;
         }
@@ -50,11 +50,20 @@
             flex-shrink: 0;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 2px 8px;
+            gap: 12px;
+            padding: 8px 20px;
             border-radius: 999px;
-            background: var(--display-summary-bg);
-            border: 1px solid var(--display-summary-border);
+            background: linear-gradient(135deg, var(--display-summary-bg) 0%, rgba(0, 0, 0, 0.3) 130%);
+            border: 1.5px solid var(--display-summary-border);
+            box-shadow:
+                0 6px 16px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.16),
+                0 0 20px var(--display-glow-color);
+        }
+        .day-label-icon {
+            font-size: 22px;
+            line-height: 1;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
         }
         .outlined-svg-text-host {
             display: inline-flex;
@@ -86,13 +95,52 @@
             text-shadow: var(--display-summary-shadow);
         }
         .contributor-card {
-                padding: 4px 10px;
-            margin: 2px 5px;
-            border-radius: 8px;
+            padding: 6px 16px 6px 8px;
+            margin: 3px 5px;
+            border-radius: 999px;
             display: flex;
             align-items: center;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.34),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
             animation: contributorCardEnter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
             transform-origin: left center;
+        }
+        .contributor-rank {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            margin-right: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 800;
+            font-family: var(--display-font-family);
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+        }
+        .contributor-rank.rank-gold {
+            color: #3a2a00;
+            background: linear-gradient(135deg, #fff6d8, #ffd76a);
+            border-color: rgba(255, 215, 106, 0.9);
+            box-shadow: 0 0 10px rgba(255, 215, 106, 0.6);
+        }
+        .contributor-rank.rank-silver {
+            color: #2a2a30;
+            background: linear-gradient(135deg, #f5f7fa, #c7cdd6);
+            border-color: rgba(199, 205, 214, 0.9);
+            box-shadow: 0 0 8px rgba(199, 205, 214, 0.5);
+        }
+        .contributor-rank.rank-bronze {
+            color: #3a1f0a;
+            background: linear-gradient(135deg, #f0c39a, #cd8b55);
+            border-color: rgba(205, 139, 85, 0.9);
+            box-shadow: 0 0 8px rgba(205, 139, 85, 0.5);
         }
         @keyframes contributorCardEnter {
             0% {
@@ -264,6 +312,8 @@
         const contributorStore = new Map();
         const listDiv = document.getElementById('list');
         const dayLabel = document.getElementById('day-label');
+        const renderedCardSignatures = new Map();
+        let lastRenderedDayKey = null;
         let currentDisplayThreshold = 1000;
         let currentGoalCount = 10;
         let currentSortOrder = 'qualified_at_asc';
@@ -365,6 +415,9 @@
             card.id = uniqueId;
             card.className = 'contributor-card';
 
+            const rank = document.createElement('span');
+            rank.className = 'contributor-rank';
+
             const avatarShell = document.createElement('div');
             avatarShell.className = 'avatar-shell';
 
@@ -379,6 +432,7 @@
             content.appendChild(name);
 
             avatarShell.appendChild(avatar);
+            card.appendChild(rank);
             card.appendChild(avatarShell);
             card.appendChild(content);
             listDiv.appendChild(card);
@@ -505,22 +559,58 @@
             `;
         }
 
-        function renderContributors(dayKey) {
+        function renderContributors(dayKey, options = {}) {
+            const forceFullRender = options.forceFullRender === true;
             const contributors = sortContributors(
                 Array.from(contributorStore.values())
                     .filter((contributor) => contributor.total >= currentDisplayThreshold)
             );
-            listDiv.innerHTML = '';
             dayLabel.innerHTML = buildDayLabel(dayKey, contributors.length, currentGoalCount, currentDisplayThreshold);
 
-            contributors.forEach((contributor) => {
+            // ギフト到着のたびに一覧を作り直すとカードの登場アニメーションが毎回再生されてしまうため、
+            // 日付が変わった時（手動/自動含む）だけ一覧を全消去し、それ以外は差分更新にとどめる。
+            if (forceFullRender) {
+                listDiv.innerHTML = '';
+                renderedCardSignatures.clear();
+            } else {
+                const currentIds = new Set(contributors.map((contributor) => contributor.uniqueId));
+                Array.from(listDiv.children).forEach((child) => {
+                    if (!currentIds.has(child.id)) {
+                        child.remove();
+                        renderedCardSignatures.delete(child.id);
+                    }
+                });
+            }
+
+            contributors.forEach((contributor, index) => {
                 const card = ensureContributorCard(contributor.uniqueId);
-                const avatarShell = card.querySelector('.avatar-shell');
-                const avatar = card.querySelector('.avatar');
-                const name = card.querySelector('strong');
+                const referenceNode = listDiv.children[index];
+                if (referenceNode !== card) {
+                    listDiv.insertBefore(card, referenceNode || null);
+                }
+
+                const rank = card.querySelector('.contributor-rank');
+                rank.textContent = String(index + 1);
+                rank.classList.toggle('rank-gold', index === 0);
+                rank.classList.toggle('rank-silver', index === 1);
+                rank.classList.toggle('rank-bronze', index === 2);
+
                 const hasAvatarImage = typeof contributor.image === 'string'
                     ? contributor.image.trim() !== ''
                     : Boolean(contributor.image);
+                const signature = JSON.stringify([
+                    contributor.nickname, contributor.image, hasAvatarImage,
+                    currentColorTheme, currentFontFamily, currentStrokeWidth
+                ]);
+
+                if (renderedCardSignatures.get(contributor.uniqueId) === signature) {
+                    return;
+                }
+                renderedCardSignatures.set(contributor.uniqueId, signature);
+
+                const avatarShell = card.querySelector('.avatar-shell');
+                const avatar = card.querySelector('.avatar');
+                const name = card.querySelector('strong');
 
                 avatarShell.className = getAvatarEffectClass(contributor.total);
                 avatar.src = hasAvatarImage ? contributor.image : '';
@@ -668,10 +758,10 @@
             const labelStrokeWidth = Math.max(0, Math.round(Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--display-label-stroke-width')) || 4));
             const dateText = formatDayLabel(dayKey);
             const dateMarkup = dateText
-                ? buildOutlinedSvgMarkup(dateText, { fontSize: 18, fontWeight: 800, strokeWidth: labelStrokeWidth, letterSpacing: '0.02em', shadowPad: 8, fill: currentTextPaint, idPrefix: 'contributors-date' })
+                ? buildOutlinedSvgMarkup(dateText, { fontSize: 26, fontWeight: 800, strokeWidth: labelStrokeWidth, letterSpacing: '0.02em', shadowPad: 8, fill: currentTextPaint, idPrefix: 'contributors-date' })
                 : '';
-            const summaryInner = buildOutlinedSvgMarkup(summary, { fontSize: 18, fontWeight: 800, strokeWidth: labelStrokeWidth, letterSpacing: '0.02em', shadowPad: 8, fill: currentTextPaint, idPrefix: 'contributors-summary' });
-            const summaryMarkup = `<span class="day-label-summary">${dateMarkup}${summaryInner}</span>`;
+            const summaryInner = buildOutlinedSvgMarkup(summary, { fontSize: 24, fontWeight: 800, strokeWidth: labelStrokeWidth, letterSpacing: '0.02em', shadowPad: 8, fill: currentTextPaint, idPrefix: 'contributors-summary' });
+            const summaryMarkup = `<span class="day-label-summary"><span class="day-label-icon">🎯</span>${dateMarkup}${summaryInner}</span>`;
 
             return summaryMarkup;
         }
@@ -680,6 +770,8 @@
             const display = snapshot?.display || {};
             const contributors = Array.isArray(snapshot?.contributors) ? snapshot.contributors : [];
             const dayKey = snapshot?.dayKey || '';
+            const isDayChange = dayKey !== lastRenderedDayKey;
+            lastRenderedDayKey = dayKey;
 
             currentDisplayThreshold = normalizeDisplayThreshold(display.threshold);
             currentGoalCount = normalizeGoalCount(display.goalCount);
@@ -698,7 +790,7 @@
                 }
             });
 
-            renderContributors(dayKey);
+            renderContributors(dayKey, { forceFullRender: isDayChange });
         }
 
         async function loadSnapshot(dayKey = getRequestedDayKey()) {
