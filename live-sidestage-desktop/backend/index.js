@@ -1305,7 +1305,8 @@ const {
 
 const {
     getWidgetShogoSettings, setWidgetShogoSettings,
-    getShogoTitles, addShogoTitleEntry, updateShogoTitleEntry, deleteShogoTitleEntry, reorderShogoTitleEntries,
+    getShogoTitles, registerShogoUser, deleteShogoUser,
+    addShogoTitleEntry, updateShogoTitleEntry, deleteShogoTitleEntry, reorderShogoTitleEntries,
     buildShogoPayload, maybeEmitShogoDisplay, emitShogoTest, emitShogoUserTest,
 } = require('./lib/shogo-state')({
     io,
@@ -2809,6 +2810,8 @@ require('./lib/routes/widgets/shogo')({
     app, io,
     setWidgetShogoSettings,
     buildShogoPayload,
+    registerShogoUser,
+    deleteShogoUser,
     addShogoTitleEntry,
     updateShogoTitleEntry,
     deleteShogoTitleEntry,

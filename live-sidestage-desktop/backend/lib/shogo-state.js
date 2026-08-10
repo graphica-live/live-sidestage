@@ -110,10 +110,8 @@ function normalizeShogoTitlesState(value) {
             })
             .filter(Boolean);
 
-        if (!entries.length) {
-            return;
-        }
-
+        // entries が0件でも「登録だけ済ませたユーザー」として保持する
+        // （ユーザーID登録後、称号を1件も追加していない状態のため）。
         normalized[normalizedUid] = {
             nickname: normalizeEffectText(userData.nickname, 80),
             image: normalizeEffectText(userData.image, 500),
@@ -152,6 +150,49 @@ module.exports = function createShogoState({
         return titles;
     }
 
+    // ユーザーIDだけを先に登録する（称号は0件のまま）。以降は一覧の「+ 称号追加」から
+    // ユーザーIDを再入力せずに称号を追加していける。既に登録済みの場合はニックネーム・
+    // アイコンだけ更新し、既存の称号には触れない。
+    function registerShogoUser({ uniqueId, nickname, image }) {
+        const normalizedUid = normalizeBroadcasterId(uniqueId);
+
+        if (!normalizedUid) {
+            return null;
+        }
+
+        const current = getShogoTitles();
+        const existing = current[normalizedUid];
+
+        current[normalizedUid] = existing
+            ? {
+                ...existing,
+                nickname: normalizeEffectText(nickname, 80) || existing.nickname,
+                image: normalizeEffectText(image, 500) || existing.image,
+            }
+            : {
+                nickname: normalizeEffectText(nickname, 80),
+                image: normalizeEffectText(image, 500),
+                entries: [],
+            };
+
+        persistShogoTitles(current);
+        return current[normalizedUid];
+    }
+
+    // 登録済みユーザーを称号ごと削除する（称号0件の状態でも削除できるようにするため、
+    // 最後の称号を消すと自動で消える deleteShogoTitleEntry とは別に用意する）。
+    function deleteShogoUser({ uniqueId }) {
+        const normalizedUid = normalizeBroadcasterId(uniqueId);
+        const current = getShogoTitles();
+
+        if (normalizedUid && current[normalizedUid]) {
+            delete current[normalizedUid];
+            persistShogoTitles(current);
+        }
+
+        return current;
+    }
+
     // 新規称号を1件追加する（既存の称号があっても追加され、複数称号になる）。
     function addShogoTitleEntry({ uniqueId, title, nickname, image, badgeKey, size }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
@@ -181,8 +222,8 @@ module.exports = function createShogoState({
         return entry;
     }
 
-    // 既存の称号の見た目（バッジ・サイズ）だけを更新する。文言は変更しない。
-    function updateShogoTitleEntry({ uniqueId, entryId, badgeKey, size }) {
+    // 既存の称号エントリを更新する。title は空欄なら変更しない（誤って空文字を保存させないため）。
+    function updateShogoTitleEntry({ uniqueId, entryId, title, badgeKey, size }) {
         const normalizedUid = normalizeBroadcasterId(uniqueId);
         const current = getShogoTitles();
         const userRecord = current[normalizedUid];
@@ -191,6 +232,8 @@ module.exports = function createShogoState({
             return null;
         }
 
+        const normalizedTitle = title !== undefined ? normalizeEffectText(title, 40) : '';
+
         let updatedEntry = null;
         const entries = userRecord.entries.map((entry) => {
             if (entry.id !== entryId) {
@@ -198,6 +241,7 @@ module.exports = function createShogoState({
             }
             updatedEntry = {
                 ...entry,
+                title: normalizedTitle || entry.title,
                 badgeKey: badgeKey !== undefined ? normalizeShogoBadgeKey(badgeKey) : entry.badgeKey,
                 size: size !== undefined ? normalizeShogoSize(size) : entry.size,
             };
@@ -360,6 +404,8 @@ module.exports = function createShogoState({
         getWidgetShogoSettings,
         setWidgetShogoSettings,
         getShogoTitles,
+        registerShogoUser,
+        deleteShogoUser,
         addShogoTitleEntry,
         updateShogoTitleEntry,
         deleteShogoTitleEntry,

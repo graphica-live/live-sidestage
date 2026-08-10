@@ -4,6 +4,8 @@ module.exports = function registerShogoRoutes({
     app, io,
     setWidgetShogoSettings,
     buildShogoPayload,
+    registerShogoUser,
+    deleteShogoUser,
     addShogoTitleEntry,
     updateShogoTitleEntry,
     deleteShogoTitleEntry,
@@ -20,6 +22,27 @@ module.exports = function registerShogoRoutes({
         const payload = buildShogoPayload();
         io.emit('widgets:shogo:config', payload);
         res.json({ ok: true, settings, ...payload });
+    });
+
+    // ユーザーIDだけを先に登録する（称号は後から一覧の「+ 称号追加」で追加する）。
+    app.patch('/api/widgets/shogo/users', (req, res) => {
+        const user = registerShogoUser(req.body || {});
+
+        if (!user) {
+            return res.status(400).json({ error: 'ユーザーIDを入力してください。' });
+        }
+
+        const payload = buildShogoPayload();
+        io.emit('widgets:shogo:config', payload);
+        res.json({ ok: true, user, ...payload });
+    });
+
+    // 登録済みユーザーを称号ごと削除する。
+    app.delete('/api/widgets/shogo/users', (req, res) => {
+        deleteShogoUser({ uniqueId: req.query?.uniqueId });
+        const payload = buildShogoPayload();
+        io.emit('widgets:shogo:config', payload);
+        res.json({ ok: true, ...payload });
     });
 
     // 新規称号を1件追加する（同じユーザーに複数登録可）。

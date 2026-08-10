@@ -800,27 +800,22 @@
                                 <input id="shogo-display-seconds" type="number" min="1" max="30" step="1" inputmode="numeric" placeholder="6">
                             </div>
                             <div class="field full">
-                                <label>称号を登録</label>
+                                <label>称号を登録するユーザー</label>
                                 <div class="modal-inline-row">
                                     <div class="gift-suggest-shell" style="flex:1;min-width:160px;">
                                         <input id="shogo-add-user-id" type="text" maxlength="80" autocomplete="off" placeholder="ユーザーID（@なし）">
                                         <div class="gift-suggestion-panel" id="shogo-add-user-suggestion-panel" hidden></div>
                                     </div>
-                                    <input id="shogo-add-title" type="text" maxlength="40" placeholder="称号（例: 常連さん）" style="flex:1;min-width:120px;">
-                                    <div class="gift-suggest-shell" style="flex:0 0 auto;width:180px;">
-                                        <button type="button" class="ghost-button" id="shogo-add-badge-trigger" style="display:flex;align-items:center;gap:8px;width:100%;justify-content:flex-start;">
-                                            <img id="shogo-add-badge-thumb" src="" alt="" style="width:20px;height:20px;object-fit:contain;flex:0 0 auto;" hidden>
-                                            <span id="shogo-add-badge-label">バッジを選択</span>
-                                        </button>
-                                        <div class="gift-suggestion-panel" id="shogo-add-badge-panel" hidden></div>
-                                    </div>
-                                    <button type="button" class="ghost-button" id="shogo-add-size-toggle" data-shogo-size="small">サイズ: 小</button>
-                                    <button type="button" class="ghost-button" id="shogo-add-title-button">追加</button>
+                                    <button type="button" class="ghost-button" id="shogo-add-title-button">ユーザーを登録</button>
                                 </div>
-                                <p class="subtext">同じユーザーIDで何度でも追加でき、1人に複数の称号を登録できます。表示はユーザーごとに登録した順で上から並びます。</p>
+                                <p class="subtext">ユーザーを登録すると一覧に追加されます。称号は一覧の「+ 称号追加」から、ユーザーIDを再入力せずに何度でも追加できます。</p>
                             </div>
                             <div class="field full">
                                 <label>登録済み称号一覧</label>
+                                <div class="modal-inline-row">
+                                    <input id="shogo-filter-user" type="text" maxlength="80" autocomplete="off" placeholder="ユーザーID・名前で絞り込み" style="flex:1;min-width:140px;">
+                                    <input id="shogo-filter-title" type="text" maxlength="40" autocomplete="off" placeholder="称号名で絞り込み" style="flex:1;min-width:140px;">
+                                </div>
                                 <div class="shogo-title-list" id="shogo-title-list"></div>
                                 <div class="gift-suggestion-panel" id="shogo-row-badge-panel" hidden></div>
                             </div>
