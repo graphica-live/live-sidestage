@@ -13,6 +13,31 @@ export default function SetupPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [issuedApiKey, setIssuedApiKey] = useState("");
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/streamer/api-key")
+      .then((r) => r.json())
+      .then((data) => setHasApiKey(Boolean(data.hasApiKey)))
+      .catch(() => {});
+  }, []);
+
+  async function handleIssueApiKey() {
+    setApiKeyLoading(true);
+    const res = await fetch("/api/streamer/api-key", { method: "POST" });
+    const data = await res.json();
+    setApiKeyLoading(false);
+
+    if (!res.ok) {
+      setError(data.error || "APIキーの発行に失敗しました");
+      return;
+    }
+
+    setIssuedApiKey(data.apiKey);
+    setHasApiKey(true);
+  }
 
   useEffect(() => {
     // Check if already has pending code
@@ -207,6 +232,43 @@ export default function SetupPage() {
               <p className="text-sm text-gray-400">解析ページへ移動しています...</p>
             </div>
           )}
+        </div>
+
+        <div className="card space-y-3 mt-4">
+          <div>
+            <p className="text-sm text-gray-300 font-semibold">TikEffect連携用APIキー</p>
+            <p className="text-xs text-gray-400 mt-1">
+              TikEffectの称号ウィジェット設定画面にこのキーを貼り付けると、先月度貢献MVP/TOP5を自動反映できます。
+            </p>
+          </div>
+
+          {issuedApiKey && (
+            <div className="bg-surface border border-brand/30 rounded-lg p-4">
+              <p className="text-xs text-gray-400 mb-2">
+                このキーは今だけ表示されます。コピーしてTikEffectに保存してください。
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-mono text-white break-all bg-black/40 px-3 py-2 rounded flex-1">
+                  {issuedApiKey}
+                </code>
+                <button
+                  onClick={() => navigator.clipboard.writeText(issuedApiKey)}
+                  className="btn-ghost text-xs"
+                  title="コピー"
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleIssueApiKey}
+            disabled={apiKeyLoading}
+            className="btn-primary w-full text-sm"
+          >
+            {apiKeyLoading ? "処理中..." : hasApiKey ? "APIキーを再発行する" : "APIキーを発行する"}
+          </button>
         </div>
       </div>
     </div>

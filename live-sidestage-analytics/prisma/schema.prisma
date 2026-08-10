@@ -66,6 +66,7 @@ model Streamer {
   verified         Boolean   @default(false)
   verifiedAt       DateTime?
   deviceId         String?
+  apiKey           String?   @unique
   createdAt        DateTime  @default(now())
   listenerStatus    String?
   listenerMessage   String?
