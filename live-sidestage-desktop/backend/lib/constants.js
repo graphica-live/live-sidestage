@@ -85,6 +85,8 @@ const WIDGET_SHOGO_SETTINGS_STATE_KEY = 'widget_shogo_settings';
 const WIDGET_SHOGO_TITLES_STATE_KEY = 'widget_shogo_titles';
 // 称号ウィジェットの発動条件ギフト（"ハートミー"の英語giftName、小文字比較）。
 const WIDGET_SHOGO_TRIGGER_GIFT_NAME = 'heart me';
+const WIDGET_SHOGO_MONTHLY_MVP_SETTINGS_STATE_KEY = 'widget_shogo_monthly_mvp_settings';
+const WIDGET_SHOGO_MONTHLY_MVP_STATUS_STATE_KEY = 'widget_shogo_monthly_mvp_status';
 // イベントトリガーのギフト選択に表示する疑似ギフト名（フォロー/リフォロー発火用）。
 // フロント側の対応値: backend/public/db/effects-gift-suggest.js の FOLLOW_TRIGGER_GIFT_NAME と同期すること。
 const EFFECT_TRIGGER_FOLLOW_GIFT_NAME = 'フォロー・リフォロー';
@@ -516,6 +518,8 @@ module.exports = {
     WIDGET_SHOGO_SETTINGS_STATE_KEY,
     WIDGET_SHOGO_TITLES_STATE_KEY,
     WIDGET_SHOGO_TRIGGER_GIFT_NAME,
+    WIDGET_SHOGO_MONTHLY_MVP_SETTINGS_STATE_KEY,
+    WIDGET_SHOGO_MONTHLY_MVP_STATUS_STATE_KEY,
     EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     EFFECT_TRIGGER_FOLLOW_GIFT_IMAGE_URL,
     EXPORTABLE_SCOPED_SETTINGS_KEYS,

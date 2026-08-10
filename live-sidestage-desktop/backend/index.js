@@ -120,6 +120,7 @@ const APP_ROOT = PROJECT_ROOT;
 const SHUTDOWN_FORCE_TIMEOUT_MS = 10000;
 const TIKTOK_WATCHDOG_CHECK_INTERVAL_MS = 15000;
 const TIKTOK_WATCHDOG_SILENCE_MS = 45000;
+const MONTHLY_MVP_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 loadEnvFile(path.join(APP_ROOT, '.env'));
 
@@ -1307,12 +1308,26 @@ const {
     getWidgetShogoSettings, setWidgetShogoSettings,
     getShogoTitles, registerShogoUser, deleteShogoUser,
     addShogoTitleEntry, updateShogoTitleEntry, deleteShogoTitleEntry, reorderShogoTitleEntries,
+    replaceAutoMonthlyEntries,
     buildShogoPayload, maybeEmitShogoDisplay, emitShogoTest, emitShogoUserTest,
 } = require('./lib/shogo-state')({
     io,
     getScopedStateValue: (...args) => getScopedStateValue(...args),
     setScopedStateValue: (...args) => setScopedStateValue(...args),
     getTimestamp: (...args) => getTimestamp(...args),
+});
+
+const monthlyMvpClient = require('./lib/monthly-mvp-client')({
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+});
+
+const { getStatus: getMonthlyMvpStatus, checkAndRunMonthlyMvpUpdate } = require('./lib/monthly-mvp-state')({
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTimestamp: (...args) => getTimestamp(...args),
+    replaceAutoMonthlyEntries,
+    monthlyMvpClient,
 });
 
 const {
@@ -2820,6 +2835,13 @@ require('./lib/routes/widgets/shogo')({
     emitShogoUserTest,
 });
 
+require('./lib/routes/widgets/shogo-monthly-mvp')({
+    app,
+    monthlyMvpClient,
+    getMonthlyMvpStatus,
+    checkAndRunMonthlyMvpUpdate,
+});
+
 require('./lib/routes/widgets/timer')({
     app, io,
     buildTimerPayload,
@@ -3425,6 +3447,11 @@ async function startHttpServer() {
     startLiveStudioConnection();
     scheduleRawEventFlush(0);
     setInterval(checkTikTokZombieConnection, TIKTOK_WATCHDOG_CHECK_INTERVAL_MS).unref();
+
+    checkAndRunMonthlyMvpUpdate().catch((error) => console.warn('⚠️ 先月度貢献MVP/TOP5の自動更新に失敗しました:', error.message));
+    setInterval(() => {
+        checkAndRunMonthlyMvpUpdate().catch((error) => console.warn('⚠️ 先月度貢献MVP/TOP5の自動更新に失敗しました:', error.message));
+    }, MONTHLY_MVP_CHECK_INTERVAL_MS).unref();
 
     if (AUTO_OPEN_BROWSER) {
         setTimeout(() => {

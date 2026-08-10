@@ -88,6 +88,25 @@ function repairMojibakeFilename(value) {
     return repaired.indexOf('�') === -1 ? repaired : value;
 }
 
+function normalizeHttpUrl(value, maxLength = 300) {
+    const trimmed = typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+
+    if (!trimmed) {
+        return '';
+    }
+
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? trimmed.replace(/\/+$/, '') : '';
+    } catch {
+        return '';
+    }
+}
+
+function normalizeApiKey(value, maxLength = 128) {
+    return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
 function normalizeBroadcasterId(value) {
     const trimmedValue = typeof value === 'string' ? value.trim() : '';
     const normalizedValue = trimmedValue.replace(/^@+/, '');
@@ -108,4 +127,6 @@ module.exports = {
     normalizeWholeNumber,
     repairMojibakeFilename,
     normalizeBroadcasterId,
+    normalizeHttpUrl,
+    normalizeApiKey,
 };
