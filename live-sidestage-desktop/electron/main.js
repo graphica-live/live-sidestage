@@ -133,6 +133,7 @@ let loginWindow = null;
 let commentReadAloudWindow = null;
 const popoutWindows = { comments: null, gifts: null, 'comments-gifts': null };
 const popoutBoundsSaveTimers = { comments: null, gifts: null, 'comments-gifts': null };
+let mainWindowBoundsSaveTimer = null;
 let readAloudProcess = null;
 let readAloudQueue = [];
 let autoUpdateCheckTimer = null;
@@ -412,9 +413,67 @@ function configureAutoUpdater() {
     hasScheduledAutoUpdateCheck = true;
 }
 
+const MAIN_WINDOW_BOUNDS_STATE_KEY = 'main_window_bounds';
+
+function loadMainWindowBounds() {
+    const defaults = { width: MAIN_WINDOW_BOUNDS.width, height: MAIN_WINDOW_BOUNDS.height };
+
+    if (typeof server.getGlobalStateValue !== 'function') {
+        return defaults;
+    }
+
+    let stored = null;
+    try {
+        const raw = server.getGlobalStateValue(MAIN_WINDOW_BOUNDS_STATE_KEY);
+        stored = raw ? JSON.parse(raw) : null;
+    } catch {
+        stored = null;
+    }
+
+    if (!stored || !Number.isFinite(stored.width) || !Number.isFinite(stored.height)) {
+        return defaults;
+    }
+
+    const bounds = {
+        width: Math.max(MAIN_WINDOW_BOUNDS.minWidth, Math.round(stored.width)),
+        height: Math.max(MAIN_WINDOW_BOUNDS.minHeight, Math.round(stored.height))
+    };
+
+    if (Number.isFinite(stored.x) && Number.isFinite(stored.y)) {
+        const visible = screen.getAllDisplays().some((display) => {
+            return stored.x < display.workArea.x + display.workArea.width &&
+                stored.x + bounds.width > display.workArea.x &&
+                stored.y < display.workArea.y + display.workArea.height &&
+                stored.y + bounds.height > display.workArea.y;
+        });
+
+        if (visible) {
+            bounds.x = Math.round(stored.x);
+            bounds.y = Math.round(stored.y);
+        }
+    }
+
+    return bounds;
+}
+
+function saveMainWindowBounds() {
+    if (typeof server.setGlobalStateValue !== 'function' || !mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    server.setGlobalStateValue(MAIN_WINDOW_BOUNDS_STATE_KEY, JSON.stringify(mainWindow.getBounds()));
+}
+
+function scheduleMainWindowBoundsSave() {
+    clearTimeout(mainWindowBoundsSaveTimer);
+    mainWindowBoundsSaveTimer = setTimeout(saveMainWindowBounds, 400);
+}
+
 function createMainWindow(initialUrl = APP_URL) {
     mainWindow = new BrowserWindow({
-        ...MAIN_WINDOW_BOUNDS,
+        ...loadMainWindowBounds(),
+        minWidth: MAIN_WINDOW_BOUNDS.minWidth,
+        minHeight: MAIN_WINDOW_BOUNDS.minHeight,
         useContentSize: true,
         title: 'TikEffect',
         icon: iconPath,
@@ -429,7 +488,13 @@ function createMainWindow(initialUrl = APP_URL) {
 
     mainWindow.loadURL(initialUrl);
 
+    mainWindow.on('resize', () => scheduleMainWindowBoundsSave());
+    mainWindow.on('move', () => scheduleMainWindowBoundsSave());
+
     mainWindow.on('close', (event) => {
+        clearTimeout(mainWindowBoundsSaveTimer);
+        saveMainWindowBounds();
+
         if (isAppQuitting) {
             return;
         }
