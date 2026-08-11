@@ -3131,6 +3131,7 @@ function ensureTikTokConnection() {
                 image: data.profilePictureUrl || '',
                 giftId: data.giftId ? String(data.giftId) : null,
                 giftName: data.giftName || null,
+                giftNameJa: getGiftDisplayNameJa(data.giftName),
                 giftImage: resolveLiveGiftImageUrl(data),
                 totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
                 repeatCount: currentRepeat,
