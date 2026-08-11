@@ -69,15 +69,33 @@ const ASR_MAX_RESTARTS = 3;
 // ── TTS (TikTok Live + VOICEVOX) ─────────────────────────────────────────────
 const RECONNECT_DELAY_MS = 10000;
 const OFFLINE_RECONNECT_DELAY_MS = 30000;
+// No chat/gift/member/... event received in this long -> treat as a stalled
+// connection (TikTok can go silent without ever firing 'disconnected') and force a reconnect.
+const EVENT_SILENCE_TIMEOUT_MS = 90000;
 
 let ttsConn = null;
 let ttsStatus = { status: 'stopped', message: '停止中' };
 let ttsUserId = '';
 let ttsReconnectTimer = null;
+let ttsSilenceTimer = null;
 let ttsStopped = false; // true = user explicitly stopped, no auto-reconnect
 let ttsAcceptingComments = false;
 let ttsConnectedAt = 0; // ms timestamp when connect() resolved
 let ttsConnecting = false; // true while connect() promise is pending — suppress event-driven reconnects
+
+function clearTtsTimers() {
+  if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+  if (ttsSilenceTimer) { clearTimeout(ttsSilenceTimer); ttsSilenceTimer = null; }
+}
+
+function armSilenceTimer() {
+  if (ttsSilenceTimer) clearTimeout(ttsSilenceTimer);
+  ttsSilenceTimer = setTimeout(() => {
+    ttsSilenceTimer = null;
+    if (ttsStopped || ttsConnecting) return;
+    scheduleTtsReconnect('silence_timeout');
+  }, EVENT_SILENCE_TIMEOUT_MS);
+}
 
 function emitTtsStatus(s) {
   ttsStatus = s;
@@ -113,9 +131,11 @@ function scheduleTtsReconnect(reason) {
     disconnected:           `接続が切れました — ${sec}秒後に再接続`,
     room_info_error:        `ルーム情報の取得に失敗 — ${sec}秒後に再試行`,
     ws_upgrade_unavailable: `接続方式を変更して再試行 (${sec}秒)`,
+    silence_timeout:        `イベント受信が途絶えたため接続を確認します — ${sec}秒後に再接続`,
   };
   const msg = msgMap[reason] ?? `エラーが発生しました — ${sec}秒後に再接続`;
   emitTtsStatus({ status: 'retrying', message: msg });
+  if (ttsSilenceTimer) { clearTimeout(ttsSilenceTimer); ttsSilenceTimer = null; }
   ttsReconnectTimer = setTimeout(() => {
     ttsReconnectTimer = null;
     if (!ttsStopped) connectTikTokLive(ttsUserId);
@@ -126,6 +146,7 @@ async function connectTikTokLive(userId) {
   if (!userId) return;
 
   ttsAcceptingComments = false;
+  if (ttsSilenceTimer) { clearTimeout(ttsSilenceTimer); ttsSilenceTimer = null; }
 
   // Tear down previous connection
   if (ttsConn) {
@@ -168,6 +189,13 @@ async function connectTikTokLive(userId) {
 
   ttsConn.on('disconnected', () => {
     if (!ttsStopped && !ttsConnecting) scheduleTtsReconnect('disconnected');
+  });
+
+  // Fires for every decoded Webcast event (chat, member, gift, social, ...) —
+  // used as a generic "connection is actually alive" signal, since TikTok's
+  // socket can go silent without ever emitting 'disconnected'.
+  ttsConn.on('decodedData', () => {
+    if (!ttsStopped) armSilenceTimer();
   });
 
   ttsConn.on('streamEnd', () => {
@@ -215,6 +243,7 @@ async function connectTikTokLive(userId) {
     ttsConnecting = false;
     ttsConnectedAt = Date.now();
     ttsAcceptingComments = true;
+    armSilenceTimer();
     emitTtsStatus({ status: 'connected', message: `接続済み: @${userId}` });
   } catch (err) {
     ttsConnecting = false;
@@ -798,14 +827,14 @@ function registerIPC() {
     }
     ttsUserId = uid;
     ttsStopped = false;
-    if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+    clearTtsTimers();
     await connectTikTokLive(uid);
     return { ok: true };
   });
 
   ipcMain.handle('tts-stop', async () => {
     ttsStopped = true;
-    if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+    clearTtsTimers();
     if (ttsConn) {
       ttsConn.removeAllListeners?.();
       try { await Promise.resolve(ttsConn.disconnect?.()); } catch (_) {}
@@ -908,13 +937,13 @@ app.whenReady().then(async () => {
       }
       ttsUserId = uid;
       ttsStopped = false;
-      if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+      clearTtsTimers();
       await connectTikTokLive(uid);
       return { ok: true };
     },
     stopTTS: async () => {
       ttsStopped = true;
-      if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+      clearTtsTimers();
       if (ttsConn) {
         ttsConn.removeAllListeners?.();
         try { await Promise.resolve(ttsConn.disconnect?.()); } catch (_) {}
@@ -987,7 +1016,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   killASR();
   ttsStopped = true;
-  if (ttsReconnectTimer) { clearTimeout(ttsReconnectTimer); ttsReconnectTimer = null; }
+  clearTtsTimers();
   if (ttsConn) { try { ttsConn.disconnect?.(); } catch (_) {} ttsConn = null; }
 });
 
