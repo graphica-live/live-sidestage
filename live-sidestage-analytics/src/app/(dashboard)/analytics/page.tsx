@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
 
 type Period = "day" | "week" | "month" | "custom";
@@ -373,6 +374,10 @@ export default function AnalyticsPage() {
               </span>
             )}
           </div>
+
+          <Link href="/setup" className="btn-ghost text-xs shrink-0">
+            ⚙️ 設定
+          </Link>
 
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}

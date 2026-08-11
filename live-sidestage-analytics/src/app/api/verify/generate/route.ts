@@ -14,7 +14,11 @@ export async function GET() {
     select: { tiktokId: true, verificationCode: true, verified: true },
   });
 
-  if (!streamer || streamer.verified) return NextResponse.json({});
+  if (!streamer) return NextResponse.json({});
+
+  if (streamer.verified) {
+    return NextResponse.json({ verified: true, tiktokId: streamer.tiktokId });
+  }
 
   return NextResponse.json({
     tiktokId: streamer.tiktokId,

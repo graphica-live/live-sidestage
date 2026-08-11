@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 
-type Step = "input" | "code_issued" | "verifying" | "verified";
+type Step = "input" | "code_issued" | "verifying" | "verified" | "already_verified";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -40,11 +40,14 @@ export default function SetupPage() {
   }
 
   useEffect(() => {
-    // Check if already has pending code
+    // 認証済み/認証コード発行済みの状態を判定し、初回入力フォームを飛ばす
     fetch("/api/verify/generate", { method: "GET" })
       .then((r) => r.json())
       .then((data) => {
-        if (data.code && data.tiktokId) {
+        if (data.verified && data.tiktokId) {
+          setTiktokId(data.tiktokId);
+          setStep("already_verified");
+        } else if (data.code && data.tiktokId) {
           setCode(data.code);
           setTiktokId(data.tiktokId);
           setStep("code_issued");
@@ -134,6 +137,21 @@ export default function SetupPage() {
         </div>
 
         <div className="card space-y-4">
+          {step === "already_verified" && (
+            <div className="space-y-4">
+              <div className="text-center py-2 space-y-1">
+                <div className="text-3xl">✓</div>
+                <p className="text-green-400 font-semibold">認証済みです</p>
+                <p className="text-sm text-gray-400">
+                  対象のTikTok ID: <span className="font-mono text-brand">@{tiktokId}</span>
+                </p>
+              </div>
+              <button onClick={handleReset} className="btn-ghost w-full text-sm">
+                別のTikTok IDで認証をやり直す
+              </button>
+            </div>
+          )}
+
           {step === "input" && (
             <form onSubmit={handleGenerateCode} className="space-y-4">
               <div>
