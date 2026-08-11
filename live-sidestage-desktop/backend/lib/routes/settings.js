@@ -10,11 +10,18 @@ function popoutAutoOpenStateKey(kind) {
     return `popout_auto_open_${kind}`;
 }
 
+function popoutAutoFrontStateKey(kind) {
+    return `popout_auto_front_${kind}`;
+}
+
 module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvents, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
     app.get('/api/settings/popout-windows', (req, res) => {
         const windows = {};
         for (const kind of POPOUT_WINDOW_KINDS) {
-            windows[kind] = { autoOpenOnStartup: dbStore.getGlobalStateValue(popoutAutoOpenStateKey(kind)) === '1' };
+            windows[kind] = {
+                autoOpenOnStartup: dbStore.getGlobalStateValue(popoutAutoOpenStateKey(kind)) === '1',
+                autoFront: dbStore.getGlobalStateValue(popoutAutoFrontStateKey(kind)) === '1'
+            };
         }
         res.json({ available: IS_ELECTRON, windows });
     });
@@ -26,6 +33,16 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         }
         const enabled = Boolean((req.body || {}).enabled);
         dbStore.setGlobalStateValue(popoutAutoOpenStateKey(kind), enabled ? '1' : '0', getTimestamp());
+        res.json({ ok: true, enabled });
+    });
+
+    app.post('/api/settings/popout-windows/auto-front', express.json(), (req, res) => {
+        const kind = String((req.body || {}).kind || '');
+        if (!POPOUT_WINDOW_KINDS.includes(kind)) {
+            return res.status(400).json({ ok: false, error: 'invalid kind' });
+        }
+        const enabled = Boolean((req.body || {}).enabled);
+        dbStore.setGlobalStateValue(popoutAutoFrontStateKey(kind), enabled ? '1' : '0', getTimestamp());
         res.json({ ok: true, enabled });
     });
 
