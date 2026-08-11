@@ -187,6 +187,29 @@ function popoutAutoOpenStateKey(kind) {
     return `popout_auto_open_${kind}`;
 }
 
+function popoutAutoFrontStateKey(kind) {
+    return `popout_auto_front_${kind}`;
+}
+
+function isPopoutAutoFrontEnabled(kind) {
+    if (typeof server.getGlobalStateValue !== 'function') {
+        return false;
+    }
+    return server.getGlobalStateValue(popoutAutoFrontStateKey(kind)) === '1';
+}
+
+function bringPopoutToFrontIfEnabled(kind) {
+    if (!isPopoutAutoFrontEnabled(kind)) {
+        return;
+    }
+    const popoutWindow = popoutWindows[kind];
+    if (!popoutWindow || popoutWindow.isDestroyed()) {
+        return;
+    }
+    popoutWindow.show();
+    popoutWindow.focus();
+}
+
 function loadPopoutBounds(kind) {
     const config = POPOUT_WINDOW_CONFIG[kind];
     const defaults = { width: config.width, height: config.height };
@@ -954,6 +977,15 @@ if (server.serverEvents) {
 
     server.serverEvents.on('popout-window-open-requested', (kind) => {
         ensurePopoutWindow(kind);
+    });
+
+    // コメント/ギフトの新着イベントで、対応する別窓（コメント欄・ギフト履歴・コメント＆ギフト）を
+    // 設定が有効な場合のみ最前面に呼び出す。コメント＆ギフトは両方のイベントで反応させる。
+    server.serverEvents.on('popout-front-requested', (kind) => {
+        bringPopoutToFrontIfEnabled(kind);
+        if (kind === 'comments' || kind === 'gifts') {
+            bringPopoutToFrontIfEnabled('comments-gifts');
+        }
     });
 }
 

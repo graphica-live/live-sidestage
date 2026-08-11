@@ -3110,6 +3110,10 @@ function ensureTikTokConnection() {
             }, { isFirstTick, deltaRepeat, comboKey });
             activeComboTriggerMap.set(comboKey, true);
 
+            if (isFirstTick) {
+                serverEvents.emit('popout-front-requested', 'gifts');
+            }
+
             if (deltaRepeat > 0) {
                 emitGiftJarFromRawData(data, deltaRepeat);
             }
@@ -3168,6 +3172,11 @@ function ensureTikTokConnection() {
 
         if (!inserted) {
             return;
+        }
+
+        // コンボ開始時（isFirstTick）に既に前面化済みなので、コンボ完結時の重複発火は避ける。
+        if (!wasTrackedAsCombo) {
+            serverEvents.emit('popout-front-requested', 'gifts');
         }
 
         // gift-jar: コンボ中に既に delta を emit 済みなら、ここでは差分だけを流す。

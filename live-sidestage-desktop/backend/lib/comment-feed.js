@@ -1017,6 +1017,7 @@ function pushTikTokComment(commentEvent) {
     updateObservedCommentAssetCaches(commentEvent);
     emitAdminCommentAppended(commentEvent);
     emitCommentReadAloud(commentEvent);
+    _serverEvents.emit('popout-front-requested', 'comments');
 }
 
 function emitAdminCommentAppended(commentEvent) {

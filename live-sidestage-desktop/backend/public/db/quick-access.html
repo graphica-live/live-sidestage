@@ -372,11 +372,26 @@
             <p class="popout-hint">コメント欄・ギフト履歴をそれぞれ独立したウィンドウで開けます。ウィンドウの位置とサイズは次回起動時も記憶されます。</p>
 
             <div class="popout-row">
+                <span class="popout-row-label">共通設定</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="all-auto-front-checkbox">
+                        新着時に最前面へ（すべて一括）
+                    </label>
+                </div>
+            </div>
+            <p class="popout-hint">有効にすると、コメント欄は新着コメント、ギフト履歴は新着ギフト、コメント＆ギフトは両方を受信した瞬間にそのウィンドウを自動で最前面に表示します。常時最前面固定ではなく、新着があった時だけ一時的に前面へ呼び出します。</p>
+
+            <div class="popout-row">
                 <span class="popout-row-label">コメント＆ギフト</span>
                 <div class="quick-actions">
                     <label class="check-label">
                         <input type="checkbox" id="comments-gifts-auto-open-checkbox">
                         起動時に自動的に開く
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-gifts-auto-front-checkbox">
+                        新着時に最前面へ
                     </label>
                     <button type="button" class="ghost-button" id="open-comments-gifts-popout-btn">別ウィンドウで開く</button>
                 </div>
@@ -390,6 +405,10 @@
                         <input type="checkbox" id="comments-auto-open-checkbox">
                         起動時に自動的に開く
                     </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-auto-front-checkbox">
+                        新着時に最前面へ
+                    </label>
                     <button type="button" class="ghost-button" id="comments-popout-settings-button">表示設定</button>
                     <button type="button" class="ghost-button" id="open-comments-popout-btn">別ウィンドウで開く</button>
                 </div>
@@ -401,6 +420,10 @@
                     <label class="check-label">
                         <input type="checkbox" id="gifts-auto-open-checkbox">
                         起動時に自動的に開く
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="gifts-auto-front-checkbox">
+                        新着時に最前面へ
                     </label>
                     <button type="button" class="ghost-button" id="gifts-popout-settings-button">表示設定</button>
                     <button type="button" class="ghost-button" id="open-gifts-popout-btn">別ウィンドウで開く</button>
@@ -545,11 +568,30 @@
                 gifts: document.getElementById('gifts-auto-open-checkbox'),
                 'comments-gifts': document.getElementById('comments-gifts-auto-open-checkbox')
             };
+            const autoFrontCheckboxes = {
+                comments: document.getElementById('comments-auto-front-checkbox'),
+                gifts: document.getElementById('gifts-auto-front-checkbox'),
+                'comments-gifts': document.getElementById('comments-gifts-auto-front-checkbox')
+            };
+            const allAutoFrontCheckbox = document.getElementById('all-auto-front-checkbox');
             const statusEl = document.getElementById('popout-windows-status');
 
             function showStatus(message) {
                 statusEl.textContent = message;
                 statusEl.hidden = !message;
+            }
+
+            function syncAllAutoFrontCheckbox() {
+                allAutoFrontCheckbox.checked = Object.values(autoFrontCheckboxes).every((checkbox) => checkbox.checked);
+            }
+
+            async function saveAutoFront(kind, enabled) {
+                const res = await fetch('/api/settings/popout-windows/auto-front', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ kind, enabled })
+                });
+                if (!res.ok) throw new Error('サーバーエラー');
             }
 
             async function loadState() {
@@ -560,8 +602,10 @@
                     if (!data.available) {
                         for (const kind of Object.keys(autoOpenCheckboxes)) {
                             autoOpenCheckboxes[kind].disabled = true;
+                            autoFrontCheckboxes[kind].disabled = true;
                             openButtons[kind].disabled = true;
                         }
+                        allAutoFrontCheckbox.disabled = true;
                         showStatus('インストール版でのみ利用できます。');
                         return;
                     }
@@ -569,6 +613,10 @@
                     for (const [kind, checkbox] of Object.entries(autoOpenCheckboxes)) {
                         checkbox.checked = Boolean(data.windows?.[kind]?.autoOpenOnStartup);
                     }
+                    for (const [kind, checkbox] of Object.entries(autoFrontCheckboxes)) {
+                        checkbox.checked = Boolean(data.windows?.[kind]?.autoFront);
+                    }
+                    syncAllAutoFrontCheckbox();
                 } catch {
                     showStatus('状態を取得できませんでした。');
                 }
@@ -610,6 +658,43 @@
                     }
                 });
             }
+
+            for (const [kind, checkbox] of Object.entries(autoFrontCheckboxes)) {
+                checkbox.addEventListener('change', async () => {
+                    checkbox.disabled = true;
+                    try {
+                        await saveAutoFront(kind, checkbox.checked);
+                        syncAllAutoFrontCheckbox();
+                    } catch (e) {
+                        showStatus('保存に失敗しました: ' + e.message);
+                        checkbox.checked = !checkbox.checked;
+                    } finally {
+                        checkbox.disabled = false;
+                    }
+                });
+            }
+
+            allAutoFrontCheckbox.addEventListener('change', async () => {
+                const nextEnabled = allAutoFrontCheckbox.checked;
+                allAutoFrontCheckbox.disabled = true;
+                for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                    checkbox.disabled = true;
+                }
+                try {
+                    await Promise.all(Object.keys(autoFrontCheckboxes).map((kind) => saveAutoFront(kind, nextEnabled)));
+                    for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                        checkbox.checked = nextEnabled;
+                    }
+                } catch (e) {
+                    showStatus('保存に失敗しました: ' + e.message);
+                    allAutoFrontCheckbox.checked = !nextEnabled;
+                } finally {
+                    allAutoFrontCheckbox.disabled = false;
+                    for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                        checkbox.disabled = false;
+                    }
+                }
+            });
 
             loadState();
         }());
