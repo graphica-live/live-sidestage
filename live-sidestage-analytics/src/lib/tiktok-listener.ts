@@ -1,6 +1,7 @@
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
+import { emitOverlaySnapshot } from "./overlay";
 
 export type ListenerStatus =
   | "idle"
@@ -45,6 +46,7 @@ export interface GiftLogEntry {
   isCombo: boolean;
   delta?: number;
   prevRepeat?: number;
+  timeSource: "tiktok" | "fallback";
 }
 
 const GIFT_LOG_MAX = 200;
@@ -143,8 +145,21 @@ function updateState(
   persistState(inst.state.streamerId, status, message);
 }
 
-function jstDateKey(): string {
-  return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+function jstDateKey(date: Date = new Date()): string {
+  return new Date(date.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * TikTok共通メッセージヘッダの createTime（epoch ms）を優先し、
+ * 欠落・不正値の場合のみサーバー受信時刻にフォールバックする。
+ * フォールバックは呼び出し側で必ずログに残すこと（サイレントフォールバック禁止）。
+ */
+function resolveEventTime(data: Record<string, unknown>): { time: Date; source: "tiktok" | "fallback" } {
+  const raw = Number(data.createTime);
+  if (Number.isFinite(raw) && raw > 0) {
+    return { time: new Date(raw), source: "tiktok" };
+  }
+  return { time: new Date(), source: "fallback" };
 }
 
 async function loadPendingCombos(
@@ -166,10 +181,12 @@ async function loadPendingCombos(
 async function saveGift(
   streamerId: string,
   data: Record<string, unknown>,
-  count: number
+  count: number,
+  receivedAt: Date,
+  timeSource: "tiktok" | "fallback"
 ) {
   try {
-    const dayKey = jstDateKey();
+    const dayKey = jstDateKey(receivedAt);
     const diamondCount = Number(data.diamondCount) || 0;
     const orderId = data.orderId ? String(data.orderId) : null;
     const groupId = data.groupId ? String(data.groupId) : null;
@@ -189,11 +206,14 @@ async function saveGift(
         repeatCount: count,
         diamondCount,
         totalDiamonds: diamondCount * count,
+        receivedAt,
+        timeSource,
         dayKey,
         orderId,
         groupId,
       },
     });
+    emitOverlaySnapshot(streamerId).catch((err) => console.error("[overlay] emit error:", err));
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
       console.log("[gift] dedup: duplicate orderId skipped", data.orderId);
@@ -283,6 +303,17 @@ async function connectInstance(streamerId: string) {
     const groupId = data.groupId ? String(data.groupId) : null;
     const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
+    const { time: eventTime, source: timeSource } = resolveEventTime(data);
+
+    if (timeSource === "fallback") {
+      console.warn("[gift] createTime missing/invalid — falling back to server time", {
+        streamerId,
+        uniqueId: data.uniqueId,
+        giftId: data.giftId,
+        orderId: data.orderId,
+        rawCreateTime: data.createTime,
+      });
+    }
 
     const baseLog = {
       ts: new Date().toISOString(),
@@ -297,6 +328,7 @@ async function connectInstance(streamerId: string) {
       repeatEnd: data.repeatEnd,
       diamondCount: data.diamondCount,
       isCombo,
+      timeSource,
     };
 
     console.log("[gift]", JSON.stringify(baseLog));
@@ -312,7 +344,7 @@ async function connectInstance(streamerId: string) {
       }
       console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
       appendGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
-      if (delta > 0) saveGift(streamerId, data, delta);
+      if (delta > 0) saveGift(streamerId, data, delta, eventTime, timeSource);
       return;
     }
 
@@ -331,7 +363,7 @@ async function connectInstance(streamerId: string) {
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
     appendGiftLog({ ...baseLog, action: "non-combo" });
-    saveGift(streamerId, data, currentRepeat);
+    saveGift(streamerId, data, currentRepeat, eventTime, timeSource);
   });
 
   if (conn.clientParams) {

@@ -89,6 +89,7 @@ model Gift {
   diamondCount    Int      @default(0)
   totalDiamonds   Int      @default(0)
   receivedAt      DateTime @default(now())
+  timeSource      String   @default("tiktok") // "tiktok" | "fallback" — fallback は TikTok createTime 欠落/不正でサーバー受信時刻を使用したことを示す
   dayKey          String
   orderId         String?  @unique
   groupId         String?
