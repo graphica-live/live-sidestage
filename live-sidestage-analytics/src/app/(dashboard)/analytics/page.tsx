@@ -56,6 +56,8 @@ interface OverlaySettings {
   isToday: boolean;
   threshold: number;
   goalCount: number;
+  visibleRows: number;
+  nameMaxWidth: number;
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -296,7 +298,13 @@ export default function AnalyticsPage() {
   }, []);
 
   const patchOverlaySettings = useCallback(
-    async (body: { nav?: "prev" | "next" | "today"; threshold?: number; goalCount?: number }) => {
+    async (body: {
+      nav?: "prev" | "next" | "today";
+      threshold?: number;
+      goalCount?: number;
+      visibleRows?: number;
+      nameMaxWidth?: number;
+    }) => {
       const res = await fetch("/api/streamer/overlay-settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -317,6 +325,18 @@ export default function AnalyticsPage() {
     setOverlaySettings((prev) => (prev ? { ...prev, goalCount: value } : prev));
     if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
     overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ goalCount: value }), 500);
+  }
+
+  function handleOverlayVisibleRowsChange(value: number) {
+    setOverlaySettings((prev) => (prev ? { ...prev, visibleRows: value } : prev));
+    if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
+    overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ visibleRows: value }), 500);
+  }
+
+  function handleOverlayNameMaxWidthChange(value: number) {
+    setOverlaySettings((prev) => (prev ? { ...prev, nameMaxWidth: value } : prev));
+    if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
+    overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ nameMaxWidth: value }), 500);
   }
 
   const overlayUrl =
@@ -507,6 +527,27 @@ export default function AnalyticsPage() {
                           min={0}
                           value={overlaySettings.goalCount}
                           onChange={(e) => handleOverlayGoalCountChange(Number(e.target.value))}
+                          className="input-field text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">表示人数</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={overlaySettings.visibleRows}
+                          onChange={(e) => handleOverlayVisibleRowsChange(Number(e.target.value))}
+                          className="input-field text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">名前の最大幅(px)</label>
+                        <input
+                          type="number"
+                          min={40}
+                          step={10}
+                          value={overlaySettings.nameMaxWidth}
+                          onChange={(e) => handleOverlayNameMaxWidthChange(Number(e.target.value))}
                           className="input-field text-sm"
                         />
                       </div>

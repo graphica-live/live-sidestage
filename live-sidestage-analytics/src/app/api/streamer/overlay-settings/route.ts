@@ -17,6 +17,8 @@ type OverlaySettingsResponse = {
   isToday: boolean;
   threshold: number;
   goalCount: number;
+  visibleRows: number;
+  nameMaxWidth: number;
 };
 
 async function loadStreamer(userId: string) {
@@ -29,6 +31,8 @@ async function loadStreamer(userId: string) {
       overlayDisplayDate: true,
       overlayThreshold: true,
       overlayGoalCount: true,
+      overlayVisibleRows: true,
+      overlayNameMaxWidth: true,
     },
   });
 }
@@ -39,6 +43,8 @@ function toResponse(streamer: {
   overlayDisplayDate: string | null;
   overlayThreshold: number;
   overlayGoalCount: number;
+  overlayVisibleRows: number;
+  overlayNameMaxWidth: number;
 }): OverlaySettingsResponse {
   const displayDate = resolveOverlayDayKey(streamer);
   return {
@@ -47,6 +53,8 @@ function toResponse(streamer: {
     isToday: displayDate === jstDateKey(),
     threshold: streamer.overlayThreshold,
     goalCount: streamer.overlayGoalCount,
+    visibleRows: streamer.overlayVisibleRows,
+    nameMaxWidth: streamer.overlayNameMaxWidth,
   };
 }
 
@@ -79,6 +87,8 @@ export async function PATCH(req: NextRequest) {
     overlayDisplayDate?: string | null;
     overlayThreshold?: number;
     overlayGoalCount?: number;
+    overlayVisibleRows?: number;
+    overlayNameMaxWidth?: number;
   } = {};
 
   if (body.nav === "prev" || body.nav === "next" || body.nav === "today") {
@@ -113,6 +123,22 @@ export async function PATCH(req: NextRequest) {
     data.overlayGoalCount = goalCount;
   }
 
+  if (body.visibleRows !== undefined) {
+    const visibleRows = Number(body.visibleRows);
+    if (!Number.isInteger(visibleRows) || visibleRows < 1) {
+      return NextResponse.json({ error: "表示人数は1以上の整数で指定してください。" }, { status: 400 });
+    }
+    data.overlayVisibleRows = visibleRows;
+  }
+
+  if (body.nameMaxWidth !== undefined) {
+    const nameMaxWidth = Number(body.nameMaxWidth);
+    if (!Number.isInteger(nameMaxWidth) || nameMaxWidth < 40) {
+      return NextResponse.json({ error: "名前の最大幅は40px以上の整数で指定してください。" }, { status: 400 });
+    }
+    data.overlayNameMaxWidth = nameMaxWidth;
+  }
+
   const updated = await prisma.streamer.update({
     where: { id: streamer.id },
     data,
@@ -122,6 +148,8 @@ export async function PATCH(req: NextRequest) {
       overlayDisplayDate: true,
       overlayThreshold: true,
       overlayGoalCount: true,
+      overlayVisibleRows: true,
+      overlayNameMaxWidth: true,
     },
   });
 

@@ -14,11 +14,18 @@ type OverlaySnapshot = {
   dayKey: string;
   threshold: number;
   goalCount: number;
+  visibleRows: number;
+  nameMaxWidth: number;
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
 
 const POLL_FALLBACK_INTERVAL_MS = 30_000;
+const ROW_HEIGHT_PX = 44;
+const ROW_GAP_PX = 8;
+const ROW_STEP_PX = ROW_HEIGHT_PX + ROW_GAP_PX;
+const SCROLL_PAUSE_MS = 2600; // 停止時間: 2〜3秒
+const SCROLL_MOVE_MS = 400; // 移動時間: 0.3〜0.5秒
 
 function formatDayLabel(dayKey: string): string {
   if (!dayKey) return "";
@@ -105,35 +112,138 @@ export default function ContributionOverlayPage() {
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
-            {snapshot.contributors.map((c) => (
-              <div
-                key={c.uniqueId}
-                className="overlay-card flex items-center gap-2 rounded-full border border-white/20 bg-white/10 pl-1.5 pr-4 py-1.5 shadow-lg backdrop-blur-sm"
-              >
-                <ContributorAvatar src={c.profileImageUrl} alt={c.nickname} />
-                <span
-                  className="text-white font-bold text-base"
-                  style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
-                >
-                  {c.nickname}
-                </span>
-              </div>
-            ))}
-          </div>
+          <ContributorList
+            contributors={snapshot.contributors}
+            visibleRows={snapshot.visibleRows}
+            nameMaxWidth={snapshot.nameMaxWidth}
+          />
         </>
       )}
 
       <style>{`
-        @keyframes overlayCardEnter {
+        @keyframes overlayRowEnter {
           0% { opacity: 0; transform: translateX(-16px) scale(0.94); }
           60% { opacity: 1; }
           100% { opacity: 1; transform: translateX(0) scale(1); }
         }
-        .overlay-card {
-          animation: overlayCardEnter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        .overlay-row {
+          animation: overlayRowEnter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .overlay-fade-top,
+        .overlay-fade-bottom {
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 20px;
+          pointer-events: none;
+          z-index: 2;
+        }
+        .overlay-fade-top {
+          top: 0;
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
+        }
+        .overlay-fade-bottom {
+          bottom: 0;
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
         }
       `}</style>
+    </div>
+  );
+}
+
+function ContributorList({
+  contributors,
+  visibleRows,
+  nameMaxWidth,
+}: {
+  contributors: OverlayContributor[];
+  visibleRows: number;
+  nameMaxWidth: number;
+}) {
+  const needsScroll = contributors.length > visibleRows;
+  const [index, setIndex] = useState(0);
+  const [transitionEnabled, setTransitionEnabled] = useState(true);
+
+  // 表示件数や表示人数設定が変わったらループ状態をリセットする(範囲外indexを防ぐ)。
+  useEffect(() => {
+    setIndex(0);
+    setTransitionEnabled(true);
+  }, [contributors.length, visibleRows]);
+
+  // 1人分移動 → 2〜3秒停止 → 次の1人へ、を一方向で繰り返す。
+  useEffect(() => {
+    if (!needsScroll) return;
+    const id = setInterval(() => setIndex((i) => i + 1), SCROLL_PAUSE_MS);
+    return () => clearInterval(id);
+  }, [needsScroll]);
+
+  // 複製した2周目の先頭(=1周目の先頭と同じ見た目)まで移動し終えたら、移動アニメーション完了
+  // 直後にtransitionを切って瞬時に先頭へ戻す。逆走せず自然に循環して見える。
+  useEffect(() => {
+    if (!needsScroll || index !== contributors.length) return;
+    const t = setTimeout(() => {
+      setTransitionEnabled(false);
+      setIndex(0);
+    }, SCROLL_MOVE_MS);
+    return () => clearTimeout(t);
+  }, [index, needsScroll, contributors.length]);
+
+  useEffect(() => {
+    if (transitionEnabled) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setTransitionEnabled(true));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [transitionEnabled]);
+
+  if (!needsScroll) {
+    return (
+      <div className="flex flex-col" style={{ gap: ROW_GAP_PX }}>
+        {contributors.map((c) => (
+          <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} />
+        ))}
+      </div>
+    );
+  }
+
+  const displayList = contributors.concat(contributors);
+
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{ height: visibleRows * ROW_STEP_PX - ROW_GAP_PX }}
+    >
+      <div
+        className="flex flex-col"
+        style={{
+          gap: ROW_GAP_PX,
+          transform: `translateY(-${index * ROW_STEP_PX}px)`,
+          transition: transitionEnabled ? `transform ${SCROLL_MOVE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : "none",
+        }}
+      >
+        {displayList.map((c, i) => (
+          <ContributorRow key={`${c.uniqueId}-${i}`} contributor={c} nameMaxWidth={nameMaxWidth} />
+        ))}
+      </div>
+      <div className="overlay-fade-top" />
+      <div className="overlay-fade-bottom" />
+    </div>
+  );
+}
+
+function ContributorRow({ contributor, nameMaxWidth }: { contributor: OverlayContributor; nameMaxWidth: number }) {
+  return (
+    <div
+      className="overlay-row flex items-center gap-2 rounded-full border border-white/20 bg-white/10 pl-1.5 pr-4 py-1.5 shadow-lg backdrop-blur-sm shrink-0"
+      style={{ height: ROW_HEIGHT_PX }}
+    >
+      <ContributorAvatar src={contributor.profileImageUrl} alt={contributor.nickname} />
+      <span
+        className="text-white font-bold text-base overflow-hidden text-ellipsis whitespace-nowrap"
+        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)", maxWidth: nameMaxWidth }}
+      >
+        {contributor.nickname}
+      </span>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import type { Server as SocketIOServer } from "socket.io";
 import { prisma } from "@/lib/prisma";
-import { queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 
 export function jstDateKey(offsetDays = 0): string {
   return new Date(Date.now() + 9 * 3600_000 + offsetDays * 86_400_000)
@@ -54,17 +53,29 @@ export function generateOverlayToken(): string {
   return crypto.randomBytes(24).toString("hex");
 }
 
-export type OverlayContributor = Pick<
-  GiftAnalyticsUser,
-  "uniqueId" | "nickname" | "profileImageUrl" | "totalDiamonds"
->;
+export type OverlayContributor = {
+  uniqueId: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  totalDiamonds: number;
+};
 
 export type OverlaySnapshot = {
   dayKey: string;
   threshold: number;
   goalCount: number;
+  visibleRows: number;
+  nameMaxWidth: number;
   qualifiedCount: number;
   contributors: OverlayContributor[];
+};
+
+type ContributorTally = {
+  uniqueId: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  total: number;
+  qualifiedAt: Date | null;
 };
 
 export async function buildOverlaySnapshot(streamerId: string): Promise<OverlaySnapshot | null> {
@@ -75,28 +86,67 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
       overlayDisplayDate: true,
       overlayThreshold: true,
       overlayGoalCount: true,
+      overlayVisibleRows: true,
+      overlayNameMaxWidth: true,
     },
   });
 
   if (!streamer) return null;
 
   const dayKey = resolveOverlayDayKey(streamer);
-  const { users } = await queryGifts(streamerId, { dayKey: { gte: dayKey, lte: dayKey } });
 
-  const contributors: OverlayContributor[] = users
-    .filter((u) => u.totalDiamonds >= streamer.overlayThreshold)
-    .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
-    .map((u) => ({
-      uniqueId: u.uniqueId,
-      nickname: u.nickname,
-      profileImageUrl: u.profileImageUrl,
-      totalDiamonds: u.totalDiamonds,
+  // 「貢献しきい値到達順」で並べるため、集計済みの合計ではなくギフト1件ずつを時系列で
+  // 積み上げ、各ユーザーが初めて閾値を超えた瞬間(receivedAt)を qualifiedAt として記録する。
+  const gifts = await prisma.gift.findMany({
+    where: { streamerId, dayKey },
+    orderBy: { receivedAt: "asc" },
+    select: {
+      uniqueId: true,
+      nickname: true,
+      profileImageUrl: true,
+      totalDiamonds: true,
+      receivedAt: true,
+    },
+  });
+
+  const tallies = new Map<string, ContributorTally>();
+
+  for (const gift of gifts) {
+    let tally = tallies.get(gift.uniqueId);
+    if (!tally) {
+      tally = {
+        uniqueId: gift.uniqueId,
+        nickname: gift.nickname,
+        profileImageUrl: gift.profileImageUrl,
+        total: 0,
+        qualifiedAt: null,
+      };
+      tallies.set(gift.uniqueId, tally);
+    }
+    tally.nickname = gift.nickname;
+    tally.profileImageUrl = gift.profileImageUrl;
+    tally.total += gift.totalDiamonds;
+    if (tally.qualifiedAt === null && tally.total >= streamer.overlayThreshold) {
+      tally.qualifiedAt = gift.receivedAt;
+    }
+  }
+
+  const contributors: OverlayContributor[] = Array.from(tallies.values())
+    .filter((t): t is ContributorTally & { qualifiedAt: Date } => t.qualifiedAt !== null)
+    .sort((a, b) => a.qualifiedAt.getTime() - b.qualifiedAt.getTime())
+    .map((t) => ({
+      uniqueId: t.uniqueId,
+      nickname: t.nickname,
+      profileImageUrl: t.profileImageUrl,
+      totalDiamonds: t.total,
     }));
 
   return {
     dayKey,
     threshold: streamer.overlayThreshold,
     goalCount: streamer.overlayGoalCount,
+    visibleRows: streamer.overlayVisibleRows,
+    nameMaxWidth: streamer.overlayNameMaxWidth,
     qualifiedCount: contributors.length,
     contributors,
   };
