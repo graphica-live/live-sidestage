@@ -38,6 +38,9 @@ function formatCompactCoin(value: number): string {
   return value.toLocaleString();
 }
 
+// 背景カードを敷かない代わりに、任意の映像の上でも文字を読めるよう濃いめの影を重ねる。
+const TEXT_SHADOW = "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.6)";
+
 export default function ContributionOverlayPage() {
   // next/navigation の useSearchParams はSuspense境界が必須で、このアプリの環境では
   // Suspense+別クライアントコンポーネント構成にすると本番でも再現する原因不明の
@@ -103,11 +106,11 @@ export default function ContributionOverlayPage() {
     <div className="p-6">
       {snapshot && (
         <>
-          <div className="inline-flex items-center gap-3 rounded-full border border-brand/40 bg-black/40 px-5 py-2 mb-4 shadow-lg backdrop-blur-sm">
-            <span className="text-white font-bold text-lg" style={{ textShadow: "0 2px 6px rgba(0,0,0,0.6)" }}>
+          <div className="inline-flex items-center gap-3 mb-4">
+            <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
               {formatDayLabel(snapshot.dayKey)}
             </span>
-            <span className="text-brand font-extrabold text-lg" style={{ textShadow: "0 2px 6px rgba(0,0,0,0.6)" }}>
+            <span className="text-brand font-extrabold text-lg" style={{ textShadow: TEXT_SHADOW }}>
               {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
             </span>
           </div>
@@ -233,14 +236,11 @@ function ContributorList({
 
 function ContributorRow({ contributor, nameMaxWidth }: { contributor: OverlayContributor; nameMaxWidth: number }) {
   return (
-    <div
-      className="overlay-row flex items-center gap-2 rounded-full border border-white/20 bg-white/10 pl-1.5 pr-4 py-1.5 shadow-lg backdrop-blur-sm shrink-0"
-      style={{ height: ROW_HEIGHT_PX }}
-    >
+    <div className="overlay-row flex items-center gap-2 px-1 shrink-0" style={{ height: ROW_HEIGHT_PX }}>
       <ContributorAvatar src={contributor.profileImageUrl} alt={contributor.nickname} />
       <span
         className="text-white font-bold text-base overflow-hidden text-ellipsis whitespace-nowrap"
-        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)", maxWidth: nameMaxWidth }}
+        style={{ textShadow: TEXT_SHADOW, maxWidth: nameMaxWidth }}
       >
         {contributor.nickname}
       </span>
