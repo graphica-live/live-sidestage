@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node server.js",
     "build": "prisma generate && prisma db push --accept-data-loss && next build",
-    "start": "next start -p ${PORT:-3000}",
+    "start": "node server.js",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy"
   },
@@ -17,6 +17,8 @@
     "next-auth": "^4.24.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "tiktok-live-connector": "^2.1.1-beta1"
   },
   "devDependencies": {

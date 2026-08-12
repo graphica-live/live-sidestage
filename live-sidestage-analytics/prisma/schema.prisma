@@ -72,6 +72,12 @@ model Streamer {
   listenerMessage   String?
   listenerUpdatedAt DateTime?
 
+  overlayToken            String? @unique
+  overlayDisplayReference String  @default("today") // "today" | "fixed"
+  overlayDisplayDate      String? // YYYY-MM-DD, overlayDisplayReference="fixed" のときのみ意味を持つ
+  overlayThreshold        Int     @default(1000)
+  overlayGoalCount        Int     @default(5)
+
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   gifts Gift[]
 }

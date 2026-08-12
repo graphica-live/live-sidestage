@@ -50,6 +50,14 @@ interface ListenerState {
   tiktokId: string;
 }
 
+interface OverlaySettings {
+  overlayToken: string;
+  displayDate: string;
+  isToday: boolean;
+  threshold: number;
+  goalCount: number;
+}
+
 const SORT_LABELS: Record<SortKey, string> = {
   diamonds: "コイン数",
   count: "ギフト数",
@@ -199,6 +207,13 @@ export default function AnalyticsPage() {
   const [pendingEnd, setPendingEnd] = useState(customEnd);
   const calendarRef = useRef<HTMLDivElement>(null);
 
+  const [showOverlayPanel, setShowOverlayPanel] = useState(false);
+  const [overlaySettings, setOverlaySettings] = useState<OverlaySettings | null>(null);
+  const [overlaySettingsLoading, setOverlaySettingsLoading] = useState(false);
+  const [overlayCopied, setOverlayCopied] = useState(false);
+  const overlayPanelRef = useRef<HTMLDivElement>(null);
+  const overlaySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const fetchData = useCallback(
     async (p: Period, d: string, silent = false) => {
       if (!silent) setLoading(true);
@@ -258,6 +273,56 @@ export default function AnalyticsPage() {
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [showCalendar]);
+
+  useEffect(() => {
+    if (!showOverlayPanel) return;
+    function onMouseDown(e: MouseEvent) {
+      if (overlayPanelRef.current && !overlayPanelRef.current.contains(e.target as Node)) {
+        setShowOverlayPanel(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [showOverlayPanel]);
+
+  const fetchOverlaySettings = useCallback(async () => {
+    setOverlaySettingsLoading(true);
+    try {
+      const res = await fetch("/api/streamer/overlay-settings");
+      if (res.ok) setOverlaySettings(await res.json());
+    } finally {
+      setOverlaySettingsLoading(false);
+    }
+  }, []);
+
+  const patchOverlaySettings = useCallback(
+    async (body: { nav?: "prev" | "next" | "today"; threshold?: number; goalCount?: number }) => {
+      const res = await fetch("/api/streamer/overlay-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) setOverlaySettings(await res.json());
+    },
+    []
+  );
+
+  function handleOverlayThresholdChange(value: number) {
+    setOverlaySettings((prev) => (prev ? { ...prev, threshold: value } : prev));
+    if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
+    overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ threshold: value }), 500);
+  }
+
+  function handleOverlayGoalCountChange(value: number) {
+    setOverlaySettings((prev) => (prev ? { ...prev, goalCount: value } : prev));
+    if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
+    overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ goalCount: value }), 500);
+  }
+
+  const overlayUrl =
+    overlaySettings && typeof window !== "undefined"
+      ? `${window.location.origin}/overlay/contribution?token=${overlaySettings.overlayToken}`
+      : "";
 
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
@@ -372,6 +437,113 @@ export default function AnalyticsPage() {
                   @{listener.tiktokId} · {listener.message}
                 </span>
               </span>
+            )}
+          </div>
+
+          <div className="relative" ref={overlayPanelRef}>
+            <button
+              onClick={() => {
+                const next = !showOverlayPanel;
+                setShowOverlayPanel(next);
+                if (next && !overlaySettings) fetchOverlaySettings();
+              }}
+              className="btn-ghost text-xs shrink-0"
+            >
+              🎯 オーバーレイ
+            </button>
+            {showOverlayPanel && (
+              <div className="absolute top-full right-0 mt-1 z-50 bg-panel border border-border rounded-xl p-4 shadow-xl w-80 space-y-3">
+                {overlaySettingsLoading && !overlaySettings ? (
+                  <p className="text-xs text-gray-400">読み込み中...</p>
+                ) : overlaySettings ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => patchOverlaySettings({ nav: "prev" })}
+                        className="btn-ghost text-xs px-2 py-1"
+                      >
+                        ‹ 前日
+                      </button>
+                      <span className="text-xs font-medium text-center flex-1">
+                        {new Date(`${overlaySettings.displayDate}T00:00:00+09:00`).toLocaleDateString("ja-JP", {
+                          month: "numeric",
+                          day: "numeric",
+                          weekday: "short",
+                        })}
+                      </span>
+                      <button
+                        onClick={() => patchOverlaySettings({ nav: "next" })}
+                        disabled={overlaySettings.isToday}
+                        className="btn-ghost text-xs px-2 py-1 disabled:opacity-30"
+                      >
+                        翌日 ›
+                      </button>
+                    </div>
+                    {!overlaySettings.isToday && (
+                      <button
+                        onClick={() => patchOverlaySettings({ nav: "today" })}
+                        className="text-xs text-brand hover:underline"
+                      >
+                        今日に戻す
+                      </button>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">何コイン以上で表示</label>
+                        <input
+                          type="number"
+                          min={100}
+                          step={100}
+                          value={overlaySettings.threshold}
+                          onChange={(e) => handleOverlayThresholdChange(Number(e.target.value))}
+                          className="input-field text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">目標人数</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={overlaySettings.goalCount}
+                          onChange={(e) => handleOverlayGoalCountChange(Number(e.target.value))}
+                          className="input-field text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Overlay URL</label>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-xs font-mono text-white bg-black/40 px-2 py-1.5 rounded flex-1 truncate">
+                          {overlayUrl}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(overlayUrl);
+                            setOverlayCopied(true);
+                            setTimeout(() => setOverlayCopied(false), 1500);
+                          }}
+                          className="btn-ghost text-xs shrink-0"
+                          title="コピー"
+                        >
+                          {overlayCopied ? "✓" : "コピー"}
+                        </button>
+                      </div>
+                      <a
+                        href={`${overlayUrl}&preview=1`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-brand hover:underline mt-1 inline-block"
+                      >
+                        プレビューを開く
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-red-400">読み込みに失敗しました</p>
+                )}
+              </div>
             )}
           </div>
 
