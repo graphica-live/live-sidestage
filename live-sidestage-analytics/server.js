@@ -20,28 +20,48 @@ app.prepare().then(() => {
   // src/lib/overlay.ts の emitOverlaySnapshot などが参照する。
   global.__io = io;
 
+  // ブラウザ製オーバーレイウィジェット: ?token=overlayToken → overlay:{streamerId} ルーム
+  // Android/iOSアプリ: ?apiKey=streamer.apiKey → chat:{streamerId} ルーム
   io.use(async (socket, next) => {
-    const token = socket.handshake.query?.token;
-    if (typeof token !== "string" || !token) {
-      return next(new Error("unauthorized"));
+    const { token, apiKey } = socket.handshake.query ?? {};
+
+    if (typeof token === "string" && token) {
+      try {
+        const streamer = await prisma.streamer.findFirst({
+          where: { overlayToken: token, verified: true },
+          select: { id: true },
+        });
+        if (!streamer) return next(new Error("unauthorized"));
+        socket.data.streamerId = streamer.id;
+        socket.data.room = `overlay:${streamer.id}`;
+        return next();
+      } catch (err) {
+        console.error("[socket] auth error:", err);
+        return next(new Error("unauthorized"));
+      }
     }
 
-    try {
-      const streamer = await prisma.streamer.findFirst({
-        where: { overlayToken: token, verified: true },
-        select: { id: true },
-      });
-      if (!streamer) return next(new Error("unauthorized"));
-      socket.data.streamerId = streamer.id;
-      next();
-    } catch (err) {
-      console.error("[socket] auth error:", err);
-      next(new Error("unauthorized"));
+    if (typeof apiKey === "string" && apiKey) {
+      try {
+        const streamer = await prisma.streamer.findFirst({
+          where: { apiKey, verified: true },
+          select: { id: true },
+        });
+        if (!streamer) return next(new Error("unauthorized"));
+        socket.data.streamerId = streamer.id;
+        socket.data.room = `chat:${streamer.id}`;
+        return next();
+      } catch (err) {
+        console.error("[socket] auth error:", err);
+        return next(new Error("unauthorized"));
+      }
     }
+
+    return next(new Error("unauthorized"));
   });
 
   io.on("connection", (socket) => {
-    socket.join(`overlay:${socket.data.streamerId}`);
+    socket.join(socket.data.room);
   });
 
   httpServer.listen(port, "0.0.0.0", () => {

@@ -3,6 +3,7 @@ import { ProxyAgent } from "proxy-agent";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
+import { emitChatComment, type ChatCommentPayload } from "./chat-feed";
 
 export type ListenerStatus =
   | "idle"
@@ -198,6 +199,14 @@ async function notifyOverlayUpdate(streamerId: string) {
     return;
   }
   await forwardToWeb({ streamerId, emitOverlay: true });
+}
+
+async function notifyChatComment(chat: ChatCommentPayload) {
+  if (!isWorkerProcess) {
+    emitChatComment(chat).catch((err) => console.error("[chat] emit error:", err));
+    return;
+  }
+  await forwardToWeb({ streamerId: chat.streamerId, chatEvent: chat });
 }
 
 function isUserOfflineError(error: unknown): boolean {
@@ -434,6 +443,18 @@ async function connectInstance(streamerId: string) {
   conn.on("roomUser", markAlive);
   conn.on("social", markAlive);
   conn.on("like", markAlive);
+
+  conn.on("chat", (data: Record<string, unknown>) => {
+    const { time: eventTime } = resolveEventTime(data);
+    notifyChatComment({
+      streamerId,
+      uniqueId: String(data.uniqueId || ""),
+      nickname: String(data.nickname || ""),
+      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+      comment: String(data.comment || ""),
+      receivedAt: eventTime.toISOString(),
+    });
+  });
 
   conn.on("gift", (data: Record<string, unknown>) => {
     markAlive();
