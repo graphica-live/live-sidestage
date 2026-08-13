@@ -167,6 +167,7 @@ function extractAuthenticatedBroadcasterId(accountInfo) {
 const {
     TIME_ZONE,
     BROADCASTER_ID_STATE_KEY,
+    EULER_STREAM_API_KEY_STATE_KEY,
     DISPLAY_STATE_KEY,
     DISPLAY_DAY_REFERENCE_STATE_KEY,
     CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,
@@ -2954,6 +2955,12 @@ scheduleDisplayDayRolloverCheck();
 // 接続オプションは常に匿名 WebSocket 固定。
 // sessionid は Euler に渡さず、TikTok のリスクスコアに影響しない匿名視聴者接続として扱う。
 // sessionid は broadcaster ID の自動取得（ログイン時のみ）にのみ使用する。
+// EulerStream API キーは未設定でも動作する（匿名フォールバック）。設定済みならレート制限緩和のため署名リクエストに付与する。
+function getEulerStreamApiKey() {
+    const value = dbStore.getGlobalStateValue(EULER_STREAM_API_KEY_STATE_KEY);
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
 const tiktokConnectionOptions = {
     processInitialData: false,
     fetchRoomInfoOnConnect: true,
@@ -2965,6 +2972,9 @@ const tiktokConnectionOptions = {
     sessionId: undefined,
     ttTargetIdc: undefined,
     authenticateWs: false,
+    get signApiKey() {
+        return getEulerStreamApiKey() ?? null;
+    },
     webClientParams: {
         ...TIKTOK_JA_LOCALE_CLIENT_PARAMS,
         device_id: PERSISTED_TIKTOK_DEVICE_ID
@@ -2990,7 +3000,8 @@ const tiktokConnectionOptions = {
             clientParams: {
                 ...TIKTOK_JA_LOCALE_CLIENT_PARAMS
             },
-            authenticateWs: false
+            authenticateWs: false,
+            signApiKey: getEulerStreamApiKey()
         });
         return webClient.fetchSignedWebSocketFromEuler(params);
     } : undefined

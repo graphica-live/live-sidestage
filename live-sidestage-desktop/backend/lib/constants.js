@@ -2,6 +2,7 @@
 
 const TIME_ZONE = 'Asia/Tokyo';
 const BROADCASTER_ID_STATE_KEY = 'tiktok_broadcaster_id';
+const EULER_STREAM_API_KEY_STATE_KEY = 'eulerstream_api_key';
 const DISPLAY_STATE_KEY = 'active_day_key';
 const DISPLAY_DAY_REFERENCE_STATE_KEY = 'active_day_reference';
 const CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY = 'contributors_display_range';
@@ -436,6 +437,7 @@ const COMMENT_FEED_EVENT_DEFINITIONS = [
 module.exports = {
     TIME_ZONE,
     BROADCASTER_ID_STATE_KEY,
+    EULER_STREAM_API_KEY_STATE_KEY,
     DISPLAY_STATE_KEY,
     DISPLAY_DAY_REFERENCE_STATE_KEY,
     CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,

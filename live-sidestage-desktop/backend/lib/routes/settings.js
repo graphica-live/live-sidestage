@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS } = require('../constants');
+const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS, EULER_STREAM_API_KEY_STATE_KEY } = require('../constants');
 
 const POPOUT_WINDOW_KINDS = ['comments', 'gifts', 'comments-gifts'];
 const GIFT_SORT_ORDERS = ['timestamp-asc', 'timestamp-desc'];
@@ -133,6 +133,17 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         res.json({ ok: true, enabled });
     });
 
+
+    app.get('/api/settings/eulerstream-api-key', (req, res) => {
+        const apiKey = dbStore.getGlobalStateValue(EULER_STREAM_API_KEY_STATE_KEY) || '';
+        res.json({ apiKey });
+    });
+
+    app.post('/api/settings/eulerstream-api-key', express.json(), (req, res) => {
+        const apiKey = String((req.body || {}).apiKey || '').trim().slice(0, 500);
+        dbStore.setGlobalStateValue(EULER_STREAM_API_KEY_STATE_KEY, apiKey, getTimestamp());
+        res.json({ ok: true, apiKey });
+    });
 
     app.get('/api/settings/export', (req, res) => {
         const broadcasterId = getBroadcasterId();
