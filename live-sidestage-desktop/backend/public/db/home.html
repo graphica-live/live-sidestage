@@ -685,6 +685,15 @@
                 <p id="auto-launch-status" class="nav-footnote"></p>
             </section>
             <section class="admin-settings-section">
+                <div class="admin-settings-label">EulerStream API</div>
+                <p class="nav-footnote">未設定でも今まで通り匿名で接続します。<a href="https://www.eulerstream.com" target="_blank" rel="noopener noreferrer">eulerstream.com</a>で取得したAPIキーを設定すると、TikTok接続の署名処理が安定しやすくなります。</p>
+                <div class="admin-settings-data-row" style="gap:8px;">
+                    <input type="password" id="eulerstream-api-key-input" class="admin-settings-select" placeholder="APIキー（未設定=匿名動作）" autocomplete="off" style="flex:1;">
+                    <button type="button" class="primary" id="eulerstream-api-key-save">保存</button>
+                </div>
+                <p id="eulerstream-api-key-status" class="nav-footnote" hidden></p>
+            </section>
+            <section class="admin-settings-section">
                 <div class="admin-settings-label">データ管理</div>
                 <div class="admin-settings-data-row">
                     <button type="button" class="ghost-button" id="export-settings-btn">📤 エクスポート</button>
@@ -1103,6 +1112,48 @@
                     checkbox.checked = !checkbox.checked;
                 } finally {
                     checkbox.disabled = false;
+                }
+            });
+
+            loadState();
+        }());
+    </script>
+    <script>
+        (function () {
+            const input = document.getElementById('eulerstream-api-key-input');
+            const saveBtn = document.getElementById('eulerstream-api-key-save');
+            const status = document.getElementById('eulerstream-api-key-status');
+
+            function showStatus(msg, isError) {
+                status.textContent = msg;
+                status.hidden = !msg;
+                status.style.color = isError ? 'var(--accent)' : '';
+            }
+
+            async function loadState() {
+                try {
+                    const res = await fetch('/api/settings/eulerstream-api-key');
+                    const data = await res.json();
+                    input.value = data.apiKey || '';
+                } catch {
+                    showStatus('APIキーの状態を取得できませんでした。', true);
+                }
+            }
+
+            saveBtn.addEventListener('click', async () => {
+                saveBtn.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/eulerstream-api-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey: input.value.trim() })
+                    });
+                    if (!res.ok) throw new Error('サーバーエラー');
+                    showStatus(input.value.trim() ? '保存しました。' : '未設定にしました（匿名動作）。');
+                } catch (e) {
+                    showStatus('保存に失敗しました: ' + e.message, true);
+                } finally {
+                    saveBtn.disabled = false;
                 }
             });
 
