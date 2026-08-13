@@ -19,6 +19,7 @@ type OverlaySettingsResponse = {
   goalCount: number;
   visibleRows: number;
   nameMaxWidth: number;
+  align: string;
 };
 
 async function loadStreamer(userId: string) {
@@ -33,6 +34,7 @@ async function loadStreamer(userId: string) {
       overlayGoalCount: true,
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
+      overlayAlign: true,
     },
   });
 }
@@ -45,6 +47,7 @@ function toResponse(streamer: {
   overlayGoalCount: number;
   overlayVisibleRows: number;
   overlayNameMaxWidth: number;
+  overlayAlign: string;
 }): OverlaySettingsResponse {
   const displayDate = resolveOverlayDayKey(streamer);
   return {
@@ -55,6 +58,7 @@ function toResponse(streamer: {
     goalCount: streamer.overlayGoalCount,
     visibleRows: streamer.overlayVisibleRows,
     nameMaxWidth: streamer.overlayNameMaxWidth,
+    align: streamer.overlayAlign,
   };
 }
 
@@ -89,6 +93,7 @@ export async function PATCH(req: NextRequest) {
     overlayGoalCount?: number;
     overlayVisibleRows?: number;
     overlayNameMaxWidth?: number;
+    overlayAlign?: string;
   } = {};
 
   if (body.nav === "prev" || body.nav === "next" || body.nav === "today") {
@@ -139,6 +144,13 @@ export async function PATCH(req: NextRequest) {
     data.overlayNameMaxWidth = nameMaxWidth;
   }
 
+  if (body.align !== undefined) {
+    if (body.align !== "left" && body.align !== "right") {
+      return NextResponse.json({ error: "整列方向はleftまたはrightで指定してください。" }, { status: 400 });
+    }
+    data.overlayAlign = body.align;
+  }
+
   const updated = await prisma.streamer.update({
     where: { id: streamer.id },
     data,
@@ -150,6 +162,7 @@ export async function PATCH(req: NextRequest) {
       overlayGoalCount: true,
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
+      overlayAlign: true,
     },
   });
 

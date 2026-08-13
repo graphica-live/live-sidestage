@@ -66,6 +66,7 @@ export type OverlaySnapshot = {
   goalCount: number;
   visibleRows: number;
   nameMaxWidth: number;
+  align: "left" | "right";
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
@@ -88,6 +89,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
       overlayGoalCount: true,
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
+      overlayAlign: true,
     },
   });
 
@@ -147,6 +149,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     goalCount: streamer.overlayGoalCount,
     visibleRows: streamer.overlayVisibleRows,
     nameMaxWidth: streamer.overlayNameMaxWidth,
+    align: streamer.overlayAlign === "right" ? "right" : "left",
     qualifiedCount: contributors.length,
     contributors,
   };

@@ -58,6 +58,7 @@ interface OverlaySettings {
   goalCount: number;
   visibleRows: number;
   nameMaxWidth: number;
+  align: "left" | "right";
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -304,6 +305,7 @@ export default function AnalyticsPage() {
       goalCount?: number;
       visibleRows?: number;
       nameMaxWidth?: number;
+      align?: "left" | "right";
     }) => {
       const res = await fetch("/api/streamer/overlay-settings", {
         method: "PATCH",
@@ -337,6 +339,11 @@ export default function AnalyticsPage() {
     setOverlaySettings((prev) => (prev ? { ...prev, nameMaxWidth: value } : prev));
     if (overlaySaveTimerRef.current) clearTimeout(overlaySaveTimerRef.current);
     overlaySaveTimerRef.current = setTimeout(() => patchOverlaySettings({ nameMaxWidth: value }), 500);
+  }
+
+  function handleOverlayAlignChange(value: "left" | "right") {
+    setOverlaySettings((prev) => (prev ? { ...prev, align: value } : prev));
+    patchOverlaySettings({ align: value });
   }
 
   const overlayUrl =
@@ -554,6 +561,32 @@ export default function AnalyticsPage() {
                           onChange={(e) => handleOverlayNameMaxWidthChange(Number(e.target.value))}
                           className="input-field text-sm"
                         />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">整列方向</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleOverlayAlignChange("left")}
+                          className={`text-xs px-2 py-1.5 rounded-lg border ${
+                            overlaySettings.align === "right"
+                              ? "border-border text-gray-400 hover:text-white"
+                              : "border-brand text-brand bg-brand/10"
+                          }`}
+                        >
+                          左寄せ
+                        </button>
+                        <button
+                          onClick={() => handleOverlayAlignChange("right")}
+                          className={`text-xs px-2 py-1.5 rounded-lg border ${
+                            overlaySettings.align === "right"
+                              ? "border-brand text-brand bg-brand/10"
+                              : "border-border text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          右寄せ
+                        </button>
                       </div>
                     </div>
 

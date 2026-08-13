@@ -16,6 +16,7 @@ type OverlaySnapshot = {
   goalCount: number;
   visibleRows: number;
   nameMaxWidth: number;
+  align: "left" | "right";
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
@@ -108,7 +109,10 @@ export default function ContributionOverlayPage() {
     <div className="p-6">
       {snapshot && (
         <>
-          <div className="inline-flex items-center gap-3 mb-4">
+          <div
+            className="flex items-center gap-3 mb-4"
+            style={{ justifyContent: snapshot.align === "right" ? "flex-end" : "flex-start" }}
+          >
             <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
               {formatDayLabel(snapshot.dayKey)}
             </span>
@@ -121,18 +125,27 @@ export default function ContributionOverlayPage() {
             contributors={snapshot.contributors}
             visibleRows={snapshot.visibleRows}
             nameMaxWidth={snapshot.nameMaxWidth}
+            align={snapshot.align}
           />
         </>
       )}
 
       <style>{`
-        @keyframes overlayRowEnter {
+        @keyframes overlayRowEnterLeft {
           0% { opacity: 0; transform: translateX(-16px) scale(0.94); }
           60% { opacity: 1; }
           100% { opacity: 1; transform: translateX(0) scale(1); }
         }
+        @keyframes overlayRowEnterRight {
+          0% { opacity: 0; transform: translateX(16px) scale(0.94); }
+          60% { opacity: 1; }
+          100% { opacity: 1; transform: translateX(0) scale(1); }
+        }
         .overlay-row {
-          animation: overlayRowEnter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation: overlayRowEnterLeft 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .overlay-row-right {
+          animation-name: overlayRowEnterRight;
         }
         .overlay-fade-top,
         .overlay-fade-bottom {
@@ -153,7 +166,6 @@ export default function ContributionOverlayPage() {
         }
         .overlay-scroll-indicator {
           position: absolute;
-          left: -10px;
           top: 0;
           bottom: 0;
           width: 3px;
@@ -180,10 +192,12 @@ function ContributorList({
   contributors,
   visibleRows,
   nameMaxWidth,
+  align,
 }: {
   contributors: OverlayContributor[];
   visibleRows: number;
   nameMaxWidth: number;
+  align: "left" | "right";
 }) {
   const total = contributors.length;
   const needsCycle = total > visibleRows;
@@ -240,7 +254,7 @@ function ContributorList({
     return (
       <div className="flex flex-col" style={{ gap: ROW_GAP_PX }}>
         {contributors.map((c) => (
-          <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} />
+          <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
         ))}
       </div>
     );
@@ -272,7 +286,7 @@ function ContributorList({
           }}
         >
           {contributors.map((c) => (
-            <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} />
+            <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
         <div className="overlay-fade-top" />
@@ -281,7 +295,7 @@ function ContributorList({
 
       <div
         className="overlay-scroll-indicator"
-        style={{ opacity: showIndicator ? 1 : 0 }}
+        style={{ opacity: showIndicator ? 1 : 0, [align === "right" ? "right" : "left"]: -10 }}
       >
         <div
           className="overlay-scroll-indicator-thumb"
@@ -292,13 +306,28 @@ function ContributorList({
   );
 }
 
-function ContributorRow({ contributor, nameMaxWidth }: { contributor: OverlayContributor; nameMaxWidth: number }) {
+function ContributorRow({
+  contributor,
+  nameMaxWidth,
+  align,
+}: {
+  contributor: OverlayContributor;
+  nameMaxWidth: number;
+  align: "left" | "right";
+}) {
   return (
-    <div className="overlay-row flex items-center gap-2 px-1 shrink-0" style={{ height: ROW_HEIGHT_PX }}>
+    <div
+      className={`overlay-row flex items-center gap-2 px-1 shrink-0${align === "right" ? " overlay-row-right" : ""}`}
+      style={{ height: ROW_HEIGHT_PX, flexDirection: align === "right" ? "row-reverse" : "row" }}
+    >
       <ContributorAvatar src={contributor.profileImageUrl} alt={contributor.nickname} />
       <span
         className="text-white font-bold text-base overflow-hidden text-ellipsis whitespace-nowrap"
-        style={{ textShadow: TEXT_SHADOW, maxWidth: nameMaxWidth }}
+        style={{
+          textShadow: TEXT_SHADOW,
+          maxWidth: nameMaxWidth,
+          textAlign: align === "right" ? "right" : "left",
+        }}
       >
         {contributor.nickname}
       </span>
