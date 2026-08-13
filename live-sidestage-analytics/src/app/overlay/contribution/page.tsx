@@ -14,6 +14,7 @@ type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink" | "blac
 
 type OverlaySnapshot = {
   dayKey: string;
+  isToday: boolean;
   threshold: number;
   goalCount: number;
   visibleRows: number;
@@ -70,15 +71,6 @@ const HEADING_ACCENT_COLOR: Record<OverlayHeadingBackground, string> = {
   white: "#1a1a1a",
 };
 
-// 見出し1つ目(日付)のテキスト色。白背景のときだけ黒文字にする。
-const HEADING_DAY_TEXT_COLOR: Record<OverlayHeadingBackground, string> = {
-  clear: "#ffffff",
-  "crystal-blue": "#ffffff",
-  "sakura-pink": "#ffffff",
-  black: "#ffffff",
-  white: "#1a1a1a",
-};
-
 // 背景カードのあるテーマは映像への重畳を考慮した濃い影が不要かつ白背景では逆効果なので、テーマごとに切り替える。
 const HEADING_TEXT_SHADOW: Record<OverlayHeadingBackground, string> = {
   clear: "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.6)",
@@ -111,7 +103,7 @@ function formatDayLabel(dayKey: string): string {
 }
 
 function formatCompactCoin(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
   return value.toLocaleString();
 }
 
@@ -180,8 +172,6 @@ export default function ContributionOverlayPage() {
   if (!paramsReady || !token) return null;
 
   const accentColor = snapshot ? HEADING_ACCENT_COLOR[snapshot.headingBackground] : HEADING_ACCENT_COLOR.clear;
-  const dayTextColor = snapshot ? HEADING_DAY_TEXT_COLOR[snapshot.headingBackground] : HEADING_DAY_TEXT_COLOR.clear;
-  const headingTextShadow = snapshot ? HEADING_TEXT_SHADOW[snapshot.headingBackground] : HEADING_TEXT_SHADOW.clear;
   const accentTextShadow = snapshot
     ? HEADING_ACCENT_TEXT_SHADOW[snapshot.headingBackground]
     : HEADING_ACCENT_TEXT_SHADOW.clear;
@@ -198,11 +188,11 @@ export default function ContributionOverlayPage() {
               className="inline-flex items-center gap-3"
               style={HEADING_BACKGROUND_STYLE[snapshot.headingBackground]}
             >
-              <span className="font-bold text-lg" style={{ color: dayTextColor, textShadow: headingTextShadow }}>
-                {formatDayLabel(snapshot.dayKey)}
-              </span>
               <span className="font-extrabold text-lg" style={{ color: accentColor, textShadow: accentTextShadow }}>
-                {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
+                {formatCompactCoin(snapshot.threshold)}貢献｜
+                {snapshot.isToday
+                  ? `あと${Math.max(snapshot.goalCount - snapshot.qualifiedCount, 0)}人`
+                  : formatDayLabel(snapshot.dayKey)}
               </span>
             </div>
           </div>

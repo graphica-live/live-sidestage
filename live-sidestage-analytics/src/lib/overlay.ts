@@ -65,6 +65,7 @@ export type OverlayContributor = {
 
 export type OverlaySnapshot = {
   dayKey: string;
+  isToday: boolean;
   threshold: number;
   goalCount: number;
   visibleRows: number;
@@ -150,6 +151,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
 
   return {
     dayKey,
+    isToday: dayKey === jstDateKey(),
     threshold: streamer.overlayThreshold,
     goalCount: streamer.overlayGoalCount,
     visibleRows: streamer.overlayVisibleRows,
