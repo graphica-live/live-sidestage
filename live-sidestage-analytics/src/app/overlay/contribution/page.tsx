@@ -26,6 +26,8 @@ const ROW_GAP_PX = 8;
 const ROW_STEP_PX = ROW_HEIGHT_PX + ROW_GAP_PX;
 const SCROLL_PAUSE_MS = 2600; // 停止時間: 2〜3秒
 const SCROLL_MOVE_MS = 400; // 移動時間: 0.3〜0.5秒
+const ZOOM_MS = 700; // 縮小⇄復帰の遷移時間
+const SHRUNK_HOLD_MS = 3000; // 縮小全体表示の静止時間
 
 function formatDayLabel(dayKey: string): string {
   if (!dayKey) return "";
@@ -149,10 +151,30 @@ export default function ContributionOverlayPage() {
           bottom: 0;
           background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
         }
+        .overlay-scroll-indicator {
+          position: absolute;
+          left: -10px;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          border-radius: 2px;
+          background: rgba(255, 255, 255, 0.22);
+          transition: opacity 300ms ease;
+        }
+        .overlay-scroll-indicator-thumb {
+          position: absolute;
+          left: 0;
+          width: 100%;
+          border-radius: 2px;
+          background: #fe2c55;
+          transition: top ${SCROLL_MOVE_MS}ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
       `}</style>
     </div>
   );
 }
+
+type ScrollPhase = "scrolling" | "shrinking" | "shrunk" | "expanding";
 
 function ContributorList({
   contributors,
@@ -163,43 +185,58 @@ function ContributorList({
   visibleRows: number;
   nameMaxWidth: number;
 }) {
-  const needsScroll = contributors.length > visibleRows;
+  const total = contributors.length;
+  const needsCycle = total > visibleRows;
+  const maxIndex = Math.max(0, total - visibleRows);
+  const viewportHeight = visibleRows * ROW_STEP_PX - ROW_GAP_PX;
+  const fullContentHeight = total * ROW_STEP_PX - ROW_GAP_PX;
+  const fitScale = needsCycle ? viewportHeight / fullContentHeight : 1;
+
+  const [phase, setPhase] = useState<ScrollPhase>("scrolling");
   const [index, setIndex] = useState(0);
-  const [transitionEnabled, setTransitionEnabled] = useState(true);
 
-  // 表示件数や表示人数設定が変わったらループ状態をリセットする(範囲外indexを防ぐ)。
+  // 件数や表示人数設定が変わったら状態をリセットする(範囲外indexを防ぐ)。
   useEffect(() => {
+    setPhase("scrolling");
     setIndex(0);
-    setTransitionEnabled(true);
-  }, [contributors.length, visibleRows]);
+  }, [total, visibleRows]);
 
-  // 1人分移動 → 2〜3秒停止 → 次の1人へ、を一方向で繰り返す。
+  // scrolling: 上から下まで1行ずつ進める。末尾まで表示し終えたら少し停止してから縮小へ。
   useEffect(() => {
-    if (!needsScroll) return;
-    const id = setInterval(() => setIndex((i) => i + 1), SCROLL_PAUSE_MS);
-    return () => clearInterval(id);
-  }, [needsScroll]);
-
-  // 複製した2周目の先頭(=1周目の先頭と同じ見た目)まで移動し終えたら、移動アニメーション完了
-  // 直後にtransitionを切って瞬時に先頭へ戻す。逆走せず自然に循環して見える。
-  useEffect(() => {
-    if (!needsScroll || index !== contributors.length) return;
-    const t = setTimeout(() => {
-      setTransitionEnabled(false);
-      setIndex(0);
-    }, SCROLL_MOVE_MS);
+    if (!needsCycle || phase !== "scrolling") return;
+    if (index >= maxIndex) {
+      const t = setTimeout(() => setPhase("shrinking"), SCROLL_PAUSE_MS);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setIndex((i) => Math.min(i + 1, maxIndex)), SCROLL_PAUSE_MS);
     return () => clearTimeout(t);
-  }, [index, needsScroll, contributors.length]);
+  }, [phase, index, needsCycle, maxIndex]);
 
+  // shrinking: ZOOM_MSかけて縮小しきったら shrunk へ。
   useEffect(() => {
-    if (transitionEnabled) return;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setTransitionEnabled(true));
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [transitionEnabled]);
+    if (phase !== "shrinking") return;
+    const t = setTimeout(() => setPhase("shrunk"), ZOOM_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
 
-  if (!needsScroll) {
+  // shrunk: 全体表示のまま少し静止してから expanding へ。
+  useEffect(() => {
+    if (phase !== "shrunk") return;
+    const t = setTimeout(() => setPhase("expanding"), SHRUNK_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  // expanding: ZOOM_MSかけて等倍に戻りきったら、先頭からscrollingを再開。
+  useEffect(() => {
+    if (phase !== "expanding") return;
+    const t = setTimeout(() => {
+      setIndex(0);
+      setPhase("scrolling");
+    }, ZOOM_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  if (!needsCycle) {
     return (
       <div className="flex flex-col" style={{ gap: ROW_GAP_PX }}>
         {contributors.map((c) => (
@@ -209,27 +246,48 @@ function ContributorList({
     );
   }
 
-  const displayList = contributors.concat(contributors);
+  // 表示中コンテンツの「viewport上端に来ているコンテンツ上のY座標」(contentY)とズーム倍率(scale)から
+  // transformを組み立てる。transform-originを上端に固定しているため、
+  // translateY(-contentY*scale) scale(scale) と書くと、scaleを変えても常にcontentYの位置が
+  // viewport上端に揃ったまま拡大縮小される(=スクロール終端の表示がそのまま縮小されて全体表示に繋がる)。
+  // scrolling時のみ現在のindex位置、それ以外(shrinking/shrunk/expanding)は常に先頭(contentY=0)を狙う。
+  // expandingを「scaleだけ1に戻る」動きにするため、indexがまだ末尾のままでもcontentYは0を維持する。
+  const contentY = phase === "scrolling" ? index * ROW_STEP_PX : 0;
+  const scale = phase === "shrinking" || phase === "shrunk" ? fitScale : 1;
+  const transitionMs = phase === "shrinking" || phase === "expanding" ? ZOOM_MS : SCROLL_MOVE_MS;
+  const showIndicator = phase === "scrolling";
+  const thumbHeightPercent = (visibleRows / total) * 100;
+  const thumbTopPercent = maxIndex > 0 ? (index / maxIndex) * (100 - thumbHeightPercent) : 0;
 
   return (
-    <div
-      className="relative overflow-hidden"
-      style={{ height: visibleRows * ROW_STEP_PX - ROW_GAP_PX }}
-    >
-      <div
-        className="flex flex-col"
-        style={{
-          gap: ROW_GAP_PX,
-          transform: `translateY(-${index * ROW_STEP_PX}px)`,
-          transition: transitionEnabled ? `transform ${SCROLL_MOVE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : "none",
-        }}
-      >
-        {displayList.map((c, i) => (
-          <ContributorRow key={`${c.uniqueId}-${i}`} contributor={c} nameMaxWidth={nameMaxWidth} />
-        ))}
+    <div className="relative" style={{ height: viewportHeight }}>
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="flex flex-col"
+          style={{
+            gap: ROW_GAP_PX,
+            transformOrigin: "top center",
+            transform: `translateY(${-contentY * scale}px) scale(${scale})`,
+            transition: `transform ${transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+          }}
+        >
+          {contributors.map((c) => (
+            <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} />
+          ))}
+        </div>
+        <div className="overlay-fade-top" />
+        <div className="overlay-fade-bottom" />
       </div>
-      <div className="overlay-fade-top" />
-      <div className="overlay-fade-bottom" />
+
+      <div
+        className="overlay-scroll-indicator"
+        style={{ opacity: showIndicator ? 1 : 0 }}
+      >
+        <div
+          className="overlay-scroll-indicator-thumb"
+          style={{ height: `${thumbHeightPercent}%`, top: `${thumbTopPercent}%` }}
+        />
+      </div>
     </div>
   );
 }

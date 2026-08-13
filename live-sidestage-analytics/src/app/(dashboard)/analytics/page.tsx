@@ -531,7 +531,7 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">表示人数</label>
+                        <label className="text-xs text-gray-500 block mb-1">スクロールなし一括表示人数</label>
                         <input
                           type="number"
                           min={1}
