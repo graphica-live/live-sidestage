@@ -361,7 +361,7 @@ function ContributorList({
   // ただしハードカットだと不自然なので、幅の終端側だけmaskでフェードアウトさせて自然に消す。
   const horizontalFadeMask = `linear-gradient(${
     align === "right" ? "to left" : "to right"
-  }, black 0%, black 70%, transparent 100%)`;
+  }, black 0%, black 40%, transparent 100%)`;
   const fadeSideStyle: CSSProperties = {
     width: nameMaxWidth,
     [align === "right" ? "right" : "left"]: 0,
