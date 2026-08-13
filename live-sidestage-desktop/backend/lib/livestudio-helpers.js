@@ -311,6 +311,17 @@ function notifyLiveStudioPlaybackStarted(playbackId, screen) {
     firePendingQueuedAction(playbackId);
 }
 
+// オーバーレイ側の待機列から再生開始前に間引かれたアイテム（待機イベント削除など）の通知。
+// これらは二度と effects:playback-started が来ないため、対応する保留中のTLSアクションを
+// 発火させずに掃除する。掃除しないと、同一screenで他のアイテムが再生され続ける限り
+// screen進行ベースのフォールバックでは検知できず、保留のまま残り続けてしまう。
+function notifyLiveStudioPlaybackDropped(playbackIds) {
+    if (!Array.isArray(playbackIds)) return;
+    playbackIds.forEach((playbackId) => {
+        pendingQueuedActionByPlaybackId.delete(playbackId);
+    });
+}
+
 // startPlaybackId: バッチ内1回目の再生開始（ONを送るタイミング）に対応するオーバーレイ側ID。
 // finishPlaybackId: バッチ内最後の再生終了（OFFを送るタイミング）に対応するオーバーレイ側ID。
 // playbackCount>1（トリガー5倍・コンボ分割再生）の場合、この2つは異なるIDになる。
@@ -345,5 +356,6 @@ module.exports = {
     getLiveStudioSettings,
     sendLiveStudioActionForEffectEvent,
     notifyLiveStudioPlaybackFinished,
-    notifyLiveStudioPlaybackStarted
+    notifyLiveStudioPlaybackStarted,
+    notifyLiveStudioPlaybackDropped
 };

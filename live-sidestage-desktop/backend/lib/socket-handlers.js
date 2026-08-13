@@ -19,6 +19,7 @@ module.exports = function registerSocketHandlers({
     getPendingUpdateInfo,
     notifyLiveStudioPlaybackFinished,
     notifyLiveStudioPlaybackStarted,
+    notifyLiveStudioPlaybackDropped,
 }) {
     io.on('connection', (socket) => {
         const displayDayKey = getDisplayDayKey();
@@ -83,6 +84,11 @@ module.exports = function registerSocketHandlers({
         // 保留中のLIVE Studio（TLS）連携アクションを送信する。
         socket.on('effects:playback-started', ({ playbackId, screen } = {}) => {
             notifyLiveStudioPlaybackStarted(playbackId, screen);
+        });
+        // オーバーレイ側の待機列（待機イベント削除など）で再生開始前に間引かれたアイテムを
+        // バックエンドへ伝え、対応する保留中のLIVE Studio連携アクションを掃除する。
+        socket.on('effects:playback:dropped', ({ playbackIds } = {}) => {
+            notifyLiveStudioPlaybackDropped(playbackIds);
         });
         socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
         const pendingUpdateInfo = getPendingUpdateInfo();

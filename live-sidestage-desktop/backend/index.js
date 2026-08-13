@@ -1356,6 +1356,7 @@ const {
     getLiveStudioSettings,
     notifyLiveStudioPlaybackFinished,
     notifyLiveStudioPlaybackStarted,
+    notifyLiveStudioPlaybackDropped,
 } = require('./lib/livestudio-helpers');
 
 function setGlobalStateValue(stateKey, stateValue) {
@@ -2628,6 +2629,7 @@ require('./lib/socket-handlers')({
     getPendingUpdateInfo,
     notifyLiveStudioPlaybackFinished,
     notifyLiveStudioPlaybackStarted,
+    notifyLiveStudioPlaybackDropped,
 });
 
 

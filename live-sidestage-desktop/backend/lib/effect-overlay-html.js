@@ -468,9 +468,23 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             processPlaybackQueue();
         }
 
+        // 待機列（まだ再生開始していないアイテム）から間引かれた playbackId をバックエンドへ
+        // 通知する。再生中断（アクティブなアイテムの中断）は notifyPlaybackFinished() 経由で
+        // 別途通知されるが、待機列からの間引きはこれをしないとバックエンドが「そのアイテムの
+        // 再生順が来るのを待ち続けたまま」になり、保留中のLIVE Studio連携アクションが
+        // 発火も掃除もされずに残り続けてしまう（screen進行ベースのフォールバックだと、
+        // 同一screenで他のアイテムが再生され続ける限り検知できない）。
+        function notifyDroppedFromQueue(droppedPayloads) {
+            const playbackIds = droppedPayloads.map((payload) => payload.playbackId).filter(Boolean);
+            if (playbackIds.length === 0) return;
+            socket.emit('effects:playback:dropped', { screen: slot, playbackIds });
+        }
+
         function stopPlaybackQueue(eventId = '', count = 0) {
             if (eventId) {
+                const dropped = playbackQueue.filter((payload) => payload?.eventId === eventId);
                 playbackQueue = playbackQueue.filter((payload) => payload?.eventId !== eventId);
+                notifyDroppedFromQueue(dropped);
 
                 if (activePlaybackEventId && activePlaybackEventId !== eventId) {
                     return;
@@ -478,10 +492,13 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             } else if (count > 0) {
                 // 「待機イベント削除」の件数指定: 待機列の先頭（次に再生される順）から間引くだけで、
                 // 再生中のイベントは中断しない。
+                const dropped = playbackQueue.slice(0, count);
                 playbackQueue = playbackQueue.slice(count);
+                notifyDroppedFromQueue(dropped);
                 updateDebugLog('待機中のイベントを' + count + '件削除しました。');
                 return;
             } else {
+                notifyDroppedFromQueue(playbackQueue);
                 playbackQueue = [];
             }
 
