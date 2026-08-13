@@ -63,7 +63,7 @@ const HEADING_BACKGROUND_STYLE: Record<OverlayHeadingBackground, CSSProperties> 
 // 見出し2つ目のテキストとスクロールインジケーターに使うアクセントカラー。
 // 背景色に応じてブランドレッド(#fe2c55)固定だと浮くため、背景と合わせて切り替える。
 const HEADING_ACCENT_COLOR: Record<OverlayHeadingBackground, string> = {
-  clear: "#fe2c55",
+  clear: "#1a1a1a",
   "crystal-blue": "#7dd3fc",
   "sakura-pink": "#fda4c7",
   black: "#ffffff",
