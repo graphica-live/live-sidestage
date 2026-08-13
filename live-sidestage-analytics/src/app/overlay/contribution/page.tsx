@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { io, Socket } from "socket.io-client";
 
 type OverlayContributor = {
@@ -24,10 +24,24 @@ type OverlaySnapshot = {
   contributors: OverlayContributor[];
 };
 
-const HEADING_BACKGROUND_IMAGE: Record<OverlayHeadingBackground, string | null> = {
-  clear: null,
-  "crystal-blue": "/overlay-assets/heading-bg/crystal-blue.png",
-  "sakura-pink": "/overlay-assets/heading-bg/sakura-pink.png",
+const HEADING_BACKGROUND_STYLE: Record<OverlayHeadingBackground, CSSProperties> = {
+  clear: {},
+  "crystal-blue": {
+    padding: "8px 20px",
+    borderRadius: 14,
+    background:
+      "linear-gradient(135deg, rgba(56,189,248,0.32) 0%, rgba(37,99,235,0.22) 50%, rgba(165,243,252,0.32) 100%)",
+    border: "1px solid rgba(191,235,255,0.55)",
+    boxShadow: "0 4px 18px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.35)",
+  },
+  "sakura-pink": {
+    padding: "8px 20px",
+    borderRadius: 14,
+    background:
+      "linear-gradient(135deg, rgba(255,182,213,0.38) 0%, rgba(255,214,229,0.26) 50%, rgba(255,150,190,0.32) 100%)",
+    border: "1px solid rgba(255,214,229,0.6)",
+    boxShadow: "0 4px 18px rgba(244,114,182,0.3), inset 0 1px 0 rgba(255,255,255,0.35)",
+  },
 };
 
 const POLL_FALLBACK_INTERVAL_MS = 30_000;
@@ -119,27 +133,20 @@ export default function ContributionOverlayPage() {
       {snapshot && (
         <>
           <div
-            className="flex items-center gap-3 mb-4"
-            style={{
-              justifyContent: snapshot.align === "right" ? "flex-end" : "flex-start",
-              ...(HEADING_BACKGROUND_IMAGE[snapshot.headingBackground]
-                ? {
-                    padding: "8px 16px",
-                    borderRadius: 12,
-                    backgroundImage: `url(${HEADING_BACKGROUND_IMAGE[snapshot.headingBackground]})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    backgroundRepeat: "no-repeat",
-                  }
-                : {}),
-            }}
+            className="flex mb-4"
+            style={{ justifyContent: snapshot.align === "right" ? "flex-end" : "flex-start" }}
           >
-            <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
-              {formatDayLabel(snapshot.dayKey)}
-            </span>
-            <span className="text-brand font-extrabold text-lg" style={{ textShadow: TEXT_SHADOW }}>
-              {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
-            </span>
+            <div
+              className="inline-flex items-center gap-3"
+              style={HEADING_BACKGROUND_STYLE[snapshot.headingBackground]}
+            >
+              <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
+                {formatDayLabel(snapshot.dayKey)}
+              </span>
+              <span className="text-brand font-extrabold text-lg" style={{ textShadow: TEXT_SHADOW }}>
+                {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
+              </span>
+            </div>
           </div>
 
           <ContributorList
