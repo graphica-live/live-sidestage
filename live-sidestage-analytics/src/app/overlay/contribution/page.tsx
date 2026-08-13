@@ -232,11 +232,9 @@ export default function ContributionOverlayPage() {
         }
         .overlay-fade-top {
           top: 0;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
         }
         .overlay-fade-bottom {
           bottom: 0;
-          background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
         }
         .overlay-scroll-indicator {
           position: absolute;
@@ -347,7 +345,16 @@ function ContributorList({
   const thumbHeightPercent = (visibleRows / total) * 100;
   const thumbTopPercent = maxIndex > 0 ? (index / maxIndex) * (100 - thumbHeightPercent) : 0;
 
-  const fadeStyle: CSSProperties = { width: nameMaxWidth, [align === "right" ? "right" : "left"]: 0 };
+  const sideFadeFrom = align === "right" ? "to left" : "to right";
+  const fadeBase: CSSProperties = { width: nameMaxWidth, [align === "right" ? "right" : "left"]: 0 };
+  const fadeTopStyle: CSSProperties = {
+    ...fadeBase,
+    background: `linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent), linear-gradient(${sideFadeFrom}, rgba(0, 0, 0, 0.5), transparent)`,
+  };
+  const fadeBottomStyle: CSSProperties = {
+    ...fadeBase,
+    background: `linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent), linear-gradient(${sideFadeFrom}, rgba(0, 0, 0, 0.5), transparent)`,
+  };
 
   return (
     <div className="relative" style={{ height: viewportHeight }}>
@@ -356,7 +363,7 @@ function ContributorList({
           className="flex flex-col"
           style={{
             gap: ROW_GAP_PX,
-            transformOrigin: "top center",
+            transformOrigin: align === "right" ? "top right" : "top left",
             transform: `translateY(${-contentY * scale}px) scale(${scale})`,
             transition: `transform ${transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1)`,
           }}
@@ -365,8 +372,8 @@ function ContributorList({
             <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
-        <div className="overlay-fade-top" style={fadeStyle} />
-        <div className="overlay-fade-bottom" style={fadeStyle} />
+        <div className="overlay-fade-top" style={fadeTopStyle} />
+        <div className="overlay-fade-bottom" style={fadeBottomStyle} />
       </div>
 
       <div
