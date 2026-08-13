@@ -10,7 +10,7 @@ type OverlayContributor = {
   totalDiamonds: number;
 };
 
-type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink";
+type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink" | "black" | "white";
 
 type OverlaySnapshot = {
   dayKey: string;
@@ -42,6 +42,50 @@ const HEADING_BACKGROUND_STYLE: Record<OverlayHeadingBackground, CSSProperties> 
     border: "1px solid rgba(255,214,229,0.6)",
     boxShadow: "0 4px 18px rgba(244,114,182,0.3), inset 0 1px 0 rgba(255,255,255,0.35)",
   },
+  black: {
+    padding: "8px 20px",
+    borderRadius: 14,
+    background: "rgba(8,8,8,0.74)",
+    border: "1px solid rgba(255,255,255,0.16)",
+    boxShadow: "0 4px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
+  },
+  white: {
+    padding: "8px 20px",
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.85)",
+    backdropFilter: "blur(6px) saturate(120%)",
+    WebkitBackdropFilter: "blur(6px) saturate(120%)",
+    border: "3px solid rgba(0,0,0,0.65)",
+    boxShadow: "0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.9)",
+  },
+};
+
+// 見出し2つ目のテキストとスクロールインジケーターに使うアクセントカラー。
+// 背景色に応じてブランドレッド(#fe2c55)固定だと浮くため、背景と合わせて切り替える。
+const HEADING_ACCENT_COLOR: Record<OverlayHeadingBackground, string> = {
+  clear: "#fe2c55",
+  "crystal-blue": "#7dd3fc",
+  "sakura-pink": "#fda4c7",
+  black: "#ffffff",
+  white: "#1a1a1a",
+};
+
+// 見出し1つ目(日付)のテキスト色。白背景のときだけ黒文字にする。
+const HEADING_DAY_TEXT_COLOR: Record<OverlayHeadingBackground, string> = {
+  clear: "#ffffff",
+  "crystal-blue": "#ffffff",
+  "sakura-pink": "#ffffff",
+  black: "#ffffff",
+  white: "#1a1a1a",
+};
+
+// 背景カードのあるテーマは映像への重畳を考慮した濃い影が不要かつ白背景では逆効果なので、テーマごとに切り替える。
+const HEADING_TEXT_SHADOW: Record<OverlayHeadingBackground, string> = {
+  clear: "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.6)",
+  "crystal-blue": "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.6)",
+  "sakura-pink": "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.6)",
+  black: "0 1px 2px rgba(0,0,0,0.6)",
+  white: "none",
 };
 
 const POLL_FALLBACK_INTERVAL_MS = 30_000;
@@ -128,8 +172,12 @@ export default function ContributionOverlayPage() {
 
   if (!paramsReady || !token) return null;
 
+  const accentColor = snapshot ? HEADING_ACCENT_COLOR[snapshot.headingBackground] : HEADING_ACCENT_COLOR.clear;
+  const dayTextColor = snapshot ? HEADING_DAY_TEXT_COLOR[snapshot.headingBackground] : HEADING_DAY_TEXT_COLOR.clear;
+  const headingTextShadow = snapshot ? HEADING_TEXT_SHADOW[snapshot.headingBackground] : HEADING_TEXT_SHADOW.clear;
+
   return (
-    <div className="p-6">
+    <div className="p-6" style={{ "--overlay-accent": accentColor } as CSSProperties}>
       {snapshot && (
         <>
           <div
@@ -140,10 +188,10 @@ export default function ContributionOverlayPage() {
               className="inline-flex items-center gap-3"
               style={HEADING_BACKGROUND_STYLE[snapshot.headingBackground]}
             >
-              <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
+              <span className="font-bold text-lg" style={{ color: dayTextColor, textShadow: headingTextShadow }}>
                 {formatDayLabel(snapshot.dayKey)}
               </span>
-              <span className="text-brand font-extrabold text-lg" style={{ textShadow: TEXT_SHADOW }}>
+              <span className="font-extrabold text-lg" style={{ color: accentColor, textShadow: headingTextShadow }}>
                 {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
               </span>
             </div>
@@ -178,8 +226,6 @@ export default function ContributionOverlayPage() {
         .overlay-fade-top,
         .overlay-fade-bottom {
           position: absolute;
-          left: 0;
-          right: 0;
           height: 20px;
           pointer-events: none;
           z-index: 2;
@@ -206,7 +252,7 @@ export default function ContributionOverlayPage() {
           left: 0;
           width: 100%;
           border-radius: 2px;
-          background: #fe2c55;
+          background: var(--overlay-accent, #fe2c55);
           transition: top ${SCROLL_MOVE_MS}ms cubic-bezier(0.22, 1, 0.36, 1);
         }
       `}</style>
@@ -301,6 +347,8 @@ function ContributorList({
   const thumbHeightPercent = (visibleRows / total) * 100;
   const thumbTopPercent = maxIndex > 0 ? (index / maxIndex) * (100 - thumbHeightPercent) : 0;
 
+  const fadeStyle: CSSProperties = { width: nameMaxWidth, [align === "right" ? "right" : "left"]: 0 };
+
   return (
     <div className="relative" style={{ height: viewportHeight }}>
       <div className="absolute inset-0 overflow-hidden">
@@ -317,8 +365,8 @@ function ContributorList({
             <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
-        <div className="overlay-fade-top" />
-        <div className="overlay-fade-bottom" />
+        <div className="overlay-fade-top" style={fadeStyle} />
+        <div className="overlay-fade-bottom" style={fadeStyle} />
       </div>
 
       <div

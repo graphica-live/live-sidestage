@@ -50,7 +50,7 @@ interface ListenerState {
   tiktokId: string;
 }
 
-type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink";
+type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink" | "black" | "white";
 
 interface OverlaySettings {
   overlayToken: string;
@@ -66,8 +66,10 @@ interface OverlaySettings {
 
 const HEADING_BACKGROUND_LABELS: Record<OverlayHeadingBackground, string> = {
   clear: "クリア",
-  "crystal-blue": "クリスタルブルー",
-  "sakura-pink": "桜ピンク",
+  "crystal-blue": "ブルー",
+  "sakura-pink": "ピンク",
+  black: "ブラック",
+  white: "ホワイト",
 };
 
 const SORT_LABELS: Record<SortKey, string> = {

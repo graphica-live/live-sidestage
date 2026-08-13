@@ -21,7 +21,7 @@ type OverlayDisplaySettings = {
   overlayDisplayDate: string | null;
 };
 
-export const OVERLAY_HEADING_BACKGROUNDS = ["clear", "crystal-blue", "sakura-pink"] as const;
+export const OVERLAY_HEADING_BACKGROUNDS = ["clear", "crystal-blue", "sakura-pink", "black", "white"] as const;
 export type OverlayHeadingBackground = (typeof OVERLAY_HEADING_BACKGROUNDS)[number];
 
 // overlayDisplayReference が "fixed" なら固定された日付を、"today" なら常に現在のJST日付を返す。
