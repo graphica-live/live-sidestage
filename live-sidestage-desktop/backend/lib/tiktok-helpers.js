@@ -146,6 +146,13 @@ function isTikTokRecoverableRoomInfoError(error) {
     return /Failed to retrieve Room ID from main page|SIGI_STATE|falling back to API source|blocked by TikTok/i.test(detailText);
 }
 
+function isTikTokEulerRateLimitError(error) {
+    const candidates = [error, error?.exception, error?.cause].filter(Boolean);
+    return candidates.some((candidate) => candidate?.name === 'SignatureRateLimitError')
+        || /Rate Limited/i.test(String(error?.reason || ''))
+        || /\[Rate Limited\]/i.test(String(error?.message || ''));
+}
+
 function scheduleReconnect(reason, errorDetail = null, overrideDelayMs = null, retryMessageOverride = null) {
     if (_isShuttingDown() || tiktokState.reconnectTimer || !_hasConfiguredBroadcasterId()) {
         return;
@@ -270,6 +277,7 @@ module.exports = {
     isTikTokAlreadyConnectedError,
     getTikTokErrorDetailText,
     isTikTokRecoverableRoomInfoError,
+    isTikTokEulerRateLimitError,
     scheduleReconnect,
     resetTikTokConnection,
     switchBroadcasterId,
