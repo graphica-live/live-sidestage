@@ -3,10 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  clampOverlayDisplaySpeed,
   emitOverlaySnapshot,
   generateOverlayToken,
   inferOverlayDisplayReference,
   jstDateKey,
+  OVERLAY_DISPLAY_SPEED_MAX,
+  OVERLAY_DISPLAY_SPEED_MIN,
   OVERLAY_HEADING_BACKGROUNDS,
   OverlayHeadingBackground,
   resolveOverlayDayKey,
@@ -23,6 +26,7 @@ type OverlaySettingsResponse = {
   nameMaxWidth: number;
   align: string;
   headingBackground: string;
+  displaySpeed: number;
 };
 
 async function loadStreamer(userId: string) {
@@ -39,6 +43,7 @@ async function loadStreamer(userId: string) {
       overlayNameMaxWidth: true,
       overlayAlign: true,
       overlayHeadingBackground: true,
+      overlayDisplaySpeed: true,
     },
   });
 }
@@ -53,6 +58,7 @@ function toResponse(streamer: {
   overlayNameMaxWidth: number;
   overlayAlign: string;
   overlayHeadingBackground: string;
+  overlayDisplaySpeed: number;
 }): OverlaySettingsResponse {
   const displayDate = resolveOverlayDayKey(streamer);
   return {
@@ -65,6 +71,7 @@ function toResponse(streamer: {
     nameMaxWidth: streamer.overlayNameMaxWidth,
     align: streamer.overlayAlign,
     headingBackground: streamer.overlayHeadingBackground,
+    displaySpeed: clampOverlayDisplaySpeed(streamer.overlayDisplaySpeed),
   };
 }
 
@@ -101,6 +108,7 @@ export async function PATCH(req: NextRequest) {
     overlayNameMaxWidth?: number;
     overlayAlign?: string;
     overlayHeadingBackground?: string;
+    overlayDisplaySpeed?: number;
   } = {};
 
   if (body.nav === "prev" || body.nav === "next" || body.nav === "today") {
@@ -168,6 +176,21 @@ export async function PATCH(req: NextRequest) {
     data.overlayHeadingBackground = body.headingBackground;
   }
 
+  if (body.displaySpeed !== undefined) {
+    const displaySpeed = Number(body.displaySpeed);
+    if (
+      !Number.isInteger(displaySpeed) ||
+      displaySpeed < OVERLAY_DISPLAY_SPEED_MIN ||
+      displaySpeed > OVERLAY_DISPLAY_SPEED_MAX
+    ) {
+      return NextResponse.json(
+        { error: `表示速度は${OVERLAY_DISPLAY_SPEED_MIN}〜${OVERLAY_DISPLAY_SPEED_MAX}の整数で指定してください。` },
+        { status: 400 }
+      );
+    }
+    data.overlayDisplaySpeed = displaySpeed;
+  }
+
   const updated = await prisma.streamer.update({
     where: { id: streamer.id },
     data,
@@ -181,6 +204,7 @@ export async function PATCH(req: NextRequest) {
       overlayNameMaxWidth: true,
       overlayAlign: true,
       overlayHeadingBackground: true,
+      overlayDisplaySpeed: true,
     },
   });
 

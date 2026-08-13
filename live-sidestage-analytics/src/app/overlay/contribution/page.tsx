@@ -21,6 +21,7 @@ type OverlaySnapshot = {
   nameMaxWidth: number;
   align: "left" | "right";
   headingBackground: OverlayHeadingBackground;
+  displaySpeed: number;
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
@@ -91,10 +92,25 @@ const POLL_FALLBACK_INTERVAL_MS = 30_000;
 const ROW_HEIGHT_PX = 44;
 const ROW_GAP_PX = 8;
 const ROW_STEP_PX = ROW_HEIGHT_PX + ROW_GAP_PX;
-const SCROLL_PAUSE_MS = 2600; // 停止時間: 2〜3秒
 const SCROLL_MOVE_MS = 400; // 移動時間: 0.3〜0.5秒
 const ZOOM_MS = 700; // 縮小⇄復帰の遷移時間
-const SHRUNK_HOLD_MS = 3000; // 縮小全体表示の静止時間
+const DEFAULT_DISPLAY_SPEED = 3;
+
+// 表示速度設定(1=遅い〜5=速い)ごとの待機時間。3が既存デフォルト値と一致する。
+const SCROLL_PAUSE_MS_BY_SPEED: Record<number, number> = {
+  1: 4400,
+  2: 3500,
+  3: 2600, // 停止時間: 2〜3秒(既存デフォルト)
+  4: 1700,
+  5: 800,
+};
+const SHRUNK_HOLD_MS_BY_SPEED: Record<number, number> = {
+  1: 5000,
+  2: 4000,
+  3: 3000, // 縮小全体表示の静止時間(既存デフォルト)
+  4: 2000,
+  5: 1000,
+};
 
 function formatDayLabel(dayKey: string): string {
   if (!dayKey) return "";
@@ -202,6 +218,7 @@ export default function ContributionOverlayPage() {
             visibleRows={snapshot.visibleRows}
             nameMaxWidth={snapshot.nameMaxWidth}
             align={snapshot.align}
+            displaySpeed={snapshot.displaySpeed}
           />
         </>
       )}
@@ -267,11 +284,13 @@ function ContributorList({
   visibleRows,
   nameMaxWidth,
   align,
+  displaySpeed,
 }: {
   contributors: OverlayContributor[];
   visibleRows: number;
   nameMaxWidth: number;
   align: "left" | "right";
+  displaySpeed: number;
 }) {
   const total = contributors.length;
   const needsCycle = total > visibleRows;
@@ -279,6 +298,8 @@ function ContributorList({
   const viewportHeight = visibleRows * ROW_STEP_PX - ROW_GAP_PX;
   const fullContentHeight = total * ROW_STEP_PX - ROW_GAP_PX;
   const fitScale = needsCycle ? viewportHeight / fullContentHeight : 1;
+  const scrollPauseMs = SCROLL_PAUSE_MS_BY_SPEED[displaySpeed] ?? SCROLL_PAUSE_MS_BY_SPEED[DEFAULT_DISPLAY_SPEED];
+  const shrunkHoldMs = SHRUNK_HOLD_MS_BY_SPEED[displaySpeed] ?? SHRUNK_HOLD_MS_BY_SPEED[DEFAULT_DISPLAY_SPEED];
 
   const [phase, setPhase] = useState<ScrollPhase>("scrolling");
   const [index, setIndex] = useState(0);
@@ -293,12 +314,12 @@ function ContributorList({
   useEffect(() => {
     if (!needsCycle || phase !== "scrolling") return;
     if (index >= maxIndex) {
-      const t = setTimeout(() => setPhase("shrinking"), SCROLL_PAUSE_MS);
+      const t = setTimeout(() => setPhase("shrinking"), scrollPauseMs);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setIndex((i) => Math.min(i + 1, maxIndex)), SCROLL_PAUSE_MS);
+    const t = setTimeout(() => setIndex((i) => Math.min(i + 1, maxIndex)), scrollPauseMs);
     return () => clearTimeout(t);
-  }, [phase, index, needsCycle, maxIndex]);
+  }, [phase, index, needsCycle, maxIndex, scrollPauseMs]);
 
   // shrinking: ZOOM_MSかけて縮小しきったら shrunk へ。
   useEffect(() => {
@@ -310,9 +331,9 @@ function ContributorList({
   // shrunk: 全体表示のまま少し静止してから expanding へ。
   useEffect(() => {
     if (phase !== "shrunk") return;
-    const t = setTimeout(() => setPhase("expanding"), SHRUNK_HOLD_MS);
+    const t = setTimeout(() => setPhase("expanding"), shrunkHoldMs);
     return () => clearTimeout(t);
-  }, [phase]);
+  }, [phase, shrunkHoldMs]);
 
   // expanding: ZOOM_MSかけて等倍に戻りきったら、先頭からscrollingを再開。
   useEffect(() => {

@@ -72,9 +72,18 @@ export type OverlaySnapshot = {
   nameMaxWidth: number;
   align: "left" | "right";
   headingBackground: OverlayHeadingBackground;
+  displaySpeed: number;
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
+
+export const OVERLAY_DISPLAY_SPEED_MIN = 1;
+export const OVERLAY_DISPLAY_SPEED_MAX = 5;
+
+export function clampOverlayDisplaySpeed(value: number): number {
+  if (!Number.isFinite(value)) return 3;
+  return Math.min(OVERLAY_DISPLAY_SPEED_MAX, Math.max(OVERLAY_DISPLAY_SPEED_MIN, Math.round(value)));
+}
 
 type ContributorTally = {
   uniqueId: string;
@@ -96,6 +105,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
       overlayNameMaxWidth: true,
       overlayAlign: true,
       overlayHeadingBackground: true,
+      overlayDisplaySpeed: true,
     },
   });
 
@@ -162,6 +172,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     )
       ? (streamer.overlayHeadingBackground as OverlayHeadingBackground)
       : "clear",
+    displaySpeed: clampOverlayDisplaySpeed(streamer.overlayDisplaySpeed),
     qualifiedCount: contributors.length,
     contributors,
   };

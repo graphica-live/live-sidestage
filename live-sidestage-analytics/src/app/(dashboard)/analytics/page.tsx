@@ -62,6 +62,7 @@ interface OverlaySettings {
   nameMaxWidth: number;
   align: "left" | "right";
   headingBackground: OverlayHeadingBackground;
+  displaySpeed: number;
 }
 
 const HEADING_BACKGROUND_LABELS: Record<OverlayHeadingBackground, string> = {
@@ -318,6 +319,7 @@ export default function AnalyticsPage() {
       nameMaxWidth?: number;
       align?: "left" | "right";
       headingBackground?: OverlayHeadingBackground;
+      displaySpeed?: number;
     }) => {
       const res = await fetch("/api/streamer/overlay-settings", {
         method: "PATCH",
@@ -361,6 +363,11 @@ export default function AnalyticsPage() {
   function handleOverlayHeadingBackgroundChange(value: OverlayHeadingBackground) {
     setOverlaySettings((prev) => (prev ? { ...prev, headingBackground: value } : prev));
     patchOverlaySettings({ headingBackground: value });
+  }
+
+  function handleOverlayDisplaySpeedChange(value: number) {
+    setOverlaySettings((prev) => (prev ? { ...prev, displaySpeed: value } : prev));
+    patchOverlaySettings({ displaySpeed: value });
   }
 
   const overlayUrl =
@@ -623,6 +630,27 @@ export default function AnalyticsPage() {
                             {HEADING_BACKGROUND_LABELS[bg]}
                           </button>
                         ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-gray-500">表示速度</label>
+                        <span className="text-xs text-gray-400">{overlaySettings.displaySpeed}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={1}
+                        value={overlaySettings.displaySpeed}
+                        onChange={(e) => handleOverlayDisplaySpeedChange(Number(e.target.value))}
+                        className="w-full"
+                        style={{ accentColor: "#fe2c55" }}
+                      />
+                      <div className="flex items-center justify-between text-[10px] text-gray-500 mt-0.5">
+                        <span>遅い</span>
+                        <span>速い</span>
                       </div>
                     </div>
 

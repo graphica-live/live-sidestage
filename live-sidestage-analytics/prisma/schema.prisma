@@ -81,6 +81,7 @@ model Streamer {
   overlayNameMaxWidth     Int     @default(140) // px、これを超える名前は省略表示
   overlayAlign            String  @default("left") // "left" | "right"
   overlayHeadingBackground String @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
+  overlayDisplaySpeed     Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   gifts Gift[]
