@@ -76,13 +76,13 @@ module.exports = function registerSocketHandlers({
         });
         // オーバーレイ側の動画/音声再生が終わったタイミングで、
         // LIVE Studioの「イベント終了後にオフ」待ちのカメラエフェクトを解除する。
-        socket.on('effects:playback-finished', ({ playbackId } = {}) => {
-            notifyLiveStudioPlaybackFinished(playbackId);
+        socket.on('effects:playback-finished', ({ playbackId, screen } = {}) => {
+            notifyLiveStudioPlaybackFinished(playbackId, screen);
         });
         // オーバーレイ側の再生キューで該当イベントの順番が実際に来たタイミングで、
         // 保留中のLIVE Studio（TLS）連携アクションを送信する。
-        socket.on('effects:playback-started', ({ playbackId } = {}) => {
-            notifyLiveStudioPlaybackStarted(playbackId);
+        socket.on('effects:playback-started', ({ playbackId, screen } = {}) => {
+            notifyLiveStudioPlaybackStarted(playbackId, screen);
         });
         socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
         const pendingUpdateInfo = getPendingUpdateInfo();

@@ -114,8 +114,12 @@ function closeLiveStudioConnection() {
     }
     pendingCameraOffByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
     pendingCameraOffByPlaybackId.clear();
-    pendingQueuedActionByPlaybackId.forEach((pending) => clearTimeout(pending.fallbackTimer));
+    if (queuedActionSweepTimer) {
+        clearTimeout(queuedActionSweepTimer);
+        queuedActionSweepTimer = null;
+    }
     pendingQueuedActionByPlaybackId.clear();
+    lastProgressAtByScreen.clear();
     if (actionTimer) {
         clearTimeout(actionTimer);
         actionTimer = null;
@@ -232,7 +236,8 @@ function registerCameraAutoOff(playbackId, action) {
 }
 
 // 再生終了通知（effects:playback-finished）を受けてOFFを送る。socket-handlers.js から呼ばれる。
-function notifyLiveStudioPlaybackFinished(playbackId) {
+function notifyLiveStudioPlaybackFinished(playbackId, screen) {
+    markScreenProgress(screen);
     if (!playbackId) return;
     fireCameraOff(playbackId);
 }
@@ -242,17 +247,56 @@ function notifyLiveStudioPlaybackFinished(playbackId) {
 // 追い越して後続イベントのTLS操作（シーン切替・カメラエフェクト等）が先に届いてしまう。
 // そのためTLSアクションは即時送信せずキューに積んでおき、オーバーレイ側からの
 // effects:playback-started（そのキューアイテムの再生順が実際に来たタイミング）を
-// 受けて初めて送信する。オーバーレイが開かれていない等で通知が来ないケースに備え、
-// OFF側（CAMERA_AUTO_OFF_FALLBACK_MS）と同様のフォールバックタイムアウトも仕込む。
+// 受けて初めて送信する。
+//
+// オーバーレイが開かれていない等で通知が来ないケースに備え、フォールバックタイムアウトも
+// 仕込むが、固定時間で無条件に発火すると「同一screenのキューが単に長い」だけの正常系
+// （例: 同じ動画トリガーの連投でキューが数分分積み上がる）まで巻き込んで先走ってしまう。
+// そのため screen ごとに「最後に再生の進行（started/finished）があった時刻」を記録し、
+// その screen のキューが実際に進行し続けている間はフォールバックの起点を都度後ろへずらす。
+// フォールバックが本当に発火するのは、そのscreenで一定時間まったく進行がない
+// （＝オーバーレイが本当に応答していない）場合のみになる。
 const QUEUED_ACTION_FALLBACK_MS = 2 * 60 * 1000;
+const QUEUED_ACTION_SWEEP_INTERVAL_MS = 5000;
 const pendingQueuedActionByPlaybackId = new Map();
+const lastProgressAtByScreen = new Map();
+let queuedActionSweepTimer = null;
+
+function markScreenProgress(screen) {
+    if (screen === undefined || screen === null) return;
+    lastProgressAtByScreen.set(screen, Date.now());
+}
+
+function scheduleQueuedActionSweep() {
+    if (queuedActionSweepTimer) return;
+    queuedActionSweepTimer = setTimeout(() => {
+        queuedActionSweepTimer = null;
+        sweepQueuedActionFallbacks();
+    }, QUEUED_ACTION_SWEEP_INTERVAL_MS);
+}
+
+function sweepQueuedActionFallbacks() {
+    const now = Date.now();
+
+    pendingQueuedActionByPlaybackId.forEach((pending, playbackId) => {
+        const lastProgressAt = lastProgressAtByScreen.get(pending.screen) || 0;
+        const baseline = Math.max(pending.registeredAt, lastProgressAt);
+
+        if (now - baseline >= QUEUED_ACTION_FALLBACK_MS) {
+            firePendingQueuedAction(playbackId);
+        }
+    });
+
+    if (pendingQueuedActionByPlaybackId.size > 0) {
+        scheduleQueuedActionSweep();
+    }
+}
 
 function firePendingQueuedAction(playbackId) {
     const pending = pendingQueuedActionByPlaybackId.get(playbackId);
     if (!pending) return;
 
     pendingQueuedActionByPlaybackId.delete(playbackId);
-    clearTimeout(pending.fallbackTimer);
     emitAction(pending.action);
 
     if (pending.autoOff) {
@@ -261,7 +305,8 @@ function firePendingQueuedAction(playbackId) {
 }
 
 // 再生開始通知（effects:playback-started）を受けてONを送る。socket-handlers.js から呼ばれる。
-function notifyLiveStudioPlaybackStarted(playbackId) {
+function notifyLiveStudioPlaybackStarted(playbackId, screen) {
+    markScreenProgress(screen);
     if (!playbackId) return;
     firePendingQueuedAction(playbackId);
 }
@@ -283,8 +328,14 @@ function sendLiveStudioActionForEffectEvent(effectEvent, startPlaybackId, finish
     const action = { ...build(effectEvent), context };
     const autoOff = effectEvent.lsActionType === 'cameraeffects' && effectEvent.lsCameraAutoOffEnabled;
 
-    const fallbackTimer = setTimeout(() => firePendingQueuedAction(startPlaybackId), QUEUED_ACTION_FALLBACK_MS);
-    pendingQueuedActionByPlaybackId.set(startPlaybackId, { action, autoOff, finishPlaybackId, fallbackTimer });
+    pendingQueuedActionByPlaybackId.set(startPlaybackId, {
+        action,
+        autoOff,
+        finishPlaybackId,
+        screen: effectEvent.screen,
+        registeredAt: Date.now()
+    });
+    scheduleQueuedActionSweep();
 }
 
 module.exports = {

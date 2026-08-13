@@ -449,7 +449,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
 
         function notifyPlaybackFinished() {
             if (!activePlaybackId) return;
-            socket.emit('effects:playback-finished', { playbackId: activePlaybackId, eventId: activePlaybackEventId });
+            socket.emit('effects:playback-finished', { playbackId: activePlaybackId, eventId: activePlaybackEventId, screen: slot });
         }
 
         function finishPlayback() {
@@ -688,7 +688,7 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             // このSCREENの再生キューで実際に順番が来たタイミングをバックエンドへ通知する。
             // LIVE Studio連携（TLS）のアクション送信はこの通知を待ってから行われるため、
             // イベント連続発火時にTLS操作だけが再生を追い越して先走ることがなくなる。
-            socket.emit('effects:playback-started', { playbackId: activePlaybackId, eventId: activePlaybackEventId });
+            socket.emit('effects:playback-started', { playbackId: activePlaybackId, eventId: activePlaybackEventId, screen: slot });
             updateDebugLog((payload.eventName || 'event') + ' / ' + (payload.uniqueId || '') + ' / ' + (payload.giftName || ''));
             setReadAloudCredit(payload.readAloudCreditText || '');
 
