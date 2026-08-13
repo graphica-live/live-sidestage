@@ -71,6 +71,7 @@ const DEFAULT_SETTINGS = {
   launchOnBoot: false,
   // TTS settings
   ttsUserId: '',
+  ttsSignApiKey: '',
   ttsVoiceId: 1,
   ttsVolume: 0.8,
   ttsSpeedScale: 1.0,

@@ -646,6 +646,15 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
         </td>
       </tr>
       <tr class="no-sep">
+        <td class="tts-label">Eulerstream APIキー</td>
+        <td>
+          <div class="row">
+            <span id="tts-sign-key-display" class="url-text">未設定</span>
+            <button id="tts-edit-sign-key" class="secondary icon-btn" title="編集">✏️</button>
+          </div>
+        </td>
+      </tr>
+      <tr class="no-sep">
         <td class="tts-label">オーバーレイURL</td>
         <td>
           <div class="row">
@@ -913,6 +922,20 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
     <label>TikTokユーザーID（@なし）</label>
     <input type="text" id="tts-user-input" placeholder="例: username123" style="margin-top:4px;">
     <button id="tts-user-save" style="margin-top:12px;width:100%;">保存</button>
+  </div>
+</dialog>
+
+<!-- ── Eulerstream API key edit modal ─────────── -->
+<dialog id="tts-sign-key-modal">
+  <div class="modal-header">
+    <span>Eulerstream APIキー</span>
+    <button id="close-tts-sign-key-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:320px;">
+    <label>署名サーバーAPIキー（未設定でも動作しますが、接続回数のレート制限に達しやすくなります）</label>
+    <input type="password" id="tts-sign-key-input" placeholder="euler_..." style="margin-top:4px;">
+    <a href="#" id="tts-sign-key-register-link" style="margin-top:6px;display:inline-block;font-size:12px;">無料でAPIキーを取得</a>
+    <button id="tts-sign-key-save" style="margin-top:12px;width:100%;">保存</button>
   </div>
 </dialog>
 
@@ -1784,6 +1807,10 @@ window.addEventListener('beforeunload', () => {
     if ('ttsUserId' in s) {
       document.getElementById('tts-user-display').textContent = s.ttsUserId || '未設定';
     }
+    if ('ttsSignApiKey' in s) {
+      const key = s.ttsSignApiKey || '';
+      document.getElementById('tts-sign-key-display').textContent = key ? `${'•'.repeat(8)}${key.slice(-4)}` : '未設定';
+    }
     if ('ttsVoiceId' in s) {
       const sel = document.getElementById('tts-voice-select');
       if (sel.querySelector(`option[value="${s.ttsVoiceId}"]`)) sel.value = s.ttsVoiceId;
@@ -2217,6 +2244,24 @@ window.addEventListener('beforeunload', () => {
         window.api.stopTts();
       }
       document.getElementById('tts-user-modal').close();
+    });
+
+    // Eulerstream API key modal
+    document.getElementById('tts-edit-sign-key').addEventListener('click', () => {
+      document.getElementById('tts-sign-key-input').value = ttsS.ttsSignApiKey || '';
+      document.getElementById('tts-sign-key-modal').showModal();
+    });
+    document.getElementById('close-tts-sign-key-modal').addEventListener('click', () => { document.getElementById('tts-sign-key-modal').close(); });
+    document.getElementById('tts-sign-key-register-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.openExternal('https://www.eulerstream.com/register');
+    });
+    document.getElementById('tts-sign-key-save').addEventListener('click', () => {
+      const val = document.getElementById('tts-sign-key-input').value.trim();
+      ttsS.ttsSignApiKey = val;
+      document.getElementById('tts-sign-key-display').textContent = val ? `${'•'.repeat(8)}${val.slice(-4)}` : '未設定';
+      window.api.saveSettings({ ttsSignApiKey: val }).catch(() => {});
+      document.getElementById('tts-sign-key-modal').close();
     });
 
     // Copy URL

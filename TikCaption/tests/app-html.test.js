@@ -30,6 +30,13 @@ describe('app.html – DOM elements outside script', () => {
     'tts-conv-count',
     'tts-emoji-count',
     'tts-emote-count',
+    'tts-sign-key-display',
+    'tts-edit-sign-key',
+    'tts-sign-key-input',
+    'tts-sign-key-modal',
+    'tts-sign-key-register-link',
+    'tts-sign-key-save',
+    'close-tts-sign-key-modal',
   ];
 
   for (const id of requiredBeforeScript) {
@@ -64,6 +71,7 @@ describe('app.html – TTS modal map is complete', () => {
     ['tts-conv-btn', 'tts-conv-modal'],
     ['tts-emoji-btn', 'tts-emoji-modal'],
     ['tts-emote-btn', 'tts-emote-modal'],
+    ['tts-edit-sign-key', 'tts-sign-key-modal'],
   ];
 
   for (const [btnId, modalId] of modalPairs) {

@@ -121,6 +121,12 @@ function isNoWSUpgradeError(error) {
   return error?.name === 'NoWSUpgradeError';
 }
 
+function isSignatureRateLimitError(error) {
+  const candidates = [error, error?.exception, error?.cause].filter(Boolean);
+  return candidates.some((c) => c?.name === 'SignatureRateLimitError')
+    || /rate limit|too many connections started/i.test(error?.message || '');
+}
+
 function scheduleTtsReconnect(reason) {
   if (ttsStopped || ttsReconnectTimer) return;
   const delay = reason === 'user_offline' ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
@@ -156,6 +162,8 @@ async function connectTikTokLive(userId) {
   }
 
   const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
+  const { loadSettings } = require('./server');
+  const signApiKey = (loadSettings().ttsSignApiKey || '').trim() || undefined;
 
   ttsConn = new WebcastPushConnection(userId, {
     processInitialData: false,
@@ -166,6 +174,7 @@ async function connectTikTokLive(userId) {
     disableEulerFallbacks: false,
     sessionId: undefined,
     authenticateWs: false,
+    signApiKey,
     webClientParams: { app_language: 'ja', device_platform: 'web', browser_language: 'ja', device_id: DEVICE_ID },
     webClientHeaders: {
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -182,6 +191,7 @@ async function connectTikTokLive(userId) {
         axiosOptions: {},
         clientParams: { app_language: 'ja' },
         authenticateWs: false,
+        signApiKey,
       });
       return webClient.fetchSignedWebSocketFromEuler(params);
     },
@@ -255,6 +265,8 @@ async function connectTikTokLive(userId) {
       scheduleTtsReconnect('room_info_error');
     } else if (isNoWSUpgradeError(err)) {
       scheduleTtsReconnect('ws_upgrade_unavailable');
+    } else if (isSignatureRateLimitError(err)) {
+      emitTtsStatus({ status: 'error', message: `接続サーバーのレート制限に達しました。時間を置くか、Eulerstream APIキーを設定してください。` });
     } else {
       emitTtsStatus({ status: 'error', message: `接続に失敗しました。ユーザーIDを確認してください。` });
     }
