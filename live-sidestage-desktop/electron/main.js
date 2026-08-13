@@ -206,8 +206,17 @@ function bringPopoutToFrontIfEnabled(kind) {
     if (!popoutWindow || popoutWindow.isDestroyed()) {
         return;
     }
+    // Windowsのフォアグラウンドロックにより、配信ソフト等の他アプリがフォーカスを
+    // 持っている間は show()/focus() だけでは最前面に出せないことがある。
+    // 一時的にトップモストにしてZオーダーを引き上げることで回避する。
+    popoutWindow.setAlwaysOnTop(true);
     popoutWindow.show();
     popoutWindow.focus();
+    setTimeout(() => {
+        if (!popoutWindow.isDestroyed()) {
+            popoutWindow.setAlwaysOnTop(false);
+        }
+    }, 200);
 }
 
 function loadPopoutBounds(kind) {
