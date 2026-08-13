@@ -236,8 +236,6 @@ export default function ContributionOverlayPage() {
         .overlay-fade-top,
         .overlay-fade-bottom {
           position: absolute;
-          left: 0;
-          right: 0;
           height: 20px;
           pointer-events: none;
           z-index: 2;
@@ -359,6 +357,18 @@ function ContributorList({
   const thumbHeightPercent = (visibleRows / total) * 100;
   const thumbTopPercent = maxIndex > 0 ? (index / maxIndex) * (100 - thumbHeightPercent) : 0;
 
+  // 縦方向の色味(background)は変えず、横幅だけ名前の最大幅で打ち切る。
+  // ただしハードカットだと不自然なので、幅の終端側だけmaskでフェードアウトさせて自然に消す。
+  const horizontalFadeMask = `linear-gradient(${
+    align === "right" ? "to left" : "to right"
+  }, black 0%, black 70%, transparent 100%)`;
+  const fadeSideStyle: CSSProperties = {
+    width: nameMaxWidth,
+    [align === "right" ? "right" : "left"]: 0,
+    WebkitMaskImage: horizontalFadeMask,
+    maskImage: horizontalFadeMask,
+  };
+
   return (
     <div className="relative" style={{ height: viewportHeight }}>
       <div className="absolute inset-0 overflow-hidden">
@@ -375,8 +385,8 @@ function ContributorList({
             <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
-        <div className="overlay-fade-top" />
-        <div className="overlay-fade-bottom" />
+        <div className="overlay-fade-top" style={fadeSideStyle} />
+        <div className="overlay-fade-bottom" style={fadeSideStyle} />
       </div>
 
       <div
