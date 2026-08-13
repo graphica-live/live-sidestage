@@ -10,6 +10,8 @@ type OverlayContributor = {
   totalDiamonds: number;
 };
 
+type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink";
+
 type OverlaySnapshot = {
   dayKey: string;
   threshold: number;
@@ -17,8 +19,15 @@ type OverlaySnapshot = {
   visibleRows: number;
   nameMaxWidth: number;
   align: "left" | "right";
+  headingBackground: OverlayHeadingBackground;
   qualifiedCount: number;
   contributors: OverlayContributor[];
+};
+
+const HEADING_BACKGROUND_IMAGE: Record<OverlayHeadingBackground, string | null> = {
+  clear: null,
+  "crystal-blue": "/overlay-assets/heading-bg/crystal-blue.png",
+  "sakura-pink": "/overlay-assets/heading-bg/sakura-pink.png",
 };
 
 const POLL_FALLBACK_INTERVAL_MS = 30_000;
@@ -111,7 +120,19 @@ export default function ContributionOverlayPage() {
         <>
           <div
             className="flex items-center gap-3 mb-4"
-            style={{ justifyContent: snapshot.align === "right" ? "flex-end" : "flex-start" }}
+            style={{
+              justifyContent: snapshot.align === "right" ? "flex-end" : "flex-start",
+              ...(HEADING_BACKGROUND_IMAGE[snapshot.headingBackground]
+                ? {
+                    padding: "8px 16px",
+                    borderRadius: 12,
+                    backgroundImage: `url(${HEADING_BACKGROUND_IMAGE[snapshot.headingBackground]})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                  }
+                : {}),
+            }}
           >
             <span className="text-white font-bold text-lg" style={{ textShadow: TEXT_SHADOW }}>
               {formatDayLabel(snapshot.dayKey)}

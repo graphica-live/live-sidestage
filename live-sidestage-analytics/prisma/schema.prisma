@@ -80,6 +80,7 @@ model Streamer {
   overlayVisibleRows      Int     @default(5) // この人数を超えたらスナップスクロール
   overlayNameMaxWidth     Int     @default(140) // px、これを超える名前は省略表示
   overlayAlign            String  @default("left") // "left" | "right"
+  overlayHeadingBackground String @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   gifts Gift[]

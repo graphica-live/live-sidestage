@@ -7,6 +7,8 @@ import {
   generateOverlayToken,
   inferOverlayDisplayReference,
   jstDateKey,
+  OVERLAY_HEADING_BACKGROUNDS,
+  OverlayHeadingBackground,
   resolveOverlayDayKey,
   shiftDayKey,
 } from "@/lib/overlay";
@@ -20,6 +22,7 @@ type OverlaySettingsResponse = {
   visibleRows: number;
   nameMaxWidth: number;
   align: string;
+  headingBackground: string;
 };
 
 async function loadStreamer(userId: string) {
@@ -35,6 +38,7 @@ async function loadStreamer(userId: string) {
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
       overlayAlign: true,
+      overlayHeadingBackground: true,
     },
   });
 }
@@ -48,6 +52,7 @@ function toResponse(streamer: {
   overlayVisibleRows: number;
   overlayNameMaxWidth: number;
   overlayAlign: string;
+  overlayHeadingBackground: string;
 }): OverlaySettingsResponse {
   const displayDate = resolveOverlayDayKey(streamer);
   return {
@@ -59,6 +64,7 @@ function toResponse(streamer: {
     visibleRows: streamer.overlayVisibleRows,
     nameMaxWidth: streamer.overlayNameMaxWidth,
     align: streamer.overlayAlign,
+    headingBackground: streamer.overlayHeadingBackground,
   };
 }
 
@@ -94,6 +100,7 @@ export async function PATCH(req: NextRequest) {
     overlayVisibleRows?: number;
     overlayNameMaxWidth?: number;
     overlayAlign?: string;
+    overlayHeadingBackground?: string;
   } = {};
 
   if (body.nav === "prev" || body.nav === "next" || body.nav === "today") {
@@ -151,6 +158,16 @@ export async function PATCH(req: NextRequest) {
     data.overlayAlign = body.align;
   }
 
+  if (body.headingBackground !== undefined) {
+    if (!OVERLAY_HEADING_BACKGROUNDS.includes(body.headingBackground as OverlayHeadingBackground)) {
+      return NextResponse.json(
+        { error: "見出し背景はclear、crystal-blue、sakura-pinkのいずれかで指定してください。" },
+        { status: 400 }
+      );
+    }
+    data.overlayHeadingBackground = body.headingBackground;
+  }
+
   const updated = await prisma.streamer.update({
     where: { id: streamer.id },
     data,
@@ -163,6 +180,7 @@ export async function PATCH(req: NextRequest) {
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
       overlayAlign: true,
+      overlayHeadingBackground: true,
     },
   });
 

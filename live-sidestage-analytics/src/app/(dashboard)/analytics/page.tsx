@@ -50,6 +50,8 @@ interface ListenerState {
   tiktokId: string;
 }
 
+type OverlayHeadingBackground = "clear" | "crystal-blue" | "sakura-pink";
+
 interface OverlaySettings {
   overlayToken: string;
   displayDate: string;
@@ -59,7 +61,14 @@ interface OverlaySettings {
   visibleRows: number;
   nameMaxWidth: number;
   align: "left" | "right";
+  headingBackground: OverlayHeadingBackground;
 }
+
+const HEADING_BACKGROUND_LABELS: Record<OverlayHeadingBackground, string> = {
+  clear: "クリア",
+  "crystal-blue": "クリスタルブルー",
+  "sakura-pink": "桜ピンク",
+};
 
 const SORT_LABELS: Record<SortKey, string> = {
   diamonds: "コイン数",
@@ -306,6 +315,7 @@ export default function AnalyticsPage() {
       visibleRows?: number;
       nameMaxWidth?: number;
       align?: "left" | "right";
+      headingBackground?: OverlayHeadingBackground;
     }) => {
       const res = await fetch("/api/streamer/overlay-settings", {
         method: "PATCH",
@@ -344,6 +354,11 @@ export default function AnalyticsPage() {
   function handleOverlayAlignChange(value: "left" | "right") {
     setOverlaySettings((prev) => (prev ? { ...prev, align: value } : prev));
     patchOverlaySettings({ align: value });
+  }
+
+  function handleOverlayHeadingBackgroundChange(value: OverlayHeadingBackground) {
+    setOverlaySettings((prev) => (prev ? { ...prev, headingBackground: value } : prev));
+    patchOverlaySettings({ headingBackground: value });
   }
 
   const overlayUrl =
@@ -587,6 +602,25 @@ export default function AnalyticsPage() {
                         >
                           右寄せ
                         </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">見出し背景</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(Object.keys(HEADING_BACKGROUND_LABELS) as OverlayHeadingBackground[]).map((bg) => (
+                          <button
+                            key={bg}
+                            onClick={() => handleOverlayHeadingBackgroundChange(bg)}
+                            className={`text-xs px-2 py-1.5 rounded-lg border ${
+                              overlaySettings.headingBackground === bg
+                                ? "border-brand text-brand bg-brand/10"
+                                : "border-border text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            {HEADING_BACKGROUND_LABELS[bg]}
+                          </button>
+                        ))}
                       </div>
                     </div>
 

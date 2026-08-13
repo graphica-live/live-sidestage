@@ -21,6 +21,9 @@ type OverlayDisplaySettings = {
   overlayDisplayDate: string | null;
 };
 
+export const OVERLAY_HEADING_BACKGROUNDS = ["clear", "crystal-blue", "sakura-pink"] as const;
+export type OverlayHeadingBackground = (typeof OVERLAY_HEADING_BACKGROUNDS)[number];
+
 // overlayDisplayReference が "fixed" なら固定された日付を、"today" なら常に現在のJST日付を返す。
 // これにより「翌日ボタンで今日に追いつくと自動的に自動追従へ戻る」挙動を実現する。
 export function resolveOverlayDayKey(streamer: OverlayDisplaySettings): string {
@@ -67,6 +70,7 @@ export type OverlaySnapshot = {
   visibleRows: number;
   nameMaxWidth: number;
   align: "left" | "right";
+  headingBackground: OverlayHeadingBackground;
   qualifiedCount: number;
   contributors: OverlayContributor[];
 };
@@ -90,6 +94,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
       overlayVisibleRows: true,
       overlayNameMaxWidth: true,
       overlayAlign: true,
+      overlayHeadingBackground: true,
     },
   });
 
@@ -150,6 +155,11 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     visibleRows: streamer.overlayVisibleRows,
     nameMaxWidth: streamer.overlayNameMaxWidth,
     align: streamer.overlayAlign === "right" ? "right" : "left",
+    headingBackground: OVERLAY_HEADING_BACKGROUNDS.includes(
+      streamer.overlayHeadingBackground as OverlayHeadingBackground
+    )
+      ? (streamer.overlayHeadingBackground as OverlayHeadingBackground)
+      : "clear",
     qualifiedCount: contributors.length,
     contributors,
   };
