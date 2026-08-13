@@ -88,6 +88,13 @@ const HEADING_TEXT_SHADOW: Record<OverlayHeadingBackground, string> = {
   white: "none",
 };
 
+// アクセント文字用の影。clearは透過背景に黒文字を乗せるため、黒フチだと文字と同化して見えなくなる。
+// 黒文字のときだけ白グローに切り替えて映像背景から浮かせる。
+const HEADING_ACCENT_TEXT_SHADOW: Record<OverlayHeadingBackground, string> = {
+  ...HEADING_TEXT_SHADOW,
+  clear: "0 1px 3px rgba(255,255,255,0.9), 0 0 8px rgba(255,255,255,0.75), 0 0 14px rgba(255,255,255,0.5)",
+};
+
 const POLL_FALLBACK_INTERVAL_MS = 30_000;
 const ROW_HEIGHT_PX = 44;
 const ROW_GAP_PX = 8;
@@ -175,6 +182,9 @@ export default function ContributionOverlayPage() {
   const accentColor = snapshot ? HEADING_ACCENT_COLOR[snapshot.headingBackground] : HEADING_ACCENT_COLOR.clear;
   const dayTextColor = snapshot ? HEADING_DAY_TEXT_COLOR[snapshot.headingBackground] : HEADING_DAY_TEXT_COLOR.clear;
   const headingTextShadow = snapshot ? HEADING_TEXT_SHADOW[snapshot.headingBackground] : HEADING_TEXT_SHADOW.clear;
+  const accentTextShadow = snapshot
+    ? HEADING_ACCENT_TEXT_SHADOW[snapshot.headingBackground]
+    : HEADING_ACCENT_TEXT_SHADOW.clear;
 
   return (
     <div className="p-6" style={{ "--overlay-accent": accentColor } as CSSProperties}>
@@ -191,7 +201,7 @@ export default function ContributionOverlayPage() {
               <span className="font-bold text-lg" style={{ color: dayTextColor, textShadow: headingTextShadow }}>
                 {formatDayLabel(snapshot.dayKey)}
               </span>
-              <span className="font-extrabold text-lg" style={{ color: accentColor, textShadow: headingTextShadow }}>
+              <span className="font-extrabold text-lg" style={{ color: accentColor, textShadow: accentTextShadow }}>
                 {formatCompactCoin(snapshot.threshold)}貢献目標 {snapshot.qualifiedCount}/{snapshot.goalCount}人
               </span>
             </div>
@@ -226,15 +236,19 @@ export default function ContributionOverlayPage() {
         .overlay-fade-top,
         .overlay-fade-bottom {
           position: absolute;
+          left: 0;
+          right: 0;
           height: 20px;
           pointer-events: none;
           z-index: 2;
         }
         .overlay-fade-top {
           top: 0;
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
         }
         .overlay-fade-bottom {
           bottom: 0;
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
         }
         .overlay-scroll-indicator {
           position: absolute;
@@ -345,17 +359,6 @@ function ContributorList({
   const thumbHeightPercent = (visibleRows / total) * 100;
   const thumbTopPercent = maxIndex > 0 ? (index / maxIndex) * (100 - thumbHeightPercent) : 0;
 
-  const sideFadeFrom = align === "right" ? "to left" : "to right";
-  const fadeBase: CSSProperties = { width: nameMaxWidth, [align === "right" ? "right" : "left"]: 0 };
-  const fadeTopStyle: CSSProperties = {
-    ...fadeBase,
-    background: `linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent), linear-gradient(${sideFadeFrom}, rgba(0, 0, 0, 0.5), transparent)`,
-  };
-  const fadeBottomStyle: CSSProperties = {
-    ...fadeBase,
-    background: `linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent), linear-gradient(${sideFadeFrom}, rgba(0, 0, 0, 0.5), transparent)`,
-  };
-
   return (
     <div className="relative" style={{ height: viewportHeight }}>
       <div className="absolute inset-0 overflow-hidden">
@@ -372,8 +375,8 @@ function ContributorList({
             <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
-        <div className="overlay-fade-top" style={fadeTopStyle} />
-        <div className="overlay-fade-bottom" style={fadeBottomStyle} />
+        <div className="overlay-fade-top" />
+        <div className="overlay-fade-bottom" />
       </div>
 
       <div
