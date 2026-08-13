@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { startListener } from "@/lib/tiktok-listener";
+import { getWorkerCount, resolveWorkerForStreamer } from "@/lib/tiktok-listener";
 
+// Webプロセスはリスナーを持たないため、ここでは配信者を担当Workerへ割り当てるだけ。
+// 実際の接続開始は担当Workerのensure loop(最大60秒間隔)が拾う。
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,6 +21,15 @@ export async function POST() {
     );
   }
 
-  const state = await startListener(streamer.id, streamer.tiktokId);
-  return NextResponse.json({ listener: state });
+  await resolveWorkerForStreamer(streamer.id, getWorkerCount());
+
+  return NextResponse.json({
+    listener: {
+      streamerId: streamer.id,
+      tiktokId: streamer.tiktokId,
+      status: streamer.listenerStatus ?? "connecting",
+      message: streamer.listenerMessage ?? "起動中(最大60秒)",
+      updatedAt: streamer.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
+    },
+  });
 }

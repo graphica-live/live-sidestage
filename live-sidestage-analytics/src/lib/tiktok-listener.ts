@@ -1,4 +1,5 @@
 import { WebcastPushConnection } from "tiktok-live-connector";
+import { ProxyAgent } from "proxy-agent";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
@@ -61,7 +62,7 @@ if (!g.__giftLog) g.__giftLog = [];
 const listeners = g.__tiktokListeners;
 const giftLog = g.__giftLog;
 
-function appendGiftLog(entry: GiftLogEntry) {
+export function appendGiftLog(entry: GiftLogEntry) {
   giftLog.push(entry);
   if (giftLog.length > GIFT_LOG_MAX) giftLog.splice(0, giftLog.length - GIFT_LOG_MAX);
 }
@@ -72,6 +73,132 @@ export function getGiftLog(streamerId?: string): GiftLogEntry[] {
 
 const RECONNECT_DELAY_MS = 10_000;
 const OFFLINE_RECONNECT_DELAY_MS = 30_000;
+
+// WEB_INTERNAL_URLが設定されているプロセス = Workerプロセス。
+// Webプロセス(またはローカル単一プロセス開発)はこれを設定しないため、
+// gift通知はin-process(appendGiftLog/emitOverlaySnapshot直接呼び出し)のままになる。
+const isWorkerProcess = Boolean(process.env.WEB_INTERNAL_URL);
+
+// streamerId等の文字列を決定的にmod分散するためのハッシュ。
+// 乱数を使わないのは、複数プロセスが同時にresolve*ForStreamer()を呼んでも
+// 常に同じ結果になり、割当の競合が起きないようにするため。
+function hashToIndex(value: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash % mod;
+}
+
+export function getWorkerCount(): number {
+  const count = Number(process.env.WORKER_COUNT);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error("WORKER_COUNT must be a positive integer");
+  }
+  return count;
+}
+
+function getWorkerConfig(): { index: number; count: number } {
+  const count = getWorkerCount();
+  const index = Number(process.env.WORKER_INDEX);
+  if (!Number.isInteger(index) || index < 0 || index >= count) {
+    throw new Error("WORKER_INDEX must be an integer in [0, WORKER_COUNT)");
+  }
+  return { index, count };
+}
+
+// deviceId(src/lib/device-id.ts)と同じ「初回決定→永続化→再利用」パターン。
+// WORKER_COUNTが変わらない限り、再起動やWorker再編を挟んでも同じ配信者は同じworkerIdになる。
+export async function resolveWorkerForStreamer(
+  streamerId: string,
+  workerCount: number
+): Promise<number> {
+  const streamer = await prisma.streamer.findUnique({
+    where: { id: streamerId },
+    select: { workerId: true },
+  });
+  if (streamer?.workerId != null) return streamer.workerId;
+
+  const workerId = hashToIndex(streamerId, workerCount);
+  await prisma.streamer.update({
+    where: { id: streamerId },
+    data: { workerId },
+  });
+  return workerId;
+}
+
+function getProxyPool(): string[] {
+  const raw = process.env.TIKTOK_PROXY_POOL;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    console.error("[listener] TIKTOK_PROXY_POOL is not valid JSON — ignoring, connecting directly");
+    return [];
+  }
+}
+
+// proxyKeyはTIKTOK_PROXY_POOL配列内のインデックスを文字列で保持する(sticky割当)。
+// 新しいプロキシを追加する場合は配列の末尾に足すこと — 途中への挿入や削除は
+// 既存の割当をずらしてしまう(deviceIdと違い値そのものを保存できないため)。
+export async function resolveProxyForStreamer(streamerId: string): Promise<string | null> {
+  const pool = getProxyPool();
+  if (pool.length === 0) return null;
+
+  const streamer = await prisma.streamer.findUnique({
+    where: { id: streamerId },
+    select: { proxyKey: true },
+  });
+
+  const existingIdx = streamer?.proxyKey != null ? Number(streamer.proxyKey) : NaN;
+  if (Number.isInteger(existingIdx) && existingIdx >= 0 && existingIdx < pool.length) {
+    return pool[existingIdx];
+  }
+
+  const idx = hashToIndex(streamerId, pool.length);
+  await prisma.streamer.update({
+    where: { id: streamerId },
+    data: { proxyKey: String(idx) },
+  });
+  return pool[idx];
+}
+
+async function forwardToWeb(payload: Record<string, unknown>) {
+  try {
+    const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.error("[listener] internal notify failed:", res.status, await res.text().catch(() => ""));
+    }
+  } catch (err) {
+    console.error("[listener] internal notify error:", err);
+  }
+}
+
+// Workerプロセスから実行中のギフトイベントをWebプロセスへ転送する。
+// Webプロセス(global.__ioを持つ)ではin-processのappendGiftLog/emitOverlaySnapshotに委譲する。
+async function notifyGiftLog(logEntry: GiftLogEntry) {
+  if (!isWorkerProcess) {
+    appendGiftLog(logEntry);
+    return;
+  }
+  await forwardToWeb({ logEntry });
+}
+
+async function notifyOverlayUpdate(streamerId: string) {
+  if (!isWorkerProcess) {
+    emitOverlaySnapshot(streamerId).catch((err) => console.error("[overlay] emit error:", err));
+    return;
+  }
+  await forwardToWeb({ streamerId, emitOverlay: true });
+}
 
 function isUserOfflineError(error: unknown): boolean {
   const candidates = [
@@ -213,7 +340,7 @@ async function saveGift(
         groupId,
       },
     });
-    emitOverlaySnapshot(streamerId).catch((err) => console.error("[overlay] emit error:", err));
+    notifyOverlayUpdate(streamerId);
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
       console.log("[gift] dedup: duplicate orderId skipped", data.orderId);
@@ -225,7 +352,8 @@ async function saveGift(
 
 function createConnection(
   tiktokId: string,
-  deviceId: string
+  deviceId: string,
+  proxyUrl: string | null
 ): WebcastPushConnection {
   return new WebcastPushConnection(`@${tiktokId}`, {
     processInitialData: false,
@@ -246,6 +374,15 @@ function createConnection(
       device_platform: "web",
       device_id: deviceId,
     },
+    // proxy-agent v6は `new ProxyAgent(url)` ではなく、getProxyForUrlコールバックで
+    // プロキシ先を解決する形式に変わっている。streamerごとに固定のプロキシURLを
+    // 返すだけのコールバックを渡すことで、sticky割当を実現する。
+    ...(proxyUrl
+      ? {
+          webClientOptions: { httpsAgent: new ProxyAgent({ getProxyForUrl: () => proxyUrl }) },
+          wsClientOptions: { agent: new ProxyAgent({ getProxyForUrl: () => proxyUrl }) },
+        }
+      : {}),
   } as Record<string, unknown>);
 }
 
@@ -263,11 +400,12 @@ async function connectInstance(streamerId: string) {
   }
 
   const deviceId = await getOrCreateDeviceId(streamerId);
+  const proxyUrl = await resolveProxyForStreamer(streamerId);
 
   // re-check after async gap
   if (inst.stopped || inst.connectPromise) return inst.connectPromise ?? undefined;
 
-  const conn = createConnection(inst.state.tiktokId, deviceId);
+  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl);
   inst.connection = conn;
 
   conn.on("disconnected", () => {
@@ -343,7 +481,7 @@ async function connectInstance(streamerId: string) {
         inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
       }
       console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
-      appendGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
+      notifyGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
       if (delta > 0) saveGift(streamerId, data, delta, eventTime, timeSource);
       return;
     }
@@ -358,11 +496,11 @@ async function connectInstance(streamerId: string) {
         giftId: data.giftId,
         giftName: data.giftName,
       });
-      appendGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId_and_groupId" });
+      notifyGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId_and_groupId" });
       return;
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
-    appendGiftLog({ ...baseLog, action: "non-combo" });
+    notifyGiftLog({ ...baseLog, action: "non-combo" });
     saveGift(streamerId, data, currentRepeat, eventTime, timeSource);
   });
 
@@ -486,10 +624,30 @@ export function getListenerStatus(streamerId: string): ListenerState | null {
   return listeners.get(streamerId)?.state ?? null;
 }
 
-export async function resumeAllListeners() {
-  const streamers = await prisma.streamer.findMany({
-    where: { verified: true },
+// 自分(このWorkerプロセス)が担当する配信者だけを返す。
+// workerId未割当の配信者は resolveWorkerForStreamer() で決定的にハッシュ割当し、
+// 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
+async function getMyStreamers() {
+  const { index, count } = getWorkerConfig();
+
+  const assigned = await prisma.streamer.findMany({
+    where: { verified: true, workerId: index },
   });
+
+  const unassigned = await prisma.streamer.findMany({
+    where: { verified: true, workerId: null },
+  });
+  const claimed: typeof unassigned = [];
+  for (const s of unassigned) {
+    const workerId = await resolveWorkerForStreamer(s.id, count);
+    if (workerId === index) claimed.push(s);
+  }
+
+  return [...assigned, ...claimed];
+}
+
+export async function resumeAllListeners() {
+  const streamers = await getMyStreamers();
 
   console.log(`[listener] resumeAllListeners: found ${streamers.length} verified streamer(s)`);
 
@@ -503,9 +661,7 @@ export async function resumeAllListeners() {
 }
 
 export async function ensureAllListenersAlive() {
-  const streamers = await prisma.streamer.findMany({
-    where: { verified: true },
-  });
+  const streamers = await getMyStreamers();
 
   for (const s of streamers) {
     if (!listeners.has(s.id)) {

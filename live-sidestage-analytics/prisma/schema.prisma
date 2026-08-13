@@ -71,6 +71,8 @@ model Streamer {
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
+  workerId          Int?     // 担当Workerプロセス番号(hash(streamerId) % WORKER_COUNTで初回決定し固定)
+  proxyKey          String?  // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
 
   overlayToken            String? @unique
   overlayDisplayReference String  @default("today") // "today" | "fixed"
