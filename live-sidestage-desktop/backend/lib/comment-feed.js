@@ -1017,7 +1017,11 @@ function pushTikTokComment(commentEvent) {
     updateObservedCommentAssetCaches(commentEvent);
     emitAdminCommentAppended(commentEvent);
     emitCommentReadAloud(commentEvent);
-    _serverEvents.emit('popout-front-requested', 'comments');
+    // 別窓（コメント欄）は type === 'chat' のイベントしか表示しないため、
+    // それ以外（入室・いいね・視聴者数など）の受信では最前面化しない。
+    if (commentEvent?.type === 'chat') {
+        _serverEvents.emit('popout-front-requested', 'comments');
+    }
 }
 
 function emitAdminCommentAppended(commentEvent) {
