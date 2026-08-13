@@ -477,6 +477,10 @@ export default function AnalyticsPage() {
                   <p className="text-xs text-gray-400">読み込み中...</p>
                 ) : overlaySettings ? (
                   <>
+                    <p className="text-xs font-semibold text-gray-300 border-b border-border pb-1.5">
+                      貢献リストオーバーレイ
+                    </p>
+
                     <div className="flex items-center justify-between gap-2">
                       <button
                         onClick={() => patchOverlaySettings({ nav: "prev" })}
