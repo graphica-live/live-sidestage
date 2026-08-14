@@ -403,16 +403,17 @@
             setTimeout(() => chip.remove(), 1700);
         }
 
-        // --- 延長上限到達バナー（帯が1分間流れる。マーキーは同一内容を2組並べてtranslateX(-50%)でシームレスループ） ---
+        // --- 延長上限到達バナー（帯が30秒間流れる。マーキーは同一内容を2組並べてtranslateX(-50%)でシームレスループ） ---
         const MAX_BANNER_DURATION_MS = 30000;
         const MAX_BANNER_ITEM_COUNT = 14;
+        const MAX_BANNER_TEXT = '🔥 タイマーMAX到達 🔥 金グローブ発動中 🔥';
         function buildMaxBannerGroup() {
             const group = document.createElement('div');
             group.className = 'max-banner-group';
             for (let i = 0; i < MAX_BANNER_ITEM_COUNT; i++) {
                 const span = document.createElement('span');
                 span.className = 'max-banner-text';
-                span.textContent = '🔥 タイマーMAX到達 🔥';
+                span.textContent = MAX_BANNER_TEXT;
                 group.appendChild(span);
             }
             return group;
