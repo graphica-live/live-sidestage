@@ -157,9 +157,8 @@
             position: absolute;
             left: 0;
             right: 0;
-            top: 100%;
-            margin-top: -18px;
-            height: 52px;
+            bottom: 0;
+            height: 44px;
             overflow: hidden;
             pointer-events: none;
             z-index: 5;
@@ -405,7 +404,7 @@
         }
 
         // --- 延長上限到達バナー（帯が1分間流れる。マーキーは同一内容を2組並べてtranslateX(-50%)でシームレスループ） ---
-        const MAX_BANNER_DURATION_MS = 60000;
+        const MAX_BANNER_DURATION_MS = 3000;
         const MAX_BANNER_ITEM_COUNT = 14;
         function buildMaxBannerGroup() {
             const group = document.createElement('div');
