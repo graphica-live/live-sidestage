@@ -99,7 +99,7 @@ function createDefaultEffectTrigger() {
         rapidFireEnabled: false,
         rapidFireCancelMs: 1500,
         triggerX5Included: true,
-        triggerX6Included: true
+        triggerX6Included: false
     };
 }
 
@@ -327,7 +327,7 @@ function normalizeEffectTrigger(value) {
         triggerX5Included: value?.triggerX5Included !== undefined
             ? Boolean(value.triggerX5Included)
             : !Boolean(value?.triggerX5ExcludedFromLottery),
-        triggerX6Included: value?.triggerX6Included !== undefined ? Boolean(value.triggerX6Included) : true
+        triggerX6Included: Boolean(value?.triggerX6Included)
     };
 }
 
