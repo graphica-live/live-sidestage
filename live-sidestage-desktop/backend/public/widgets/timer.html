@@ -154,24 +154,26 @@
         }
 
         .max-banner {
-            position: fixed;
+            position: absolute;
             left: 0;
             right: 0;
-            top: 42%;
-            height: 76px;
+            top: 100%;
+            margin-top: -18px;
+            height: 52px;
             overflow: hidden;
             pointer-events: none;
-            z-index: 30;
+            z-index: 5;
             opacity: 0;
             transform: scaleY(0.4);
             transform-origin: center;
             transition: opacity 0.25s ease, transform 0.25s ease;
             background: linear-gradient(90deg, #450a0a, #c2410c, #fbbf24, #ea580c, #7f1d1d, #c2410c, #fbbf24, #450a0a);
             background-size: 300% 100%;
-            animation: flame-shift 2.4s linear infinite;
-            box-shadow: 0 0 46px 12px rgba(234, 88, 12, 0.8), inset 0 0 34px rgba(255, 200, 0, 0.45);
+            animation: flame-shift 4.8s linear infinite;
+            box-shadow: 0 0 30px 8px rgba(234, 88, 12, 0.75), inset 0 0 24px rgba(255, 200, 0, 0.4);
             border-top: 2px solid rgba(255, 214, 10, 0.85);
             border-bottom: 2px solid rgba(255, 214, 10, 0.85);
+            border-radius: 6px;
         }
 
         .max-banner::before {
@@ -209,7 +211,7 @@
             align-items: center;
             height: 100%;
             width: max-content;
-            animation: banner-scroll 9s linear infinite;
+            animation: banner-scroll 18s linear infinite;
             will-change: transform;
         }
 
@@ -226,14 +228,14 @@
 
         .max-banner-text {
             display: inline-block;
-            font-size: 42px;
+            font-size: 24px;
             font-weight: 900;
             color: #fff7ed;
             white-space: nowrap;
-            -webkit-text-stroke: 3px rgba(120, 24, 6, 0.95);
+            -webkit-text-stroke: 2px rgba(120, 24, 6, 0.95);
             paint-order: stroke fill;
-            text-shadow: 0 0 18px rgba(255, 140, 0, 0.9), 0 0 40px rgba(255, 60, 0, 0.7);
-            padding: 0 44px;
+            text-shadow: 0 0 14px rgba(255, 140, 0, 0.9), 0 0 30px rgba(255, 60, 0, 0.7);
+            padding: 0 24px;
             animation: flame-text-flicker 0.18s ease-in-out infinite alternate;
         }
 
@@ -249,11 +251,11 @@
         <div class="heading" id="heading"></div>
         <div class="digits" id="digits">00:00</div>
         <div class="popup-layer" id="popupLayer"></div>
+        <div class="max-banner" id="maxBanner" data-active="0">
+            <div class="max-banner-track" id="maxBannerTrack"></div>
+        </div>
     </div>
     <canvas id="confetti-canvas"></canvas>
-    <div class="max-banner" id="maxBanner" data-active="0">
-        <div class="max-banner-track" id="maxBannerTrack"></div>
-    </div>
 
     <script>
         const socket = io();
