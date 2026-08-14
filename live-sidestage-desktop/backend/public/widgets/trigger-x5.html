@@ -202,7 +202,7 @@
         /* 発動中インジケーター: 発動ギフト検知で一旦大きく表示され、その後定位置のサイズへ縮小しながら
            落ち着く。縮小が終わるまではJS側でカウントダウン開始を待つ（tick開始をアニメーション完了後に遅延）。
            transform-origin を right/top に固定し、拡大時に画面外へはみ出さず角から膨らむようにする。
-           トリガー6倍カード（.shifted）はトリガー5倍が表示中の間だけ左にずれる。5倍が非表示の間は
+           トリガー6倍カード（.shifted）はトリガー5倍が表示中の間だけ下にずれる。5倍が非表示の間は
            5倍と全く同じ位置（right/top）に重なって表示される。 */
         .active-card {
             position: absolute;
@@ -210,11 +210,11 @@
             top: 36px;
             transform-origin: top right;
             animation: activeCardPop 3s cubic-bezier(0.22, 1, 0.36, 1);
-            transition: right 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+            transition: top 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .active-card.shifted {
-            right: 214px;
+            top: 214px;
         }
 
         @keyframes activeCardPop {
@@ -495,8 +495,8 @@
         // 5倍と6倍は完全に独立したイベント系統（widgets:trigger-x5:* / widgets:trigger-x6:*）を
         // 持つが、見た目の挙動（当選ポップ・発動中インジケーターの拡大縮小・カウントダウン・
         // 延長時の電撃演出）は同一のため、パラメータだけ差し替えて共用する。
-        // isShiftedFn は「このカードを5倍の左側にずらすべきか」を毎フレーム判定する関数
-        // （6倍コントローラーにのみ渡す。5倍は常にfalseで自身の定位置に留まる）。
+        // isShiftedFn は「このカード（待機中インジケーター）を5倍の下側にずらすべきか」を
+        // 毎フレーム判定する関数（6倍コントローラーにのみ渡す。5倍は常にfalseで自身の定位置に留まる）。
         function createMultiplierController({ gloveImgHtml, badgeLabel, cardClass, isShiftedFn }) {
             let activeCardEl = null;
             let activeDeadline = 0;
@@ -699,7 +699,7 @@
             isShiftedFn: () => false,
         });
 
-        // トリガー6倍: トリガー5倍が表示中は左にずれ、非表示なら5倍と同じ定位置に重なる。
+        // トリガー6倍: トリガー5倍が表示中は下にずれ、非表示なら5倍と同じ定位置に重なる。
         const x6Controller = createMultiplierController({
             gloveImgHtml: GLOVE_IMG_X6,
             badgeLabel: '×6',
@@ -767,7 +767,7 @@
             runActiveDemoX5();
             window.setInterval(runActiveDemoX5, 16000);
 
-            // 6倍は少し遅れて発動させ、5倍が表示中に左へずれる様子と、5倍終了後に定位置へ
+            // 6倍は少し遅れて発動させ、5倍が表示中に下へずれる様子と、5倍終了後に定位置へ
             // 戻る様子の両方をプレビューで確認できるようにする。
             const runActiveDemoX6 = () => {
                 x6Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
