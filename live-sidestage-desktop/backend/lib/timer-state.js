@@ -18,6 +18,7 @@ const DEFAULT_TIMER_SETTINGS = {
     endSoundVolume: 100,
     endSoundScreen: 1,
     minFloorMinutes: 0,
+    maxCeilingMinutes: 0,
     countdownSoundEnabled: false,
     countdownSoundThresholdSeconds: 5,
     countdownSound: { name: '', url: '' },
@@ -43,6 +44,13 @@ function normalizeTimerSoundVolume(value) {
 function normalizeMinFloorMinutes(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.minFloorMinutes;
+    return Math.max(0, Math.min(1440, parsed));
+}
+
+// 0 は「上限なし」を意味する（短縮下限の0=実質無制限と対になる仕様）。
+function normalizeMaxCeilingMinutes(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isInteger(parsed)) return DEFAULT_TIMER_SETTINGS.maxCeilingMinutes;
     return Math.max(0, Math.min(1440, parsed));
 }
 
@@ -82,6 +90,7 @@ function normalizeTimerSettings(value) {
         endSoundVolume: normalizeTimerSoundVolume(source.endSoundVolume),
         endSoundScreen: normalizeEndSoundScreen(source.endSoundScreen),
         minFloorMinutes: normalizeMinFloorMinutes(source.minFloorMinutes),
+        maxCeilingMinutes: normalizeMaxCeilingMinutes(source.maxCeilingMinutes),
         countdownSoundEnabled: normalizeBooleanInput(source.countdownSoundEnabled, DEFAULT_TIMER_SETTINGS.countdownSoundEnabled),
         countdownSoundThresholdSeconds: normalizeCountdownThresholdSeconds(source.countdownSoundThresholdSeconds),
         countdownSound: normalizeSoundAsset(source.countdownSound),
@@ -316,35 +325,44 @@ function resetTimer() {
 }
 
 // ギフト等でタイマーに分数を加算/減算する。稼働中は終了時刻を、停止中は残り時間を直接調整する。
-// 下限は短縮(マイナス)にのみ作用し、延長(プラス)は下限に関係なく指定分そのまま加算する。
+// 下限は短縮(マイナス)にのみ作用し、上限は延長(プラス)にのみ作用する(0は無制限)。
 // 戻り値の blocked は、短縮下限によって要求どおりに短縮できなかった(据え置き/下限までのクランプ)ことを示す。
+// 戻り値の capped は、この延長操作によって残り時間が新規に上限へ到達したことを示す
+// (開始/リセット時や、既に上限に達している状態からの再延長では発火しない)。
 function adjustTimerByMinutes(deltaMinutes) {
     const deltaMs = Number(deltaMinutes) * 60000;
-    const floorMs = getTimerSettings().minFloorMinutes * 60000;
+    const settings = getTimerSettings();
+    const floorMs = settings.minFloorMinutes * 60000;
+    const ceilingMs = settings.maxCeilingMinutes > 0 ? settings.maxCeilingMinutes * 60000 : null;
     const runtime = getTimerRuntime();
     const currentRemainingMs = getTimerRemainingMs(runtime);
     const blocked = deltaMs < 0 && (currentRemainingMs + deltaMs < floorMs);
 
     // 短縮(マイナス)発動時点で既に下限以下なら、時間を変更しない。
     if (deltaMs < 0 && currentRemainingMs <= floorMs) {
-        return { runtime, blocked };
+        return { runtime, blocked, capped: false };
     }
 
-    // 延長(プラス/ゼロ)には下限を適用しない。下限が効くのは短縮方向のみ。
+    // 短縮(マイナス)には下限を、延長(プラス)には上限を適用する。互いに逆方向には作用しない。
     const minMs = deltaMs < 0 ? floorMs : 0;
+    const maxMs = deltaMs > 0 && ceilingMs !== null ? ceilingMs : MAX_TIMER_MS;
     let next;
+    let nextRemainingMs;
 
     if (runtime.running) {
         const now = Date.now();
-        const nextEndsAt = Math.min(now + MAX_TIMER_MS, Math.max(now + minMs, runtime.endsAt + deltaMs));
-        next = setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextEndsAt - now });
+        const nextEndsAt = Math.min(now + maxMs, Math.max(now + minMs, runtime.endsAt + deltaMs));
+        nextRemainingMs = nextEndsAt - now;
+        next = setTimerRuntime({ running: true, endsAt: nextEndsAt, remainingMs: nextRemainingMs });
     } else {
-        const nextRemaining = Math.min(MAX_TIMER_MS, Math.max(minMs, runtime.remainingMs + deltaMs));
-        next = setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemaining });
+        nextRemainingMs = Math.min(maxMs, Math.max(minMs, runtime.remainingMs + deltaMs));
+        next = setTimerRuntime({ running: false, endsAt: null, remainingMs: nextRemainingMs });
     }
 
+    const capped = deltaMs > 0 && ceilingMs !== null && currentRemainingMs < ceilingMs && nextRemainingMs >= ceilingMs;
+
     scheduleEndTimeout();
-    return { runtime: next, blocked };
+    return { runtime: next, blocked, capped };
 }
 
 // TikEffectウィジェット連携イベント（タイマーウィジェットカテゴリ）から、タイマーへ分数を加算/減算する。
@@ -363,9 +381,9 @@ function applyTimerWidgetAction(effectEvent, repeatCount = 1) {
     if (!minutesDelta) return null;
 
     const deltaMinutes = minutesDelta * Math.max(1, Number(repeatCount) || 1);
-    const { runtime, blocked } = adjustTimerByMinutes(deltaMinutes);
+    const { runtime, blocked, capped } = adjustTimerByMinutes(deltaMinutes);
     if (blocked) emitTimerBlockSound();
-    return { deltaMinutes, runtime, blocked };
+    return { deltaMinutes, runtime, blocked, capped };
 }
 
 function buildTimerPayload() {

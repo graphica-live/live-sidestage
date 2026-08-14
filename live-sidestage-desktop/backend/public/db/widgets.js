@@ -96,6 +96,7 @@
         const timerDurationMinutesInput = document.getElementById('timer-duration-minutes');
         const timerDurationSecondsInput = document.getElementById('timer-duration-seconds');
         const timerMinFloorMinutesInput = document.getElementById('timer-min-floor-minutes');
+        const timerMaxCeilingMinutesInput = document.getElementById('timer-max-ceiling-minutes');
         const timerEndSoundPickerButton = document.getElementById('timer-myinstants-button');
         const timerEndSoundPreviewButton = document.getElementById('timer-end-sound-preview-button');
         const timerEndSoundClearButton = document.getElementById('timer-end-sound-clear-button');
@@ -266,7 +267,7 @@
             tapGoalAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 4 },
             tapGoalProgress: { count: 0, target: 100 },
             timerAppearance: { fontKey: 'default', textStyleKey: 'gold-night', strokeWidth: 6 },
-            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, endSoundScreen: 1, minFloorMinutes: 0, countdownSoundEnabled: false, countdownSoundThresholdSeconds: 5, countdownSound: { name: '', url: '' }, countdownSoundVolume: 100, countdownSoundScreen: 1 },
+            timerSettings: { durationMinutes: 10, durationSeconds: 0, headingText: '', slots: [], endSound: { name: '', url: '' }, endSoundVolume: 100, endSoundScreen: 1, minFloorMinutes: 0, maxCeilingMinutes: 0, countdownSoundEnabled: false, countdownSoundThresholdSeconds: 5, countdownSound: { name: '', url: '' }, countdownSoundVolume: 100, countdownSoundScreen: 1 },
             timerRuntime: { running: false, endsAt: null, remainingMs: 600000 },
             goalGiftNoteFontSize: 28,
             goalGiftAchievementBadgeSize: 152,
@@ -2381,6 +2382,7 @@
             timerDurationMinutesInput.value = String(Number.parseInt(String(settings.durationMinutes ?? 10), 10) || 0);
             timerDurationSecondsInput.value = String(Number.parseInt(String(settings.durationSeconds ?? 0), 10) || 0);
             timerMinFloorMinutesInput.value = String(Number.parseInt(String(settings.minFloorMinutes ?? 0), 10) || 0);
+            timerMaxCeilingMinutesInput.value = String(Number.parseInt(String(settings.maxCeilingMinutes ?? 0), 10) || 0);
             timerEndSoundNameEl.textContent = settings.endSound?.name || '未設定';
             const volume = Number.isFinite(Number(settings.endSoundVolume)) ? Math.max(0, Math.min(100, Number(settings.endSoundVolume))) : 100;
             timerEndSoundVolumeInput.value = String(volume);
@@ -2443,6 +2445,7 @@
                 durationMinutes: Number.parseInt(timerDurationMinutesInput.value, 10) || 0,
                 durationSeconds: Number.parseInt(timerDurationSecondsInput.value, 10) || 0,
                 minFloorMinutes: Number.parseInt(timerMinFloorMinutesInput.value, 10) || 0,
+                maxCeilingMinutes: Number.parseInt(timerMaxCeilingMinutesInput.value, 10) || 0,
                 endSound: state.timerSettings.endSound || { name: '', url: '' },
                 endSoundVolume: Number.parseInt(timerEndSoundVolumeInput.value, 10),
                 endSoundScreen: Number.parseInt(timerEndSoundScreenSelect.value, 10) || 1,
@@ -2530,6 +2533,7 @@
         timerDurationMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerDurationSecondsInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerMinFloorMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
+        timerMaxCeilingMinutesInput.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });
         timerFontSelect.addEventListener('input', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); });
         timerFontSelect.addEventListener('change', () => { timerFontSelect.style.fontFamily = getWidgetFontFamily(timerFontSelect.value); saveTimerSettingsImmediately().catch(() => {}); });
         timerTextStyleSelect.addEventListener('change', () => { saveTimerSettingsImmediately().catch(() => {}); });

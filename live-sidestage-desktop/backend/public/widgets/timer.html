@@ -152,6 +152,95 @@
             inset: 0;
             pointer-events: none;
         }
+
+        .max-banner {
+            position: fixed;
+            left: 0;
+            right: 0;
+            top: 42%;
+            height: 76px;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 30;
+            opacity: 0;
+            transform: scaleY(0.4);
+            transform-origin: center;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            background: linear-gradient(90deg, #450a0a, #c2410c, #fbbf24, #ea580c, #7f1d1d, #c2410c, #fbbf24, #450a0a);
+            background-size: 300% 100%;
+            animation: flame-shift 2.4s linear infinite;
+            box-shadow: 0 0 46px 12px rgba(234, 88, 12, 0.8), inset 0 0 34px rgba(255, 200, 0, 0.45);
+            border-top: 2px solid rgba(255, 214, 10, 0.85);
+            border-bottom: 2px solid rgba(255, 214, 10, 0.85);
+        }
+
+        .max-banner::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                115deg,
+                rgba(255, 240, 200, 0) 0px,
+                rgba(255, 240, 200, 0) 10px,
+                rgba(255, 200, 80, 0.35) 10px,
+                rgba(255, 200, 80, 0.35) 14px
+            );
+            mix-blend-mode: screen;
+            animation: flame-flicker-bg 0.6s steps(6) infinite;
+        }
+
+        .max-banner[data-active="1"] {
+            opacity: 1;
+            transform: scaleY(1);
+        }
+
+        @keyframes flame-shift {
+            0% { background-position: 0% 50%; }
+            100% { background-position: -300% 50%; }
+        }
+
+        @keyframes flame-flicker-bg {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.9; }
+        }
+
+        .max-banner-track {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            width: max-content;
+            animation: banner-scroll 9s linear infinite;
+            will-change: transform;
+        }
+
+        @keyframes banner-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .max-banner-group {
+            display: flex;
+            flex-shrink: 0;
+            align-items: center;
+        }
+
+        .max-banner-text {
+            display: inline-block;
+            font-size: 42px;
+            font-weight: 900;
+            color: #fff7ed;
+            white-space: nowrap;
+            -webkit-text-stroke: 3px rgba(120, 24, 6, 0.95);
+            paint-order: stroke fill;
+            text-shadow: 0 0 18px rgba(255, 140, 0, 0.9), 0 0 40px rgba(255, 60, 0, 0.7);
+            padding: 0 44px;
+            animation: flame-text-flicker 0.18s ease-in-out infinite alternate;
+        }
+
+        @keyframes flame-text-flicker {
+            from { filter: brightness(1) saturate(1); }
+            to { filter: brightness(1.25) saturate(1.3); }
+        }
     </style>
 </head>
 <body>
@@ -162,6 +251,9 @@
         <div class="popup-layer" id="popupLayer"></div>
     </div>
     <canvas id="confetti-canvas"></canvas>
+    <div class="max-banner" id="maxBanner" data-active="0">
+        <div class="max-banner-track" id="maxBannerTrack"></div>
+    </div>
 
     <script>
         const socket = io();
@@ -177,6 +269,8 @@
         const headingEl = document.getElementById('heading');
         const digitsEl = document.getElementById('digits');
         const popupLayerEl = document.getElementById('popupLayer');
+        const maxBannerEl = document.getElementById('maxBanner');
+        const maxBannerTrackEl = document.getElementById('maxBannerTrack');
 
         const TIMER_FONT_FAMILIES = {
             default:          '"M PLUS Rounded 1c", sans-serif',
@@ -308,6 +402,33 @@
             setTimeout(() => chip.remove(), 1700);
         }
 
+        // --- 延長上限到達バナー（帯が1分間流れる。マーキーは同一内容を2組並べてtranslateX(-50%)でシームレスループ） ---
+        const MAX_BANNER_DURATION_MS = 60000;
+        const MAX_BANNER_ITEM_COUNT = 14;
+        function buildMaxBannerGroup() {
+            const group = document.createElement('div');
+            group.className = 'max-banner-group';
+            for (let i = 0; i < MAX_BANNER_ITEM_COUNT; i++) {
+                const span = document.createElement('span');
+                span.className = 'max-banner-text';
+                span.textContent = '🔥 タイマーMAX到達 🔥';
+                group.appendChild(span);
+            }
+            return group;
+        }
+        maxBannerTrackEl.appendChild(buildMaxBannerGroup());
+        maxBannerTrackEl.appendChild(buildMaxBannerGroup());
+
+        let maxBannerTimeoutHandle = null;
+        function showMaxBanner() {
+            maxBannerEl.dataset.active = '1';
+            if (maxBannerTimeoutHandle) clearTimeout(maxBannerTimeoutHandle);
+            maxBannerTimeoutHandle = setTimeout(() => {
+                maxBannerEl.dataset.active = '0';
+                maxBannerTimeoutHandle = null;
+            }, MAX_BANNER_DURATION_MS);
+        }
+
         // --- 紙吹雪エフェクト（外部ライブラリ不使用の手製実装） ---
         const confettiCanvas = document.getElementById('confetti-canvas');
         const confettiCtx = confettiCanvas.getContext('2d');
@@ -411,6 +532,7 @@
         socket.on('widgets:timer:updated', applyPayload);
         socket.on('widgets:timer:adjusted', (data) => {
             showAdjustPopup(Number(data?.minutesDelta) || 0, Boolean(data?.blocked));
+            if (data?.capped) showMaxBanner();
         });
     </script>
 </body>

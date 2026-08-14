@@ -201,7 +201,8 @@ module.exports = function createEffectsRuntime({
                 io.emit('widgets:timer:adjusted', {
                     minutesDelta: timerResult.deltaMinutes,
                     giftName: sourceEvent?.giftName || '',
-                    blocked: timerResult.blocked
+                    blocked: timerResult.blocked,
+                    capped: timerResult.capped
                 });
             }
         }

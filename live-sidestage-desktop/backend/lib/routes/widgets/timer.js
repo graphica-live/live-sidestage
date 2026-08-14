@@ -41,10 +41,10 @@ module.exports = function registerTimerRoutes({
 
     app.post('/api/widgets/timer/test', (req, res) => {
         const minutes = Math.max(-180, Math.min(180, Math.round(Number(req.body?.minutes) || 0)));
-        const { blocked } = adjustTimerByMinutes(minutes);
+        const { blocked, capped } = adjustTimerByMinutes(minutes);
         if (blocked) emitTimerBlockSound();
         const payload = emitTimerUpdate();
-        io.emit('widgets:timer:adjusted', { minutesDelta: minutes, giftName: 'テスト', blocked });
+        io.emit('widgets:timer:adjusted', { minutesDelta: minutes, giftName: 'テスト', blocked, capped });
         res.json({ ok: true, ...payload });
     });
 
