@@ -36,6 +36,7 @@ interface GiftEvent {
   repeatCount: number;
   totalDiamonds: number;
   receivedAt: string;
+  edited: boolean;
 }
 
 interface HistoryData {
@@ -221,6 +222,13 @@ export default function AnalyticsPage() {
   const [pendingStart, setPendingStart] = useState(customStart);
   const [pendingEnd, setPendingEnd] = useState(customEnd);
   const calendarRef = useRef<HTMLDivElement>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ giftName: string; totalDiamonds: string }>({
+    giftName: "",
+    totalDiamonds: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const [showOverlayPanel, setShowOverlayPanel] = useState(false);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings | null>(null);
@@ -460,6 +468,60 @@ export default function AnalyticsPage() {
 
     return events;
   }, [historyData, filter, historySortKey, historySortOrder]);
+
+  const giftNameSuggestions = useMemo(() => {
+    if (!historyData) return [];
+    return Array.from(new Set(historyData.events.map((e) => e.giftName))).sort((a, b) =>
+      a.localeCompare(b, "ja")
+    );
+  }, [historyData]);
+
+  const coinSuggestions = useMemo(() => {
+    if (!historyData) return [];
+    return Array.from(new Set(historyData.events.map((e) => e.totalDiamonds))).sort((a, b) => a - b);
+  }, [historyData]);
+
+  const startEdit = useCallback((ev: GiftEvent) => {
+    setEditingId(ev.id);
+    setEditDraft({ giftName: ev.giftName, totalDiamonds: String(ev.totalDiamonds) });
+  }, []);
+
+  const stopEdit = useCallback(() => {
+    setEditingId(null);
+  }, []);
+
+  const commitEdit = useCallback(async (ev: GiftEvent) => {
+    const giftName = editDraft.giftName.trim();
+    const totalDiamonds = Number(editDraft.totalDiamonds);
+    if (!giftName || !Number.isInteger(totalDiamonds)) return;
+    if (giftName === ev.giftName && totalDiamonds === ev.totalDiamonds) return;
+
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/analytics/gifts/history/${ev.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ giftName, totalDiamonds }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setHistoryData((prev) =>
+          prev
+            ? {
+                ...prev,
+                events: prev.events.map((e) =>
+                  e.id === ev.id
+                    ? { ...e, giftName: updated.giftName, totalDiamonds: updated.totalDiamonds, edited: true }
+                    : e
+                ),
+              }
+            : prev
+        );
+      }
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editDraft]);
 
   const statusColor: Record<string, string> = {
     connected: "bg-green-500",
@@ -1099,55 +1161,122 @@ export default function AnalyticsPage() {
                     <th className="py-2.5 px-3 text-right">
                       <span title="コイン数">💎</span>
                     </th>
+                    <th className="py-2.5 px-3 text-center w-10">編集</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEvents.map((ev) => (
-                    <tr
-                      key={ev.id}
-                      className="border-b border-border/50 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
-                        {formatEventTime(ev.receivedAt, period)}
-                      </td>
-                      <td className="py-2 px-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
-                          <div className="min-w-0">
-                            <div className="font-medium truncate max-w-[120px] sm:max-w-[200px]">
-                              {ev.nickname}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate max-w-[100px]">
-                              @{ev.uniqueId}
+                  {filteredEvents.map((ev) => {
+                    const isEditing = editingId === ev.id;
+                    return (
+                      <tr
+                        key={ev.id}
+                        className="border-b border-border/50 hover:bg-white/[0.02] transition-colors"
+                      >
+                        <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                          {formatEventTime(ev.receivedAt, period)}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
+                            <div className="min-w-0">
+                              <div className="font-medium truncate max-w-[120px] sm:max-w-[200px]">
+                                {ev.nickname}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate max-w-[100px]">
+                                @{ev.uniqueId}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {ev.giftPictureUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={ev.giftPictureUrl}
-                              alt={ev.giftName}
-                              className="w-6 h-6 object-contain shrink-0"
+                        </td>
+                        <td className="py-2 px-3">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              list="gift-name-suggestions"
+                              value={editDraft.giftName}
+                              onChange={(e) =>
+                                setEditDraft((d) => ({ ...d, giftName: e.target.value }))
+                              }
+                              onBlur={() => commitEdit(ev)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                              placeholder="例: Rose"
+                              disabled={editSaving}
+                              className="input-field text-sm w-full min-w-[110px]"
                             />
+                          ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {ev.giftPictureUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={ev.giftPictureUrl}
+                                  alt={ev.giftName}
+                                  className="w-6 h-6 object-contain shrink-0"
+                                />
+                              )}
+                              <span className="truncate">
+                                {ev.giftName}
+                                {ev.repeatCount > 1 && (
+                                  <span className="text-gray-400 ml-1">×{ev.repeatCount}</span>
+                                )}
+                              </span>
+                              {ev.edited && (
+                                <span
+                                  className="text-[10px] text-brand shrink-0"
+                                  title="編集データ(オリジナルとは別に保持されています)"
+                                >
+                                  編集済
+                                </span>
+                              )}
+                            </div>
                           )}
-                          <span className="truncate">
-                            {ev.giftName}
-                            {ev.repeatCount > 1 && (
-                              <span className="text-gray-400 ml-1">×{ev.repeatCount}</span>
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-medium">
-                        {ev.totalDiamonds.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-medium">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              list="coin-suggestions"
+                              value={editDraft.totalDiamonds}
+                              onChange={(e) =>
+                                setEditDraft((d) => ({ ...d, totalDiamonds: e.target.value }))
+                              }
+                              onBlur={() => commitEdit(ev)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                              placeholder="例: 100"
+                              disabled={editSaving}
+                              className="input-field text-sm w-24 text-right ml-auto"
+                            />
+                          ) : (
+                            ev.totalDiamonds.toLocaleString()
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            onClick={() => (isEditing ? stopEdit() : startEdit(ev))}
+                            className="btn-ghost p-1.5"
+                            title={isEditing ? "編集を終了" : "このギフトを編集"}
+                          >
+                            {isEditing ? <CheckIcon /> : <PencilIcon />}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              <datalist id="gift-name-suggestions">
+                {giftNameSuggestions.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+              <datalist id="coin-suggestions">
+                {coinSuggestions.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
           )
         )}
@@ -1224,6 +1353,22 @@ function DownloadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-brand">
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     dateRange = { start, end };
   }
 
-  const events = await prisma.gift.findMany({
+  const rows = await prisma.gift.findMany({
     where: giftWhere,
     orderBy: { receivedAt: "desc" },
     take: limit,
@@ -71,8 +71,16 @@ export async function GET(req: NextRequest) {
       repeatCount: true,
       totalDiamonds: true,
       receivedAt: true,
+      edit: { select: { giftName: true, totalDiamonds: true } },
     },
   });
+
+  const events = rows.map(({ edit, ...e }) => ({
+    ...e,
+    giftName: edit?.giftName ?? e.giftName,
+    totalDiamonds: edit?.totalDiamonds ?? e.totalDiamonds,
+    edited: edit !== null,
+  }));
 
   const total = events.reduce(
     (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),

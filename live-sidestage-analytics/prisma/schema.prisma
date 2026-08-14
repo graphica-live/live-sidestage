@@ -114,10 +114,26 @@ model Gift {
   groupId         String?
 
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+  edit     GiftEdit?
 
   @@map("gifts")
   @@index([streamerId, dayKey])
   @@index([streamerId, receivedAt])
   @@index([streamerId, uniqueId])
   @@index([streamerId, groupId])
+}
+
+// TikTokから受信したオリジナルのGiftは変更・削除しない。編集内容はここに別レコードとして保持し、
+// 表示時のみ上書きする(オリジナルデータのみでの集計を別途可能にするため)。
+model GiftEdit {
+  id            String   @id @default(cuid())
+  giftId        String   @unique
+  giftName      String
+  totalDiamonds Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
+
+  @@map("gift_edits")
 }
