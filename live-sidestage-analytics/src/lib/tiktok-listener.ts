@@ -672,18 +672,44 @@ async function getMyStreamers() {
   return [...assigned, ...claimed];
 }
 
+// 起動時の初回接続を束ねる同時実行数。無制限並列だとEuler署名サーバー/TikTok側への
+// 同時アクセスが集中するため、小さめの上限で束ねてバッチ処理する。
+const RESUME_CONCURRENCY = 5;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  task: (item: T) => Promise<void>
+) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    let item: T | undefined;
+    while ((item = queue.shift()) !== undefined) {
+      await task(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export async function resumeAllListeners() {
   const streamers = await getMyStreamers();
 
   console.log(`[listener] resumeAllListeners: found ${streamers.length} verified streamer(s)`);
 
-  for (const s of streamers) {
+  await runWithConcurrency(streamers, RESUME_CONCURRENCY, async (s) => {
     console.log(`[listener] starting listener for @${s.tiktokId} (${s.id})`);
     await startListener(s.id, s.tiktokId).catch((err) =>
       console.error(`[listener] resume failed for ${s.tiktokId}:`, err)
     );
     console.log(`[listener] listener state for @${s.tiktokId}:`, listeners.get(s.id)?.state.status);
-  }
+  });
+}
+
+// デプロイ時のグレースフルシャットダウン用。担当中の全streamerのTikTok接続を明示的に切断する。
+export async function stopAllListeners() {
+  const streamerIds = Array.from(listeners.keys());
+  console.log(`[listener] stopAllListeners: disconnecting ${streamerIds.length} streamer(s)`);
+  await Promise.all(streamerIds.map((id) => stopListener(id)));
 }
 
 export async function ensureAllListenersAlive() {
