@@ -216,6 +216,14 @@ module.exports = function createEffectsRuntime({
         runEffectEventSideEffects(effectEvent, payload, sourceEvent);
     }
 
+    // TikEffectウィジェット連携「トリガー5倍グローブ発動」がONのイベントが実際に再生されるたびに呼ぶ。
+    // コンボギフトは1コンボにつき何度もtickが来るため、延長が積み上がりすぎないよう最初のtickでのみ発動する。
+    function maybeActivateTriggerX5ForEvent(effectEvent, sourceEvent, giftComboState) {
+        if (!effectEvent?.triggerX5Activate) return;
+        if (giftComboState && !giftComboState.isFirstTick) return;
+        maybeActivateTriggerX5Window(sourceEvent);
+    }
+
     function matchesEffectTrigger(trigger, context) {
         if (trigger.giftName && trigger.giftName !== context.giftName) {
             return false;
@@ -286,13 +294,6 @@ module.exports = function createEffectsRuntime({
             }
 
             anyTriggered = true;
-
-            // TikEffectウィジェット連携「トリガー5倍グローブ発動」がONのトリガーは、
-            // 発火するたびにトリガー5倍タイムを(再)開始する。コンボギフトは1コンボにつき
-            // 何度もtickが来るため、延長が積み上がりすぎないよう最初のtickでのみ発動する。
-            if (trigger.triggerX5Activate && (!giftComboState || giftComboState.isFirstTick)) {
-                maybeActivateTriggerX5Window(sourceEvent);
-            }
 
             // トリガー5倍の対象は「ギフト名を指定したトリガー」がそのギフトに一致した発火のみ。
             // ギフト名未指定のトリガー（コメント/フォロー/無条件トリガーなど）は関係のないギフトでも
@@ -366,10 +367,12 @@ module.exports = function createEffectsRuntime({
                         io.emit('effects:playback', payload);
                         runEffectEventSideEffects(effectEvent, payload, sourceEvent);
                         anyPlaybackEmitted = true;
+                        maybeActivateTriggerX5ForEvent(effectEvent, sourceEvent, giftComboState);
                     }
                 } else if (!getEffectsGloballyPaused()) {
                     emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride);
                     anyPlaybackEmitted = true;
+                    maybeActivateTriggerX5ForEvent(effectEvent, sourceEvent, giftComboState);
                 }
             });
 
