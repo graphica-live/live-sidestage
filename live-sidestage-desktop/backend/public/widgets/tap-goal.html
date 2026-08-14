@@ -37,12 +37,11 @@
         }
 
         .widget[data-orientation="horizontal"] {
-            min-width: 480px;
             max-width: min(880px, 100vw);
         }
 
         .widget[data-orientation="vertical"] {
-            height: min(480px, 90vh);
+            max-height: min(480px, 90vh);
         }
 
         .widget[data-heading-position="top"] { flex-direction: column; }
@@ -75,13 +74,20 @@
 
         .widget[data-orientation="horizontal"] .bar-group {
             flex-direction: column;
-            width: 100%;
+            /* 見出しの書字方向でheadingの占有幅が変わっても、メーター自体の幅は
+               このmin/max-widthで確保する(headingと奪い合わない) */
+            min-width: 444px;
+            max-width: min(844px, calc(100vw - 36px));
         }
 
         .widget[data-orientation="vertical"] .bar-group {
             flex-direction: row;
-            align-items: center;
-            height: 100%;
+            /* 見出しの書字方向でheadingの占有高さが変わっても、メーター自体の高さは
+               このmin/max-heightで確保する(headingと奪い合わない)。
+               align-itemsをstretch(既定)のままにしないとbar-track-wrapのheight:100%が
+               正しく解決されない(centerだと高さがつぶれる) */
+            min-height: 444px;
+            max-height: min(844px, calc(90vh - 36px));
         }
 
         .bar-track {
@@ -142,6 +148,7 @@
             text-orientation: upright;
             margin-top: 0;
             margin-left: 8px;
+            align-self: center;
         }
 
         @keyframes tapGoalFlash {
@@ -164,7 +171,7 @@
         }
 
         .widget[data-orientation="vertical"] .bar-track-wrap {
-            height: 100%;
+            align-self: stretch;
         }
 
         .hearts-layer {
