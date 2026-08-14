@@ -9,6 +9,7 @@ out/
 .env
 .env.local
 .env.production
+.env.local.test
 
 # misc
 .DS_Store

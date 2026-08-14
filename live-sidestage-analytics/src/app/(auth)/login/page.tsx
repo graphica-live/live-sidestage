@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 
+const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
+
 export default function LoginPage() {
+  const [devEmail, setDevEmail] = useState("dev@local.test");
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -20,6 +25,33 @@ export default function LoginPage() {
             Googleでログイン
           </button>
         </div>
+
+        {DEV_LOGIN_ENABLED && (
+          <div className="card mt-4 border-dashed">
+            <p className="text-xs text-gray-500 mb-2">開発用ログイン(ローカルテスト環境専用)</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                signIn("dev-login", { email: devEmail, callbackUrl: "/" });
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="email"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                className="input-field text-sm flex-1"
+                placeholder="dev@local.test"
+              />
+              <button
+                type="submit"
+                className="bg-brand text-white rounded-lg px-3 text-sm font-medium hover:opacity-90"
+              >
+                ログイン
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
