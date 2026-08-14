@@ -40,9 +40,9 @@
             max-width: min(880px, 100vw);
         }
 
-        .widget[data-orientation="vertical"] {
-            max-height: min(480px, 90vh);
-        }
+        /* vertical方向の上限はbar-group自身が持つ(下記)。widget側で上限をかけると、
+           見出し込みの合計がそれを超えたときcolumn-reverse(見出し下)では上方向に
+           はみ出て見切れてしまうため、widget自体には上限を設けない */
 
         .widget[data-heading-position="top"] { flex-direction: column; }
         .widget[data-heading-position="bottom"] { flex-direction: column-reverse; }
@@ -60,9 +60,25 @@
             white-space: nowrap;
         }
 
+        /* 見出しテキストが空のときは領域自体を確保しない(見出しなし表示) */
+        .heading:empty {
+            display: none;
+        }
+
         .widget[data-heading-writing-mode="vertical"] .heading {
             writing-mode: vertical-rl;
             text-orientation: upright;
+        }
+
+        /* top/bottom配置ではheadingがwidget幅いっぱいにstretchされるため、
+           縦書きだと文字が右端に寄ってメーターと軸がずれる。中央寄せで揃える */
+        .widget[data-heading-position="top"][data-heading-writing-mode="vertical"] .heading,
+        .widget[data-heading-position="bottom"][data-heading-writing-mode="vertical"] .heading {
+            align-self: center;
+            /* 縦書きは文字数に比例して際限なく縦に伸びてしまうため、
+               widget全体が肥大化してオーバーレイ領域からはみ出さないよう上限を設ける */
+            max-height: 260px;
+            overflow: hidden;
         }
 
         .bar-group {
