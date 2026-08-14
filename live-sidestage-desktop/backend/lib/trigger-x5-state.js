@@ -1,14 +1,12 @@
 'use strict';
 
 const { WIDGET_TRIGGER_X5_SETTINGS_STATE_KEY } = require('./constants');
-const { normalizeEffectText } = require('./utils');
 const { normalizeSoundAsset } = require('./effect-helpers');
 
 const TRIGGER_X5_MULTIPLIER = 5;
 
 const DEFAULT_TRIGGER_X5_SETTINGS = {
     enabled: false,
-    giftName: '',
     durationSeconds: 15,
     winRatePercent: 30,
     soundEnabled: false,
@@ -60,7 +58,6 @@ function normalizeTriggerX5Settings(value) {
 
     return {
         enabled: Boolean(source.enabled),
-        giftName: normalizeEffectText(source.giftName, 80).toLowerCase(),
         durationSeconds: normalizeTriggerX5DurationSeconds(source.durationSeconds),
         winRatePercent: normalizeTriggerX5WinRatePercent(source.winRatePercent),
         soundEnabled: Boolean(source.soundEnabled),
@@ -72,8 +69,9 @@ function normalizeTriggerX5Settings(value) {
     };
 }
 
-// トリガー5倍ウィジェット: 設定したギフトが飛ぶと一定秒数だけ「5倍タイム」が始まり、
-// その間に発火したイベントトリガーが設定した確率（デフォルト30%）で5倍（動画なら5回再生）になる。
+// トリガー5倍ウィジェット: 「トリガー5倍グローブ発動」をONにしたイベントトリガーが発火すると
+// 一定秒数だけ「5倍タイム」が始まり、その間に発火したイベントトリガーが設定した確率
+// （デフォルト30%）で5倍（動画なら5回再生）になる。
 module.exports = function createTriggerX5State({
     io,
     getScopedStateValue,
@@ -114,15 +112,11 @@ module.exports = function createTriggerX5State({
         };
     }
 
-    // 発動条件のギフトを受け取るたびに呼ぶ。設定と一致すればウィンドウを(再)開始する。
-    function maybeActivateTriggerX5Window(giftEvent) {
+    // 「トリガー5倍グローブ発動」がONのイベントトリガーが発火するたびに呼ぶ。有効ならウィンドウを(再)開始する。
+    function maybeActivateTriggerX5Window(sourceEvent) {
         const settings = getWidgetTriggerX5Settings();
 
-        if (!settings.enabled || !settings.giftName) {
-            return;
-        }
-
-        if (normalizeEffectText(giftEvent?.giftName, 80).toLowerCase() !== settings.giftName) {
+        if (!settings.enabled) {
             return;
         }
 
@@ -141,8 +135,8 @@ module.exports = function createTriggerX5State({
             activatorQueue = [];
         }
         activatorQueue.push({
-            nickname: giftEvent?.nickname || giftEvent?.uniqueId || 'リスナー',
-            image: giftEvent?.image || '',
+            nickname: sourceEvent?.nickname || sourceEvent?.uniqueId || 'リスナー',
+            image: sourceEvent?.image || '',
             endsAt: activeUntil,
         });
 
@@ -152,8 +146,8 @@ module.exports = function createTriggerX5State({
             extended,
             durationSeconds: settings.durationSeconds,
             remainingSeconds: Math.max(1, Math.ceil((activeUntil - now) / 1000)),
-            nickname: giftEvent?.nickname || giftEvent?.uniqueId || 'リスナー',
-            image: giftEvent?.image || '',
+            nickname: sourceEvent?.nickname || sourceEvent?.uniqueId || 'リスナー',
+            image: sourceEvent?.image || '',
             timestamp: getTimestamp(),
             // 延長のたびに積み上がる発動者の時間帯。オーバーレイ側はこれを使って、
             // カウントダウンが実際にその人の枠に入ったタイミングでアイコンを切り替える。

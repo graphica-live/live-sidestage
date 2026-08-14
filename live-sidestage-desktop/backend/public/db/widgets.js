@@ -50,8 +50,6 @@
         const tapGoalPreviewFrame = document.getElementById('tap-goal-preview-frame');
         const tapGoalProgressLabel = document.getElementById('tap-goal-progress-label');
         const triggerX5EnabledInput = document.getElementById('trigger-x5-enabled');
-        const triggerX5GiftNameInput = document.getElementById('trigger-x5-gift-name');
-        const triggerX5GiftSuggestionPanel = document.getElementById('trigger-x5-gift-suggestion-panel');
         const triggerX5DurationSecondsInput = document.getElementById('trigger-x5-duration-seconds');
         const triggerX5WinRateInput = document.getElementById('trigger-x5-win-rate');
         const triggerX5SoundEnabledInput = document.getElementById('trigger-x5-sound-enabled');
@@ -1579,9 +1577,8 @@
         }
 
         function applyTriggerX5SettingsToForm(settings) {
-            const s = settings || { enabled: false, giftName: '', durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100, winSoundEnabled: false, winSound: { name: '', url: '' }, winSoundVolume: 100 };
+            const s = settings || { enabled: false, durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100, winSoundEnabled: false, winSound: { name: '', url: '' }, winSoundVolume: 100 };
             triggerX5EnabledInput.checked = Boolean(s.enabled);
-            setTriggerX5GiftNameValue(s.giftName || '');
             triggerX5DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
             triggerX5WinRateInput.value = String(Number.parseInt(String(s.winRatePercent ?? 30), 10) || 30);
             triggerX5SoundEnabledInput.checked = Boolean(s.soundEnabled);
@@ -1617,26 +1614,9 @@
             updatePreviewFrame(triggerX5PreviewFrame, buildTriggerX5PreviewUrl(), options);
         }
 
-        // 保存に使う値は常に英語のマッチングキー。表示は日本語名（カタログに一致すれば）。
-        function setTriggerX5GiftNameValue(englishName) {
-            const trimmed = String(englishName || '').trim();
-            triggerX5GiftNameInput.dataset.giftKey = trimmed;
-            triggerX5GiftNameInput.setCustomValidity('');
-            triggerX5GiftNameInput.classList.remove('gift-suggest-invalid');
-
-            if (!trimmed) {
-                triggerX5GiftNameInput.value = '';
-                return;
-            }
-
-            const matched = GiftSuggest.findByNameOrId(state.giftCatalog, trimmed);
-            triggerX5GiftNameInput.value = matched?.nameJa || trimmed;
-        }
-
         function getDraftTriggerX5Settings() {
             return {
                 enabled: triggerX5EnabledInput.checked,
-                giftName: (triggerX5GiftNameInput.dataset.giftKey || triggerX5GiftNameInput.value).trim(),
                 durationSeconds: Number.parseInt(triggerX5DurationSecondsInput.value, 10) || 15,
                 winRatePercent: Number.parseInt(triggerX5WinRateInput.value, 10) || 30,
                 soundEnabled: triggerX5SoundEnabledInput.checked,
@@ -1649,11 +1629,6 @@
         }
 
         async function saveTriggerX5SettingsImmediately() {
-            if (!triggerX5GiftNameInput.checkValidity()) {
-                triggerX5GiftNameInput.reportValidity();
-                return;
-            }
-
             setStatus(saveStatus, '設定状態: トリガー5倍を保存中...', 'warn');
             try {
                 const response = await fetch('/api/widgets/trigger-x5', {
@@ -2352,29 +2327,6 @@
             },
             escapeHtml
         });
-
-        GiftSuggest.attachSuggestField({
-            input: triggerX5GiftNameInput,
-            panel: triggerX5GiftSuggestionPanel,
-            getGifts: () => state.giftCatalog,
-            onSelect: (gift) => {
-                triggerX5GiftNameInput.value = gift.nameJa || gift.name || '';
-                triggerX5GiftNameInput.dataset.giftKey = gift.name || '';
-                triggerX5GiftNameInput.setCustomValidity('');
-                triggerX5GiftNameInput.classList.remove('gift-suggest-invalid');
-                saveTriggerX5SettingsImmediately().catch(() => {});
-            },
-            escapeHtml
-        });
-
-        GiftSuggest.attachSelectOnlyGuard(triggerX5GiftNameInput, {
-            getGifts: () => state.giftCatalog,
-            invalidMessage: 'ギフト候補一覧から選択してください。',
-            onValid: (matched) => {
-                triggerX5GiftNameInput.dataset.giftKey = matched ? (matched.name || '') : '';
-            }
-        });
-
 
         function applyTimerSettingsToForm(settings) {
             if (!settings) return;
@@ -3848,7 +3800,6 @@
             await copyText(state.widgetUrls.triggerX5LoaderUrl || state.widgetUrls.triggerX5OverlayUrl || '');
         });
         triggerX5EnabledInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
-        triggerX5GiftNameInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5DurationSecondsInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5WinRateInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });
         triggerX5SoundEnabledInput.addEventListener('change', () => { saveTriggerX5SettingsImmediately().catch(() => {}); });

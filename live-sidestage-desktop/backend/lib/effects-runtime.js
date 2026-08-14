@@ -287,6 +287,13 @@ module.exports = function createEffectsRuntime({
 
             anyTriggered = true;
 
+            // TikEffectウィジェット連携「トリガー5倍グローブ発動」がONのトリガーは、
+            // 発火するたびにトリガー5倍タイムを(再)開始する。コンボギフトは1コンボにつき
+            // 何度もtickが来るため、延長が積み上がりすぎないよう最初のtickでのみ発動する。
+            if (trigger.triggerX5Activate && (!giftComboState || giftComboState.isFirstTick)) {
+                maybeActivateTriggerX5Window(sourceEvent);
+            }
+
             // トリガー5倍の対象は「ギフト名を指定したトリガー」がそのギフトに一致した発火のみ。
             // ギフト名未指定のトリガー（コメント/フォロー/無条件トリガーなど）は関係のないギフトでも
             // マッチしてしまうため、5倍抽選の対象からは除外する
@@ -376,7 +383,6 @@ module.exports = function createEffectsRuntime({
 
     function tryRunEffectTriggersForGift(giftEvent) {
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
-        maybeActivateTriggerX5Window(giftEvent);
         maybeEmitShogoDisplay(giftEvent);
         speculativelyPreloadUserVideos(userId);
         return tryRunEffectTriggers({
@@ -394,7 +400,6 @@ module.exports = function createEffectsRuntime({
         const userId = normalizeBroadcasterId(giftEvent?.uniqueId);
 
         if (giftComboState?.isFirstTick) {
-            maybeActivateTriggerX5Window(giftEvent);
             maybeEmitShogoDisplay(giftEvent);
             speculativelyPreloadUserVideos(userId);
         }

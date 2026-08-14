@@ -96,7 +96,8 @@ function createDefaultEffectTrigger() {
         userIdToFileDir: '',
         rapidFireEnabled: false,
         rapidFireCancelMs: 1500,
-        triggerX5Included: true
+        triggerX5Included: true,
+        triggerX5Activate: false
     };
 }
 
@@ -321,7 +322,8 @@ function normalizeEffectTrigger(value) {
         // 旧フィールド（除外方式）からの移行: 新フィールド未設定時は旧フィールドを反転して従来の挙動を維持する。
         triggerX5Included: value?.triggerX5Included !== undefined
             ? Boolean(value.triggerX5Included)
-            : !Boolean(value?.triggerX5ExcludedFromLottery)
+            : !Boolean(value?.triggerX5ExcludedFromLottery),
+        triggerX5Activate: Boolean(value?.triggerX5Activate)
     };
 }
 

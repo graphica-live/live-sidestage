@@ -92,6 +92,7 @@ const triggerModalFilemapDirDisplay = document.getElementById('trigger-modal-fil
 const triggerModalFilemapDirButton = document.getElementById('trigger-modal-filemap-dir-button');
 const triggerModalFilemapDir = document.getElementById('trigger-modal-filemap-dir');
 const triggerModalX5Included = document.getElementById('trigger-modal-x5-included');
+const triggerModalX5Activate = document.getElementById('trigger-modal-x5-activate');
 const triggerModalSubmit = document.getElementById('trigger-modal-submit');
 const backToCategoriesButton = document.getElementById('back-to-categories-button');
 const categoryNameLabel = document.getElementById('category-name-label');
