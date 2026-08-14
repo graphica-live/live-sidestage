@@ -3139,7 +3139,7 @@ function ensureTikTokConnection() {
         if (isTikTokEulerRateLimitError(err)) {
             const retryAfterMs = typeof err?.retryAfter === 'number' && err.retryAfter > 0 ? err.retryAfter : null;
             const delay = retryAfterMs || RECONNECT_DELAY_MS;
-            const msg = `EulerStream APIのアクセス上限に達しました。${Math.round(delay / 1000)}秒後に再試行します。`;
+            const msg = 'APIアクセス上限に達しました。時間を置いてから再接続してください。';
             console.warn('⚠️ EulerStream signature API rate limit exceeded. Retrying in the background.');
             scheduleReconnect('euler_rate_limited', err?.message || null, delay, msg);
             return;
@@ -3468,12 +3468,11 @@ async function connectToTikTok() {
             if (isTikTokEulerRateLimitError(err)) {
                 const retryAfterMs = typeof err?.retryAfter === 'number' && err.retryAfter > 0 ? err.retryAfter : null;
                 const delay = retryAfterMs || (isFirstConnectAttempt ? FIRST_CONNECT_RETRY_DELAY_MS : RECONNECT_DELAY_MS);
-                const delaySec = Math.round(delay / 1000);
-                const msg = `EulerStream APIのアクセス上限に達しました。${delaySec}秒後に再試行します。`;
+                const msg = 'APIアクセス上限に達しました。時間を置いてから再接続してください。';
                 setTikTokConnectionState('error', msg, {
                     transportMethod: 'unknown',
                     websocketReasonCode: 'euler_rate_limited',
-                    websocketReasonLabel: 'EulerStream APIのアクセス上限に達しました。',
+                    websocketReasonLabel: 'APIアクセス上限に達しました。時間を置いてから再接続してください。',
                     websocketReasonDetail: 'TikTok接続の署名生成に使うEulerStream APIのリクエスト数が上限に達しました。サイドバー設定でAPIキーを登録すると上限が緩和されます。自動的に再試行します。'
                 });
                 console.error('❌ TikTok connection failed: EulerStream signature API rate limit exceeded.');
