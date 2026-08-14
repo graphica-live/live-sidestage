@@ -512,17 +512,22 @@ async function connectInstance(streamerId: string) {
       return;
     }
 
-    // Non-combo: use orderId for dedup, fall back to groupId (e.g. giftType=2 gifts like Compact send empty orderId)
+    // Non-combo: use orderId for dedup, fall back to groupId (e.g. giftType=2 gifts like Compact send empty orderId).
+    // orderId/groupIdが両方欠落するケースもある(一部のgiftType=2ギフト) — dedupキーが無いだけで
+    // ギフト自体は実際に届いているため、保存せず捨てるとダイヤ数がそのまま失われる。
+    // orderIdカラムはunique制約付きだがPostgresはNULL同士を重複とみなさないため、
+    // orderId=nullのまま保存してもDB側の衝突は起きない。
     const orderId =
       (data.orderId ? String(data.orderId) : null) ||
       (data.groupId ? String(data.groupId) : null);
     if (!orderId) {
-      console.error("[gift/non-combo] missing orderId and groupId — dropping event", {
+      console.warn("[gift/non-combo] missing orderId and groupId — saving without dedup key", {
         uniqueId: data.uniqueId,
         giftId: data.giftId,
         giftName: data.giftName,
       });
-      notifyGiftLog({ ...baseLog, action: "dropped", reason: "missing_orderId_and_groupId" });
+      notifyGiftLog({ ...baseLog, action: "non-combo", reason: "missing_orderId_and_groupId" });
+      saveGift(streamerId, data, currentRepeat, eventTime, timeSource);
       return;
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
