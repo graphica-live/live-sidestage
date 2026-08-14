@@ -32,20 +32,23 @@
             width: max-content;
             pointer-events: none;
             display: flex;
+            align-items: stretch;
             gap: 14px;
         }
 
         .widget[data-orientation="horizontal"] {
-            flex-direction: column;
             min-width: 480px;
             max-width: min(880px, 100vw);
         }
 
         .widget[data-orientation="vertical"] {
-            flex-direction: row;
-            align-items: stretch;
             height: min(480px, 90vh);
         }
+
+        .widget[data-heading-position="top"] { flex-direction: column; }
+        .widget[data-heading-position="bottom"] { flex-direction: column-reverse; }
+        .widget[data-heading-position="left"] { flex-direction: row; }
+        .widget[data-heading-position="right"] { flex-direction: row-reverse; }
 
         .heading {
             font-size: 22px;
@@ -58,13 +61,17 @@
             white-space: nowrap;
         }
 
-        .widget[data-orientation="vertical"] .heading {
+        .widget[data-heading-position="left"] .heading,
+        .widget[data-heading-position="right"] .heading {
             writing-mode: vertical-rl;
             text-orientation: upright;
         }
 
         .bar-group {
             display: flex;
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
         }
 
         .widget[data-orientation="horizontal"] .bar-group {
@@ -210,7 +217,7 @@
     </style>
 </head>
 <body>
-    <div class="widget" id="widget" data-orientation="horizontal">
+    <div class="widget" id="widget" data-orientation="horizontal" data-heading-position="top">
         <div class="heading" id="heading"></div>
         <div class="bar-group" id="barGroup">
             <div class="bar-track-wrap">
@@ -373,6 +380,9 @@
         function applySettings(settings) {
             if (!settings) return;
             widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
+            widgetEl.dataset.headingPosition = ['top', 'bottom', 'left', 'right'].includes(settings.headingPosition)
+                ? settings.headingPosition
+                : (widgetEl.dataset.orientation === 'vertical' ? 'left' : 'top');
             headingEl.textContent = settings.headingText || '';
             tapGoalIconSizeScale = Math.max(0.3, Math.min(2, (Number(settings.iconSize) || 100) / 100));
         }

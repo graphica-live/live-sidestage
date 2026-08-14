@@ -10,12 +10,15 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     targetCount: 100,
     orientation: 'horizontal',
     headingText: 'タップチャレンジ',
+    headingPosition: 'top',
     iconSize: 100,
     soundEnabled: true,
     sound: { name: '', url: '' },
     soundVolume: 100,
     soundTarget: 'tap-goal',
 };
+
+const TAP_GOAL_HEADING_POSITIONS = ['top', 'bottom', 'left', 'right'];
 
 function normalizeSoundTarget(value) {
     const trimmed = String(value || '').trim().toLowerCase();
@@ -38,14 +41,20 @@ function normalizeTapGoalSettings(value) {
     if (!source || typeof source !== 'object' || Array.isArray(source)) source = {};
 
     const targetCount = Number.parseInt(String(source.targetCount ?? ''), 10);
-    const orientation = String(source.orientation || '').trim().toLowerCase();
+    const orientation = String(source.orientation || '').trim().toLowerCase() === 'vertical' ? 'vertical' : 'horizontal';
     const soundVolume = Number.parseInt(String(source.soundVolume ?? ''), 10);
     const iconSize = Number.parseInt(String(source.iconSize ?? ''), 10);
+    const headingPositionRaw = String(source.headingPosition || '').trim().toLowerCase();
+    // 未設定時は従来の見た目(horizontal=上, vertical=左)を維持するため向きから既定値を決める
+    const headingPosition = TAP_GOAL_HEADING_POSITIONS.includes(headingPositionRaw)
+        ? headingPositionRaw
+        : (orientation === 'vertical' ? 'left' : 'top');
 
     return {
         targetCount: Number.isInteger(targetCount) && targetCount >= 1 ? Math.min(targetCount, 1000000) : DEFAULT_TAP_GOAL_SETTINGS.targetCount,
-        orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
+        orientation,
         headingText: String(source.headingText ?? '').trim().slice(0, 40) || DEFAULT_TAP_GOAL_SETTINGS.headingText,
+        headingPosition,
         iconSize: Number.isInteger(iconSize) ? Math.max(30, Math.min(200, iconSize)) : DEFAULT_TAP_GOAL_SETTINGS.iconSize,
         soundEnabled: source.soundEnabled !== false,
         sound: normalizeSoundAsset(source.sound),
