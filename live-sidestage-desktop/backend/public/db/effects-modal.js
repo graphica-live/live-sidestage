@@ -358,7 +358,7 @@ function resetTriggerModal() {
     triggerModalCommentText.value = '';
     triggerModalUserIds.value = '';
     triggerModalUserTargetList.checked = true;
-    triggerModalX5Included.checked = true;
+    triggerModalX5Included.checked = false;
     triggerModalX6Included.checked = false;
     setFilemapDir('');
     syncUserTargetMode();

@@ -98,7 +98,7 @@ function createDefaultEffectTrigger() {
         userIdToFileDir: '',
         rapidFireEnabled: false,
         rapidFireCancelMs: 1500,
-        triggerX5Included: true,
+        triggerX5Included: false,
         triggerX6Included: false
     };
 }
