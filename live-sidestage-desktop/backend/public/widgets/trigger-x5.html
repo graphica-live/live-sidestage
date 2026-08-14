@@ -156,6 +156,37 @@
             100%        { transform: translateY(-50%) scale(0.85) rotate(-6deg); }
         }
 
+        /* トリガー5倍・6倍の同時当選時だけ出す合成演出。左下にもう一方のグローブを追加し、
+           バッジを一回り大きく・発光させて「×30」の特別感を出す。 */
+        .win-second-glove {
+            position: absolute;
+            left: -10px;
+            bottom: -6px;
+            width: 72px;
+            height: 72px;
+            filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.5));
+            animation: winGiftPunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        .win-second-glove img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .mult-badge.combo {
+            font-size: 58px;
+            color: #fff9c4;
+            -webkit-text-stroke: 6px #7c2d12;
+            animation: multBadgePop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards, comboBadgeGlow 0.5s ease-in-out infinite;
+        }
+
+        @keyframes comboBadgeGlow {
+            0%, 100% { text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 214, 0, 0.4); }
+            50%      { text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 28px rgba(255, 214, 0, 0.95); }
+        }
+
         .nickname {
             max-width: 320px;
             text-align: center;
@@ -679,10 +710,38 @@
         // 5倍側の表示・非表示が切り替わるたびに、6倍側の位置を即座に再計算する。
         x5Controller.onChange(() => x6Controller.syncPosition());
 
+        // 5倍・6倍が同一発火で同時当選した時だけ届く合成演出。個別の×5/×6当選カードの
+        // 代わりに、両方のグローブと「×30」バッジを1枚にまとめて表示する。
+        function showComboWin(data) {
+            const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
+            const image = String(data?.image || '');
+            const avatarHtml = buildAvatarHtml(image);
+
+            const card = document.createElement('div');
+            card.className = 'win-card';
+            card.innerHTML = `
+                <div class="avatar-glove-wrap">
+                    <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                    <div class="glove">${GLOVE_IMG_X5}</div>
+                    <div class="win-second-glove">${GLOVE_IMG_X6}</div>
+                    <div class="mult-badge combo">×30</div>
+                </div>
+                <div class="nickname">${escapeHtml(nickname)}</div>
+            `;
+
+            stageEl.appendChild(card);
+            card.addEventListener('animationend', () => card.remove());
+            window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
+
+            playConfiguredSound(data?.sound5);
+            playConfiguredSound(data?.sound6);
+        }
+
         socket.on('widgets:trigger-x5:won', x5Controller.showWin);
         socket.on('widgets:trigger-x5:window', x5Controller.handleWindow);
         socket.on('widgets:trigger-x6:won', x6Controller.showWin);
         socket.on('widgets:trigger-x6:window', x6Controller.handleWindow);
+        socket.on('widgets:trigger-combo:won', showComboWin);
 
         if (previewMode) {
             const runSampleX5 = () => x5Controller.showWin({ nickname: 'サンプルリスナー', image: '' });
@@ -692,6 +751,11 @@
             const runSampleX6 = () => x6Controller.showWin({ nickname: 'サンプルリスナー6', image: '' });
             window.setTimeout(runSampleX6, 1600);
             window.setInterval(runSampleX6, 3200);
+
+            // 同時当選の合成演出（×30）も定期的にデモ表示する。
+            const runSampleCombo = () => showComboWin({ nickname: 'サンプルリスナー30', image: '' });
+            window.setTimeout(runSampleCombo, 800);
+            window.setInterval(runSampleCombo, 9600);
 
             const runActiveDemoX5 = () => {
                 x5Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });

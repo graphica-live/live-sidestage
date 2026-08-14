@@ -26,6 +26,7 @@ module.exports = function createEffectsRuntime({
     rollTriggerX6,
     emitTriggerX6Win,
     TRIGGER_X6_MULTIPLIER,
+    emitTriggerComboWin,
     applyTimerWidgetAction,
     buildTimerPayload,
 }) {
@@ -451,12 +452,21 @@ module.exports = function createEffectsRuntime({
                 }
             });
 
-            if (isTriggerX5Won && anyPlaybackEmitted && shouldEmitTriggerX5Win(trigger, giftComboState)) {
-                emitTriggerX5Win(sourceEvent);
-            }
+            // shouldEmitTriggerX5Win/X6Win はコンボ重複防止のフラグ更新を兼ねるため、
+            // 演出を出し分ける場合でも両方必ず呼んで「発火済み」を記録する。
+            const shouldEmitX5Win = isTriggerX5Won && shouldEmitTriggerX5Win(trigger, giftComboState);
+            const shouldEmitX6Win = isTriggerX6Won && shouldEmitTriggerX6Win(trigger, giftComboState);
 
-            if (isTriggerX6Won && anyPlaybackEmitted && shouldEmitTriggerX6Win(trigger, giftComboState)) {
-                emitTriggerX6Win(sourceEvent);
+            if (anyPlaybackEmitted) {
+                if (shouldEmitX5Win && shouldEmitX6Win) {
+                    // 5倍・6倍が同一発火で同時当選した場合は、個別の当選演出2枚が重ならないよう
+                    // 専用の合成演出（×30）1枚だけを出す。抽選・発動・倍率計算は独立のまま。
+                    emitTriggerComboWin(sourceEvent);
+                } else if (shouldEmitX5Win) {
+                    emitTriggerX5Win(sourceEvent);
+                } else if (shouldEmitX6Win) {
+                    emitTriggerX6Win(sourceEvent);
+                }
             }
         });
 

@@ -1319,6 +1319,40 @@ const {
     getTimestamp: (...args) => getTimestamp(...args),
 });
 
+// トリガー5倍・6倍が同一発火で同時当選した場合の専用演出（×30）。
+// 抽選・発動ウィンドウ・倍率計算は両ウィジェットとも完全に独立したまま、
+// 「当選演出をどちらか一方の代わりにこれ1枚だけ出す」という表示側の合成のみを担う。
+function buildTriggerComboSoundPayload({ enabled, sound, volume }) {
+    return {
+        enabled: Boolean(enabled) && Boolean(sound?.url),
+        url: sound?.url || '',
+        volume,
+    };
+}
+
+function emitTriggerComboWin(sourceEvent) {
+    const x5Settings = getWidgetTriggerX5Settings();
+    const x6Settings = getWidgetTriggerX6Settings();
+    const nickname = sourceEvent?.nickname || sourceEvent?.uniqueId || 'リスナー';
+
+    io.emit('widgets:trigger-combo:won', {
+        nickname,
+        image: sourceEvent?.image || '',
+        giftImage: sourceEvent?.giftImage || '',
+        timestamp: getTimestamp(),
+        sound5: buildTriggerComboSoundPayload({
+            enabled: x5Settings.winSoundEnabled,
+            sound: x5Settings.winSound,
+            volume: x5Settings.winSoundVolume,
+        }),
+        sound6: buildTriggerComboSoundPayload({
+            enabled: x6Settings.winSoundEnabled,
+            sound: x6Settings.winSound,
+            volume: x6Settings.winSoundVolume,
+        }),
+    });
+}
+
 const {
     getWidgetShogoSettings, setWidgetShogoSettings,
     getShogoTitles, registerShogoUser, deleteShogoUser,
@@ -1458,6 +1492,7 @@ const {
     rollTriggerX6,
     emitTriggerX6Win,
     TRIGGER_X6_MULTIPLIER,
+    emitTriggerComboWin,
     applyTimerWidgetAction,
     buildTimerPayload,
 });
