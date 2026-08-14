@@ -4,6 +4,7 @@ import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
 import { emitChatComment, type ChatCommentPayload } from "./chat-feed";
+import { getEulerSignApiKey } from "./settings";
 
 export type ListenerStatus =
   | "idle"
@@ -362,7 +363,8 @@ async function saveGift(
 function createConnection(
   tiktokId: string,
   deviceId: string,
-  proxyUrl: string | null
+  proxyUrl: string | null,
+  eulerSignApiKey: string | null
 ): WebcastPushConnection {
   return new WebcastPushConnection(`@${tiktokId}`, {
     processInitialData: false,
@@ -373,6 +375,8 @@ function createConnection(
     disableEulerFallbacks: true,
     sessionId: undefined,
     authenticateWs: false,
+    // 管理画面で設定されたEulerAPIキー。未設定ならtiktok-live-connectorのデフォルト(匿名)にフォールバックする。
+    ...(eulerSignApiKey ? { signApiKey: eulerSignApiKey } : {}),
     webClientParams: {
       app_language: "ja",
       device_platform: "web",
@@ -410,11 +414,12 @@ async function connectInstance(streamerId: string) {
 
   const deviceId = await getOrCreateDeviceId(streamerId);
   const proxyUrl = await resolveProxyForStreamer(streamerId);
+  const eulerSignApiKey = await getEulerSignApiKey().catch(() => null);
 
   // re-check after async gap
   if (inst.stopped || inst.connectPromise) return inst.connectPromise ?? undefined;
 
-  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl);
+  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey);
   inst.connection = conn;
 
   conn.on("disconnected", () => {
