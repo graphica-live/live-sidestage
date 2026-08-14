@@ -11,6 +11,7 @@ const DEFAULT_TAP_GOAL_SETTINGS = {
     orientation: 'horizontal',
     headingText: 'タップチャレンジ',
     headingPosition: 'top',
+    headingWritingMode: 'horizontal',
     iconSize: 100,
     soundEnabled: true,
     sound: { name: '', url: '' },
@@ -49,12 +50,18 @@ function normalizeTapGoalSettings(value) {
     const headingPosition = TAP_GOAL_HEADING_POSITIONS.includes(headingPositionRaw)
         ? headingPositionRaw
         : (orientation === 'vertical' ? 'left' : 'top');
+    const headingWritingModeRaw = String(source.headingWritingMode || '').trim().toLowerCase();
+    // 未設定時は従来の見た目(見出しが左右なら縦書き、上下なら横書き)を維持する
+    const headingWritingMode = headingWritingModeRaw === 'vertical' || headingWritingModeRaw === 'horizontal'
+        ? headingWritingModeRaw
+        : (headingPosition === 'left' || headingPosition === 'right' ? 'vertical' : 'horizontal');
 
     return {
         targetCount: Number.isInteger(targetCount) && targetCount >= 1 ? Math.min(targetCount, 1000000) : DEFAULT_TAP_GOAL_SETTINGS.targetCount,
         orientation,
         headingText: String(source.headingText ?? '').trim().slice(0, 40) || DEFAULT_TAP_GOAL_SETTINGS.headingText,
         headingPosition,
+        headingWritingMode,
         iconSize: Number.isInteger(iconSize) ? Math.max(30, Math.min(200, iconSize)) : DEFAULT_TAP_GOAL_SETTINGS.iconSize,
         soundEnabled: source.soundEnabled !== false,
         sound: normalizeSoundAsset(source.sound),

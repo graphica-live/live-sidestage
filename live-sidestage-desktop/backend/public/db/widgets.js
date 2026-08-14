@@ -37,6 +37,7 @@
         const tapGoalOrientationSelect = document.getElementById('tap-goal-orientation');
         const tapGoalHeadingTextInput = document.getElementById('tap-goal-heading-text');
         const tapGoalHeadingPositionSelect = document.getElementById('tap-goal-heading-position');
+        const tapGoalHeadingWritingModeSelect = document.getElementById('tap-goal-heading-writing-mode');
         const tapGoalTargetCountInput = document.getElementById('tap-goal-target-count');
         const tapGoalIconSizeInput = document.getElementById('tap-goal-icon-size');
         const tapGoalIconSizeValueEl = document.getElementById('tap-goal-icon-size-value');
@@ -1515,6 +1516,7 @@
             tapGoalOrientationSelect.value = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
             tapGoalHeadingTextInput.value = settings.headingText || '';
             tapGoalHeadingPositionSelect.value = ['top', 'bottom', 'left', 'right'].includes(settings.headingPosition) ? settings.headingPosition : 'top';
+            tapGoalHeadingWritingModeSelect.value = settings.headingWritingMode === 'vertical' ? 'vertical' : 'horizontal';
             tapGoalTargetCountInput.value = String(Number.parseInt(String(settings.targetCount ?? 100), 10) || 100);
             const iconSize = Number.isInteger(settings.iconSize) ? settings.iconSize : 100;
             tapGoalIconSizeInput.value = String(iconSize);
@@ -1553,6 +1555,7 @@
                 orientation: tapGoalOrientationSelect.value === 'vertical' ? 'vertical' : 'horizontal',
                 headingText: tapGoalHeadingTextInput.value,
                 headingPosition: tapGoalHeadingPositionSelect.value || 'top',
+                headingWritingMode: tapGoalHeadingWritingModeSelect.value === 'vertical' ? 'vertical' : 'horizontal',
                 targetCount: Number.parseInt(tapGoalTargetCountInput.value, 10) || 100,
                 iconSize: Number.parseInt(tapGoalIconSizeInput.value, 10) || 100,
                 sound: state.tapGoalSettings?.sound || { name: '', url: '' },
@@ -4067,6 +4070,7 @@
         });
         tapGoalHeadingTextInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalHeadingPositionSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
+        tapGoalHeadingWritingModeSelect.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalTargetCountInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });
         tapGoalIconSizeInput.addEventListener('input', () => { tapGoalIconSizeValueEl.textContent = `${tapGoalIconSizeInput.value}%`; });
         tapGoalIconSizeInput.addEventListener('change', () => { saveTapGoalSettingsImmediately().catch(() => {}); });

@@ -61,8 +61,7 @@
             white-space: nowrap;
         }
 
-        .widget[data-heading-position="left"] .heading,
-        .widget[data-heading-position="right"] .heading {
+        .widget[data-heading-writing-mode="vertical"] .heading {
             writing-mode: vertical-rl;
             text-orientation: upright;
         }
@@ -217,7 +216,7 @@
     </style>
 </head>
 <body>
-    <div class="widget" id="widget" data-orientation="horizontal" data-heading-position="top">
+    <div class="widget" id="widget" data-orientation="horizontal" data-heading-position="top" data-heading-writing-mode="horizontal">
         <div class="heading" id="heading"></div>
         <div class="bar-group" id="barGroup">
             <div class="bar-track-wrap">
@@ -383,6 +382,7 @@
             widgetEl.dataset.headingPosition = ['top', 'bottom', 'left', 'right'].includes(settings.headingPosition)
                 ? settings.headingPosition
                 : (widgetEl.dataset.orientation === 'vertical' ? 'left' : 'top');
+            widgetEl.dataset.headingWritingMode = settings.headingWritingMode === 'vertical' ? 'vertical' : 'horizontal';
             headingEl.textContent = settings.headingText || '';
             tapGoalIconSizeScale = Math.max(0.3, Math.min(2, (Number(settings.iconSize) || 100) / 100));
         }
