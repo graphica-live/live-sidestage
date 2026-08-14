@@ -1307,6 +1307,19 @@ const {
 });
 
 const {
+    getWidgetTriggerX6Settings, setWidgetTriggerX6Settings,
+    isTriggerX6WindowActive, maybeActivateTriggerX6Window,
+    rollTriggerX6, emitTriggerX6Win,
+    buildTriggerX6Payload,
+    TRIGGER_X6_MULTIPLIER,
+} = require('./lib/trigger-x6-state')({
+    io,
+    getScopedStateValue: (...args) => getScopedStateValue(...args),
+    setScopedStateValue: (...args) => setScopedStateValue(...args),
+    getTimestamp: (...args) => getTimestamp(...args),
+});
+
+const {
     getWidgetShogoSettings, setWidgetShogoSettings,
     getShogoTitles, registerShogoUser, deleteShogoUser,
     addShogoTitleEntry, updateShogoTitleEntry, deleteShogoTitleEntry, reorderShogoTitleEntries,
@@ -1415,6 +1428,7 @@ const {
     matchesEffectTrigger,
     speculativelyPreloadUserVideos,
     clearTriggerX5RollCacheForCombo,
+    clearTriggerX6RollCacheForCombo,
     tryRunEffectTriggers,
     tryRunEffectTriggersForGift,
     tryRunEffectTriggersForGiftCombo,
@@ -1436,10 +1450,14 @@ const {
     sendVdjEffectForEvent,
     followTriggerGiftName: EFFECT_TRIGGER_FOLLOW_GIFT_NAME,
     maybeActivateTriggerX5Window,
+    maybeActivateTriggerX6Window,
     maybeEmitShogoDisplay,
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
+    rollTriggerX6,
+    emitTriggerX6Win,
+    TRIGGER_X6_MULTIPLIER,
     applyTimerWidgetAction,
     buildTimerPayload,
 });
@@ -2723,6 +2741,7 @@ require('./lib/routes/widgets/config')({
     getWidgetTapGoalSettings, getTapGoalWidgetTextAppearance, buildTapGoalPayload,
     getTimerWidgetTextAppearance, buildTimerPayload,
     buildTriggerX5Payload,
+    buildTriggerX6Payload,
     buildShogoPayload,
 });
 
@@ -2823,6 +2842,13 @@ require('./lib/routes/widgets/trigger-x5')({
     buildTriggerX5Payload,
     emitTriggerX5Win,
     cachedTikTokGiftCatalog: tiktokState.giftCatalog,
+});
+
+require('./lib/routes/widgets/trigger-x6')({
+    app, io,
+    setWidgetTriggerX6Settings,
+    buildTriggerX6Payload,
+    emitTriggerX6Win,
 });
 
 require('./lib/routes/widgets/shogo')({
@@ -3187,6 +3213,7 @@ function ensureTikTokConnection() {
         if (wasTrackedAsCombo) {
             tryRunEffectTriggersForGiftCombo(normalizedEvent, { isFirstTick: false, deltaRepeat, comboKey });
             clearTriggerX5RollCacheForCombo(comboKey);
+            clearTriggerX6RollCacheForCombo(comboKey);
         } else {
             tryRunEffectTriggersForGift(normalizedEvent);
         }

@@ -18,10 +18,14 @@ module.exports = function createEffectsRuntime({
     sendVdjEffectForEvent,
     followTriggerGiftName,
     maybeActivateTriggerX5Window,
+    maybeActivateTriggerX6Window,
     maybeEmitShogoDisplay,
     rollTriggerX5,
     emitTriggerX5Win,
     TRIGGER_X5_MULTIPLIER,
+    rollTriggerX6,
+    emitTriggerX6Win,
+    TRIGGER_X6_MULTIPLIER,
     applyTimerWidgetAction,
     buildTimerPayload,
 }) {
@@ -83,6 +87,57 @@ module.exports = function createEffectsRuntime({
         for (const key of triggerX5RollState.keys()) {
             if (key.startsWith(prefix)) {
                 triggerX5RollState.delete(key);
+            }
+        }
+    }
+
+    // トリガー6倍の抽選結果・当選演出発火済みフラグ（コンボ×トリガー単位）。トリガー5倍とは
+    // 完全に独立したキャッシュ・抽選のため、同じ発火で両方が同時に当選することもある。
+    const triggerX6RollState = new Map();
+
+    function getTriggerX6RollState(trigger, giftComboState) {
+        if (!giftComboState?.comboKey) {
+            return null;
+        }
+
+        const cacheKey = `${giftComboState.comboKey}::${trigger.id}`;
+        let state = triggerX6RollState.get(cacheKey);
+        if (!state) {
+            state = { won: null, emitted: false };
+            triggerX6RollState.set(cacheKey, state);
+        }
+        return state;
+    }
+
+    function resolveTriggerX6Win(trigger, giftComboState) {
+        const state = getTriggerX6RollState(trigger, giftComboState);
+        if (!state) {
+            return rollTriggerX6();
+        }
+        if (state.won === null) {
+            state.won = rollTriggerX6();
+        }
+        return state.won;
+    }
+
+    function shouldEmitTriggerX6Win(trigger, giftComboState) {
+        const state = getTriggerX6RollState(trigger, giftComboState);
+        if (!state) {
+            return true;
+        }
+        if (state.emitted) {
+            return false;
+        }
+        state.emitted = true;
+        return true;
+    }
+
+    function clearTriggerX6RollCacheForCombo(comboKey) {
+        if (!comboKey) return;
+        const prefix = `${comboKey}::`;
+        for (const key of triggerX6RollState.keys()) {
+            if (key.startsWith(prefix)) {
+                triggerX6RollState.delete(key);
             }
         }
     }
@@ -224,6 +279,14 @@ module.exports = function createEffectsRuntime({
         maybeActivateTriggerX5Window(sourceEvent);
     }
 
+    // TikEffectウィジェット連携「トリガー6倍グローブ発動」がONのイベントが実際に再生されるたびに呼ぶ。
+    // トリガー5倍とは独立しており、同じイベントの両方のチェックボックスをONにすれば両方が発動しうる。
+    function maybeActivateTriggerX6ForEvent(effectEvent, sourceEvent, giftComboState) {
+        if (!effectEvent?.triggerX6Activate) return;
+        if (giftComboState && !giftComboState.isFirstTick) return;
+        maybeActivateTriggerX6Window(sourceEvent);
+    }
+
     function matchesEffectTrigger(trigger, context) {
         if (trigger.giftName && trigger.giftName !== context.giftName) {
             return false;
@@ -302,9 +365,14 @@ module.exports = function createEffectsRuntime({
             const isEligibleForTriggerX5 = context.type === 'gift' && Boolean(trigger.giftName)
                 && Boolean(trigger.triggerX5Included);
 
+            // トリガー6倍も同様の条件で対象を絞る（トリガー5倍とは独立した抽選）。
+            const isEligibleForTriggerX6 = context.type === 'gift' && Boolean(trigger.giftName)
+                && Boolean(trigger.triggerX6Included);
+
             // トリガー5倍タイム中: このトリガーの発火全体に対して1回だけ抽選する
             // （イベントごとに抽選し直すと、同一トリガー内で当落が割れて分かりにくくなるため）。
             const isTriggerX5Won = isEligibleForTriggerX5 && resolveTriggerX5Win(trigger, giftComboState);
+            const isTriggerX6Won = isEligibleForTriggerX6 && resolveTriggerX6Win(trigger, giftComboState);
             let anyPlaybackEmitted = false;
 
             // 再生するイベントを決定（順次 or ランダム）
@@ -350,6 +418,11 @@ module.exports = function createEffectsRuntime({
                     playbackCountOverride = (typeof playbackCountOverride === 'number' ? playbackCountOverride : 1) * TRIGGER_X5_MULTIPLIER;
                 }
 
+                // トリガー5倍とトリガー6倍は独立しているため、同じ発火で両方当選すれば両方の倍率が重ねて掛かる。
+                if (isTriggerX6Won) {
+                    playbackCountOverride = (typeof playbackCountOverride === 'number' ? playbackCountOverride : 1) * TRIGGER_X6_MULTIPLIER;
+                }
+
                 if (trigger.userTargetMode === 'file-map' && trigger.userIdToFileDir && context.userId) {
                     const videoInfo = findUserVideoFile(trigger.userIdToFileDir, context.userId);
 
@@ -368,16 +441,22 @@ module.exports = function createEffectsRuntime({
                         runEffectEventSideEffects(effectEvent, payload, sourceEvent);
                         anyPlaybackEmitted = true;
                         maybeActivateTriggerX5ForEvent(effectEvent, sourceEvent, giftComboState);
+                        maybeActivateTriggerX6ForEvent(effectEvent, sourceEvent, giftComboState);
                     }
                 } else if (!getEffectsGloballyPaused()) {
                     emitEffectPlayback(effectEvent, trigger, sourceEvent, playbackCountOverride);
                     anyPlaybackEmitted = true;
                     maybeActivateTriggerX5ForEvent(effectEvent, sourceEvent, giftComboState);
+                    maybeActivateTriggerX6ForEvent(effectEvent, sourceEvent, giftComboState);
                 }
             });
 
             if (isTriggerX5Won && anyPlaybackEmitted && shouldEmitTriggerX5Win(trigger, giftComboState)) {
                 emitTriggerX5Win(sourceEvent);
+            }
+
+            if (isTriggerX6Won && anyPlaybackEmitted && shouldEmitTriggerX6Win(trigger, giftComboState)) {
+                emitTriggerX6Win(sourceEvent);
             }
         });
 
@@ -452,6 +531,7 @@ module.exports = function createEffectsRuntime({
         matchesEffectTrigger,
         speculativelyPreloadUserVideos,
         clearTriggerX5RollCacheForCombo,
+        clearTriggerX6RollCacheForCombo,
         tryRunEffectTriggers,
         tryRunEffectTriggersForGift,
         tryRunEffectTriggersForGiftCombo,

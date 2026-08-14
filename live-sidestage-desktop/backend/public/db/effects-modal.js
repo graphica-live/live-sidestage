@@ -141,6 +141,7 @@ function resetEventModal() {
     eventModalForceInterruptCount.value = '0';
     syncEventModalForceInterruptField();
     eventModalX5Activate.checked = false;
+    eventModalX6Activate.checked = false;
 }
 
 function openEventModalForCreate() {
@@ -200,6 +201,7 @@ function openEventModalForEdit(eventRecord) {
     eventModalForceInterruptCount.value = String(eventRecord.forceInterruptCount ?? 0);
     syncEventModalForceInterruptField();
     eventModalX5Activate.checked = Boolean(eventRecord.triggerX5Activate);
+    eventModalX6Activate.checked = Boolean(eventRecord.triggerX6Activate);
     openModal(eventModal);
     eventModalName.focus();
 }
@@ -241,7 +243,8 @@ function collectEventFromModal() {
         timerWidgetAboveMinutesDelta: Number(eventModalTimerWidgetAboveMinutes.value || 0),
         forceInterruptAllEvents: eventModalForceInterruptEnabled.checked,
         forceInterruptCount: Number(eventModalForceInterruptCount.value || 0),
-        triggerX5Activate: eventModalX5Activate.checked
+        triggerX5Activate: eventModalX5Activate.checked,
+        triggerX6Activate: eventModalX6Activate.checked
     };
 }
 
@@ -356,6 +359,7 @@ function resetTriggerModal() {
     triggerModalUserIds.value = '';
     triggerModalUserTargetList.checked = true;
     triggerModalX5Included.checked = true;
+    triggerModalX6Included.checked = true;
     setFilemapDir('');
     syncUserTargetMode();
     syncTriggerCommentField();
@@ -405,6 +409,7 @@ function openTriggerModalForEdit(triggerRecord) {
     triggerModalUserTargetFilemap.checked = isFilemap;
     triggerModalUserTargetList.checked = !isFilemap;
     triggerModalX5Included.checked = Boolean(triggerRecord.triggerX5Included);
+    triggerModalX6Included.checked = Boolean(triggerRecord.triggerX6Included);
     setFilemapDir(isFilemap ? (triggerRecord.userIdToFileDir || '') : '');
     syncUserTargetMode();
     syncTriggerCommentField();
@@ -436,7 +441,8 @@ function collectTriggerFromModal() {
         enabled: editingTriggerEnabled,
         userTargetMode: isFilemap ? 'file-map' : 'list',
         userIdToFileDir: isFilemap ? triggerModalFilemapDir.value : '',
-        triggerX5Included: triggerModalX5Included.checked
+        triggerX5Included: triggerModalX5Included.checked,
+        triggerX6Included: triggerModalX6Included.checked
     };
 }
 

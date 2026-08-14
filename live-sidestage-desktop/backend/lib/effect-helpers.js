@@ -71,7 +71,8 @@ function createDefaultEffectEvent(slot = 1) {
         timerWidgetAboveMinutesDelta: 0,
         forceInterruptAllEvents: false,
         forceInterruptCount: 0,
-        triggerX5Activate: false
+        triggerX5Activate: false,
+        triggerX6Activate: false
     };
 }
 
@@ -97,7 +98,8 @@ function createDefaultEffectTrigger() {
         userIdToFileDir: '',
         rapidFireEnabled: false,
         rapidFireCancelMs: 1500,
-        triggerX5Included: true
+        triggerX5Included: true,
+        triggerX6Included: true
     };
 }
 
@@ -255,7 +257,8 @@ function normalizeEffectEvent(value, index) {
         timerWidgetAboveMinutesDelta: normalizeEffectTimerWidgetMinutes(value?.timerWidgetAboveMinutesDelta),
         forceInterruptAllEvents: Boolean(value?.forceInterruptAllEvents),
         forceInterruptCount: normalizeEffectForceInterruptCount(value?.forceInterruptCount),
-        triggerX5Activate: Boolean(value?.triggerX5Activate)
+        triggerX5Activate: Boolean(value?.triggerX5Activate),
+        triggerX6Activate: Boolean(value?.triggerX6Activate)
     };
 }
 
@@ -323,7 +326,8 @@ function normalizeEffectTrigger(value) {
         // 旧フィールド（除外方式）からの移行: 新フィールド未設定時は旧フィールドを反転して従来の挙動を維持する。
         triggerX5Included: value?.triggerX5Included !== undefined
             ? Boolean(value.triggerX5Included)
-            : !Boolean(value?.triggerX5ExcludedFromLottery)
+            : !Boolean(value?.triggerX5ExcludedFromLottery),
+        triggerX6Included: value?.triggerX6Included !== undefined ? Boolean(value.triggerX6Included) : true
     };
 }
 

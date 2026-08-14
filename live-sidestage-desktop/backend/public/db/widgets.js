@@ -69,6 +69,25 @@
         const triggerX5StatusLabel = document.getElementById('trigger-x5-status-label');
         const triggerX5Url = document.getElementById('trigger-x5-url');
         const triggerX5PreviewFrame = document.getElementById('trigger-x5-preview-frame');
+        const triggerX6EnabledInput = document.getElementById('trigger-x6-enabled');
+        const triggerX6DurationSecondsInput = document.getElementById('trigger-x6-duration-seconds');
+        const triggerX6WinRateInput = document.getElementById('trigger-x6-win-rate');
+        const triggerX6SoundEnabledInput = document.getElementById('trigger-x6-sound-enabled');
+        const triggerX6SoundPickerButton = document.getElementById('trigger-x6-sound-picker-button');
+        const triggerX6SoundPreviewButton = document.getElementById('trigger-x6-sound-preview-button');
+        const triggerX6SoundClearButton = document.getElementById('trigger-x6-sound-clear-button');
+        const triggerX6SoundNameEl = document.getElementById('trigger-x6-sound-name');
+        const triggerX6SoundVolumeInput = document.getElementById('trigger-x6-sound-volume');
+        const triggerX6SoundVolumeValueEl = document.getElementById('trigger-x6-sound-volume-value');
+        const triggerX6WinSoundEnabledInput = document.getElementById('trigger-x6-win-sound-enabled');
+        const triggerX6WinSoundPickerButton = document.getElementById('trigger-x6-win-sound-picker-button');
+        const triggerX6WinSoundPreviewButton = document.getElementById('trigger-x6-win-sound-preview-button');
+        const triggerX6WinSoundClearButton = document.getElementById('trigger-x6-win-sound-clear-button');
+        const triggerX6WinSoundNameEl = document.getElementById('trigger-x6-win-sound-name');
+        const triggerX6WinSoundVolumeInput = document.getElementById('trigger-x6-win-sound-volume');
+        const triggerX6WinSoundVolumeValueEl = document.getElementById('trigger-x6-win-sound-volume-value');
+        const triggerX6StatusLabel = document.getElementById('trigger-x6-status-label');
+        const triggerX6PreviewFrame = document.getElementById('trigger-x6-preview-frame');
         const shogoEnabledInput = document.getElementById('shogo-enabled');
         const shogoDisplaySecondsInput = document.getElementById('shogo-display-seconds');
         const shogoAddUserIdInput = document.getElementById('shogo-add-user-id');
@@ -1641,6 +1660,77 @@
                 state.triggerX5Settings = payload.settings || state.triggerX5Settings;
                 applyTriggerX5SettingsToForm(state.triggerX5Settings);
                 setStatus(saveStatus, '設定状態: トリガー5倍を保存しました。', 'ok');
+            } catch (err) {
+                setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
+            }
+        }
+
+        function applyTriggerX6SettingsToForm(settings) {
+            const s = settings || { enabled: false, durationSeconds: 15, winRatePercent: 30, soundEnabled: false, sound: { name: '', url: '' }, soundVolume: 100, winSoundEnabled: false, winSound: { name: '', url: '' }, winSoundVolume: 100 };
+            triggerX6EnabledInput.checked = Boolean(s.enabled);
+            triggerX6DurationSecondsInput.value = String(Number.parseInt(String(s.durationSeconds ?? 15), 10) || 15);
+            triggerX6WinRateInput.value = String(Number.parseInt(String(s.winRatePercent ?? 30), 10) || 30);
+            triggerX6SoundEnabledInput.checked = Boolean(s.soundEnabled);
+            triggerX6SoundNameEl.textContent = s.sound?.name || '未設定';
+            const soundVolume = Number.isFinite(Number(s.soundVolume)) ? Math.max(0, Math.min(100, Number(s.soundVolume))) : 100;
+            triggerX6SoundVolumeInput.value = String(soundVolume);
+            triggerX6SoundVolumeValueEl.textContent = `${soundVolume}%`;
+            triggerX6WinSoundEnabledInput.checked = Boolean(s.winSoundEnabled);
+            triggerX6WinSoundNameEl.textContent = s.winSound?.name || '未設定';
+            const winSoundVolume = Number.isFinite(Number(s.winSoundVolume)) ? Math.max(0, Math.min(100, Number(s.winSoundVolume))) : 100;
+            triggerX6WinSoundVolumeInput.value = String(winSoundVolume);
+            triggerX6WinSoundVolumeValueEl.textContent = `${winSoundVolume}%`;
+            updateTriggerX6StatusLabel();
+            refreshTriggerX6Preview();
+        }
+
+        function updateTriggerX6StatusLabel() {
+            triggerX6StatusLabel.textContent = `当選確率: ${triggerX6WinRateInput.value || 30}% ／ 倍率: ×6`;
+        }
+
+        // トリガー6倍はトリガー5倍と同一のオーバーレイシーンを共有する（同じシーンに6倍グローブも表示される）。
+        function buildTriggerX6PreviewUrl() {
+            const baseUrl = state.widgetUrls.triggerX5OverlayUrl || '/overlays/trigger-x5';
+            try {
+                const u = new URL(baseUrl, window.location.origin);
+                u.searchParams.set('preview', '1');
+                return u.pathname + u.search;
+            } catch {
+                return `${baseUrl}?preview=1`;
+            }
+        }
+
+        function refreshTriggerX6Preview(options = {}) {
+            updatePreviewFrame(triggerX6PreviewFrame, buildTriggerX6PreviewUrl(), options);
+        }
+
+        function getDraftTriggerX6Settings() {
+            return {
+                enabled: triggerX6EnabledInput.checked,
+                durationSeconds: Number.parseInt(triggerX6DurationSecondsInput.value, 10) || 15,
+                winRatePercent: Number.parseInt(triggerX6WinRateInput.value, 10) || 30,
+                soundEnabled: triggerX6SoundEnabledInput.checked,
+                sound: state.triggerX6Settings?.sound || { name: '', url: '' },
+                soundVolume: Number.parseInt(triggerX6SoundVolumeInput.value, 10) || 100,
+                winSoundEnabled: triggerX6WinSoundEnabledInput.checked,
+                winSound: state.triggerX6Settings?.winSound || { name: '', url: '' },
+                winSoundVolume: Number.parseInt(triggerX6WinSoundVolumeInput.value, 10) || 100
+            };
+        }
+
+        async function saveTriggerX6SettingsImmediately() {
+            setStatus(saveStatus, '設定状態: トリガー6倍を保存中...', 'warn');
+            try {
+                const response = await fetch('/api/widgets/trigger-x6', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getDraftTriggerX6Settings())
+                });
+                const payload = await response.json();
+                if (!payload.ok) throw new Error(payload.error || 'トリガー6倍の保存に失敗しました。');
+                state.triggerX6Settings = payload.settings || state.triggerX6Settings;
+                applyTriggerX6SettingsToForm(state.triggerX6Settings);
+                setStatus(saveStatus, '設定状態: トリガー6倍を保存しました。', 'ok');
             } catch (err) {
                 setStatus(saveStatus, `設定状態: ${err.message}`, 'error');
             }
@@ -3227,6 +3317,7 @@
             state.timerSettings = payload.timerPayload?.settings || state.timerSettings;
             state.timerRuntime = payload.timerPayload?.runtime || state.timerRuntime;
             state.triggerX5Settings = payload.triggerX5Payload?.settings || state.triggerX5Settings;
+            state.triggerX6Settings = payload.triggerX6Payload?.settings || state.triggerX6Settings;
             state.shogoSettings = payload.shogoPayload?.settings || state.shogoSettings;
             state.shogoTitles = payload.shogoPayload?.titles || state.shogoTitles || {};
             state.shogoBadges = Array.isArray(payload.shogoPayload?.badges) ? payload.shogoPayload.badges : (state.shogoBadges || []);
@@ -3273,6 +3364,7 @@
             applyTimerSettingsToForm(state.timerSettings);
             updateTimerStatusLabel();
             applyTriggerX5SettingsToForm(state.triggerX5Settings);
+            applyTriggerX6SettingsToForm(state.triggerX6Settings);
             applyShogoSettingsToForm(state.shogoSettings);
             renderShogoTitleList(state.shogoTitles);
             applyCoinListSettingsToForm(state.coinListSettings);
@@ -3860,6 +3952,68 @@
         });
         document.getElementById('test-trigger-x5-button').addEventListener('click', () => {
             fetch('/api/widgets/trigger-x5/test', { method: 'POST' }).catch(() => {});
+        });
+        triggerX6EnabledInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6DurationSecondsInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6WinRateInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6SoundEnabledInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6SoundVolumeInput.addEventListener('input', () => {
+            triggerX6SoundVolumeValueEl.textContent = `${triggerX6SoundVolumeInput.value}%`;
+        });
+        triggerX6SoundVolumeInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6SoundPickerButton.addEventListener('click', () => {
+            openSoundPicker({
+                eventIdHint: 'trigger-x6-sound',
+                onImported: (asset) => {
+                    state.triggerX6Settings = { ...state.triggerX6Settings, sound: { name: asset.name, url: asset.url } };
+                    triggerX6SoundNameEl.textContent = asset.name;
+                    triggerX6SoundEnabledInput.checked = true;
+                    saveTriggerX6SettingsImmediately().catch(() => {});
+                }
+            });
+        });
+        triggerX6SoundPreviewButton.addEventListener('click', () => {
+            const url = state.triggerX6Settings?.sound?.url;
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(triggerX6SoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
+        });
+        triggerX6SoundClearButton.addEventListener('click', () => {
+            state.triggerX6Settings = { ...state.triggerX6Settings, sound: { name: '', url: '' } };
+            triggerX6SoundNameEl.textContent = '未設定';
+            saveTriggerX6SettingsImmediately().catch(() => {});
+        });
+        triggerX6WinSoundEnabledInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6WinSoundVolumeInput.addEventListener('input', () => {
+            triggerX6WinSoundVolumeValueEl.textContent = `${triggerX6WinSoundVolumeInput.value}%`;
+        });
+        triggerX6WinSoundVolumeInput.addEventListener('change', () => { saveTriggerX6SettingsImmediately().catch(() => {}); });
+        triggerX6WinSoundPickerButton.addEventListener('click', () => {
+            openSoundPicker({
+                eventIdHint: 'trigger-x6-win-sound',
+                onImported: (asset) => {
+                    state.triggerX6Settings = { ...state.triggerX6Settings, winSound: { name: asset.name, url: asset.url } };
+                    triggerX6WinSoundNameEl.textContent = asset.name;
+                    triggerX6WinSoundEnabledInput.checked = true;
+                    saveTriggerX6SettingsImmediately().catch(() => {});
+                }
+            });
+        });
+        triggerX6WinSoundPreviewButton.addEventListener('click', () => {
+            const url = state.triggerX6Settings?.winSound?.url;
+            if (!url) return;
+            const audio = new Audio(url);
+            audio.volume = Math.max(0, Math.min(100, Number.parseInt(triggerX6WinSoundVolumeInput.value, 10) || 0)) / 100;
+            audio.play().catch(() => {});
+        });
+        triggerX6WinSoundClearButton.addEventListener('click', () => {
+            state.triggerX6Settings = { ...state.triggerX6Settings, winSound: { name: '', url: '' } };
+            triggerX6WinSoundNameEl.textContent = '未設定';
+            saveTriggerX6SettingsImmediately().catch(() => {});
+        });
+        document.getElementById('test-trigger-x6-button').addEventListener('click', () => {
+            fetch('/api/widgets/trigger-x6/test', { method: 'POST' }).catch(() => {});
         });
         shogoEnabledInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });
         shogoDisplaySecondsInput.addEventListener('change', () => { saveShogoSettingsImmediately().catch(() => {}); });

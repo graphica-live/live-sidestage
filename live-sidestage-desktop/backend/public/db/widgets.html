@@ -770,6 +770,87 @@
                 <article class="card">
                     <div class="card-head">
                         <div>
+                            <h2>トリガー6倍</h2>
+                            <p class="subtext">イベントトリガーの「TikEffectウィジェット連携」で「トリガー６倍グローブ発動」をONにすると、そのトリガーが発火した時に「6倍タイム」が始まります。トリガー5倍とは完全に独立した抽選で、同時に発動・重複することもあります。オーバーレイはトリガー5倍と共通です。上のトリガー5倍のOverlay URLをそのままご利用ください（同じシーンに6倍グローブも表示されます）。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="trigger-x6-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="widget-settings-panel" id="trigger-x6-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-enabled">
+                                    <label for="trigger-x6-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">トリガー6倍を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x6-duration-seconds">継続時間（秒）</label>
+                                <input id="trigger-x6-duration-seconds" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="15">
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x6-win-rate">当選確率（%）</label>
+                                <input id="trigger-x6-win-rate" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="30">
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-sound-enabled">
+                                    <label for="trigger-x6-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">発動時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>発動時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x6-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x6-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x6-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x6-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-win-sound-enabled">
+                                    <label for="trigger-x6-win-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">6倍成功時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>6倍成功時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x6-win-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-win-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-win-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x6-win-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x6-win-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x6-win-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="trigger-x6-status-label">当選確率: -% ／ 倍率: ×6</div>
+                        <button type="button" class="ghost-button" id="test-trigger-x6-button">当選演出をテスト表示</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー（トリガー5倍と共通のオーバーレイ）</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="trigger-x6-preview-frame" title="トリガー6倍プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
                             <h2>称号</h2>
                             <p class="subtext">リスナーが「ハートミー」を投げると、事前に登録しておいた称号がバッジ付きで画面右からスライドインして表示されます。称号は下の一覧から視聴者ごとに登録してください。</p>
                         </div>

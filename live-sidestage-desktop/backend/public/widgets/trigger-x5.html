@@ -133,7 +133,7 @@
             100%        { transform: scale(0.92) rotate(8deg); }
         }
 
-        .x5-badge {
+        .mult-badge {
             position: absolute;
             left: 190px;
             top: 130px;
@@ -146,10 +146,10 @@
             text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
             letter-spacing: 1px;
             white-space: nowrap;
-            animation: x5Pop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards;
+            animation: multBadgePop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards;
         }
 
-        @keyframes x5Pop {
+        @keyframes multBadgePop {
             0%          { transform: translateY(-50%) scale(0); }
             20%         { transform: translateY(-50%) scale(1.35) rotate(-6deg); }
             30%, 82%    { transform: translateY(-50%) scale(1) rotate(-6deg); }
@@ -170,13 +170,20 @@
 
         /* 発動中インジケーター: 発動ギフト検知で一旦大きく表示され、その後定位置のサイズへ縮小しながら
            落ち着く。縮小が終わるまではJS側でカウントダウン開始を待つ（tick開始をアニメーション完了後に遅延）。
-           transform-origin を right/top に固定し、拡大時に画面外へはみ出さず角から膨らむようにする。 */
+           transform-origin を right/top に固定し、拡大時に画面外へはみ出さず角から膨らむようにする。
+           トリガー6倍カード（.shifted）はトリガー5倍が表示中の間だけ左にずれる。5倍が非表示の間は
+           5倍と全く同じ位置（right/top）に重なって表示される。 */
         .active-card {
             position: absolute;
             right: 36px;
             top: 36px;
             transform-origin: top right;
             animation: activeCardPop 3s cubic-bezier(0.22, 1, 0.36, 1);
+            transition: right 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .active-card.shifted {
+            right: 214px;
         }
 
         @keyframes activeCardPop {
@@ -364,13 +371,14 @@
             document.body.classList.add('preview-card');
         }
 
-        const GLOVE_IMG = `<img src="/widgets/glove-x5.png" alt="">`;
+        const GLOVE_IMG_X5 = `<img src="/widgets/glove-x5.png" alt="">`;
+        const GLOVE_IMG_X6 = `<img src="/widgets/glove-x6.png" alt="">`;
 
         function escapeHtml(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        // トリガー5倍の各種効果音（発動時／5倍成功時で共通）はこのオーバーレイ自身が再生する。
+        // トリガー5倍/6倍の各種効果音（発動時／成功時で共通）はこのオーバーレイ自身が再生する。
         // プレビューiframeはウィジェット一覧ページ(Electron本体)に常駐するため、
         // デモ再生で実配信オーバーレイと同じ効果音を鳴らしてはいけない。
         function playConfiguredSound(sound) {
@@ -399,136 +407,11 @@
                 : '';
         }
 
-        function showWin(data) {
-            const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
-            const image = String(data?.image || '');
-            const avatarHtml = buildAvatarHtml(image);
-            const giftImgHtml = buildGiftImgHtml(String(data?.giftImage || ''));
-
-            const card = document.createElement('div');
-            card.className = 'win-card';
-            card.innerHTML = `
-                <div class="avatar-glove-wrap">
-                    <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
-                    <div class="glove">${GLOVE_IMG}</div>
-                    ${giftImgHtml ? `<div class="win-gift">${giftImgHtml}</div>` : ''}
-                    <div class="x5-badge">×5</div>
-                </div>
-                <div class="nickname">${escapeHtml(nickname)}</div>
-            `;
-
-            stageEl.appendChild(card);
-            card.addEventListener('animationend', () => card.remove());
-            window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
-
-            playConfiguredSound(data?.sound);
-        }
-
-        socket.on('widgets:trigger-x5:won', showWin);
-
-        // 発動中インジケーター: 発動ギフト検知でグローブがポップインし、残り秒数をカウントダウン表示。
-        // 0になったら軽く点滅してからフェードアウトする。発動中に再検知した場合は
-        // 電撃エフェクト＋効果音とともに残り時間を延長する。
-        let activeCardEl = null;
-        let activeDeadline = 0;
-        let activeTickHandle = null;
-        let activePopTimeoutHandle = null;
-
-        // 延長のたびに積み上がる発動者の時間帯（サーバーから毎回フルスナップショットで届く）。
-        // 「今どの枠のカウントダウンなのか」に応じてアイコンを切り替えるため、延長を受信しても
-        // ここでは即座にアイコンを差し替えず、tickActiveCountdown側で毎フレーム判定する。
-        let activeAvatarSegments = [];
-        let appliedActiveAvatarHtml = null;
-
-        // activeCardPop アニメーションの尺（CSS側と一致させる）。
-        // この間はカウントダウンの数字を動かさず、大きく表示→縮小の演出を見せきってから開始する。
-        const ACTIVE_CARD_POP_MS = 3000;
-
         function formatCountdown(totalSeconds) {
             const s = Math.max(0, Math.floor(totalSeconds));
             const minutes = Math.floor(s / 60);
             const seconds = s % 60;
             return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-
-        function createActiveCard(durationSeconds, avatarHtml) {
-            const card = document.createElement('div');
-            card.className = 'active-card';
-            card.innerHTML = `
-                <div class="glove-wrap">
-                    <div class="avatar-mini${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
-                    <div class="glove">${GLOVE_IMG}</div>
-                    <div class="countdown-badge">${formatCountdown(durationSeconds)}</div>
-                </div>
-            `;
-            stageEl.appendChild(card);
-            return card;
-        }
-
-        function updateActiveCardAvatar(card, avatarHtml) {
-            const avatarEl = card?.querySelector('.avatar-mini');
-            if (!avatarEl) return;
-            avatarEl.classList.toggle('is-empty', !avatarHtml);
-            avatarEl.innerHTML = avatarHtml;
-        }
-
-        // data.activators（延長のたびに積み上がる発動者の時間帯）から、ローカル時計基準の
-        // 締切付きセグメント列を組み立てる。古いペイロード（activators未対応）は
-        // nickname/image/remainingSecondsから単一セグメントとしてフォールバックする。
-        function buildActiveAvatarSegments(data, remainingSeconds) {
-            const now = Date.now();
-            const list = Array.isArray(data?.activators) && data.activators.length > 0
-                ? data.activators
-                : [{ image: data?.image, endsInSeconds: remainingSeconds }];
-
-            return list.map((entry) => ({
-                avatarHtml: buildAvatarHtml(String(entry?.image || '')),
-                deadline: now + Math.max(0, Number(entry?.endsInSeconds) || 0) * 1000,
-            }));
-        }
-
-        // セグメントは発動順（締切が早い順）に並んでいる。まだ締切が来ていない最初の枠が
-        // 「現在カウントダウン中の発動者」＝表示すべきアイコン。
-        function currentActiveAvatarSegment() {
-            if (activeAvatarSegments.length === 0) return null;
-            const now = Date.now();
-            return activeAvatarSegments.find((seg) => seg.deadline > now)
-                || activeAvatarSegments[activeAvatarSegments.length - 1];
-        }
-
-        // 残り時間の進みに合わせて、必要なときだけアイコンを差し替える
-        // （即時上書きすると残り時間と発動者アイコンが食い違って見えるため）。
-        function syncActiveCardAvatarToSegment(card) {
-            const segment = currentActiveAvatarSegment();
-            const avatarHtml = segment ? segment.avatarHtml : '';
-            if (avatarHtml === appliedActiveAvatarHtml) return;
-            appliedActiveAvatarHtml = avatarHtml;
-            updateActiveCardAvatar(card, avatarHtml);
-        }
-
-        function removeActiveCard() {
-            if (!activeCardEl) return;
-            const el = activeCardEl;
-            activeCardEl = null;
-            el.classList.add('is-ending');
-            el.addEventListener('animationend', () => el.remove(), { once: true });
-            window.setTimeout(() => { if (el.isConnected) el.remove(); }, 1000);
-        }
-
-        function tickActiveCountdown() {
-            if (!activeCardEl) return;
-            syncActiveCardAvatarToSegment(activeCardEl);
-            const remainingMs = activeDeadline - Date.now();
-            const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-            const badge = activeCardEl.querySelector('.countdown-badge');
-            if (badge) badge.textContent = formatCountdown(remainingSeconds);
-
-            if (remainingMs <= 0) {
-                removeActiveCard();
-                return;
-            }
-
-            activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
         }
 
         function playZapSound() {
@@ -577,82 +460,259 @@
             </svg>
         `;
 
-        function playZapEffect() {
-            if (!activeCardEl) return;
-            const gloveWrap = activeCardEl.querySelector('.glove-wrap');
-            if (!gloveWrap) return;
+        // トリガー5倍/6倍の当選演出・発動中カウントダウンを共通ロジックで扱うコントローラー。
+        // 5倍と6倍は完全に独立したイベント系統（widgets:trigger-x5:* / widgets:trigger-x6:*）を
+        // 持つが、見た目の挙動（当選ポップ・発動中インジケーターの拡大縮小・カウントダウン・
+        // 延長時の電撃演出）は同一のため、パラメータだけ差し替えて共用する。
+        // isShiftedFn は「このカードを5倍の左側にずらすべきか」を毎フレーム判定する関数
+        // （6倍コントローラーにのみ渡す。5倍は常にfalseで自身の定位置に留まる）。
+        function createMultiplierController({ gloveImgHtml, badgeLabel, cardClass, isShiftedFn }) {
+            let activeCardEl = null;
+            let activeDeadline = 0;
+            let activeTickHandle = null;
+            let activePopTimeoutHandle = null;
 
-            const zap = document.createElement('div');
-            zap.innerHTML = `
-                <div class="zap-flash"></div>
-                <div class="zap-bolt a">${LIGHTNING_SVG}</div>
-                <div class="zap-bolt b">${LIGHTNING_SVG}</div>
-            `;
+            // 延長のたびに積み上がる発動者の時間帯（サーバーから毎回フルスナップショットで届く）。
+            let activeAvatarSegments = [];
+            let appliedActiveAvatarHtml = null;
+            let onChange = () => {};
 
-            gloveWrap.appendChild(zap);
-            window.setTimeout(() => { if (zap.isConnected) zap.remove(); }, 700);
+            // activeCardPop アニメーションの尺（CSS側と一致させる）。
+            const ACTIVE_CARD_POP_MS = 3000;
 
-            playZapSound();
-        }
+            function isActiveCardVisible() {
+                return Boolean(activeCardEl) && !activeCardEl.classList.contains('is-ending');
+            }
 
-        function handleTriggerX5Window(data) {
-            if (!data?.active) return;
+            function syncPosition() {
+                if (!activeCardEl) return;
+                activeCardEl.classList.toggle('shifted', Boolean(isShiftedFn && isShiftedFn()));
+            }
 
-            // remainingSeconds はサーバー側で加算済みの実際の残り時間（延長時は上限なく積み上がる）。
-            // 古いペイロード（remainingSeconds未対応）向けに durationSeconds へフォールバックする。
-            const fallbackSeconds = Math.max(1, Number(data.durationSeconds) || 15);
-            const remainingSeconds = Math.max(1, Number(data.remainingSeconds) || fallbackSeconds);
-            activeDeadline = Date.now() + remainingSeconds * 1000;
+            function showWin(data) {
+                const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
+                const image = String(data?.image || '');
+                const avatarHtml = buildAvatarHtml(image);
+                const giftImgHtml = buildGiftImgHtml(String(data?.giftImage || ''));
 
-            if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
-            if (activePopTimeoutHandle) window.clearTimeout(activePopTimeoutHandle);
+                const card = document.createElement('div');
+                card.className = 'win-card';
+                card.innerHTML = `
+                    <div class="avatar-glove-wrap">
+                        <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                        <div class="glove">${gloveImgHtml}</div>
+                        ${giftImgHtml ? `<div class="win-gift">${giftImgHtml}</div>` : ''}
+                        <div class="mult-badge">${badgeLabel}</div>
+                    </div>
+                    <div class="nickname">${escapeHtml(nickname)}</div>
+                `;
 
-            // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
-            playConfiguredSound(data.sound);
+                stageEl.appendChild(card);
+                card.addEventListener('animationend', () => card.remove());
+                window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
 
-            // サーバーから届く発動者の時間帯（延長のたびに末尾が積み上がったフルスナップショット）。
-            // ここでは登録するだけで、実際にアイコンへ反映するのはtickActiveCountdown側 —
-            // 延長を受けた瞬間に上書きすると、まだ前の発動者の枠なのにアイコンだけ次の人に
-            // 変わってしまい、残り時間と食い違って見える。
-            activeAvatarSegments = buildActiveAvatarSegments(data, remainingSeconds);
+                playConfiguredSound(data?.sound);
+            }
 
-            if (data.extended && activeCardEl) {
-                playZapEffect();
+            function createActiveCard(durationSeconds, avatarHtml) {
+                const card = document.createElement('div');
+                card.className = `active-card ${cardClass}`.trim();
+                card.innerHTML = `
+                    <div class="glove-wrap">
+                        <div class="avatar-mini${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                        <div class="glove">${gloveImgHtml}</div>
+                        <div class="countdown-badge">${formatCountdown(durationSeconds)}</div>
+                    </div>
+                `;
+                stageEl.appendChild(card);
+                return card;
+            }
+
+            function updateActiveCardAvatar(card, avatarHtml) {
+                const avatarEl = card?.querySelector('.avatar-mini');
+                if (!avatarEl) return;
+                avatarEl.classList.toggle('is-empty', !avatarHtml);
+                avatarEl.innerHTML = avatarHtml;
+            }
+
+            // data.activators（延長のたびに積み上がる発動者の時間帯）から、ローカル時計基準の
+            // 締切付きセグメント列を組み立てる。古いペイロード（activators未対応）は
+            // nickname/image/remainingSecondsから単一セグメントとしてフォールバックする。
+            function buildActiveAvatarSegments(data, remainingSeconds) {
+                const now = Date.now();
+                const list = Array.isArray(data?.activators) && data.activators.length > 0
+                    ? data.activators
+                    : [{ image: data?.image, endsInSeconds: remainingSeconds }];
+
+                return list.map((entry) => ({
+                    avatarHtml: buildAvatarHtml(String(entry?.image || '')),
+                    deadline: now + Math.max(0, Number(entry?.endsInSeconds) || 0) * 1000,
+                }));
+            }
+
+            // セグメントは発動順（締切が早い順）に並んでいる。まだ締切が来ていない最初の枠が
+            // 「現在カウントダウン中の発動者」＝表示すべきアイコン。
+            function currentActiveAvatarSegment() {
+                if (activeAvatarSegments.length === 0) return null;
+                const now = Date.now();
+                return activeAvatarSegments.find((seg) => seg.deadline > now)
+                    || activeAvatarSegments[activeAvatarSegments.length - 1];
+            }
+
+            function syncActiveCardAvatarToSegment(card) {
+                const segment = currentActiveAvatarSegment();
+                const avatarHtml = segment ? segment.avatarHtml : '';
+                if (avatarHtml === appliedActiveAvatarHtml) return;
+                appliedActiveAvatarHtml = avatarHtml;
+                updateActiveCardAvatar(card, avatarHtml);
+            }
+
+            function removeActiveCard() {
+                if (!activeCardEl) return;
+                const el = activeCardEl;
+                activeCardEl = null;
+                el.classList.add('is-ending');
+                el.addEventListener('animationend', () => el.remove(), { once: true });
+                window.setTimeout(() => { if (el.isConnected) el.remove(); }, 1000);
+                onChange();
+            }
+
+            function tickActiveCountdown() {
+                if (!activeCardEl) return;
+                syncActiveCardAvatarToSegment(activeCardEl);
+                syncPosition();
+                const remainingMs = activeDeadline - Date.now();
+                const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
                 const badge = activeCardEl.querySelector('.countdown-badge');
                 if (badge) badge.textContent = formatCountdown(remainingSeconds);
+
+                if (remainingMs <= 0) {
+                    removeActiveCard();
+                    return;
+                }
+
                 activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
-            } else {
-                if (activeCardEl) activeCardEl.remove();
-                appliedActiveAvatarHtml = null;
-                const initialSegment = currentActiveAvatarSegment();
-                const avatarHtml = initialSegment ? initialSegment.avatarHtml : '';
-                appliedActiveAvatarHtml = avatarHtml;
-                activeCardEl = createActiveCard(remainingSeconds, avatarHtml);
-                // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
-                activePopTimeoutHandle = window.setTimeout(() => {
-                    activePopTimeoutHandle = null;
-                    if (!activeCardEl) return;
-                    activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
-                }, ACTIVE_CARD_POP_MS);
             }
+
+            function playZapEffect() {
+                if (!activeCardEl) return;
+                const gloveWrap = activeCardEl.querySelector('.glove-wrap');
+                if (!gloveWrap) return;
+
+                const zap = document.createElement('div');
+                zap.innerHTML = `
+                    <div class="zap-flash"></div>
+                    <div class="zap-bolt a">${LIGHTNING_SVG}</div>
+                    <div class="zap-bolt b">${LIGHTNING_SVG}</div>
+                `;
+
+                gloveWrap.appendChild(zap);
+                window.setTimeout(() => { if (zap.isConnected) zap.remove(); }, 700);
+
+                playZapSound();
+            }
+
+            function handleWindow(data) {
+                if (!data?.active) return;
+
+                // remainingSeconds はサーバー側で加算済みの実際の残り時間（延長時は上限なく積み上がる）。
+                const fallbackSeconds = Math.max(1, Number(data.durationSeconds) || 15);
+                const remainingSeconds = Math.max(1, Number(data.remainingSeconds) || fallbackSeconds);
+                activeDeadline = Date.now() + remainingSeconds * 1000;
+
+                if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
+                if (activePopTimeoutHandle) window.clearTimeout(activePopTimeoutHandle);
+
+                // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
+                playConfiguredSound(data.sound);
+
+                activeAvatarSegments = buildActiveAvatarSegments(data, remainingSeconds);
+
+                if (data.extended && activeCardEl) {
+                    playZapEffect();
+                    const badge = activeCardEl.querySelector('.countdown-badge');
+                    if (badge) badge.textContent = formatCountdown(remainingSeconds);
+                    activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+                } else {
+                    if (activeCardEl) activeCardEl.remove();
+                    appliedActiveAvatarHtml = null;
+                    const initialSegment = currentActiveAvatarSegment();
+                    const avatarHtml = initialSegment ? initialSegment.avatarHtml : '';
+                    appliedActiveAvatarHtml = avatarHtml;
+                    activeCardEl = createActiveCard(remainingSeconds, avatarHtml);
+                    syncPosition();
+                    onChange();
+                    // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
+                    activePopTimeoutHandle = window.setTimeout(() => {
+                        activePopTimeoutHandle = null;
+                        if (!activeCardEl) return;
+                        activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+                    }, ACTIVE_CARD_POP_MS);
+                }
+            }
+
+            return {
+                showWin,
+                handleWindow,
+                isActiveCardVisible,
+                syncPosition,
+                onChange(fn) { onChange = typeof fn === 'function' ? fn : () => {}; },
+            };
         }
 
-        socket.on('widgets:trigger-x5:window', handleTriggerX5Window);
+        // トリガー5倍: 常に定位置（画面右上）に表示する。
+        const x5Controller = createMultiplierController({
+            gloveImgHtml: GLOVE_IMG_X5,
+            badgeLabel: '×5',
+            cardClass: '',
+            isShiftedFn: () => false,
+        });
+
+        // トリガー6倍: トリガー5倍が表示中は左にずれ、非表示なら5倍と同じ定位置に重なる。
+        const x6Controller = createMultiplierController({
+            gloveImgHtml: GLOVE_IMG_X6,
+            badgeLabel: '×6',
+            cardClass: 'x6',
+            isShiftedFn: () => x5Controller.isActiveCardVisible(),
+        });
+
+        // 5倍側の表示・非表示が切り替わるたびに、6倍側の位置を即座に再計算する。
+        x5Controller.onChange(() => x6Controller.syncPosition());
+
+        socket.on('widgets:trigger-x5:won', x5Controller.showWin);
+        socket.on('widgets:trigger-x5:window', x5Controller.handleWindow);
+        socket.on('widgets:trigger-x6:won', x6Controller.showWin);
+        socket.on('widgets:trigger-x6:window', x6Controller.handleWindow);
 
         if (previewMode) {
-            const runSample = () => showWin({ nickname: 'サンプルリスナー', image: '' });
-            runSample();
-            window.setInterval(runSample, 3200);
+            const runSampleX5 = () => x5Controller.showWin({ nickname: 'サンプルリスナー', image: '' });
+            runSampleX5();
+            window.setInterval(runSampleX5, 3200);
 
-            const runActiveDemo = () => {
-                handleTriggerX5Window({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
+            const runSampleX6 = () => x6Controller.showWin({ nickname: 'サンプルリスナー6', image: '' });
+            window.setTimeout(runSampleX6, 1600);
+            window.setInterval(runSampleX6, 3200);
+
+            const runActiveDemoX5 = () => {
+                x5Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
                 window.setTimeout(() => {
                     // 延長は加算・上限なしであることをプレビューでも示す（15秒残っている状態に+15秒）
-                    handleTriggerX5Window({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
+                    x5Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
                 }, 4000);
             };
-            runActiveDemo();
-            window.setInterval(runActiveDemo, 16000);
+            runActiveDemoX5();
+            window.setInterval(runActiveDemoX5, 16000);
+
+            // 6倍は少し遅れて発動させ、5倍が表示中に左へずれる様子と、5倍終了後に定位置へ
+            // 戻る様子の両方をプレビューで確認できるようにする。
+            const runActiveDemoX6 = () => {
+                x6Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
+                window.setTimeout(() => {
+                    x6Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
+                }, 4000);
+            };
+            window.setTimeout(runActiveDemoX6, 2000);
+            window.setInterval(runActiveDemoX6, 16000);
         }
     </script>
 </body>

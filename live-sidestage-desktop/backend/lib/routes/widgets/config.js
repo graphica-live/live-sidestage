@@ -45,6 +45,7 @@ module.exports = function registerWidgetsConfigRoutes({
     getTimerWidgetTextAppearance,
     buildTimerPayload,
     buildTriggerX5Payload,
+    buildTriggerX6Payload,
     buildShogoPayload,
 }) {
     app.get('/api/widgets/config', (req, res) => {
@@ -100,6 +101,7 @@ module.exports = function registerWidgetsConfigRoutes({
             timerAppearance: getTimerWidgetTextAppearance(),
             timerPayload: buildTimerPayload(),
             triggerX5Payload: buildTriggerX5Payload(),
+            triggerX6Payload: buildTriggerX6Payload(),
             shogoPayload: buildShogoPayload()
         });
     });
