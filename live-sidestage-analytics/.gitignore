@@ -22,3 +22,6 @@ prisma/dev.db-journal
 nul
 tsconfig.tsbuildinfo
 next-env.d.ts
+
+# worktreeマージキュー(mainチェックアウト直下のみに存在、常に1つ、git非追跡)
+.claude/merge-queue.md
