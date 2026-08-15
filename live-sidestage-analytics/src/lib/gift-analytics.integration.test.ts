@@ -6,6 +6,7 @@ import { queryGifts } from "./gift-analytics";
 
 const STREAMER_TIKTOK_ID = "itest_gift_analytics_streamer";
 let streamerId: string;
+let roomId: string;
 
 type GiftOverrides = Partial<{
   uniqueId: string;
@@ -19,7 +20,7 @@ type GiftOverrides = Partial<{
 async function makeGift(overrides: GiftOverrides) {
   return prisma.gift.create({
     data: {
-      streamerId,
+      roomId,
       uniqueId: "user_a",
       nickname: "ユーザーA",
       profileImageUrl: null,
@@ -36,9 +37,11 @@ async function makeGift(overrides: GiftOverrides) {
 }
 
 beforeAll(async () => {
+  const room = await prisma.tiktokRoom.create({ data: { tiktokId: STREAMER_TIKTOK_ID } });
+  roomId = room.id;
   const user = await prisma.user.create({ data: { email: `itest-gift-analytics-${Date.now()}@local.test` } });
   const streamer = await prisma.streamer.create({
-    data: { userId: user.id, tiktokId: STREAMER_TIKTOK_ID, verificationCode: "x", verified: true },
+    data: { userId: user.id, tiktokId: STREAMER_TIKTOK_ID, verificationCode: "x", verified: true, roomId },
   });
   streamerId = streamer.id;
 });
@@ -46,8 +49,9 @@ beforeAll(async () => {
 afterAll(async () => {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
   if (streamer) {
-    await prisma.user.delete({ where: { id: streamer.userId } }); // cascades streamer -> gifts
+    await prisma.user.delete({ where: { id: streamer.userId } }); // cascades User -> Streamer
   }
+  await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades TiktokRoom -> Gift
   await prisma.$disconnect();
 });
 
@@ -57,7 +61,7 @@ describe("queryGifts", () => {
     await makeGift({ uniqueId: "user_a", nickname: "ユーザーA", repeatCount: 3, totalDiamonds: 30, receivedAt: new Date("2026-08-15T11:00:00Z") });
     await makeGift({ uniqueId: "user_b", nickname: "ユーザーB", repeatCount: 1, totalDiamonds: 5, receivedAt: new Date("2026-08-15T10:30:00Z") });
 
-    const { users, total } = await queryGifts(streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
+    const { users, total } = await queryGifts(roomId, streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
 
     const userA = users.find((u) => u.uniqueId === "user_a");
     expect(userA).toBeDefined();
@@ -75,12 +79,22 @@ describe("queryGifts", () => {
   it("dayKey範囲外のギフトは集計に含めない", async () => {
     await makeGift({ uniqueId: "user_c", dayKey: "2026-08-01", receivedAt: new Date("2026-08-01T00:00:00Z"), totalDiamonds: 999 });
 
-    const { users } = await queryGifts(streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
+    const { users } = await queryGifts(roomId, streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
     expect(users.find((u) => u.uniqueId === "user_c")).toBeUndefined();
   });
 
   it("該当ギフトが無ければ空配列とゼロ集計を返す", async () => {
-    const result = await queryGifts(streamerId, { dayKey: { gte: "1999-01-01", lte: "1999-01-01" } });
+    const result = await queryGifts(roomId, streamerId, { dayKey: { gte: "1999-01-01", lte: "1999-01-01" } });
     expect(result).toEqual({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+  });
+
+  it("自分がhidden指定したギフトは自分の集計から除外される", async () => {
+    const gift = await makeGift({ uniqueId: "user_hide", nickname: "非表示対象", totalDiamonds: 777, receivedAt: new Date("2026-08-15T09:15:00Z") });
+    await prisma.giftEdit.create({
+      data: { giftId: gift.id, streamerId, giftName: gift.giftName, totalDiamonds: gift.totalDiamonds, hidden: true },
+    });
+
+    const { users } = await queryGifts(roomId, streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
+    expect(users.find((u) => u.uniqueId === "user_hide")).toBeUndefined();
   });
 });

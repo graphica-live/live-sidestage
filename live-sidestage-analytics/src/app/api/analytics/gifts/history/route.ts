@@ -11,10 +11,10 @@ export async function GET(req: NextRequest) {
 
   const streamer = await prisma.streamer.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, verified: true },
+    select: { id: true, roomId: true, verified: true },
   });
 
-  if (!streamer) {
+  if (!streamer || !streamer.roomId) {
     return NextResponse.json({
       events: [],
       dateRange: { start: "", end: "" },
@@ -28,17 +28,17 @@ export async function GET(req: NextRequest) {
   const startDatetime = searchParams.get("startDatetime");
   const endDatetime = searchParams.get("endDatetime");
 
-  let giftWhere: { streamerId: string; dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } };
+  let giftWhere: { roomId: string; dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } };
   let dateRange: { start: string; end: string };
 
   if (startDatetime && endDatetime) {
-    giftWhere = { streamerId: streamer.id, receivedAt: { gte: new Date(startDatetime), lte: new Date(endDatetime) } };
+    giftWhere = { roomId: streamer.roomId, receivedAt: { gte: new Date(startDatetime), lte: new Date(endDatetime) } };
     dateRange = { start: startDatetime, end: endDatetime };
   } else {
     const period = searchParams.get("period") ?? "day";
     const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
     const { start, end } = getDateRange(period, date);
-    giftWhere = { streamerId: streamer.id, dayKey: { gte: start, lte: end } };
+    giftWhere = { roomId: streamer.roomId, dayKey: { gte: start, lte: end } };
     dateRange = { start, end };
   }
 
@@ -57,11 +57,18 @@ export async function GET(req: NextRequest) {
       repeatCount: true,
       totalDiamonds: true,
       receivedAt: true,
-      edit: { select: { giftName: true, totalDiamonds: true } },
+      // 編集/非表示は閲覧者本人(streamer.id)のものだけを参照する。他の登録者の編集は見えない。
+      edits: { where: { streamerId: streamer.id }, select: { giftName: true, totalDiamonds: true, hidden: true } },
     },
   });
 
-  const events = rows.map(applyGiftEdit);
+  const events = rows
+    .filter((row) => !row.edits[0]?.hidden)
+    .map((row) => {
+      const { edits, ...base } = row;
+      const edit = edits[0] ? { giftName: edits[0].giftName, totalDiamonds: edits[0].totalDiamonds } : null;
+      return applyGiftEdit({ ...base, edit });
+    });
 
   const total = events.reduce(
     (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),

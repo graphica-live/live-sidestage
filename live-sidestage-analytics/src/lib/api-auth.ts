@@ -8,16 +8,16 @@ export async function resolveStreamerByOverlayToken(req: NextRequest): Promise<{
   return streamerId ? { id: streamerId } : null;
 }
 
-export async function resolveStreamerByApiKey(req: NextRequest): Promise<{ id: string } | null> {
+export async function resolveStreamerByApiKey(req: NextRequest): Promise<{ id: string; roomId: string | null } | null> {
   const apiKey = req.headers.get("x-api-key");
   if (!apiKey) return null;
 
   const streamer = await prisma.streamer.findUnique({
     where: { apiKey },
-    select: { id: true, verified: true },
+    select: { id: true, verified: true, roomId: true },
   });
 
   if (!streamer?.verified) return null;
 
-  return { id: streamer.id };
+  return { id: streamer.id, roomId: streamer.roomId };
 }

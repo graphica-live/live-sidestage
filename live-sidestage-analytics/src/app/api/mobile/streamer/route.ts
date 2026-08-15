@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { resolveUserByMobileToken, signMobileToken } from "@/lib/mobile-auth";
+import { resolveRoomForStreamer } from "@/lib/tiktok-room";
 
 export async function POST(req: NextRequest) {
   const auth = resolveUserByMobileToken(req);
@@ -28,11 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "既にTikTokアカウントが登録されています" }, { status: 409 });
   }
 
-  const existingStreamer = await prisma.streamer.findFirst({ where: { tiktokId: cleanTiktokId } });
-  if (existingStreamer) {
-    return NextResponse.json({ error: "このTikTok IDは既に登録されています" }, { status: 400 });
-  }
-
+  // 登録は無条件で許可する(Web版と同様、他アカウントとの重複登録も可)。
   const apiKey = crypto.randomBytes(32).toString("hex");
   const streamer = await prisma.streamer.create({
     data: {
@@ -44,6 +41,9 @@ export async function POST(req: NextRequest) {
       apiKey,
     },
   });
+
+  // 同じtiktokIdを共有するTiktokRoomへ紐付ける。
+  await resolveRoomForStreamer(streamer.id);
 
   const token = signMobileToken({ userId: user.id, streamerId: streamer.id });
 

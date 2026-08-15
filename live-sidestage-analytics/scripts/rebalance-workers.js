@@ -31,16 +31,17 @@ async function main() {
 
   const prisma = new PrismaClient();
   try {
-    const streamers = await prisma.streamer.findMany({
-      where: { verified: true },
+    // 登録者(Streamer)が1人もいない部屋は接続対象外なので除外する。
+    const rooms = await prisma.tiktokRoom.findMany({
+      where: { streamers: { some: {} } },
       select: { id: true, tiktokId: true, workerId: true },
     });
 
-    const changes = streamers
-      .map((s) => ({ ...s, newWorkerId: hashToIndex(s.id, workerCount) }))
-      .filter((s) => s.workerId !== s.newWorkerId);
+    const changes = rooms
+      .map((r) => ({ ...r, newWorkerId: hashToIndex(r.id, workerCount) }))
+      .filter((r) => r.workerId !== r.newWorkerId);
 
-    console.log(`WORKER_COUNT=${workerCount} — ${streamers.length}人中${changes.length}人の担当が変わります`);
+    console.log(`WORKER_COUNT=${workerCount} — ${rooms.length}部屋中${changes.length}部屋の担当が変わります`);
     for (const c of changes) {
       console.log(`  @${c.tiktokId}: worker ${c.workerId ?? "(未割当)"} -> ${c.newWorkerId}`);
     }
@@ -51,7 +52,7 @@ async function main() {
     }
 
     for (const c of changes) {
-      await prisma.streamer.update({
+      await prisma.tiktokRoom.update({
         where: { id: c.id },
         data: { workerId: c.newWorkerId },
       });

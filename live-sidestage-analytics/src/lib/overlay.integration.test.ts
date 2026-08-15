@@ -5,8 +5,12 @@ import { buildOverlaySnapshot } from "./overlay";
 
 const STREAMER_TIKTOK_ID = "itest_overlay_streamer";
 let streamerId: string;
+let roomId: string;
 
 beforeAll(async () => {
+  const room = await prisma.tiktokRoom.create({ data: { tiktokId: STREAMER_TIKTOK_ID } });
+  roomId = room.id;
+
   const user = await prisma.user.create({ data: { email: `itest-overlay-${Date.now()}@local.test` } });
   const streamer = await prisma.streamer.create({
     data: {
@@ -14,6 +18,7 @@ beforeAll(async () => {
       tiktokId: STREAMER_TIKTOK_ID,
       verificationCode: "x",
       verified: true,
+      roomId,
       overlayThreshold: 100,
       overlayDisplayReference: "fixed",
       overlayDisplayDate: "2026-08-15",
@@ -27,6 +32,7 @@ afterAll(async () => {
   if (streamer) {
     await prisma.user.delete({ where: { id: streamer.userId } });
   }
+  await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades TiktokRoom -> Gift
   await prisma.$disconnect();
 });
 
@@ -41,13 +47,13 @@ describe("buildOverlaySnapshot", () => {
     await prisma.gift.createMany({
       data: [
         // user_slow: 60 -> 未到達
-        { streamerId, uniqueId: "user_slow", nickname: "遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 60, totalDiamonds: 60, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T10:00:00Z") },
+        { roomId, uniqueId: "user_slow", nickname: "遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 60, totalDiamonds: 60, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T10:00:00Z") },
         // user_fast: 50 + 60 = 110 が 11:00 に閾値(100)到達
-        { streamerId, uniqueId: "user_fast", nickname: "速い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 50, totalDiamonds: 50, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T09:00:00Z") },
-        { streamerId, uniqueId: "user_fast", nickname: "速い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 60, totalDiamonds: 60, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T11:00:00Z") },
+        { roomId, uniqueId: "user_fast", nickname: "速い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 50, totalDiamonds: 50, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T09:00:00Z") },
+        { roomId, uniqueId: "user_fast", nickname: "速い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 60, totalDiamonds: 60, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T11:00:00Z") },
         // user_slower: 40 + 70 = 110 が 11:30 に閾値到達(user_fastより後)
-        { streamerId, uniqueId: "user_slower", nickname: "もっと遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 40, totalDiamonds: 40, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T09:30:00Z") },
-        { streamerId, uniqueId: "user_slower", nickname: "もっと遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 70, totalDiamonds: 70, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T11:30:00Z") },
+        { roomId, uniqueId: "user_slower", nickname: "もっと遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 40, totalDiamonds: 40, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T09:30:00Z") },
+        { roomId, uniqueId: "user_slower", nickname: "もっと遅い人", giftId: 1, giftName: "Rose", repeatCount: 1, diamondCount: 70, totalDiamonds: 70, dayKey: "2026-08-15", receivedAt: new Date("2026-08-15T11:30:00Z") },
       ],
     });
 
