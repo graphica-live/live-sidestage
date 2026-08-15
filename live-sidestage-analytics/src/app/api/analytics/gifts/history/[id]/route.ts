@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseGiftEditInput } from "@/lib/gift-history";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
@@ -23,16 +24,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json().catch(() => ({}));
-
-  const giftName = typeof body.giftName === "string" ? body.giftName.trim() : "";
-  if (!giftName) {
-    return NextResponse.json({ error: "ギフト名を入力してください。" }, { status: 400 });
+  const input = parseGiftEditInput(body);
+  if (!input.ok) {
+    return NextResponse.json({ error: input.error }, { status: 400 });
   }
-
-  const totalDiamonds = Number(body.totalDiamonds);
-  if (!Number.isInteger(totalDiamonds)) {
-    return NextResponse.json({ error: "コイン数は整数で指定してください。" }, { status: 400 });
-  }
+  const { giftName, totalDiamonds } = input;
 
   const edit = await prisma.giftEdit.upsert({
     where: { giftId: gift.id },

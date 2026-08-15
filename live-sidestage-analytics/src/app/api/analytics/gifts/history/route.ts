@@ -2,27 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-function getDateRange(period: string, date: string): { start: string; end: string } {
-  const d = new Date(date + "T00:00:00Z");
-  if (period === "week") {
-    const day = d.getUTCDay();
-    const daysToMon = day === 0 ? -6 : 1 - day;
-    const mon = new Date(d);
-    mon.setUTCDate(d.getUTCDate() + daysToMon);
-    const sun = new Date(mon);
-    sun.setUTCDate(mon.getUTCDate() + 6);
-    return { start: mon.toISOString().slice(0, 10), end: sun.toISOString().slice(0, 10) };
-  }
-  if (period === "month") {
-    const year = d.getUTCFullYear();
-    const month = d.getUTCMonth();
-    const first = new Date(Date.UTC(year, month, 1));
-    const last = new Date(Date.UTC(year, month + 1, 0));
-    return { start: first.toISOString().slice(0, 10), end: last.toISOString().slice(0, 10) };
-  }
-  return { start: date, end: date };
-}
+import { getDateRange } from "@/lib/gift-analytics";
+import { applyGiftEdit } from "@/lib/gift-history";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -75,12 +56,7 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const events = rows.map(({ edit, ...e }) => ({
-    ...e,
-    giftName: edit?.giftName ?? e.giftName,
-    totalDiamonds: edit?.totalDiamonds ?? e.totalDiamonds,
-    edited: edit !== null,
-  }));
+  const events = rows.map(applyGiftEdit);
 
   const total = events.reduce(
     (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),
