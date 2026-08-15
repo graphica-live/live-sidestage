@@ -6,10 +6,9 @@ import '../models/auth_session.dart';
 
 const String liveAnalyticsBaseUrl = 'https://liveanalytics-production.up.railway.app';
 
-// TODO: Google Cloud ConsoleでこのAndroidアプリ用のOAuthクライアントを作成し、
-// パッケージ名 com.liveanalytics.tikcaption_reader とdebug/releaseのSHA-1指紋を登録すること。
-// 下記の値はLiveAnalyticsバックエンドの .env にあるWeb用 GOOGLE_CLIENT_ID と同じ値にする。
-const String googleServerClientId = 'YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com';
+// LiveAnalyticsバックエンドの GOOGLE_CLIENT_ID と同じ値(ウェブ アプリケーション種別のクライアントID)。
+const String googleServerClientId =
+    '597170894909-57jvqq3tmk9mu14r9fgfl908od7f2h9c.apps.googleusercontent.com';
 
 class ApiException implements Exception {
   final String message;
