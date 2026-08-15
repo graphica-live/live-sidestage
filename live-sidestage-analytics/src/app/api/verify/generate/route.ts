@@ -40,18 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "TikTok IDを入力してください" }, { status: 400 });
   }
 
-  // Check if this tiktokId is claimed by another verified user
-  const existingVerified = await prisma.streamer.findFirst({
-    where: { tiktokId: clean, verified: true },
-  });
-
-  if (existingVerified && existingVerified.userId !== session.user.id) {
-    return NextResponse.json(
-      { error: "このTikTok IDは既に他のアカウントで認証済みです" },
-      { status: 400 }
-    );
-  }
-
+  // 登録は無条件で許可する(他アカウントとの重複登録も可)。
+  // 実データ(コイン数・ギフト履歴)へのアクセスはBIO認証完了まで別途ブロックされる。
   const code = generateVerificationCode();
 
   await prisma.streamer.upsert({

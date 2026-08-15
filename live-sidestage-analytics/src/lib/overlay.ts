@@ -42,14 +42,13 @@ export async function resolveStreamerIdByOverlayToken(
 ): Promise<string | null> {
   if (!token) return null;
 
+  // verified未完了でもオーバーレイは即時利用可能にする(コイン数/ギフト履歴の表示制限とは別軸)。
   const streamer = await prisma.streamer.findUnique({
     where: { overlayToken: token },
-    select: { id: true, verified: true },
+    select: { id: true },
   });
 
-  if (!streamer?.verified) return null;
-
-  return streamer.id;
+  return streamer?.id ?? null;
 }
 
 export function generateOverlayToken(): string {

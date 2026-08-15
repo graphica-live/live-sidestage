@@ -27,8 +27,9 @@ app.prepare().then(() => {
 
     if (typeof token === "string" && token) {
       try {
+        // verified未完了でもオーバーレイは即時利用可能にする。
         const streamer = await prisma.streamer.findFirst({
-          where: { overlayToken: token, verified: true },
+          where: { overlayToken: token },
           select: { id: true },
         });
         if (!streamer) return next(new Error("unauthorized"));

@@ -14,8 +14,13 @@ export async function GET(req: NextRequest) {
     select: { id: true, verified: true },
   });
 
-  if (!streamer?.verified) {
-    return NextResponse.json({ events: [], dateRange: { start: "", end: "" }, total: { count: 0, diamonds: 0 } });
+  if (!streamer) {
+    return NextResponse.json({
+      events: [],
+      dateRange: { start: "", end: "" },
+      total: { count: 0, diamonds: 0 },
+      verified: false,
+    });
   }
 
   const { searchParams } = new URL(req.url);
@@ -63,5 +68,5 @@ export async function GET(req: NextRequest) {
     { count: 0, diamonds: 0 }
   );
 
-  return NextResponse.json({ events, dateRange, total });
+  return NextResponse.json({ events, dateRange, total, verified: streamer.verified });
 }

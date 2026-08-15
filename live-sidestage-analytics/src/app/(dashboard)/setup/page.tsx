@@ -240,6 +240,18 @@ export default function SetupPage() {
                 プロフィールを開く
                 <ExternalLinkIcon />
               </a>
+
+              <div className="text-center pt-1 border-t border-border">
+                <p className="text-[11px] text-gray-500 mt-2 mb-1">
+                  オーバーレイはBIO認証前でも利用できます。認証は後からでも構いません。
+                </p>
+                <button
+                  onClick={() => router.push("/analytics")}
+                  className="text-xs text-brand hover:underline"
+                >
+                  後で認証する(今すぐダッシュボードへ)
+                </button>
+              </div>
             </div>
           )}
 

@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const streamer = await prisma.streamer.findUnique({ where: { tiktokId: STREAMER_TIKTOK_ID } });
+  const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
   if (streamer) {
     await prisma.user.delete({ where: { id: streamer.userId } });
   }

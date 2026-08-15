@@ -13,19 +13,25 @@ export async function GET(req: NextRequest) {
     select: { id: true, verified: true },
   });
 
-  if (!streamer?.verified) {
-    return NextResponse.json({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+  if (!streamer) {
+    return NextResponse.json({ users: [], total: { giftCount: 0, totalDiamonds: 0 }, verified: false });
   }
 
   const { searchParams } = new URL(req.url);
   const startDatetime = searchParams.get("startDatetime");
   const endDatetime = searchParams.get("endDatetime");
 
+  // コイン数の実データはverified未完了でも取得する。表示のブロック(すりガラス化)はフロント側の責務。
   if (startDatetime && endDatetime) {
     const startDate = new Date(startDatetime);
     const endDate = new Date(endDatetime);
     const { users, total } = await queryGifts(streamer.id, { receivedAt: { gte: startDate, lte: endDate } });
-    return NextResponse.json({ users, dateRange: { start: startDatetime, end: endDatetime }, total });
+    return NextResponse.json({
+      users,
+      dateRange: { start: startDatetime, end: endDatetime },
+      total,
+      verified: streamer.verified,
+    });
   }
 
   const period = searchParams.get("period") ?? "day";
@@ -33,7 +39,7 @@ export async function GET(req: NextRequest) {
   const { start, end } = getDateRange(period, date);
 
   const { users, total } = await queryGifts(streamer.id, { dayKey: { gte: start, lte: end } });
-  return NextResponse.json({ users, dateRange: { start, end }, total });
+  return NextResponse.json({ users, dateRange: { start, end }, total, verified: streamer.verified });
 }
 
 export async function DELETE(req: NextRequest) {

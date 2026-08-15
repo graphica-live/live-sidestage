@@ -14,9 +14,9 @@ export async function POST() {
     where: { userId: session.user.id },
   });
 
-  if (!streamer?.verified) {
+  if (!streamer) {
     return NextResponse.json(
-      { error: "TikTok IDが未認証です" },
+      { error: "先にTikTok IDを設定してください" },
       { status: 400 }
     );
   }
