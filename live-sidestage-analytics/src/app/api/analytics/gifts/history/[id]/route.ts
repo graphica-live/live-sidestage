@@ -10,16 +10,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const streamer = await prisma.streamer.findUnique({
     where: { userId: session.user.id },
-    select: { id: true },
+    select: { id: true, roomId: true },
   });
   if (!streamer) return NextResponse.json({ error: "配信者情報が見つかりません。" }, { status: 404 });
 
   const { id } = await params;
   const gift = await prisma.gift.findUnique({
     where: { id },
-    select: { id: true, streamerId: true, giftName: true, totalDiamonds: true },
+    select: { id: true, roomId: true, giftName: true, totalDiamonds: true },
   });
-  if (!gift || gift.streamerId !== streamer.id) {
+  // 同じTikTok IDの登録者(=同じroomId)であれば編集可能。編集内容は編集した本人にしか見えない。
+  if (!gift || !streamer.roomId || gift.roomId !== streamer.roomId) {
     return NextResponse.json({ error: "ギフトが見つかりません。" }, { status: 404 });
   }
 
@@ -31,8 +32,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { giftName, totalDiamonds } = input;
 
   const edit = await prisma.giftEdit.upsert({
-    where: { giftId: gift.id },
-    create: { giftId: gift.id, giftName, totalDiamonds },
+    where: { giftId_streamerId: { giftId: gift.id, streamerId: streamer.id } },
+    create: { giftId: gift.id, streamerId: streamer.id, giftName, totalDiamonds },
     update: { giftName, totalDiamonds },
     select: { giftName: true, totalDiamonds: true },
   });

@@ -96,6 +96,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
   const streamer = await prisma.streamer.findUnique({
     where: { id: streamerId },
     select: {
+      roomId: true,
       overlayDisplayReference: true,
       overlayDisplayDate: true,
       overlayThreshold: true,
@@ -108,14 +109,15 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     },
   });
 
-  if (!streamer) return null;
+  if (!streamer || !streamer.roomId) return null;
 
   const dayKey = resolveOverlayDayKey(streamer);
 
   // 「貢献しきい値到達順」で並べるため、集計済みの合計ではなくギフト1件ずつを時系列で
   // 積み上げ、各ユーザーが初めて閾値を超えた瞬間(receivedAt)を qualifiedAt として記録する。
+  // ギフトデータはTikTokアカウント(roomId)単位で共有される。表示設定はStreamer(閲覧者本人)から読む。
   const gifts = await prisma.gift.findMany({
-    where: { streamerId, dayKey },
+    where: { roomId: streamer.roomId, dayKey },
     orderBy: { receivedAt: "asc" },
     select: {
       uniqueId: true,

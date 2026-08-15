@@ -34,8 +34,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "monthはYYYY-MM形式で指定してください。" }, { status: 400 });
   }
 
+  if (!streamer.roomId) {
+    return NextResponse.json({ month, mvp: [], top5: [] });
+  }
+
   const { start, end } = getDateRange("month", `${month}-01`);
-  const { users } = await queryGifts(streamer.id, { dayKey: { gte: start, lte: end } });
+  const { users } = await queryGifts(streamer.roomId, streamer.id, { dayKey: { gte: start, lte: end } });
 
   const sorted = [...users].sort((a, b) => b.totalDiamonds - a.totalDiamonds);
   const { mvp, top5 } = splitMvpAndTop5(sorted);

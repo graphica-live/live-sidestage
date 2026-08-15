@@ -1005,7 +1005,7 @@ export default function AnalyticsPage() {
             {viewMode === "ranking" && (
               <button
                 onClick={async () => {
-                  if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを全削除しますか？`)) return;
+                  if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを自分の表示からのみ非表示にします。同じTikTok IDの他の登録者には影響しません。よろしいですか？`)) return;
                   setDeleting(true);
                   try {
                     await fetch(`/api/analytics/gifts?period=${period}&date=${currentDate}`, { method: "DELETE" });
@@ -1016,9 +1016,9 @@ export default function AnalyticsPage() {
                 }}
                 disabled={deleting || (data?.users.length === 0)}
                 className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
-                title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを削除`}
+                title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを自分の表示からのみ非表示にする(他の登録者には影響しません)`}
               >
-                {deleting ? "削除中..." : "🗑 削除"}
+                {deleting ? "処理中..." : "🙈 非表示"}
               </button>
             )}
           </div>

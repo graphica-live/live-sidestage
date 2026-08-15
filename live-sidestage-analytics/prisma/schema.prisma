@@ -58,21 +58,35 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model Streamer {
-  id               String    @id @default(cuid())
-  userId           String    @unique
-  tiktokId         String
-  verificationCode String
-  verified         Boolean   @default(false)
-  verifiedAt       DateTime?
-  deviceId         String?
-  apiKey           String?   @unique
-  createdAt        DateTime  @default(now())
+// 1つのTikTokアカウント(tiktokId)につき1本のTikTok Live接続を共有するための実体。
+// 複数のStreamer行(=複数ユーザー)が同じtiktokIdを登録した場合、全員がこのTiktokRoomを
+// 経由して同じ接続・同じGiftデータを参照する(接続リソースの重複と、orderIdユニーク制約
+// 違反によるギフト取りこぼしを防ぐため)。
+model TiktokRoom {
+  id                String    @id @default(cuid())
+  tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
+  deviceId          String?
+  workerId          Int?     // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定し固定)
+  proxyKey          String?  // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
-  workerId          Int?     // 担当Workerプロセス番号(hash(streamerId) % WORKER_COUNTで初回決定し固定)
-  proxyKey          String?  // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
+  createdAt         DateTime  @default(now())
+
+  streamers Streamer[]
+  gifts     Gift[]
+}
+
+model Streamer {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  tiktokId         String    // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
+  verificationCode String
+  verified         Boolean   @default(false)
+  verifiedAt       DateTime?
+  apiKey           String?   @unique
+  createdAt        DateTime  @default(now())
+  roomId           String?   // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
 
   overlayToken            String? @unique
   overlayDisplayReference String  @default("today") // "today" | "fixed"
@@ -85,8 +99,11 @@ model Streamer {
   overlayHeadingBackground String @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
   overlayDisplaySpeed     Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gifts Gift[]
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room      TiktokRoom? @relation(fields: [roomId], references: [id])
+  giftEdits GiftEdit[]
+
+  @@index([roomId])
 }
 
 model AppSetting {
@@ -97,7 +114,7 @@ model AppSetting {
 
 model Gift {
   id              String   @id @default(cuid())
-  streamerId      String
+  roomId          String   // TikTokアカウント単位で共有(同じtiktokIdを登録した全ユーザーが同じ行を参照)
   uniqueId        String
   nickname        String
   profileImageUrl String?
@@ -110,30 +127,37 @@ model Gift {
   receivedAt      DateTime @default(now())
   timeSource      String   @default("tiktok") // "tiktok" | "fallback" — fallback は TikTok createTime 欠落/不正でサーバー受信時刻を使用したことを示す
   dayKey          String
-  orderId         String?  @unique
+  orderId         String?
   groupId         String?
 
-  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-  edit     GiftEdit?
+  room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  edits GiftEdit[]
 
   @@map("gifts")
-  @@index([streamerId, dayKey])
-  @@index([streamerId, receivedAt])
-  @@index([streamerId, uniqueId])
-  @@index([streamerId, groupId])
+  @@unique([roomId, orderId])
+  @@index([roomId, dayKey])
+  @@index([roomId, receivedAt])
+  @@index([roomId, uniqueId])
+  @@index([roomId, groupId])
 }
 
 // TikTokから受信したオリジナルのGiftは変更・削除しない。編集内容はここに別レコードとして保持し、
 // 表示時のみ上書きする(オリジナルデータのみでの集計を別途可能にするため)。
+// Giftはtiktokアカウント単位で共有されるため、編集/非表示はstreamerId単位に紐づけ、
+// 編集した本人にしか見えないようにする(他の登録者のデータには影響しない)。
 model GiftEdit {
   id            String   @id @default(cuid())
-  giftId        String   @unique
+  giftId        String
+  streamerId    String
   giftName      String
   totalDiamonds Int
+  hidden        Boolean  @default(false) // trueの場合、この行を編集したstreamerの集計・履歴からのみ除外する
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  gift     Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
   @@map("gift_edits")
+  @@unique([giftId, streamerId])
 }

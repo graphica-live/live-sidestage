@@ -32,19 +32,26 @@ async function main() {
     create: { email: DEV_EMAIL, name: "Dev Local" },
   });
 
+  const room = await prisma.tiktokRoom.upsert({
+    where: { tiktokId: "local_test_streamer" },
+    update: {},
+    create: { tiktokId: "local_test_streamer" },
+  });
+
   const streamer = await prisma.streamer.upsert({
     where: { userId: user.id },
-    update: { verified: true },
+    update: { verified: true, roomId: room.id },
     create: {
       userId: user.id,
       tiktokId: "local_test_streamer",
       verificationCode: "seeded",
       verified: true,
       verifiedAt: new Date(),
+      roomId: room.id,
     },
   });
 
-  await prisma.gift.deleteMany({ where: { streamerId: streamer.id } });
+  await prisma.gift.deleteMany({ where: { roomId: room.id } });
 
   const now = Date.now();
   const rows = [];
@@ -54,7 +61,7 @@ async function main() {
     const repeatCount = 1 + (i % 5);
     const receivedAt = new Date(now - i * 6 * 60_000); // 6分おきに過去へ
     rows.push({
-      streamerId: streamer.id,
+      roomId: room.id,
       uniqueId: sender.uniqueId,
       nickname: sender.nickname,
       profileImageUrl: null,

@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { verifyTikTokProfile } from "@/lib/tiktok-verify";
-import { getWorkerCount, resolveWorkerForStreamer } from "@/lib/tiktok-listener";
+import { getWorkerCount, resolveWorkerForRoom } from "@/lib/tiktok-listener";
+import { resolveRoomForStreamer } from "@/lib/tiktok-room";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -40,9 +41,9 @@ export async function POST(req: NextRequest) {
 
   // Webプロセスはリスナーを持たないため担当Workerへの割当のみ行う。
   // 実際の接続開始は担当Workerのensure loop(最大60秒間隔)が拾う。
-  resolveWorkerForStreamer(streamer.id, getWorkerCount()).catch((err) =>
-    console.error("[verify] worker assignment failed:", err)
-  );
+  resolveRoomForStreamer(streamer.id)
+    .then((roomId) => resolveWorkerForRoom(roomId, getWorkerCount()))
+    .catch((err) => console.error("[verify] worker assignment failed:", err));
 
   return NextResponse.json({ ok: true });
 }

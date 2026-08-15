@@ -10,23 +10,33 @@ export async function GET() {
 
   const streamer = await prisma.streamer.findUnique({
     where: { userId: session.user.id },
+    select: {
+      id: true,
+      tiktokId: true,
+      roomId: true,
+      room: { select: { listenerStatus: true, listenerMessage: true, listenerUpdatedAt: true } },
+    },
   });
 
-  if (!streamer?.verified) {
+  // verified未完了でもライブ接続は動いているため、ステータス表示自体はブロックしない
+  // (コイン数/ギフト履歴のすりガラス表示とは別軸)。
+  if (!streamer || !streamer.roomId) {
     return NextResponse.json({ listener: null });
   }
 
-  const live = getListenerStatus(streamer.id);
+  const live = getListenerStatus(streamer.roomId);
 
   // In-memory state (same process) takes priority.
   // Fall back to DB-persisted state (handles multi-worker / cross-process scenarios).
-  const listener = live ?? (streamer.listenerStatus
+  const listener = live
+    ? { streamerId: streamer.id, tiktokId: streamer.tiktokId, status: live.status, message: live.message, updatedAt: live.updatedAt }
+    : streamer.room?.listenerStatus
     ? {
         streamerId: streamer.id,
         tiktokId: streamer.tiktokId,
-        status: streamer.listenerStatus,
-        message: streamer.listenerMessage ?? "停止中",
-        updatedAt: streamer.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
+        status: streamer.room.listenerStatus,
+        message: streamer.room.listenerMessage ?? "停止中",
+        updatedAt: streamer.room.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
       }
     : {
         streamerId: streamer.id,
@@ -34,7 +44,7 @@ export async function GET() {
         status: "idle",
         message: "停止中",
         updatedAt: new Date().toISOString(),
-      });
+      };
 
   return NextResponse.json({ listener });
 }

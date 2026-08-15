@@ -42,11 +42,25 @@ export type GiftAnalyticsUser = {
   lastGiftAt: string;
 };
 
+// roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
+// viewerStreamerId: 閲覧者本人が「非表示」にしたギフト(GiftEdit.hidden)を除外するために使う。
+// 非表示は閲覧者本人のview以外には一切影響しない。
 export async function queryGifts(
-  streamerId: string,
+  roomId: string,
+  viewerStreamerId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } }
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
-  const fullWhere = { streamerId, ...where };
+  const hiddenEdits = await prisma.giftEdit.findMany({
+    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
+    select: { giftId: true },
+  });
+  const hiddenIds = hiddenEdits.map((e) => e.giftId);
+
+  const fullWhere = {
+    roomId,
+    ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
+    ...where,
+  };
 
   const grouped = await prisma.gift.groupBy({
     by: ["uniqueId"],

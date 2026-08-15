@@ -19,20 +19,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let streamerId: string | undefined;
+  let roomId: string | undefined;
 
   if (!searchParams.get("all")) {
     if (session) {
       const streamer = await prisma.streamer.findUnique({
         where: { userId: session.user.id },
-        select: { id: true },
+        select: { roomId: true },
       });
-      streamerId = streamer?.id;
+      roomId = streamer?.roomId ?? undefined;
     }
     // token access without ?all=1 returns all logs
   }
 
-  const log = getGiftLog(streamerId);
+  const log = getGiftLog(roomId);
 
   return NextResponse.json({ count: log.length, log });
 }

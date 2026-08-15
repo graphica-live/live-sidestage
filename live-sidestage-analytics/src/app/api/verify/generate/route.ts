@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
+import { resolveRoomForStreamer } from "@/lib/tiktok-room";
 
 // GET: return existing pending code for current user
 export async function GET() {
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
   // 実データ(コイン数・ギフト履歴)へのアクセスはBIO認証完了まで別途ブロックされる。
   const code = generateVerificationCode();
 
-  await prisma.streamer.upsert({
+  const streamer = await prisma.streamer.upsert({
     where: { userId: session.user.id },
     update: { tiktokId: clean, verificationCode: code, verified: false, verifiedAt: null },
     create: {
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest) {
       verificationCode: code,
     },
   });
+
+  // 同じtiktokIdを共有するTiktokRoomへ即座に紐付ける(Workerのensure loopを待たずに
+  // オーバーレイ/ギフトデータ共有を反映するため)。
+  await resolveRoomForStreamer(streamer.id);
 
   return NextResponse.json({ tiktokId: clean, code });
 }

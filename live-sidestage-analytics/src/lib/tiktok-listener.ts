@@ -14,7 +14,7 @@ export type ListenerStatus =
   | "error";
 
 interface ListenerState {
-  streamerId: string;
+  roomId: string;
   tiktokId: string;
   status: ListenerStatus;
   message: string;
@@ -28,13 +28,17 @@ interface ListenerInstance {
   reconnectTimer: NodeJS.Timeout | null;
   heartbeatInterval: NodeJS.Timeout | null;
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
+  // この部屋(TiktokRoom)を購読しているStreamer.idの集合。ギフトデータの書き込み先ではなく、
+  // オーバーレイ更新通知・チャット配信を「誰に」送るかを決めるためだけに使う
+  // (ギフトデータ自体はroomId単位で1回だけ保存され、登録者全員が同じ行を参照する)。
+  subscriberIds: Set<string>;
   stopped: boolean;
   lastEventAt: number;
 }
 
 export interface GiftLogEntry {
   ts: string;
-  streamerId: string;
+  roomId: string;
   action: "combo" | "non-combo" | "dropped";
   reason?: string;
   giftType: unknown;
@@ -69,8 +73,8 @@ export function appendGiftLog(entry: GiftLogEntry) {
   if (giftLog.length > GIFT_LOG_MAX) giftLog.splice(0, giftLog.length - GIFT_LOG_MAX);
 }
 
-export function getGiftLog(streamerId?: string): GiftLogEntry[] {
-  return streamerId ? giftLog.filter((e) => e.streamerId === streamerId) : [...giftLog];
+export function getGiftLog(roomId?: string): GiftLogEntry[] {
+  return roomId ? giftLog.filter((e) => e.roomId === roomId) : [...giftLog];
 }
 
 const RECONNECT_DELAY_MS = 10_000;
@@ -81,8 +85,8 @@ const OFFLINE_RECONNECT_DELAY_MS = 30_000;
 // gift通知はin-process(appendGiftLog/emitOverlaySnapshot直接呼び出し)のままになる。
 const isWorkerProcess = Boolean(process.env.WEB_INTERNAL_URL);
 
-// streamerId等の文字列を決定的にmod分散するためのハッシュ。
-// 乱数を使わないのは、複数プロセスが同時にresolve*ForStreamer()を呼んでも
+// roomId等の文字列を決定的にmod分散するためのハッシュ。
+// 乱数を使わないのは、複数プロセスが同時にresolve*ForRoom()を呼んでも
 // 常に同じ結果になり、割当の競合が起きないようにするため。
 function hashToIndex(value: string, mod: number): number {
   let hash = 0;
@@ -110,20 +114,21 @@ function getWorkerConfig(): { index: number; count: number } {
 }
 
 // deviceId(src/lib/device-id.ts)と同じ「初回決定→永続化→再利用」パターン。
-// WORKER_COUNTが変わらない限り、再起動やWorker再編を挟んでも同じ配信者は同じworkerIdになる。
-export async function resolveWorkerForStreamer(
-  streamerId: string,
+// WORKER_COUNTが変わらない限り、再起動やWorker再編を挟んでも同じ部屋(TiktokRoom)は
+// 同じworkerIdになる。同じtiktokIdを複数人が登録しても部屋は1つなので、必ず同じWorkerが担当する。
+export async function resolveWorkerForRoom(
+  roomId: string,
   workerCount: number
 ): Promise<number> {
-  const streamer = await prisma.streamer.findUnique({
-    where: { id: streamerId },
+  const room = await prisma.tiktokRoom.findUnique({
+    where: { id: roomId },
     select: { workerId: true },
   });
-  if (streamer?.workerId != null) return streamer.workerId;
+  if (room?.workerId != null) return room.workerId;
 
-  const workerId = hashToIndex(streamerId, workerCount);
-  await prisma.streamer.update({
-    where: { id: streamerId },
+  const workerId = hashToIndex(roomId, workerCount);
+  await prisma.tiktokRoom.update({
+    where: { id: roomId },
     data: { workerId },
   });
   return workerId;
@@ -144,23 +149,23 @@ function getProxyPool(): string[] {
 // proxyKeyはTIKTOK_PROXY_POOL配列内のインデックスを文字列で保持する(sticky割当)。
 // 新しいプロキシを追加する場合は配列の末尾に足すこと — 途中への挿入や削除は
 // 既存の割当をずらしてしまう(deviceIdと違い値そのものを保存できないため)。
-export async function resolveProxyForStreamer(streamerId: string): Promise<string | null> {
+export async function resolveProxyForRoom(roomId: string): Promise<string | null> {
   const pool = getProxyPool();
   if (pool.length === 0) return null;
 
-  const streamer = await prisma.streamer.findUnique({
-    where: { id: streamerId },
+  const room = await prisma.tiktokRoom.findUnique({
+    where: { id: roomId },
     select: { proxyKey: true },
   });
 
-  const existingIdx = streamer?.proxyKey != null ? Number(streamer.proxyKey) : NaN;
+  const existingIdx = room?.proxyKey != null ? Number(room.proxyKey) : NaN;
   if (Number.isInteger(existingIdx) && existingIdx >= 0 && existingIdx < pool.length) {
     return pool[existingIdx];
   }
 
-  const idx = hashToIndex(streamerId, pool.length);
-  await prisma.streamer.update({
-    where: { id: streamerId },
+  const idx = hashToIndex(roomId, pool.length);
+  await prisma.tiktokRoom.update({
+    where: { id: roomId },
     data: { proxyKey: String(idx) },
   });
   return pool[idx];
@@ -244,10 +249,10 @@ function isAlreadyConnectedError(error: unknown): boolean {
   return /already connected!?/i.test(msg);
 }
 
-async function persistState(streamerId: string, status: ListenerStatus, message: string) {
+async function persistState(roomId: string, status: ListenerStatus, message: string) {
   try {
-    await prisma.streamer.update({
-      where: { id: streamerId },
+    await prisma.tiktokRoom.update({
+      where: { id: roomId },
       data: { listenerStatus: status, listenerMessage: message, listenerUpdatedAt: new Date() },
     });
   } catch (err) {
@@ -269,7 +274,7 @@ function updateState(
     inst.lastEventAt = Date.now();
     if (!inst.heartbeatInterval) {
       inst.heartbeatInterval = setInterval(() => {
-        persistState(inst.state.streamerId, "connected", inst.state.message);
+        persistState(inst.state.roomId, "connected", inst.state.message);
       }, 30_000);
     }
   } else {
@@ -279,7 +284,7 @@ function updateState(
     }
   }
 
-  persistState(inst.state.streamerId, status, message);
+  persistState(inst.state.roomId, status, message);
 }
 
 function jstDateKey(date: Date = new Date()): string {
@@ -287,9 +292,9 @@ function jstDateKey(date: Date = new Date()): string {
 }
 
 /**
- * TikTok共通メッセージヘッダの createTime（epoch ms）を優先し、
+ * TikTok共通メッセージヘッダの createTime(epoch ms)を優先し、
  * 欠落・不正値の場合のみサーバー受信時刻にフォールバックする。
- * フォールバックは呼び出し側で必ずログに残すこと（サイレントフォールバック禁止）。
+ * フォールバックは呼び出し側で必ずログに残すこと(サイレントフォールバック禁止)。
  */
 function resolveEventTime(data: Record<string, unknown>): { time: Date; source: "tiktok" | "fallback" } {
   const raw = Number(data.createTime);
@@ -300,12 +305,12 @@ function resolveEventTime(data: Record<string, unknown>): { time: Date; source: 
 }
 
 async function loadPendingCombos(
-  streamerId: string
+  roomId: string
 ): Promise<Map<string, { repeatCount: number }>> {
   const dayKey = jstDateKey();
   const rows = await prisma.gift.groupBy({
     by: ["groupId"],
-    where: { streamerId, dayKey, groupId: { not: null } },
+    where: { roomId, dayKey, groupId: { not: null } },
     _sum: { repeatCount: true },
   });
   const map = new Map<string, { repeatCount: number }>();
@@ -315,13 +320,14 @@ async function loadPendingCombos(
   return map;
 }
 
+// 保存に成功したらtrueを返す(呼び出し側はこれを見てオーバーレイ通知の要否を判断する)。
 async function saveGift(
-  streamerId: string,
+  roomId: string,
   data: Record<string, unknown>,
   count: number,
   receivedAt: Date,
   timeSource: "tiktok" | "fallback"
-) {
+): Promise<boolean> {
   try {
     const dayKey = jstDateKey(receivedAt);
     const diamondCount = Number(data.diamondCount) || 0;
@@ -329,7 +335,7 @@ async function saveGift(
     const groupId = data.groupId ? String(data.groupId) : null;
     await prisma.gift.create({
       data: {
-        streamerId,
+        roomId,
         uniqueId: String(data.uniqueId || ""),
         nickname: String(data.nickname || ""),
         profileImageUrl: data.profilePictureUrl
@@ -350,13 +356,14 @@ async function saveGift(
         groupId,
       },
     });
-    notifyOverlayUpdate(streamerId);
+    return true;
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
       console.log("[gift] dedup: duplicate orderId skipped", data.orderId);
-      return;
+      return false;
     }
     console.error("[listener] gift save error:", err);
+    return false;
   }
 }
 
@@ -388,7 +395,7 @@ function createConnection(
       device_id: deviceId,
     },
     // proxy-agent v6は `new ProxyAgent(url)` ではなく、getProxyForUrlコールバックで
-    // プロキシ先を解決する形式に変わっている。streamerごとに固定のプロキシURLを
+    // プロキシ先を解決する形式に変わっている。部屋(TiktokRoom)ごとに固定のプロキシURLを
     // 返すだけのコールバックを渡すことで、sticky割当を実現する。
     ...(proxyUrl
       ? {
@@ -399,8 +406,8 @@ function createConnection(
   } as Record<string, unknown>);
 }
 
-async function connectInstance(streamerId: string) {
-  const inst = listeners.get(streamerId);
+async function connectInstance(roomId: string) {
+  const inst = listeners.get(roomId);
   if (!inst || inst.stopped) return;
 
   if (inst.connectPromise) return inst.connectPromise;
@@ -412,8 +419,8 @@ async function connectInstance(streamerId: string) {
     inst.connection = null;
   }
 
-  const deviceId = await getOrCreateDeviceId(streamerId);
-  const proxyUrl = await resolveProxyForStreamer(streamerId);
+  const deviceId = await getOrCreateDeviceId(roomId);
+  const proxyUrl = await resolveProxyForRoom(roomId);
   const eulerSignApiKey = await getEulerSignApiKey().catch(() => null);
 
   // re-check after async gap
@@ -424,18 +431,18 @@ async function connectInstance(streamerId: string) {
 
   conn.on("disconnected", () => {
     if (inst.connectPromise) return;
-    scheduleReconnect(streamerId, "disconnected");
+    scheduleReconnect(roomId, "disconnected");
   });
 
   conn.on("streamEnd", () => {
     if (inst.connectPromise) return;
-    scheduleReconnect(streamerId, "stream_end");
+    scheduleReconnect(roomId, "stream_end");
   });
 
   conn.on("error", (err: unknown) => {
     if (inst.connectPromise) return;
     scheduleReconnect(
-      streamerId,
+      roomId,
       isUserOfflineError(err) ? "user_offline" : "error"
     );
   });
@@ -451,14 +458,17 @@ async function connectInstance(streamerId: string) {
 
   conn.on("chat", (data: Record<string, unknown>) => {
     const { time: eventTime } = resolveEventTime(data);
-    notifyChatComment({
-      streamerId,
+    const payload = {
       uniqueId: String(data.uniqueId || ""),
       nickname: String(data.nickname || ""),
       profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
       comment: String(data.comment || ""),
       receivedAt: eventTime.toISOString(),
-    });
+    };
+    // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
+    for (const streamerId of Array.from(inst.subscriberIds)) {
+      notifyChatComment({ streamerId, ...payload });
+    }
   });
 
   conn.on("gift", (data: Record<string, unknown>) => {
@@ -471,7 +481,7 @@ async function connectInstance(streamerId: string) {
 
     if (timeSource === "fallback") {
       console.warn("[gift] createTime missing/invalid — falling back to server time", {
-        streamerId,
+        roomId,
         uniqueId: data.uniqueId,
         giftId: data.giftId,
         orderId: data.orderId,
@@ -481,7 +491,7 @@ async function connectInstance(streamerId: string) {
 
     const baseLog = {
       ts: new Date().toISOString(),
-      streamerId,
+      roomId,
       giftType: data.giftType,
       giftName: data.giftName,
       uniqueId: data.uniqueId,
@@ -497,6 +507,14 @@ async function connectInstance(streamerId: string) {
 
     console.log("[gift]", JSON.stringify(baseLog));
 
+    // ギフトデータはroomId単位で1行だけ保存される(登録者全員で共有)。
+    // 保存に成功したときだけ、購読している全Streamerのオーバーレイへ更新通知を送る。
+    const notifyAllSubscribers = () => {
+      for (const streamerId of Array.from(inst.subscriberIds)) {
+        notifyOverlayUpdate(streamerId);
+      }
+    };
+
     if (isCombo) {
       const prev = inst.pendingCombos.get(comboKey!);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
@@ -508,14 +526,18 @@ async function connectInstance(streamerId: string) {
       }
       console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
       notifyGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
-      if (delta > 0) saveGift(streamerId, data, delta, eventTime, timeSource);
+      if (delta > 0) {
+        saveGift(roomId, data, delta, eventTime, timeSource).then((saved) => {
+          if (saved) notifyAllSubscribers();
+        });
+      }
       return;
     }
 
     // Non-combo: use orderId for dedup, fall back to groupId (e.g. giftType=2 gifts like Compact send empty orderId).
     // orderId/groupIdが両方欠落するケースもある(一部のgiftType=2ギフト) — dedupキーが無いだけで
     // ギフト自体は実際に届いているため、保存せず捨てるとダイヤ数がそのまま失われる。
-    // orderIdカラムはunique制約付きだがPostgresはNULL同士を重複とみなさないため、
+    // orderIdカラムは(roomId, orderId)複合ユニーク制約付きだがPostgresはNULL同士を重複とみなさないため、
     // orderId=nullのまま保存してもDB側の衝突は起きない。
     const orderId =
       (data.orderId ? String(data.orderId) : null) ||
@@ -527,12 +549,16 @@ async function connectInstance(streamerId: string) {
         giftName: data.giftName,
       });
       notifyGiftLog({ ...baseLog, action: "non-combo", reason: "missing_orderId_and_groupId" });
-      saveGift(streamerId, data, currentRepeat, eventTime, timeSource);
+      saveGift(roomId, data, currentRepeat, eventTime, timeSource).then((saved) => {
+        if (saved) notifyAllSubscribers();
+      });
       return;
     }
     console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
     notifyGiftLog({ ...baseLog, action: "non-combo" });
-    saveGift(streamerId, data, currentRepeat, eventTime, timeSource);
+    saveGift(roomId, data, currentRepeat, eventTime, timeSource).then((saved) => {
+      if (saved) notifyAllSubscribers();
+    });
   });
 
   if (conn.clientParams) {
@@ -556,7 +582,7 @@ async function connectInstance(streamerId: string) {
       }
       if (!inst.stopped) {
         scheduleReconnect(
-          streamerId,
+          roomId,
           isUserOfflineError(err) ? "user_offline" : "connect_failed"
         );
       }
@@ -568,8 +594,8 @@ async function connectInstance(streamerId: string) {
   return inst.connectPromise;
 }
 
-function scheduleReconnect(streamerId: string, reason: string) {
-  const inst = listeners.get(streamerId);
+function scheduleReconnect(roomId: string, reason: string) {
+  const inst = listeners.get(roomId);
   if (!inst || inst.stopped) return;
   if (inst.reconnectTimer) return;
 
@@ -580,13 +606,18 @@ function scheduleReconnect(streamerId: string, reason: string) {
 
   inst.reconnectTimer = setTimeout(async () => {
     inst.reconnectTimer = null;
-    await connectInstance(streamerId);
+    await connectInstance(roomId);
   }, delay);
 }
 
-export async function startListener(streamerId: string, tiktokId: string) {
-  const existing = listeners.get(streamerId);
+export async function startListener(
+  roomId: string,
+  tiktokId: string,
+  subscriberIds: string[] = []
+) {
+  const existing = listeners.get(roomId);
   if (existing && !existing.stopped) {
+    existing.subscriberIds = new Set(subscriberIds);
     if (
       existing.state.status === "connected" ||
       existing.state.status === "connecting"
@@ -596,14 +627,14 @@ export async function startListener(streamerId: string, tiktokId: string) {
   }
 
   if (existing) {
-    await stopListener(streamerId);
+    await stopListener(roomId);
   }
 
-  const pendingCombos = await loadPendingCombos(streamerId);
+  const pendingCombos = await loadPendingCombos(roomId);
 
   const inst: ListenerInstance = {
     state: {
-      streamerId,
+      roomId,
       tiktokId,
       status: "idle",
       message: "起動中",
@@ -614,17 +645,18 @@ export async function startListener(streamerId: string, tiktokId: string) {
     reconnectTimer: null,
     heartbeatInterval: null,
     pendingCombos,
+    subscriberIds: new Set(subscriberIds),
     stopped: false,
     lastEventAt: Date.now(),
   };
 
-  listeners.set(streamerId, inst);
-  await connectInstance(streamerId);
+  listeners.set(roomId, inst);
+  await connectInstance(roomId);
   return inst.state;
 }
 
-export async function stopListener(streamerId: string) {
-  const inst = listeners.get(streamerId);
+export async function stopListener(roomId: string) {
+  const inst = listeners.get(roomId);
   if (!inst) return;
 
   inst.stopped = true;
@@ -639,7 +671,7 @@ export async function stopListener(streamerId: string) {
     inst.reconnectTimer = null;
   }
 
-  persistState(inst.state.streamerId, "idle", "停止中");
+  persistState(inst.state.roomId, "idle", "停止中");
 
   if (inst.connection) {
     inst.connection.removeAllListeners?.();
@@ -648,34 +680,42 @@ export async function stopListener(streamerId: string) {
     } catch {}
   }
 
-  listeners.delete(streamerId);
+  listeners.delete(roomId);
 }
 
-export function getListenerStatus(streamerId: string): ListenerState | null {
-  return listeners.get(streamerId)?.state ?? null;
+export function getListenerStatus(roomId: string): ListenerState | null {
+  return listeners.get(roomId)?.state ?? null;
 }
 
-// 自分(このWorkerプロセス)が担当する配信者だけを返す。
-// workerId未割当の配信者は resolveWorkerForStreamer() で決定的にハッシュ割当し、
+type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
+
+// 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。
+// workerId未割当の部屋は resolveWorkerForRoom() で決定的にハッシュ割当し、
 // 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
-async function getMyStreamers() {
+// 登録者(Streamer)が1人もいない部屋(全員が退会/re-registration済み)は除外する。
+async function getMyRooms(): Promise<MyRoom[]> {
   const { index, count } = getWorkerConfig();
 
-  // verified未完了でも登録済みなら即座にライブ接続を開始する(オーバーレイを即時利用可能にするため)。
-  const assigned = await prisma.streamer.findMany({
-    where: { workerId: index },
+  const assigned = await prisma.tiktokRoom.findMany({
+    where: { workerId: index, streamers: { some: {} } },
+    include: { streamers: { select: { id: true } } },
   });
 
-  const unassigned = await prisma.streamer.findMany({
-    where: { workerId: null },
+  const unassigned = await prisma.tiktokRoom.findMany({
+    where: { workerId: null, streamers: { some: {} } },
+    include: { streamers: { select: { id: true } } },
   });
   const claimed: typeof unassigned = [];
-  for (const s of unassigned) {
-    const workerId = await resolveWorkerForStreamer(s.id, count);
-    if (workerId === index) claimed.push(s);
+  for (const r of unassigned) {
+    const workerId = await resolveWorkerForRoom(r.id, count);
+    if (workerId === index) claimed.push(r);
   }
 
-  return [...assigned, ...claimed];
+  return [...assigned, ...claimed].map((r) => ({
+    id: r.id,
+    tiktokId: r.tiktokId,
+    subscriberIds: r.streamers.map((s) => s.id),
+  }));
 }
 
 // 起動時の初回接続を束ねる同時実行数。無制限並列だとEuler署名サーバー/TikTok側への
@@ -698,34 +738,52 @@ async function runWithConcurrency<T>(
 }
 
 export async function resumeAllListeners() {
-  const streamers = await getMyStreamers();
+  const rooms = await getMyRooms();
 
-  console.log(`[listener] resumeAllListeners: found ${streamers.length} streamer(s)`);
+  console.log(`[listener] resumeAllListeners: found ${rooms.length} room(s)`);
 
-  await runWithConcurrency(streamers, RESUME_CONCURRENCY, async (s) => {
-    console.log(`[listener] starting listener for @${s.tiktokId} (${s.id})`);
-    await startListener(s.id, s.tiktokId).catch((err) =>
-      console.error(`[listener] resume failed for ${s.tiktokId}:`, err)
+  await runWithConcurrency(rooms, RESUME_CONCURRENCY, async (r) => {
+    console.log(`[listener] starting listener for @${r.tiktokId} (room ${r.id}, ${r.subscriberIds.length} subscriber(s))`);
+    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) =>
+      console.error(`[listener] resume failed for ${r.tiktokId}:`, err)
     );
-    console.log(`[listener] listener state for @${s.tiktokId}:`, listeners.get(s.id)?.state.status);
+    console.log(`[listener] listener state for @${r.tiktokId}:`, listeners.get(r.id)?.state.status);
   });
 }
 
-// デプロイ時のグレースフルシャットダウン用。担当中の全streamerのTikTok接続を明示的に切断する。
+// デプロイ時のグレースフルシャットダウン用。担当中の全部屋のTikTok接続を明示的に切断する。
 export async function stopAllListeners() {
-  const streamerIds = Array.from(listeners.keys());
-  console.log(`[listener] stopAllListeners: disconnecting ${streamerIds.length} streamer(s)`);
-  await Promise.all(streamerIds.map((id) => stopListener(id)));
+  const roomIds = Array.from(listeners.keys());
+  console.log(`[listener] stopAllListeners: disconnecting ${roomIds.length} room(s)`);
+  await Promise.all(roomIds.map((id) => stopListener(id)));
 }
 
+// 60秒間隔で呼ばれるreconcileループ。以下をすべてここで一貫処理する:
+//  - まだ接続していない担当部屋の起動
+//  - 購読者(subscriberIds)が変わった部屋の更新(再接続はしない)
+//  - 購読者がゼロになった/担当替えで自分の担当でなくなった部屋の切断
+//    (tiktokId変更による旧部屋の切断・Streamer削除・Worker再編のすべてがこの1箇所を通る)
 export async function ensureAllListenersAlive() {
-  const streamers = await getMyStreamers();
+  const rooms = await getMyRooms();
+  const myRoomIds = new Set(rooms.map((r) => r.id));
 
-  for (const s of streamers) {
-    if (!listeners.has(s.id)) {
-      console.log(`[listener] ensureAlive: restarting missing listener for @${s.tiktokId}`);
-      await startListener(s.id, s.tiktokId).catch((err) =>
-        console.error(`[listener] ensureAlive failed for ${s.tiktokId}:`, err)
+  for (const r of rooms) {
+    const existing = listeners.get(r.id);
+    if (existing) {
+      existing.subscriberIds = new Set(r.subscriberIds);
+      continue;
+    }
+    console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokId}`);
+    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) =>
+      console.error(`[listener] ensureAlive failed for ${r.tiktokId}:`, err)
+    );
+  }
+
+  for (const roomId of Array.from(listeners.keys())) {
+    if (!myRoomIds.has(roomId)) {
+      console.log(`[listener] ensureAlive: tearing down orphaned/reassigned room ${roomId}`);
+      await stopListener(roomId).catch((err) =>
+        console.error(`[listener] ensureAlive teardown failed for ${roomId}:`, err)
       );
     }
   }
@@ -738,7 +796,7 @@ const WATCHDOG_SILENCE_MS = 10_000;
 // without firing disconnected/streamEnd.
 export function checkWatchdogs() {
   const now = Date.now();
-  listeners.forEach((inst, streamerId) => {
+  listeners.forEach((inst, roomId) => {
     if (inst.stopped) return;
     if (inst.state.status !== "connected") return;
     if (inst.connectPromise) return;
@@ -748,7 +806,7 @@ export function checkWatchdogs() {
       console.warn(
         `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect`
       );
-      connectInstance(streamerId).catch((err) =>
+      connectInstance(roomId).catch((err) =>
         console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
       );
     }

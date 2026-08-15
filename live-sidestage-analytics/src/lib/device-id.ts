@@ -4,17 +4,17 @@ function generateDeviceId(): string {
   return Array.from({ length: 19 }, () => Math.floor(Math.random() * 10)).join("");
 }
 
-export async function getOrCreateDeviceId(streamerId: string): Promise<string> {
-  const streamer = await prisma.streamer.findUnique({
-    where: { id: streamerId },
+export async function getOrCreateDeviceId(roomId: string): Promise<string> {
+  const room = await prisma.tiktokRoom.findUnique({
+    where: { id: roomId },
     select: { deviceId: true },
   });
 
-  if (streamer?.deviceId) return streamer.deviceId;
+  if (room?.deviceId) return room.deviceId;
 
   const deviceId = generateDeviceId();
-  await prisma.streamer.update({
-    where: { id: streamerId },
+  await prisma.tiktokRoom.update({
+    where: { id: roomId },
     data: { deviceId },
   });
 
