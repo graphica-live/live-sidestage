@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "既にTikTokアカウントが登録されています" }, { status: 409 });
   }
 
-  const existingStreamer = await prisma.streamer.findUnique({ where: { tiktokId: cleanTiktokId } });
+  const existingStreamer = await prisma.streamer.findFirst({ where: { tiktokId: cleanTiktokId } });
   if (existingStreamer) {
     return NextResponse.json({ error: "このTikTok IDは既に登録されています" }, { status: 400 });
   }

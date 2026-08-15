@@ -61,7 +61,7 @@ model VerificationToken {
 model Streamer {
   id               String    @id @default(cuid())
   userId           String    @unique
-  tiktokId         String    @unique
+  tiktokId         String
   verificationCode String
   verified         Boolean   @default(false)
   verifiedAt       DateTime?

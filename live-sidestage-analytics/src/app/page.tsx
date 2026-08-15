@@ -12,7 +12,8 @@ export default async function Home() {
     where: { userId: session.user.id },
   });
 
-  if (!streamer?.verified) redirect("/setup");
+  // verified未完了でもTikTok ID登録済みならダッシュボード(オーバーレイ)を即時利用できる。
+  if (!streamer) redirect("/setup");
 
   redirect("/analytics");
 }

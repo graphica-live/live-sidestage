@@ -661,12 +661,13 @@ export function getListenerStatus(streamerId: string): ListenerState | null {
 async function getMyStreamers() {
   const { index, count } = getWorkerConfig();
 
+  // verified未完了でも登録済みなら即座にライブ接続を開始する(オーバーレイを即時利用可能にするため)。
   const assigned = await prisma.streamer.findMany({
-    where: { verified: true, workerId: index },
+    where: { workerId: index },
   });
 
   const unassigned = await prisma.streamer.findMany({
-    where: { verified: true, workerId: null },
+    where: { workerId: null },
   });
   const claimed: typeof unassigned = [];
   for (const s of unassigned) {
@@ -699,7 +700,7 @@ async function runWithConcurrency<T>(
 export async function resumeAllListeners() {
   const streamers = await getMyStreamers();
 
-  console.log(`[listener] resumeAllListeners: found ${streamers.length} verified streamer(s)`);
+  console.log(`[listener] resumeAllListeners: found ${streamers.length} streamer(s)`);
 
   await runWithConcurrency(streamers, RESUME_CONCURRENCY, async (s) => {
     console.log(`[listener] starting listener for @${s.tiktokId} (${s.id})`);
