@@ -17,8 +17,9 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final session = context.read<SessionController>().session;
-      if (session != null) {
-        context.read<CommentFeed>().connect(session.apiKey);
+      final apiKey = session?.streamer?.apiKey;
+      if (apiKey != null) {
+        context.read<CommentFeed>().connect(apiKey);
       }
     });
   }
@@ -56,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('@${session?.tiktokId ?? ''}'),
+        title: Text('@${session?.streamer?.tiktokId ?? ''}'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),

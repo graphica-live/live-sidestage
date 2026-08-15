@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import 'login_screen.dart';
-import 'register_screen.dart';
+import '../core/session_controller.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
+  Future<void> _signIn(SessionController controller) async {
+    await controller.signInWithGoogle();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final controller = context.watch<SessionController>();
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -26,23 +32,26 @@ class WelcomeScreen extends StatelessWidget {
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 40),
+                if (controller.errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      controller.errorMessage!,
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 FilledButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('新規登録（LiveAnalyticsに登録）'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('ログイン'),
+                  onPressed: controller.isLoading ? null : () => _signIn(controller),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: controller.isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Googleでログイン'),
                   ),
                 ),
               ],

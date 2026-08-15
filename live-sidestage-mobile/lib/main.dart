@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'core/comment_feed.dart';
 import 'core/session_controller.dart';
 import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/welcome_screen.dart';
 
 void main() {
@@ -40,6 +41,9 @@ class AuthGate extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return controller.session != null ? const HomeScreen() : const WelcomeScreen();
+    final session = controller.session;
+    if (session == null) return const WelcomeScreen();
+    if (session.onboardingRequired) return const OnboardingScreen();
+    return const HomeScreen();
   }
 }

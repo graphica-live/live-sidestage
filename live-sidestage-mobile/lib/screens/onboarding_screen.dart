@@ -3,31 +3,26 @@ import 'package:provider/provider.dart';
 
 import '../core/session_controller.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class OnboardingScreen extends StatefulWidget {
+  const OnboardingScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _tiktokIdController = TextEditingController();
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _tiktokIdController.dispose();
     super.dispose();
   }
 
   Future<void> _submit(SessionController controller) async {
     if (!_formKey.currentState!.validate()) return;
-    await controller.login(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
+    await controller.completeOnboarding(tiktokId: _tiktokIdController.text.trim());
   }
 
   @override
@@ -35,7 +30,16 @@ class _LoginScreenState extends State<LoginScreen> {
     final controller = context.watch<SessionController>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('ログイン')),
+      appBar: AppBar(
+        title: const Text('TikTokアカウントの連携'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'ログアウト',
+            onPressed: () => controller.logout(),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -44,18 +48,15 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'メールアドレス'),
-                  validator: (v) => (v == null || !v.contains('@')) ? '正しいメールアドレスを入力してください' : null,
+                Text(
+                  'ようこそ、${controller.session?.userName ?? ''}さん。\n最後にTikTok IDを連携してください。',
+                  style: const TextStyle(color: Colors.grey),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 24),
                 TextFormField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'パスワード'),
-                  validator: (v) => (v == null || v.isEmpty) ? 'パスワードを入力してください' : null,
+                  controller: _tiktokIdController,
+                  decoration: const InputDecoration(labelText: 'TikTok ID（@なし）'),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'TikTok IDを入力してください' : null,
                 ),
                 const SizedBox(height: 24),
                 if (controller.errorMessage != null)
@@ -74,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('ログイン'),
+                      : const Text('連携する'),
                 ),
               ],
             ),

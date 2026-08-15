@@ -6,6 +6,11 @@ import '../models/auth_session.dart';
 
 const String liveAnalyticsBaseUrl = 'https://liveanalytics-production.up.railway.app';
 
+// TODO: Google Cloud ConsoleでこのAndroidアプリ用のOAuthクライアントを作成し、
+// パッケージ名 com.liveanalytics.tikcaption_reader とdebug/releaseのSHA-1指紋を登録すること。
+// 下記の値はLiveAnalyticsバックエンドの .env にあるWeb用 GOOGLE_CLIENT_ID と同じ値にする。
+const String googleServerClientId = 'YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com';
+
 class ApiException implements Exception {
   final String message;
   ApiException(this.message);
@@ -15,37 +20,36 @@ class ApiException implements Exception {
 }
 
 class LiveAnalyticsApi {
-  Future<AuthSession> register({
-    required String name,
-    required String email,
-    required String password,
+  Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
+    final data = await _post('/api/mobile/auth/google', {'idToken': idToken});
+    return AuthSession.fromJson(data);
+  }
+
+  Future<(String token, StreamerInfo streamer)> registerStreamer({
+    required String token,
     required String tiktokId,
-  }) {
-    return _postAuth('/api/mobile/auth/register', {
-      'name': name,
-      'email': email,
-      'password': password,
-      'tiktokId': tiktokId,
-    });
+  }) async {
+    final data = await _post(
+      '/api/mobile/streamer',
+      {'tiktokId': tiktokId},
+      token: token,
+    );
+    return (
+      data['token'] as String,
+      StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>),
+    );
   }
 
-  Future<AuthSession> login({
-    required String email,
-    required String password,
-  }) {
-    return _postAuth('/api/mobile/auth/login', {
-      'email': email,
-      'password': password,
-    });
-  }
-
-  Future<AuthSession> _postAuth(String path, Map<String, String> body) async {
+  Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) async {
     final http.Response response;
     try {
       response = await http
           .post(
             Uri.parse('$liveAnalyticsBaseUrl$path'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 20));
@@ -64,10 +68,6 @@ class LiveAnalyticsApi {
       throw ApiException(data['error'] as String? ?? 'エラーが発生しました (${response.statusCode})');
     }
 
-    if (data['streamer'] == null) {
-      throw ApiException('このアカウントにはTikTok配信者情報が登録されていません。');
-    }
-
-    return AuthSession.fromJson(data);
+    return data;
   }
 }

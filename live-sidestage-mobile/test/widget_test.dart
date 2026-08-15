@@ -19,7 +19,6 @@ void main() {
     await tester.pump();
 
     expect(find.text('TikCaptionReader'), findsOneWidget);
-    expect(find.text('新規登録（LiveAnalyticsに登録）'), findsOneWidget);
-    expect(find.text('ログイン'), findsOneWidget);
+    expect(find.text('Googleでログイン'), findsOneWidget);
   });
 }
