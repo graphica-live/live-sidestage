@@ -412,20 +412,43 @@ async function connectInstance(roomId: string) {
 
   if (inst.connectPromise) return inst.connectPromise;
 
-  // disconnect stale connection before creating a new one
-  if (inst.connection) {
-    inst.connection.removeAllListeners?.();
-    try { inst.connection.disconnect?.(); } catch {}
-    inst.connection = null;
-  }
+  // connectPromiseは同期的に(awaitを一切挟まず)ここで確定させる。
+  // 呼び出し直後にconnectInstanceが再度呼ばれても、上のガードが必ず
+  // このPromiseを拾えるようにするため — 以前は接続処理の途中(非同期処理や
+  // イベントハンドラ登録)を挟んでから代入していたため、watchdog等による
+  // 短時間の連続呼び出しでガードをすり抜け、複数のライブ接続が並行して
+  // 張られてコメントが多重配信される不具合があった。
+  inst.connectPromise = (async () => {
+    try {
+      // disconnect stale connection before creating a new one
+      if (inst.connection) {
+        inst.connection.removeAllListeners?.();
+        try { inst.connection.disconnect?.(); } catch {}
+        inst.connection = null;
+      }
 
-  const deviceId = await getOrCreateDeviceId(roomId);
-  const proxyUrl = await resolveProxyForRoom(roomId);
-  const eulerSignApiKey = await getEulerSignApiKey().catch(() => null);
+      const deviceId = await getOrCreateDeviceId(roomId);
+      const proxyUrl = await resolveProxyForRoom(roomId);
+      const eulerSignApiKey = await getEulerSignApiKey().catch(() => null);
 
-  // re-check after async gap
-  if (inst.stopped || inst.connectPromise) return inst.connectPromise ?? undefined;
+      if (inst.stopped) return;
 
+      await connectAndAttach(roomId, inst, deviceId, proxyUrl, eulerSignApiKey);
+    } finally {
+      inst.connectPromise = null;
+    }
+  })();
+
+  return inst.connectPromise;
+}
+
+async function connectAndAttach(
+  roomId: string,
+  inst: ListenerInstance,
+  deviceId: string,
+  proxyUrl: string | null,
+  eulerSignApiKey: string | null
+) {
   const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey);
   inst.connection = conn;
 
@@ -568,30 +591,24 @@ async function connectInstance(roomId: string) {
 
   updateState(inst, "connecting", "接続中...");
 
-  inst.connectPromise = (async () => {
-    try {
-      await conn.connect();
+  try {
+    await conn.connect();
+    updateState(inst, "connected", "接続済み");
+  } catch (err) {
+    if (isAlreadyConnectedError(err)) {
       updateState(inst, "connected", "接続済み");
-    } catch (err) {
-      if (isAlreadyConnectedError(err)) {
-        updateState(inst, "connected", "接続済み");
-        return;
-      }
-      if (!isUserOfflineError(err)) {
-        console.error("[listener] connect error:", err);
-      }
-      if (!inst.stopped) {
-        scheduleReconnect(
-          roomId,
-          isUserOfflineError(err) ? "user_offline" : "connect_failed"
-        );
-      }
-    } finally {
-      inst.connectPromise = null;
+      return;
     }
-  })();
-
-  return inst.connectPromise;
+    if (!isUserOfflineError(err)) {
+      console.error("[listener] connect error:", err);
+    }
+    if (!inst.stopped) {
+      scheduleReconnect(
+        roomId,
+        isUserOfflineError(err) ? "user_offline" : "connect_failed"
+      );
+    }
+  }
 }
 
 function scheduleReconnect(roomId: string, reason: string) {
