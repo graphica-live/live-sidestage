@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
-import 'core/comment_feed.dart';
+import 'core/background_task_handler.dart';
 import 'core/session_controller.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/welcome_screen.dart';
 
+@pragma('vm:entry-point')
+void startCallback() {
+  // audioplayers等プラットフォームチャンネルを使うプラグインはBinding初期化が必須。
+  // このcallbackは専用のバックグラウンドIsolateで実行されるため、main()側のbindingとは別に必要。
+  WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.setTaskHandler(CommentSpeechTaskHandler());
+}
+
 void main() {
+  FlutterForegroundTask.initCommunicationPort();
   runApp(const TikCaptionReaderApp());
 }
 
@@ -19,7 +29,6 @@ class TikCaptionReaderApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
-        ChangeNotifierProvider(create: (_) => CommentFeed()),
       ],
       child: MaterialApp(
         title: 'TikCaptionReader',
