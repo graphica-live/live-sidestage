@@ -543,7 +543,9 @@ export default function AnalyticsPage() {
       {/* Header */}
       <header className="border-b border-border bg-panel sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <h1 className="text-brand font-bold text-lg shrink-0">LiveAnalytics</h1>
+          <Link href="/analytics" className="text-brand font-bold text-lg shrink-0 hover:opacity-80 transition-opacity">
+            LiveAnalytics
+          </Link>
 
           <div className="flex items-center gap-2 min-w-0">
             {listener && (
