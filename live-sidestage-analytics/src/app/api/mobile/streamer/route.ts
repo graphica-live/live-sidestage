@@ -60,3 +60,44 @@ export async function POST(req: NextRequest) {
     { status: 201 }
   );
 }
+
+export async function PATCH(req: NextRequest) {
+  const auth = resolveUserByMobileToken(req);
+  if (!auth) {
+    return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+  }
+
+  const { tiktokId } = await req.json();
+  const cleanTiktokId = String(tiktokId ?? "").replace(/^@/, "").trim();
+  if (!cleanTiktokId) {
+    return NextResponse.json({ error: "TikTok IDを入力してください" }, { status: 400 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: auth.userId },
+    include: { streamer: true },
+  });
+  if (!user) {
+    return NextResponse.json({ error: "ユーザーが見つかりません" }, { status: 401 });
+  }
+  if (!user.streamer) {
+    return NextResponse.json({ error: "TikTokアカウントが未登録です" }, { status: 404 });
+  }
+
+  const streamer = await prisma.streamer.update({
+    where: { id: user.streamer.id },
+    data: { tiktokId: cleanTiktokId },
+  });
+
+  // 新しいtiktokIdに対応するTiktokRoomへ付け替える。
+  await resolveRoomForStreamer(streamer.id);
+
+  return NextResponse.json({
+    streamer: {
+      id: streamer.id,
+      tiktokId: streamer.tiktokId,
+      verified: streamer.verified,
+      apiKey: streamer.apiKey,
+    },
+  });
+}
