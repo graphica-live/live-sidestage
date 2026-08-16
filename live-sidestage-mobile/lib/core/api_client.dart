@@ -28,7 +28,8 @@ class LiveAnalyticsApi {
     required String token,
     required String tiktokId,
   }) async {
-    final data = await _post(
+    final data = await _send(
+      'POST',
       '/api/mobile/streamer',
       {'tiktokId': tiktokId},
       token: token,
@@ -39,19 +40,42 @@ class LiveAnalyticsApi {
     );
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) async {
+  Future<StreamerInfo> updateTiktokId({
+    required String token,
+    required String tiktokId,
+  }) async {
+    final data = await _send(
+      'PATCH',
+      '/api/mobile/streamer',
+      {'tiktokId': tiktokId},
+      token: token,
+    );
+    return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
+    return _send('POST', path, body, token: token);
+  }
+
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path,
+    Map<String, String> body, {
+    String? token,
+  }) async {
     final http.Response response;
     try {
-      response = await http
-          .post(
-            Uri.parse('$liveAnalyticsBaseUrl$path'),
-            headers: {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 20));
+      final uri = Uri.parse('$liveAnalyticsBaseUrl$path');
+      final headers = {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+      final encodedBody = jsonEncode(body);
+      final request = switch (method) {
+        'PATCH' => http.patch(uri, headers: headers, body: encodedBody),
+        _ => http.post(uri, headers: headers, body: encodedBody),
+      };
+      response = await request.timeout(const Duration(seconds: 20));
     } catch (_) {
       throw ApiException('サーバーに接続できませんでした。通信環境を確認してください。');
     }

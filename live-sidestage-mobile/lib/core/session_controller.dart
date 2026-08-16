@@ -56,6 +56,16 @@ class SessionController extends ChangeNotifier {
     });
   }
 
+  Future<bool> changeTiktokId(String tiktokId) {
+    final current = session;
+    if (current == null) return Future.value(false);
+
+    return _run(() async {
+      final streamer = await _api.updateTiktokId(token: current.token, tiktokId: tiktokId);
+      return current.withStreamer(token: current.token, streamer: streamer);
+    });
+  }
+
   Future<bool> _run(Future<AuthSession> Function() action) async {
     isLoading = true;
     errorMessage = null;

@@ -104,6 +104,31 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _changeTiktokId() async {
+    final controller = context.read<SessionController>();
+    final newId = await showDialog<String>(
+      context: context,
+      builder: (context) => _ChangeTiktokIdDialog(
+        initialValue: controller.session?.streamer?.tiktokId ?? '',
+      ),
+    );
+    if (newId == null || newId.isEmpty) return;
+    if (!mounted) return;
+
+    if (_serviceRunning) {
+      await _stopReading();
+      if (!mounted) return;
+    }
+
+    final ok = await controller.changeTiktokId(newId);
+    if (!mounted) return;
+    if (!ok && controller.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(controller.errorMessage!)),
+      );
+    }
+  }
+
   void _onTaskData(Object data) {
     if (data is! Map) return;
     final map = Map<String, dynamic>.from(data);
@@ -187,6 +212,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('@${session?.streamer?.tiktokId ?? ''}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'TikTok IDを変更',
+            onPressed: _changeTiktokId,
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'ログアウト',
@@ -322,5 +352,54 @@ class _HomeScreenState extends State<HomeScreen> {
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+class _ChangeTiktokIdDialog extends StatefulWidget {
+  const _ChangeTiktokIdDialog({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_ChangeTiktokIdDialog> createState() => _ChangeTiktokIdDialogState();
+}
+
+class _ChangeTiktokIdDialogState extends State<_ChangeTiktokIdDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _controller = TextEditingController(text: widget.initialValue);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('TikTok IDを変更'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'TikTok ID（@なし）'),
+          validator: (v) => (v == null || v.trim().isEmpty) ? 'TikTok IDを入力してください' : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.of(context).pop(_controller.text.trim());
+          },
+          child: const Text('変更する'),
+        ),
+      ],
+    );
   }
 }
