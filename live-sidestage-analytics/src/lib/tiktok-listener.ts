@@ -34,7 +34,14 @@ interface ListenerInstance {
   subscriberIds: Set<string>;
   stopped: boolean;
   lastEventAt: number;
+  // TikTok側が払い出すWebcastChatMessage.common.msgIdの直近受信履歴(FIFO)。
+  // TikTokのWebSocketは再接続直後やネットワーク瞬断の前後で同一チャットメッセージを
+  // 再送してくることがあり、これをそのまま配信すると全クライアントで二重に届く。
+  recentChatMsgIds: Set<string>;
+  recentChatMsgIdOrder: string[];
 }
+
+const CHAT_DEDUP_CACHE_SIZE = 300;
 
 export interface GiftLogEntry {
   ts: string;
@@ -480,6 +487,17 @@ async function connectAndAttach(
   conn.on("like", markAlive);
 
   conn.on("chat", (data: Record<string, unknown>) => {
+    const msgId = (data.common as { msgId?: unknown } | undefined)?.msgId;
+    if (typeof msgId === "string" && msgId) {
+      if (inst.recentChatMsgIds.has(msgId)) return;
+      inst.recentChatMsgIds.add(msgId);
+      inst.recentChatMsgIdOrder.push(msgId);
+      if (inst.recentChatMsgIdOrder.length > CHAT_DEDUP_CACHE_SIZE) {
+        const oldest = inst.recentChatMsgIdOrder.shift();
+        if (oldest !== undefined) inst.recentChatMsgIds.delete(oldest);
+      }
+    }
+
     const { time: eventTime } = resolveEventTime(data);
     const payload = {
       uniqueId: String(data.uniqueId || ""),
@@ -665,6 +683,8 @@ export async function startListener(
     subscriberIds: new Set(subscriberIds),
     stopped: false,
     lastEventAt: Date.now(),
+    recentChatMsgIds: new Set(),
+    recentChatMsgIdOrder: [],
   };
 
   listeners.set(roomId, inst);
