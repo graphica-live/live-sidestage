@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -12,6 +14,9 @@ class CommentFeed extends ChangeNotifier {
   SocketStatus status = SocketStatus.disconnected;
   String? errorMessage;
   final List<Comment> comments = [];
+
+  final StreamController<Comment> _commentController = StreamController<Comment>.broadcast();
+  Stream<Comment> get onComment => _commentController.stream;
 
   void connect(String apiKey) {
     disconnect();
@@ -37,11 +42,13 @@ class CommentFeed extends ChangeNotifier {
 
     socket.on('chat:comment', (data) {
       if (data is Map) {
-        comments.insert(0, Comment.fromJson(Map<String, dynamic>.from(data)));
+        final comment = Comment.fromJson(Map<String, dynamic>.from(data));
+        comments.insert(0, comment);
         if (comments.length > 200) {
           comments.removeRange(200, comments.length);
         }
         notifyListeners();
+        _commentController.add(comment);
       }
     });
 
@@ -80,6 +87,7 @@ class CommentFeed extends ChangeNotifier {
   @override
   void dispose() {
     disconnect();
+    _commentController.close();
     super.dispose();
   }
 }
