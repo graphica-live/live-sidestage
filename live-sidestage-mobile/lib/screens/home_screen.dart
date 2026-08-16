@@ -16,11 +16,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final List<Comment> _comments = [];
+  final ScrollController _scrollController = ScrollController();
   SocketStatus _status = SocketStatus.disconnected;
   String? _connectionError;
 
+  bool _serviceRunning = false;
+  bool _serviceBusy = false;
+
   bool _speechInitialized = false;
-  bool _speechEnabled = true;
   bool _randomVoice = true;
   String? _nowSpeakingCharacterName;
   String? _speechError;
@@ -29,12 +32,22 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     FlutterForegroundTask.addTaskDataCallback(_onTaskData);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startBackgroundService());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
   }
 
-  Future<void> _startBackgroundService() async {
+  Future<void> _syncRunningStatus() async {
+    final running = await FlutterForegroundTask.isRunningService;
+    if (!mounted) return;
+    setState(() => _serviceRunning = running);
+  }
+
+  // 読み上げ中はForeground Serviceで画面オフ/バックグラウンドでも継続する。
+  // 停止中はサービスを完全に止め、アプリがタスクKillされても問題ない状態にする。
+  Future<void> _startReading() async {
     final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
     if (apiKey == null) return;
+
+    setState(() => _serviceBusy = true);
 
     if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
@@ -68,6 +81,27 @@ class _HomeScreenState extends State<HomeScreen> {
         callback: startCallback,
       );
     }
+
+    if (!mounted) return;
+    setState(() {
+      _serviceRunning = true;
+      _serviceBusy = false;
+    });
+  }
+
+  Future<void> _stopReading() async {
+    setState(() => _serviceBusy = true);
+    await FlutterForegroundTask.stopService();
+    if (!mounted) return;
+    setState(() {
+      _serviceRunning = false;
+      _serviceBusy = false;
+      _status = SocketStatus.disconnected;
+      _connectionError = null;
+      _speechInitialized = false;
+      _nowSpeakingCharacterName = null;
+      _speechError = null;
+    });
   }
 
   void _onTaskData(Object data) {
@@ -86,19 +120,37 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'speech':
         setState(() {
           _speechInitialized = map['initialized'] as bool? ?? false;
-          _speechEnabled = map['enabled'] as bool? ?? true;
           _randomVoice = map['randomVoice'] as bool? ?? true;
           _nowSpeakingCharacterName = map['nowSpeakingCharacterName'] as String?;
           _speechError = map['errorMessage'] as String?;
         });
       case 'comment':
+        final wasNearBottom = _isNearBottom();
         setState(() {
-          _comments.insert(0, Comment.fromJson(map));
+          _comments.add(Comment.fromJson(map));
           if (_comments.length > 200) {
-            _comments.removeRange(200, _comments.length);
+            _comments.removeRange(0, _comments.length - 200);
           }
         });
+        if (wasNearBottom) _scrollToBottomSoon();
     }
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return (position.maxScrollExtent - position.pixels) < 80;
+  }
+
+  void _scrollToBottomSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   String _statusLabel(SocketStatus status) {
@@ -136,11 +188,6 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text('@${session?.streamer?.tiktokId ?? ''}'),
         actions: [
           IconButton(
-            icon: Icon(_speechEnabled ? Icons.volume_up : Icons.volume_off),
-            tooltip: _speechEnabled ? '読み上げをミュート' : '読み上げを再開',
-            onPressed: () => FlutterForegroundTask.sendDataToTask({'command': 'toggleMute'}),
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'ログアウト',
             onPressed: () async {
@@ -176,48 +223,77 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Row(
-              children: [
-                const Text('ランダムボイス', style: TextStyle(fontSize: 13)),
-                Switch(
-                  value: _randomVoice,
-                  onChanged: _speechInitialized
-                      ? (value) => FlutterForegroundTask.sendDataToTask({'command': 'setRandom', 'value': value})
-                      : null,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _serviceBusy ? null : (_serviceRunning ? _stopReading : _startReading),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _serviceRunning ? Colors.red : null,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                const Spacer(),
-                if (!_speechInitialized && _speechError == null)
-                  const Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                if (_nowSpeakingCharacterName != null)
-                  Text(
-                    'VOICEVOX:$_nowSpeakingCharacterName',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                if (_speechError != null)
-                  Expanded(
-                    child: Text(
-                      _speechError!,
-                      style: const TextStyle(fontSize: 11, color: Colors.red),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
+                icon: _serviceBusy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Icon(_serviceRunning ? Icons.stop : Icons.play_arrow),
+                label: Text(_serviceRunning ? '読み上げ停止' : '読み上げ開始'),
+              ),
             ),
           ),
+          if (_serviceRunning)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  const Text('ランダムボイス', style: TextStyle(fontSize: 13)),
+                  // SwitchはVOICEVOX初期化完了後(=常にonChangedありの状態)で
+                  // 初めてマウントする。準備中の無効状態からのちに有効化すると、
+                  // FlutterのSwitchが色の再描画に失敗しONなのにOFF色のまま
+                  // 固まる不具合があったため。
+                  if (_speechInitialized)
+                    Switch(
+                      value: _randomVoice,
+                      onChanged: (value) =>
+                          FlutterForegroundTask.sendDataToTask({'command': 'setRandom', 'value': value}),
+                    )
+                  else
+                    const SizedBox(width: 34, height: 34),
+                  const Spacer(),
+                  if (!_speechInitialized && _speechError == null)
+                    const Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  if (_nowSpeakingCharacterName != null)
+                    Text(
+                      'VOICEVOX:$_nowSpeakingCharacterName',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  if (_speechError != null)
+                    Expanded(
+                      child: Text(
+                        _speechError!,
+                        style: const TextStyle(fontSize: 11, color: Colors.red),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: _comments.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        '配信を開始すると、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
+                        '「読み上げ開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.grey),
                       ),
                     ),
                   )
                 : ListView.separated(
+                    controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: _comments.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
@@ -244,6 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    _scrollController.dispose();
     super.dispose();
   }
 }
