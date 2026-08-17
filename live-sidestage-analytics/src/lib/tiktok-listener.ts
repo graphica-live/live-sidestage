@@ -86,6 +86,12 @@ export function getGiftLog(roomId?: string): GiftLogEntry[] {
 
 const RECONNECT_DELAY_MS = 10_000;
 const OFFLINE_RECONNECT_DELAY_MS = 30_000;
+// 署名発行APIのレート制限中は、サーバーが返すretryAfterに従って待機する。
+// retryAfterが取得できない場合のフォールバック、および異常値(バグ・API変更)に
+// 対する下限・上限のガードレール。
+const RATE_LIMIT_MIN_DELAY_MS = 60_000;
+const RATE_LIMIT_MAX_DELAY_MS = 30 * 60_000;
+const RATE_LIMIT_FALLBACK_DELAY_MS = 10 * 60_000;
 
 // WEB_INTERNAL_URLが設定されているプロセス = Workerプロセス。
 // Webプロセス(またはローカル単一プロセス開発)はこれを設定しないため、
@@ -254,6 +260,38 @@ function isAlreadyConnectedError(error: unknown): boolean {
       ? (error as { message: string }).message
       : String(error || "");
   return /already connected!?/i.test(msg);
+}
+
+// 配信の署名発行(WebSocket接続用の署名)を担う外部APIが、アカウント単位の時間あたり
+// リクエスト数上限に達したときに投げるエラー。retryAfter(ms)が付与されていれば
+// それに従って待機する — 固定10秒で再試行し続けるとさらにクォータを消費し、
+// 制限が解けるまでの時間を実質的に引き延ばしてしまう。
+function parseSignatureRateLimitError(error: unknown): {
+  isRateLimited: boolean;
+  retryAfterMs: number | null;
+} {
+  const candidates = [
+    error,
+    (error as { exception?: unknown })?.exception,
+    (error as { cause?: unknown })?.cause,
+  ].filter(Boolean);
+
+  const isRateLimited = candidates.some((c) => {
+    const e = c as { name?: string; message?: string; reason?: string };
+    return (
+      e?.name === "SignatureRateLimitError" ||
+      e?.reason === "Rate Limited" ||
+      /rate.?limit/i.test(e?.message ?? "")
+    );
+  });
+
+  if (!isRateLimited) return { isRateLimited: false, retryAfterMs: null };
+
+  const withRetryAfter = candidates.find(
+    (c) => typeof (c as { retryAfter?: unknown })?.retryAfter === "number"
+  ) as { retryAfter?: number } | undefined;
+
+  return { isRateLimited: true, retryAfterMs: withRetryAfter?.retryAfter ?? null };
 }
 
 async function persistState(roomId: string, status: ListenerStatus, message: string) {
@@ -471,6 +509,11 @@ async function connectAndAttach(
 
   conn.on("error", (err: unknown) => {
     if (inst.connectPromise) return;
+    const rateLimit = parseSignatureRateLimitError(err);
+    if (rateLimit.isRateLimited) {
+      scheduleReconnect(roomId, "rate_limited", rateLimit.retryAfterMs ?? undefined);
+      return;
+    }
     scheduleReconnect(
       roomId,
       isUserOfflineError(err) ? "user_offline" : "error"
@@ -621,23 +664,40 @@ async function connectAndAttach(
       console.error("[listener] connect error:", err);
     }
     if (!inst.stopped) {
-      scheduleReconnect(
-        roomId,
-        isUserOfflineError(err) ? "user_offline" : "connect_failed"
-      );
+      const rateLimit = parseSignatureRateLimitError(err);
+      if (rateLimit.isRateLimited) {
+        scheduleReconnect(roomId, "rate_limited", rateLimit.retryAfterMs ?? undefined);
+      } else {
+        scheduleReconnect(
+          roomId,
+          isUserOfflineError(err) ? "user_offline" : "connect_failed"
+        );
+      }
     }
   }
 }
 
-function scheduleReconnect(roomId: string, reason: string) {
+function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number) {
   const inst = listeners.get(roomId);
   if (!inst || inst.stopped) return;
   if (inst.reconnectTimer) return;
 
-  const delay =
-    reason === "user_offline" ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
+  let delay: number;
+  let message: string;
 
-  updateState(inst, "retrying", `再接続待機中... (${reason})`);
+  if (reason === "rate_limited") {
+    delay = Math.min(
+      RATE_LIMIT_MAX_DELAY_MS,
+      Math.max(RATE_LIMIT_MIN_DELAY_MS, retryAfterMs ?? RATE_LIMIT_FALLBACK_DELAY_MS)
+    );
+    const minutes = Math.ceil(delay / 60_000);
+    message = `配信認証の混雑により接続を待機中です。約${minutes}分後に自動で再接続します`;
+  } else {
+    delay = reason === "user_offline" ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
+    message = `再接続待機中... (${reason})`;
+  }
+
+  updateState(inst, "retrying", message);
 
   inst.reconnectTimer = setTimeout(async () => {
     inst.reconnectTimer = null;
