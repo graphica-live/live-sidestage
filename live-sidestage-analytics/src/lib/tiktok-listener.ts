@@ -37,11 +37,16 @@ interface ListenerInstance {
   // TikTok側が払い出すWebcastChatMessage.common.msgIdの直近受信履歴(FIFO)。
   // TikTokのWebSocketは再接続直後やネットワーク瞬断の前後で同一チャットメッセージを
   // 再送してくることがあり、これをそのまま配信すると全クライアントで二重に届く。
+  // (tiktok-live-connectorはProtoMessageFetchResult内のisHistoryフラグを握りつぶして
+  //  emitするため、再送バッチをライブラリ側で見分ける手段がなく、msgIdでの後追い判定に頼るしかない)
   recentChatMsgIds: Set<string>;
   recentChatMsgIdOrder: string[];
 }
 
-const CHAT_DEDUP_CACHE_SIZE = 300;
+// ack未達等によるTikTok側の再送バッチは、盛り上がっている配信だと直近のコメントとの間隔が
+// 数百件を優に超えることがある。小さすぎるFIFOだと再送到達前に対象msgIdが枠から追い出され、
+// dedupをすり抜けて二重配信してしまう(2026-08-18に発覚)。msgId文字列は軽量なので余裕を持たせる。
+const CHAT_DEDUP_CACHE_SIZE = 3000;
 
 export interface GiftLogEntry {
   ts: string;
@@ -533,7 +538,10 @@ async function connectAndAttach(
     const rawMsgId = (data.common as { msgId?: unknown } | undefined)?.msgId;
     const msgId = typeof rawMsgId === "string" && rawMsgId ? rawMsgId : null;
     if (msgId) {
-      if (inst.recentChatMsgIds.has(msgId)) return;
+      if (inst.recentChatMsgIds.has(msgId)) {
+        console.log("[chat] dedup: duplicate msgId skipped (listener instance)", { roomId, msgId });
+        return;
+      }
       inst.recentChatMsgIds.add(msgId);
       inst.recentChatMsgIdOrder.push(msgId);
       if (inst.recentChatMsgIdOrder.length > CHAT_DEDUP_CACHE_SIZE) {

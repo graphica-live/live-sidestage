@@ -16,7 +16,10 @@ interface ChatDedupState {
   order: string[];
 }
 
-const CHAT_COMMENT_DEDUP_CACHE_SIZE = 50;
+// tiktok-listener.ts側のCHAT_DEDUP_CACHE_SIZEと同じ理由(ack未達によるTikTok側の
+// 再送バッチが、盛り上がっている配信では直近のコメント数百件を超えて遅れて届くことがある)で
+// 十分な余裕を持たせる。
+const CHAT_COMMENT_DEDUP_CACHE_SIZE = 3000;
 
 // server.js が生成した socket.io サーバーへの参照。overlay.ts と同じ global 経由パターン。
 const g = global as typeof globalThis & {
@@ -38,7 +41,10 @@ function isDuplicateChatComment(streamerId: string, msgId: string): boolean {
     state = { ids: new Set(), order: [] };
     dedupByStreamer.set(streamerId, state);
   }
-  if (state.ids.has(msgId)) return true;
+  if (state.ids.has(msgId)) {
+    console.log("[chat] dedup: duplicate msgId skipped (web process)", { streamerId, msgId });
+    return true;
+  }
   state.ids.add(msgId);
   state.order.push(msgId);
   if (state.order.length > CHAT_COMMENT_DEDUP_CACHE_SIZE) {
