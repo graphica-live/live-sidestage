@@ -34,6 +34,12 @@ interface ListenerInstance {
   subscriberIds: Set<string>;
   stopped: boolean;
   lastEventAt: number;
+  // watchdogが「実イベントが届かない」ことを理由に強制再接続を発動した連続回数。
+  // markAlive()(chat/gift/member/roomUser/social/likeのいずれか)が発火すると0にリセットされる。
+  // scheduleReconnect()側の再接続には一切関与しない(watchdog経由のconnectInstance呼び出しのみが対象)。
+  watchdogTriggerCount: number;
+  // 次にwatchdog起因の強制再接続を許可するepoch ms。now < この値の間はsilentForが閾値を超えていてもスキップする。
+  watchdogBackoffUntil: number;
   // TikTok側が払い出すWebcastChatMessage.common.msgIdの直近受信履歴(FIFO)。
   // TikTokのWebSocketは再接続直後やネットワーク瞬断の前後で同一チャットメッセージを
   // 再送してくることがあり、これをそのまま配信すると全クライアントで二重に届く。
@@ -527,6 +533,8 @@ async function connectAndAttach(
 
   const markAlive = () => {
     inst.lastEventAt = Date.now();
+    inst.watchdogTriggerCount = 0;
+    inst.watchdogBackoffUntil = 0;
   };
   conn.on("chat", markAlive);
   conn.on("member", markAlive);
@@ -753,6 +761,8 @@ export async function startListener(
     subscriberIds: new Set(subscriberIds),
     stopped: false,
     lastEventAt: Date.now(),
+    watchdogTriggerCount: 0,
+    watchdogBackoffUntil: 0,
     recentChatMsgIds: new Set(),
     recentChatMsgIdOrder: [],
   };
@@ -896,7 +906,19 @@ export async function ensureAllListenersAlive() {
   }
 }
 
-const WATCHDOG_SILENCE_MS = 10_000;
+const WATCHDOG_SILENCE_MS = 60_000;
+
+// checkWatchdogs()→connectInstance()経路専用の指数バックオフ。scheduleReconnect()
+// (disconnect/error/streamEnd/rate-limit用の固定遅延ロジック)とは独立しており、
+// そちらのタイマー・定数には一切影響しない。
+const WATCHDOG_BACKOFF_BASE_MS = RECONNECT_DELAY_MS; // 10_000、初回発動時の遅延
+const WATCHDOG_BACKOFF_FACTOR = 2; // 倍々で延ばす
+const WATCHDOG_BACKOFF_MAX_MS = 10 * 60_000; // 上限10分
+
+function nextWatchdogBackoffMs(triggerCount: number): number {
+  const raw = WATCHDOG_BACKOFF_BASE_MS * Math.pow(WATCHDOG_BACKOFF_FACTOR, triggerCount - 1);
+  return Math.min(WATCHDOG_BACKOFF_MAX_MS, raw);
+}
 
 // Detects zombie WebSocket connections: status stays "connected" but no
 // events (gift/chat/member/...) have arrived, meaning the socket died
@@ -908,14 +930,27 @@ export function checkWatchdogs() {
     if (inst.state.status !== "connected") return;
     if (inst.connectPromise) return;
 
+    // 無応答検知: バックオフ中でもここまでは毎回判定する。
     const silentFor = now - inst.lastEventAt;
-    if (silentFor > WATCHDOG_SILENCE_MS) {
+    if (silentFor <= WATCHDOG_SILENCE_MS) return;
+
+    if (now < inst.watchdogBackoffUntil) {
       console.warn(
-        `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect`
+        `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms but skipping forced reconnect — backoff active (trigger #${inst.watchdogTriggerCount}, retry allowed in ${inst.watchdogBackoffUntil - now}ms)`
       );
-      connectInstance(roomId).catch((err) =>
-        console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
-      );
+      return;
     }
+
+    // 発動: 無応答検知 + バックオフ解除済みのときのみカウントする。
+    inst.watchdogTriggerCount += 1;
+    const backoffMs = nextWatchdogBackoffMs(inst.watchdogTriggerCount);
+    inst.watchdogBackoffUntil = now + backoffMs;
+
+    console.warn(
+      `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect (trigger #${inst.watchdogTriggerCount}, next forced reconnect allowed in ${backoffMs}ms if still silent)`
+    );
+    connectInstance(roomId).catch((err) =>
+      console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
+    );
   });
 }
