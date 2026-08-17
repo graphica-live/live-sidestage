@@ -530,8 +530,9 @@ async function connectAndAttach(
   conn.on("like", markAlive);
 
   conn.on("chat", (data: Record<string, unknown>) => {
-    const msgId = (data.common as { msgId?: unknown } | undefined)?.msgId;
-    if (typeof msgId === "string" && msgId) {
+    const rawMsgId = (data.common as { msgId?: unknown } | undefined)?.msgId;
+    const msgId = typeof rawMsgId === "string" && rawMsgId ? rawMsgId : null;
+    if (msgId) {
       if (inst.recentChatMsgIds.has(msgId)) return;
       inst.recentChatMsgIds.add(msgId);
       inst.recentChatMsgIdOrder.push(msgId);
@@ -548,6 +549,7 @@ async function connectAndAttach(
       profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
       comment: String(data.comment || ""),
       receivedAt: eventTime.toISOString(),
+      msgId,
     };
     // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
     for (const streamerId of Array.from(inst.subscriberIds)) {
