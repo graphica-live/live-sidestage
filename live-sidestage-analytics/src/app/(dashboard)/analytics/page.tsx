@@ -72,8 +72,14 @@ function formatCustomRangeLabel(start: string, end: string): string {
 }
 
 function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // サーバー(UTC想定)とクライアント(JST)でローカル時刻の「今日」がズレると
+  // hydration mismatchが起きるため、常にAsia/Tokyoで計算する
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function addDays(date: string, n: number): string {
