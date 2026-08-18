@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-18T00:00:00.000Z",
+  "title": "Design System: LiveAnalytics",
+  "extensions": {
+    "colorMeta": {
+      "tiktok-red": { "role": "primary", "displayName": "TikTok Red", "canonical": "#fe2c55" },
+      "tiktok-red-hover": { "role": "primary", "displayName": "TikTok Red Hover", "canonical": "#e91e50" },
+      "surface": { "role": "neutral", "displayName": "Surface Black", "canonical": "#111111" },
+      "panel": { "role": "neutral", "displayName": "Panel", "canonical": "#1a1a1a" },
+      "border": { "role": "neutral", "displayName": "Border", "canonical": "#2a2a2a" },
+      "text-primary": { "role": "neutral", "displayName": "Text Primary", "canonical": "#f0f0f0" },
+      "text-white": { "role": "neutral", "displayName": "Text White", "canonical": "#ffffff" },
+      "text-muted": { "role": "neutral", "displayName": "Text Muted", "canonical": "#9ca3af" },
+      "text-faint": { "role": "neutral", "displayName": "Text Faint", "canonical": "#6b7280" },
+      "status-success": { "role": "neutral", "displayName": "Status Success", "canonical": "#22c55e" },
+      "status-warning": { "role": "neutral", "displayName": "Status Warning", "canonical": "#eab308" },
+      "status-error": { "role": "neutral", "displayName": "Status Error", "canonical": "#ef4444" }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "画面主題の大見出し(text-2xl, bold)。1画面1箇所限定。" },
+      "body": { "displayName": "Body", "purpose": "テーブル本文・ボタン・フォームの既定サイズ(text-sm)。" },
+      "label": { "displayName": "Label", "purpose": "フォームラベル・テーブルヘッダー・補助説明(text-xs)。" },
+      "numeric": { "displayName": "Numeric / Mono", "purpose": "コイン数・順位・認証コード・APIキーなど桁揃えとコピーを意識した値専用(font-mono)。" }
+    },
+    "shadows": [
+      { "name": "floating-panel", "value": "0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4)", "purpose": "ドロップダウン・ポップオーバー・カレンダーなど浮遊要素のみ(shadow-xl相当)。カード・ボタンには使わない。" }
+    ],
+    "motion": [
+      { "name": "transition-colors", "value": "color, background-color, border-color 150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "ボタン/リンクのホバー・アクティブ状態切替の既定トランジション。" }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "主要決定アクション用。1画面に1〜2箇所のみ。",
+      "html": "<button class=\"ds-btn-primary\">確認する</button>",
+      "css": ".ds-btn-primary { background-color: #fe2c55; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background-color: #e91e50; } .ds-btn-primary:focus-visible { outline: 2px solid #fe2c55; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "補助的操作用の既定ボタン。ヘッダーやテーブル内アイコンボタンなど大半のアクションに使う。",
+      "html": "<button class=\"ds-btn-ghost\">⚙️ 設定</button>",
+      "css": ".ds-btn-ghost { background-color: transparent; color: #9ca3af; font-size: 0.75rem; padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1), background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-ghost:hover { color: #ffffff; background-color: rgba(255,255,255,0.05); } .ds-btn-ghost:focus-visible { outline: 2px solid #fe2c55; outline-offset: 2px; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "テキスト・数値・検索など全フォーム入力の既定スタイル。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"your_tiktok_id\" />",
+      "css": ".ds-input { background-color: #1a1a1a; border: 1px solid #2a2a2a; color: #ffffff; border-radius: 8px; padding: 8px 12px; font-size: 0.875rem; width: 100%; transition: border-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-input::placeholder { color: #6b7280; } .ds-input:focus { outline: none; border-color: rgba(254,44,85,0.6); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "ボーダーのみで区切る静止面。影は使わない。",
+      "html": "<div class=\"ds-card\"><p class=\"ds-card-title\">TikEffect連携用APIキー</p><p class=\"ds-card-body\">先月度貢献MVP/TOP5を自動反映できます。</p></div>",
+      "css": ".ds-card { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px; } .ds-card-title { color: #d1d5db; font-size: 0.875rem; font-weight: 600; margin: 0 0 4px; } .ds-card-body { color: #9ca3af; font-size: 0.75rem; margin: 0; }"
+    },
+    {
+      "name": "Segmented Toggle",
+      "kind": "nav",
+      "refersTo": "segmented-toggle",
+      "description": "期間タブ・表示モード切替などのピル型セグメントコントロール。",
+      "html": "<div class=\"ds-segment\"><button class=\"ds-segment-btn ds-segment-btn--active\">日</button><button class=\"ds-segment-btn\">週</button><button class=\"ds-segment-btn\">月</button></div>",
+      "css": ".ds-segment { display: inline-flex; gap: 4px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 4px; } .ds-segment-btn { background: none; border: none; color: #9ca3af; font-size: 0.875rem; font-weight: 500; padding: 6px 16px; border-radius: 4px; cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1), background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-segment-btn:hover { color: #ffffff; } .ds-segment-btn--active, .ds-segment-btn--active:hover { background-color: #fe2c55; color: #ffffff; }"
+    },
+    {
+      "name": "Status Indicator",
+      "kind": "custom",
+      "refersTo": "status-indicator",
+      "description": "配信接続ステータスを示す色付きドット+テキスト。connected/connecting/retrying/idle/errorの5状態。",
+      "html": "<span class=\"ds-status\"><span class=\"ds-status-dot ds-status-dot--connected\"></span>@example · ライブ配信中</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #9ca3af; } .ds-status-dot { width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; } .ds-status-dot--connected { background-color: #22c55e; } .ds-status-dot--connecting { background-color: #eab308; animation: ds-pulse 1.5s ease-in-out infinite; } .ds-status-dot--idle { background-color: #6b7280; } .ds-status-dot--error { background-color: #ef4444; } @keyframes ds-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }"
+    },
+    {
+      "name": "Badge Toggle",
+      "kind": "chip",
+      "refersTo": "badge-toggle",
+      "description": "整列方向・見出し背景など2〜3択の枠線バッジ型選択UI。",
+      "html": "<div style=\"display:flex;gap:8px;\"><button class=\"ds-badge ds-badge--selected\">左寄せ</button><button class=\"ds-badge\">右寄せ</button></div>",
+      "css": ".ds-badge { background: none; border: 1px solid #2a2a2a; color: #9ca3af; font-size: 0.75rem; padding: 6px 8px; border-radius: 8px; cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-badge:hover { color: #ffffff; } .ds-badge--selected { border-color: #fe2c55; color: #fe2c55; background-color: rgba(254,44,85,0.1); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "配信コントロールルーム(Broadcast Control Room)",
+    "overview": "配信者が本番中に一瞬で数値を読み取れることを最優先した、暗室のオペレーション卓のような画面。背景は素材のない漆黒に近いダーク(#111111)で沈み込み、パネルとボーダーだけがわずかに浮いて構造を示す。装飾的な影やグラデーションはほぼ使わず、TikTokブランドのレッド(#fe2c55)だけが「今アクティブなもの・押せるもの・生きているもの」を示す信号として機能する。これは現行実装から抽出した現状の記録であり、恒久的に固定されたブランドではない(名称・配色は将来変更され得ることをプロダクト側で確認済み)。密度は高め: 1画面にタブ・期間ナビゲーション・フィルタ・テーブルが同時に並び、モバイルでは列を間引いて対応する。派手な演出は配信オーバーレイ側に集約し、管理画面本体は徹底して機能本位。",
+    "keyCharacteristics": [
+      "漆黒ベース+最小限のパネル/ボーダーで構造を示すダークUI",
+      "TikTokレッドは「アクティブ・プライマリアクション」専用、地の色としては使わない",
+      "数値(コイン数・順位・コード)は等幅フォントで縦に揃える",
+      "影はほぼ使わず、フローティングするパネル(ドロップダウン等)にだけ影を許可",
+      "全編日本語UI、絵文字アイコンとインラインSVGアイコンが混在"
+    ],
+    "rules": [
+      { "name": "The Signal Red Rule", "body": "TikTokレッドは「押せる・今アクティブ・注目してほしい」ことだけを示す信号として使う。装飾目的や地の色としては使用しない。", "section": "colors" },
+      { "name": "The Mono Numbers Rule", "body": "ユーザーが比較・コピーする数値(コイン数、順位、認証コード、APIキー)は必ずfont-monoにする。それ以外のテキストにはmonoを使わない。", "section": "typography" }
+    ],
+    "dos": [
+      "Do TikTokレッドは主要アクション・アクティブ状態・数値の強調にのみ使い、地の色や大面積の塗りには使わない。",
+      "Do 比較・コピー対象の数値(コイン数・順位・コード・APIキー)はfont-monoで統一する。",
+      "Do カード/ボタン/入力欄は境界線(ボーダー)で構造を示し、影は浮遊するポップオーバー系要素にのみ使う。",
+      "Do モバイル対応は列の間引き(hidden sm:/md:table-cell)を主手段にし、横スクロールは補助にとどめる。"
+    ],
+    "donts": [
+      "Don't ライトテーマを追加しない。color-scheme: dark固定であり、現行実装は暗色専用。",
+      "Don't カード・ボタンに新しくbox-shadowを追加しない(フローティング要素以外)。",
+      "Don't ブランド名・配色・ロゴをこのファイルの現在値をもって恒久確定事項として扱わない — これは現状実装の記録であり、将来変更され得る前提でPRODUCT.mdに明記済み。"
+    ]
+  }
+}
