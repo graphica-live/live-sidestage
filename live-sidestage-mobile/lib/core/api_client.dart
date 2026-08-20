@@ -7,8 +7,10 @@ import '../models/auth_session.dart';
 const String liveAnalyticsBaseUrl = 'https://liveanalytics-production.up.railway.app';
 
 // LiveAnalyticsバックエンドの GOOGLE_CLIENT_ID と同じ値(ウェブ アプリケーション種別のクライアントID)。
+// バックエンドは idToken の audience をこの値で検証するため、両者が一致していないと必ず認証に失敗する。
+// Android OAuthクライアントも同一Google Cloudプロジェクト(515259769901)に登録されている必要がある。
 const String googleServerClientId =
-    '597170894909-57jvqq3tmk9mu14r9fgfl908od7f2h9c.apps.googleusercontent.com';
+    '515259769901-5ek9vjrlflpldj01eqo6dop7iu7v8l7f.apps.googleusercontent.com';
 
 class ApiException implements Exception {
   final String message;
