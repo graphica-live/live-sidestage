@@ -1,4 +1,4 @@
-package com.liveanalytics.tikcaption_reader
+package com.liveanalytics.live_sidestage_mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

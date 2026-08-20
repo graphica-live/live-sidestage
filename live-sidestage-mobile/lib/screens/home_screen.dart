@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'tikcaption_reader_speech',
+        channelId: 'live_sidestage_mobile_speech',
         channelName: 'コメント読み上げ',
         channelDescription: 'TikTok Liveのコメントを画面オフでも読み上げ続けます',
       ),
@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.startService(
         serviceTypes: [ForegroundServiceTypes.dataSync, ForegroundServiceTypes.mediaPlayback],
-        notificationTitle: 'TikCaptionReader',
+        notificationTitle: 'Live Sidestage',
         notificationText: 'コメントを読み上げ中です',
         callback: startCallback,
       );
