@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:tikcaption_reader/main.dart';
+import 'package:live_sidestage_mobile/main.dart';
 
 void main() {
   setUp(() {
@@ -14,11 +14,11 @@ void main() {
   });
 
   testWidgets('起動直後はウェルカム画面が表示される', (WidgetTester tester) async {
-    await tester.pumpWidget(const TikCaptionReaderApp());
+    await tester.pumpWidget(const LiveSidestageApp());
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('TikCaptionReader'), findsOneWidget);
+    expect(find.text('Live Sidestage'), findsOneWidget);
     expect(find.text('Googleでログイン'), findsOneWidget);
   });
 }

@@ -16,7 +16,7 @@ TikTok Liveのコメントをリアルタイムで取得し、VOICEVOX音声合�
 
 ## Positioning
 
-既存バックエンド「LiveAnalytics」(Railway本番運用)の公式モバイルクライアント。「TikCaptionReaderへの登録＝LiveAnalyticsの登録」という一体運用が前提。オンデバイスVOICEVOX(`voicevox_core`をdart:ffiで組み込み)による読み上げと、画面オフ/バックグラウンドでも途切れないForeground Service常駐が中核の差別化ポイント。
+既存バックエンド「LiveAnalytics」(Railway本番運用)の公式モバイルクライアント。「Live Sidestageへの登録＝LiveAnalyticsの登録」という一体運用が前提。オンデバイスVOICEVOX(`voicevox_core`をdart:ffiで組み込み)による読み上げと、画面オフ/バックグラウンドでも途切れないForeground Service常駐が中核の差別化ポイント。
 
 ## Operating Context
 
@@ -28,11 +28,11 @@ TikTok Liveのコメントをリアルタイムで取得し、VOICEVOX音声合�
 - VOICEVOXは4キャラクター(ずんだもん・四国めたん・春日部つむぎ・玄野武宏)のみオンデバイス同梱。投稿者ごとのランダムボイス割当(セッション限り、アプリ再起動でリセット)、またはランダムOFF時は代表ボイス固定。
 - 認証はGoogle Sign-Inのみ(旧email/password方式は廃止済み)。
 - 設定画面(話者選択・話速/音高・コメントフィルタ)は未実装。Phase4で予定。
-- バックエンドはLiveAnalytics(Railway本番)。TikCaptionReader単独のアカウント・データ基盤は持たない。
+- バックエンドはLiveAnalytics(Railway本番)。Live Sidestage単独のアカウント・データ基盤は持たない。
 
 ## Brand Commitments
 
-アプリ名は「TikCaptionReader」。LiveAnalyticsエコシステムの一部としての位置づけを維持し、独立ブランドとして切り離さない。
+アプリ名は「Live Sidestage」。PC・Webサービスと共通のブランド名であり、モバイル版の内部識別子は `live_sidestage_mobile`(Androidパッケージは `com.liveanalytics.live_sidestage_mobile`)とする。LiveAnalyticsエコシステムの一部としての位置づけを維持し、独立ブランドとして切り離さない。
 
 ## Evidence on Hand
 

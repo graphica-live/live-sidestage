@@ -18,11 +18,11 @@ void startCallback() {
 
 void main() {
   FlutterForegroundTask.initCommunicationPort();
-  runApp(const TikCaptionReaderApp());
+  runApp(const LiveSidestageApp());
 }
 
-class TikCaptionReaderApp extends StatelessWidget {
-  const TikCaptionReaderApp({super.key});
+class LiveSidestageApp extends StatelessWidget {
+  const LiveSidestageApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +31,7 @@ class TikCaptionReaderApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
       ],
       child: MaterialApp(
-        title: 'TikCaptionReader',
+        title: 'Live Sidestage',
         theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
         home: const AuthGate(),
       ),
