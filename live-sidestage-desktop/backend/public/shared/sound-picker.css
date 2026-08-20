@@ -1,0 +1,62 @@
+/* 共通サウンド検索・取り込みピッカー (myinstants.com + 効果音ラボ) のスタイル。
+   backend/public/shared/sound-picker.js とセットで使う。
+   検索対象サイトが増えても、ここと sound-picker.js だけ直せば全ページに反映される。 */
+
+.myinstants-status {
+    color: var(--muted);
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.myinstants-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.myinstants-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+}
+
+.myinstants-result-source {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    background: rgba(58, 44, 29, 0.12);
+    color: var(--text);
+}
+
+.myinstants-result-source-myinstants {
+    background: rgba(99, 102, 241, 0.16);
+    color: #4338ca;
+}
+
+.myinstants-result-source-soundeffect-lab {
+    background: rgba(16, 185, 129, 0.16);
+    color: #047857;
+}
+
+.myinstants-result-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.myinstants-result-actions {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}

@@ -1,0 +1,6 @@
+# ルート専用。各プロジェクトの除外設定はそれぞれの .gitignore にある。
+
+# OS が作るゴミ
+.DS_Store
+Thumbs.db
+desktop.ini

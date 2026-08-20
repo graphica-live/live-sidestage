@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comments</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/db/comments.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+        if (new URLSearchParams(location.search).get('popout') === '1') {
+            document.documentElement.classList.add('is-popout');
+            const popoutFontLink = document.createElement('link');
+            popoutFontLink.rel = 'stylesheet';
+            popoutFontLink.href = WIDGET_FONT_GOOGLE_FONTS_URL;
+            document.head.appendChild(popoutFontLink);
+        }
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <style>
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出し・ツールバー一式を非表示（並び順はホーム側で操作する） */
+        html.is-popout .page-hero,
+        html.is-popout .toolbar-sections {
+            display: none !important;
+        }
+
+        html.is-popout body {
+            padding: 8px;
+            background: transparent;
+        }
+
+        html.is-popout .layout {
+            gap: 0;
+            /* auto のままだと flex item の「コンテンツに基づく自動最小サイズ」が効き、
+               .comment-stream (overflow-y: auto) がいくら中身を持っていても
+               .layout 自身がそのぶん際限なく伸びてしまい、内部スクロールが発生しない。
+               body 側の height 固定とあわせて 0 を指定し、素直に縮められるようにする。 */
+            min-height: 0;
+        }
+
+        html.is-popout .layout > .panel:first-child {
+            display: none !important;
+        }
+
+        html.is-popout .layout > .panel:last-child {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            /* admin-theme-presets.css の html[data-admin-theme] .panel { padding: var(--panel-padding) !important; }
+               が非!importantの指定を上書きしてしまうため !important が必須 */
+            padding: 4px !important;
+        }
+
+        html.is-popout .comment-stream {
+            display: flex !important;
+            flex-direction: column;
+        }
+
+        /* コメントカードを最小表示にする: アイコン・名前・本文のみ残し、ID・種別・時刻は非表示。
+           ステッカー・アイコンのサイズは個別設定を持たず、フォントサイズから自動計算する。 */
+        :root {
+            --popout-comment-font-family: inherit;
+            --popout-comment-font-size: 13px;
+            /* リスナーアイコンは「名前1行+本文1行」ぶんの縦領域を占有できる大きさにする */
+            --popout-comment-avatar-size: calc(var(--popout-comment-font-size) * 2.8);
+        }
+
+        html.is-popout .comment-emote {
+            width: calc(var(--popout-comment-font-size) * 2) !important;
+            height: calc(var(--popout-comment-font-size) * 2) !important;
+        }
+
+        html.is-popout .comment-card {
+            /* 1列目=アイコン（2行分の縦領域）、2列目=名前(1行目)+本文(2行目) の2列グリッド */
+            display: grid !important;
+            grid-template-columns: var(--popout-comment-avatar-size) minmax(0, 1fr);
+            column-gap: 8px;
+            row-gap: 2px;
+            align-items: start;
+            flex: 0 0 auto;
+            height: auto !important;
+            padding: 4px 2px 10px !important;
+            border: none !important;
+            border-bottom: 1px solid var(--line) !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+        }
+
+        html.is-popout .comment-card:last-child {
+            border-bottom: none !important;
+        }
+
+        html.is-popout .comment-card.is-system {
+            background: transparent !important;
+            border-left: none !important;
+        }
+
+        /* アイコンと名前をまとめる要素(<div>または<a>)自体はボックスを持たせず、
+           中身のアイコン・名前を直接 .comment-card のグリッドセルに配置する */
+        html.is-popout .comment-card-header {
+            display: contents;
+        }
+
+        html.is-popout .comment-avatar {
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            width: var(--popout-comment-avatar-size) !important;
+            height: var(--popout-comment-avatar-size) !important;
+            align-self: start;
+        }
+
+        html.is-popout .comment-author {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        html.is-popout .comment-author span,
+        html.is-popout .comment-kind,
+        html.is-popout .comment-time {
+            display: none !important;
+        }
+
+        html.is-popout .comment-body {
+            grid-column: 2;
+            grid-row: 2;
+            margin: 0;
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        /* display: contents の要素自体はホバーしても表示上のボックスが無いため、
+           中身のアイコン・名前に直接ホバー効果をつける */
+        html.is-popout .comment-profile-link:hover .comment-avatar,
+        html.is-popout .comment-profile-link:hover .comment-author strong {
+            opacity: 0.8;
+        }
+
+        html.is-popout .comment-card,
+        html.is-popout .comment-author strong,
+        html.is-popout .comment-body,
+        html.is-popout .comment-body-text {
+            font-family: var(--popout-comment-font-family) !important;
+            font-size: var(--popout-comment-font-size) !important;
+        }
+
+        /* リスナー名はコメント本文より10%小さく、太さは控えめに表示する */
+        html.is-popout .comment-author strong {
+            font-size: calc(var(--popout-comment-font-size) * 0.9) !important;
+            font-weight: 400 !important;
+        }
+
+        html.is-popout .comment-body-text {
+            font-weight: 600 !important;
+        }
+
+        /* 透明カード上でも背景を問わず読めるよう、名前・本文に強めのコントラストと縁取りを付ける */
+        html.is-popout .comment-author strong {
+            color: #7dd3fc !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        html.is-popout .comment-body-text {
+            color: #f1f5f9 !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>コメント欄</h1>
+                    <p class="subtext">TikTok 配信コメントと各種システムメッセージを表示します。並び順は切り替えでき、表示対象は設定モーダルで絞り込めます。</p>
+                </div>
+                <div class="page-hero-side">
+                    <div class="status" id="comment-feedback">コメント受信待機中です。</div>
+                    <div class="filter-summary" id="filter-summary">表示対象を読み込み中です。</div>
+                </div>
+            </div>
+            <div class="toolbar-sections">
+                <div class="control-panel">
+                    <div class="control-group">
+                        <button type="button" id="sort-order-button">並び順: 新着を上に</button>
+                        <button type="button" id="comment-settings-button">表示設定</button>
+                    </div>
+                </div>
+                <div class="control-panel">
+                    <div class="toolbar-section-label">Voice</div>
+                    <div class="control-group">
+                        <button type="button" id="comment-read-aloud-voice-button">VOICE: 既定の音声 / 0件</button>
+                    </div>
+                </div>
+                <div class="control-panel">
+                    <div class="toolbar-section-label">Filters And Mapping</div>
+                    <div class="control-group">
+                        <button type="button" id="comment-read-aloud-filter-button">読み上げフィルタ: 0件</button>
+                        <button type="button" id="comment-read-aloud-voice-mapping-button">ボイスマッピング</button>
+                        <button type="button" id="comment-read-aloud-text-replacement-button">読み上げ変換: 0件</button>
+                        <button type="button" id="comment-read-aloud-emoji-button">絵文字変換: 0件</button>
+                        <button type="button" id="comment-read-aloud-emote-button">エモート変換: 0件</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div id="comment-stream" class="comment-stream">
+                <div class="comment-stream-empty">コメント受信待機中です。</div>
+            </div>
+            <button type="button" class="popout-new-items-badge" id="comment-new-items-badge" hidden></button>
+        </section>
+    </div>
+
+    <div class="modal-shell" id="comment-settings-modal" aria-hidden="true">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-settings-title">
+            <button type="button" class="modal-close-btn" id="comment-settings-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-settings-title">コメント表示設定</h2>
+                <p class="subtext">表示したいコメント種別だけを有効にします。取得自体は継続し、ここでは表示だけをフィルタします。</p>
+            </div>
+            <div class="modal-scroll-body">
+                <div class="modal-action-row">
+                    <button type="button" id="comment-settings-select-all">すべて表示</button>
+                    <button type="button" id="comment-settings-clear-all">すべて非表示</button>
+                </div>
+                <div class="filter-list" id="comment-filter-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-voice-modal" aria-hidden="true">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-voice-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-voice-title">VOICE 設定</h2>
+                <p class="subtext">既定ボイス、ランダムボイス選択、音量をここで管理します。ユーザーIDごとのボイスマッピングは専用モーダルから編集します。</p>
+            </div>
+            <div class="modal-scroll-body">
+            <div class="voice-settings-grid">
+                <label class="voice-setting-row" for="comment-read-aloud-voice-select">
+                    <strong>既定の音声</strong>
+                    <select id="comment-read-aloud-voice-select">
+                        <option value="">既定の音声</option>
+                    </select>
+                    <a id="comment-read-aloud-voice-terms-link" class="voice-setting-link" href="https://voicevox.hiroshiba.jp/term/" target="_blank" rel="noopener noreferrer">規約ページをブラウザで開く</a>
+                </label>
+                <div class="voice-setting-row">
+                    <strong>読み上げランダムボイス選択</strong>
+                    <div class="voice-setting-inline">
+                        <label class="checkbox-control" for="comment-read-aloud-random-voice-checkbox">
+                            <input type="checkbox" id="comment-read-aloud-random-voice-checkbox">
+                            <span>各ユーザーIDにランダムな音声を割り当て、更新または再起動まで維持する</span>
+                        </label>
+                        <button type="button" id="comment-read-aloud-random-voice-refresh-button" class="icon-only-button" aria-label="ランダムボイス割り当てを更新">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M21 12a9 9 0 0 1-15.36 6.36"></path>
+                                <path d="M3 12a9 9 0 0 1 15.36-6.36"></path>
+                                <path d="M7 18.5H5v-2"></path>
+                                <path d="M17 5.5h2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <label class="voice-setting-row" for="comment-read-aloud-audio-output-select">
+                    <strong>音声出力先</strong>
+                    <select id="comment-read-aloud-audio-output-select">
+                        <option value="overlay1">オーバーレイ１</option>
+                    </select>
+                </label>
+                <label class="voice-setting-row" for="comment-read-aloud-volume-range">
+                    <strong>音量</strong>
+                    <div class="voice-setting-inline">
+                        <input type="range" id="comment-read-aloud-volume-range" min="0" max="100" step="1" value="100">
+                        <span id="comment-read-aloud-volume-value" class="voice-setting-value">100%</span>
+                    </div>
+                </label>
+                <label class="voice-setting-row" for="comment-read-aloud-speed-range">
+                    <strong>読み上げ速度</strong>
+                    <div class="voice-setting-inline">
+                        <input type="range" id="comment-read-aloud-speed-range" min="0.5" max="2.0" step="0.1" value="1.0">
+                        <span id="comment-read-aloud-speed-value" class="voice-setting-value">1.0x</span>
+                    </div>
+                </label>
+                <div class="voice-setting-row">
+                    <strong>読み上げテスト</strong>
+                    <div class="voice-setting-inline">
+                        <button type="button" id="comment-read-aloud-test-button">読み上げテスト</button>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-voice-mapping-modal" aria-hidden="true">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-voice-mapping-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-voice-mapping-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-voice-mapping-title">ボイスマッピング設定</h2>
+                <p class="subtext">ユーザーIDごとに固定の音声を割り当てます。件数が増えても検索しながら追加・編集できる専用モーダルです。ここで設定した内容はランダムボイスより優先されます。</p>
+            </div>
+            <div class="modal-scroll-body">
+            <div class="voice-mapping-modal-grid">
+                <div class="voice-mapping-toolbar">
+                    <label class="voice-mapping-search" for="comment-read-aloud-voice-mapping-search-input">
+                        <span>ユーザーIDまたはボイス名で検索</span>
+                        <input id="comment-read-aloud-voice-mapping-search-input" type="text" maxlength="120" placeholder="例: tiktok_user / ずんだもん">
+                    </label>
+                    <div id="comment-read-aloud-voice-mapping-summary" class="voice-mapping-summary">全0件</div>
+                </div>
+                <div class="voice-mapping-panel">
+                    <div class="voice-mapping-editor">
+                        <label for="comment-read-aloud-voice-mapping-user-id-input">
+                            <span>ユーザーID</span>
+                            <div class="user-suggest-shell">
+                                <input id="comment-read-aloud-voice-mapping-user-id-input" type="text" maxlength="80" autocomplete="off" placeholder="例: tiktok_user">
+                                <div class="user-suggestion-panel" id="voice-mapping-user-suggestion-panel" hidden></div>
+                            </div>
+                        </label>
+                        <label for="comment-read-aloud-voice-mapping-voice-select">
+                            <span>割り当てボイス</span>
+                            <select id="comment-read-aloud-voice-mapping-voice-select">
+                                <option value="">音声を選択</option>
+                            </select>
+                        </label>
+                        <button type="button" id="comment-read-aloud-voice-mapping-apply">追加 / 更新</button>
+                    </div>
+                </div>
+                <div class="voice-mapping-panel">
+                    <div class="voice-mapping-list-header" aria-hidden="true">
+                        <span>ユーザーID</span>
+                        <span>割り当てボイス</span>
+                        <span>操作</span>
+                    </div>
+                    <div id="comment-read-aloud-voice-mapping-list" class="voice-mapping-list"></div>
+                </div>
+            </div>
+            </div>
+            <div class="modal-action-row">
+                <button type="button" id="comment-read-aloud-voice-clear">マッピング全削除</button>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-filter-modal" aria-hidden="true">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-filter-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-filter-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-filter-title">コメント読み上げフィルタ</h2>
+                <p class="subtext">1行に1つずつ登録します。コメント本文に登録済みの文字列が含まれる場合、そのコメントは読み上げしません。</p>
+            </div>
+            <div class="modal-scroll-body">
+                <textarea id="comment-read-aloud-filter-textarea" class="filter-textarea" placeholder="例\nNGワード\n読み上げ不要"></textarea>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-filter-clear">すべて削除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-emoji-modal" aria-hidden="true">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emoji-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-emoji-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-emoji-title">コメント読み上げ絵文字変換</h2>
+                <p class="subtext">最近受信した絵文字画像を選んで読み上げ文字を登録します。登録済みの絵文字だけ文字列に変換して読み上げ、未登録の絵文字は従来どおり読み飛ばします。</p>
+            </div>
+            <div class="modal-scroll-body">
+                <div class="emote-picker-section">
+                    <div id="comment-read-aloud-emoji-picker" class="emote-picker-grid"></div>
+                    <div class="emote-editor">
+                        <div id="comment-read-aloud-emoji-preview" class="emote-editor-preview">
+                            <span class="emote-editor-placeholder">未選択</span>
+                        </div>
+                        <label class="emote-editor-copy" for="comment-read-aloud-emoji-text-input">
+                            <strong>読み上げ文字</strong>
+                            <span id="comment-read-aloud-emoji-selected-value">絵文字画像を選んでください</span>
+                            <input id="comment-read-aloud-emoji-text-input" type="text" maxlength="120" placeholder="例: えがお">
+                        </label>
+                        <button type="button" id="comment-read-aloud-emoji-apply">追加 / 更新</button>
+                    </div>
+                    <div id="comment-read-aloud-emoji-mapping-list" class="emote-mapping-list"></div>
+                </div>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-emoji-clear">すべて削除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-text-replacement-modal" aria-hidden="true">
+        <div class="modal is-live" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-text-replacement-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-text-replacement-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-text-replacement-title">コメント読み上げ変換フィルタ</h2>
+                <p class="subtext">1行に1つずつ「変換前=変換後」で登録します。読み上げ時だけ文字列を置き換え、元のコメント表示は変えません。</p>
+            </div>
+            <div class="modal-scroll-body">
+                <textarea id="comment-read-aloud-text-replacement-textarea" class="filter-textarea" placeholder="例\nwww=わらわら\nTikTok＝ティックトック"></textarea>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-text-replacement-clear">すべて削除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="comment-read-aloud-emote-modal" aria-hidden="true">
+        <div class="modal is-live is-wide" role="dialog" aria-modal="true" aria-labelledby="comment-read-aloud-emote-title">
+            <button type="button" class="modal-close-btn" id="comment-read-aloud-emote-close" aria-label="閉じる">✕</button>
+            <div class="modal-head">
+                <h2 id="comment-read-aloud-emote-title">コメント読み上げエモート変換</h2>
+                <p class="subtext">最近受信したエモート画像を選んで読み上げ文字を登録します。登録済みの emote だけ文字列に変換して読み上げ、未登録の emote は読み上げません。</p>
+            </div>
+            <div class="modal-scroll-body">
+                <div class="emote-picker-section">
+                    <div id="comment-read-aloud-emote-picker" class="emote-picker-grid"></div>
+                    <div class="emote-editor">
+                        <div id="comment-read-aloud-emote-preview" class="emote-editor-preview">
+                            <span class="emote-editor-placeholder">未選択</span>
+                        </div>
+                        <label class="emote-editor-copy" for="comment-read-aloud-emote-text-input">
+                            <strong>読み上げ文字</strong>
+                            <span id="comment-read-aloud-emote-selected-id">エモート画像を選んでください</span>
+                            <input id="comment-read-aloud-emote-text-input" type="text" maxlength="120" placeholder="例: はくしゅ">
+                        </label>
+                        <button type="button" id="comment-read-aloud-emote-apply">追加 / 更新</button>
+                    </div>
+                    <div id="comment-read-aloud-emote-mapping-list" class="emote-mapping-list"></div>
+                </div>
+                <div class="modal-action-row">
+                    <button type="button" id="comment-read-aloud-emote-clear">すべて削除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/db/comments.js"></script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

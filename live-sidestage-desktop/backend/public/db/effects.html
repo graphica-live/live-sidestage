@@ -1,0 +1,702 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イベントトリガー</title>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/sound-picker.css">
+    <link rel="stylesheet" href="/shared/gift-suggest.css">
+    <link rel="stylesheet" href="/db/effects.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <script src="/shared/utils.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h1 id="category-name-label">イベントトリガー</h1>
+                    <p class="subtext">上段でイベントとトリガーを管理し、最下部で 10 個の screen URL を確認します。イベントではローカル動画・音声を取り込み、どの screen に出すかを指定します。</p>
+                </div>
+                <button type="button" class="ghost-button" id="back-to-categories-button">← カテゴリ一覧</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>イベント</h2>
+                    <p class="subtext">新規追加は無制限です。動画と音声は各行からローカルファイルを取り込み、再生先 screen を指定します。</p>
+                </div>
+                <button type="button" class="primary" id="add-event-button">イベントを新規追加</button>
+            </div>
+            <input type="search" id="event-filter" placeholder="イベント名で絞り込み…" style="margin-top:14px;width:100%;max-width:340px;">
+            <div class="record-table-head event-table-head" aria-hidden="true">
+                <div>操作</div>
+                <div>イベント名</div>
+                <div>Screen</div>
+                <div>動画</div>
+                <div>音声</div>
+                <div hidden>MIDI</div>
+                <div>VDJ</div>
+                <div>音量</div>
+                <div></div>
+            </div>
+            <div class="record-list" id="event-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>トリガー</h2>
+                    <p class="subtext">ギフト名、最低コイン、ユーザー ID 条件に合致したら、指定イベントをオーバーレイで再生します。</p>
+                </div>
+                <button type="button" class="primary" id="add-trigger-button">トリガーを新規追加</button>
+            </div>
+            <input type="search" id="trigger-filter" placeholder="トリガー名 / ギフト名 / ユーザーIDで絞り込み…" style="margin-top:14px;width:100%;max-width:340px;">
+            <div class="record-table-head trigger-table-head" aria-hidden="true">
+                <div>操作</div>
+                <div>トリガー名</div>
+                <div>再生イベント</div>
+                <div>対象ギフト名</div>
+                <div>コイン</div>
+                <div>対象ユーザーID</div>
+                <div></div>
+            </div>
+            <div class="record-list" id="trigger-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>トリガーギフト一覧オーバーレイ</h2>
+                    <p class="subtext">このカテゴリの有効なトリガー（ギフト画像 + トリガー名）を一覧表示するオーバーレイです。列数は OBS のブラウザソース解像度に応じて自動調整されます。</p>
+                </div>
+                <button type="button" class="settings-toggle-btn" id="trigger-gifts-settings-button" title="表示設定を開く">⚙️</button>
+            </div>
+            <div class="url-item" id="trigger-gifts-url-item">
+                <div class="url-label">一覧オーバーレイ</div>
+                <input class="url-value" type="text" id="trigger-gifts-url-value" readonly value="読み込み中">
+                <button type="button" id="trigger-gifts-url-copy-button">URL をコピー</button>
+                <button type="button" id="trigger-gifts-url-preview-button">プレビュー表示</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>トリガー保留オーバーレイ</h2>
+                    <p class="subtext">指定した screen で消化中（再生中）のトリガーを大きく、その右に保留（再生待ち）のトリガーを待機順に並べるオーバーレイです。パチンコの保留球のイメージで、保留数が増えるほど画像は縮小し、収まらない分は折り返して表示します。</p>
+                </div>
+            </div>
+            <div class="record-fields" style="margin-top:14px;">
+                <div class="field">
+                    <label for="trigger-pending-screen-select">対象 screen</label>
+                    <select id="trigger-pending-screen-select"></select>
+                </div>
+            </div>
+            <div class="url-item" id="trigger-pending-url-item" style="margin-top:14px;">
+                <div class="url-label">保留オーバーレイ</div>
+                <input class="url-value" type="text" id="trigger-pending-url-value" readonly value="読み込み中">
+                <button type="button" id="trigger-pending-url-copy-button">URL をコピー</button>
+                <button type="button" id="trigger-pending-url-preview-button">プレビュー表示</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>URL 一覧</h2>
+            <p class="subtext">screen は 10 個固定です。イベント側ではこの screen 番号を指定して再生先を選びます。</p>
+            <div class="url-list" id="url-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>ギフトテスト送信</h2>
+                    <p class="subtext">実際にギフトを受け取らなくても、ここから疑似的にギフトを送信してトリガーの動作を確認できます。ギフト名はトリガー登録と同じ検索候補から選べます。</p>
+                </div>
+            </div>
+            <div class="record-fields modal-fields-vertical" style="margin-top:14px;">
+                <div class="field full">
+                    <label>対象ギフト</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="gift-test-name" maxlength="80" autocomplete="off" placeholder="ギフト名で検索（フォロー等の疑似ギフトも可）">
+                        <div class="gift-suggestion-panel" id="gift-test-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>まとめ投げ回数</label>
+                    <input type="number" id="gift-test-repeat-count" min="1" step="1" value="1">
+                </div>
+                <div class="field">
+                    <label>送信ユーザーID（任意）</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="gift-test-unique-id" maxlength="80" autocomplete="off" placeholder="test_user（既存リスナーを検索できます）">
+                        <div class="gift-suggestion-panel" id="gift-test-unique-id-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+            </div>
+            <div class="action-row">
+                <button type="button" class="primary" id="gift-test-send-button">テスト送信</button>
+                <span class="status" id="gift-test-status"></span>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-shell" id="event-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
+            <div>
+                <h2 id="event-modal-title">イベントを新規追加</h2>
+                <p class="subtext" id="event-modal-description">表示名と再生先 screen を決め、動画と音声もこの画面で設定します。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>イベント名</label>
+                    <input type="text" id="event-modal-name" maxlength="80" placeholder="例: 常連ギフト演出">
+                </div>
+                <div class="field">
+                    <label>Screen</label>
+                    <select id="event-modal-screen"></select>
+                </div>
+                <div class="field">
+                    <label>再生機能</label>
+                    <div class="modal-media-grid">
+                        <div class="modal-media-item">
+                            <div class="modal-media-head">
+                                <label class="toggle"><input type="checkbox" id="event-modal-video-enabled"><span>動画を再生</span></label>
+                            </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-upload-video-button">動画を選ぶ</button>
+                                <button type="button" class="danger modal-remove-button" id="event-modal-clear-video-button" title="動画を外す" aria-label="動画を外す">🗑</button>
+                                <input type="file" id="event-modal-video-file" accept="video/*" hidden>
+                            </div>
+                            <div class="modal-asset-name" id="event-modal-video-name">未設定</div>
+                        </div>
+                        <div class="modal-media-item">
+                            <div class="modal-media-head">
+                                <label class="toggle"><input type="checkbox" id="event-modal-audio-enabled"><span>音声を再生</span></label>
+                            </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-upload-audio-button">音声を選ぶ</button>
+                                <button type="button" class="danger modal-remove-button" id="event-modal-clear-audio-button" title="音声を外す" aria-label="音声を外す">🗑</button>
+                                <input type="file" id="event-modal-audio-file" accept="audio/*" hidden>
+                            </div>
+                            <div class="modal-inline-row modal-media-actions">
+                                <button type="button" id="event-modal-template-audio-button">テンプレートから選択</button>
+                            </div>
+                            <div class="modal-asset-name" id="event-modal-audio-name">未設定</div>
+                        </div>
+                    </div>
+                </div>
+                <details class="field accordion-field">
+                    <summary>MIDI送信</summary>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-midi-enabled"><span>MIDIメッセージを送信</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-midi-device" class="modal-midi-device-select"></select>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-midi-message-type">
+                                <option value="noteon">ノートON</option>
+                                <option value="noteoff">ノートOFF</option>
+                                <option value="noteonoff">ノートON→OFF（自動・50ms後）</option>
+                                <option value="cc">コントロールチェンジ</option>
+                                <option value="pc">プログラムチェンジ</option>
+                            </select>
+                            <span class="field-hint">Ch</span>
+                            <input type="number" id="event-modal-midi-channel" class="modal-midi-channel-input" min="1" max="16" step="1" value="1">
+                        </div>
+                        <div class="modal-inline-row">
+                            <span class="field-hint" id="event-modal-midi-data1-label">ノート番号</span>
+                            <input type="number" id="event-modal-midi-data1" class="modal-midi-byte-input" min="0" max="127" step="1" value="60">
+                            <span class="field-hint" id="event-modal-midi-data2-label">ベロシティ</span>
+                            <input type="number" id="event-modal-midi-data2" class="modal-midi-byte-input" min="0" max="127" step="1" value="127">
+                        </div>
+                    </div>
+                </details>
+                <details class="field accordion-field" id="event-modal-ls-accordion">
+                    <summary>LIVE Studio連携</summary>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-ls-enabled"><span>LIVE Studioアクションを実行</span></label>
+                            <span class="field-hint" id="event-modal-ls-status">確認中…</span>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-ls-action-type">
+                                <option value="cameraeffects">カメラエフェクト</option>
+                                <option value="scene">シーン切替</option>
+                                <option value="soundeffect">サウンドエフェクト</option>
+                                <option value="vibe">バイブエフェクト</option>
+                            </select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-scene-row">
+                            <select id="event-modal-ls-scene"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-camera-row">
+                            <select id="event-modal-ls-camera-source"></select>
+                            <select id="event-modal-ls-camera-type"></select>
+                            <select id="event-modal-ls-camera-effect"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-camera-auto-off-row">
+                            <label class="toggle"><input type="checkbox" id="event-modal-ls-camera-auto-off-enabled"><span>このイベントの動画/音声再生が終わったらオフにする</span></label>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-sound-row">
+                            <select id="event-modal-ls-sound-effect"></select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-ls-vibe-row">
+                            <select id="event-modal-ls-vibe"></select>
+                        </div>
+                        <div class="field-hint">TikTok LIVE Studioを起動している間だけ動作します（Stream Deck不要・直接連携）。</div>
+                    </div>
+                </details>
+                <details class="field accordion-field">
+                    <summary>VDJコマンド</summary>
+                    <div class="modal-media-item">
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-vdj-enabled"><span>VDJコマンドを実行</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <input type="text" id="event-modal-vdj-command" placeholder="例: deck 1 backspin 4bt" style="width:100%;">
+                        </div>
+                        <div class="field-hint">VDJScript コマンドをそのまま入力します（対象デッキもコマンド内で指定）。内部で VirtualDJ の API に渡されます。</div>
+                    </div>
+                </details>
+                <details class="field accordion-field">
+                    <summary>TikEffectウィジェット連携</summary>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">タイマーウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-timer-widget-enabled"><span>タイマーの残り時間を延長/短縮</span></label>
+                        </div>
+                        <div class="modal-inline-row">
+                            <select id="event-modal-timer-widget-mode">
+                                <option value="fixed">固定の分数で延長/短縮</option>
+                                <option value="reversal">残り時間の境界で切り替え</option>
+                            </select>
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-timer-widget-fixed-row">
+                            <span class="field-hint">分（マイナスで短縮）</span>
+                            <input type="number" id="event-modal-timer-widget-minutes" min="-180" max="180" step="1" value="0" style="width:90px;">
+                        </div>
+                        <div class="modal-inline-row" id="event-modal-timer-widget-reversal-row" hidden>
+                            <span class="field-hint">境界(分)</span>
+                            <input type="number" id="event-modal-timer-widget-threshold" min="0" max="180" step="1" value="5" style="width:70px;">
+                            <span class="field-hint">未満</span>
+                            <input type="number" id="event-modal-timer-widget-below-minutes" min="-180" max="180" step="1" value="0" style="width:70px;">
+                            <span class="field-hint">以上</span>
+                            <input type="number" id="event-modal-timer-widget-above-minutes" min="-180" max="180" step="1" value="0" style="width:70px;">
+                        </div>
+                        <div class="field-hint">このイベントが再生されるとタイマーウィジェットの残り時間を調整します。対象ギフトはトリガー側の「対象ギフト名」で指定してください。</div>
+                    </div>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">トリガー5倍ウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-x5-activate"><span>トリガー５倍グローブ発動</span></label>
+                        </div>
+                        <div class="field-hint">ONの場合、このイベントが再生されるとトリガー5倍タイムが開始（発動中なら延長）します。</div>
+                    </div>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">トリガー6倍ウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="event-modal-x6-activate"><span>トリガー６倍グローブ発動</span></label>
+                        </div>
+                        <div class="field-hint">ONの場合、このイベントが再生されるとトリガー6倍タイムが開始（発動中なら延長）します。トリガー5倍とは独立しており、同時に発動・重複することがあります。</div>
+                    </div>
+                </details>
+                <div class="field">
+                    <label>メディアの音量</label>
+                    <div class="range-row">
+                        <input type="range" id="event-modal-media-volume" min="0" max="100" step="1" value="100">
+                        <div class="range-value" id="event-modal-media-volume-value">100%</div>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label>再生時の動作</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="event-modal-force-interrupt-enabled"><span>待機イベント削除</span></label>
+                    </div>
+                    <div class="modal-inline-row" id="event-modal-force-interrupt-count-row">
+                        <label>削除数（0で全件削除）</label>
+                        <input type="number" id="event-modal-force-interrupt-count" min="0" step="1" value="0" style="width:100px;">
+                    </div>
+                    <div class="field-hint">ONの場合、このイベントが再生されるとき、このイベントで指定された screen の現在待機中のイベントを先頭から指定件数だけ削除してから再生します（0で全件削除、再生中のイベントも中断）。1件以上を指定した場合、再生中のイベントは中断せず待機中のみ削除します。</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-event-modal">キャンセル</button>
+                <button type="button" class="primary" id="event-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="myinstants-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
+            <div>
+                <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
+                <p class="subtext"><a href="https://www.myinstants.com" target="_blank" rel="noopener noreferrer">myinstants.com</a> と <a href="https://soundeffect-lab.info" target="_blank" rel="noopener noreferrer">効果音ラボ</a> のサウンドをまとめて検索して取り込みます。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>キーワード検索</label>
+                    <div class="modal-inline-row">
+                        <input type="text" id="myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
+                        <button type="button" class="primary" id="myinstants-search-button">検索</button>
+                    </div>
+                </div>
+                <div class="field full">
+                    <div class="myinstants-status" id="myinstants-status"></div>
+                    <div class="myinstants-results" id="myinstants-results"></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-myinstants-modal">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="trigger-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trigger-modal-title">
+            <div>
+                <h2 id="trigger-modal-title">トリガーを新規追加</h2>
+                <p class="subtext" id="trigger-modal-description">トリガー名、再生イベント、ギフト条件、コメント条件、ユーザー条件をこの画面で設定します。</p>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>トリガー名</label>
+                    <input type="text" id="trigger-modal-name" maxlength="80" placeholder="例: Rose 用トリガー">
+                </div>
+                <div class="field full">
+                    <label>一覧オーバーレイ表示名</label>
+                    <textarea id="trigger-modal-list-overlay-name" maxlength="160" placeholder="空欄ならトリガー名を表示。改行可"></textarea>
+                    <div class="field-hint">トリガーギフト一覧オーバーレイのカードにのみ表示されます。改行を入れて複数行にできます。</div>
+                </div>
+                <div class="field full">
+                    <label>再生イベント</label>
+                    <div class="event-ids-play-mode-row">
+                        <label class="toggle"><input type="radio" name="event-play-mode" id="trigger-modal-play-sequential" value="sequential" checked><span>順次起動</span></label>
+                        <label class="toggle"><input type="radio" name="event-play-mode" id="trigger-modal-play-random" value="random"><span>ランダム（1つ）</span></label>
+                    </div>
+                    <div class="event-ids-list" id="trigger-modal-event-ids-list"></div>
+                    <div class="event-ids-add-row">
+                        <div class="gift-suggest-shell" style="flex:1;min-width:0;">
+                            <input type="text" id="trigger-modal-event" autocomplete="off" placeholder="イベント名で検索して追加…">
+                            <div class="gift-suggestion-panel" id="trigger-event-suggestion-panel" hidden></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>対象ギフト名</label>
+                    <div class="gift-suggest-shell">
+                        <input type="text" id="trigger-modal-gift-name" maxlength="80" autocomplete="off" placeholder="例: Rose / 5 / 100-500 / >=100。空欄で全ギフト対象">
+                        <div class="gift-suggestion-panel" id="trigger-gift-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>最低コイン</label>
+                    <input type="number" id="trigger-modal-min-coins" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field full">
+                    <label>連射モード</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-rapid-fire-enabled"><span>同じトリガーの再生待ちが発生したら現在の再生をキャンセルして高速連射する</span></label>
+                    </div>
+                    <label for="trigger-modal-rapid-fire-cancel-ms">キャンセルまでの時間 (ms)</label>
+                    <input type="number" id="trigger-modal-rapid-fire-cancel-ms" min="10" max="30000" step="10" placeholder="1500">
+                    <div class="field-hint">ONの場合、このトリガーのイベント再生中に同じトリガーの新しいイベントが順番待ちになると、指定時間後に再生中の動画・音声をキャンセルして次へ進みます。他のトリガーの再生には影響しません。</div>
+                </div>
+                <div class="field full">
+                    <label>ギフトオプション</label>
+                    <div class="modal-check-list">
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-treat-combo-single" checked><span>ギフトまとめ投げを1回とする</span></label>
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-exclude-from-overlay"><span>トリガーギフト一覧オーバーレイの対象外にする</span></label>
+                        <label class="toggle"><input type="checkbox" id="trigger-modal-list-overlay-highlight"><span>トリガー一覧で強調する（心音のように拡大）</span></label>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>一覧オーバーレイ背景色</label>
+                    <select id="trigger-modal-list-overlay-bg-color">
+                        <option value="">指定なし</option>
+                        <option value="black">⚫ 黒</option>
+                        <option value="white">⚪ 白</option>
+                        <option value="blue">🔵 青</option>
+                        <option value="green">🟢 緑</option>
+                        <option value="yellow">🟡 黄色</option>
+                        <option value="purple">🟣 紫</option>
+                        <option value="red">🔴 赤</option>
+                    </select>
+                </div>
+                <div class="field full">
+                    <label>コメント</label>
+                    <select id="trigger-modal-comment-mode">
+                        <option value="">未使用</option>
+                        <option value="any">あらゆるコメント</option>
+                        <option value="exact">入力と一致</option>
+                    </select>
+                    <input type="text" id="trigger-modal-comment-text" maxlength="160" placeholder="入力一致にするコメントを入力">
+                </div>
+                <div class="field full">
+                    <label>対象ユーザー</label>
+                    <div class="modal-check-list user-target-radio-group">
+                        <label class="toggle"><input type="radio" name="user-target-mode" id="trigger-modal-user-target-list" value="list" checked><span>対象ユーザーID指定</span></label>
+                        <label class="toggle"><input type="radio" name="user-target-mode" id="trigger-modal-user-target-filemap" value="file-map"><span>ユーザーID to ファイル名</span></label>
+                    </div>
+                    <div id="trigger-modal-user-list-section">
+                        <div class="gift-suggest-shell">
+                            <textarea id="trigger-modal-user-ids" placeholder="複数可。改行・カンマ・スペース区切り。空欄なら全ユーザー対象" autocomplete="off"></textarea>
+                            <div class="gift-suggestion-panel" id="trigger-user-suggestion-panel" hidden></div>
+                        </div>
+                    </div>
+                    <div id="trigger-modal-user-filemap-section" hidden>
+                        <div class="user-filemap-dir-row">
+                            <div class="user-filemap-dir-path" id="trigger-modal-filemap-dir-display">未選択</div>
+                            <button type="button" id="trigger-modal-filemap-dir-button">フォルダを選択</button>
+                        </div>
+                        <input type="hidden" id="trigger-modal-filemap-dir">
+                        <div class="field-hint">選択したフォルダ内の「ユーザーID.mp4 / .vp9 / .mov」を再生します。対象ギフト名が必須です。</div>
+                    </div>
+                </div>
+                <details class="field accordion-field" id="trigger-modal-tikeffect-accordion">
+                    <summary>TikEffectウィジェット連携</summary>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">トリガー5倍ウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="trigger-modal-x5-included"><span>トリガー5倍の対象にする</span></label>
+                        </div>
+                        <div class="field-hint">ONの場合、トリガー5倍タイム中にこのトリガーが5倍抽選の対象になります。</div>
+                    </div>
+                    <div class="modal-media-item">
+                        <div class="field-hint" style="font-weight:600;">トリガー6倍ウィジェット</div>
+                        <div class="modal-media-head">
+                            <label class="toggle"><input type="checkbox" id="trigger-modal-x6-included"><span>トリガー6倍の対象にする</span></label>
+                        </div>
+                        <div class="field-hint">ONの場合、トリガー6倍タイム中にこのトリガーが6倍抽選の対象になります。</div>
+                    </div>
+                </details>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-trigger-modal">キャンセル</button>
+                <button type="button" class="primary" id="trigger-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <template id="event-template">
+        <article class="record-card event-record-card">
+            <div class="record-head event-record-head">
+                <div class="icon-button-row">
+                    <button type="button" class="icon-button danger" data-action="delete-event" title="削除" aria-label="削除">🗑</button>
+                    <button type="button" class="icon-button edit" data-action="edit-event" title="編集" aria-label="編集">🖊</button>
+                    <button type="button" class="icon-button play" data-action="play-event" title="再生" aria-label="再生">▶</button>
+                </div>
+            </div>
+            <div class="record-fields event-record-fields">
+                <div class="field">
+                    <label>イベント名</label>
+                    <div class="summary-value" data-role="name"></div>
+                </div>
+                <div class="field">
+                    <label>SCREEN</label>
+                    <div class="summary-value" data-role="screen"></div>
+                </div>
+                <div class="field">
+                    <label>動画</label>
+                    <div class="linked-indicator is-empty" data-role="video-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>音声</label>
+                    <div class="linked-indicator is-empty" data-role="audio-linked">-</div>
+                </div>
+                <div class="field" hidden>
+                    <label>MIDI</label>
+                    <div class="linked-indicator is-empty" data-role="midi-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>VDJ</label>
+                    <div class="linked-indicator is-empty" data-role="vdj-linked">-</div>
+                </div>
+                <div class="field">
+                    <label>音量</label>
+                    <div class="summary-value" data-role="media-volume-value"></div>
+                </div>
+            </div>
+            <button type="button" class="icon-button drag-handle" data-action="drag-handle" title="ドラッグして並び替え" aria-label="ドラッグして並び替え">☰</button>
+        </article>
+    </template>
+
+    <template id="trigger-template">
+        <article class="record-card trigger-record-card">
+            <div class="record-head trigger-record-head">
+                <div class="icon-button-row">
+                    <button type="button" class="icon-button danger" data-action="delete-trigger" title="削除" aria-label="削除">🗑</button>
+                    <button type="button" class="icon-button edit" data-action="edit-trigger" title="編集" aria-label="編集">🖊</button>
+                    <label class="trigger-enabled-label">
+                        <input type="checkbox" data-role="enabled" data-action="toggle-enabled">
+                        <span>有効</span>
+                    </label>
+                </div>
+            </div>
+            <div class="record-fields trigger-record-fields">
+                <div class="field full">
+                    <label>トリガー名</label>
+                    <div class="summary-value" data-role="name"></div>
+                </div>
+                <div class="field full">
+                    <label>再生イベント</label>
+                    <div class="summary-value" data-role="event-name"></div>
+                </div>
+                <div class="field">
+                    <label>対象ギフト名</label>
+                    <div class="trigger-gift-display" data-role="gift-name">
+                        <div class="trigger-gift-image-wrap" data-role="gift-image" hidden></div>
+                        <span data-role="gift-label"></span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>最低コイン</label>
+                    <div class="summary-value" data-role="min-coins"></div>
+                </div>
+                <div class="field full">
+                    <label>ギフトオプション</label>
+                    <div class="summary-value wrap" data-role="gift-options"></div>
+                </div>
+                <div class="field full">
+                    <label>コメント</label>
+                    <div class="summary-value wrap" data-role="comment-summary"></div>
+                </div>
+                <div class="field full">
+                    <label>対象ユーザー</label>
+                    <div class="summary-value wrap" data-role="user-ids"></div>
+                </div>
+            </div>
+            <button type="button" class="icon-button drag-handle" data-action="drag-handle" title="ドラッグして並び替え" aria-label="ドラッグして並び替え">☰</button>
+        </article>
+    </template>
+
+    <div class="modal-shell" id="trigger-gifts-settings-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trigger-gifts-settings-modal-title" style="width:min(520px,100%);">
+            <div>
+                <h2 id="trigger-gifts-settings-modal-title">トリガーギフト一覧オーバーレイの表示設定</h2>
+                <p class="subtext">見た目・列数と行数・スライド表示を変更できます。変更は選択時に自動で保存されます。列数×行数を超えるトリガーは、スライド表示OFFなら表示されず、ONなら指定間隔で自動的に切り替わります。</p>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="trigger-gifts-font">フォント</label>
+                    <select id="trigger-gifts-font" aria-label="フォント"></select>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-font-size">文字サイズ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-font-size" min="12" max="96" step="1" value="20" style="flex: 1;" aria-label="文字サイズ">
+                        <span class="subtext" id="trigger-gifts-font-size-value" style="margin-top: 0; width: 42px;">20px</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-text-style">文字色と縁取り</label>
+                    <select id="trigger-gifts-text-style" aria-label="文字色と縁取り"></select>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-stroke-width">縁取り太さ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-stroke-width" min="0" max="48" step="1" value="4" style="flex: 1;" aria-label="縁取り太さ">
+                        <span class="subtext" id="trigger-gifts-stroke-width-value" style="margin-top: 0; width: 42px;">4px</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-image-size">ギフト画像サイズ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-image-size" min="48" max="500" step="1" value="132" style="flex: 1;" aria-label="ギフト画像サイズ">
+                        <span class="subtext" id="trigger-gifts-image-size-value" style="margin-top: 0; width: 52px;">132px</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-bg-opacity">背景の不透明度</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-bg-opacity" min="0" max="100" step="5" value="46" style="flex: 1;" aria-label="背景の不透明度">
+                        <span class="subtext" id="trigger-gifts-bg-opacity-value" style="margin-top: 0; width: 42px;">46%</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-columns">列数</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-columns" min="1" max="20" step="1" value="3" style="flex: 1;" aria-label="列数">
+                        <span class="subtext" id="trigger-gifts-columns-value" style="margin-top: 0; width: 42px;">3列</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-rows">行数</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-rows" min="1" max="20" step="1" value="2" style="flex: 1;" aria-label="行数">
+                        <span class="subtext" id="trigger-gifts-rows-value" style="margin-top: 0; width: 42px;">2行</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label class="toggle"><input type="checkbox" id="trigger-gifts-show-coin-count"><span>コイン数を表示（カード右上にコインマーク＋数字）</span></label>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-coin-count-size">コイン数の文字サイズ</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-coin-count-size" min="10" max="64" step="1" value="14" style="flex: 1;" aria-label="コイン数の文字サイズ">
+                        <span class="subtext" id="trigger-gifts-coin-count-size-value" style="margin-top: 0; width: 42px;">14px</span>
+                    </div>
+                </div>
+                <div class="field full">
+                    <label class="toggle"><input type="checkbox" id="trigger-gifts-slide-enabled"><span>スライド表示（あふれた分を定速無限スライド）</span></label>
+                </div>
+                <div class="field full">
+                    <label for="trigger-gifts-slide-speed">スライド速度（px/秒）</label>
+                    <div class="action-row">
+                        <input type="range" id="trigger-gifts-slide-speed" min="10" max="300" step="10" value="60" style="flex: 1;" aria-label="スライド速度">
+                        <span class="subtext" id="trigger-gifts-slide-speed-value" style="margin-top: 0; width: 56px;">60px/秒</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="trigger-gifts-slide-direction">スライド方向</label>
+                    <select id="trigger-gifts-slide-direction" aria-label="スライド方向">
+                        <option value="left">左へ</option>
+                        <option value="right">右へ</option>
+                        <option value="up">上へ</option>
+                        <option value="down">下へ</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-trigger-gifts-settings-modal">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="confirm-dialog" aria-hidden="true">
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style="width:min(400px,100%);gap:16px;">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/db/effects-state.js"></script>
+    <script src="/db/effects-media.js"></script>
+    <script src="/shared/sound-picker.js"></script>
+    <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/user-suggest.js"></script>
+    <script src="/db/effects-myinstants.js"></script>
+    <script src="/db/effects-modal.js"></script>
+    <script src="/db/effects-rows.js"></script>
+    <script src="/db/effects-gift-suggest.js"></script>
+    <script src="/db/effects-trigger-gifts.js"></script>
+    <script src="/db/effects-trigger-pending.js"></script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDJ</title>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/db/effects.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <style>
+        .vdj-connection-row {
+            display: grid;
+            grid-template-columns: 1fr 120px 1fr auto;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .vdj-connection-row .field { padding: 0; border: none; }
+
+        .song-battle-status-grid {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .song-battle-side {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            text-align: center;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        .song-battle-cover {
+            width: 96px;
+            height: 96px;
+            border-radius: 10px;
+            object-fit: cover;
+            background: #eef2f7;
+        }
+
+        .song-battle-center {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .overlay-url-field {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .overlay-url-field .url-box {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: #fff;
+            font-size: 13px;
+            word-break: break-all;
+        }
+
+        .widget-preview-frame {
+            margin-top: 16px;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            height: 320px;
+        }
+
+        .widget-preview-frame iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
+        .start-mode-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>VirtualDJ</h1>
+            <p class="subtext">VirtualDJの Network Control Plugin と接続し、曲対決投票ウィジェットを管理します。</p>
+        </section>
+
+        <section class="panel">
+            <h2>VDJ接続設定</h2>
+            <p class="subtext">VirtualDJ側で Network Control Plugin をインストールし、ポートを設定してから接続してください。</p>
+            <div class="vdj-connection-row" style="margin-top:16px;">
+                <div class="field">
+                    <label>ホスト</label>
+                    <input type="text" id="vdj-host" placeholder="127.0.0.1">
+                </div>
+                <div class="field">
+                    <label>ポート</label>
+                    <input type="number" id="vdj-port" min="1" max="65535" placeholder="80">
+                </div>
+                <div class="field">
+                    <label>パスワード（任意）</label>
+                    <input type="text" id="vdj-password" placeholder="未設定">
+                </div>
+                <button type="button" class="primary" id="vdj-save-connection-button">保存</button>
+            </div>
+            <div class="action-row">
+                <button type="button" id="vdj-test-connection-button">接続テスト</button>
+                <div class="status" id="vdj-connection-status" hidden></div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>曲対決投票ウィジェット</h2>
+                    <p class="subtext">指定ディレクトリから2曲を抽選し、ギフト投票で勝った曲を非アクティブデッキへロードします。</p>
+                </div>
+            </div>
+
+            <div class="record-fields" style="margin-top:16px;display:grid;gap:14px;">
+                <div class="field full">
+                    <label>楽曲ディレクトリ（サブディレクトリ含む）</label>
+                    <div class="user-filemap-dir-row">
+                        <div class="user-filemap-dir-path" id="song-battle-dir-display">未選択</div>
+                        <button type="button" id="song-battle-dir-button">フォルダを選択</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>ギフトA名（曲A用）</label>
+                    <input type="text" id="song-battle-gift-a" maxlength="80" placeholder="例: Rose">
+                </div>
+                <div class="field">
+                    <label>ギフトB名（曲B用）</label>
+                    <input type="text" id="song-battle-gift-b" maxlength="80" placeholder="例: GG">
+                </div>
+                <div class="field">
+                    <label>投票時間（秒）</label>
+                    <input type="number" id="song-battle-duration" min="5" max="3600" step="1" value="60">
+                </div>
+                <div class="field full">
+                    <label>開始モード</label>
+                    <div class="start-mode-row">
+                        <label class="toggle"><input type="radio" name="song-battle-start-mode" id="song-battle-mode-manual" value="manual" checked><span>手動開始</span></label>
+                        <label class="toggle"><input type="radio" name="song-battle-start-mode" id="song-battle-mode-auto" value="auto-loop"><span>自動ループ</span></label>
+                        <span class="field-hint">間隔（分）</span>
+                        <input type="number" id="song-battle-loop-interval" min="1" max="1440" step="1" value="10" style="width:90px;">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>履歴除外曲数</label>
+                    <input type="number" id="song-battle-history-count" min="0" max="500" step="1" value="20">
+                </div>
+                <div class="field full">
+                    <label>VDJ再生履歴ファイル（tracklist.txt）</label>
+                    <input type="text" id="song-battle-history-path" placeholder="例: C:\Users\...\AppData\Local\VirtualDJ\History\tracklist.txt">
+                    <div class="field-hint">VDJ側の「Tracklist Format」設定に含まれる曲名テキストとの部分一致で、直近再生曲を除外します。</div>
+                </div>
+            </div>
+
+            <div class="action-row">
+                <button type="button" class="primary" id="song-battle-start-button">投票開始</button>
+                <button type="button" id="song-battle-end-button" disabled>今すぐ集計して終了</button>
+                <button type="button" class="danger" id="song-battle-cancel-button" disabled>中止（ロードなし）</button>
+                <div class="status" id="song-battle-status" hidden></div>
+            </div>
+
+            <div class="action-row">
+                <button type="button" id="song-battle-test-vote-a-button" disabled>A投票テスト</button>
+                <button type="button" id="song-battle-test-vote-b-button" disabled>B投票テスト</button>
+            </div>
+
+            <div class="song-battle-status-grid">
+                <div class="song-battle-side">
+                    <img class="song-battle-cover" id="song-battle-cover-a" alt="">
+                    <div id="song-battle-title-a">-</div>
+                    <div id="song-battle-tally-a" class="subtext">得票: 0</div>
+                </div>
+                <div class="song-battle-center">
+                    <div id="song-battle-round-status">アイドル</div>
+                    <div id="song-battle-remaining">--:--</div>
+                </div>
+                <div class="song-battle-side">
+                    <img class="song-battle-cover" id="song-battle-cover-b" alt="">
+                    <div id="song-battle-title-b">-</div>
+                    <div id="song-battle-tally-b" class="subtext">得票: 0</div>
+                </div>
+            </div>
+
+            <div class="field full" style="margin-top:18px;">
+                <label>オーバーレイURL</label>
+                <div class="overlay-url-field">
+                    <div class="url-box" id="song-battle-url">読み込み中</div>
+                    <button type="button" id="open-song-battle-overlay-button">開く</button>
+                    <button type="button" id="copy-song-battle-url-button">コピー</button>
+                </div>
+            </div>
+            <div class="widget-preview-frame">
+                <iframe id="song-battle-preview-frame" title="曲対決投票プレビュー"></iframe>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const vdjHostInput = document.getElementById('vdj-host');
+        const vdjPortInput = document.getElementById('vdj-port');
+        const vdjPasswordInput = document.getElementById('vdj-password');
+        const vdjSaveConnectionButton = document.getElementById('vdj-save-connection-button');
+        const vdjTestConnectionButton = document.getElementById('vdj-test-connection-button');
+        const vdjConnectionStatus = document.getElementById('vdj-connection-status');
+
+        const dirDisplay = document.getElementById('song-battle-dir-display');
+        const dirButton = document.getElementById('song-battle-dir-button');
+        const giftAInput = document.getElementById('song-battle-gift-a');
+        const giftBInput = document.getElementById('song-battle-gift-b');
+        const durationInput = document.getElementById('song-battle-duration');
+        const modeManualInput = document.getElementById('song-battle-mode-manual');
+        const modeAutoInput = document.getElementById('song-battle-mode-auto');
+        const loopIntervalInput = document.getElementById('song-battle-loop-interval');
+        const historyCountInput = document.getElementById('song-battle-history-count');
+        const historyPathInput = document.getElementById('song-battle-history-path');
+
+        const startButton = document.getElementById('song-battle-start-button');
+        const endButton = document.getElementById('song-battle-end-button');
+        const cancelButton = document.getElementById('song-battle-cancel-button');
+        const testVoteAButton = document.getElementById('song-battle-test-vote-a-button');
+        const testVoteBButton = document.getElementById('song-battle-test-vote-b-button');
+        const statusBox = document.getElementById('song-battle-status');
+
+        const coverA = document.getElementById('song-battle-cover-a');
+        const coverB = document.getElementById('song-battle-cover-b');
+        const titleA = document.getElementById('song-battle-title-a');
+        const titleB = document.getElementById('song-battle-title-b');
+        const tallyA = document.getElementById('song-battle-tally-a');
+        const tallyB = document.getElementById('song-battle-tally-b');
+        const roundStatusEl = document.getElementById('song-battle-round-status');
+        const remainingEl = document.getElementById('song-battle-remaining');
+
+        const urlBox = document.getElementById('song-battle-url');
+        const previewFrame = document.getElementById('song-battle-preview-frame');
+        const openOverlayButton = document.getElementById('open-song-battle-overlay-button');
+        const copyUrlButton = document.getElementById('copy-song-battle-url-button');
+
+        let remainingTimer = null;
+        let currentEndsAt = 0;
+        let songBattleOverlayUrl = '/overlays/song-battle';
+
+        function setStatus(el, message, tone) {
+            el.hidden = false;
+            el.textContent = message;
+            el.className = 'status' + (tone ? ` ${tone}` : '');
+        }
+
+        function formatRemaining(ms) {
+            const totalSec = Math.max(0, Math.ceil(ms / 1000));
+            const minutes = Math.floor(totalSec / 60);
+            const seconds = totalSec % 60;
+            return `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function stopRemainingTimer() {
+            if (remainingTimer) {
+                clearInterval(remainingTimer);
+                remainingTimer = null;
+            }
+        }
+
+        function startRemainingTimer(endsAt) {
+            stopRemainingTimer();
+            currentEndsAt = endsAt;
+            const tick = () => {
+                const remaining = currentEndsAt - Date.now();
+                remainingEl.textContent = formatRemaining(remaining);
+                if (remaining <= 0) stopRemainingTimer();
+            };
+            tick();
+            remainingTimer = setInterval(tick, 500);
+        }
+
+        function renderRound(round) {
+            if (!round) return;
+
+            const isRunning = round.status === 'running';
+
+            roundStatusEl.textContent = isRunning ? '投票中' : 'アイドル';
+            titleA.textContent = round.songA?.title || '-';
+            titleB.textContent = round.songB?.title || '-';
+            coverA.src = round.songA?.coverDataUrl || '';
+            coverB.src = round.songB?.coverDataUrl || '';
+            tallyA.textContent = `得票: ${round.tallyA || 0}`;
+            tallyB.textContent = `得票: ${round.tallyB || 0}`;
+
+            // 割り込み不可の操作(投票中の開始、非投票中の終了/中止)はボタン自体を非活性にする
+            startButton.disabled = isRunning;
+            endButton.disabled = !isRunning;
+            cancelButton.disabled = !isRunning;
+            testVoteAButton.disabled = !isRunning;
+            testVoteBButton.disabled = !isRunning;
+
+            if (isRunning && round.endsAt) {
+                startRemainingTimer(round.endsAt);
+            } else {
+                stopRemainingTimer();
+                remainingEl.textContent = '--:--';
+            }
+        }
+
+        async function loadSnapshot() {
+            const response = await fetch('/api/widgets/song-battle/snapshot');
+            const payload = await response.json();
+
+            const settings = payload.settings || {};
+            dirDisplay.textContent = settings.directory || '未選択';
+            dirDisplay.title = settings.directory || '';
+            giftAInput.value = settings.giftNameA || '';
+            giftBInput.value = settings.giftNameB || '';
+            durationInput.value = String(settings.durationSec ?? 60);
+            modeAutoInput.checked = settings.startMode === 'auto-loop';
+            modeManualInput.checked = settings.startMode !== 'auto-loop';
+            loopIntervalInput.value = String(settings.loopIntervalMin ?? 10);
+            historyCountInput.value = String(settings.historyExcludeCount ?? 20);
+            historyPathInput.value = settings.historyFilePath || '';
+
+            renderRound(payload.round);
+
+            if (payload.widgetUrls?.songBattleLoaderUrl || payload.widgetUrls?.songBattleOverlayUrl) {
+                songBattleOverlayUrl = payload.widgetUrls.songBattleLoaderUrl || payload.widgetUrls.songBattleOverlayUrl;
+            }
+            urlBox.textContent = songBattleOverlayUrl;
+            previewFrame.src = `${songBattleOverlayUrl}?preview=1`;
+        }
+
+        async function loadVdjConnection() {
+            const response = await fetch('/api/vdj/connection');
+            const settings = await response.json();
+            vdjHostInput.value = settings.host || '';
+            vdjPortInput.value = String(settings.port || 80);
+            vdjPasswordInput.value = settings.password || '';
+        }
+
+        let songBattleSaveChain = Promise.resolve();
+
+        // PATCHは毎回全フィールドを送る置き換え方式のため、直列化しないと
+        // 複数欄をすばやく手打ちした際にリクエストが順不同で届き、
+        // 古い値のPATCHが後から届いて新しい値を上書きしてしまう。
+        function saveSongBattleSettings() {
+            songBattleSaveChain = songBattleSaveChain
+                .then(() => fetch('/api/widgets/song-battle', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: dirDisplay.title || '',
+                        giftNameA: giftAInput.value.trim(),
+                        giftNameB: giftBInput.value.trim(),
+                        durationSec: Number(durationInput.value || 60),
+                        startMode: modeAutoInput.checked ? 'auto-loop' : 'manual',
+                        loopIntervalMin: Number(loopIntervalInput.value || 10),
+                        historyExcludeCount: Number(historyCountInput.value || 20),
+                        historyFilePath: historyPathInput.value.trim()
+                    })
+                }))
+                .catch(() => {});
+            return songBattleSaveChain;
+        }
+
+        [giftAInput, giftBInput, durationInput, loopIntervalInput, historyCountInput].forEach((input) => {
+            input.addEventListener('change', saveSongBattleSettings);
+        });
+        modeManualInput.addEventListener('change', saveSongBattleSettings);
+        modeAutoInput.addEventListener('change', saveSongBattleSettings);
+
+        dirButton.addEventListener('click', async () => {
+            dirButton.disabled = true;
+            try {
+                const response = await fetch('/api/electron/pick-directory', { method: 'POST' });
+                if (!response.ok) return;
+                const result = await response.json();
+                if (result.dirPath) {
+                    dirDisplay.textContent = result.dirPath;
+                    dirDisplay.title = result.dirPath;
+                    await saveSongBattleSettings();
+                }
+            } catch {
+                // ダイアログが閉じられた場合など
+            } finally {
+                dirButton.disabled = false;
+            }
+        });
+
+        historyPathInput.addEventListener('change', saveSongBattleSettings);
+
+        startButton.addEventListener('click', async () => {
+            startButton.disabled = true;
+            try {
+                // 直前に設定欄をhand-typeしてすぐ押した場合、blurで発火した保存PATCHが
+                // まだサーバーに届いていないことがある(bodyなしのstartの方が先に処理され得る)。
+                // 保存キューが片付くまで待ってから開始する。
+                await songBattleSaveChain;
+                const response = await fetch('/api/widgets/song-battle/start', { method: 'POST' });
+                const payload = await response.json();
+                renderRound(payload.round);
+                if (!response.ok) {
+                    setStatus(statusBox, payload.error || '投票の開始に失敗しました。', 'error');
+                    return;
+                }
+                setStatus(statusBox, '投票を開始しました。', 'ok');
+            } catch {
+                startButton.disabled = false;
+            }
+        });
+
+        endButton.addEventListener('click', async () => {
+            endButton.disabled = true;
+            try {
+                const response = await fetch('/api/widgets/song-battle/end', { method: 'POST' });
+                const payload = await response.json();
+                renderRound(payload.round);
+                setStatus(statusBox, '集計して終了しました。', 'ok');
+            } catch {
+                endButton.disabled = false;
+            }
+        });
+
+        cancelButton.addEventListener('click', async () => {
+            cancelButton.disabled = true;
+            try {
+                const response = await fetch('/api/widgets/song-battle/cancel', { method: 'POST' });
+                const payload = await response.json();
+                renderRound(payload.round);
+                setStatus(statusBox, '投票を中止しました。', 'ok');
+            } catch {
+                cancelButton.disabled = false;
+            }
+        });
+
+        async function sendTestVote(side, button) {
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/widgets/song-battle/test-vote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ side })
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    setStatus(statusBox, payload.error || 'テスト投票に失敗しました。', 'error');
+                    renderRound(payload.round);
+                    return;
+                }
+                renderRound(payload.round);
+            } catch {
+                button.disabled = false;
+            }
+        }
+
+        testVoteAButton.addEventListener('click', () => sendTestVote('A', testVoteAButton));
+        testVoteBButton.addEventListener('click', () => sendTestVote('B', testVoteBButton));
+
+        vdjSaveConnectionButton.addEventListener('click', async () => {
+            vdjSaveConnectionButton.disabled = true;
+            try {
+                await fetch('/api/vdj/connection', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host: vdjHostInput.value.trim(),
+                        port: Number(vdjPortInput.value || 80),
+                        password: vdjPasswordInput.value
+                    })
+                });
+                setStatus(vdjConnectionStatus, '接続設定を保存しました。', 'ok');
+            } finally {
+                vdjSaveConnectionButton.disabled = false;
+            }
+        });
+
+        vdjTestConnectionButton.addEventListener('click', async () => {
+            vdjTestConnectionButton.disabled = true;
+            setStatus(vdjConnectionStatus, '接続確認中…', '');
+            try {
+                const response = await fetch('/api/vdj/test-connection', { method: 'POST' });
+                const result = await response.json();
+                if (result.ok) {
+                    setStatus(vdjConnectionStatus, `接続成功 (${result.version || 'VirtualDJ'})`, 'ok');
+                } else {
+                    setStatus(vdjConnectionStatus, '接続できませんでした。VirtualDJとNetwork Control Pluginの設定を確認してください。', 'error');
+                }
+            } catch {
+                setStatus(vdjConnectionStatus, '接続確認中にエラーが発生しました。', 'error');
+            } finally {
+                vdjTestConnectionButton.disabled = false;
+            }
+        });
+
+        openOverlayButton.addEventListener('click', () => {
+            window.open(songBattleOverlayUrl, 'song-battle-overlay-window', 'popup=yes,width=980,height=520');
+        });
+
+        copyUrlButton.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(songBattleOverlayUrl);
+                setStatus(statusBox, 'URLをコピーしました。', 'ok');
+            } catch {
+                setStatus(statusBox, 'URLのコピーに失敗しました。', 'error');
+            }
+        });
+
+        socket.on('song-battle:round-start', renderRound);
+        socket.on('song-battle:vote-update', renderRound);
+        socket.on('song-battle:round-end', renderRound);
+        socket.on('song-battle:round-cancelled', renderRound);
+
+        loadVdjConnection();
+        loadSnapshot();
+    </script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

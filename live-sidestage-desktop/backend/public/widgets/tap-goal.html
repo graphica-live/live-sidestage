@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タップ目標</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --heading-color: #f1f5f9;
+            --count-color: #fbbf24;
+            --bar-fill-color: #fbbf24;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 5px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .widget {
+            padding: 18px;
+            width: max-content;
+            pointer-events: none;
+            display: flex;
+            align-items: stretch;
+            gap: 14px;
+        }
+
+        .widget[data-orientation="horizontal"] {
+            max-width: min(880px, 100vw);
+        }
+
+        /* vertical方向の上限はbar-group自身が持つ(下記)。widget側で上限をかけると、
+           見出し込みの合計がそれを超えたときcolumn-reverse(見出し下)では上方向に
+           はみ出て見切れてしまうため、widget自体には上限を設けない */
+
+        .widget[data-heading-position="top"] { flex-direction: column; }
+        .widget[data-heading-position="bottom"] { flex-direction: column-reverse; }
+        .widget[data-heading-position="left"] { flex-direction: row; }
+        .widget[data-heading-position="right"] { flex-direction: row-reverse; }
+
+        .heading {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--heading-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow);
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        /* 見出しテキストが空のときは領域自体を確保しない(見出しなし表示) */
+        .heading:empty {
+            display: none;
+        }
+
+        .widget[data-heading-writing-mode="vertical"] .heading {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+        }
+
+        /* top/bottom配置ではheadingがwidget幅いっぱいにstretchされるため、
+           縦書きだと文字が右端に寄ってメーターと軸がずれる。中央寄せで揃える */
+        .widget[data-heading-position="top"][data-heading-writing-mode="vertical"] .heading,
+        .widget[data-heading-position="bottom"][data-heading-writing-mode="vertical"] .heading {
+            align-self: center;
+            /* 縦書きは文字数に比例して際限なく縦に伸びてしまうため、
+               widget全体が肥大化してオーバーレイ領域からはみ出さないよう上限を設ける */
+            max-height: 260px;
+            overflow: hidden;
+        }
+
+        .bar-group {
+            display: flex;
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .widget[data-orientation="horizontal"] .bar-group {
+            flex-direction: column;
+            /* 見出しの書字方向でheadingの占有幅が変わっても、メーター自体の幅は
+               このmin/max-widthで確保する(headingと奪い合わない) */
+            min-width: 444px;
+            max-width: min(844px, calc(100vw - 36px));
+        }
+
+        .widget[data-orientation="vertical"] .bar-group {
+            flex-direction: row;
+            /* 見出しの書字方向でheadingの占有高さが変わっても、メーター自体の高さは
+               このmin/max-heightで確保する(headingと奪い合わない)。
+               align-itemsをstretch(既定)のままにしないとbar-track-wrapのheight:100%が
+               正しく解決されない(centerだと高さがつぶれる) */
+            min-height: 444px;
+            max-height: min(844px, calc(90vh - 36px));
+        }
+
+        .bar-track {
+            position: relative;
+            background: rgba(15, 23, 42, 0.55);
+            border: 4px solid #ffffff;
+            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.95), 0 0 14px rgba(0, 0, 0, 0.55), inset 0 2px 6px rgba(0, 0, 0, 0.35);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .widget[data-orientation="horizontal"] .bar-track {
+            width: 100%;
+            height: 26px;
+        }
+
+        .widget[data-orientation="vertical"] .bar-track {
+            width: 26px;
+            height: 100%;
+        }
+
+        .bar-fill {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, var(--bar-fill-color), color-mix(in srgb, var(--bar-fill-color) 60%, white));
+            border-radius: 999px;
+            transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1), height 320ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .widget[data-orientation="horizontal"] .bar-fill {
+            top: 0;
+            height: 100%;
+            width: 0%;
+        }
+
+        .widget[data-orientation="vertical"] .bar-fill {
+            top: auto;
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(0deg, var(--bar-fill-color), color-mix(in srgb, var(--bar-fill-color) 60%, white));
+        }
+
+        .bar-count {
+            margin-top: 8px;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--count-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 5px 16px var(--shadow);
+        }
+
+        .widget[data-orientation="vertical"] .bar-count {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            margin-top: 0;
+            margin-left: 8px;
+            align-self: center;
+        }
+
+        @keyframes tapGoalFlash {
+            0%, 100% { filter: brightness(1); }
+            25% { filter: brightness(2.4); }
+            50% { filter: brightness(1); }
+            75% { filter: brightness(2.4); }
+        }
+
+        .bar-group.is-flashing {
+            animation: tapGoalFlash 600ms ease-in-out;
+        }
+
+        .bar-track-wrap {
+            position: relative;
+        }
+
+        .widget[data-orientation="horizontal"] .bar-track-wrap {
+            width: 100%;
+        }
+
+        .widget[data-orientation="vertical"] .bar-track-wrap {
+            align-self: stretch;
+        }
+
+        .hearts-layer {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .heart-particle {
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            width: var(--size, 32px);
+            height: var(--size, 32px);
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+            opacity: 1;
+            animation: heartRise var(--duration, 1300ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        }
+
+        .heart-particle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .heart-particle-letter {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: calc(var(--size, 32px) * 0.5);
+            color: #f1f5f9;
+            background: rgba(30, 41, 59, 0.85);
+        }
+
+        @keyframes heartRise {
+            0%   { transform: translate(-50%, 0) scale(0.85); opacity: 0.98; }
+            8%   { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            55%  { opacity: 0.9; }
+            100% { transform: translate(calc(-50% + var(--dx, 0px)), var(--dy, -120px)) scale(1); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget" data-orientation="horizontal" data-heading-position="top" data-heading-writing-mode="horizontal">
+        <div class="heading" id="heading"></div>
+        <div class="bar-group" id="barGroup">
+            <div class="bar-track-wrap">
+                <div class="bar-track" id="barTrack">
+                    <div class="bar-fill" id="barFill"></div>
+                </div>
+                <div class="hearts-layer" id="heartsLayer"></div>
+            </div>
+            <div class="bar-count" id="barCount">0 / 0</div>
+        </div>
+    </div>
+    <audio id="tapGoalAudio"></audio>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
+        const widgetEl = document.getElementById('widget');
+        const headingEl = document.getElementById('heading');
+        const barGroupEl = document.getElementById('barGroup');
+        const barFillEl = document.getElementById('barFill');
+        const barCountEl = document.getElementById('barCount');
+        const heartsLayerEl = document.getElementById('heartsLayer');
+
+        let tapGoalIconSizeScale = 1;
+
+        // メーターの根本から上方向 ±10度 の範囲でランダムに、タップ主のアイコンを拡散させる
+        function spawnTapGoalHeart(actor) {
+            const angleDeg = (Math.random() * 20) - 10;
+            const travel = 180 + Math.random() * 100;
+            const dx = Math.tan(angleDeg * Math.PI / 180) * travel;
+            const size = (32 + Math.random() * 18) * (2 / 3) * tapGoalIconSizeScale;
+            const duration = 1500 + Math.random() * 600;
+
+            const heartEl = document.createElement('div');
+            heartEl.className = 'heart-particle';
+            heartEl.style.setProperty('--dx', dx.toFixed(1) + 'px');
+            heartEl.style.setProperty('--dy', (-travel).toFixed(1) + 'px');
+            heartEl.style.setProperty('--size', size.toFixed(0) + 'px');
+            heartEl.style.setProperty('--duration', duration.toFixed(0) + 'ms');
+
+            const letter = escapeHtml(String(actor?.nickname || '?').charAt(0).toUpperCase());
+            if (actor?.avatarUrl) {
+                const proxied = `/api/proxy/avatar?url=${encodeURIComponent(actor.avatarUrl)}`;
+                heartEl.innerHTML =
+                    `<img src="${escapeAttr(proxied)}" alt="" ` +
+                    `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+                    `<span class="heart-particle-letter" style="display:none">${letter}</span>`;
+            } else {
+                heartEl.innerHTML = `<span class="heart-particle-letter">${letter}</span>`;
+            }
+
+            heartEl.addEventListener('animationend', () => heartEl.remove(), { once: true });
+            heartsLayerEl.appendChild(heartEl);
+        }
+
+        function spawnTapGoalHearts(amount, actor) {
+            const count = Math.max(1, Math.min(8, Math.round(amount / 3)));
+            for (let i = 0; i < count; i++) {
+                window.setTimeout(() => spawnTapGoalHeart(actor), i * 60);
+            }
+        }
+
+        const TAP_GOAL_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TAP_GOAL_TEXT_STYLES = {
+            'gold-night':      { headingColor: 'rgba(241,245,249,0.94)', barColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)', textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { headingColor: 'rgba(191,219,254,0.94)', barColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)', textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { headingColor: 'rgba(251,207,232,0.94)', barColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { headingColor: 'rgba(209,250,229,0.94)', barColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)', textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { headingColor: 'rgba(254,215,170,0.94)', barColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 5));
+            const fontFamily = TAP_GOAL_FONT_FAMILIES[fontKey] || TAP_GOAL_FONT_FAMILIES.default;
+            const textStyle = TAP_GOAL_TEXT_STYLES[textStyleKey] || TAP_GOAL_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--heading-color', textStyle.headingColor);
+            root.setProperty('--count-color', textStyle.barColor);
+            root.setProperty('--bar-fill-color', textStyle.barColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+        }
+
+        const tapGoalAudioEl = document.getElementById('tapGoalAudio');
+        let tapGoalLastSoundAt = 0;
+        const TAP_GOAL_SOUND_MIN_INTERVAL_MS = 250; // 連続いいねで再生要求が連打され要素が無音のまま固まるのを防ぐ
+
+        // 再生失敗後に固まったままにならないよう要素をリセットしておく(次回トリガーで自動復帰させる)
+        tapGoalAudioEl.addEventListener('error', () => tapGoalAudioEl.load());
+
+        function playTapGoalSound(url, volume) {
+            if (!url) return;
+            const now = Date.now();
+            if (now - tapGoalLastSoundAt < TAP_GOAL_SOUND_MIN_INTERVAL_MS) return;
+            tapGoalLastSoundAt = now;
+
+            // new Audio() を毎回生成すると要素が解放されずに蓄積し、
+            // しばらく再生を繰り返した後に無音化することがあるため使い回す
+            if (tapGoalAudioEl.src !== url) tapGoalAudioEl.src = url;
+            tapGoalAudioEl.currentTime = 0;
+            tapGoalAudioEl.volume = Math.max(0, Math.min(100, Number(volume ?? 100))) / 100;
+            tapGoalAudioEl.play().catch((err) => {
+                console.warn('[tap-goal] sound playback failed', err);
+                tapGoalAudioEl.load();
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function triggerTapGoalFlash() {
+            barGroupEl.classList.remove('is-flashing');
+            void barGroupEl.offsetWidth; // アニメーション再トリガー用のreflow
+            barGroupEl.classList.add('is-flashing');
+        }
+
+        function applySettings(settings) {
+            if (!settings) return;
+            widgetEl.dataset.orientation = settings.orientation === 'vertical' ? 'vertical' : 'horizontal';
+            widgetEl.dataset.headingPosition = ['top', 'bottom', 'left', 'right'].includes(settings.headingPosition)
+                ? settings.headingPosition
+                : (widgetEl.dataset.orientation === 'vertical' ? 'left' : 'top');
+            widgetEl.dataset.headingWritingMode = settings.headingWritingMode === 'vertical' ? 'vertical' : 'horizontal';
+            headingEl.textContent = settings.headingText || '';
+            tapGoalIconSizeScale = Math.max(0.3, Math.min(2, (Number(settings.iconSize) || 100) / 100));
+        }
+
+        let lastTapGoalCount = null;
+        let lastTapGoalTarget = 1;
+        let isTapGoalCelebrating = false;
+        let pendingTapGoalProgress = null;
+        const TAP_GOAL_CELEBRATION_HOLD_MS = 750; // 点滅(600ms)が完全に終わってからゲージをリセットする
+
+        function renderTapGoalBar(progress) {
+            const target = Math.max(1, Number(progress.target) || 1);
+            const count = Math.max(0, Number(progress.count) || 0);
+            const ratio = Math.max(0, Math.min(1, count / target));
+            if (widgetEl.dataset.orientation === 'vertical') {
+                barFillEl.style.height = (ratio * 100) + '%';
+                barFillEl.style.width = '';
+            } else {
+                barFillEl.style.width = (ratio * 100) + '%';
+                barFillEl.style.height = '';
+            }
+            barCountEl.textContent = `${count.toLocaleString()} / ${target.toLocaleString()}`;
+        }
+
+        function forceTapGoalBarFull() {
+            if (widgetEl.dataset.orientation === 'vertical') {
+                barFillEl.style.height = '100%';
+                barFillEl.style.width = '';
+            } else {
+                barFillEl.style.width = '100%';
+                barFillEl.style.height = '';
+            }
+            barCountEl.textContent = `${lastTapGoalTarget.toLocaleString()} / ${lastTapGoalTarget.toLocaleString()}`;
+        }
+
+        function applyProgress(progress, actor) {
+            if (!progress) return;
+            const target = Math.max(1, Number(progress.target) || 1);
+            const count = Math.max(0, Number(progress.count) || 0);
+
+            if (lastTapGoalCount !== null) {
+                let increment = count - lastTapGoalCount;
+                if (increment < 0) increment += target; // 周回ループでラップした分を補正
+                if (increment > 0) spawnTapGoalHearts(increment, actor);
+            }
+            lastTapGoalCount = count;
+            lastTapGoalTarget = target;
+
+            // 満タン演出(点滅)中はゲージを即リセットせず、演出が終わってから反映する
+            if (isTapGoalCelebrating) {
+                pendingTapGoalProgress = progress;
+                return;
+            }
+            renderTapGoalBar(progress);
+        }
+
+        function applyPayload(payload) {
+            if (!payload) return;
+            if (payload.settings) applySettings(payload.settings);
+            if (payload.appearance) applyAppearance(payload.appearance);
+            if (payload.progress) applyProgress(payload.progress, payload.actor);
+        }
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/tap-goal/config')
+                .then((r) => r.json())
+                .then(applyPayload)
+                .catch(() => {});
+        });
+
+        socket.on('widgets:tap-goal:updated', applyPayload);
+        socket.on('widgets:tap-goal:reached', (payload) => {
+            playTapGoalSound(payload?.url, payload?.volume);
+            triggerTapGoalFlash();
+
+            isTapGoalCelebrating = true;
+            forceTapGoalBarFull();
+
+            window.setTimeout(() => {
+                isTapGoalCelebrating = false;
+                if (pendingTapGoalProgress) {
+                    renderTapGoalBar(pendingTapGoalProgress);
+                    pendingTapGoalProgress = null;
+                }
+            }, TAP_GOAL_CELEBRATION_HOLD_MS);
+        });
+    </script>
+</body>
+</html>

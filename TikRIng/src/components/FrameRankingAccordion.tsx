@@ -1,0 +1,577 @@
+import { ChevronDown, ExternalLink, Loader2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+type RankingFrame = {
+  id: string;
+  displayName: string;
+  ownerDisplayName: string;
+  ownerTikTokProfileId?: string | null;
+  viewCount: number;
+  thumbnailUrl: string;
+};
+
+type RankingResponse = {
+  frames?: RankingFrame[];
+};
+
+interface FrameRankingAccordionProps {
+  title: string;
+  eyebrow?: string;
+  closedSummary?: string;
+  className?: string;
+  rankingType?: 'views' | 'goods' | 'pickup';
+  defaultOpen?: boolean;
+}
+
+const WATERMARK_TEXT = 'TikRing';
+
+function getRankingEndpoint(rankingType: 'views' | 'goods' | 'pickup') {
+  const params = new URLSearchParams();
+  params.set('top', '1');
+  if (rankingType === 'pickup') {
+    params.set('source', 'pickup');
+  } else if (rankingType === 'goods') {
+    params.set('metric', 'goods');
+  }
+
+  return `/api/frames?${params.toString()}`;
+}
+
+function getAccordionBadge(rankingType: 'views' | 'goods' | 'pickup') {
+  return rankingType === 'pickup' ? 'PICK10' : 'TOP10';
+}
+
+function getTikTokProfileUrl(profileId: string) {
+  return `https://www.tiktok.com/@${encodeURIComponent(profileId)}`;
+}
+
+function getErrorStatus(error: unknown) {
+  if (error instanceof Error && 'status' in error) {
+    return Number((error as Error & { status?: number }).status);
+  }
+
+  return null;
+}
+
+function getLocalApiOrigin() {
+  const localOrigin = (import.meta.env.VITE_LOCAL_API_ORIGIN as string | undefined)?.trim() || '';
+  if (!localOrigin || localOrigin.startsWith(window.location.origin)) {
+    return null;
+  }
+
+  return localOrigin;
+}
+
+type WatermarkOptions = {
+  gradientTopAlpha: number;
+  gradientMidAlpha: number;
+  gradientBottomAlpha: number;
+  textAlpha: number;
+  strokeAlpha: number;
+};
+
+const MODAL_WATERMARK_OPTIONS: WatermarkOptions = {
+  gradientTopAlpha: 0,
+  gradientMidAlpha: 0,
+  gradientBottomAlpha: 0,
+  textAlpha: 0,
+  strokeAlpha: 0,
+};
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    const timeoutId = window.setTimeout(() => {
+      image.onload = null;
+      image.onerror = null;
+      reject(new Error('画像の読み込みがタイムアウトしました。'));
+    }, 12000);
+
+    const clearHandlers = () => {
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+    };
+
+    image.crossOrigin = 'anonymous';
+    image.onload = () => {
+      clearHandlers();
+      resolve(image);
+    };
+    image.onerror = () => {
+      clearHandlers();
+      reject(new Error('画像の読み込みに失敗しました。'));
+    };
+    image.src = src;
+  });
+}
+
+async function generateWatermarkedPngDataUrl(
+  thumbnailUrl: string,
+  watermarkText: string,
+  options: WatermarkOptions,
+): Promise<string> {
+  const image = await loadImage(thumbnailUrl);
+  const canvas = document.createElement('canvas');
+  const size = Math.max(image.width, image.height);
+
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('プレビュー生成に失敗しました。');
+  }
+
+  context.clearRect(0, 0, size, size);
+
+  const offsetX = (size - image.width) / 2;
+  const offsetY = (size - image.height) / 2;
+  context.drawImage(image, offsetX, offsetY, image.width, image.height);
+
+  const gradient = context.createLinearGradient(0, 0, 0, size);
+  gradient.addColorStop(0, `rgba(0, 0, 0, ${options.gradientTopAlpha})`);
+  gradient.addColorStop(0.55, `rgba(0, 0, 0, ${options.gradientMidAlpha})`);
+  gradient.addColorStop(1, `rgba(0, 0, 0, ${options.gradientBottomAlpha})`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+
+  context.save();
+  context.translate(size / 2, size / 2);
+  context.rotate(-Math.PI / 4);
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  const watermarkFontSize = Math.max(26, Math.round(size * 0.08));
+  const spacing = Math.max(108, Math.round(size * 0.28));
+  context.font = `900 ${watermarkFontSize}px Arial, sans-serif`;
+  context.fillStyle = `rgba(255, 255, 255, ${options.textAlpha})`;
+  context.strokeStyle = `rgba(0, 0, 0, ${options.strokeAlpha})`;
+  context.lineWidth = Math.max(2, Math.round(size * 0.006));
+
+  for (let x = -size * 1.2; x <= size * 1.2; x += spacing) {
+    for (let y = -size * 1.2; y <= size * 1.2; y += spacing) {
+      context.strokeText(watermarkText, x, y);
+      context.fillText(watermarkText, x, y);
+    }
+  }
+
+  context.restore();
+
+  return canvas.toDataURL('image/png');
+}
+
+function StrongWatermarkOverlay({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {compact ? (
+        <>
+          <div className="absolute inset-[-38%] grid grid-cols-2 gap-x-2 gap-y-4 -rotate-[24deg]">
+            {Array.from({ length: 28 }).map((_, index) => (
+              <span
+                key={index}
+                className="select-none text-center text-sm font-black uppercase tracking-[0.36em] text-white/72 drop-shadow-[0_2px_10px_rgba(0,0,0,0.98)] sm:text-base"
+              >
+                {WATERMARK_TEXT}
+              </span>
+            ))}
+          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.3))]" />
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-[-22%] grid grid-cols-2 gap-x-4 gap-y-7 -rotate-[24deg] sm:gap-x-6 sm:gap-y-9">
+            {Array.from({ length: 15 }).map((_, index) => (
+              <span
+                key={index}
+                className="select-none text-center text-2xl font-black uppercase tracking-[0.42em] text-white/68 drop-shadow-[0_3px_14px_rgba(0,0,0,0.98)] sm:text-4xl"
+              >
+                {WATERMARK_TEXT}
+              </span>
+            ))}
+          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.28))]" />
+        </>
+      )}
+    </div>
+  );
+}
+
+async function fetchJson<T>(endpoint: string, init: RequestInit, errorMessage: string) {
+  const response = await fetch(endpoint, init);
+
+  if (!response.ok) {
+    const error = new Error(errorMessage);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchJsonWithFallback<T>(endpoint: string, init: RequestInit, errorMessage: string) {
+  try {
+    return await fetchJson<T>(endpoint, init, errorMessage);
+  } catch (primaryError) {
+    const status = getErrorStatus(primaryError);
+    const localOrigin = getLocalApiOrigin();
+    const canFallback = Boolean(localOrigin) && (status === 401 || status === 404);
+
+    if (!canFallback || !localOrigin) {
+      throw primaryError;
+    }
+
+    return fetchJson<T>(`${localOrigin}${endpoint}`, init, errorMessage);
+  }
+}
+
+async function fetchRanking(endpoint: string, signal: AbortSignal) {
+  return fetchJsonWithFallback<RankingResponse>(endpoint, { signal }, 'ランキングを取得できませんでした。');
+}
+
+export default function FrameRankingAccordion({
+  title,
+  eyebrow = 'Ranking',
+  closedSummary = '月間閲覧数TOP10を表示',
+  className,
+  rankingType = 'views',
+  defaultOpen = false,
+}: FrameRankingAccordionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [loading, setLoading] = useState(false);
+  const [frames, setFrames] = useState<RankingFrame[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [selectedFrame, setSelectedFrame] = useState<RankingFrame | null>(null);
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+  const [modalImageLoading, setModalImageLoading] = useState(false);
+  const [modalImageError, setModalImageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || loaded) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchRanking(getRankingEndpoint(rankingType), controller.signal);
+
+        setFrames(Array.isArray(data.frames) ? data.frames : []);
+        setLoaded(true);
+      } catch (fetchError) {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+          return;
+        }
+
+        console.error(fetchError);
+        const status = getErrorStatus(fetchError);
+        if (status !== null) {
+          if (status === 401) {
+            setError('ランキングAPIがまだ反映されていません。デプロイ後に表示されます。');
+            return;
+          }
+
+          if (status === 404) {
+            setError('ランキングAPIがまだ反映されていません。デプロイ後に表示されます。');
+            return;
+          }
+
+          if (status >= 500) {
+            setError('ランキングAPIでエラーが発生しました。');
+            return;
+          }
+        }
+
+        setError(fetchError instanceof Error ? fetchError.message : 'ランキングを読み込めませんでした。');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => controller.abort();
+  }, [loaded, open, rankingType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedFrame) {
+      setModalImageUrl(null);
+      setModalImageLoading(false);
+      setModalImageError(null);
+      return;
+    }
+
+    setModalImageLoading(true);
+    setModalImageError(null);
+    setModalImageUrl(null);
+
+    void generateWatermarkedPngDataUrl(selectedFrame.thumbnailUrl, WATERMARK_TEXT, MODAL_WATERMARK_OPTIONS)
+      .then((dataUrl) => {
+        if (cancelled) {
+          return;
+        }
+
+        setModalImageUrl(dataUrl);
+      })
+      .catch((generationError) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(generationError);
+        setModalImageError('保護プレビューを生成できませんでした。');
+      })
+      .finally(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setModalImageLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFrame]);
+
+  const closeModal = () => {
+    setSelectedFrame(null);
+    setModalImageUrl(null);
+    setModalImageLoading(false);
+    setModalImageError(null);
+  };
+
+  const blockImageInteraction = (event: React.MouseEvent<HTMLElement> | React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+
+  return (
+    <>
+      <section className={`w-full rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,12,0.98))] p-3 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-4 ${className ?? ''}`}>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className={`flex w-full items-center justify-between gap-2 text-left transition-colors ${open ? 'border-b border-white/8 pb-2.5' : ''}`}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tiktok-cyan/80">{eyebrow}</p>
+            <h2 className="mt-0.5 truncate text-[13px] font-bold leading-tight text-white sm:text-sm">
+              {title}<span className="ml-1.5 text-[10px] font-normal text-tiktok-lightgray">直近1か月</span>
+            </h2>
+            {!open && closedSummary ? (
+              <p className="mt-0.5 truncate text-[10px] leading-tight text-tiktok-lightgray">{closedSummary}</p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="whitespace-nowrap rounded-full border border-tiktok-cyan/25 bg-tiktok-cyan/10 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-tiktok-cyan/80">
+              {getAccordionBadge(rankingType)}
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-tiktok-lightgray transition-transform ${open ? 'rotate-180' : ''}`} />
+          </div>
+        </button>
+
+        {open ? (
+          <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-sm text-tiktok-lightgray">
+                <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+                <span>ランキングを読み込み中...</span>
+              </div>
+            ) : error ? (
+              <div className="rounded-xl border border-tiktok-red/25 bg-tiktok-red/10 px-3 py-4 text-center text-sm text-[#ffb7c5]">
+                {error}
+              </div>
+            ) : frames.length === 0 ? (
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-4 text-center text-sm text-tiktok-lightgray">
+                まだランキング対象のフレームがありません。
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* 1位 */}
+                {frames.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFrame(frames[0])}
+                    className="relative w-full overflow-hidden rounded-2xl border border-tiktok-cyan/30 transition hover:border-tiktok-cyan/50"
+                    aria-label="1位を拡大表示"
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                      <img
+                        src={frames[0].thumbnailUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-contain"
+                        draggable={false}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onDragStart={(e) => e.preventDefault()}
+                      />
+                      <StrongWatermarkOverlay />
+                    </div>
+                    <div className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-tiktok-cyan text-base font-black text-black shadow-lg">
+                      1
+                    </div>
+                  </button>
+                )}
+
+                {/* 2位・3位 */}
+                {frames.length > 1 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {frames.slice(1, 3).map((frame, i) => (
+                      <button
+                        key={frame.id}
+                        type="button"
+                        onClick={() => setSelectedFrame(frame)}
+                        className="relative overflow-hidden rounded-xl border border-white/14 transition hover:border-white/24"
+                        aria-label={`${i + 2}位を拡大表示`}
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                          <img
+                            src={frame.thumbnailUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                          <StrongWatermarkOverlay compact />
+                        </div>
+                        <div className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-tiktok-cyan/85 text-sm font-black text-black shadow-md">
+                          {i + 2}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4位以降 */}
+                {frames.length > 3 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {frames.slice(3).map((frame, i) => (
+                      <button
+                        key={frame.id}
+                        type="button"
+                        onClick={() => setSelectedFrame(frame)}
+                        className="relative overflow-hidden rounded-lg border border-white/8 transition hover:border-white/16"
+                        aria-label={`${i + 4}位を拡大表示`}
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden bg-transparent">
+                          <img
+                            src={frame.thumbnailUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                          <StrongWatermarkOverlay compact />
+                        </div>
+                        <div className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-xs font-black text-white shadow-sm">
+                          {i + 4}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      {selectedFrame ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ranking-preview-title"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-md rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(20,20,24,0.98),rgba(7,7,9,0.98))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.45)] sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={blockImageInteraction}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-tiktok-cyan/80">Ranking Preview</p>
+                {selectedFrame.ownerTikTokProfileId ? (
+                  <>
+                    <a
+                      id="ranking-preview-title"
+                      href={getTikTokProfileUrl(selectedFrame.ownerTikTokProfileId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-sm font-bold text-tiktok-cyan transition hover:underline hover:underline-offset-2 sm:text-base"
+                    >
+                      <span className="break-all">{selectedFrame.ownerDisplayName}</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={getTikTokProfileUrl(selectedFrame.ownerTikTokProfileId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-xs text-tiktok-lightgray transition hover:text-white hover:underline hover:underline-offset-2"
+                    >
+                      TikTokプロフィールを見る
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </>
+                ) : (
+                  <h3 id="ranking-preview-title" className="mt-1 text-sm font-bold text-white sm:text-base">{selectedFrame.ownerDisplayName}</h3>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label="閉じる"
+                onClick={closeModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-tiktok-lightgray transition hover:border-white/16 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div
+              className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-transparent"
+              onContextMenu={blockImageInteraction}
+              onDragStart={blockImageInteraction}
+            >
+              {modalImageLoading ? (
+                <div className="flex aspect-square w-full items-center justify-center gap-2 bg-white/[0.03] text-sm text-tiktok-lightgray">
+                  <Loader2 className="h-4 w-4 animate-spin text-tiktok-cyan" />
+                  <span>保護プレビューを生成中...</span>
+                </div>
+              ) : modalImageUrl ? (
+                <>
+                  <img
+                    src={modalImageUrl}
+                    alt={selectedFrame.displayName}
+                    className="aspect-square w-full object-contain"
+                    draggable={false}
+                    onContextMenu={blockImageInteraction}
+                    onDragStart={blockImageInteraction}
+                  />
+                  <StrongWatermarkOverlay />
+                </>
+              ) : (
+                <div className="flex aspect-square w-full items-center justify-center px-6 text-center text-sm text-[#ffb7c5]">
+                  {modalImageError ?? '保護プレビューを生成できませんでした。'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}

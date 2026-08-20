@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トリガー保留オーバーレイ</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+            overflow: hidden;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            display: flex;
+            flex-direction: row-reverse;
+            align-items: flex-end;
+            gap: 30px;
+            min-height: 100vh;
+            padding: 28px;
+        }
+
+        .current-wrap {
+            flex: 0 0 auto;
+            display: flex;
+        }
+
+        .current-chip {
+            width: 220px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            animation: pendingCurrentPulse 1.4s ease-in-out infinite;
+        }
+
+        .current-chip img {
+            width: 76%;
+            height: 76%;
+            object-fit: contain;
+            filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5));
+        }
+
+        .current-chip .placeholder-dot {
+            width: 40%;
+            height: 40%;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        @keyframes pendingCurrentPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+
+        .queue-strip {
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: var(--queue-row-max-width, none);
+            display: flex;
+            flex-direction: row-reverse;
+            flex-wrap: wrap-reverse;
+            align-content: flex-start;
+            align-items: flex-end;
+            gap: 12px;
+            max-height: calc(100vh - 56px);
+            overflow: hidden;
+        }
+
+        .queue-chip {
+            position: relative;
+            flex: 0 0 auto;
+            width: var(--chip-size, 96px);
+            height: var(--chip-size, 96px);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+            transition: opacity 200ms ease;
+        }
+
+        /* 登場アニメーションは生成直後だけ付与する一時クラス。
+           .queue-chip 側の常設プロパティにすると、既存チップを appendChild で
+           並べ替えるたびに「一度DOM接続が切れて再接続された」扱いとなり、
+           アニメーションが再発火して全体が点滅して見える。 */
+        .queue-chip.chip-enter {
+            animation: pendingQueueIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .queue-chip img {
+            width: 72%;
+            height: 72%;
+            object-fit: contain;
+        }
+
+        .queue-chip .placeholder-dot {
+            width: 38%;
+            height: 38%;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .queue-chip .order-badge {
+            position: absolute;
+            top: -7px;
+            left: -7px;
+            min-width: 1.7em;
+            height: 1.7em;
+            padding: 0 0.3em;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: #fff8d6;
+            font-size: 0.6em;
+            font-weight: 800;
+            line-height: 1.7em;
+            text-align: center;
+        }
+
+        .queue-chip.overflow-chip {
+            /* 通常チップ1個分ではなく2列分の幅を占有し、+xx を大きく読みやすく表示する。
+               overflow-chip はキューが MAX_VISIBLE_QUEUE_ITEMS を超えたときにしか出現せず、
+               その時点では chip-size が最小tier（52px）まで縮んでいるため、他チップと同じ
+               比率のフォントサイズだと相対的にとても小さく見づらい。そのため単独で
+               比率を大きく（0.42→0.72）し、フォントサイズの下限も設けて読みやすさを確保する。 */
+            width: calc(var(--chip-size, 96px) * 2 + 12px);
+            background: rgba(0, 0, 0, 0.62);
+            border-style: dashed;
+            color: #f8fafc;
+            font-weight: 900;
+            font-size: max(30px, calc(var(--chip-size, 96px) * 0.72));
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+        }
+
+        @keyframes pendingQueueIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        .empty-hint {
+            font-size: 15px;
+            color: rgba(241, 245, 249, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage">
+        <div class="current-wrap" id="current-wrap" hidden>
+            <div class="current-chip" id="current-chip"></div>
+        </div>
+        <div class="queue-strip" id="queue-strip"></div>
+    </div>
+
+    <script>
+        // 保留(パチンコの保留球)演出: サーバー側はトリガー発火を都度ブロードキャストするだけで
+        // 「再生中/待機中」というキュー状態は持っていない。各 screen のエフェクトオーバーレイ
+        // (effect-overlay-html.js) がクライアント側でキューを再現しているのと同じ考え方で、
+        // このオーバーレイも effects:playback / effects:playback:stop を購読して独自にキューを
+        // 再現する。実際の動画再生はしないため、再生時間は非表示の video/audio で
+        // loadedmetadata の duration を測って見積もる。
+        const PATH_SEGMENTS = window.location.pathname.split('/').filter(Boolean);
+        const screenSlot = Number.parseInt(PATH_SEGMENTS[PATH_SEGMENTS.length - 1], 10) || 1;
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const currentWrapEl = document.getElementById('current-wrap');
+        const currentChipEl = document.getElementById('current-chip');
+        const queueStripEl = document.getElementById('queue-strip');
+
+        const DEFAULT_DURATION_MS = 6000;
+        const DURATION_PROBE_TIMEOUT_MS = 5000;
+        const MAX_VISIBLE_QUEUE_ITEMS = 30;
+        const MAX_QUEUE_COLUMNS_PER_ROW = 10;
+        const QUEUE_CHIP_GAP_PX = 12;
+        const QUEUE_CHIP_SIZE_TIERS = [
+            { max: 4, size: 120 },
+            { max: 8, size: 100 },
+            { max: 14, size: 82 },
+            { max: 24, size: 66 },
+            { max: Infinity, size: 52 }
+        ];
+
+        let imageMap = {};
+        let current = null;
+        let currentToken = 0;
+        let currentTimer = null;
+        let rapidFireTimer = null;
+        let queue = [];
+
+        function escapeAttr(value) {
+            return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // FLIP (First-Last-Invert-Play) で位置・サイズの変化をなめらかなアニメーションに変換する。
+        // キューの並べ替えや「保留→処理中」の遷移は、appendChild による瞬間移動や
+        // innerHTML の書き換えで実現しているため、そのままではカット切り替えに見える。
+        // 移動前の矩形(prevRect)を渡すと、移動後の位置から逆算した transform を
+        // 一度適用し、次のフレームで transition 付きで解除することで実際に移動して
+        // 見えるようにする。current-chip には pendingCurrentPulse の常時アニメーションが
+        // かかっているため、FLIP 中だけ一時的に無効化する。
+        function playFlip(el, prevRect) {
+            if (!prevRect) return;
+            const newRect = el.getBoundingClientRect();
+            if (!newRect.width || !newRect.height) return;
+
+            const dx = prevRect.left - newRect.left;
+            const dy = prevRect.top - newRect.top;
+            const sx = prevRect.width / newRect.width;
+            const sy = prevRect.height / newRect.height;
+            if (!dx && !dy && sx === 1 && sy === 1) return;
+
+            el.style.animation = 'none';
+            el.style.transition = 'none';
+            el.style.transformOrigin = 'top left';
+            el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+            el.offsetWidth; // force reflow
+
+            requestAnimationFrame(() => {
+                el.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
+                el.style.transform = '';
+                el.addEventListener('transitionend', function cleanup(ev) {
+                    if (ev.target !== el || ev.propertyName !== 'transform') return;
+                    el.removeEventListener('transitionend', cleanup);
+                    el.style.transition = '';
+                    el.style.transformOrigin = '';
+                    el.style.removeProperty('animation');
+                });
+            });
+        }
+
+        function pickChipSize(count) {
+            const tier = QUEUE_CHIP_SIZE_TIERS.find((entry) => count <= entry.max);
+            return tier ? tier.size : QUEUE_CHIP_SIZE_TIERS[QUEUE_CHIP_SIZE_TIERS.length - 1].size;
+        }
+
+        function chipInnerHtml(item) {
+            if (item.giftImageUrl) {
+                return `<img src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'placeholder-dot'}))">`;
+            }
+            return '<div class="placeholder-dot"></div>';
+        }
+
+        // キューの並び替え（先頭消化で全員繰り上がる）が起きても同一チップとして
+        // 使い回せるよう、キューの位置(index)を含まないアイテム固有の識別子にする。
+        function chipKey(item) {
+            return String(item.playbackId || item.eventId || item.triggerId || '');
+        }
+
+        function makeQueueChip(item, index) {
+            const el = document.createElement('div');
+            el.className = 'queue-chip chip-enter';
+            el.dataset.key = chipKey(item);
+            el.innerHTML = `<span class="order-badge">${index + 1}</span>${chipInnerHtml(item)}`;
+            return el;
+        }
+
+        // 毎回 innerHTML で全チップを作り直すと、既存チップも含めて
+        // pendingQueueIn の登場アニメーションが同時に再生され「全体が点滅」して見える。
+        // 既存チップは data-key で使い回し、増減した分だけ DOM を足し引きする。
+        function updateQueueStrip(visibleItems) {
+            const existingByKey = new Map();
+            const prevRects = new Map();
+            queueStripEl.querySelectorAll('.queue-chip[data-key]').forEach((el) => {
+                existingByKey.set(el.dataset.key, el);
+                // 並べ替え・チップサイズ変化前の矩形を控えておき、後で FLIP に使う。
+                prevRects.set(el.dataset.key, el.getBoundingClientRect());
+            });
+
+            visibleItems.forEach((item, index) => {
+                const key = chipKey(item);
+                let el = existingByKey.get(key);
+                if (el) {
+                    existingByKey.delete(key);
+                    // 連射で消化が速いと 220ms の登場アニメーションが終わる前に次の
+                    // 並べ替えが来てしまい、animationend 待ちでは chip-enter を
+                    // 外しきれない（アニメーションが完了せず何度も再発火し続ける）。
+                    // 既存チップとして再利用すると分かった時点で即座に外す。
+                    el.classList.remove('chip-enter');
+                    const badge = el.querySelector('.order-badge');
+                    const badgeText = String(index + 1);
+                    if (badge && badge.textContent !== badgeText) {
+                        badge.textContent = badgeText;
+                    }
+                } else {
+                    el = makeQueueChip(item, index);
+                }
+                // 既存ノードなら appendChild は「末尾へ移動」として働くため、
+                // 作り直さずに正しい順序へ並べ替えられる。
+                queueStripEl.appendChild(el);
+            });
+
+            existingByKey.forEach((el) => el.remove());
+
+            // 並べ替え・チップサイズ変化後の新しい位置へ、瞬間移動ではなく FLIP でなめらかに寄せる。
+            // 新規チップ(chip-enter)は prevRects に矩形が無いため対象外（既存の登場演出のまま）。
+            queueStripEl.querySelectorAll('.queue-chip[data-key]').forEach((el) => {
+                playFlip(el, prevRects.get(el.dataset.key));
+            });
+        }
+
+        function updateOverflowChip(overflowCount) {
+            let overflowEl = queueStripEl.querySelector('.overflow-chip');
+            if (overflowCount > 0) {
+                if (!overflowEl) {
+                    overflowEl = document.createElement('div');
+                    overflowEl.className = 'queue-chip overflow-chip chip-enter';
+                } else {
+                    overflowEl.classList.remove('chip-enter');
+                }
+                queueStripEl.appendChild(overflowEl);
+                overflowEl.textContent = `+${overflowCount}`;
+            } else if (overflowEl) {
+                overflowEl.remove();
+            }
+        }
+
+        let lastRenderedCurrentKey = null;
+
+        function render() {
+            if (current) {
+                currentWrapEl.style.display = 'flex';
+                const key = current.playbackId || current.eventId || current.triggerId || '';
+                if (key !== lastRenderedCurrentKey) {
+                    currentChipEl.innerHTML = chipInnerHtml(current);
+                    lastRenderedCurrentKey = key;
+                }
+            } else {
+                // .current-wrap は表示時に display:flex を持つため、[hidden] の既定 display:none は
+                // 詳細度で負けて上書きされない。inline style で明示的に隠す必要がある。
+                currentWrapEl.style.display = 'none';
+                currentChipEl.innerHTML = '';
+                lastRenderedCurrentKey = null;
+            }
+
+            if (!current && queue.length === 0) {
+                queueStripEl.innerHTML = previewMode ? '<div class="empty-hint">保留はありません</div>' : '';
+                queueStripEl.style.removeProperty('--chip-size');
+                queueStripEl.style.removeProperty('--queue-row-max-width');
+                return;
+            }
+
+            const emptyHint = queueStripEl.querySelector('.empty-hint');
+            if (emptyHint) emptyHint.remove();
+
+            const visibleCount = Math.min(queue.length, MAX_VISIBLE_QUEUE_ITEMS + 1);
+            const chipSize = pickChipSize(visibleCount);
+            queueStripEl.style.setProperty('--chip-size', `${chipSize}px`);
+
+            // 1行あたり最大 MAX_QUEUE_COLUMNS_PER_ROW 列に制限し、空いた分を
+            // overflow-chip（+xx）の表示幅として使えるようにする。
+            const rowMaxWidth = MAX_QUEUE_COLUMNS_PER_ROW * chipSize
+                + (MAX_QUEUE_COLUMNS_PER_ROW - 1) * QUEUE_CHIP_GAP_PX;
+            queueStripEl.style.setProperty('--queue-row-max-width', `${rowMaxWidth}px`);
+
+            const overflowCount = queue.length - MAX_VISIBLE_QUEUE_ITEMS;
+            const visibleItems = overflowCount > 0 ? queue.slice(0, MAX_VISIBLE_QUEUE_ITEMS) : queue;
+
+            updateQueueStrip(visibleItems);
+            updateOverflowChip(overflowCount);
+        }
+
+        function enrichPayload(payload) {
+            const info = imageMap[payload.triggerId] || null;
+            return {
+                eventId: payload.eventId || '',
+                triggerId: payload.triggerId || '',
+                triggerName: payload.triggerName || info?.giftName || '',
+                giftImageUrl: info?.giftImageUrl || '',
+                videoUrl: payload.videoUrl || '',
+                audioUrl: payload.audioUrl || '',
+                rapidFireEnabled: Boolean(payload.rapidFireEnabled),
+                rapidFireCancelMs: Number(payload.rapidFireCancelMs) || 1500
+            };
+        }
+
+        // 実際に再生はしないが、同じメディアの duration を測って「消化にかかる時間」を見積もる。
+        // メディアが無い/取得に失敗した場合は既定の待ち時間にフォールバックする。
+        function estimateDurationMs(item) {
+            return new Promise((resolve) => {
+                const probes = [];
+                if (item.videoUrl) probes.push({ tag: 'video', url: item.videoUrl });
+                if (item.audioUrl) probes.push({ tag: 'audio', url: item.audioUrl });
+
+                if (probes.length === 0) {
+                    resolve(DEFAULT_DURATION_MS);
+                    return;
+                }
+
+                let remaining = probes.length;
+                let maxDuration = 0;
+                let settled = false;
+
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(fallbackTimer);
+                    resolve(maxDuration > 0 ? maxDuration * 1000 : DEFAULT_DURATION_MS);
+                };
+
+                const fallbackTimer = setTimeout(finish, DURATION_PROBE_TIMEOUT_MS);
+
+                probes.forEach(({ tag, url }) => {
+                    const el = document.createElement(tag);
+                    el.preload = 'metadata';
+                    el.muted = true;
+                    el.src = url;
+
+                    const onSettle = () => {
+                        if (Number.isFinite(el.duration) && el.duration > 0) {
+                            maxDuration = Math.max(maxDuration, el.duration);
+                        }
+                        remaining -= 1;
+                        if (remaining <= 0) finish();
+                    };
+
+                    el.addEventListener('loadedmetadata', onSettle, { once: true });
+                    el.addEventListener('error', onSettle, { once: true });
+                });
+            });
+        }
+
+        function setCurrent(item, prevRect) {
+            clearTimeout(currentTimer);
+            clearTimeout(rapidFireTimer);
+            rapidFireTimer = null;
+            current = item;
+            currentToken += 1;
+            const token = currentToken;
+            render();
+
+            // prevRect はキュー先頭にいた時点の矩形。処理待ち → 処理中の切り替わりが
+            // innerHTML の差し替えによるカット表示にならないよう、FLIP でキュー位置から
+            // current-chip の位置へ実際に動いたように見せる。
+            if (prevRect) {
+                playFlip(currentChipEl, prevRect);
+            }
+
+            // 連射バーストで既に同トリガーが後続に積まれている場合、新規イベント到着を待たずに
+            // ここ（次アイテムの再生開始時）でも再アームする。到着時点のアーム済みガード
+            // （armRapidFireIfNeeded 内の if (rapidFireTimer) return）により、バーストが
+            // 一度に大量に届いた際は2件目以降で再アームされないため、これが無いと
+            // キューに積まれた分は連射キャンセルが効かず通常の消化時間で1件ずつ処理されてしまう。
+            if (queue.length > 0) {
+                armRapidFireIfNeeded(queue[0]);
+            }
+
+            estimateDurationMs(item).then((durationMs) => {
+                if (token !== currentToken) return;
+                currentTimer = setTimeout(advanceQueue, durationMs);
+            });
+        }
+
+        function advanceQueue() {
+            clearTimeout(currentTimer);
+            clearTimeout(rapidFireTimer);
+            rapidFireTimer = null;
+            const next = queue.shift() || null;
+
+            if (next) {
+                // render() でキュー側の DOM が消える前に、次にcurrentになるチップの
+                // 現在位置を記録しておく(FLIP のPre-state)。
+                const key = chipKey(next);
+                const existingEl = key ? queueStripEl.querySelector(`.queue-chip[data-key="${CSS.escape(key)}"]`) : null;
+                const prevRect = existingEl ? existingEl.getBoundingClientRect() : null;
+                setCurrent(next, prevRect);
+            } else {
+                current = null;
+                currentToken += 1;
+                render();
+            }
+        }
+
+        // 連射モード: 再生中と同じトリガーが後続に積まれたら、指定ms後に現在の消化を打ち切って
+        // 次へ進める（effect-overlay-html.js の maybeArmRapidFireCancel と同じ考え方）。
+        function armRapidFireIfNeeded(item) {
+            if (!current || !current.rapidFireEnabled) return;
+            if (current.triggerId !== item.triggerId) return;
+            if (rapidFireTimer) return;
+
+            const token = currentToken;
+            rapidFireTimer = setTimeout(() => {
+                rapidFireTimer = null;
+                if (token !== currentToken) return;
+                advanceQueue();
+            }, current.rapidFireCancelMs);
+        }
+
+        function handlePlayback(payload) {
+            if (!payload || Number(payload.screen) !== screenSlot) return;
+
+            const item = enrichPayload(payload);
+
+            // 動画・音声を持たないイベント（「待機イベント削除」専用イベントなど、副作用だけが
+            // 目的のアクション）は effect-overlay-html.js 側では即座に消化されて表示されないため、
+            // ここでもキューに乗せない。乗せてしまうと既定時間（6秒）分、画像の無い
+            // 背景だけのチップが保留に居座って見える。
+            if (!item.videoUrl && !item.audioUrl) return;
+
+            const playbackCount = Math.max(1, Number(payload.playbackCount || 1));
+
+            for (let index = 0; index < playbackCount; index += 1) {
+                const instance = { ...item, playbackId: `${payload.playbackId || Date.now()}-${index}` };
+
+                if (!current) {
+                    setCurrent(instance);
+                } else {
+                    queue.push(instance);
+                    armRapidFireIfNeeded(instance);
+                }
+            }
+
+            render();
+        }
+
+        function handlePlaybackStop(payload) {
+            if (!payload || Number(payload.screen) !== screenSlot) return;
+
+            const eventId = typeof payload.eventId === 'string' ? payload.eventId : '';
+            const count = Math.max(0, Number(payload.count) || 0);
+
+            if (eventId) {
+                queue = queue.filter((item) => item.eventId !== eventId);
+
+                if (current && current.eventId === eventId) {
+                    advanceQueue();
+                    return;
+                }
+            } else if (count > 0) {
+                // 「待機イベント削除」の件数指定: 保留列の先頭（次に消化される順）から間引くだけで、
+                // 消化中(current)のトリガーはそのまま継続する。
+                queue = queue.slice(count);
+            } else {
+                queue = [];
+
+                if (current) {
+                    clearTimeout(currentTimer);
+                    clearTimeout(rapidFireTimer);
+                    rapidFireTimer = null;
+                    current = null;
+                    currentToken += 1;
+                }
+            }
+
+            render();
+        }
+
+        async function loadImageMap() {
+            try {
+                const response = await fetch('/api/effects/trigger-gift-images');
+                const payload = await response.json();
+                imageMap = payload.images || {};
+            } catch {
+                imageMap = {};
+            }
+        }
+
+        function buildPreviewSample() {
+            const sampleImage = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+                '<circle cx="32" cy="32" r="28" fill="#f5c542"/>' +
+                '<path d="M32 16l7 12 12 5-12 5-7 12-7-12-12-5 12-5z" fill="#fff8d6"/>' +
+                '</svg>'
+            );
+
+            const sampleCount = Math.max(1, Math.min(80, Number.parseInt(searchParams.get('count'), 10) || 9));
+
+            current = { triggerId: 'preview-current', triggerName: 'サンプル', giftImageUrl: sampleImage, eventId: '' };
+            queue = Array.from({ length: sampleCount }, (_, index) => ({
+                triggerId: `preview-${index}`,
+                triggerName: `サンプル${index + 1}`,
+                giftImageUrl: sampleImage,
+                eventId: ''
+            }));
+            render();
+        }
+
+        if (previewMode) {
+            buildPreviewSample();
+        } else {
+            const socket = io();
+            loadImageMap();
+            socket.on('effects:trigger-gifts:updated', loadImageMap);
+            socket.on('effects:playback', handlePlayback);
+            socket.on('effects:playback:stop', handlePlaybackStop);
+            render();
+        }
+    </script>
+</body>
+</html>

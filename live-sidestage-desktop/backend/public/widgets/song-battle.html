@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Battle Overlay</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --stroke-color: rgba(15, 23, 42, 0.96);
+            --side-a-color: #ef4444;
+            --side-b-color: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+            background: transparent;
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            color: #f8fafc;
+        }
+
+        body {
+            padding: 24px;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 10px;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .battle {
+            display: none;
+            width: min(1240px, calc(100vw - 48px));
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .battle.is-visible {
+            display: flex;
+        }
+
+        .arena-row {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .side {
+            position: relative;
+            flex: 1;
+            min-height: 220px;
+        }
+
+        .side.is-winner .cover-wrap {
+            box-shadow:
+                0 12px 28px rgba(15, 23, 42, 0.45),
+                0 0 0 6px rgba(0, 0, 0, 0.35),
+                0 0 0 10px rgba(251, 191, 36, 0.65);
+        }
+
+        .voter-avatar {
+            position: absolute;
+            width: var(--avatar-size, 0px);
+            height: var(--avatar-size, 0px);
+            border-radius: 50%;
+            object-fit: cover;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.5);
+            transition: width 400ms ease, height 400ms ease, opacity 300ms ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .voter-avatar.is-shown {
+            opacity: 1;
+        }
+
+        .voter-avatar-a {
+            border: 2px solid var(--side-a-color);
+        }
+
+        .voter-avatar-b {
+            border: 2px solid var(--side-b-color);
+        }
+
+        .cover-anchor {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 220px;
+            height: 220px;
+            transform: translate(-50%, -50%);
+            transition: transform 1100ms cubic-bezier(.22, .61, .36, 1);
+            z-index: 1;
+        }
+
+        .cover-anchor.zoomed {
+            transform: translate(-50%, calc(-50% + 180px)) scale(1.8);
+        }
+
+        .cover-anchor.center-stage,
+        .cover-anchor.exit-offscreen {
+            transition: transform 900ms cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .cover-anchor.center-stage {
+            transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-50% + 180px)) scale(2.3);
+        }
+
+        .cover-anchor.exit-offscreen {
+            transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-50% + 180px)) scale(1.4);
+        }
+
+        .cover-wrap {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45), 0 0 0 6px rgba(0, 0, 0, 0.35);
+        }
+
+        .cover {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .cover-wrap::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: repeating-radial-gradient(
+                circle at center,
+                transparent 0,
+                transparent 7px,
+                rgba(0, 0, 0, 0.2) 7px,
+                rgba(0, 0, 0, 0.2) 8px
+            );
+            pointer-events: none;
+        }
+
+        .cover-wrap::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            background: #0f172a;
+            border: 2px solid rgba(255, 255, 255, 0.55);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .info-panel {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 20px;
+            padding: 16px 20px;
+            transition: background 700ms ease, backdrop-filter 700ms ease;
+        }
+
+        .info-panel.dissolved {
+            background: transparent;
+            backdrop-filter: blur(0);
+            -webkit-backdrop-filter: blur(0);
+        }
+
+        .tug-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 900ms cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .tug-row.exit-offscreen {
+            transform: translateX(var(--shift-x, 0px));
+        }
+
+        .title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 18px;
+        }
+
+        .title-row .song-title {
+            flex: 1;
+        }
+
+        .title-spacer {
+            min-width: 110px;
+        }
+
+        .song-title {
+            font-size: 38px;
+            font-weight: 800;
+            line-height: 1.3;
+            text-align: center;
+            text-shadow: 0 0 6px var(--stroke-color), 0 0 18px var(--stroke-color);
+            height: calc(1.3em * 2);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            transition: color 200ms ease, transform 900ms cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .song-title.is-winner {
+            color: #fbbf24;
+        }
+
+        .song-title.center-stage,
+        .song-title.exit-offscreen {
+            transform: translateX(var(--shift-x, 0px));
+        }
+
+        .tug-side {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            min-width: 52px;
+        }
+
+        .tug-gift-icon {
+            display: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.4);
+        }
+
+        .tug-gift-icon.has-image {
+            display: block;
+        }
+
+        .tug-count {
+            font-size: 26px;
+            font-weight: 800;
+            text-align: center;
+            text-shadow: 0 0 6px var(--stroke-color);
+        }
+
+        .tug-track {
+            position: relative;
+            flex: 1;
+            height: 18px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            overflow: hidden;
+        }
+
+        .tug-fill-a {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: var(--side-a-color);
+            transition: width 400ms ease;
+        }
+
+        .tug-fill-b {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: var(--side-b-color);
+            transition: width 400ms ease;
+        }
+
+        .tug-center-mark {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.6);
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+
+        .center-stack {
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+            min-width: 110px;
+            align-self: flex-end;
+        }
+
+        .vs-label {
+            font-size: 60px;
+            font-weight: 900;
+            opacity: 0.85;
+            text-shadow: 0 0 10px var(--stroke-color), 0 0 24px var(--stroke-color);
+        }
+
+        @keyframes anchorInLeft {
+            0% { opacity: 0; transform: translate(calc(-50% - 220px), -50%) scale(0.3); }
+            60% { opacity: 1; transform: translate(calc(-50% + 14px), -50%) scale(1.08); }
+            80% { transform: translate(calc(-50% - 5px), -50%) scale(0.98); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes anchorInRight {
+            0% { opacity: 0; transform: translate(calc(-50% + 220px), -50%) scale(0.3); }
+            60% { opacity: 1; transform: translate(calc(-50% - 14px), -50%) scale(1.08); }
+            80% { transform: translate(calc(-50% + 5px), -50%) scale(0.98); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes vsPop {
+            0% { opacity: 0; transform: scale(0.1) rotate(-25deg); }
+            55% { opacity: 1; transform: scale(1.6) rotate(8deg); }
+            75% { transform: scale(0.85) rotate(-4deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        .cover-anchor.anim-enter-a { animation: anchorInLeft 650ms cubic-bezier(.2,.8,.2,1) both; }
+        .cover-anchor.anim-enter-b { animation: anchorInRight 650ms cubic-bezier(.2,.8,.2,1) both; }
+
+        @keyframes spinCW {
+            to { transform: rotate(360deg); }
+        }
+
+        .cover-wrap.spinning {
+            animation: spinCW 4s linear infinite;
+        }
+
+        .vs-label.anim-pop {
+            animation: vsPop 480ms cubic-bezier(.34,1.56,.64,1) both;
+            animation-delay: 520ms;
+        }
+
+        .countdown {
+            font-size: 48px;
+            font-weight: 800;
+            color: #fbbf24;
+            text-shadow: 0 0 10px var(--stroke-color), 0 0 24px var(--stroke-color);
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+    <div class="battle" id="battle">
+        <div class="arena-row">
+            <div class="side side-a" id="side-a">
+                <div class="cover-anchor" id="cover-anchor-a">
+                    <div class="cover-wrap" id="cover-wrap-a"><img class="cover" id="cover-a" alt=""></div>
+                </div>
+            </div>
+            <div class="center-stack">
+                <div class="vs-label" id="vs-label">VS</div>
+                <div class="countdown" id="countdown">--:--</div>
+            </div>
+            <div class="side side-b" id="side-b">
+                <div class="cover-anchor" id="cover-anchor-b">
+                    <div class="cover-wrap" id="cover-wrap-b"><img class="cover" id="cover-b" alt=""></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-panel" id="info-panel">
+            <div class="tug-row" id="tug-row">
+                <div class="tug-side">
+                    <img class="tug-gift-icon" id="gift-icon-a" alt="">
+                    <span class="tug-count" id="count-a">0</span>
+                </div>
+                <div class="tug-track">
+                    <div class="tug-fill-a" id="tug-fill-a"></div>
+                    <div class="tug-fill-b" id="tug-fill-b"></div>
+                    <div class="tug-center-mark"></div>
+                </div>
+                <div class="tug-side">
+                    <img class="tug-gift-icon" id="gift-icon-b" alt="">
+                    <span class="tug-count" id="count-b">0</span>
+                </div>
+            </div>
+
+            <div class="title-row">
+                <div class="song-title" id="title-a"></div>
+                <div class="title-spacer"></div>
+                <div class="song-title" id="title-b"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1';
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const battleEl = document.getElementById('battle');
+        const coverA = document.getElementById('cover-a');
+        const coverB = document.getElementById('cover-b');
+        const titleA = document.getElementById('title-a');
+        const titleB = document.getElementById('title-b');
+        const tugFillA = document.getElementById('tug-fill-a');
+        const tugFillB = document.getElementById('tug-fill-b');
+        const countA = document.getElementById('count-a');
+        const countB = document.getElementById('count-b');
+        const giftIconA = document.getElementById('gift-icon-a');
+        const giftIconB = document.getElementById('gift-icon-b');
+        const sideAEl = document.getElementById('side-a');
+        const sideBEl = document.getElementById('side-b');
+        const countdownEl = document.getElementById('countdown');
+        const vsLabelEl = document.getElementById('vs-label');
+        const coverWrapA = document.getElementById('cover-wrap-a');
+        const coverWrapB = document.getElementById('cover-wrap-b');
+        const coverAnchorA = document.getElementById('cover-anchor-a');
+        const coverAnchorB = document.getElementById('cover-anchor-b');
+        const infoPanelEl = document.getElementById('info-panel');
+        const tugRowEl = document.getElementById('tug-row');
+
+        let countdownTimer = null;
+        let hideTimer = null;
+        let zoomTimer = null;
+        let lastRenderedStartedAt = 0;
+
+        function clearHideTimer() {
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+        }
+
+        function clearZoomTimer() {
+            if (zoomTimer) {
+                clearTimeout(zoomTimer);
+                zoomTimer = null;
+            }
+        }
+
+        function resetRevealState() {
+            coverAnchorA.classList.remove('center-stage', 'exit-offscreen');
+            coverAnchorB.classList.remove('center-stage', 'exit-offscreen');
+            titleA.classList.remove('center-stage', 'exit-offscreen');
+            titleB.classList.remove('center-stage', 'exit-offscreen');
+            tugRowEl.classList.remove('exit-offscreen');
+            infoPanelEl.classList.remove('dissolved');
+            [coverAnchorA, coverAnchorB, titleA, titleB, tugRowEl].forEach((el) => {
+                el.style.removeProperty('--shift-x');
+            });
+        }
+
+        const AVATAR_MIN_SIZE = 26;
+        const AVATAR_MAX_SIZE = 76;
+        const avatarElsByVoterId = new Map();
+        const failedAvatarVoterIds = new Set();
+
+        function clearAvatars() {
+            avatarElsByVoterId.forEach((el) => el.remove());
+            avatarElsByVoterId.clear();
+            failedAvatarVoterIds.clear();
+        }
+
+        function pickAvatarPosition(parent) {
+            const existing = Array.from(parent.querySelectorAll('.voter-avatar')).map((el) => ({
+                left: parseFloat(el.style.left) || 0,
+                top: parseFloat(el.style.top) || 0
+            }));
+
+            const MIN_DISTANCE = 16;
+            let bestCandidate = null;
+            let bestNearestDistance = -1;
+
+            for (let attempt = 0; attempt < 12; attempt++) {
+                const candidate = { left: 15 + Math.random() * 70, top: 10 + Math.random() * 80 };
+                const nearestDistance = existing.reduce((min, pos) => {
+                    return Math.min(min, Math.hypot(pos.left - candidate.left, pos.top - candidate.top));
+                }, Infinity);
+
+                if (nearestDistance >= MIN_DISTANCE) return candidate;
+                if (nearestDistance > bestNearestDistance) {
+                    bestNearestDistance = nearestDistance;
+                    bestCandidate = candidate;
+                }
+            }
+
+            // 混雑しすぎて空きが見つからない場合は、一番マシな(最も離れた)候補で妥協する
+            return bestCandidate || { left: 15 + Math.random() * 70, top: 10 + Math.random() * 80 };
+        }
+
+        function renderVoterAvatars(voters) {
+            if (!Array.isArray(voters) || voters.length === 0) return;
+
+            const maxCoins = Math.max(1, ...voters.map((voter) => voter.coins || 0));
+
+            voters.forEach((voter) => {
+                if (!voter?.userId) return;
+                const sizeRatio = Math.min(1, (voter.coins || 0) / maxCoins);
+                const size = AVATAR_MIN_SIZE + sizeRatio * (AVATAR_MAX_SIZE - AVATAR_MIN_SIZE);
+                let el = avatarElsByVoterId.get(voter.userId);
+
+                if (!el) {
+                    // 画像未取得、または過去に取得失敗したユーザーはアイコンを出さない
+                    if (!voter.image || failedAvatarVoterIds.has(voter.userId)) return;
+
+                    const parent = voter.side === 'A' ? sideAEl : sideBEl;
+                    const position = pickAvatarPosition(parent);
+                    el = document.createElement('img');
+                    el.className = `voter-avatar voter-avatar-${voter.side === 'A' ? 'a' : 'b'}`;
+                    el.alt = '';
+                    const markAvatarFailed = () => {
+                        // 取得失敗を記録し、以降の再描画でも出さない。読み込み中も含め一度も表示しない
+                        failedAvatarVoterIds.add(voter.userId);
+                        el.remove();
+                        avatarElsByVoterId.delete(voter.userId);
+                    };
+                    el.onerror = markAvatarFailed;
+                    el.onload = () => {
+                        // 期限切れURLがCDN側で1x1等のダミー画像を200 OKで返すケースへの対策。
+                        // 極端に小さい画像は取得失敗扱いにする
+                        if (el.naturalWidth < 10 || el.naturalHeight < 10) {
+                            markAvatarFailed();
+                            return;
+                        }
+                        // 読み込み成功した瞬間だけフェードインさせる(壊れ画像アイコンの表示を防ぐ)
+                        void el.offsetWidth;
+                        el.classList.add('is-shown');
+                    };
+                    el.src = voter.image;
+                    el.style.left = `${position.left}%`;
+                    el.style.top = `${position.top}%`;
+                    el.style.setProperty('--avatar-size', '0px');
+                    parent.appendChild(el);
+                    avatarElsByVoterId.set(voter.userId, el);
+                }
+
+                el.style.setProperty('--avatar-size', `${size}px`);
+            });
+        }
+
+        function collapseToWinnerVoters(voters, winnerSide) {
+            if (!Array.isArray(voters) || voters.length === 0) {
+                clearAvatars();
+                return;
+            }
+
+            const votersById = new Map(voters.map((voter) => [voter.userId, voter]));
+
+            avatarElsByVoterId.forEach((el, voterId) => {
+                const voter = votersById.get(voterId);
+                if (!voter || voter.side !== winnerSide) {
+                    el.remove();
+                    avatarElsByVoterId.delete(voterId);
+                }
+            });
+        }
+
+        function applyCenterStageReveal(winnerSide) {
+            const winnerAnchor = winnerSide === 'A' ? coverAnchorA : coverAnchorB;
+            const loserAnchor = winnerSide === 'A' ? coverAnchorB : coverAnchorA;
+            const winnerTitle = winnerSide === 'A' ? titleA : titleB;
+            const loserTitle = winnerSide === 'A' ? titleB : titleA;
+            const loserIsLeft = winnerSide === 'A' ? false : true;
+
+            const battleRect = battleEl.getBoundingClientRect();
+            const battleCenterX = battleRect.left + battleRect.width / 2;
+
+            const winnerAnchorRect = winnerAnchor.getBoundingClientRect();
+            const winnerAnchorShift = battleCenterX - (winnerAnchorRect.left + winnerAnchorRect.width / 2);
+            winnerAnchor.style.setProperty('--shift-x', `${winnerAnchorShift}px`);
+
+            const winnerTitleRect = winnerTitle.getBoundingClientRect();
+            const winnerTitleShift = battleCenterX - (winnerTitleRect.left + winnerTitleRect.width / 2);
+            winnerTitle.style.setProperty('--shift-x', `${winnerTitleShift}px`);
+
+            const exitShift = (loserIsLeft ? -1 : 1) * (window.innerWidth + 600);
+            loserAnchor.style.setProperty('--shift-x', `${exitShift}px`);
+            loserTitle.style.setProperty('--shift-x', `${exitShift}px`);
+            tugRowEl.style.setProperty('--shift-x', `${exitShift}px`);
+
+            winnerAnchor.classList.add('center-stage');
+            winnerTitle.classList.add('center-stage');
+            loserAnchor.classList.add('exit-offscreen');
+            loserTitle.classList.add('exit-offscreen');
+            tugRowEl.classList.add('exit-offscreen');
+            infoPanelEl.classList.add('dissolved');
+        }
+
+        function playEntranceAnimation() {
+            clearZoomTimer();
+            resetRevealState();
+            coverAnchorA.classList.remove('anim-enter-a', 'zoomed');
+            coverAnchorB.classList.remove('anim-enter-b', 'zoomed');
+            coverWrapA.classList.remove('spinning');
+            coverWrapB.classList.remove('spinning');
+            vsLabelEl.classList.remove('anim-pop');
+            void battleEl.offsetWidth;
+            coverAnchorA.classList.add('anim-enter-a');
+            coverAnchorB.classList.add('anim-enter-b');
+            coverWrapA.classList.add('spinning');
+            coverWrapB.classList.add('spinning');
+            vsLabelEl.classList.add('anim-pop');
+
+            zoomTimer = setTimeout(() => {
+                zoomTimer = null;
+                coverAnchorA.classList.remove('anim-enter-a');
+                coverAnchorB.classList.remove('anim-enter-b');
+                void coverAnchorA.offsetWidth;
+                void coverAnchorB.offsetWidth;
+                coverAnchorA.classList.add('zoomed');
+                coverAnchorB.classList.add('zoomed');
+            }, 1000);
+        }
+
+        function formatCountdown(msRemaining) {
+            const totalSec = Math.max(0, Math.ceil(msRemaining / 1000));
+            const minutes = Math.floor(totalSec / 60);
+            const seconds = totalSec % 60;
+            return `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function stopCountdown() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }
+
+        function startCountdown(endsAt) {
+            stopCountdown();
+            const tick = () => {
+                const remaining = endsAt - Date.now();
+                countdownEl.textContent = formatCountdown(remaining);
+                if (remaining <= 0) stopCountdown();
+            };
+            tick();
+            countdownTimer = setInterval(tick, 500);
+        }
+
+        function renderVotes(round) {
+            const tallyA = round.tallyA || 0;
+            const tallyB = round.tallyB || 0;
+            const total = tallyA + tallyB;
+            const percentA = total > 0 ? (tallyA / total) * 100 : 50;
+            tugFillA.style.width = `${percentA}%`;
+            tugFillB.style.width = `${100 - percentA}%`;
+            countA.textContent = String(tallyA);
+            countB.textContent = String(tallyB);
+        }
+
+        function setGiftIcon(imgEl, url) {
+            if (url) {
+                imgEl.src = url;
+                imgEl.classList.add('has-image');
+            } else {
+                imgEl.removeAttribute('src');
+                imgEl.classList.remove('has-image');
+            }
+        }
+
+        function renderRound(round) {
+            if (!round || round.status !== 'running' || !round.songA || !round.songB) {
+                return;
+            }
+
+            clearHideTimer();
+            clearZoomTimer();
+            resetRevealState();
+
+            const isNewRound = round.startedAt !== lastRenderedStartedAt;
+            lastRenderedStartedAt = round.startedAt;
+
+            sideAEl.classList.remove('is-winner', 'is-loser');
+            sideBEl.classList.remove('is-winner', 'is-loser');
+            titleA.classList.remove('is-winner');
+            titleB.classList.remove('is-winner');
+            battleEl.classList.add('is-visible');
+
+            coverA.src = round.songA.coverDataUrl || '';
+            coverB.src = round.songB.coverDataUrl || '';
+            titleA.textContent = round.songA.title || '';
+            titleB.textContent = round.songB.title || '';
+            setGiftIcon(giftIconA, round.giftImageA);
+            setGiftIcon(giftIconB, round.giftImageB);
+            clearAvatars();
+            renderVoterAvatars(round.voters);
+            renderVotes(round);
+            startCountdown(round.endsAt);
+
+            if (isNewRound) playEntranceAnimation();
+        }
+
+        function showSample() {
+            renderRound({
+                status: 'running',
+                songA: { title: 'サンプル曲 A', artist: 'Artist A', coverDataUrl: '' },
+                songB: { title: 'サンプル曲 B', artist: 'Artist B', coverDataUrl: '' },
+                tallyA: 3,
+                tallyB: 5,
+                endsAt: Date.now() + 45000
+            });
+        }
+
+        const socket = io();
+
+        socket.on('song-battle:round-start', renderRound);
+        socket.on('song-battle:vote-update', (round) => {
+            if (round.status === 'running') {
+                renderVotes(round);
+                renderVoterAvatars(round.voters);
+            }
+        });
+        socket.on('song-battle:round-end', (round) => {
+            stopCountdown();
+            countdownEl.textContent = '0:00';
+            renderVotes(round);
+            collapseToWinnerVoters(round.voters, round.winnerSide);
+            if (round.winnerSide === 'A') {
+                sideAEl.classList.add('is-winner');
+                sideBEl.classList.add('is-loser');
+                titleA.classList.add('is-winner');
+            }
+            if (round.winnerSide === 'B') {
+                sideBEl.classList.add('is-winner');
+                sideAEl.classList.add('is-loser');
+                titleB.classList.add('is-winner');
+            }
+            if (round.winnerSide === 'A' || round.winnerSide === 'B') {
+                applyCenterStageReveal(round.winnerSide);
+            }
+            clearHideTimer();
+            hideTimer = setTimeout(() => {
+                hideTimer = null;
+                battleEl.classList.remove('is-visible');
+            }, 6000);
+        });
+        socket.on('song-battle:round-cancelled', () => {
+            stopCountdown();
+            clearHideTimer();
+            clearZoomTimer();
+            resetRevealState();
+            clearAvatars();
+            battleEl.classList.remove('is-visible');
+        });
+
+        fetch('/api/widgets/song-battle/snapshot')
+            .then((res) => res.json())
+            .then((payload) => {
+                if (payload?.round?.status === 'running') {
+                    renderRound(payload.round);
+                } else if (previewMode) {
+                    showSample();
+                }
+            })
+            .catch(() => {
+                if (previewMode) showSample();
+            });
+    </script>
+</body>
+</html>

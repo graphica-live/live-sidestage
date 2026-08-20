@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-18T00:00:00.000Z",
+  "title": "Design System: TikEffect",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "アラートレッド", "canonical": "#ef4444", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fee2e2"] },
+      "bg-base": { "role": "neutral", "displayName": "フロストブルーグレー", "canonical": "#dfe6f0", "tonalRamp": ["#0f172a", "#1e293b", "#475569", "#94a3b8", "#cbd5e1", "#dfe6f0", "#eef3f8", "#f8fafc"] },
+      "panel": { "role": "neutral", "displayName": "クラウドパネル", "canonical": "rgba(248, 250, 252, 0.86)" },
+      "text": { "role": "neutral", "displayName": "インクネイビー", "canonical": "#0f172a" },
+      "muted": { "role": "neutral", "displayName": "スレートミュート", "canonical": "#5b6880" },
+      "sidebar-bg-start": { "role": "neutral", "displayName": "コックピットネイビー", "canonical": "#101826" },
+      "ok": { "role": "success", "displayName": "成功グリーン", "canonical": "#166534" },
+      "warn": { "role": "warning", "displayName": "警告アンバー", "canonical": "#9a3412" },
+      "error": { "role": "danger", "displayName": "エラーレッド", "canonical": "#b42318" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "画面タイトル(h1)のみ" },
+      "title": { "displayName": "Title", "purpose": "セクション見出し(h2)" },
+      "body": { "displayName": "Body", "purpose": "通常本文・ラベル全般" },
+      "label": { "displayName": "Label/Mono", "purpose": "ステータスチップ・タイムスタンプなど機械可読情報" }
+    },
+    "shadows": [
+      { "name": "panel-rest", "value": "0 22px 50px rgba(15, 23, 42, 0.16)", "purpose": "アプリシェル全体を包む最外周の影" },
+      { "name": "panel-inner", "value": "0 10px 24px rgba(24, 37, 58, 0.12)", "purpose": "個別パネルの基本影" },
+      { "name": "card-rest", "value": "0 2px 12px rgba(24, 37, 58, 0.10), 0 1px 3px rgba(24, 37, 58, 0.06)", "purpose": "カードの基本影" },
+      { "name": "button-hover", "value": "0 4px 14px rgba(24, 37, 58, 0.10), 0 1px 4px rgba(24, 37, 58, 0.06)", "purpose": "汎用ボタンのhover影" },
+      { "name": "button-primary-hover", "value": "0 4px 16px rgba(194, 65, 12, 0.34)", "purpose": "プライマリボタンのhover影" }
+    ],
+    "motion": [
+      { "name": "ease-control", "value": "cubic-bezier(.22,.61,.36,1)", "purpose": "ボタンのtransform遷移(110ms)に使う標準イージング" }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "プライマリ操作(保存・実行など)用のグラデーションボタン。",
+      "html": "<button class=\"ds-btn-primary\">保存する</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #ef4444; border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 600; line-height: 1; cursor: pointer; color: #fff; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 2px 8px rgba(194, 65, 12, 0.24); transition: transform 110ms cubic-bezier(.22,.61,.36,1), background 110ms ease, box-shadow 110ms ease; } .ds-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(194, 65, 12, 0.34); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.22), 0 4px 16px rgba(194, 65, 12, 0.34); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "副次操作用の半透明ボタン。",
+      "html": "<button class=\"ds-btn-ghost\">キャンセル</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid rgba(33, 45, 69, 0.16); border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; color: #18253a; background: rgba(255, 255, 255, 0.72); transition: background 110ms ease, border-color 110ms ease; } .ds-btn-ghost:hover { background: rgba(255, 255, 255, 0.96); border-color: rgba(24, 37, 58, 0.24); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.22); }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Controlの主要セクションを囲む最上位コンテナ。",
+      "html": "<section class=\"ds-panel\"><h2>セクション見出し</h2><p class=\"ds-subtext\">補足説明テキスト</p></section>",
+      "css": ".ds-panel { background: rgba(248, 250, 252, 0.86); border: 1px solid rgba(33, 45, 69, 0.12); border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 37, 58, 0.12); padding: 24px; } .ds-panel h2 { margin: 0; font-size: 21px; line-height: 1.2; color: #0f172a; } .ds-subtext { margin-top: 8px; color: #5b6880; font-size: 14px; line-height: 1.7; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "パネル内に並ぶ個別アイテムのカード。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><strong>カードタイトル</strong></div><p class=\"ds-subtext\">詳細テキスト</p></div>",
+      "css": ".ds-card { border: 1px solid rgba(24, 37, 58, 0.22); border-radius: 14px; background: #ffffff; box-shadow: 0 2px 12px rgba(24, 37, 58, 0.10), 0 1px 3px rgba(24, 37, 58, 0.06); padding: 20px; display: grid; gap: 14px; } .ds-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "成功・警告・エラー・中立の4値を表す小さなステータス表示。",
+      "html": "<span class=\"ds-chip ds-chip-ok\">接続済み</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; } .ds-chip-ok { color: #166534; background: rgba(22, 163, 74, 0.12); border-color: rgba(34, 197, 94, 0.28); } .ds-chip-warn { color: #9a3412; background: rgba(154, 52, 18, 0.12); border-color: rgba(249, 115, 22, 0.24); } .ds-chip-error { color: #b42318; background: rgba(127, 29, 29, 0.1); border-color: rgba(248, 113, 113, 0.28); }"
+    },
+    {
+      "name": "Widget Text (stroke)",
+      "kind": "custom",
+      "refersTo": "widget-overlay",
+      "description": "配信オーバーレイ上で可読性を確保する縁取りテキスト。色・フォントは配信者が変更する前提のプレースホルダ値。",
+      "html": "<div class=\"ds-widget-text\">GIFT!</div>",
+      "css": ".ds-widget-text { font-family: \"M PLUS Rounded 1c\", \"Yu Gothic UI\", sans-serif; font-weight: 800; font-size: 34px; color: #ffffff; -webkit-text-stroke: 5px rgba(15, 23, 42, 0.96); paint-order: stroke fill; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "配信のコントロールルーム",
+    "overview": "TikEffectのControl画面(管理UI)は、配信を裏で操作する司令室の性格を持つ。左側の紺のサイドバーが操縦席のように常駐し、右側のライトなパネル群がその日の状況(接続状態・ギフト・コメント)を淡々と表示する。装飾より判読性を優先し、危険や成功を伝える色(赤・緑・オレンジ)だけがアクセントとして光る。既知の視覚的リジェクトはない — Controlは実務的な画面であり続けることが確認済みの方針。配信画面に表示される「ウィジェット」は、この司令室とは別の位置づけを持つ。ウィジェットはOBS等のブラウザソースとして視聴者の目に触れる演出そのものであり、配信者がフォント・配色を自分の配信の世界観に合わせて選べる、意図的にオープンなテーマシステムとして設計されている。",
+    "keyCharacteristics": [
+      "Controlはニュートラルな寒色グレー背景に、警告・成功・強調のときだけ暖色(赤〜オレンジ)が灯る",
+      "静止状態はほぼフラット。hover/focusでのみ軽く浮き上がり、操作可能性を伝える",
+      "パネル・カードの角は指先で押せそうな柔らかい丸み(14〜16px)を持つが、ボタンや入力欄はもう少し締まった丸み(8〜9px)",
+      "ウィジェット側は固定デザインを持たず、配信者が選んだフォント・色がそのままシステムの見た目になる"
+    ],
+    "rules": [
+      { "name": "The Warm Signal Rule", "body": "暖色(赤〜オレンジ)はプライマリ操作・ステータス伝達のためだけに使う。画面の大部分は寒色グレーのニュートラルに任せ、暖色の希少性そのものが「ここに注目」の合図になる。", "section": "colors" },
+      { "name": "The Theme-Preset Rule", "body": "Controlはダーク/ゴールド/クリームなど複数のテーマプリセットを持ち、:rootの同名カスタムプロパティを丸ごと差し替える形で切り替わる。新しいプリセットを足すときも既存トークン名をすべて再定義することで既存コンポーネントがそのまま追従する。", "section": "colors" },
+      { "name": "The One-Family Rule", "body": "Control画面は原則Bahnschrift/Yu Gothic UI一本で統一し、装飾フォントを持ち込まない。表現力が必要な場面はウィジェット側のテーマシステムに譲る。", "section": "typography" },
+      { "name": "The Rest-Flat Rule", "body": "何も操作されていない状態のコンポーネントは影を持たない、または最小限のinset影に留める。影が濃くなるのは常にユーザーの操作への応答であり、常設の装飾として使わない。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do Control画面の新規ボタン・入力欄はadmin-buttons.cssの共有トークン経由でスタイルし、ページ単体でボタンの見た目を再定義しない",
+      "Do 影はhover/focusの応答としてのみ強める(Rest-Flat Rule)",
+      "Do ウィジェットの新しいテキスト要素には-webkit-text-strokeなどの縁取りを付け、配信映像上での可読性を確保する",
+      "Do ウィジェットの色・フォントは必ずCSSカスタムプロパティとして公開し、配信者が設定画面から変更できる状態を保つ"
+    ],
+    "donts": [
+      "Don't ウィジェットに固定の「ブランドらしい」配色・フォントをハードコードしない",
+      "Don't Controlのパネル・カードに常時強い影やグロー装飾を追加しない",
+      "Don't ウィジェットのhtml, bodyからbackground: transparentを外さない",
+      "Don't Control側にウィジェット側の表現的フォント(丸ゴシック・筆文字系)を持ち込まない"
+    ]
+  }
+}

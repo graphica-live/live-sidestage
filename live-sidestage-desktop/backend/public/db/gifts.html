@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gift History</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/font-options.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/gift-suggest.css">
+    <script>
+        if (new URLSearchParams(location.search).get('popout') === '1') {
+            document.documentElement.classList.add('is-popout');
+            const popoutFontLink = document.createElement('link');
+            popoutFontLink.rel = 'stylesheet';
+            popoutFontLink.href = WIDGET_FONT_GOOGLE_FONTS_URL;
+            document.head.appendChild(popoutFontLink);
+        }
+    </script>
+    <style>
+        /* 別ウィンドウ表示時は最小限の表示にする: 見出しカード(page-hero)を丸ごと隠し、
+           管理画面用テーブルの代わりに1ギフト=1行のシンプルなリスト(#popout-gift-list)を表示する。
+           並び順・フォント・フォントサイズは表示設定モーダル(quick-access.html)から制御する。 */
+        html.is-popout .layout > .panel:first-child,
+        html.is-popout table {
+            display: none !important;
+        }
+
+        html.is-popout .popout-gift-list {
+            display: flex !important;
+        }
+
+        /* コメント欄ポップアウトと同じ、透明背景の最小限オーバーレイの見た目に統一する */
+        html.is-popout body {
+            padding: 8px;
+            background: transparent;
+        }
+
+        html.is-popout .layout {
+            gap: 0;
+            /* auto のままだと flex item の「コンテンツに基づく自動最小サイズ」が効き、
+               .popout-gift-list (overflow-y: auto) がいくら中身を持っていても
+               .layout 自身がそのぶん際限なく伸びてしまい、内部スクロールが発生しない。
+               body 側の height 固定とあわせて 0 を指定し、素直に縮められるようにする。 */
+            min-height: 0;
+        }
+
+        html.is-popout .layout > .panel:last-child {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            /* admin-theme-presets.css の html[data-admin-theme] .panel { padding: var(--panel-padding) !important; }
+               が非!importantの指定を上書きしてしまうため !important が必須 */
+            padding: 4px !important;
+        }
+
+        /* 透明背景でも読めるよう、コメント欄と同じ強めのコントラストと縁取りを付ける */
+        html.is-popout .popout-gift-user-name {
+            color: #7dd3fc !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        html.is-popout .popout-gift-name {
+            color: #f1f5f9 !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        :root {
+            --bg: #e6edf4;
+            --panel: #f6f9fc;
+            --line: rgba(24, 37, 58, 0.18);
+            --text: #18253a;
+            --muted: #596b80;
+            --accent: #c2410c;
+            --accent-strong: #9a3412;
+            --danger: #b42318;
+            --danger-soft: rgba(180, 35, 24, 0.08);
+            --shadow: 0 10px 24px rgba(24, 37, 58, 0.12);
+            --overlay: rgba(15, 23, 42, 0.44);
+            /* JS が documentElement(html) にインラインで setProperty する値をここで確実に
+               上書きさせるため、既定値は :root に置く（子孫要素で再宣言すると継承が遮断される）。 */
+            --popout-gift-font-family: inherit;
+            --popout-gift-font-size: 13px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background: linear-gradient(180deg, #eef4fa 0%, #e3ebf3 100%);
+        }
+
+        .layout {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            gap: 18px;
+            min-height: calc(100vh - 48px);
+        }
+
+        .layout > .panel:last-child,
+        .layout > main.panel:last-child {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        h1, h2, p { margin: 0; }
+
+        h1 {
+            font-size: 30px;
+            line-height: 1.1;
+        }
+
+        h2 {
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .subtext {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .toolbar {
+            margin-top: 18px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toolbar .status {
+            flex: 1 1 280px;
+        }
+
+        .status,
+        .mini-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 7px 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.56);
+            font-size: 14px;
+        }
+
+        .mini-status {
+            font-size: 13px;
+            width: fit-content;
+        }
+
+        input,
+        select {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 9px 12px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: middle;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        td.actions-cell,
+        th.actions-cell {
+            width: 72px;
+            text-align: center;
+        }
+
+        .gift-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .gift-image {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .gift-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .gift-meta {
+            min-width: 0;
+            display: grid;
+            gap: 3px;
+        }
+
+        .gift-meta strong,
+        .gift-meta span,
+        .user-meta strong,
+        .user-meta span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .gift-meta span,
+        .user-meta span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        a.user-cell:hover {
+            opacity: 0.8;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .user-avatar.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .user-meta {
+            min-width: 0;
+            display: grid;
+            gap: 4px;
+        }
+
+        .popout-gift-list {
+            display: none;
+            flex: 1 1 auto;
+            flex-direction: column;
+            gap: 2px;
+            min-height: 0;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            padding-right: 4px;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .popout-gift-user-name,
+        .popout-gift-name,
+        .popout-gift-coins {
+            font-family: var(--popout-gift-font-family) !important;
+            font-size: var(--popout-gift-font-size) !important;
+        }
+
+        .popout-gift-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 4px;
+            border-bottom: 1px solid var(--line);
+            min-width: 0;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+        }
+
+        .popout-gift-item:last-child {
+            border-bottom: none;
+        }
+
+        .popout-gift-avatar {
+            width: calc(var(--popout-gift-font-size) * 2);
+            height: calc(var(--popout-gift-font-size) * 2);
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-avatar.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .popout-gift-user-link {
+            display: contents;
+        }
+
+        .popout-gift-user-name {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 30%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            /* ギフト名より10%小さく、太さは控えめに表示する */
+            font-size: calc(var(--popout-gift-font-size) * 0.9) !important;
+            font-weight: 400;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .popout-gift-user-link:hover .popout-gift-user-name,
+        .popout-gift-user-link:hover .popout-gift-avatar {
+            opacity: 0.8;
+        }
+
+        .popout-gift-name {
+            flex: 0 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        .popout-gift-image {
+            width: calc(var(--popout-gift-font-size) * 2);
+            height: calc(var(--popout-gift-font-size) * 2);
+            /* 背景・枠なしの透過画像として表示する（アイコン部分だけが見えるように contain） */
+            object-fit: contain;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-image.is-empty {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 9px;
+        }
+
+        .popout-gift-image-wrap {
+            position: relative;
+            display: inline-flex;
+            flex: 0 0 auto;
+        }
+
+        .popout-gift-repeat-badge {
+            position: absolute;
+            right: -4px;
+            bottom: -4px;
+            padding: 0 4px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.5;
+            pointer-events: none;
+        }
+
+        .popout-gift-coins {
+            flex: 0 0 auto;
+            min-width: 5ch;
+            margin-left: auto;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .popout-new-items-badge {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #ffffff;
+            background: var(--accent, #c2410c);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            cursor: pointer;
+        }
+
+        .popout-new-items-badge.is-at-top {
+            top: 10px;
+        }
+
+        .popout-new-items-badge.is-at-bottom {
+            bottom: 10px;
+        }
+
+        /* admin-buttons.css の button { display: inline-flex; } が hidden 属性のUA標準スタイル
+           ([hidden] { display: none; }) を常に上書きしてしまい、hidden を付けても消えず
+           表示され続けていたため、明示的に display: none を指定する。 */
+        .popout-new-items-badge[hidden] {
+            display: none;
+        }
+
+        /* admin-buttons.css の button:hover:not(:disabled) { transform: translateY(-1px); }
+           が中央寄せの translateX(-50%) を丸ごと上書きし、ホバー時にバッジが左へ飛んで
+           見えていたため、ホバー中も中央寄せを維持するよう固定する。 */
+        .popout-new-items-badge:hover:not(:disabled) {
+            transform: translateX(-50%);
+        }
+
+        /* background-color ではなく box-shadow でフラッシュさせる（他要素の !important 背景指定と衝突させないため） */
+        @keyframes popout-flash-new {
+            0%, 100% { box-shadow: none; }
+            25%, 75% { box-shadow: inset 0 0 0 999px rgba(255, 196, 0, 0.35); }
+        }
+
+        .popout-flash-new {
+            animation: popout-flash-new 0.6s ease-in-out 2;
+        }
+
+        .icon-button {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            display: inline-grid;
+            place-items: center;
+            font-size: 16px;
+            line-height: 1;
+            border-radius: 8px;
+        }
+
+        .empty {
+            padding: 28px 0;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: var(--overlay);
+            display: grid;
+            place-items: center;
+            padding: 18px;
+            z-index: 1000;
+        }
+
+        .modal-backdrop[hidden] {
+            display: none;
+        }
+
+        .modal {
+            width: min(760px, 100%);
+            max-height: min(88vh, 920px);
+            overflow: auto;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+            padding: 24px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .modal-head,
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .field label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .field input {
+            width: 100%;
+        }
+
+        .summary-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                width: min(100%, calc(100% - 24px));
+            }
+
+            .panel {
+                padding: 20px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 780px) {
+            body {
+                padding: 16px 10px;
+            }
+
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            table,
+            thead,
+            tbody,
+            tr,
+            td,
+            th {
+                display: block;
+            }
+
+            thead {
+                display: none;
+            }
+
+            tr {
+                padding: 12px 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            td {
+                padding: 8px 0;
+                border-bottom: 0;
+            }
+
+            td.actions-cell,
+            th.actions-cell {
+                width: auto;
+                text-align: left;
+            }
+        }
+
+        .user-suggest-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .user-suggestion-panel {
+            position: fixed;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(58, 44, 29, 0.16);
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(24, 37, 58, 0.14);
+            z-index: 9999;
+        }
+
+        .user-suggestion-panel[hidden] {
+            display: none;
+        }
+
+        .user-suggestion-item {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(58, 44, 29, 0.08);
+            background: #ffffff;
+            padding: 9px 12px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .user-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-suggestion-item:hover,
+        .user-suggestion-item.is-active {
+            background: #eef4fa;
+        }
+
+        .user-suggestion-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-suggestion-avatar.is-empty {
+            background: #d9e2ec;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: #596b80;
+        }
+
+        .user-suggestion-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .user-suggestion-id {
+            font-size: 11px;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    </style>
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>ギフト履歴</h1>
+                    <p class="subtext">指定した日付に受信したギフトイベントを時系列で表示します。テストデータはモーダルで細かく指定して追加できます。</p>
+                </div>
+                <div class="page-hero-side">
+                    <div class="control-stack">
+                        <div class="control-group">
+                            <input type="date" id="day-input">
+                            <select id="sort-order-select" aria-label="並び順">
+                                <option value="timestamp-asc">昇順</option>
+                                <option value="timestamp-desc">降順</option>
+                                <option value="coins-desc">コイン数の大きい順</option>
+                                <option value="coins-asc">コイン数の小さい順</option>
+                            </select>
+                        </div>
+                        <button type="button" class="primary-button hero-primary-action" id="add-test-gifts-button">データを追加</button>
+                        <div class="status message-inline" id="message-box" hidden>操作待ち</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th>時刻</th>
+                        <th>ユーザー</th>
+                        <th>ギフト</th>
+                        <th>回数</th>
+                        <th>Coins</th>
+                        <th class="actions-cell">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+            <ul class="popout-gift-list" id="popout-gift-list"></ul>
+            <button type="button" class="popout-new-items-badge" id="gift-new-items-badge" hidden></button>
+            <div class="empty" id="empty-state" hidden>この日付のギフト履歴はまだありません。</div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop" id="gift-modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gift-modal-title">
+            <div class="modal-head">
+                <div>
+                    <h2 id="gift-modal-title">テストギフトを追加</h2>
+                    <p class="subtext">ユーザー情報、ギフト種類、まとめ投げ個数、1回あたりコインを細かく指定できます。</p>
+                </div>
+                <button type="button" id="close-gift-modal-button">閉じる</button>
+            </div>
+
+            <div class="summary-grid">
+                <div class="mini-status" id="modal-day-status">対象日: -</div>
+                <div class="mini-status" id="modal-total-status">合計 Coins: 0</div>
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="modal-unique-id">ユーザーID</label>
+                    <div class="user-suggest-shell">
+                        <input id="modal-unique-id" type="text" maxlength="80" autocomplete="off" list="recent-user-id-list" placeholder="example_user">
+                        <div class="user-suggestion-panel" id="gifts-user-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="modal-nickname">ユーザー名</label>
+                    <input id="modal-nickname" type="text" maxlength="80" list="recent-user-name-list" placeholder="テスト視聴者">
+                </div>
+                <div class="field">
+                    <label for="modal-profile-image">プロフィール画像 URL</label>
+                    <input id="modal-profile-image" type="text" maxlength="500" placeholder="https://...">
+                </div>
+                <div class="field">
+                    <label for="modal-gift-name">ギフト名</label>
+                    <div class="gift-suggest-shell">
+                        <input id="modal-gift-name" type="text" maxlength="80" autocomplete="off" placeholder="Rose">
+                        <div class="gift-suggestion-panel" id="modal-gift-suggestion-panel" hidden></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="modal-gift-id">ギフトID</label>
+                    <input id="modal-gift-id" type="text" maxlength="80" placeholder="565">
+                </div>
+                <div class="field">
+                    <label for="modal-gift-image">ギフト画像 URL</label>
+                    <input id="modal-gift-image" type="text" maxlength="500" placeholder="https://...">
+                </div>
+                <div class="field">
+                    <label for="modal-diamond-count">1回あたりコイン</label>
+                    <input id="modal-diamond-count" type="number" min="1" step="1" value="1">
+                </div>
+                <div class="field">
+                    <label for="modal-repeat-count">まとめ投げ個数</label>
+                    <input id="modal-repeat-count" type="number" min="1" step="1" value="1">
+                </div>
+                <div class="field full">
+                    <label for="modal-note">補足</label>
+                    <input id="modal-note" type="text" maxlength="120" placeholder="ギフト名を選ぶと ID、画像、コイン数を自動反映します。" disabled>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="cancel-gift-modal-button">キャンセル</button>
+                <button type="button" class="primary-button" id="submit-gift-modal-button">追加する</button>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="recent-user-id-list"></datalist>
+    <datalist id="recent-user-name-list"></datalist>
+
+    <div class="modal-backdrop" id="confirm-dialog-backdrop" hidden>
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style="width:min(400px,100%);max-height:unset;gap:16px;">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showConfirm(message, okLabel = '削除する') {
+            return new Promise((resolve) => {
+                const backdrop = document.getElementById('confirm-dialog-backdrop');
+                const msgEl = document.getElementById('confirm-dialog-message');
+                const okBtn = document.getElementById('confirm-dialog-ok');
+                const cancelBtn = document.getElementById('confirm-dialog-cancel');
+                msgEl.textContent = message;
+                okBtn.textContent = okLabel;
+                backdrop.hidden = false;
+                function cleanup(result) {
+                    backdrop.hidden = true;
+                    resolve(result);
+                }
+                okBtn.addEventListener('click', () => cleanup(true), { once: true });
+                cancelBtn.addEventListener('click', () => cleanup(false), { once: true });
+            });
+        }
+
+        const socket = io();
+        const dayInput = document.getElementById('day-input');
+        const sortOrderSelect = document.getElementById('sort-order-select');
+        const addTestGiftsButton = document.getElementById('add-test-gifts-button');
+        const messageBox = document.getElementById('message-box');
+        const tableBody = document.getElementById('table-body');
+        const popoutGiftList = document.getElementById('popout-gift-list');
+        const newGiftsBadge = document.getElementById('gift-new-items-badge');
+        const emptyState = document.getElementById('empty-state');
+        const isPopoutWindow = document.documentElement.classList.contains('is-popout');
+        const giftModalBackdrop = document.getElementById('gift-modal-backdrop');
+        const closeGiftModalButton = document.getElementById('close-gift-modal-button');
+        const cancelGiftModalButton = document.getElementById('cancel-gift-modal-button');
+        const submitGiftModalButton = document.getElementById('submit-gift-modal-button');
+        const modalDayStatus = document.getElementById('modal-day-status');
+        const modalTotalStatus = document.getElementById('modal-total-status');
+        const modalUniqueIdInput = document.getElementById('modal-unique-id');
+        const modalNicknameInput = document.getElementById('modal-nickname');
+        const modalProfileImageInput = document.getElementById('modal-profile-image');
+        const modalGiftNameInput = document.getElementById('modal-gift-name');
+        const modalGiftIdInput = document.getElementById('modal-gift-id');
+        const modalGiftImageInput = document.getElementById('modal-gift-image');
+        const modalDiamondCountInput = document.getElementById('modal-diamond-count');
+        const modalRepeatCountInput = document.getElementById('modal-repeat-count');
+        const modalGiftSuggestionPanel = document.getElementById('modal-gift-suggestion-panel');
+        const recentUserIdList = document.getElementById('recent-user-id-list');
+        const recentUserNameList = document.getElementById('recent-user-name-list');
+        const userSuggestionPanel = document.getElementById('gifts-user-suggestion-panel');
+
+        let selectedDayKey = null;
+        let currentDisplayDayKey = null;
+        let isFollowingToday = true;
+        let currentSortOrder = 'timestamp-asc';
+        let currentGifts = [];
+        let popoutFlashNewEnabled = true;
+        let hiddenNewGiftsCount = 0;
+        let isLoadingGifts = false;
+        let isSubmittingGift = false;
+        let knownUserSuggestions = [];
+        let visibleUserSuggestions = [];
+        let activeUserSuggestionIndex = -1;
+
+        const referenceData = {
+            gifts: [],
+            usersById: new Map(),
+            usersByName: new Map()
+        };
+
+        function formatTimestamp(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const date = new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return '-';
+            }
+
+            return date.toLocaleTimeString('ja-JP', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat('ja-JP').format(value || 0);
+        }
+
+        function setMessage(message, isError = false) {
+            messageBox.hidden = !message;
+            messageBox.textContent = message;
+            messageBox.style.color = isError ? '#a12d2f' : 'var(--muted)';
+            messageBox.style.borderColor = isError ? 'rgba(161, 45, 47, 0.25)' : 'var(--line)';
+        }
+
+        function syncSortOrderSelect() {
+            sortOrderSelect.value = currentSortOrder;
+        }
+
+        function applyPopoutGiftFontStyle(style) {
+            if (!style) return;
+            document.documentElement.style.setProperty('--popout-gift-font-family', getWidgetFontFamilyByKey(style.fontKey));
+            if (style.fontSize) {
+                document.documentElement.style.setProperty('--popout-gift-font-size', `${style.fontSize}px`);
+            }
+            if (typeof style.flashNew === 'boolean') {
+                popoutFlashNewEnabled = style.flashNew;
+            }
+        }
+
+        // ポップアウトのギフト一覧が「最新側の端」を表示中かどうかを判定する。
+        // timestamp-asc(古い順)は末尾が最新、timestamp-desc(新しい順)は先頭が最新。
+        function isGiftListAtLatestEdge() {
+            if (currentSortOrder === 'timestamp-asc') {
+                return popoutGiftList.scrollTop + popoutGiftList.clientHeight >= popoutGiftList.scrollHeight - 24;
+            }
+            return popoutGiftList.scrollTop <= 24;
+        }
+
+        function hideNewGiftsBadge() {
+            hiddenNewGiftsCount = 0;
+            if (newGiftsBadge) {
+                newGiftsBadge.hidden = true;
+            }
+        }
+
+        function showNewGiftsBadge(count) {
+            hiddenNewGiftsCount += count;
+            if (!newGiftsBadge) return;
+            newGiftsBadge.textContent = `新しいギフト${hiddenNewGiftsCount}件`;
+            newGiftsBadge.hidden = false;
+            newGiftsBadge.classList.toggle('is-at-top', currentSortOrder !== 'timestamp-asc');
+            newGiftsBadge.classList.toggle('is-at-bottom', currentSortOrder === 'timestamp-asc');
+        }
+
+        function flashNewGiftItem(item) {
+            item.classList.add('popout-flash-new');
+            item.addEventListener('animationend', () => item.classList.remove('popout-flash-new'), { once: true });
+        }
+
+        if (isPopoutWindow && newGiftsBadge) {
+            newGiftsBadge.addEventListener('click', () => {
+                scrollToLatestGift();
+                hideNewGiftsBadge();
+            });
+            popoutGiftList.addEventListener('scroll', () => {
+                if (hiddenNewGiftsCount > 0 && isGiftListAtLatestEdge()) {
+                    hideNewGiftsBadge();
+                }
+            });
+        }
+
+        function loadPopoutGiftStyle() {
+            if (!isPopoutWindow) {
+                return;
+            }
+
+            fetch('/api/settings/popout-gift-style')
+                .then((res) => res.json())
+                .then((data) => {
+                    currentSortOrder = data?.sortOrder || currentSortOrder;
+                    syncSortOrderSelect();
+                    applyPopoutGiftFontStyle(data);
+                    renderTable(currentGifts);
+                })
+                .catch(() => {});
+        }
+
+        function getSortedGifts(gifts) {
+            const items = Array.isArray(gifts) ? [...gifts] : [];
+
+            items.sort((left, right) => {
+                const leftTime = Date.parse(left.timestamp || '') || 0;
+                const rightTime = Date.parse(right.timestamp || '') || 0;
+                const leftCoins = Number(left.totalGifts) || 0;
+                const rightCoins = Number(right.totalGifts) || 0;
+                const leftId = Number(left.id) || 0;
+                const rightId = Number(right.id) || 0;
+
+                if (currentSortOrder === 'coins-desc' || currentSortOrder === 'coins-asc') {
+                    if (leftCoins !== rightCoins) {
+                        return currentSortOrder === 'coins-desc'
+                            ? rightCoins - leftCoins
+                            : leftCoins - rightCoins;
+                    }
+
+                    if (leftTime !== rightTime) {
+                        return currentSortOrder === 'coins-desc'
+                            ? rightTime - leftTime
+                            : leftTime - rightTime;
+                    }
+
+                    return currentSortOrder === 'coins-desc'
+                        ? rightId - leftId
+                        : leftId - rightId;
+                }
+
+                if (leftTime !== rightTime) {
+                    return currentSortOrder === 'timestamp-asc'
+                        ? leftTime - rightTime
+                        : rightTime - leftTime;
+                }
+
+                return currentSortOrder === 'timestamp-asc'
+                    ? leftId - rightId
+                    : rightId - leftId;
+            });
+
+            return items;
+        }
+
+        function scrollToLatestGift() {
+            // rAFで遅延させたりsmoothスクロールを使うと、連続発火時に「まだスクロールし終えていない」
+            // 状態で次のギフトの最新端判定が走ってしまい、着地がずれたりバッジ誤表示の原因になるため
+            // 同期的に即時スクロールする。
+            const top = currentSortOrder === 'timestamp-asc' ? popoutGiftList.scrollHeight : 0;
+            popoutGiftList.scrollTop = top;
+        }
+
+        function renderTable(gifts, options = {}) {
+            currentGifts = Array.isArray(gifts) ? [...gifts] : [];
+            emptyState.hidden = currentGifts.length > 0;
+            const sortedGifts = getSortedGifts(currentGifts);
+
+            if (isPopoutWindow) {
+                const diff = options.diff === true;
+                const wasAtLatestEdge = diff ? isGiftListAtLatestEdge() : true;
+                const { addedItems } = renderPopoutGiftList(sortedGifts, { diff });
+
+                if (!diff) {
+                    // 全件作り直し（初期表示・日付切替・並び順/表示設定変更時）は常に最新側へ着地させる。
+                    scrollToLatestGift();
+                } else if (addedItems.length) {
+                    if (wasAtLatestEdge) {
+                        scrollToLatestGift();
+                    } else {
+                        showNewGiftsBadge(addedItems.length);
+                    }
+                    if (popoutFlashNewEnabled) {
+                        addedItems.forEach(flashNewGiftItem);
+                    }
+                }
+            } else {
+                renderAdminGiftTable(sortedGifts);
+            }
+        }
+
+        function renderAdminGiftTable(sortedGifts) {
+            tableBody.innerHTML = '';
+
+            if (!sortedGifts.length) {
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            sortedGifts.forEach((gift) => {
+                const row = document.createElement('tr');
+                row.dataset.giftEventId = String(gift.id || '');
+                const giftDisplayName = gift.giftNameJa || gift.giftName;
+                const giftImageMarkup = gift.giftImage
+                    ? `<img class="gift-image" src="${escapeHtml(gift.giftImage)}" alt="${escapeHtml(giftDisplayName || 'gift')}">`
+                    : '<div class="gift-image is-empty">No Image</div>';
+                const userAvatarMarkup = gift.image
+                    ? `<img class="user-avatar" src="${escapeHtml(gift.image)}" alt="">`
+                    : '<div class="user-avatar is-empty">?</div>';
+                const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+                const userCellTag = profileUrl ? 'a' : 'div';
+                const userCellAttrs = profileUrl
+                    ? ` href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer"`
+                    : '';
+
+                row.innerHTML = `
+                    <td>${escapeHtml(formatTimestamp(gift.timestamp))}</td>
+                    <td>
+                        <${userCellTag} class="user-cell"${userCellAttrs}>
+                            ${userAvatarMarkup}
+                            <div class="user-meta">
+                                <strong>${escapeHtml(gift.nickname || gift.uniqueId || '-')}</strong>
+                                <span>@${escapeHtml(gift.uniqueId || '-')}</span>
+                            </div>
+                        </${userCellTag}>
+                    </td>
+                    <td>
+                        <div class="gift-cell">
+                            ${giftImageMarkup}
+                            <div class="gift-meta">
+                                <strong>${escapeHtml(giftDisplayName || '不明')}</strong>
+                                <span>ID: ${escapeHtml(gift.giftId || '-')}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(String(gift.repeatCount || 1))}</td>
+                    <td>${escapeHtml(formatNumber(gift.totalGifts))}</td>
+                    <td class="actions-cell">
+                        <button type="button" class="icon-button danger-button" data-delete-gift title="このギフト履歴を削除" aria-label="このギフト履歴を削除">🗑</button>
+                    </td>
+                `;
+                fragment.appendChild(row);
+            });
+
+            tableBody.appendChild(fragment);
+        }
+
+        // まとめ投げ（コンボ）の個数バッジ。1個だけの通常ギフトでは表示しない。
+        function buildGiftRepeatBadgeMarkup(gift) {
+            const repeatCount = Number(gift.repeatCount) || 1;
+            return repeatCount > 1
+                ? `<span class="popout-gift-repeat-badge">×${escapeHtml(formatNumber(repeatCount))}</span>`
+                : '';
+        }
+
+        function buildPopoutGiftItem(gift) {
+            const item = document.createElement('li');
+            item.className = 'popout-gift-item';
+            item.dataset.giftEventId = String(gift.id || '');
+            const avatarMarkup = gift.image
+                ? `<img class="popout-gift-avatar" src="${escapeHtml(gift.image)}" alt="">`
+                : '<div class="popout-gift-avatar is-empty">?</div>';
+            const giftImageMarkup = gift.giftImage
+                ? `<img class="popout-gift-image" src="${escapeHtml(gift.giftImage)}" alt="">`
+                : '<div class="popout-gift-image is-empty">No Image</div>';
+            const profileUrl = buildTikTokProfileUrl(gift.uniqueId);
+            const userLinkMarkup = `
+                ${avatarMarkup}
+                <span class="popout-gift-user-name">${escapeHtml(gift.nickname || gift.uniqueId || '-')}</span>
+            `;
+
+            item.innerHTML = `
+                ${profileUrl
+                    ? `<a class="popout-gift-user-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener noreferrer">${userLinkMarkup}</a>`
+                    : userLinkMarkup}
+                <span class="popout-gift-name">${escapeHtml(gift.giftNameJa || gift.giftName || '不明')}</span>
+                <span class="popout-gift-image-wrap">${giftImageMarkup}${buildGiftRepeatBadgeMarkup(gift)}</span>
+                <span class="popout-gift-coins">🪙 ${escapeHtml(formatNumber(gift.totalGifts))}</span>
+            `;
+            return item;
+        }
+
+        // まとめ投げの pending 中は同じ li を使い回す（diff:true）ため、コイン数/ギフト名/個数バッジ
+        // だけを上書きして最新のカウントを反映する。アバター・ギフト画像は再読み込みのチラつきを
+        // 避けるためここでは触らない。
+        function updatePopoutGiftItem(item, gift) {
+            const nameEl = item.querySelector('.popout-gift-name');
+            if (nameEl) {
+                nameEl.textContent = gift.giftNameJa || gift.giftName || '不明';
+            }
+            const coinsEl = item.querySelector('.popout-gift-coins');
+            if (coinsEl) {
+                coinsEl.textContent = `🪙 ${formatNumber(gift.totalGifts)}`;
+            }
+            const imageWrap = item.querySelector('.popout-gift-image-wrap');
+            if (imageWrap) {
+                let badgeEl = imageWrap.querySelector('.popout-gift-repeat-badge');
+                const repeatCount = Number(gift.repeatCount) || 1;
+                if (repeatCount > 1) {
+                    if (!badgeEl) {
+                        badgeEl = document.createElement('span');
+                        badgeEl.className = 'popout-gift-repeat-badge';
+                        imageWrap.appendChild(badgeEl);
+                    }
+                    badgeEl.textContent = `×${formatNumber(repeatCount)}`;
+                } else if (badgeEl) {
+                    badgeEl.remove();
+                }
+            }
+        }
+
+        // diff:false は全件作り直し（初期表示・日付切替・並び順/表示設定変更時）。
+        // diff:true は既存要素を保ったまま新規分だけ挿入する（ライブ更新時、画像の再読み込みによる
+        // チラつきを避けるため）。戻り値の addedItems は新規挿入された <li> 一覧。
+        function renderPopoutGiftList(sortedGifts, options = {}) {
+            if (!options.diff) {
+                popoutGiftList.innerHTML = '';
+                const fragment = document.createDocumentFragment();
+                sortedGifts.forEach((gift) => fragment.appendChild(buildPopoutGiftItem(gift)));
+                popoutGiftList.appendChild(fragment);
+                return { addedItems: [] };
+            }
+
+            const existingById = new Map();
+            Array.from(popoutGiftList.children).forEach((li) => {
+                existingById.set(li.dataset.giftEventId, li);
+            });
+
+            const nextIds = new Set(sortedGifts.map((gift) => String(gift.id || '')));
+            existingById.forEach((li, id) => {
+                if (!nextIds.has(id)) {
+                    li.remove();
+                    existingById.delete(id);
+                }
+            });
+
+            const addedItems = [];
+            let refNode = popoutGiftList.firstChild;
+            sortedGifts.forEach((gift) => {
+                const id = String(gift.id || '');
+                let li = existingById.get(id);
+                if (li) {
+                    updatePopoutGiftItem(li, gift);
+                    if (refNode !== li) {
+                        popoutGiftList.insertBefore(li, refNode);
+                    }
+                    refNode = li.nextSibling;
+                } else {
+                    li = buildPopoutGiftItem(gift);
+                    popoutGiftList.insertBefore(li, refNode);
+                    addedItems.push(li);
+                }
+            });
+
+            return { addedItems };
+        }
+
+        function populateGiftSuggestions(gifts) {
+            referenceData.gifts = Array.isArray(gifts) ? gifts : [];
+        }
+
+        function populateRecentUsers(users) {
+            knownUserSuggestions = Array.isArray(users) ? users.filter((u) => u?.uniqueId) : [];
+            recentUserIdList.innerHTML = Array.isArray(users)
+                ? users.map((user) => `<option value="${escapeHtml(user.uniqueId || '')}" label="${escapeHtml(user.nickname || user.uniqueId || '')}"></option>`).join('')
+                : '';
+            recentUserNameList.innerHTML = Array.isArray(users)
+                ? users.map((user) => `<option value="${escapeHtml(user.nickname || '')}" label="${escapeHtml(user.uniqueId || '')}"></option>`).join('')
+                : '';
+            referenceData.usersById = new Map((users || []).map((user) => [String(user.uniqueId || ''), user]));
+            referenceData.usersByName = new Map((users || []).map((user) => [String(user.nickname || ''), user]));
+        }
+
+        function positionUserSuggestionPanel() {
+            const rect = modalUniqueIdInput.getBoundingClientRect();
+            const panelHeight = 260;
+            const spaceBelow = window.innerHeight - rect.bottom - 8;
+            if (spaceBelow >= 80 || spaceBelow >= panelHeight) {
+                userSuggestionPanel.style.top = `${rect.bottom + 4}px`;
+                userSuggestionPanel.style.bottom = '';
+            } else {
+                userSuggestionPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+                userSuggestionPanel.style.top = '';
+            }
+            userSuggestionPanel.style.left = `${rect.left}px`;
+            userSuggestionPanel.style.width = `${rect.width}px`;
+        }
+
+        function hideUserSuggestionPanel() {
+            userSuggestionPanel.hidden = true;
+            userSuggestionPanel.innerHTML = '';
+            visibleUserSuggestions = [];
+            activeUserSuggestionIndex = -1;
+        }
+
+        function applyUserSuggestion(user) {
+            modalUniqueIdInput.value = user.uniqueId || '';
+            if (!modalNicknameInput.value.trim()) {
+                modalNicknameInput.value = user.nickname || user.uniqueId || '';
+            }
+            if (!modalProfileImageInput.value.trim()) {
+                modalProfileImageInput.value = user.image || '';
+            }
+            hideUserSuggestionPanel();
+            modalUniqueIdInput.focus();
+        }
+
+        function renderUserSuggestions(query) {
+            const q = String(query || '').trim().toLowerCase();
+            if (!q) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            visibleUserSuggestions = knownUserSuggestions.filter((u) => {
+                return String(u.uniqueId || '').toLowerCase().includes(q)
+                    || String(u.nickname || '').toLowerCase().includes(q);
+            }).slice(0, 20);
+            if (!visibleUserSuggestions.length) {
+                hideUserSuggestionPanel();
+                return;
+            }
+            activeUserSuggestionIndex = 0;
+            userSuggestionPanel.innerHTML = visibleUserSuggestions.map((user, index) => {
+                const imgMarkup = user.image
+                    ? `<img class="user-suggestion-avatar" src="${escapeHtml(user.image)}" alt="">`
+                    : `<div class="user-suggestion-avatar is-empty">?</div>`;
+                return `<button type="button" class="user-suggestion-item${index === 0 ? ' is-active' : ''}" data-user-index="${index}">${imgMarkup}<div><div class="user-suggestion-name">${escapeHtml(user.nickname || user.uniqueId)}</div><div class="user-suggestion-id">@${escapeHtml(user.uniqueId)}</div></div></button>`;
+            }).join('');
+            userSuggestionPanel.hidden = false;
+            positionUserSuggestionPanel();
+            userSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button) => {
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    applyUserSuggestion(visibleUserSuggestions[Number(button.dataset.userIndex)]);
+                });
+            });
+        }
+
+        function updateActiveUserSuggestion(nextIndex) {
+            if (!visibleUserSuggestions.length) return;
+            activeUserSuggestionIndex = Math.max(0, Math.min(nextIndex, visibleUserSuggestions.length - 1));
+            userSuggestionPanel.querySelectorAll('[data-user-index]').forEach((button, index) => {
+                button.classList.toggle('is-active', index === activeUserSuggestionIndex);
+                if (index === activeUserSuggestionIndex) {
+                    button.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+
+        async function loadReferenceData() {
+            try {
+                const [giftResponse, userResponse] = await Promise.all([
+                    fetch('/api/tiktok/gifts'),
+                    fetch('/api/users/recent')
+                ]);
+                const giftPayload = await giftResponse.json();
+                const userPayload = await userResponse.json();
+                populateGiftSuggestions(Array.isArray(giftPayload.gifts) ? giftPayload.gifts : []);
+                populateRecentUsers(Array.isArray(userPayload.users) ? userPayload.users : []);
+            } catch {
+                populateGiftSuggestions([]);
+                populateRecentUsers([]);
+            }
+        }
+
+        function applyGiftDraftFromCatalog(matchedGift) {
+            if (!matchedGift) {
+                updateDraftTotalStatus();
+                return;
+            }
+
+            modalGiftIdInput.value = matchedGift.id || modalGiftIdInput.value;
+            modalGiftImageInput.value = matchedGift.imageUrl || modalGiftImageInput.value;
+            if (Number(matchedGift.diamondCount) > 0) {
+                modalDiamondCountInput.value = String(matchedGift.diamondCount);
+            }
+            updateDraftTotalStatus();
+        }
+
+        function syncGiftDraftFromCatalog() {
+            const giftKey = (modalGiftNameInput.dataset.giftKey || modalGiftNameInput.value).trim();
+            applyGiftDraftFromCatalog(GiftSuggest.findByNameOrId(referenceData.gifts, giftKey));
+        }
+
+        GiftSuggest.attachSuggestField({
+            input: modalGiftNameInput,
+            panel: modalGiftSuggestionPanel,
+            getGifts: () => referenceData.gifts,
+            onSelect: (gift) => {
+                modalGiftNameInput.value = gift.nameJa || gift.name || '';
+                modalGiftNameInput.dataset.giftKey = gift.name || '';
+                modalGiftNameInput.setCustomValidity('');
+                modalGiftNameInput.classList.remove('gift-suggest-invalid');
+                applyGiftDraftFromCatalog(gift);
+            },
+            escapeHtml
+        });
+
+        GiftSuggest.attachSelectOnlyGuard(modalGiftNameInput, {
+            getGifts: () => referenceData.gifts,
+            invalidMessage: 'ギフト候補一覧から選択してください。',
+            onValid: (matched) => {
+                modalGiftNameInput.dataset.giftKey = matched ? (matched.name || '') : '';
+            }
+        });
+
+        function syncUserDraftFromSuggestions() {
+            const idValue = modalUniqueIdInput.value.trim();
+            const nameValue = modalNicknameInput.value.trim();
+            const matchedUser = referenceData.usersById.get(idValue) || referenceData.usersByName.get(nameValue);
+
+            if (!matchedUser) {
+                return;
+            }
+
+            if (!modalUniqueIdInput.value.trim()) {
+                modalUniqueIdInput.value = matchedUser.uniqueId || '';
+            }
+
+            if (!modalNicknameInput.value.trim()) {
+                modalNicknameInput.value = matchedUser.nickname || matchedUser.uniqueId || '';
+            }
+
+            if (!modalProfileImageInput.value.trim()) {
+                modalProfileImageInput.value = matchedUser.image || '';
+            }
+        }
+
+        function updateDraftTotalStatus() {
+            const diamondCount = Number.parseInt(modalDiamondCountInput.value, 10) || 0;
+            const repeatCount = Number.parseInt(modalRepeatCountInput.value, 10) || 0;
+            modalTotalStatus.textContent = `合計 Coins: ${formatNumber(diamondCount * repeatCount)}`;
+        }
+
+        function resetGiftModal() {
+            modalUniqueIdInput.value = '';
+            modalNicknameInput.value = '';
+            modalProfileImageInput.value = '';
+            modalGiftNameInput.value = '';
+            modalGiftNameInput.dataset.giftKey = '';
+            modalGiftNameInput.setCustomValidity('');
+            modalGiftNameInput.classList.remove('gift-suggest-invalid');
+            modalGiftIdInput.value = '';
+            modalGiftImageInput.value = '';
+            modalDiamondCountInput.value = '1';
+            modalRepeatCountInput.value = '1';
+            modalDayStatus.textContent = `対象日: ${selectedDayKey || '-'}`;
+            updateDraftTotalStatus();
+        }
+
+        function openGiftModal() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            resetGiftModal();
+            giftModalBackdrop.hidden = false;
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => {
+                modalUniqueIdInput.focus();
+            });
+        }
+
+        function closeGiftModal() {
+            if (isSubmittingGift) {
+                return;
+            }
+
+            giftModalBackdrop.hidden = true;
+            document.body.style.overflow = '';
+        }
+
+        async function loadGifts(dayKey, options = {}) {
+            if (!dayKey || isLoadingGifts) {
+                return;
+            }
+
+            isLoadingGifts = true;
+
+            try {
+                const previousGiftCount = currentGifts.length;
+                const response = await fetch(`/api/gifts?dayKey=${encodeURIComponent(dayKey)}`);
+                const payload = await response.json();
+                const nextGifts = Array.isArray(payload.gifts) ? payload.gifts : [];
+                const isLiveUpdate = options.scrollToLatest === true;
+                const shouldScrollToLatest = isLiveUpdate
+                    && currentSortOrder === 'timestamp-asc'
+                    && nextGifts.length > previousGiftCount;
+
+                selectedDayKey = payload.dayKey;
+                dayInput.value = payload.dayKey;
+                renderTable(nextGifts, { diff: isLiveUpdate });
+
+                // ポップアウトは renderTable 内で自前のスクロール/バッジ判定を行うため、
+                // 管理画面(テーブル表示)のときだけここで従来通りスクロールする。
+                if (shouldScrollToLatest && !isPopoutWindow) {
+                    scrollToLatestGift();
+                }
+            } finally {
+                isLoadingGifts = false;
+            }
+        }
+
+        async function refreshState() {
+            const response = await fetch('/api/state');
+            const payload = await response.json();
+            currentDisplayDayKey = payload.displayDayKey;
+            selectedDayKey = selectedDayKey || payload.todayDayKey || currentDisplayDayKey;
+            dayInput.value = selectedDayKey || '';
+            await loadGifts(selectedDayKey);
+        }
+
+        async function submitCustomGift() {
+            if (!selectedDayKey) {
+                setMessage('先に日付を選択してください。', true);
+                return;
+            }
+
+            if (!modalGiftNameInput.checkValidity()) {
+                modalGiftNameInput.reportValidity();
+                return;
+            }
+
+            isSubmittingGift = true;
+            submitGiftModalButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/test-data/gifts/custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dayKey: selectedDayKey,
+                        uniqueId: modalUniqueIdInput.value.trim(),
+                        nickname: modalNicknameInput.value.trim(),
+                        profilePictureUrl: modalProfileImageInput.value.trim(),
+                        giftName: (modalGiftNameInput.dataset.giftKey || modalGiftNameInput.value).trim(),
+                        giftId: modalGiftIdInput.value.trim(),
+                        giftPictureUrl: modalGiftImageInput.value.trim(),
+                        diamondCount: modalDiamondCountInput.value,
+                        repeatCount: modalRepeatCountInput.value
+                    })
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'テストデータの追加に失敗しました。');
+                }
+
+                closeGiftModal();
+                await loadGifts(selectedDayKey, { scrollToLatest: true });
+                await loadReferenceData();
+                const addedGiftName = GiftSuggest.findByNameOrId(referenceData.gifts, payload.gift?.giftName)?.nameJa || payload.gift?.giftName;
+                setMessage(`${selectedDayKey} に ${addedGiftName || 'ギフト'} を追加しました。`);
+            } catch (error) {
+                setMessage(error.message || 'テストデータの追加に失敗しました。', true);
+            } finally {
+                isSubmittingGift = false;
+                submitGiftModalButton.disabled = false;
+            }
+        }
+
+        async function deleteGift(giftEventId) {
+            if (!selectedDayKey || !giftEventId) {
+                return;
+            }
+
+            if (!await showConfirm('このギフト履歴を削除しますか。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/gifts?dayKey=${encodeURIComponent(selectedDayKey)}&giftEventId=${encodeURIComponent(giftEventId)}`, {
+                    method: 'DELETE'
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(payload.error || 'ギフト履歴の削除に失敗しました。');
+                }
+
+                await loadGifts(selectedDayKey);
+                setMessage(`${payload.giftEvent?.giftName || 'ギフト'} を削除しました。`);
+            } catch (error) {
+                setMessage(error.message || 'ギフト履歴の削除に失敗しました。', true);
+            }
+        }
+
+        dayInput.addEventListener('change', () => {
+            if (!dayInput.value) {
+                return;
+            }
+
+            isFollowingToday = false;
+            loadGifts(dayInput.value).catch(() => {
+                renderTable([]);
+            });
+        });
+
+        sortOrderSelect.addEventListener('change', () => {
+            currentSortOrder = sortOrderSelect.value;
+            syncSortOrderSelect();
+            renderTable(currentGifts);
+        });
+
+        addTestGiftsButton.addEventListener('click', () => {
+            openGiftModal();
+        });
+
+        closeGiftModalButton.addEventListener('click', closeGiftModal);
+        cancelGiftModalButton.addEventListener('click', closeGiftModal);
+        submitGiftModalButton.addEventListener('click', () => {
+            submitCustomGift().catch(() => {});
+        });
+
+        modalGiftNameInput.addEventListener('change', syncGiftDraftFromCatalog);
+        modalGiftNameInput.addEventListener('blur', syncGiftDraftFromCatalog);
+        modalUniqueIdInput.addEventListener('input', () => {
+            renderUserSuggestions(modalUniqueIdInput.value);
+        });
+        modalUniqueIdInput.addEventListener('keydown', (event) => {
+            if (userSuggestionPanel.hidden) return;
+            if (event.key === 'ArrowDown') { event.preventDefault(); updateActiveUserSuggestion(activeUserSuggestionIndex + 1); return; }
+            if (event.key === 'ArrowUp') { event.preventDefault(); updateActiveUserSuggestion(activeUserSuggestionIndex - 1); return; }
+            if (event.key === 'Enter') {
+                const selected = visibleUserSuggestions[activeUserSuggestionIndex];
+                if (selected) { event.preventDefault(); applyUserSuggestion(selected); }
+                return;
+            }
+            if (event.key === 'Escape') { hideUserSuggestionPanel(); }
+        });
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.user-suggest-shell') && !userSuggestionPanel.contains(event.target)) {
+                hideUserSuggestionPanel();
+            }
+        });
+        window.addEventListener('resize', () => {
+            if (!userSuggestionPanel.hidden) positionUserSuggestionPanel();
+        });
+        modalUniqueIdInput.addEventListener('change', syncUserDraftFromSuggestions);
+        modalUniqueIdInput.addEventListener('blur', syncUserDraftFromSuggestions);
+        modalNicknameInput.addEventListener('change', syncUserDraftFromSuggestions);
+        modalNicknameInput.addEventListener('blur', syncUserDraftFromSuggestions);
+        modalDiamondCountInput.addEventListener('input', updateDraftTotalStatus);
+        modalRepeatCountInput.addEventListener('input', updateDraftTotalStatus);
+
+        tableBody.addEventListener('click', (event) => {
+            const deleteButton = event.target.closest('[data-delete-gift]');
+
+            if (!deleteButton) {
+                return;
+            }
+
+            const row = deleteButton.closest('tr');
+            deleteGift(row?.dataset.giftEventId || '').catch(() => {});
+        });
+
+        socket.on('admin_day_updated', (payload) => {
+            currentDisplayDayKey = payload?.displayDayKey || currentDisplayDayKey;
+
+            if (!selectedDayKey && payload?.displayDayKey) {
+                selectedDayKey = payload.displayDayKey;
+                dayInput.value = selectedDayKey;
+            }
+
+            // 「今日」を追従表示中に日付を跨いだ場合は選択日を新しい日付へ切り替える。
+            if (isFollowingToday && payload?.todayDayKey && payload.todayDayKey !== selectedDayKey) {
+                selectedDayKey = payload.todayDayKey;
+                dayInput.value = selectedDayKey;
+                loadGifts(selectedDayKey, { scrollToLatest: true }).catch(() => {
+                });
+                return;
+            }
+
+            if (payload?.dayKey && payload.dayKey === selectedDayKey) {
+                loadGifts(selectedDayKey, { scrollToLatest: true }).catch(() => {
+                });
+            }
+        });
+
+        socket.on('popout-gift-style-changed', (payload) => {
+            if (!isPopoutWindow) {
+                return;
+            }
+            currentSortOrder = payload?.sortOrder || currentSortOrder;
+            syncSortOrderSelect();
+            applyPopoutGiftFontStyle(payload);
+            renderTable(currentGifts);
+        });
+
+        Promise.all([loadReferenceData(), refreshState()]).catch(() => {
+        });
+
+        syncSortOrderSelect();
+        loadPopoutGiftStyle();
+        updateDraftTotalStatus();
+    </script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

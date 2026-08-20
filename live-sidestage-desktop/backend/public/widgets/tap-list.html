@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Like数一覧</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --name-color: #f1f5f9;
+            --count-color: #fbbf24;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 5px;
+            --avatar-size: 68px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .widget {
+            padding: 14px 18px;
+            width: max-content;
+            min-width: 300px;
+            max-width: min(520px, 100vw);
+            pointer-events: none;
+        }
+
+        .list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .row + .row {
+            margin-top: var(--row-gap, 8px);
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 0 14px 0 6px;
+            border-radius: 16px;
+            background: transparent;
+            border: 1px solid transparent;
+            animation: rowIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        body.bg-semi .row {
+            background: rgba(0, 0, 0, 0.52);
+            border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        .avatar-wrap {
+            flex-shrink: 0;
+            width: var(--avatar-size);
+            height: var(--avatar-size);
+            border-radius: 50%;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .avatar-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            font-size: 26px;
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.55);
+            -webkit-text-stroke: 2px var(--stroke);
+            paint-order: stroke fill;
+            line-height: 1;
+        }
+
+        .info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+            flex: 1 1 0;
+        }
+
+        .name {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--name-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.15;
+        }
+
+        .count-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            line-height: 1.15;
+        }
+
+        .heart-icon {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+        }
+
+        /* カウント用ラッパー: 退場スパンを絶対配置するための基点 */
+        .count-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
+        .count {
+            display: inline-block;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--count-color);
+            -webkit-text-stroke: var(--stroke-width, 5px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 5px 16px var(--shadow);
+            line-height: 1.15;
+        }
+
+        /* 退場中の古い値 */
+        .count-out {
+            position: absolute;
+            top: 0;
+            left: 0;
+            white-space: nowrap;
+            pointer-events: none;
+            animation: countExit 260ms ease-in forwards;
+        }
+
+        /* 入場アニメーション（新しい値に付与） */
+        .count-enter {
+            animation: countEnter 260ms ease-out forwards;
+        }
+
+        @keyframes countExit {
+            from { transform: translateY(0);     opacity: 1; }
+            to   { transform: translateY(-130%); opacity: 0; }
+        }
+
+        @keyframes countEnter {
+            from { transform: translateY(130%); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+        }
+
+        @keyframes heartPulse {
+            0%   { transform: scale(1); }
+            35%  { transform: scale(1.45); }
+            65%  { transform: scale(0.90); }
+            100% { transform: scale(1); }
+        }
+
+        .empty {
+            font-size: 16px;
+            color: rgba(241, 245, 249, 0.45);
+            padding: 10px 6px;
+        }
+
+        @keyframes rowIn {
+            from { opacity: 0; transform: translateX(-14px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget">
+        <div class="list" id="list">
+            <div class="empty">データなし</div>
+        </div>
+    </div>
+
+    <script>
+        const HEART_SVG = `<svg class="heart-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
+            `<path d="M12 21C12 21 3 13.5 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 5.5-9 13-9 13z" ` +
+            `fill="#f87171" stroke="rgba(15,23,42,0.9)" stroke-width="1.5" stroke-linejoin="round"/>` +
+            `</svg>`;
+
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const listEl = document.getElementById('list');
+
+        const bgParam = searchParams.get('bg');
+        if (bgParam === 'semi') document.body.classList.add('bg-semi');
+
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
+        // ソケットから受け取った最新データ
+        let targetEntries = [];
+        // 表示中行の管理: uniqueId -> { rowEl, countEl, heartEl, displayedCount }
+        const rowMap = new Map();
+
+        function applyBgStyle(bgStyle) {
+            const effective = bgParam !== null ? bgParam : bgStyle;
+            document.body.classList.toggle('bg-semi', effective === 'semi');
+        }
+
+        const TAP_LIST_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TAP_LIST_TEXT_STYLES = {
+            'gold-night':      { nameColor: 'rgba(241,245,249,0.94)', countColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)',   textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { nameColor: 'rgba(191,219,254,0.94)', countColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)',   textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { nameColor: 'rgba(251,207,232,0.94)', countColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)',  textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { nameColor: 'rgba(209,250,229,0.94)', countColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)',    textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { nameColor: 'rgba(254,215,170,0.94)', countColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)',  textShadow: 'rgba(120,53,15,0.38)' },
+            'violet-flash':    { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(59,7,100,0.96)',   textShadow: 'rgba(59,7,100,0.38)' },
+            'mono-impact':     { nameColor: 'rgba(248,250,252,0.94)', countColor: '#f8fafc', strokeColor: 'rgba(2,6,23,0.97)',     textShadow: 'rgba(2,6,23,0.5)' },
+            'sakura-bloom':    { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fda4af', strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.38)' },
+            'ocean-glow':      { nameColor: 'rgba(186,230,253,0.94)', countColor: '#38bdf8', strokeColor: 'rgba(12,74,110,0.96)',  textShadow: 'rgba(12,74,110,0.38)' },
+            'emerald-city':    { nameColor: 'rgba(187,247,208,0.94)', countColor: '#86efac', strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.38)' },
+            'ruby-flare':      { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(136,19,55,0.95)',  textShadow: 'rgba(136,19,55,0.38)' },
+            'lemon-pop':       { nameColor: 'rgba(254,249,195,0.94)', countColor: '#fde047', strokeColor: 'rgba(30,58,138,0.96)',  textShadow: 'rgba(30,58,138,0.38)' },
+            'midnight-aqua':   { nameColor: 'rgba(153,246,228,0.94)', countColor: '#2dd4bf', strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(15,23,42,0.5)' },
+            'peach-fizz':      { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(124,29,29,0.96)',  textShadow: 'rgba(124,29,29,0.38)' },
+            'festival-red':    { nameColor: 'rgba(252,165,165,0.94)', countColor: '#f87171', strokeColor: 'rgba(17,24,39,0.97)',   textShadow: 'rgba(17,24,39,0.5)' },
+            'rose-gold':       { nameColor: 'rgba(248,180,166,0.94)', countColor: '#fda4af', strokeColor: 'rgba(91,52,46,0.96)',   textShadow: 'rgba(91,52,46,0.38)' },
+            'cyber-teal':      { nameColor: 'rgba(204,251,241,0.94)', countColor: '#5eead4', strokeColor: 'rgba(15,39,64,0.97)',   textShadow: 'rgba(15,39,64,0.5)' },
+            'aurora-dream':    { nameColor: 'rgba(233,213,255,0.94)', countColor: '#c084fc', strokeColor: 'rgba(76,29,149,0.97)',  textShadow: 'rgba(76,29,149,0.5)' },
+            'coral-soda':      { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.38)' },
+            'platinum-pop':    { nameColor: 'rgba(226,232,240,0.94)', countColor: '#cbd5e1', strokeColor: 'rgba(15,23,42,0.97)',   textShadow: 'rgba(15,23,42,0.5)' },
+            'champagne-shine': { nameColor: 'rgba(248,231,181,0.94)', countColor: '#fde68a', strokeColor: 'rgba(107,79,42,0.96)',  textShadow: 'rgba(107,79,42,0.38)' },
+            'royal-velvet':    { nameColor: 'rgba(216,180,254,0.94)', countColor: '#c084fc', strokeColor: 'rgba(49,46,129,0.97)',  textShadow: 'rgba(49,46,129,0.5)' },
+            'emerald-luxe':    { nameColor: 'rgba(209,250,229,0.94)', countColor: '#a7f3d0', strokeColor: 'rgba(20,83,45,0.96)',   textShadow: 'rgba(20,83,45,0.38)' },
+            'sunrise-opal':    { nameColor: 'rgba(255,237,213,0.94)', countColor: '#fdba74', strokeColor: 'rgba(154,52,18,0.96)',  textShadow: 'rgba(154,52,18,0.38)' },
+            'prism-burst':     { nameColor: 'rgba(191,219,254,0.94)', countColor: '#7dd3fc', strokeColor: 'rgba(67,56,202,0.97)',  textShadow: 'rgba(67,56,202,0.5)' },
+            'tropical-punch':  { nameColor: 'rgba(255,228,230,0.94)', countColor: '#fb7185', strokeColor: 'rgba(127,29,29,0.96)',  textShadow: 'rgba(127,29,29,0.38)' },
+            'lagoon-shine':    { nameColor: 'rgba(204,251,241,0.94)', countColor: '#2dd4bf', strokeColor: 'rgba(21,94,117,0.96)',  textShadow: 'rgba(21,94,117,0.38)' },
+            'berry-mist':      { nameColor: 'rgba(252,231,243,0.94)', countColor: '#f472b6', strokeColor: 'rgba(112,26,117,0.96)', textShadow: 'rgba(112,26,117,0.38)' },
+            'polar-neon':      { nameColor: 'rgba(207,250,254,0.94)', countColor: '#67e8f9', strokeColor: 'rgba(30,41,59,0.97)',   textShadow: 'rgba(30,41,59,0.5)' },
+            'citrus-splash':   { nameColor: 'rgba(236,252,203,0.94)', countColor: '#bef264', strokeColor: 'rgba(54,83,20,0.96)',   textShadow: 'rgba(54,83,20,0.38)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 5));
+            const fontFamily = TAP_LIST_FONT_FAMILIES[fontKey] || TAP_LIST_FONT_FAMILIES.default;
+            const textStyle = TAP_LIST_TEXT_STYLES[textStyleKey] || TAP_LIST_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--name-color', textStyle.nameColor);
+            root.setProperty('--count-color', textStyle.countColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+        }
+
+        function applyRowGap(rowGap) {
+            const gap = typeof rowGap === 'number' ? rowGap : 8;
+            document.documentElement.style.setProperty('--row-gap', gap + 'px');
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function buildAvatarHtml(avatarUrl, nickname) {
+            const letter = escapeHtml(String(nickname || '?').charAt(0).toUpperCase());
+            if (avatarUrl) {
+                const proxied = `/api/proxy/avatar?url=${encodeURIComponent(avatarUrl)}`;
+                return `<div class="avatar-wrap">` +
+                    `<img src="${escapeAttr(proxied)}" alt="" ` +
+                    `onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+                    `<span class="avatar-placeholder" style="display:none">${letter}</span>` +
+                    `</div>`;
+            }
+            return `<div class="avatar-wrap"><span class="avatar-placeholder">${letter}</span></div>`;
+        }
+
+        function createRow(e) {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'row';
+            rowEl.innerHTML =
+                buildAvatarHtml(e.avatarUrl, e.nickname) +
+                `<div class="info">` +
+                    `<span class="name">${escapeHtml(e.nickname)}</span>` +
+                    `<div class="count-row">` +
+                        HEART_SVG +
+                        `<span class="count-wrap"><span class="count">${e.tapCount.toLocaleString()}</span></span>` +
+                    `</div>` +
+                `</div>`;
+            return rowEl;
+        }
+
+        function pulseHeart(heartEl) {
+            heartEl.style.animation = 'none';
+            requestAnimationFrame(() => {
+                heartEl.style.animation = 'heartPulse 380ms ease-out';
+            });
+        }
+
+        function animateCount(info, newVal) {
+            const { countEl, heartEl } = info;
+
+            pulseHeart(heartEl);
+
+            const wrap = countEl.parentElement;
+
+            // 古い値を絶対配置スパンにコピーして退場させる
+            const outEl = document.createElement('span');
+            outEl.className = 'count count-out';
+            outEl.textContent = countEl.textContent;
+            wrap.appendChild(outEl);
+            outEl.addEventListener('animationend', () => outEl.remove(), { once: true });
+
+            // 新しい値でスライドイン
+            countEl.textContent = newVal.toLocaleString();
+            countEl.classList.add('count-enter');
+            countEl.addEventListener('animationend', () => countEl.classList.remove('count-enter'), { once: true });
+        }
+
+        function reconcile(entries) {
+            if (!Array.isArray(entries) || entries.length === 0) {
+                listEl.innerHTML = '<div class="empty">データなし</div>';
+                rowMap.clear();
+                return;
+            }
+
+            const emptyEl = listEl.querySelector('.empty');
+            if (emptyEl) emptyEl.remove();
+
+            const newIds = new Set(entries.map((e) => e.uniqueId));
+
+            // 不要になった行を削除
+            let structureChanged = false;
+            for (const [id, info] of rowMap) {
+                if (!newIds.has(id)) {
+                    info.rowEl.remove();
+                    rowMap.delete(id);
+                    structureChanged = true;
+                }
+            }
+
+            // カウント更新と新規行の作成
+            entries.forEach((e) => {
+                if (rowMap.has(e.uniqueId)) {
+                    const info = rowMap.get(e.uniqueId);
+                    if (info.displayedCount !== e.tapCount) {
+                        animateCount(info, e.tapCount);
+                        info.displayedCount = e.tapCount;
+                    }
+                } else {
+                    const rowEl = createRow(e);
+                    rowMap.set(e.uniqueId, {
+                        rowEl,
+                        countEl: rowEl.querySelector('.count'),
+                        heartEl: rowEl.querySelector('.heart-icon'),
+                        displayedCount: e.tapCount,
+                    });
+                    structureChanged = true;
+                }
+            });
+
+            // 新規行がなければ順序が変わったか確認
+            if (!structureChanged) {
+                const kids = listEl.children;
+                if (kids.length !== entries.length) {
+                    structureChanged = true;
+                } else {
+                    for (let i = 0; i < entries.length; i++) {
+                        if (kids[i] !== rowMap.get(entries[i].uniqueId)?.rowEl) {
+                            structureChanged = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 構造変化があった場合のみ DOM 並び替え
+            if (structureChanged) {
+                entries.forEach((e) => listEl.appendChild(rowMap.get(e.uniqueId).rowEl));
+            }
+        }
+
+        // 表示更新を1秒固定にする
+        setInterval(() => reconcile(targetEntries), 1000);
+
+        function applyPayload(payload) {
+            if (!payload) return;
+            if (payload.settings) {
+                applyBgStyle(payload.settings.bgStyle);
+                applyRowGap(payload.settings.rowGap);
+            }
+            if (payload.appearance) {
+                applyAppearance(payload.appearance);
+            }
+            if (Array.isArray(payload.entries)) {
+                targetEntries = payload.entries;
+            }
+        }
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/tap-list/config')
+                .then((r) => r.json())
+                .then((p) => {
+                    applyPayload(p);
+                    reconcile(targetEntries);
+                })
+                .catch(() => {});
+        });
+
+        socket.on('widgets:tap-list:updated', applyPayload);
+        socket.on('widgets:tap-list:config', applyPayload);
+    </script>
+</body>
+</html>

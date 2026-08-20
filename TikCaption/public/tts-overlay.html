@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+html, body {
+  background: transparent;
+  margin: 0;
+  overflow: hidden;
+}
+
+#voicevox-credit {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font-size: 20px;
+  color: rgba(255,255,255,1);
+  background: rgba(0,0,0,0.45);
+  padding: 5px 12px;
+  border-radius: 4px;
+  pointer-events: none;
+  text-align: right;
+  transition: opacity 0.5s;
+  opacity: 0;
+}
+#voicevox-credit.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="voicevox-credit"></div>
+<script src="http://localhost:38200/socket.io/socket.io.js"></script>
+<script>
+const socket = io('http://localhost:38200');
+const credit = document.getElementById('voicevox-credit');
+let creditTimer = null;
+let audioCtx = null;
+const prefetchCache = new Map(); // key → Promise<AudioBuffer>
+
+let currentSource = null;
+let voicevoxWasAlive = false;
+let voicevoxErrorSent = false;
+let voicevoxConsecFails = 0;
+const VOICEVOX_FAIL_THRESHOLD = 2;
+
+function maybeEmitVoicevoxError() {
+  if (voicevoxWasAlive && !voicevoxErrorSent && voicevoxConsecFails >= VOICEVOX_FAIL_THRESHOLD) {
+    voicevoxErrorSent = true;
+    socket.emit('tts:voicevox-error');
+  }
+}
+
+setInterval(async () => {
+  try {
+    await fetch('http://localhost:50021/version', { method: 'GET', signal: AbortSignal.timeout(1500) });
+    voicevoxWasAlive = true;
+    voicevoxErrorSent = false;
+    voicevoxConsecFails = 0;
+  } catch {
+    voicevoxConsecFails++;
+    maybeEmitVoicevoxError();
+  }
+}, 2000);
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  return audioCtx;
+}
+
+async function synthesize(text, speakerId, volume, speed) {
+  const qRes = await fetch(
+    `http://localhost:50021/audio_query?speaker=${speakerId}&text=${encodeURIComponent(text)}`,
+    { method: 'POST' }
+  );
+  if (!qRes.ok) throw new Error('audio_query failed');
+  const query = await qRes.json();
+  query.volumeScale = volume ?? 0.8;
+  query.speedScale = speed ?? 1.0;
+  query.prePhonemeLength = 0;
+  query.postPhonemeLength = 0;
+  const aRes = await fetch(
+    `http://localhost:50021/synthesis?speaker=${speakerId}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) }
+  );
+  if (!aRes.ok) throw new Error('synthesis failed');
+  return getCtx().decodeAudioData(await aRes.arrayBuffer());
+}
+
+socket.on('tts:stop-current', () => {
+  if (currentSource) { try { currentSource.stop(); } catch {} currentSource = null; }
+});
+
+socket.on('tts:playing', ({ voiceName }) => {
+  credit.textContent = `VOICEVOX:${voiceName}`;
+  credit.classList.add('show');
+  clearTimeout(creditTimer);
+  creditTimer = setTimeout(() => credit.classList.remove('show'), 4000);
+});
+
+// Pre-synthesize next item while current is playing
+socket.on('tts:prefetch', ({ key, text, speakerId, volume, speed }) => {
+  if (prefetchCache.has(key)) return;
+  prefetchCache.set(key, synthesize(text, speakerId, volume, speed).catch(() => null));
+});
+
+socket.on('tts:speak', async ({ text, speakerId, volume, speed, key }) => {
+  try {
+    let decoded;
+    if (key && prefetchCache.has(key)) {
+      decoded = await prefetchCache.get(key);
+      prefetchCache.delete(key);
+    }
+    if (!decoded) decoded = await synthesize(text, speakerId, volume, speed);
+    await new Promise(resolve => {
+      const src = getCtx().createBufferSource();
+      src.buffer = decoded;
+      src.connect(getCtx().destination);
+      src.onended = () => { currentSource = null; resolve(); };
+      currentSource = src;
+      src.start();
+    });
+  } catch (e) {
+    console.warn('[TTS overlay]', e.message);
+    voicevoxConsecFails++;
+    maybeEmitVoicevoxError();
+  } finally {
+    socket.emit('tts:done', {});
+  }
+});
+</script>
+</body>
+</html>

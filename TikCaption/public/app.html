@@ -1,0 +1,2560 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=480">
+<title>TikCaption</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&family=Noto+Sans+JP:wght@900&family=Noto+Serif+JP:wght@900&family=Zen+Kaku+Gothic+New:wght@900&family=Kosugi&family=Klee+One:wght@600&family=Zen+Maru+Gothic:wght@900&family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=RocknRoll+One&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --card: #16213e;
+  --accent: #4f8ef7;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --panel: #1e293b;
+  --border: #334155;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+
+/* ── Tabs ────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 0 6px;
+  cursor: pointer;
+  border-radius: 0;
+  filter: none;
+  text-align: center;
+}
+.tab-btn + .tab-btn { border-left: 1px solid var(--border); }
+.tab-btn:hover { color: var(--text); filter: none; }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+
+select, input[type=text], input[type=number] {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+select { cursor: pointer; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meter-wrap {
+  position: relative;
+  width: 380px;
+  height: 24px;
+}
+#meter-canvas { border-radius: 4px; display: block; }
+#threshold-marker {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 10px;
+  transform: translateX(-5px);
+  background: rgba(255,255,100,0.9);
+  cursor: ew-resize;
+  border-radius: 2px;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+input[type=range] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.val-display {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 48px;
+  text-align: right;
+}
+
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.url-text {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+button:not(:disabled):hover { filter: brightness(1.15); }
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: none;
+}
+button.secondary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.checks-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.check-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.check-group input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+.translate-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.translate-col select { width: 120px; }
+
+.status-bar {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+#status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-right: 4px;
+}
+
+.install-progress {
+  display: none;
+  margin-top: 6px;
+  flex-direction: column;
+  gap: 4px;
+}
+.install-progress.active { display: flex; }
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, #7dd3fc 50%, var(--accent) 100%);
+  background-size: 200% 100%;
+  border-radius: 3px;
+  animation: shimmer 1.4s linear infinite;
+  width: 100%;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.8); }
+  70%  { box-shadow: 0 0 0 7px rgba(245,158,11,0); }
+  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+}
+#status-dot.pulsing {
+  animation: pulse-ring 1s ease-out infinite;
+}
+
+@keyframes fade-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+.cap-text.loading-anim {
+  animation: fade-blink 1.1s ease-in-out infinite;
+}
+
+.install-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+}
+#install-pkg {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+#install-elapsed { white-space: nowrap; margin-left: 8px; }
+
+/* ── Modal ─────────────────────────────────────── */
+dialog[open] {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  width: 520px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+dialog::backdrop { background: rgba(0,0,0,0.6); }
+
+.modal-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.modal-body {
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* font select with custom font display */
+.font-option { font-weight: 900; }
+
+/* theme swatch */
+.theme-swatch {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin-left: 6px;
+}
+.swatch-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* caption preview */
+#caption-preview {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#preview-text {
+  font-weight: 900;
+  paint-order: stroke fill;
+}
+
+/* correction rules table */
+.rules-table { width: 100%; border-collapse: collapse; }
+.rules-table th {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.rules-table td { padding: 4px; vertical-align: middle; }
+.rules-table input[type=text] { padding: 4px 6px; font-size: 12px; }
+.rules-table input[type=checkbox] { accent-color: var(--accent); }
+.del-btn {
+  background: #ef4444;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.vad-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* caption monitor */
+.caption-monitor {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.caption-monitor td {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.cap-lang {
+  width: 52px;
+  max-width: 52px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cap-text {
+  font-size: 13px;
+  min-height: 20px;
+  word-break: break-all;
+}
+.cap-text.muted {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── TTS tab ─────────────────────────────────────── */
+.tts-table { width: 100%; border-collapse: collapse; }
+.tts-table tr { border-bottom: 1px solid var(--border); }
+.tts-table tr.no-sep { border-bottom: none; }
+.tts-table td { padding: 7px 0; vertical-align: middle; }
+.tts-label { width: 110px; font-size: 11px; color: var(--muted); padding-right: 10px; white-space: nowrap; }
+.icon-btn { padding: 5px 8px; min-width: unset; font-size: 14px; line-height: 1; }
+.tts-log {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 130px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tts-log-entry { display: flex; gap: 6px; font-size: 11px; }
+.tts-log-uid { color: var(--accent); min-width: 70px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.tts-log-comment { color: var(--text); flex: 1; word-break: break-all; }
+.tts-log-muted { color: var(--muted); font-style: italic; font-size: 11px; }
+#tts-status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:4px; }
+#tts-user-suggest { position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.4);min-width:240px;max-height:220px;overflow-y:auto;display:none; }
+.tus-item { display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;font-size:12px; }
+.tus-item:hover,.tus-item.active { background:var(--accent);color:#fff; }
+.tus-avatar { width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--border); }
+.tus-uid { font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tus-nick { color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tus-item:hover .tus-nick,.tus-item.active .tus-nick { color:rgba(255,255,255,.75); }
+#tts-status-dot.connected { background: #22c55e; }
+#tts-status-dot.error { background: #ef4444; }
+#tts-status-dot.connecting { background: #f59e0b; animation: pulse-ring 1s ease-out infinite; }
+
+/* ── Update banner ───────────────────────────────── */
+#update-banner {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: #1e3a5f;
+  border-bottom: 1px solid #2d5f9e;
+  font-size: 12px;
+  color: #93c5fd;
+}
+#update-banner.visible { display: flex; }
+#update-banner-msg { flex: 1; }
+#update-install-btn {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+#update-install-btn:hover { background: #1d4ed8; }
+#update-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+#pause-btn[data-paused="1"],
+#tts-pause-btn[data-paused="1"] {
+  background: #c2692a;
+}
+#pause-btn[data-paused="1"]:hover,
+#tts-pause-btn[data-paused="1"]:hover {
+  background: #d97a35;
+}
+.api-accordion {
+  margin-top: 6px;
+}
+.api-accordion summary {
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.api-accordion summary::-webkit-details-marker { display: none; }
+.api-accordion summary::before {
+  content: '▶';
+  font-size: 8px;
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.api-accordion[open] summary::before { transform: rotate(90deg); }
+.api-accordion-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+</style>
+</head>
+<body>
+<!-- Update banner -->
+<div id="update-banner">
+  <span id="update-banner-msg">新しいバージョンがあります</span>
+  <button id="update-install-btn" style="display:none">今すぐインストール</button>
+  <button id="update-dismiss-btn">✕</button>
+</div>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="caption">字幕</button>
+  <button class="tab-btn" data-tab="tts">読み上げ</button>
+</div>
+
+<!-- Tab: 字幕 -->
+<div class="tab-panel active" id="tab-caption">
+<div class="container">
+
+  <!-- Device select -->
+  <div>
+    <label>録音デバイス</label>
+    <select id="device-select"></select>
+    <div style="margin-top:4px;">
+      <a id="audio-ducking-link" href="#" style="font-size:11px;color:var(--muted);text-decoration:underline;">マイク音量が下がる場合はこちら</a>
+    </div>
+  </div>
+
+  <!-- Level meter -->
+  <div>
+    <div class="meter-wrap">
+      <canvas id="meter-canvas" width="380" height="24"></canvas>
+      <div id="threshold-marker"></div>
+    </div>
+    <div style="margin-top:4px;">
+      <span id="threshold-val" style="font-size:11px;color:var(--muted);">閾値: 0.200</span>
+    </div>
+  </div>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
+
+  <!-- OBS URL -->
+  <div class="url-row">
+    <span style="font-size:11px;color:var(--muted);white-space:nowrap;">オーバーレイURL:</span>
+    <div class="url-text">http://localhost:38201/overlay.html</div>
+    <button id="copy-btn">コピー</button>
+  </div>
+
+  <!-- Caption API accordion -->
+  <details class="api-accordion">
+    <summary>Stream Deck用API（要API Ninja）</summary>
+    <div class="api-accordion-body">
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/caption/start</div><button id="copy-api-cap-start" class="secondary">コピー</button></div>
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/caption/pause</div><button id="copy-api-cap-pause" class="secondary">コピー</button></div>
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/caption/resume</div><button id="copy-api-cap-resume" class="secondary">コピー</button></div>
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/caption/stop</div><button id="copy-api-cap-stop" class="secondary">コピー</button></div>
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/caption/pause-toggle</div><button id="copy-api-cap-pause-toggle" class="secondary">コピー</button></div>
+      <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">GET</span><div class="url-text">http://127.0.0.1:38200/api/caption/status</div><button id="copy-api-cap-status" class="secondary">コピー</button></div>
+    </div>
+  </details>
+  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
+
+  <!-- Checkboxes / translation -->
+  <div class="checks-row">
+    <div class="check-group">
+      <input type="checkbox" id="show-original">
+      <label for="show-original" style="margin:0;font-size:13px;color:var(--text);">日本語表示</label>
+    </div>
+    <div class="translate-col">
+      <div class="check-group">
+        <input type="checkbox" id="show-translation">
+        <label for="show-translation" style="margin:0;font-size:13px;color:var(--text);">外国語表示</label>
+      </div>
+      <select id="target-lang">
+        <option value="en">英語</option>
+        <option value="zh">中国語</option>
+        <option value="ko">韓国語</option>
+        <option value="fr">フランス語</option>
+        <option value="de">ドイツ語</option>
+        <option value="es">スペイン語</option>
+        <option value="pt">ポルトガル語</option>
+        <option value="it">イタリア語</option>
+        <option value="ru">ロシア語</option>
+        <option value="ar">アラビア語</option>
+        <option value="th">タイ語</option>
+        <option value="vi">ベトナム語</option>
+        <option value="id">インドネシア語</option>
+        <option value="nl">オランダ語</option>
+        <option value="tr">トルコ語</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Startup behavior -->
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:6px;">
+    <div class="check-group">
+      <input type="checkbox" id="auto-start-caption">
+      <label for="auto-start-caption" style="margin:0;color:var(--text);">起動時に自動で字幕を開始</label>
+    </div>
+    <div class="check-group">
+      <input type="checkbox" id="launch-on-boot">
+      <label for="launch-on-boot" style="margin:0;color:var(--text);">PC起動時にTikCaptionを起動</label>
+    </div>
+  </div>
+
+  <!-- Start/Stop + Detail settings -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button id="start-btn" style="flex:1;">▶ 開始</button>
+    <button id="pause-btn" class="secondary" style="flex:1;" disabled>⏸ 一時停止</button>
+    <button id="stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
+    <button id="open-rules-modal" class="secondary">補正ルール (<span id="rules-count">0</span>)</button>
+    <button id="open-modal" class="secondary">詳細設定</button>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-msg">接続待機中...</span>
+    <div class="install-progress" id="install-progress">
+      <div class="progress-track"><div class="progress-bar"></div></div>
+      <div class="install-meta">
+        <span id="install-pkg"></span>
+        <span id="install-elapsed">0s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Caption monitor -->
+  <div>
+    <label>字幕モニター</label>
+    <table class="caption-monitor">
+      <tr>
+        <td class="cap-lang">日本語</td>
+        <td id="mon-original" class="cap-text muted">(停止中)</td>
+      </tr>
+      <tr id="mon-trans-row" style="display:none">
+        <td class="cap-lang" id="mon-lang-label">翻訳</td>
+        <td id="mon-translated" class="cap-text muted">(翻訳待ち...)</td>
+      </tr>
+    </table>
+  </div>
+</div>
+</div><!-- /tab-caption -->
+
+<!-- Tab: 読み上げ -->
+<div class="tab-panel" id="tab-tts">
+  <div class="container">
+
+    <table class="tts-table">
+      <tr>
+        <td class="tts-label">配信ユーザーID</td>
+        <td>
+          <div class="row">
+            <span id="tts-user-display" class="url-text">未設定</span>
+            <button id="tts-edit-user" class="secondary icon-btn" title="編集">✏️</button>
+          </div>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">Eulerstream APIキー</td>
+        <td>
+          <div class="row">
+            <span id="tts-sign-key-display" class="url-text">未設定</span>
+            <button id="tts-edit-sign-key" class="secondary icon-btn" title="編集">✏️</button>
+          </div>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">オーバーレイURL</td>
+        <td>
+          <div class="row">
+            <span class="url-text">http://localhost:38201/tts-overlay.html</span>
+            <button id="tts-copy-url" class="secondary">コピー</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding:0 0 4px;">
+          <details class="api-accordion">
+            <summary>Stream Deck用API（要API Ninja）</summary>
+            <div class="api-accordion-body">
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/tts/start</div><button id="copy-api-tts-start" class="secondary">コピー</button></div>
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/tts/pause</div><button id="copy-api-tts-pause" class="secondary">コピー</button></div>
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/tts/resume</div><button id="copy-api-tts-resume" class="secondary">コピー</button></div>
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/tts/stop</div><button id="copy-api-tts-stop" class="secondary">コピー</button></div>
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">POST</span><div class="url-text">http://127.0.0.1:38200/api/tts/pause-toggle</div><button id="copy-api-tts-pause-toggle" class="secondary">コピー</button></div>
+              <div class="url-row"><span style="font-size:11px;color:var(--muted);white-space:nowrap;">GET</span><div class="url-text">http://127.0.0.1:38200/api/tts/status</div><button id="copy-api-tts-status" class="secondary">コピー</button></div>
+            </div>
+          </details>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">ボイス選択</td>
+        <td>
+          <select id="tts-voice-select" style="width:100%;"></select>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">音量</td>
+        <td>
+          <div class="slider-row">
+            <input type="range" id="tts-volume" min="0" max="1" step="0.05">
+            <span class="val-display" id="tts-volume-val">80%</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">読み上げ速度</td>
+        <td>
+          <div class="slider-row">
+            <input type="range" id="tts-speed" min="0.5" max="2.0" step="0.1">
+            <span class="val-display" id="tts-speed-val">1.0x</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="no-sep">
+        <td class="tts-label">ランダムボイス</td>
+        <td>
+          <div class="row" style="gap:10px;">
+            <input type="checkbox" id="tts-random-voice" style="accent-color:var(--accent);width:14px;height:14px;">
+            <button id="tts-random-reset" class="secondary icon-btn" title="ランダム履歴リセット">🔄</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="tts-label"></td>
+        <td>
+          <div class="row" style="flex-wrap:wrap;gap:5px;padding:4px 0;">
+            <button id="tts-test-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げテスト</button>
+            <button id="tts-filter-btn" class="secondary" style="font-size:11px;padding:5px 10px;">ブロック単語 (<span id="tts-filter-count">0</span>)</button>
+            <button id="tts-mapping-btn" class="secondary" style="font-size:11px;padding:5px 10px;">ボイスマッピング (<span id="tts-mapping-count">0</span>)</button>
+            <button id="tts-conv-btn" class="secondary" style="font-size:11px;padding:5px 10px;">読み上げ変換 (<span id="tts-conv-count">0</span>)</button>
+            <button id="tts-emoji-btn" class="secondary" style="font-size:11px;padding:5px 10px;">絵文字変換 (<span id="tts-emoji-count">0</span>)</button>
+            <button id="tts-emote-btn" class="secondary" style="font-size:11px;padding:5px 10px;">エモート変換 (<span id="tts-emote-count">0</span>)</button>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0;">
+      <div class="check-group">
+        <input type="checkbox" id="tts-auto-start">
+        <label for="tts-auto-start" style="margin:0;color:var(--text);">起動時に自動で読み上げを開始</label>
+      </div>
+      <div class="check-group">
+        <input type="checkbox" id="tts-launch-on-boot">
+        <label for="tts-launch-on-boot" style="margin:0;color:var(--text);">PC起動時にTikCaptionを起動</label>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button id="tts-start-btn" style="flex:1;">▶ 接続開始</button>
+      <button id="tts-pause-btn" class="secondary" style="flex:1;" disabled>⏸ 一時停止</button>
+      <button id="tts-stop-btn" class="secondary" style="flex:1;" disabled>■ 停止</button>
+    </div>
+
+    <div class="status-bar">
+      <span id="tts-status-dot"></span>
+      <span id="tts-status-msg">停止中</span>
+    </div>
+
+    <div>
+      <label>コメントログ</label>
+      <div class="tts-log" id="tts-log">
+        <span class="tts-log-muted">(接続待機中)</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ─────────── Detail modal ─────────── -->
+<dialog id="detail-modal">
+  <div class="modal-header">
+    <span>詳細設定</span>
+    <button id="close-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body">
+
+    <!-- Section 1: 字幕表示 -->
+    <section>
+      <div class="section-title">字幕表示</div>
+      <div class="grid2">
+        <div>
+          <label>文字サイズ</label>
+          <div class="slider-row">
+            <input type="range" id="font-size" min="16" max="200" step="1">
+            <span class="val-display" id="font-size-val">36</span>
+          </div>
+        </div>
+        <div>
+          <label>縦位置オフセット</label>
+          <div class="slider-row">
+            <input type="range" id="vert-offset" min="0" max="1080" step="1">
+            <span class="val-display" id="vert-offset-val">120</span>
+          </div>
+        </div>
+        <div>
+          <label>表示時間 (秒)</label>
+          <div class="slider-row">
+            <input type="range" id="seg-duration" min="2" max="30" step="1">
+            <span class="val-display" id="seg-duration-val">6</span>
+          </div>
+        </div>
+        <div>
+          <label>最大文字数/セグメント</label>
+          <div class="slider-row">
+            <input type="range" id="max-chars" min="5" max="100" step="1">
+            <span class="val-display" id="max-chars-val">20</span>
+          </div>
+        </div>
+        <div>
+          <label>タイプライター速度 (字/秒)</label>
+          <div class="slider-row">
+            <input type="range" id="chars-per-sec" min="1" max="60" step="1">
+            <span class="val-display" id="chars-per-sec-val">12</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding-top:16px;">
+          <input type="checkbox" id="show-interim">
+          <label for="show-interim" style="margin:0;color:var(--text);">途中経過を表示</label>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <label>背景</label>
+        <div class="row">
+          <label class="check-group" style="margin:0;">
+            <input type="radio" name="bg-style" value="transparent"> 透明
+          </label>
+          <label class="check-group" style="margin:0;">
+            <input type="radio" name="bg-style" value="semi"> 半透明
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: 外観 -->
+    <section>
+      <div class="section-title">外観</div>
+      <div class="grid2">
+        <div>
+          <label>フォント</label>
+          <select id="font-family"></select>
+        </div>
+        <div>
+          <label>カラーテーマ</label>
+          <select id="text-style-key"></select>
+        </div>
+        <div>
+          <label>アウトライン幅</label>
+          <div class="slider-row">
+            <input type="range" id="stroke-width" min="0" max="24" step="1" value="6">
+            <span class="val-display" id="stroke-width-val">6</span>
+          </div>
+        </div>
+      </div>
+      <!-- Preview -->
+      <div style="margin-top:12px;">
+        <label>プレビュー</label>
+        <div id="caption-preview">
+          <span id="preview-text">あいうえお ABC 123</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: VAD -->
+    <section>
+      <div class="section-title">詳細オーディオ設定</div>
+      <p class="vad-note">VAD 設定変更時は ASR プロセスが自動再起動されます。</p>
+      <div class="grid2" style="margin-top:8px;">
+        <div>
+          <label>VAD 閾値</label>
+          <div class="slider-row">
+            <input type="range" id="vad-threshold" min="0" max="1" step="0.01">
+            <span class="val-display" id="vad-threshold-val">0.50</span>
+          </div>
+        </div>
+        <div>
+          <label>無音判定時間 (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-silence" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-silence-val">800 ms</span>
+          </div>
+        </div>
+        <div>
+          <label>最小発話時間 (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-minspeech" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-minspeech-val">500 ms</span>
+          </div>
+        </div>
+        <div>
+          <label>パディング (ms)</label>
+          <div class="slider-row">
+            <input type="range" id="vad-padding" min="0" max="2000" step="50">
+            <span class="val-display" id="vad-padding-val">200 ms</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</dialog>
+
+<!-- ─────────── Correction rules modal ─────────── -->
+<dialog id="rules-modal">
+  <div class="modal-header">
+    <span>補正ルール</span>
+    <button id="close-rules-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:400px;">
+    <button id="add-rule" class="secondary" style="font-size:12px;align-self:flex-start;">＋ 追加</button>
+    <table class="rules-table">
+      <thead>
+        <tr>
+          <th>変換前</th>
+          <th>変換後</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rules-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── User ID edit modal ─────────── -->
+<dialog id="tts-user-modal">
+  <div class="modal-header">
+    <span>配信ユーザーID</span>
+    <button id="close-tts-user-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:320px;">
+    <label>TikTokユーザーID（@なし）</label>
+    <input type="text" id="tts-user-input" placeholder="例: username123" style="margin-top:4px;">
+    <button id="tts-user-save" style="margin-top:12px;width:100%;">保存</button>
+  </div>
+</dialog>
+
+<!-- ── Eulerstream API key edit modal ─────────── -->
+<dialog id="tts-sign-key-modal">
+  <div class="modal-header">
+    <span>Eulerstream APIキー</span>
+    <button id="close-tts-sign-key-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:320px;">
+    <label>署名サーバーAPIキー（未設定でも動作しますが、接続回数のレート制限に達しやすくなります）</label>
+    <input type="password" id="tts-sign-key-input" placeholder="euler_..." style="margin-top:4px;">
+    <a href="#" id="tts-sign-key-register-link" style="margin-top:6px;display:inline-block;font-size:12px;">無料でAPIキーを取得</a>
+    <button id="tts-sign-key-save" style="margin-top:12px;width:100%;">保存</button>
+  </div>
+</dialog>
+
+<!-- ── VOICEVOX not running modal ── -->
+<dialog id="voicevox-modal">
+  <div class="modal-header">
+    <span>VOICEVOXが起動していません</span>
+  </div>
+  <div class="modal-body" style="min-width:340px;gap:12px;">
+    <p style="font-size:13px;color:var(--text);margin:0;">読み上げタブを使用するには<strong>VOICEVOX</strong>が必要です。<br>VOICEVOXを起動してから「再確認」を押してください。</p>
+    <p style="font-size:12px;color:var(--muted);margin:0;">未インストールの場合は <a id="voicevox-dl-link" href="#" style="color:var(--accent);cursor:pointer;">voicevox.hiroshiba.jp</a> からダウンロードできます。</p>
+    <p id="voicevox-modal-status" style="font-size:12px;color:var(--muted);margin:0;min-height:16px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="voicevox-modal-cancel" type="button" class="secondary">キャンセル</button>
+      <button id="voicevox-modal-retry" type="button">再確認</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ── ブロック単語 modal ────── -->
+<dialog id="tts-filter-modal">
+  <div class="modal-header">
+    <span>ブロック単語</span>
+    <button id="close-tts-filter-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:480px;">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">パターンに一致する単語を読み上げないか、別の読みに変換する。</p>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+      <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;">
+        <input type="radio" name="tts-filter-mode" id="tts-filter-mode-skip" value="skip" style="accent-color:var(--accent);"> 読み上げない
+      </label>
+      <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;">
+        <input type="radio" name="tts-filter-mode" id="tts-filter-mode-replace" value="replace" style="accent-color:var(--accent);"> 別単語に変換
+      </label>
+    </div>
+    <div id="tts-filter-replacement-row" style="display:none;align-items:center;gap:8px;margin-bottom:10px;">
+      <label style="font-size:12px;">変換先読み</label>
+      <input type="text" id="tts-filter-replacement" placeholder="例: ピー" style="font-size:12px;padding:3px 8px;width:180px;">
+    </div>
+    <button id="add-tts-filter" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead id="tts-filter-thead"><tr><th>パターン</th><th></th></tr></thead>
+      <tbody id="tts-filter-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── ボイスマッピング modal ───── -->
+<dialog id="tts-mapping-modal">
+  <div class="modal-header">
+    <span>ボイスマッピング</span>
+    <button id="close-tts-mapping-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:400px;">
+    <button id="add-tts-mapping" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>ユーザーID</th><th>ボイス</th><th></th></tr></thead>
+      <tbody id="tts-mapping-body"></tbody>
+    </table>
+  </div>
+  <div id="tts-user-suggest"></div>
+</dialog>
+
+<!-- ── 読み上げ変換 modal ─────── -->
+<dialog id="tts-conv-modal">
+  <div class="modal-header">
+    <span>読み上げ変換</span>
+    <button id="close-tts-conv-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:380px;">
+    <button id="add-tts-conv" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>変換前</th><th>変換後</th><th></th></tr></thead>
+      <tbody id="tts-conv-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── 絵文字変換 modal ──────── -->
+<dialog id="tts-emoji-modal">
+  <div class="modal-header">
+    <span>絵文字変換</span>
+    <button id="close-tts-emoji-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:340px;">
+    <div id="tts-emoji-candidates" style="margin-bottom:8px;display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">受信した絵文字（クリックで追加）：</div>
+      <div id="tts-emoji-candidate-list" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
+    <button id="add-tts-emoji" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>絵文字</th><th>読み</th><th></th></tr></thead>
+      <tbody id="tts-emoji-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- ── エモート変換 modal ─────── -->
+<dialog id="tts-emote-modal">
+  <div class="modal-header">
+    <span>エモート変換</span>
+    <button id="close-tts-emote-modal" type="button" class="secondary" style="padding:4px 10px;">✕</button>
+  </div>
+  <div class="modal-body" style="min-width:340px;">
+    <div id="tts-emote-candidates" style="margin-bottom:8px;display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">受信したエモート（クリックで追加）：</div>
+      <div id="tts-emote-candidate-list" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
+    <button id="add-tts-emote" class="secondary" style="font-size:12px;align-self:flex-start;margin-bottom:8px;">＋ 追加</button>
+    <table class="rules-table">
+      <thead><tr><th>エモート名</th><th>読み</th><th></th></tr></thead>
+      <tbody id="tts-emote-body"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<script>
+const TEXT_STYLES = {
+  'gold-night':   { label: 'Gold Night',    fill: '#ffffff', note: '#fde68a', stroke: 'rgba(10,10,20,.95)' },
+  'ice-night':    { label: 'Ice Night',     fill: '#dbeafe', note: '#bfdbfe', stroke: 'rgba(23,37,84,.95)' },
+  'candy-pop':    { label: 'Candy Pop',     fill: '#ffe4f1', note: '#fbcfe8', stroke: 'rgba(131,24,67,.95)' },
+  'mint-lime':    { label: 'Mint Lime',     fill: '#d1fae5', note: '#6ee7b7', stroke: 'rgba(6,78,59,.96)' },
+  'sunset-party': { label: 'Sunset Party',  fill: '#fed7aa', note: '#fb923c', stroke: 'rgba(120,53,15,.96)' },
+  'violet-flash': { label: 'Violet Flash',  fill: '#e9d5ff', note: '#c084fc', stroke: 'rgba(59,7,100,.96)' },
+  'mono-impact':  { label: 'Mono Impact',   fill: '#f8fafc', note: '#e2e8f0', stroke: 'rgba(2,6,23,.97)' },
+  'sakura-bloom': { label: 'Sakura Bloom',  fill: '#ffe4e6', note: '#fda4af', stroke: 'rgba(136,19,55,.95)' },
+};
+
+const FONTS = [
+  'M PLUS Rounded 1c', 'Noto Sans JP', 'Noto Serif JP',
+  'Zen Kaku Gothic New', 'Kosugi', 'Klee One',
+  'Zen Maru Gothic', 'Dela Gothic One', 'Hachi Maru Pop', 'RocknRoll One',
+];
+
+// populate font select
+const fontSel = document.getElementById('font-family');
+for (const f of FONTS) {
+  const opt = document.createElement('option');
+  opt.value = f;
+  opt.textContent = f;
+  opt.style.fontFamily = `"${f}", sans-serif`;
+  opt.className = 'font-option';
+  fontSel.appendChild(opt);
+}
+
+// populate theme select
+const themeSel = document.getElementById('text-style-key');
+for (const [key, t] of Object.entries(TEXT_STYLES)) {
+  const opt = document.createElement('option');
+  opt.value = key;
+  opt.textContent = t.label;
+  themeSel.appendChild(opt);
+}
+
+// ── state ─────────────────────────────────────────
+let settings = {};
+let audioCtx = null;
+let analyser = null;
+let animFrame = null;
+let mediaStream = null;
+let debounceTimers = {};
+let pendingData = {};
+
+function debounce(key, fn, ms = 300) {
+  if (debounceTimers[key]) clearTimeout(debounceTimers[key]);
+  debounceTimers[key] = setTimeout(fn, ms);
+}
+
+// ── meter ─────────────────────────────────────────
+const canvas = document.getElementById('meter-canvas');
+const ctx = canvas.getContext('2d');
+const marker = document.getElementById('threshold-marker');
+
+function drawMeter(rms) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const w = Math.min(rms, 1) * canvas.width;
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  grad.addColorStop(0, '#22c55e');
+  grad.addColorStop(0.6, '#eab308');
+  grad.addColorStop(1, '#ef4444');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, canvas.height);
+}
+
+function drawIdle() {
+  drawMeter(0);
+}
+
+async function startMeter(deviceId) {
+  stopMeter();
+  const constraints = {
+    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+    video: false,
+  };
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    let smoothed = 0;
+    function tick() {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += v * v;
+      const rms = Math.sqrt(sum / buf.length);
+      const db = 20 * Math.log10(Math.max(rms, 1e-6));
+      const level = Math.max(0, Math.min(1, (db + 60) / 60));
+      // 上がり速い・下がりゆっくり
+      smoothed = level > smoothed
+        ? smoothed + (level - smoothed) * 0.8
+        : smoothed + (level - smoothed) * 0.06;
+      drawMeter(smoothed);
+      animFrame = requestAnimationFrame(tick);
+    }
+    tick();
+  } catch (e) {
+    drawIdle();
+  }
+}
+
+function stopMeter() {
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  analyser = null;
+  drawIdle();
+}
+
+function updateMarker(val) {
+  marker.style.left = (val * canvas.width) + 'px';
+}
+
+// ── save helper ───────────────────────────────────
+function save(data) {
+  window.api.saveSettings(data).then(() => {
+    for (const k of Object.keys(data)) delete pendingData[k];
+  }).catch((err) => console.error('[save]', err));
+}
+
+// ── apply settings to UI ──────────────────────────
+function applyToUI(s) {
+  settings = { ...settings, ...s };
+
+  // threshold marker
+  if (s.noiseGateThreshold !== undefined) {
+    settings.noiseGateThreshold = s.noiseGateThreshold;
+    const v = s.noiseGateThreshold;
+    document.getElementById('threshold-val').textContent = '閾値: ' + v.toFixed(3);
+    updateMarker(v);
+  }
+
+  // checkboxes
+  if ('showOriginal' in s) document.getElementById('show-original').checked = s.showOriginal;
+  if ('translationEnabled' in s) {
+    document.getElementById('show-translation').checked = s.translationEnabled;
+    document.getElementById('target-lang').disabled = !s.translationEnabled;
+  }
+  if ('targetLang' in s) document.getElementById('target-lang').value = s.targetLang;
+
+  // modal sliders
+  bindSliderVal('font-size', 'font-size-val', s.fontSize, '');
+  bindSliderVal('vert-offset', 'vert-offset-val', s.verticalOffset, '');
+  bindSliderVal('seg-duration', 'seg-duration-val', s.segmentDuration, '');
+  bindSliderVal('max-chars', 'max-chars-val', s.maxCharsPerSegment, '');
+  bindSliderVal('chars-per-sec', 'chars-per-sec-val', s.charsPerSec, '');
+  if ('showInterim' in s) document.getElementById('show-interim').checked = s.showInterim;
+
+  if ('bgStyle' in s) {
+    document.querySelectorAll('input[name=bg-style]').forEach(r => {
+      r.checked = r.value === s.bgStyle;
+    });
+  }
+
+  if ('fontFamily' in s) fontSel.value = s.fontFamily;
+  if ('textStyleKey' in s) themeSel.value = s.textStyleKey;
+  bindSliderVal('stroke-width', 'stroke-width-val', s.strokeWidth, '');
+
+  bindSliderVal('vad-threshold', 'vad-threshold-val', s.vadThreshold, '', 2);
+  bindSliderVal('vad-silence', 'vad-silence-val', s.vadSilenceMs, ' ms');
+  bindSliderVal('vad-minspeech', 'vad-minspeech-val', s.vadMinSpeechMs, ' ms');
+  bindSliderVal('vad-padding', 'vad-padding-val', s.vadPaddingMs, ' ms');
+
+  if (Array.isArray(s.correctionRules)) renderRules(s.correctionRules);
+
+  if ('autoStartCaption' in s) {
+    document.getElementById('auto-start-caption').checked = s.autoStartCaption;
+  }
+  if ('autoStartTts' in s) {
+    document.getElementById('tts-auto-start').checked = s.autoStartTts;
+  }
+  if ('launchOnBoot' in s) {
+    document.getElementById('launch-on-boot').checked = s.launchOnBoot;
+    document.getElementById('tts-launch-on-boot').checked = s.launchOnBoot;
+  }
+
+  updatePreview();
+}
+
+function bindSliderVal(sliderId, valId, newVal, suffix, decimals) {
+  if (newVal === undefined || newVal === null) return;
+  const el = document.getElementById(sliderId);
+  if (!el) return;
+  el.value = newVal;
+  const d = decimals !== undefined ? decimals : 0;
+  document.getElementById(valId).textContent = parseFloat(newVal).toFixed(d) + (suffix || '');
+}
+
+// ── preview ───────────────────────────────────────
+function updatePreview() {
+  const pt = document.getElementById('preview-text');
+  const fontSize = parseInt(document.getElementById('font-size').value) || 52;
+  const fontFamily = fontSel.value || 'M PLUS Rounded 1c';
+  const themeKey = themeSel.value || 'gold-night';
+  const strokeWidth = parseInt(document.getElementById('stroke-width').value) || 6;
+  const theme = TEXT_STYLES[themeKey] || TEXT_STYLES['gold-night'];
+
+  pt.style.fontFamily = `"${fontFamily}", sans-serif`;
+  pt.style.fontSize = fontSize + 'px';
+  pt.style.color = theme.fill;
+  pt.style.webkitTextStroke = `${strokeWidth}px ${theme.stroke}`;
+}
+
+// ── correction rules ──────────────────────────────
+function updateRulesCount() {
+  const n = document.querySelectorAll('#rules-body tr').length;
+  document.getElementById('rules-count').textContent = n;
+}
+
+function renderRules(rules) {
+  const tbody = document.getElementById('rules-body');
+  tbody.innerHTML = '';
+  rules.forEach((rule, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escHtml(rule.from || '')}" data-i="${i}" data-field="from"></td>
+      <td><input type="text" value="${escHtml(rule.to || '')}" data-i="${i}" data-field="to"></td>
+      <td><button class="del-btn" data-i="${i}">削除</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  updateRulesCount();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getRules() {
+  const rows = document.querySelectorAll('#rules-body tr');
+  return Array.from(rows).map(tr => ({
+    from: tr.querySelector('[data-field=from]').value,
+    to: tr.querySelector('[data-field=to]').value,
+  }));
+}
+
+document.getElementById('rules-body').addEventListener('input', () => {
+  pendingData.correctionRules = getRules();
+  debounce('rules', () => save({ correctionRules: getRules() }));
+});
+
+document.getElementById('rules-body').addEventListener('click', (e) => {
+  if (e.target.classList.contains('del-btn')) {
+    const i = parseInt(e.target.dataset.i);
+    const rules = getRules();
+    rules.splice(i, 1);
+    renderRules(rules);
+    save({ correctionRules: rules });
+  }
+});
+
+document.getElementById('add-rule').addEventListener('click', () => {
+  const rules = getRules();
+  rules.unshift({ from: '', to: '' });
+  renderRules(rules);
+  save({ correctionRules: rules });
+});
+
+// ── threshold marker drag ─────────────────────────
+(function () {
+  let dragging = false;
+
+  function setThreshold(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const val = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    settings.noiseGateThreshold = val;
+    document.getElementById('threshold-val').textContent = '閾値: ' + val.toFixed(3);
+    updateMarker(val);
+    pendingData.noiseGateThreshold = val;
+    debounce('threshold', () => save({ noiseGateThreshold: val }));
+  }
+
+  marker.addEventListener('mousedown', (e) => {
+    dragging = true;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (dragging) setThreshold(e.clientX);
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+}());
+
+// ── wire up controls ──────────────────────────────
+
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  await navigator.clipboard.writeText('http://localhost:38201/overlay.html');
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = 'コピーしました ✓';
+  setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+});
+
+document.getElementById('show-original').addEventListener('change', (e) => {
+  save({ showOriginal: e.target.checked });
+});
+
+document.getElementById('show-translation').addEventListener('change', (e) => {
+  const val = e.target.checked;
+  document.getElementById('target-lang').disabled = !val;
+  save({ translationEnabled: val });
+});
+
+document.getElementById('target-lang').addEventListener('change', (e) => {
+  save({ targetLang: e.target.value });
+});
+
+document.getElementById('device-select').addEventListener('change', async (e) => {
+  save({ deviceId: e.target.value });
+  await startMeter(e.target.value || undefined);
+});
+
+document.getElementById('audio-ducking-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openAudioDuckingSettings();
+});
+
+document.getElementById('open-modal').addEventListener('click', () => {
+  document.getElementById('detail-modal').showModal();
+});
+document.getElementById('close-modal').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('detail-modal').close();
+});
+document.getElementById('open-rules-modal').addEventListener('click', () => {
+  document.getElementById('rules-modal').showModal();
+});
+document.getElementById('close-rules-modal').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('rules-modal').close();
+});
+
+// modal sliders
+[
+  ['font-size', 'font-size-val', '', 'fontSize', 0],
+  ['vert-offset', 'vert-offset-val', '', 'verticalOffset', 0],
+  ['seg-duration', 'seg-duration-val', '', 'segmentDuration', 0],
+  ['max-chars', 'max-chars-val', '', 'maxCharsPerSegment', 0],
+  ['chars-per-sec', 'chars-per-sec-val', '', 'charsPerSec', 0],
+  ['stroke-width', 'stroke-width-val', '', 'strokeWidth', 0],
+  ['vad-threshold', 'vad-threshold-val', '', 'vadThreshold', 2],
+  ['vad-silence', 'vad-silence-val', ' ms', 'vadSilenceMs', 0],
+  ['vad-minspeech', 'vad-minspeech-val', ' ms', 'vadMinSpeechMs', 0],
+  ['vad-padding', 'vad-padding-val', ' ms', 'vadPaddingMs', 0],
+].forEach(([sid, vid, suffix, key, dec]) => {
+  const el = document.getElementById(sid);
+  if (!el) return;
+  el.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    document.getElementById(vid).textContent = val.toFixed(dec) + suffix;
+    if (['fontSize','strokeWidth','fontFamily','textStyleKey'].includes(key)) updatePreview();
+    pendingData[key] = val;
+    debounce(key, () => save({ [key]: val }));
+  });
+  el.addEventListener('change', (e) => {
+    const val = parseFloat(e.target.value);
+    clearTimeout(debounceTimers[key]);
+    delete debounceTimers[key];
+    pendingData[key] = val;
+    save({ [key]: val });
+  });
+});
+
+document.getElementById('show-interim').addEventListener('change', (e) => {
+  save({ showInterim: e.target.checked });
+});
+
+document.querySelectorAll('input[name=bg-style]').forEach(r => {
+  r.addEventListener('change', (e) => {
+    save({ bgStyle: e.target.value });
+  });
+});
+
+fontSel.addEventListener('change', (e) => {
+  updatePreview();
+  clearTimeout(debounceTimers['fontFamily']);
+  delete debounceTimers['fontFamily'];
+  pendingData.fontFamily = e.target.value;
+  save({ fontFamily: e.target.value });
+});
+
+themeSel.addEventListener('change', (e) => {
+  updatePreview();
+  clearTimeout(debounceTimers['textStyleKey']);
+  delete debounceTimers['textStyleKey'];
+  pendingData.textStyleKey = e.target.value;
+  save({ textStyleKey: e.target.value });
+});
+
+// ── Start / Stop buttons ──────────────────────────
+document.getElementById('start-btn').addEventListener('click', async () => {
+  await window.api.startASR();
+});
+
+document.getElementById('stop-btn').addEventListener('click', async () => {
+  await window.api.stopASR();
+});
+
+document.getElementById('auto-start-caption').addEventListener('change', (e) => {
+  save({ autoStartCaption: e.target.checked });
+});
+
+document.getElementById('launch-on-boot').addEventListener('change', (e) => {
+  document.getElementById('tts-launch-on-boot').checked = e.target.checked;
+  save({ launchOnBoot: e.target.checked });
+});
+
+document.getElementById('tts-auto-start').addEventListener('change', (e) => {
+  save({ autoStartTts: e.target.checked });
+});
+
+document.getElementById('tts-launch-on-boot').addEventListener('change', (e) => {
+  document.getElementById('launch-on-boot').checked = e.target.checked;
+  save({ launchOnBoot: e.target.checked });
+});
+
+// ── ASR status ────────────────────────────────────
+let _installStart = null;
+let _elapsedTimer = null;
+
+function updateStatus({ status, message }) {
+  const dot = document.getElementById('status-dot');
+  const msg = document.getElementById('status-msg');
+  const prog = document.getElementById('install-progress');
+  const pkgEl = document.getElementById('install-pkg');
+
+  const installing = status === 'installing';
+  const loading = status === 'loading';
+
+  if (installing || loading) {
+    msg.textContent = loading ? 'モデルロード中...' : 'インストール中...';
+    dot.style.background = '#f59e0b';
+    dot.classList.add('pulsing');
+    prog.classList.add('active');
+    pkgEl.textContent = message || (loading ? 'Whisper モデルを初期化中' : '');
+    if (!_installStart) {
+      _installStart = Date.now();
+      _elapsedTimer = setInterval(() => {
+        const s = Math.floor((Date.now() - _installStart) / 1000);
+        const m = Math.floor(s / 60);
+        document.getElementById('install-elapsed').textContent =
+          m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+      }, 1000);
+    }
+  } else {
+    msg.textContent = message || status;
+    dot.style.background = status === 'error' ? '#ef4444' : status === 'stopped' ? '#f59e0b' : '#22c55e';
+    dot.classList.remove('pulsing');
+    prog.classList.remove('active');
+    if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+    _installStart = null;
+    document.getElementById('install-elapsed').textContent = '0s';
+  }
+
+  const running = !loading && status !== 'stopped' && status !== 'idle' && status !== 'error';
+  document.getElementById('start-btn').disabled = running || loading;
+  document.getElementById('pause-btn').disabled = !running;
+  document.getElementById('stop-btn').disabled = !running;
+  if (!running) {
+    document.getElementById('pause-btn').textContent = '⏸ 一時停止';
+    document.getElementById('pause-btn').dataset.paused = '';
+  }
+}
+
+window.api.onASRStatus(updateStatus);
+
+// ── Pause button ──────────────────────────────────
+document.getElementById('pause-btn').addEventListener('click', async () => {
+  const { paused } = await window.api.pauseASR();
+  const btn = document.getElementById('pause-btn');
+  btn.textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  btn.dataset.paused = paused ? '1' : '';
+});
+
+window.api.onASRPaused((paused) => {
+  const btn = document.getElementById('pause-btn');
+  btn.textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  btn.dataset.paused = paused ? '1' : '';
+});
+
+// ── init ──────────────────────────────────────────
+async function init() {
+  const s = await window.api.getSettings();
+  applyToUI(s);
+
+  const devResult = await window.api.getDevices();
+  const devices = devResult.devices || devResult;
+  const defaultDeviceName = devResult.default || '';
+  const sel = document.getElementById('device-select');
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = defaultDeviceName ? `システムデフォルト (${defaultDeviceName})` : 'システムデフォルト';
+  sel.appendChild(defaultOpt);
+  for (const d of devices) {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name;
+    sel.appendChild(opt);
+  }
+  if (s.deviceId) sel.value = s.deviceId;
+  // If saved device no longer in list, sel.value falls back to '' automatically.
+  // Use sel.value as ground truth to avoid passing a stale device name.
+  await startMeter(sel.value || undefined);
+
+  const status = await window.api.getASRStatus();
+  updateStatus(status);
+
+  if (s.autoStartCaption && !status.running && !status.loading) {
+    await window.api.startASR();
+  }
+
+  if (window._ttsInit) await window._ttsInit(s);
+}
+
+init();
+
+// ── Caption monitor ───────────────────────────────
+(function () {
+  const elOrig = document.getElementById('mon-original');
+  const elTrans = document.getElementById('mon-translated');
+  const elTransRow = document.getElementById('mon-trans-row');
+  const elLangLabel = document.getElementById('mon-lang-label');
+  const LANG_NAMES = { en:'英語', zh:'中国語', ko:'韓国語', fr:'フランス語', de:'ドイツ語', es:'スペイン語', pt:'ポルトガル語', it:'イタリア語', ru:'ロシア語', ar:'アラビア語', th:'タイ語', vi:'ベトナム語', id:'インドネシア語', nl:'オランダ語', tr:'トルコ語' };
+
+  let silenceTimer = null;
+  let monShowInterim = false;
+  let monSegmentDuration = 6;
+
+  function setText(el, text, isMuted) {
+    el.textContent = text;
+    el.classList.toggle('muted', isMuted);
+  }
+
+  function resetToSilence() {
+    setText(elOrig, '(解析中...)', true);
+    setText(elTrans, '(翻訳待ち...)', true);
+  }
+
+  function scheduleReset(durationMs) {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(resetToSilence, durationMs);
+  }
+
+  // sync translation row visibility from settings
+  function applyMonitorSettings(s) {
+    if (!s) return;
+    const show = s.translationEnabled;
+    elTransRow.style.display = show ? '' : 'none';
+    if (show && s.targetLang) {
+      elLangLabel.textContent = LANG_NAMES[s.targetLang] || s.targetLang;
+    }
+    if ('showInterim' in s) monShowInterim = s.showInterim;
+    if (s.segmentDuration) monSegmentDuration = s.segmentDuration;
+  }
+
+  // hook into existing ASR status to show stopped state
+  const origUpdateStatus = window._updateStatus;
+  window.api.onASRStatus((data) => {
+    if (data.status === 'stopped' || data.status === 'idle' || data.status === 'error') {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      setText(elOrig, '(停止中)', true);
+      setText(elTrans, '(停止中)', true);
+      elOrig.classList.remove('loading-anim');
+      elTrans.classList.remove('loading-anim');
+    } else if (data.status === 'loading') {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      setText(elOrig, '(ロード中...)', true);
+      setText(elTrans, '(ロード中...)', true);
+      elOrig.classList.add('loading-anim');
+      elTrans.classList.add('loading-anim');
+    } else {
+      elOrig.classList.remove('loading-anim');
+      elTrans.classList.remove('loading-anim');
+      resetToSilence();
+    }
+  });
+
+  // try to connect to socket.io for live caption feed
+  function connectMonitor() {
+    const script = document.createElement('script');
+    script.src = 'http://localhost:38200/socket.io/socket.io.js';
+    script.onload = () => {
+      const sock = io('http://localhost:38200');  // eslint-disable-line no-undef
+
+      sock.on('caption:updated', ({ original, isFinal }) => {
+        if (original) setText(elOrig, original, false);
+        if (original) scheduleReset(monSegmentDuration * 1000 + 1500);
+      });
+
+      sock.on('caption:translation', ({ translated }) => {
+        if (translated) setText(elTrans, translated, false);
+      });
+
+      sock.on('caption:config', applyMonitorSettings);
+    };
+    document.head.appendChild(script);
+  }
+
+  connectMonitor();
+}());
+
+// ── Tab switching ─────────────────────────────────
+async function checkVoicevox() {
+  try {
+    return await window.api.checkVoicevox();
+  } catch (_) {
+    return false;
+  }
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-tab="${tabName}"]`).classList.add('active');
+  document.getElementById('tab-' + tabName).classList.add('active');
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.tab === 'tts') {
+      const ok = await checkVoicevox();
+      if (!ok) {
+        document.getElementById('voicevox-modal-status').textContent = '';
+        document.getElementById('voicevox-modal').showModal();
+        return;
+      }
+    }
+    switchTab(btn.dataset.tab);
+  });
+});
+
+// VOICEVOX modal buttons
+document.getElementById('voicevox-dl-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openExternal('https://voicevox.hiroshiba.jp/');
+});
+document.getElementById('voicevox-modal-cancel').addEventListener('click', () => {
+  document.getElementById('voicevox-modal').close();
+  window.api.stopTts();
+  switchTab('caption');
+});
+document.getElementById('voicevox-modal-retry').addEventListener('click', async () => {
+  const statusEl = document.getElementById('voicevox-modal-status');
+  const retryBtn = document.getElementById('voicevox-modal-retry');
+  statusEl.textContent = '確認中...';
+  retryBtn.disabled = true;
+  const ok = await checkVoicevox();
+  retryBtn.disabled = false;
+  if (ok) {
+    document.getElementById('voicevox-modal').close();
+    switchTab('tts');
+  } else {
+    statusEl.textContent = 'まだ起動していません。VOICEVOXを起動してから再度お試しください。';
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  for (const t of Object.values(debounceTimers)) clearTimeout(t);
+  debounceTimers = {};
+  if (Object.keys(pendingData).length > 0) {
+    window.api.saveSettingsSync(pendingData);
+    pendingData = {};
+  }
+});
+
+// ── TTS Tab ───────────────────────────────────────────────────────────────────
+(function () {
+  let ttsS = {};        // TTS-related settings cache
+  const ttsUserVoiceCache = new Map(); // uniqueId → voiceId (session-only)
+  const viewerCache = new Map(); // uniqueId → { nickname, profilePictureUrl }
+  const seenEmojis = new Set();
+  const seenEmotes = new Map(); // emoteId → emoteImageUrl
+  const VOICE_WHITELIST = new Set([
+    // 東北ずん子・ずんだもんプロジェクト（SSS合同会社）
+    'ずんだもん', '四国めたん', '九州そら', '中国うさぎ', '中部つるぎ',
+    '東北ずん子', '東北きりたん', '東北イタコ', 'あんこもん',
+    // 個人・有志開発キャラクター（商用・配信収益化許可枠）
+    '春日部つむぎ', '波音リツ', '雨晴はう', '玄野武宏', '白上虎太郎',
+    '青山龍星', '冥鳴ひまり', '剣崎雌雄', 'ちび式じい', '満別花丸',
+    '栗田まろん', '琴詠ニア', '櫻歌ミコ', 'ナースロボ＿タイプＴ',
+    '小夜/SAYO', '†聖騎士 紅桜†', '雀松朱司', '麒ヶ島宗麟', '春歌ナナ',
+    '猫使アル', '猫使ビィ', '後鬼', '大月アゆむ', '夜語トバリ',
+    '暁記ミタマ', '里石ユカ', 'ユーレイちゃん', '離途', '黒沢冴白',
+  ]);
+  let voiceList = [];   // [{id, name, styles:[{id,name}]}] — whitelist-filtered
+  let audioQueue = [];
+  let isPlaying = false;
+  let ttsPaused = false;
+  let overlaySock = null;
+  function initOverlaySock() {
+    if (typeof io === 'undefined') { setTimeout(initOverlaySock, 1000); return; }
+    try {
+      overlaySock = io('http://localhost:38200');
+      overlaySock.on('tts:voicevox-error', () => {
+        audioQueue.length = 0;
+        isPlaying = false;
+        const modal = document.getElementById('voicevox-modal');
+        if (!modal.open) {
+          document.getElementById('voicevox-modal-status').textContent = '';
+          modal.showModal();
+        }
+      });
+    } catch(_) {}
+  }
+  initOverlaySock();
+
+  function getVoiceName(speakerId) {
+    for (const sp of voiceList) {
+      for (const st of sp.styles) {
+        if (st.id === speakerId) return sp.name;
+      }
+    }
+    return '';
+  }
+
+  // ── Voice select population ────────────────────────────────────────────────
+  async function loadVoices() {
+    const sel = document.getElementById('tts-voice-select');
+    try {
+      const res = await fetch('http://localhost:50021/speakers');
+      if (!res.ok) throw new Error();
+      const allSpeakers = await res.json();
+      voiceList = allSpeakers.filter(sp => VOICE_WHITELIST.has(sp.name));
+      sel.innerHTML = '';
+      for (const sp of voiceList) {
+        for (const st of sp.styles) {
+          const opt = document.createElement('option');
+          opt.value = st.id;
+          opt.textContent = `${sp.name} (${st.name})`;
+          sel.appendChild(opt);
+        }
+      }
+      if (ttsS.ttsVoiceId) sel.value = ttsS.ttsVoiceId;
+      // Re-render mapping table so voice selects get correct options
+      if (ttsS.ttsVoiceMapping) renderTtsMapping(ttsS.ttsVoiceMapping);
+    } catch (_) {
+      sel.innerHTML = '<option value="">VOICEVOXが起動していません</option>';
+    }
+    // Retry if VOICEVOX not ready
+    if (voiceList.length === 0) setTimeout(loadVoices, 5000);
+  }
+
+  // ── Apply TTS settings to UI ───────────────────────────────────────────────
+  function applyTtsToUI(s) {
+    ttsS = { ...ttsS, ...s };
+    if ('ttsUserId' in s) {
+      document.getElementById('tts-user-display').textContent = s.ttsUserId || '未設定';
+    }
+    if ('ttsSignApiKey' in s) {
+      const key = s.ttsSignApiKey || '';
+      document.getElementById('tts-sign-key-display').textContent = key ? `${'•'.repeat(8)}${key.slice(-4)}` : '未設定';
+    }
+    if ('ttsVoiceId' in s) {
+      const sel = document.getElementById('tts-voice-select');
+      if (sel.querySelector(`option[value="${s.ttsVoiceId}"]`)) sel.value = s.ttsVoiceId;
+    }
+    if ('ttsVolume' in s) {
+      const v = s.ttsVolume;
+      document.getElementById('tts-volume').value = v;
+      document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
+    }
+    if ('ttsSpeedScale' in s) {
+      const v = s.ttsSpeedScale;
+      document.getElementById('tts-speed').value = v;
+      document.getElementById('tts-speed-val').textContent = parseFloat(v).toFixed(1) + 'x';
+    }
+    if ('ttsRandomVoice' in s) {
+      document.getElementById('tts-random-voice').checked = s.ttsRandomVoice;
+    }
+    if ('ttsFilterRules' in s) renderTtsFilterRules(s.ttsFilterRules);
+    if ('ttsVoiceMapping' in s) renderTtsMapping(s.ttsVoiceMapping);
+    if ('ttsConversionRules' in s) renderTtsSimpleTable('tts-conv-body', s.ttsConversionRules, ['from', 'to']);
+    if ('ttsEmojiRules' in s) renderTtsSimpleTable('tts-emoji-body', s.ttsEmojiRules, ['emoji', 'reading']);
+    if ('ttsEmoteRules' in s) renderTtsSimpleTable('tts-emote-body', s.ttsEmoteRules, ['emote', 'reading']);
+  }
+
+  // ── Status UI ──────────────────────────────────────────────────────────────
+  function setTtsStatusUI({ status, message }) {
+    const dot = document.getElementById('tts-status-dot');
+    dot.className = '';
+    if (status === 'connected') dot.classList.add('connected');
+    else if (status === 'error') dot.classList.add('error');
+    else dot.classList.add('connecting'); // connecting / retrying / stopped all use amber
+    document.getElementById('tts-status-msg').textContent = message || status;
+    const active = status === 'connected' || status === 'connecting' || status === 'retrying';
+    document.getElementById('tts-start-btn').disabled = active;
+    document.getElementById('tts-pause-btn').disabled = status !== 'connected';
+    document.getElementById('tts-stop-btn').disabled = !active;
+  }
+
+  // ── Audio queue / synthesis ────────────────────────────────────────────────
+  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  function shouldRead(text) {
+    if ((ttsS.ttsFilterMode || 'skip') === 'replace') return true;
+    const rules = (ttsS.ttsFilterRules || []);
+    for (const r of rules) {
+      try {
+        if (new RegExp(escapeRe(r.pattern), 'i').test(text)) return false;
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  function applyConversions(text) {
+    let t = text;
+    if ((ttsS.ttsFilterMode || 'skip') === 'replace') {
+      const repl = ttsS.ttsFilterReplacement || '';
+      for (const r of (ttsS.ttsFilterRules || [])) {
+        if (r.pattern) {
+          try { t = t.replace(new RegExp(escapeRe(r.pattern), 'gi'), repl); } catch(_) {}
+        }
+      }
+    }
+    for (const r of (ttsS.ttsEmojiRules || [])) {
+      if (r.emoji) t = t.replaceAll(r.emoji, r.reading || '');
+    }
+    for (const r of (ttsS.ttsEmoteRules || [])) {
+      if (r.emote) try { t = t.replace(new RegExp(escapeRe(r.emote), 'g'), r.reading || ''); } catch(_) {}
+    }
+    for (const r of (ttsS.ttsConversionRules || [])) {
+      if (r.from) try { t = t.replace(new RegExp(escapeRe(r.from), 'g'), r.to || ''); } catch(_) {}
+    }
+    return t.trim();
+  }
+
+  function getEffectiveSpeakerId(uniqueId) {
+    if (uniqueId) {
+      const m = (ttsS.ttsVoiceMapping || []).find(x => x.userId === uniqueId);
+      if (m && m.voiceId) return Number(m.voiceId);
+    }
+    if (ttsS.ttsRandomVoice && voiceList.length > 0) {
+      const key = uniqueId || '';
+      if (ttsUserVoiceCache.has(key)) return ttsUserVoiceCache.get(key);
+      const allIds = voiceList.flatMap(sp => sp.styles.map(s => s.id));
+      const chosen = allIds[Math.floor(Math.random() * allIds.length)];
+      ttsUserVoiceCache.set(key, chosen);
+      return chosen;
+    }
+    return Number(ttsS.ttsVoiceId) || 1;
+  }
+
+  function getTtsVol() { return ttsS.ttsVolume !== undefined ? ttsS.ttsVolume : 0.8; }
+  function getTtsSpeed() { return ttsS.ttsSpeedScale !== undefined ? ttsS.ttsSpeedScale : 1.0; }
+
+  function synthesizeAndPlay(text, speakerId, key, rushMs = 0) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(rushTimer);
+        clearTimeout(fallbackTimer);
+        overlaySock?.off('tts:done', onDone);
+        resolve();
+      };
+      const onDone = finish;
+      overlaySock?.once('tts:done', onDone);
+      overlaySock?.emit('tts:speak', { text, speakerId, volume: getTtsVol(), speed: getTtsSpeed(), key });
+      // rush mode: force-stop after rushMs to drain backlog fast
+      const rushTimer = rushMs > 0 ? setTimeout(() => {
+        overlaySock?.emit('tts:stop-current');
+        finish();
+      }, rushMs) : null;
+      // fallback: resolve after 10s if overlay never responds
+      const fallbackTimer = setTimeout(finish, 10000);
+    });
+  }
+
+  function buildRawText(item) {
+    let text = item.comment || '';
+    for (const e of (item.emotes || [])) {
+      const rule = (ttsS.ttsEmoteRules || []).find(r => r.emote === e.emoteId);
+      if (rule?.reading) text = (text ? text + ' ' : '') + rule.reading;
+    }
+    return text;
+  }
+
+  function prefetchNext() {
+    const next = audioQueue[0];
+    if (!next || !next._ttsKey) return;
+    const nextText = applyConversions(buildRawText(next));
+    if (!nextText) return;
+    const nextSpId = getEffectiveSpeakerId(next.uniqueId);
+    overlaySock?.emit('tts:prefetch', { key: next._ttsKey, text: nextText, speakerId: nextSpId, volume: getTtsVol(), speed: getTtsSpeed() });
+  }
+
+  async function processQueue() {
+    if (isPlaying || ttsPaused || audioQueue.length === 0) return;
+    isPlaying = true;
+    const item = audioQueue.shift();
+    const rushMode = audioQueue.length >= 5;
+    try {
+      const text = applyConversions(buildRawText(item));
+      if (text) {
+        addLogEntry(item.nickname || item.uniqueId, item.comment);
+        const spId = getEffectiveSpeakerId(item.uniqueId);
+        const vName = getVoiceName(spId);
+        if (vName) overlaySock?.emit('tts:playing', { voiceName: vName });
+        if (!rushMode) prefetchNext();
+        await synthesizeAndPlay(text, spId, item._ttsKey, rushMode ? 500 : 0);
+      }
+    } catch (e) {
+      console.warn('[TTS]', e.message);
+    }
+    isPlaying = false;
+    processQueue();
+  }
+
+  function enqueue(item) {
+    if (ttsPaused) return;
+    if (!shouldRead(item.comment)) return;  // filter before queuing
+    item._ttsKey = Math.random().toString(36).slice(2);
+    audioQueue.push(item);
+    processQueue();
+  }
+
+  // ── Log ───────────────────────────────────────────────────────────────────
+  function addLogEntry(uid, comment) {
+    const log = document.getElementById('tts-log');
+    const placeholder = log.querySelector('.tts-log-muted');
+    if (placeholder) placeholder.remove();
+    const entry = document.createElement('div');
+    entry.className = 'tts-log-entry';
+    entry.innerHTML = `<span class="tts-log-uid">${escHtml(uid)}</span><span class="tts-log-comment">${escHtml(comment)}</span>`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+    // Keep max 100 entries
+    while (log.children.length > 100) log.removeChild(log.firstChild);
+  }
+
+  // ── Modal render helpers ────────────────────────────────────────────────────
+  function renderTtsFilterRules(rules) {
+    const tbody = document.getElementById('tts-filter-body');
+    tbody.innerHTML = '';
+    (rules || []).forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" value="${escHtml(r.pattern||'')}" data-i="${i}" data-field="pattern" style="width:240px;font-size:12px;padding:3px 6px;"></td>
+        <td><button class="del-btn" data-i="${i}" data-table="ttsFilterRules">削除</button></td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('tts-filter-count').textContent = (rules || []).filter(r => (r.pattern || '').trim()).length;
+  }
+
+  function renderTtsMapping(rules) {
+    const tbody = document.getElementById('tts-mapping-body');
+    tbody.innerHTML = '';
+    (rules || []).forEach((r, i) => {
+      const voiceOpts = voiceList.flatMap(sp => sp.styles.map(st =>
+        `<option value="${st.id}" ${Number(r.voiceId)===st.id?'selected':''}>${escHtml(sp.name)} (${escHtml(st.name)})</option>`
+      )).join('');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" value="${escHtml(r.userId||'')}" data-i="${i}" data-field="userId" style="width:120px;font-size:12px;padding:3px 6px;"></td>
+        <td><select data-i="${i}" data-field="voiceId" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px;font-size:11px;">${voiceOpts}</select></td>
+        <td><button class="del-btn" data-i="${i}" data-table="ttsVoiceMapping">削除</button></td>`;
+      tbody.appendChild(tr);
+      wireUserSuggest(tr.querySelector('input[data-field="userId"]'));
+    });
+    document.getElementById('tts-mapping-count').textContent = (rules || []).filter(r => (r.userId || '').trim()).length;
+  }
+
+  function renderTtsSimpleTable(tbodyId, rules, fields) {
+    const tbody = document.getElementById(tbodyId);
+    const tableKey = { 'tts-conv-body': 'ttsConversionRules', 'tts-emoji-body': 'ttsEmojiRules', 'tts-emote-body': 'ttsEmoteRules' }[tbodyId];
+    tbody.innerHTML = '';
+    const isEmoji = tbodyId === 'tts-emoji-body';
+    const isEmote = tbodyId === 'tts-emote-body';
+    (rules || []).forEach((r, i) => {
+      const tr = document.createElement('tr');
+      const cells = fields.map((f, fi) => {
+        const w = (fi === 0 && (isEmoji || isEmote)) ? '100px' : '120px';
+        const inp = `<input type="text" value="${escHtml(r[f]||'')}" data-i="${i}" data-field="${f}" style="width:${w};font-size:12px;padding:3px 6px;">`;
+        if (fi === 0 && isEmoji) {
+          return `<td><span style="font-size:22px;vertical-align:middle;margin-right:4px;">${escHtml(r[f]||'')}</span>${inp}</td>`;
+        }
+        if (fi === 0 && isEmote) {
+          const imgUrl = seenEmotes.get(r[f]) || '';
+          const imgHtml = imgUrl ? `<img src="${escHtml(imgUrl)}" style="width:24px;height:24px;object-fit:contain;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">` : '';
+          return `<td style="white-space:nowrap;">${imgHtml}${inp}</td>`;
+        }
+        return `<td>${inp}</td>`;
+      }).join('');
+      tr.innerHTML = cells + `<td><button class="del-btn" data-i="${i}" data-table="${tableKey}">削除</button></td>`;
+      tbody.appendChild(tr);
+    });
+    const countId = { 'tts-conv-body': 'tts-conv-count', 'tts-emoji-body': 'tts-emoji-count', 'tts-emote-body': 'tts-emote-count' }[tbodyId];
+    if (countId) {
+      const countFields = { 'tts-conv-body': ['from', 'to'], 'tts-emoji-body': ['emoji', 'reading'], 'tts-emote-body': ['emote', 'reading'] }[tbodyId] || [fields[0]];
+      document.getElementById(countId).textContent = (rules || []).filter(r => countFields.every(f => (r[f] || '').trim())).length;
+    }
+  }
+
+  function refreshEmojiCandidates() {
+    const modal = document.getElementById('tts-emoji-modal');
+    if (!modal || !modal.open) return;
+    const configured = new Set((ttsS.ttsEmojiRules || []).map(r => r.emoji).filter(Boolean));
+    const candidates = [...seenEmojis].filter(e => !configured.has(e));
+    const container = document.getElementById('tts-emoji-candidates');
+    const list = document.getElementById('tts-emoji-candidate-list');
+    container.style.display = candidates.length > 0 ? '' : 'none';
+    list.innerHTML = '';
+    for (const emoji of candidates) {
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = emoji;
+      btn.title = emoji;
+      btn.style.cssText = 'font-size:18px;padding:2px 6px;min-width:32px;';
+      btn.addEventListener('click', () => {
+        const cur = getTtsTableData('ttsEmojiRules');
+        if (cur.length > 0) ttsS.ttsEmojiRules = cur;
+        ttsS.ttsEmojiRules = [{ emoji, reading: '' }, ...(ttsS.ttsEmojiRules || [])];
+        renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji', 'reading']);
+        window.api.saveSettings({ ttsEmojiRules: ttsS.ttsEmojiRules.filter(r => (r.emoji || '').trim() && (r.reading || '').trim()) }).catch(() => {});
+        const readingInput = document.querySelector('#tts-emoji-body input[data-field="reading"]');
+        if (readingInput) readingInput.focus();
+        refreshEmojiCandidates();
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  function refreshEmoteCandidates() {
+    const modal = document.getElementById('tts-emote-modal');
+    if (!modal || !modal.open) return;
+    const configured = new Set((ttsS.ttsEmoteRules || []).map(r => r.emote).filter(Boolean));
+    const candidates = [...seenEmotes.entries()].filter(([id]) => !configured.has(id));
+    const container = document.getElementById('tts-emote-candidates');
+    const list = document.getElementById('tts-emote-candidate-list');
+    container.style.display = candidates.length > 0 ? '' : 'none';
+    list.innerHTML = '';
+    for (const [emoteId, emoteImageUrl] of candidates) {
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.title = emoteId;
+      btn.style.cssText = 'font-size:11px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;';
+      if (emoteImageUrl) {
+        const img = document.createElement('img');
+        img.src = emoteImageUrl;
+        img.style.cssText = 'width:20px;height:20px;object-fit:contain;vertical-align:middle;';
+        img.onerror = () => { img.style.display = 'none'; };
+        btn.appendChild(img);
+      }
+      const span = document.createElement('span');
+      span.textContent = emoteId;
+      btn.appendChild(span);
+      btn.addEventListener('click', () => {
+        const cur = getTtsTableData('ttsEmoteRules');
+        if (cur.length > 0) ttsS.ttsEmoteRules = cur;
+        ttsS.ttsEmoteRules = [{ emote: emoteId, reading: '' }, ...(ttsS.ttsEmoteRules || [])];
+        renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote', 'reading']);
+        window.api.saveSettings({ ttsEmoteRules: ttsS.ttsEmoteRules.filter(r => (r.emote || '').trim() && (r.reading || '').trim()) }).catch(() => {});
+        const readingInput = document.querySelector('#tts-emote-body input[data-field="reading"]');
+        if (readingInput) readingInput.focus();
+        refreshEmoteCandidates();
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  // ── Viewer suggest ─────────────────────────────────────────────────────────
+  const suggestEl = document.getElementById('tts-user-suggest');
+  let suggestTarget = null;
+
+  function showUserSuggest(input) {
+    const q = input.value.trim().toLowerCase();
+    const results = [];
+    for (const [uid, u] of viewerCache) {
+      if (!q || uid.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q)) {
+        results.push({ uid, ...u });
+      }
+      if (results.length >= 8) break;
+    }
+    if (results.length === 0) { hideSuggest(); return; }
+    suggestTarget = input;
+    suggestEl.innerHTML = results.map(r => `
+      <div class="tus-item" data-uid="${escHtml(r.uid)}">
+        <img class="tus-avatar" src="${escHtml(r.profilePictureUrl || '')}" onerror="this.style.visibility='hidden'">
+        <div style="min-width:0">
+          <div class="tus-uid">${escHtml(r.uid)}</div>
+          ${r.nickname && r.nickname !== r.uid ? `<div class="tus-nick">${escHtml(r.nickname)}</div>` : ''}
+        </div>
+      </div>`).join('');
+    const rect = input.getBoundingClientRect();
+    suggestEl.style.left = rect.left + 'px';
+    suggestEl.style.top = (rect.bottom + 2) + 'px';
+    suggestEl.style.width = Math.max(rect.width, 240) + 'px';
+    suggestEl.style.display = 'block';
+  }
+
+  function hideSuggest() {
+    suggestEl.style.display = 'none';
+    suggestTarget = null;
+  }
+
+  suggestEl.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.tus-item');
+    if (!item || !suggestTarget) return;
+    e.preventDefault();
+    suggestTarget.value = item.dataset.uid;
+    suggestTarget.dispatchEvent(new Event('change', { bubbles: true }));
+    hideSuggest();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    if (e.target !== suggestTarget && !suggestEl.contains(e.target)) hideSuggest();
+  });
+
+  function wireUserSuggest(input) {
+    input.addEventListener('focus', () => showUserSuggest(input));
+    input.addEventListener('input', () => showUserSuggest(input));
+  }
+
+  function getTtsTableData(key) {
+    const tbodyMap = {
+      ttsFilterRules: 'tts-filter-body',
+      ttsVoiceMapping: 'tts-mapping-body',
+      ttsConversionRules: 'tts-conv-body',
+      ttsEmojiRules: 'tts-emoji-body',
+      ttsEmoteRules: 'tts-emote-body',
+    };
+    const tbody = document.getElementById(tbodyMap[key]);
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr')).map(tr => {
+      const row = {};
+      tr.querySelectorAll('[data-field]').forEach(el => {
+        row[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
+      });
+      return row;
+    });
+  }
+
+  function saveTtsTable(key) {
+    const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
+    const allFields = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[key];
+    const data = getTtsTableData(key).filter(r =>
+      allFields ? allFields.every(f => (r[f] || '').trim() !== '') : (r[primaryField] || '').trim() !== ''
+    );
+    ttsS[key] = data;
+    window.api.saveSettings({ [key]: data }).catch(() => {});
+  }
+
+  // ── Wire table events (input + delete) ────────────────────────────────────
+  function wireTableEvents(tbodyId, key) {
+    const tbody = document.getElementById(tbodyId);
+    tbody.addEventListener('input', () => { debounce('tts-' + key, () => saveTtsTable(key)); });
+    tbody.addEventListener('change', () => { debounce('tts-' + key, () => saveTtsTable(key)); });
+    tbody.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del-btn')) {
+        const i = parseInt(e.target.dataset.i);
+        const primaryField = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[key];
+        const allFields = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[key];
+        const rows = getTtsTableData(key);
+        rows.splice(i, 1);
+        const saved = rows.filter(r =>
+          allFields ? allFields.every(f => (r[f] || '').trim() !== '') : (r[primaryField] || '').trim() !== ''
+        );
+        ttsS[key] = saved;
+        window.api.saveSettings({ [key]: saved }).then(() => {
+          const rerender = { ttsFilterRules: () => renderTtsFilterRules(ttsS.ttsFilterRules), ttsVoiceMapping: () => renderTtsMapping(ttsS.ttsVoiceMapping), ttsConversionRules: () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']), ttsEmojiRules: () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']), ttsEmoteRules: () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']) };
+          if (rerender[key]) rerender[key]();
+        }).catch(() => {});
+      }
+    });
+  }
+
+  // ── Wire controls ──────────────────────────────────────────────────────────
+  function wireControls() {
+    // User ID modal
+    document.getElementById('tts-edit-user').addEventListener('click', () => {
+      document.getElementById('tts-user-input').value = ttsS.ttsUserId || '';
+      document.getElementById('tts-user-modal').showModal();
+    });
+    document.getElementById('close-tts-user-modal').addEventListener('click', () => { document.getElementById('tts-user-modal').close(); });
+    document.getElementById('tts-user-save').addEventListener('click', () => {
+      const val = document.getElementById('tts-user-input').value.trim().replace(/^@/, '');
+      const userChanged = val !== (ttsS.ttsUserId || '');
+      ttsS.ttsUserId = val;
+      document.getElementById('tts-user-display').textContent = val || '未設定';
+      window.api.saveSettings({ ttsUserId: val }).catch(() => {});
+      if (userChanged && !document.getElementById('tts-stop-btn').disabled) {
+        window.api.stopTts();
+      }
+      document.getElementById('tts-user-modal').close();
+    });
+
+    // Eulerstream API key modal
+    document.getElementById('tts-edit-sign-key').addEventListener('click', () => {
+      document.getElementById('tts-sign-key-input').value = ttsS.ttsSignApiKey || '';
+      document.getElementById('tts-sign-key-modal').showModal();
+    });
+    document.getElementById('close-tts-sign-key-modal').addEventListener('click', () => { document.getElementById('tts-sign-key-modal').close(); });
+    document.getElementById('tts-sign-key-register-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.openExternal('https://www.eulerstream.com/register');
+    });
+    document.getElementById('tts-sign-key-save').addEventListener('click', () => {
+      const val = document.getElementById('tts-sign-key-input').value.trim();
+      ttsS.ttsSignApiKey = val;
+      document.getElementById('tts-sign-key-display').textContent = val ? `${'•'.repeat(8)}${val.slice(-4)}` : '未設定';
+      window.api.saveSettings({ ttsSignApiKey: val }).catch(() => {});
+      document.getElementById('tts-sign-key-modal').close();
+    });
+
+    // Copy URL
+    document.getElementById('tts-copy-url').addEventListener('click', async () => {
+      await navigator.clipboard.writeText('http://localhost:38201/tts-overlay.html');
+      const btn = document.getElementById('tts-copy-url');
+      btn.textContent = 'コピーしました ✓';
+      setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+    });
+
+    // API copy buttons
+    [
+      ['copy-api-cap-start',  'http://127.0.0.1:38200/api/caption/start'],
+      ['copy-api-cap-pause',  'http://127.0.0.1:38200/api/caption/pause'],
+      ['copy-api-cap-resume', 'http://127.0.0.1:38200/api/caption/resume'],
+      ['copy-api-cap-stop',         'http://127.0.0.1:38200/api/caption/stop'],
+      ['copy-api-cap-pause-toggle', 'http://127.0.0.1:38200/api/caption/pause-toggle'],
+      ['copy-api-cap-status',       'http://127.0.0.1:38200/api/caption/status'],
+      ['copy-api-tts-start',  'http://127.0.0.1:38200/api/tts/start'],
+      ['copy-api-tts-pause',  'http://127.0.0.1:38200/api/tts/pause'],
+      ['copy-api-tts-resume', 'http://127.0.0.1:38200/api/tts/resume'],
+      ['copy-api-tts-stop',         'http://127.0.0.1:38200/api/tts/stop'],
+      ['copy-api-tts-pause-toggle', 'http://127.0.0.1:38200/api/tts/pause-toggle'],
+      ['copy-api-tts-status',       'http://127.0.0.1:38200/api/tts/status'],
+    ].forEach(([id, url]) => {
+      document.getElementById(id).addEventListener('click', async () => {
+        await navigator.clipboard.writeText(url);
+        const btn = document.getElementById(id);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+      });
+    });
+
+    // Voice select
+    document.getElementById('tts-voice-select').addEventListener('change', (e) => {
+      ttsS.ttsVoiceId = Number(e.target.value);
+      window.api.saveSettings({ ttsVoiceId: ttsS.ttsVoiceId }).catch(() => {});
+    });
+
+    // Volume
+    document.getElementById('tts-volume').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      document.getElementById('tts-volume-val').textContent = Math.round(v * 100) + '%';
+      debounce('tts-volume', () => { ttsS.ttsVolume = v; window.api.saveSettings({ ttsVolume: v }).catch(() => {}); });
+    });
+
+    // Speed
+    document.getElementById('tts-speed').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      ttsS.ttsSpeedScale = v;
+      document.getElementById('tts-speed-val').textContent = v.toFixed(1) + 'x';
+      debounce('tts-speed', () => { window.api.saveSettings({ ttsSpeedScale: v }).catch(() => {}); });
+    });
+
+    // Random voice checkbox
+    document.getElementById('tts-random-voice').addEventListener('change', (e) => {
+      ttsS.ttsRandomVoice = e.target.checked;
+      window.api.saveSettings({ ttsRandomVoice: e.target.checked }).catch(() => {});
+    });
+
+    // Random voice reset
+    document.getElementById('tts-random-reset').addEventListener('click', () => {
+      ttsUserVoiceCache.clear();
+    });
+
+    // Test button
+    document.getElementById('tts-test-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('tts-test-btn');
+      btn.disabled = true;
+      try {
+        const testSpId = Number(document.getElementById('tts-voice-select').value) || 1;
+        const testVName = getVoiceName(testSpId);
+        if (testVName) overlaySock?.emit('tts:playing', { voiceName: testVName });
+        await synthesizeAndPlay('これはVOICEVOXの読み上げテストです', testSpId);
+      } catch (e) {
+        alert('読み上げテスト失敗: ' + e.message + '\nVOICEVOXが起動しているか確認してください。');
+      }
+      btn.disabled = false;
+    });
+
+    // Modal open buttons
+    const modalMap = {
+      'tts-filter-btn': 'tts-filter-modal',
+      'tts-mapping-btn': 'tts-mapping-modal',
+      'tts-conv-btn': 'tts-conv-modal',
+      'tts-emoji-btn': 'tts-emoji-modal',
+      'tts-emote-btn': 'tts-emote-modal',
+    };
+    const modalRerenderMap = {
+      'tts-filter-modal':  () => renderTtsFilterRules(ttsS.ttsFilterRules),
+      'tts-mapping-modal': () => renderTtsMapping(ttsS.ttsVoiceMapping),
+      'tts-conv-modal':    () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to']),
+      'tts-emoji-modal':   () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading']),
+      'tts-emote-modal':   () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading']),
+    };
+    const modalKeyMap = {
+      'tts-filter-modal': 'ttsFilterRules', 'tts-mapping-modal': 'ttsVoiceMapping',
+      'tts-conv-modal': 'ttsConversionRules', 'tts-emoji-modal': 'ttsEmojiRules', 'tts-emote-modal': 'ttsEmoteRules',
+    };
+    for (const [btnId, modalId] of Object.entries(modalMap)) {
+      document.getElementById(btnId).addEventListener('click', () => {
+        // Strip empty rows from memory before showing modal
+        const mk = modalKeyMap[modalId];
+        const pf2 = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' }[mk];
+        const af2 = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] }[mk];
+        if (mk && ttsS[mk]) ttsS[mk] = ttsS[mk].filter(r => af2 ? af2.every(f => (r[f] || '').trim() !== '') : (r[pf2] || '').trim() !== '');
+        document.getElementById(modalId).showModal();
+        if (modalId === 'tts-filter-modal') {
+          const m = ttsS.ttsFilterMode || 'skip';
+          document.querySelectorAll('input[name="tts-filter-mode"]').forEach(r => { r.checked = r.value === m; });
+          document.getElementById('tts-filter-replacement-row').style.display = m === 'replace' ? 'flex' : 'none';
+          document.getElementById('tts-filter-replacement').value = ttsS.ttsFilterReplacement || '';
+        }
+        if (modalRerenderMap[modalId]) modalRerenderMap[modalId]();
+        if (modalId === 'tts-emoji-modal') refreshEmojiCandidates();
+        if (modalId === 'tts-emote-modal') refreshEmoteCandidates();
+      });
+      document.getElementById('close-' + modalId).addEventListener('click', () => {
+        document.getElementById(modalId).close();
+      });
+    }
+
+    // Add-row buttons
+    const addMap = [
+      ['add-tts-filter', 'ttsFilterRules', () => renderTtsFilterRules(ttsS.ttsFilterRules)],
+      ['add-tts-mapping', 'ttsVoiceMapping', () => renderTtsMapping(ttsS.ttsVoiceMapping)],
+      ['add-tts-conv', 'ttsConversionRules', () => renderTtsSimpleTable('tts-conv-body', ttsS.ttsConversionRules, ['from','to'])],
+      ['add-tts-emoji', 'ttsEmojiRules', () => renderTtsSimpleTable('tts-emoji-body', ttsS.ttsEmojiRules, ['emoji','reading'])],
+      ['add-tts-emote', 'ttsEmoteRules', () => renderTtsSimpleTable('tts-emote-body', ttsS.ttsEmoteRules, ['emote','reading'])],
+    ];
+    const primaryFieldMap = { ttsFilterRules: 'pattern', ttsVoiceMapping: 'userId', ttsConversionRules: 'from', ttsEmojiRules: 'emoji', ttsEmoteRules: 'emote' };
+    const allFieldsMap = { ttsConversionRules: ['from', 'to'], ttsEmojiRules: ['emoji', 'reading'], ttsEmoteRules: ['emote', 'reading'] };
+    for (const [btnId, key, rerender] of addMap) {
+      document.getElementById(btnId).addEventListener('click', () => {
+        // Sync from DOM first to capture any unsaved edits (debounce may be pending)
+        const cur = getTtsTableData(key);
+        if (cur.length > 0) ttsS[key] = cur;
+        // Block add if any row already has an empty field
+        const af = allFieldsMap[key];
+        const pf = primaryFieldMap[key];
+        const isIncomplete = af ? cur.some(r => af.some(f => (r[f] || '').trim() === '')) : cur.some(r => (r[pf] || '').trim() === '');
+        if (isIncomplete) return;
+        const defaultRow = { ttsFilterRules: { pattern:'', replacement:'' }, ttsVoiceMapping: { userId:'', voiceId: Number(ttsS.ttsVoiceId)||1 }, ttsConversionRules: { from:'', to:'' }, ttsEmojiRules: { emoji:'', reading:'' }, ttsEmoteRules: { emote:'', reading:'' } }[key];
+        ttsS[key] = [defaultRow, ...(ttsS[key] || [])];
+        rerender();
+      });
+    }
+
+    // Block word mode radio
+    const filterReplRow = document.getElementById('tts-filter-replacement-row');
+    const filterReplInput = document.getElementById('tts-filter-replacement');
+    document.querySelectorAll('input[name="tts-filter-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        ttsS.ttsFilterMode = radio.value;
+        window.api.saveSettings({ ttsFilterMode: radio.value }).catch(() => {});
+        filterReplRow.style.display = radio.value === 'replace' ? 'flex' : 'none';
+        renderTtsFilterRules(ttsS.ttsFilterRules);
+      });
+    });
+    filterReplInput.addEventListener('input', () => {
+      ttsS.ttsFilterReplacement = filterReplInput.value;
+      window.api.saveSettings({ ttsFilterReplacement: filterReplInput.value }).catch(() => {});
+    });
+
+    // Wire table input/delete events
+    wireTableEvents('tts-filter-body', 'ttsFilterRules');
+    wireTableEvents('tts-mapping-body', 'ttsVoiceMapping');
+    wireTableEvents('tts-conv-body', 'ttsConversionRules');
+    wireTableEvents('tts-emoji-body', 'ttsEmojiRules');
+    wireTableEvents('tts-emote-body', 'ttsEmoteRules');
+
+    // Start/Stop
+    document.getElementById('tts-start-btn').addEventListener('click', async () => {
+      const userId = ttsS.ttsUserId || '';
+      if (!userId) {
+        alert('配信ユーザーIDを設定してください。✏️ボタンから入力できます。');
+        return;
+      }
+      setTtsStatusUI({ status: 'connecting', message: `接続中: @${userId}` });
+      await window.api.startTts(userId);
+    });
+    document.getElementById('tts-pause-btn').addEventListener('click', () => {
+      ttsPaused = !ttsPaused;
+      const btn = document.getElementById('tts-pause-btn');
+      if (ttsPaused) {
+        btn.textContent = '▶ 再開';
+        btn.dataset.paused = '1';
+        overlaySock?.emit('tts:stop-current');
+      } else {
+        btn.textContent = '⏸ 一時停止';
+        btn.dataset.paused = '';
+        processQueue();
+      }
+    });
+    document.getElementById('tts-stop-btn').addEventListener('click', async () => {
+      await window.api.stopTts();
+    });
+  }
+
+  // ── IPC listeners ─────────────────────────────────────────────────────────
+  window.api.onTtsStatus((data) => {
+    setTtsStatusUI(data);
+    if (data.status === 'stopped' || data.status === 'error') {
+      audioQueue.length = 0;
+      isPlaying = false;
+      ttsPaused = false;
+      document.getElementById('tts-pause-btn').textContent = '⏸ 一時停止';
+    }
+  });
+
+  window.api.onTtsPaused((paused) => {
+    ttsPaused = paused;
+    const btn = document.getElementById('tts-pause-btn');
+    if (paused) {
+      btn.textContent = '▶ 再開';
+      btn.dataset.paused = '1';
+      overlaySock?.emit('tts:stop-current');
+    } else {
+      btn.textContent = '⏸ 一時停止';
+      btn.dataset.paused = '';
+      processQueue();
+    }
+  });
+
+  window.api.onTtsComment((data) => {
+    if (data.uniqueId) {
+      viewerCache.set(data.uniqueId, { nickname: data.nickname || '', profilePictureUrl: data.profilePictureUrl || '' });
+    }
+    const emojiRe = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
+    let emojiAdded = false;
+    for (const m of (data.comment || '').matchAll(emojiRe)) {
+      if (!seenEmojis.has(m[0])) { seenEmojis.add(m[0]); emojiAdded = true; }
+    }
+    let emoteAdded = false;
+    for (const e of (data.emotes || [])) {
+      if (e.emoteId && !seenEmotes.has(e.emoteId)) { seenEmotes.set(e.emoteId, e.emoteImageUrl || ''); emoteAdded = true; }
+    }
+    if (emojiAdded) refreshEmojiCandidates();
+    if (emoteAdded) refreshEmoteCandidates();
+    enqueue(data);
+  });
+
+  window.api.onTtsEmote((data) => {
+    let added = false;
+    for (const e of (data.emotes || [])) {
+      if (e.emoteId && !seenEmotes.has(e.emoteId)) { seenEmotes.set(e.emoteId, e.emoteImageUrl || ''); added = true; }
+    }
+    if (added) refreshEmoteCandidates();
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function initTts(s) {
+    applyTtsToUI(s);
+    const status = await window.api.getTtsStatus();
+    setTtsStatusUI(status);
+    wireControls();
+    await loadVoices();
+
+    if (s.autoStartTts && status.status !== 'connected' && status.status !== 'connecting') {
+      const userId = s.ttsUserId || '';
+      if (userId) {
+        setTtsStatusUI({ status: 'connecting', message: `接続中: @${userId}` });
+        await window.api.startTts(userId);
+      }
+    }
+  }
+
+  // Piggyback on existing init()
+  const _origInit = init;
+  window._ttsInit = initTts;
+}());
+
+// ── Auto update ───────────────────────────────────────────────────────────────
+if (window.api.onUpdateAvailable) {
+  window.api.onUpdateAvailable((info) => {
+    document.getElementById('update-banner-msg').textContent =
+      `v${info.version} が利用可能 — ダウンロード中...`;
+    document.getElementById('update-install-btn').style.display = 'none';
+    document.getElementById('update-banner').classList.add('visible');
+  });
+  window.api.onUpdateDownloaded((info) => {
+    document.getElementById('update-banner-msg').textContent =
+      `v${info.version} の準備完了 — 再起動してインストール`;
+    document.getElementById('update-install-btn').style.display = '';
+    document.getElementById('update-banner').classList.add('visible');
+  });
+  document.getElementById('update-install-btn').addEventListener('click', () => {
+    window.api.installUpdate();
+  });
+  document.getElementById('update-dismiss-btn').addEventListener('click', () => {
+    document.getElementById('update-banner').classList.remove('visible');
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,420 @@
+import { useEffect, useState } from 'react';
+import { Loader2, Pencil, X } from 'lucide-react';
+
+type User = {
+  id: string;
+  display_name: string;
+  tiktok_profile_id?: string | null;
+  plan: string;
+  isAdmin: boolean;
+  email?: string | null;
+  provider?: string;
+};
+
+type ProfileUpdateResponse = {
+  error?: string;
+  message?: string;
+  user?: User;
+};
+
+interface UserSettingsModalProps {
+  open: boolean;
+  user: User;
+  onClose: () => void;
+  onUserChange: (user: User) => void;
+}
+
+export default function UserSettingsModal({ open, user, onClose, onUserChange }: UserSettingsModalProps) {
+  const [displayNameInput, setDisplayNameInput] = useState(user.display_name);
+  const [displayNameEditing, setDisplayNameEditing] = useState(false);
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
+  const [displayNameMessage, setDisplayNameMessage] = useState<string | null>(null);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [tiktokProfileIdInput, setTiktokProfileIdInput] = useState(user.tiktok_profile_id ?? '');
+  const [tiktokProfileIdEditing, setTiktokProfileIdEditing] = useState(false);
+  const [tiktokProfileIdSaving, setTiktokProfileIdSaving] = useState(false);
+  const [tiktokProfileIdMessage, setTiktokProfileIdMessage] = useState<string | null>(null);
+  const [tiktokProfileIdError, setTiktokProfileIdError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayNameInput(user.display_name);
+  }, [user.display_name]);
+
+  useEffect(() => {
+    setTiktokProfileIdInput(user.tiktok_profile_id ?? '');
+  }, [user.tiktok_profile_id]);
+
+  useEffect(() => {
+    if (!open) {
+      setDisplayNameEditing(false);
+      setTiktokProfileIdEditing(false);
+      setDisplayNameError(null);
+      setDisplayNameMessage(null);
+      setDisplayNameInput(user.display_name);
+      setTiktokProfileIdError(null);
+      setTiktokProfileIdMessage(null);
+      setTiktokProfileIdInput(user.tiktok_profile_id ?? '');
+    }
+  }, [open, user.display_name, user.tiktok_profile_id]);
+
+  const handleDisplayNameSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (displayNameSaving) {
+      return;
+    }
+
+    const nextDisplayName = displayNameInput.trim();
+    if (!nextDisplayName) {
+      setDisplayNameError('ユーザー名を入力してください。');
+      setDisplayNameMessage(null);
+      return;
+    }
+
+    if (nextDisplayName === user.display_name) {
+      setDisplayNameError(null);
+      setDisplayNameMessage('現在のユーザー名と同じです。');
+      return;
+    }
+
+    setDisplayNameSaving(true);
+    setDisplayNameError(null);
+    setDisplayNameMessage(null);
+
+    try {
+      const endpoints = ['/api/auth/me', '/api/auth/display-name'];
+      let responseUser: User | null = null;
+      let lastErrorCode = 'FAILED_TO_UPDATE_DISPLAY_NAME';
+
+      for (const endpoint of endpoints) {
+        let res: Response;
+        try {
+          res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ displayName: nextDisplayName }),
+          });
+        } catch {
+          lastErrorCode = 'NETWORK_ERROR';
+          continue;
+        }
+
+        if (res.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+
+        let data: ProfileUpdateResponse | null = null;
+        try {
+          data = await res.json() as ProfileUpdateResponse;
+        } catch {
+          data = null;
+        }
+
+        if (res.ok && data?.user) {
+          responseUser = data.user;
+          break;
+        }
+
+        lastErrorCode = data?.message || data?.error || `HTTP_${res.status}`;
+
+        if (res.status !== 404 && res.status !== 405) {
+          break;
+        }
+      }
+
+      if (!responseUser) {
+        throw new Error(lastErrorCode);
+      }
+
+      onUserChange(responseUser);
+      setDisplayNameInput(responseUser.display_name);
+      setDisplayNameEditing(false);
+      setDisplayNameMessage('ユーザー名を更新しました。ランキング表示にも反映されます。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'FAILED_TO_UPDATE_DISPLAY_NAME';
+      if (message === 'DISPLAY_NAME_REQUIRED') {
+        setDisplayNameError('ユーザー名を入力してください。');
+      } else if (message === 'NETWORK_ERROR') {
+        setDisplayNameError('通信に失敗しました。時間をおいて再度お試しください。');
+      } else {
+        setDisplayNameError(`ユーザー名の更新に失敗しました。(${message})`);
+      }
+    } finally {
+      setDisplayNameSaving(false);
+    }
+  };
+
+  const handleTikTokProfileIdSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (tiktokProfileIdSaving) {
+      return;
+    }
+
+    const nextTikTokProfileId = tiktokProfileIdInput.trim().replace(/^@+/, '');
+    if (nextTikTokProfileId === (user.tiktok_profile_id ?? '')) {
+      setTiktokProfileIdError(null);
+      setTiktokProfileIdMessage('現在のTikTokプロフィールIDと同じです。');
+      return;
+    }
+
+    setTiktokProfileIdSaving(true);
+    setTiktokProfileIdError(null);
+    setTiktokProfileIdMessage(null);
+
+    try {
+      const res = await fetch('/api/auth/me', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tiktokProfileId: nextTikTokProfileId }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+
+      let data: ProfileUpdateResponse | null = null;
+      try {
+        data = await res.json() as ProfileUpdateResponse;
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok || !data?.user) {
+        throw new Error(data?.message || data?.error || `HTTP_${res.status}`);
+      }
+
+      onUserChange(data.user);
+      setTiktokProfileIdInput(data.user.tiktok_profile_id ?? '');
+      setTiktokProfileIdEditing(false);
+      setTiktokProfileIdMessage(nextTikTokProfileId
+        ? 'TikTokプロフィールIDを更新しました。ピックアップとランキングの投稿者名リンクに使われます。'
+        : 'TikTokプロフィールIDを解除しました。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'FAILED_TO_UPDATE_TIKTOK_PROFILE_ID';
+      if (message === 'TIKTOK_PROFILE_ID_INVALID') {
+        setTiktokProfileIdError('TikTokプロフィールIDは英数字・ピリオド・アンダースコアのみ使えます。');
+      } else if (message === 'TIKTOK_PROFILE_ID_TOO_LONG') {
+        setTiktokProfileIdError('TikTokプロフィールIDが長すぎます。');
+      } else {
+        setTiktokProfileIdError(`TikTokプロフィールIDの更新に失敗しました。(${message})`);
+      }
+    } finally {
+      setTiktokProfileIdSaving(false);
+    }
+  };
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-[1px] flex items-center justify-center px-4 py-6"
+        onClick={onClose}
+      >
+        <div
+          className="w-full max-w-xl rounded-2xl border border-white/15 bg-tiktok-dark p-5 shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dashboard-settings-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-tiktok-lightgray">Account Settings</p>
+              <h2 id="dashboard-settings-title" className="mt-1 text-xl font-black text-white">設定</h2>
+              <p className="mt-1 text-xs text-tiktok-lightgray">ユーザー名の変更はここで管理できます。</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-tiktok-gray/40"
+            >
+              閉じる
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <section className="rounded-xl border border-tiktok-gray bg-tiktok-black/70 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">ユーザー名</p>
+                  {displayNameEditing ? (
+                    <form onSubmit={handleDisplayNameSubmit} className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <input
+                        type="text"
+                        value={displayNameInput}
+                        onChange={(event) => {
+                          setDisplayNameInput(event.target.value);
+                          if (displayNameError) {
+                            setDisplayNameError(null);
+                          }
+                          if (displayNameMessage) {
+                            setDisplayNameMessage(null);
+                          }
+                        }}
+                        placeholder="ユーザー名を入力"
+                        maxLength={100}
+                        autoFocus
+                        className="w-full rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm text-white focus:border-tiktok-cyan focus:outline-none sm:min-w-[18rem]"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={displayNameSaving}
+                          className="inline-flex min-w-[110px] items-center justify-center rounded-md bg-tiktok-cyan px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#53f3ff] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {displayNameSaving ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              保存中...
+                            </span>
+                          ) : '保存'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (displayNameSaving) {
+                              return;
+                            }
+                            setDisplayNameEditing(false);
+                            setDisplayNameInput(user.display_name);
+                            setDisplayNameError(null);
+                            setDisplayNameMessage(null);
+                          }}
+                          disabled={displayNameSaving}
+                          className="inline-flex items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="ユーザー名編集をキャンセル"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="text-lg font-black text-white break-all">{user.display_name}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDisplayNameEditing(true);
+                          setDisplayNameInput(user.display_name);
+                          setDisplayNameError(null);
+                          setDisplayNameMessage(null);
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black text-tiktok-lightgray transition-colors hover:border-tiktok-cyan hover:text-white"
+                        aria-label="ユーザー名を編集"
+                        title="ユーザー名を編集"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-tiktok-lightgray">変更後の名前はランキングと管理画面の表示に使われます。</p>
+                </div>
+              </div>
+              {displayNameError ? (
+                <p className="mt-3 text-sm text-tiktok-red">{displayNameError}</p>
+              ) : null}
+              {displayNameMessage ? (
+                <p className={`mt-3 text-sm ${displayNameError ? 'text-tiktok-red' : 'text-tiktok-cyan'}`}>{displayNameMessage}</p>
+              ) : null}
+            </section>
+
+            <section className="rounded-xl border border-tiktok-gray bg-tiktok-black/70 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-tiktok-lightgray">TikTokプロフィールID</p>
+                  {tiktokProfileIdEditing ? (
+                    <form onSubmit={handleTikTokProfileIdSubmit} className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <input
+                        type="text"
+                        value={tiktokProfileIdInput}
+                        onChange={(event) => {
+                          setTiktokProfileIdInput(event.target.value);
+                          if (tiktokProfileIdError) {
+                            setTiktokProfileIdError(null);
+                          }
+                          if (tiktokProfileIdMessage) {
+                            setTiktokProfileIdMessage(null);
+                          }
+                        }}
+                        placeholder="@yourname"
+                        maxLength={65}
+                        autoFocus
+                        className="w-full rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm text-white focus:border-tiktok-cyan focus:outline-none sm:min-w-[18rem]"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={tiktokProfileIdSaving}
+                          className="inline-flex min-w-[110px] items-center justify-center rounded-md bg-tiktok-cyan px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#53f3ff] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {tiktokProfileIdSaving ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              保存中...
+                            </span>
+                          ) : '保存'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tiktokProfileIdSaving) {
+                              return;
+                            }
+                            setTiktokProfileIdEditing(false);
+                            setTiktokProfileIdInput(user.tiktok_profile_id ?? '');
+                            setTiktokProfileIdError(null);
+                            setTiktokProfileIdMessage(null);
+                          }}
+                          disabled={tiktokProfileIdSaving}
+                          className="inline-flex items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black px-3 py-2.5 text-sm font-bold text-white transition-colors hover:bg-tiktok-gray/40 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="TikTokプロフィールID編集をキャンセル"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="text-lg font-black text-white break-all">{user.tiktok_profile_id ? `@${user.tiktok_profile_id}` : '未設定'}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTiktokProfileIdEditing(true);
+                          setTiktokProfileIdInput(user.tiktok_profile_id ?? '');
+                          setTiktokProfileIdError(null);
+                          setTiktokProfileIdMessage(null);
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-tiktok-gray bg-tiktok-black text-tiktok-lightgray transition-colors hover:border-tiktok-cyan hover:text-white"
+                        aria-label="TikTokプロフィールIDを編集"
+                        title="TikTokプロフィールIDを編集"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-tiktok-lightgray">ここで設定したIDを使って、ピックアップやランキングの投稿者名からTikTokプロフィールへ移動できます。</p>
+                </div>
+              </div>
+              {tiktokProfileIdError ? (
+                <p className="mt-3 text-sm text-tiktok-red">{tiktokProfileIdError}</p>
+              ) : null}
+              {tiktokProfileIdMessage ? (
+                <p className={`mt-3 text-sm ${tiktokProfileIdError ? 'text-tiktok-red' : 'text-tiktok-cyan'}`}>{tiktokProfileIdMessage}</p>
+              ) : null}
+            </section>
+
+          </div>
+        </div>
+      </div>
+
+    </>
+  );
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+*.log
+.env
+
+# Wrangler のローカルエミュレータ state（R2/KV/Cache のキャッシュ実体。
+# 過去に誤コミットして 100MB 超の blob が履歴へ混入したため明示的に除外する）
+.wrangler/

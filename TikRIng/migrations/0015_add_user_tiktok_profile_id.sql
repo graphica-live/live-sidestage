@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN tiktok_profile_id TEXT;

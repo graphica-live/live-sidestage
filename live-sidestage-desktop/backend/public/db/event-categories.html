@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イベントカテゴリ</title>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/db/effects.css">
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <script src="/shared/utils.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <h1>イベントトリガー</h1>
+            <p class="subtext">カテゴリを作成し、カテゴリごとにイベントとトリガーを管理します。カテゴリ名を押すとそのカテゴリの設定画面に移動します。</p>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>カテゴリ</h2>
+                </div>
+                <button type="button" class="primary" id="add-category-button">カテゴリを新規追加</button>
+            </div>
+            <div class="record-list" id="category-list"></div>
+        </section>
+    </div>
+
+    <div class="modal-shell" id="category-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="category-modal-title" style="width:min(420px,100%);">
+            <div>
+                <h2 id="category-modal-title">カテゴリを新規追加</h2>
+            </div>
+            <div class="record-fields modal-fields-vertical">
+                <div class="field full">
+                    <label>カテゴリ名</label>
+                    <input type="text" id="category-modal-name" maxlength="60" placeholder="例: 誕生日配信">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" data-action="close-category-modal">キャンセル</button>
+                <button type="button" class="primary" id="category-modal-submit">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="confirm-dialog" aria-hidden="true">
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style="width:min(400px,100%);gap:16px;">
+            <h2 id="confirm-dialog-title" style="font-size:18px;margin:0;">確認</h2>
+            <p id="confirm-dialog-message" style="margin:0;font-size:14px;line-height:1.7;color:var(--muted);"></p>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" id="confirm-dialog-cancel">キャンセル</button>
+                <button type="button" class="danger" id="confirm-dialog-ok">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <template id="category-template">
+        <article class="record-card category-record-card">
+            <div class="record-head">
+                <div class="category-name-block">
+                    <button type="button" class="category-open-link" data-action="open-category" data-role="name"></button>
+                    <span class="category-meta" data-role="meta"></span>
+                </div>
+                <div class="icon-button-row">
+                    <label class="trigger-enabled-label" data-role="enabled-label" title="このカテゴリ内のトリガー全体をON/OFFします（各トリガー個別の有効/無効設定はそのまま保持されます）">
+                        <input type="checkbox" data-role="enabled" data-action="toggle-category-enabled">
+                        <span>有効</span>
+                    </label>
+                    <button type="button" class="icon-button danger" data-action="delete-category" title="削除" aria-label="削除">🗑</button>
+                    <button type="button" class="icon-button edit" data-action="edit-category" title="編集" aria-label="編集">🖊</button>
+                </div>
+            </div>
+            <button type="button" class="icon-button drag-handle" data-action="drag-handle" title="ドラッグして並び替え" aria-label="ドラッグして並び替え">☰</button>
+        </article>
+    </template>
+
+    <script src="/db/event-categories.js"></script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

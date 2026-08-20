@@ -1,0 +1,35 @@
+[
+  {
+    "fileBaseName": "Launch TikEffect",
+    "appStartPath": "/admin",
+    "desktopShortcutName": "TikEffect",
+    "programGroupShortcutName": "TikEffect\\TikEffect",
+    "runShortcutDescription": "TikEffect を起動",
+    "includeInInstaller": false,
+    "includeInDesktop": false,
+    "includeInProgramGroup": false,
+    "includeInRunSection": false
+  },
+  {
+    "fileBaseName": "Launch TikEffect Admin",
+    "appStartPath": "/admin",
+    "desktopShortcutName": "TikEffect Admin",
+    "programGroupShortcutName": "TikEffect\\管理画面",
+    "runShortcutDescription": "TikEffect Admin を起動",
+    "includeInInstaller": true,
+    "includeInDesktop": true,
+    "includeInProgramGroup": true,
+    "includeInRunSection": true
+  },
+  {
+    "fileBaseName": "Launch TikEffect Contributors Overlay",
+    "appStartPath": "/overlays/contributors",
+    "desktopShortcutName": "TikEffect Contributors Overlay",
+    "programGroupShortcutName": "TikEffect\\Contributors Overlay",
+    "runShortcutDescription": "TikEffect Contributors Overlay を起動",
+    "includeInInstaller": true,
+    "includeInDesktop": true,
+    "includeInProgramGroup": true,
+    "includeInRunSection": false
+  }
+]

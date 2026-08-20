@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikEffect Loader</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.45);
+            font-family: sans-serif;
+            font-size: 11px;
+        }
+        #status {
+            padding: 4px 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">接続待機中...</div>
+    <script>
+        const targetUrl = decodeURIComponent(location.hash.slice(1));
+        const PROBE_HTTP_URL  = 'http://127.0.0.1:38100/';
+        const PROBE_WS_URL    = 'ws://127.0.0.1:38100/socket.io/?EIO=4&transport=websocket';
+        const RETRY_MS        = 2000;
+
+        if (!targetUrl) {
+            document.getElementById('status').textContent = 'Error: ハッシュにターゲット URL が指定されていません。';
+        } else {
+            let inFlight = false;
+            let timer    = null;
+
+            // no-cors fetch: file:// → http://localhost は Private Network Access 的に同一空間なので通る
+            async function probeFetch() {
+                try {
+                    await fetch(PROBE_HTTP_URL, { mode: 'no-cors', cache: 'no-store' });
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+
+            // WebSocket probe: CORS 制約なし・socket.io が origin:'*' を許可しているため file:// から接続可
+            function probeWs() {
+                return new Promise((resolve) => {
+                    try {
+                        const ws = new WebSocket(PROBE_WS_URL);
+                        const timeout = setTimeout(() => {
+                            try { ws.close(); } catch {}
+                            resolve(false);
+                        }, 3000);
+                        ws.addEventListener('open', () => {
+                            clearTimeout(timeout);
+                            try { ws.close(); } catch {}
+                            resolve(true);
+                        });
+                        ws.addEventListener('error', () => {
+                            clearTimeout(timeout);
+                            resolve(false);
+                        });
+                    } catch {
+                        resolve(false);
+                    }
+                });
+            }
+
+            async function probe() {
+                if (inFlight) return;
+                inFlight = true;
+                try {
+                    // fetch を先に試し、ダメなら WebSocket にフォールバック
+                    let alive = await probeFetch();
+                    if (!alive) {
+                        alive = await probeWs();
+                    }
+                    if (alive) {
+                        clearInterval(timer);
+                        window.location.replace(targetUrl);
+                    }
+                } finally {
+                    inFlight = false;
+                }
+            }
+
+            // シーン再表示時にも即プローブ（OBS 非表示中は JS 停止するため）
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') probe();
+            });
+
+            timer = setInterval(probe, RETRY_MS);
+            probe();
+        }
+    </script>
+</body>
+</html>

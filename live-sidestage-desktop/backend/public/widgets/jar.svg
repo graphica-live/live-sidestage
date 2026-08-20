@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536" viewBox="0 0 1024 1536" version="1.1">
+  <title>Open container content range outline</title>
+  <desc>Open-top outline of the jar's internal content range. The upper rim segment is intentionally not drawn.</desc>
+  <path id="container-content-range-open" d="M 301 331 C 296 356, 294 378, 294 404 C 294 424, 280 435, 263 449 C 219 486, 194 590, 194 736 C 194 896, 228 1025, 309 1062 C 394 1101, 630 1101, 715 1062 C 796 1025, 830 896, 830 736 C 830 590, 805 486, 761 449 C 744 435, 730 424, 730 404 C 730 378, 728 356, 723 331" fill="none" stroke="#111111" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+</svg>

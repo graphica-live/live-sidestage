@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイマー</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", sans-serif;
+            --heading-color: #f1f5f9;
+            --digit-color: #fbbf24;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --shadow: rgba(15, 23, 42, 0.40);
+            --stroke-width: 6px;
+            --urgent-glow: rgba(239, 68, 68, 0.85);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: var(--widget-font-family, "M PLUS Rounded 1c", sans-serif);
+        }
+
+        .widget {
+            position: relative;
+            padding: 22px 36px;
+            width: max-content;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .heading {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--heading-color);
+            -webkit-text-stroke: var(--stroke-width, 6px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 14px var(--shadow);
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .heading:empty { display: none; }
+
+        .digits {
+            font-size: 76px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            color: var(--digit-color);
+            -webkit-text-stroke: var(--stroke-width, 6px) var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 6px 20px var(--shadow);
+            line-height: 1;
+            white-space: nowrap;
+            transition: transform 120ms ease;
+        }
+
+        .widget[data-urgent="1"] .digits {
+            animation: urgent-pulse 1s ease-in-out infinite;
+        }
+
+        .widget[data-ended="1"] .digits {
+            color: #f87171;
+        }
+
+        @keyframes urgent-pulse {
+            0%, 100% {
+                color: var(--digit-color);
+                text-shadow: 0 6px 20px var(--shadow);
+            }
+            50% {
+                color: #fecaca;
+                text-shadow: 0 0 34px var(--urgent-glow), 0 0 70px var(--urgent-glow);
+            }
+        }
+
+        .urgent-flash {
+            position: absolute;
+            inset: -24px;
+            border-radius: 24px;
+            background: radial-gradient(circle, var(--urgent-glow) 0%, rgba(239, 68, 68, 0) 72%);
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .widget[data-urgent="1"] .urgent-flash {
+            animation: urgent-flash-pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes urgent-flash-pulse {
+            0% { opacity: 0; }
+            15% { opacity: 0.55; }
+            100% { opacity: 0; }
+        }
+
+        .popup-layer {
+            position: absolute;
+            left: 50%;
+            bottom: 100%;
+            width: 0;
+            height: 0;
+            pointer-events: none;
+        }
+
+        .popup-chip {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: translate(-50%, 0);
+            font-size: 30px;
+            font-weight: 900;
+            white-space: nowrap;
+            -webkit-text-stroke: 4px var(--stroke);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 12px var(--shadow);
+            animation: popup-rise 1.6s ease-out forwards;
+        }
+
+        .popup-chip.positive { color: #4ade80; }
+        .popup-chip.negative { color: #f87171; }
+
+        .popup-chip.blocked::after {
+            content: '🛡️';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) rotate(-12deg);
+            font-size: 34px;
+            -webkit-text-stroke: 0;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        @keyframes popup-rise {
+            0% { opacity: 0; transform: translate(-50%, 10px) scale(0.7); }
+            15% { opacity: 1; transform: translate(-50%, -6px) scale(1.08); }
+            30% { transform: translate(-50%, -14px) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -70px) scale(1); }
+        }
+
+        canvas#confetti-canvas {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .max-banner {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 44px;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0;
+            transform: scaleY(0.4);
+            transform-origin: center;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            background: linear-gradient(90deg, #450a0a, #c2410c, #fbbf24, #ea580c, #7f1d1d, #c2410c, #fbbf24, #450a0a);
+            background-size: 300% 100%;
+            animation: flame-shift 4.8s linear infinite;
+            box-shadow: 0 0 30px 8px rgba(234, 88, 12, 0.75), inset 0 0 24px rgba(255, 200, 0, 0.4);
+            border-top: 2px solid rgba(255, 214, 10, 0.85);
+            border-bottom: 2px solid rgba(255, 214, 10, 0.85);
+            border-radius: 6px;
+        }
+
+        .max-banner::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                115deg,
+                rgba(255, 240, 200, 0) 0px,
+                rgba(255, 240, 200, 0) 10px,
+                rgba(255, 200, 80, 0.35) 10px,
+                rgba(255, 200, 80, 0.35) 14px
+            );
+            mix-blend-mode: screen;
+            animation: flame-flicker-bg 0.6s steps(6) infinite;
+        }
+
+        .max-banner[data-active="1"] {
+            opacity: 1;
+            transform: scaleY(1);
+        }
+
+        @keyframes flame-shift {
+            0% { background-position: 0% 50%; }
+            100% { background-position: -300% 50%; }
+        }
+
+        @keyframes flame-flicker-bg {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.9; }
+        }
+
+        .max-banner-track {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            width: max-content;
+            animation: banner-scroll 36s linear infinite;
+            will-change: transform;
+        }
+
+        @keyframes banner-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .max-banner-group {
+            display: flex;
+            flex-shrink: 0;
+            align-items: center;
+        }
+
+        .max-banner-text {
+            display: inline-block;
+            font-size: 24px;
+            font-weight: 900;
+            color: #fff7ed;
+            white-space: nowrap;
+            -webkit-text-stroke: 2px rgba(120, 24, 6, 0.95);
+            paint-order: stroke fill;
+            text-shadow: 0 0 14px rgba(255, 140, 0, 0.9), 0 0 30px rgba(255, 60, 0, 0.7);
+            padding: 0 24px;
+            animation: flame-text-flicker 0.18s ease-in-out infinite alternate;
+        }
+
+        @keyframes flame-text-flicker {
+            from { filter: brightness(1) saturate(1); }
+            to { filter: brightness(1.25) saturate(1.3); }
+        }
+    </style>
+</head>
+<body>
+    <div class="widget" id="widget" data-urgent="0" data-ended="0">
+        <div class="urgent-flash"></div>
+        <div class="heading" id="heading"></div>
+        <div class="digits" id="digits">00:00</div>
+        <div class="popup-layer" id="popupLayer"></div>
+        <div class="max-banner" id="maxBanner" data-active="0">
+            <div class="max-banner-track" id="maxBannerTrack"></div>
+        </div>
+    </div>
+    <canvas id="confetti-canvas"></canvas>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        if (previewMode) {
+            document.body.style.background = 'radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%)';
+            document.body.style.minHeight = '100vh';
+        }
+
+        const widgetEl = document.getElementById('widget');
+        const headingEl = document.getElementById('heading');
+        const digitsEl = document.getElementById('digits');
+        const popupLayerEl = document.getElementById('popupLayer');
+        const maxBannerEl = document.getElementById('maxBanner');
+        const maxBannerTrackEl = document.getElementById('maxBannerTrack');
+
+        const TIMER_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TIMER_TEXT_STYLES = {
+            'gold-night':      { headingColor: 'rgba(241,245,249,0.94)', digitColor: '#fbbf24', strokeColor: 'rgba(15,23,42,0.96)', textShadow: 'rgba(15,23,42,0.38)' },
+            'ice-night':       { headingColor: 'rgba(191,219,254,0.94)', digitColor: '#93c5fd', strokeColor: 'rgba(23,37,84,0.95)', textShadow: 'rgba(23,37,84,0.38)' },
+            'candy-pop':       { headingColor: 'rgba(251,207,232,0.94)', digitColor: '#f472b6', strokeColor: 'rgba(131,24,67,0.95)', textShadow: 'rgba(131,24,67,0.38)' },
+            'mint-lime':       { headingColor: 'rgba(209,250,229,0.94)', digitColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)', textShadow: 'rgba(6,78,59,0.38)' },
+            'sunset-party':    { headingColor: 'rgba(254,215,170,0.94)', digitColor: '#fb923c', strokeColor: 'rgba(120,53,15,0.96)', textShadow: 'rgba(120,53,15,0.38)' },
+            'violet-flash':    { headingColor: '#ede9fe', digitColor: '#c4b5fd', strokeColor: 'rgba(49,46,129,0.95)', textShadow: 'rgba(49,46,129,0.35)' },
+            'mono-impact':     { headingColor: '#ffffff', digitColor: '#ffffff', strokeColor: 'rgba(17,24,39,1)', textShadow: 'rgba(17,24,39,0.4)' },
+            'sakura-bloom':    { headingColor: '#fdf2f8', digitColor: '#f9a8d4', strokeColor: 'rgba(157,23,77,0.96)', textShadow: 'rgba(157,23,77,0.34)' },
+            'ocean-glow':      { headingColor: '#ecfeff', digitColor: '#67e8f9', strokeColor: 'rgba(22,78,99,0.96)', textShadow: 'rgba(8,47,73,0.34)' },
+            'emerald-city':    { headingColor: '#ecfdf5', digitColor: '#6ee7b7', strokeColor: 'rgba(6,78,59,0.96)', textShadow: 'rgba(6,78,59,0.34)' },
+            'ruby-flare':      { headingColor: '#fff1f2', digitColor: '#fb7185', strokeColor: 'rgba(63,13,18,0.96)', textShadow: 'rgba(127,29,29,0.34)' },
+            'lemon-pop':       { headingColor: '#fefce8', digitColor: '#fde047', strokeColor: 'rgba(30,58,138,0.96)', textShadow: 'rgba(30,58,138,0.34)' },
+            'midnight-aqua':   { headingColor: '#f0fdfa', digitColor: '#5eead4', strokeColor: 'rgba(15,23,42,0.98)', textShadow: 'rgba(15,23,42,0.38)' },
+            'peach-fizz':      { headingColor: '#fff7ed', digitColor: '#fdba74', strokeColor: 'rgba(127,29,29,0.94)', textShadow: 'rgba(127,29,29,0.34)' },
+            'festival-red':    { headingColor: '#fef2f2', digitColor: '#f87171', strokeColor: 'rgba(31,41,55,0.98)', textShadow: 'rgba(31,41,55,0.36)' },
+            'rose-gold':       { headingColor: '#fffaf7', digitColor: '#f8b4a6', strokeColor: 'rgba(91,52,46,0.98)', textShadow: 'rgba(91,52,46,0.38)' },
+            'cyber-teal':      { headingColor: '#f0fdff', digitColor: '#67e8f9', strokeColor: 'rgba(15,39,64,0.99)', textShadow: 'rgba(15,39,64,0.38)' },
+            'aurora-dream':    { headingColor: '#faf5ff', digitColor: '#e9d5ff', strokeColor: 'rgba(76,29,149,0.98)', textShadow: 'rgba(76,29,149,0.38)' },
+            'coral-soda':      { headingColor: '#fff1f2', digitColor: '#fb7185', strokeColor: 'rgba(127,29,29,0.98)', textShadow: 'rgba(127,29,29,0.38)' },
+            'platinum-pop':    { headingColor: '#ffffff', digitColor: '#e2e8f0', strokeColor: 'rgba(30,41,59,0.98)', textShadow: 'rgba(30,41,59,0.38)' },
+            'champagne-shine': { headingColor: '#fff8db', digitColor: '#d9a441', strokeColor: 'rgba(107,79,42,0.98)', textShadow: 'rgba(107,79,42,0.34)' },
+            'royal-velvet':    { headingColor: '#f5e9ff', digitColor: '#8b5cf6', strokeColor: 'rgba(49,46,129,0.98)', textShadow: 'rgba(49,46,129,0.34)' },
+            'emerald-luxe':    { headingColor: '#ecfdf5', digitColor: '#10b981', strokeColor: 'rgba(20,83,45,0.98)', textShadow: 'rgba(20,83,45,0.34)' },
+            'sunrise-opal':    { headingColor: '#fff7ed', digitColor: '#fb7185', strokeColor: 'rgba(154,52,18,0.98)', textShadow: 'rgba(154,52,18,0.34)' },
+            'prism-burst':     { headingColor: '#e0f2fe', digitColor: '#f472b6', strokeColor: 'rgba(67,56,202,0.98)', textShadow: 'rgba(67,56,202,0.34)' },
+            'tropical-punch':  { headingColor: '#fef3c7', digitColor: '#f97316', strokeColor: 'rgba(127,29,29,0.98)', textShadow: 'rgba(127,29,29,0.34)' },
+            'lagoon-shine':    { headingColor: '#ecfeff', digitColor: '#22d3ee', strokeColor: 'rgba(21,94,117,0.98)', textShadow: 'rgba(21,94,117,0.34)' },
+            'berry-mist':      { headingColor: '#fdf2f8', digitColor: '#fb7185', strokeColor: 'rgba(112,26,117,0.98)', textShadow: 'rgba(112,26,117,0.34)' },
+            'polar-neon':      { headingColor: '#ecfeff', digitColor: '#22d3ee', strokeColor: 'rgba(30,41,59,0.98)', textShadow: 'rgba(30,41,59,0.34)' },
+            'citrus-splash':   { headingColor: '#fefce8', digitColor: '#84cc16', strokeColor: 'rgba(22,101,52,0.98)', textShadow: 'rgba(22,101,52,0.34)' }
+        };
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(24, Number(appearance.strokeWidth) || 6));
+            const fontFamily = TIMER_FONT_FAMILIES[fontKey] || TIMER_FONT_FAMILIES.default;
+            const textStyle = TIMER_TEXT_STYLES[textStyleKey] || TIMER_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--heading-color', textStyle.headingColor);
+            root.setProperty('--digit-color', textStyle.digitColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--shadow', textStyle.textShadow);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+        }
+
+        function formatRemaining(ms) {
+            const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+        }
+
+        let settings = { headingText: '' };
+        let running = false;
+        let baseRemainingMs = 0;
+        let baseAtPerf = performance.now();
+        let hasEndedForThisRun = false;
+        let lastWholeSecond = null;
+
+        function applySettings(nextSettings) {
+            if (!nextSettings) return;
+            settings = nextSettings;
+            headingEl.textContent = settings.headingText || '';
+        }
+
+        function applyRuntime(runtime) {
+            if (!runtime) return;
+            running = Boolean(runtime.running);
+            baseRemainingMs = Math.max(0, Number(runtime.remainingMs) || 0);
+            baseAtPerf = performance.now();
+            hasEndedForThisRun = baseRemainingMs <= 0;
+            lastWholeSecond = null;
+        }
+
+        function applyPayload(payload) {
+            if (!payload) return;
+            if (payload.settings) applySettings(payload.settings);
+            if (payload.appearance) applyAppearance(payload.appearance);
+            if (payload.runtime) applyRuntime(payload.runtime);
+        }
+
+        function getCurrentRemainingMs() {
+            if (!running) return baseRemainingMs;
+            return Math.max(0, baseRemainingMs - (performance.now() - baseAtPerf));
+        }
+
+        function showAdjustPopup(minutesDelta, blocked) {
+            if (!minutesDelta) return;
+            const chip = document.createElement('div');
+            const isPositive = minutesDelta > 0;
+            chip.className = 'popup-chip ' + (isPositive ? 'positive' : 'negative') + (blocked ? ' blocked' : '');
+            chip.textContent = (isPositive ? '+' : '-') + Math.abs(minutesDelta) + '分';
+            chip.style.left = (Math.random() * 60 - 30) + 'px';
+            popupLayerEl.appendChild(chip);
+            setTimeout(() => chip.remove(), 1700);
+        }
+
+        // --- 延長上限到達バナー（帯が30秒間流れる。マーキーは同一内容を2組並べてtranslateX(-50%)でシームレスループ） ---
+        const MAX_BANNER_DURATION_MS = 30000;
+        const MAX_BANNER_ITEM_COUNT = 14;
+        const MAX_BANNER_TEXT = '🔥 タイマーMAX到達 🔥 金グローブ発動中 🔥';
+        function buildMaxBannerGroup() {
+            const group = document.createElement('div');
+            group.className = 'max-banner-group';
+            for (let i = 0; i < MAX_BANNER_ITEM_COUNT; i++) {
+                const span = document.createElement('span');
+                span.className = 'max-banner-text';
+                span.textContent = MAX_BANNER_TEXT;
+                group.appendChild(span);
+            }
+            return group;
+        }
+        maxBannerTrackEl.appendChild(buildMaxBannerGroup());
+        maxBannerTrackEl.appendChild(buildMaxBannerGroup());
+
+        let maxBannerTimeoutHandle = null;
+        function showMaxBanner() {
+            maxBannerEl.dataset.active = '1';
+            if (maxBannerTimeoutHandle) clearTimeout(maxBannerTimeoutHandle);
+            maxBannerTimeoutHandle = setTimeout(() => {
+                maxBannerEl.dataset.active = '0';
+                maxBannerTimeoutHandle = null;
+            }, MAX_BANNER_DURATION_MS);
+        }
+
+        // --- 紙吹雪エフェクト（外部ライブラリ不使用の手製実装） ---
+        const confettiCanvas = document.getElementById('confetti-canvas');
+        const confettiCtx = confettiCanvas.getContext('2d');
+        let confettiParticles = [];
+        let confettiRunning = false;
+        const CONFETTI_COLORS = ['#fbbf24', '#f472b6', '#60a5fa', '#4ade80', '#f87171', '#a78bfa'];
+
+        function resizeConfettiCanvas() {
+            confettiCanvas.width = window.innerWidth;
+            confettiCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeConfettiCanvas);
+        resizeConfettiCanvas();
+
+        function launchConfetti() {
+            const count = 160;
+            confettiParticles = Array.from({ length: count }, () => ({
+                x: Math.random() * confettiCanvas.width,
+                y: -20 - Math.random() * confettiCanvas.height * 0.4,
+                vx: (Math.random() - 0.5) * 4,
+                vy: 2 + Math.random() * 4,
+                size: 6 + Math.random() * 8,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.3,
+                color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+                life: 0,
+                maxLife: 240 + Math.random() * 80
+            }));
+            if (!confettiRunning) {
+                confettiRunning = true;
+                requestAnimationFrame(stepConfetti);
+            }
+        }
+
+        function stepConfetti() {
+            confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+            let alive = false;
+            for (const p of confettiParticles) {
+                p.life += 1;
+                if (p.life > p.maxLife) continue;
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.03;
+                p.rotation += p.rotationSpeed;
+                alive = true;
+                confettiCtx.save();
+                confettiCtx.translate(p.x, p.y);
+                confettiCtx.rotate(p.rotation);
+                confettiCtx.fillStyle = p.color;
+                confettiCtx.globalAlpha = Math.max(0, 1 - p.life / p.maxLife);
+                confettiCtx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+                confettiCtx.restore();
+            }
+            if (alive) {
+                requestAnimationFrame(stepConfetti);
+            } else {
+                confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+                confettiRunning = false;
+            }
+        }
+
+        // 終了サウンドはこのオーバーレイでは再生しない。サーバーが screen 1 (overlay1) の
+        // エフェクトオーバーレイへ effects:playback を直接送っているため、多重再生を避けるため。
+        function triggerEnd() {
+            launchConfetti();
+        }
+
+        function tick() {
+            const remainingMs = getCurrentRemainingMs();
+            digitsEl.textContent = formatRemaining(remainingMs);
+
+            const isUrgent = running && remainingMs > 0 && remainingMs <= 60000;
+            widgetEl.dataset.urgent = isUrgent ? '1' : '0';
+
+            const wholeSecond = Math.ceil(remainingMs / 1000);
+            if (isUrgent && wholeSecond !== lastWholeSecond) {
+                lastWholeSecond = wholeSecond;
+            }
+
+            if (remainingMs <= 0) {
+                widgetEl.dataset.ended = '1';
+                if (running && !hasEndedForThisRun) {
+                    hasEndedForThisRun = true;
+                    triggerEnd();
+                }
+            } else {
+                widgetEl.dataset.ended = '0';
+            }
+
+            requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+
+        socket.on('connect', () => {
+            fetch('/api/widgets/timer/config')
+                .then((r) => r.json())
+                .then(applyPayload)
+                .catch(() => {});
+        });
+
+        socket.on('widgets:timer:updated', applyPayload);
+        socket.on('widgets:timer:adjusted', (data) => {
+            showAdjustPopup(Number(data?.minutesDelta) || 0, Boolean(data?.blocked));
+            if (data?.capped) showMaxBanner();
+        });
+    </script>
+</body>
+</html>

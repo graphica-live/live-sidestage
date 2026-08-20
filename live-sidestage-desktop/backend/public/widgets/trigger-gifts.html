@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トリガーギフト一覧</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&family=Noto+Sans+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Kosugi&family=Zen+Old+Mincho:wght@400;700;900&family=Klee+One:wght@400;600&family=Zen+Maru+Gothic:wght@400;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=DotGothic16&family=Hachi+Maru+Pop&family=RocknRoll+One&family=Yusei+Magic&family=Kaisei+Decol:wght@400;500;700&family=Mochiy+Pop+One&family=Rampart+One&family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Antique&family=Yuji+Mai&family=Sawarabi+Mincho&family=Potta+One&family=Murecho:wght@100;300;400;700&family=Stick&display=swap');
+
+        :root {
+            --widget-font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+            --name-color: #f8fafc;
+            --stroke: rgba(15, 23, 42, 0.96);
+            --stroke-width: 3px;
+            --name-font-size: 20px;
+            --card-min-width: 500px;
+            --card-min-height: 333px;
+            --gift-image-size: 132px;
+            --cols: 3;
+            --rows: 2;
+            --card-bg-rgb: 36 40 48;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            background: transparent;
+            font-family: var(--widget-font-family);
+        }
+
+        body {
+            padding: 24px;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            position: relative;
+            overflow: hidden;
+            width: calc(var(--cols) * var(--card-min-width) + (var(--cols) - 1) * 18px);
+            height: calc(var(--rows) * var(--card-min-height) + (var(--rows) - 1) * 18px);
+        }
+
+        .strip {
+            position: absolute;
+            top: 0;
+            left: 0;
+            gap: 18px;
+        }
+
+        .strip.page {
+            display: grid;
+            grid-template-columns: repeat(var(--cols), var(--card-min-width));
+            grid-template-rows: repeat(var(--rows), var(--card-min-height));
+        }
+
+        .strip.axis-x {
+            display: grid;
+            grid-auto-flow: column;
+            grid-template-rows: repeat(var(--rows), var(--card-min-height));
+            grid-auto-columns: var(--card-min-width);
+            width: max-content;
+        }
+
+        .strip.axis-y {
+            display: grid;
+            grid-auto-flow: row;
+            grid-template-columns: repeat(var(--cols), var(--card-min-width));
+            grid-auto-rows: var(--card-min-height);
+            height: max-content;
+        }
+
+        @keyframes triggerGiftsMarqueeX {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+        }
+
+        @keyframes triggerGiftsMarqueeY {
+            from { transform: translateY(0); }
+            to   { transform: translateY(-50%); }
+        }
+
+        .card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            width: var(--card-min-width);
+            height: var(--card-min-height);
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            padding: 16px 12px;
+            border-radius: 20px;
+            background: linear-gradient(180deg, rgba(var(--card-bg-rgb) / var(--card-bg-opacity, 0.46)) 0%, rgba(var(--card-bg-rgb) / calc(var(--card-bg-opacity, 0.46) * 1.13)) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.30);
+            animation: cardIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .gift-image-wrap {
+            width: var(--gift-image-size);
+            height: var(--gift-image-size);
+            max-width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gift-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        @keyframes triggerGiftsHeartbeat {
+            0%, 100% { transform: scale(1); }
+            15% { transform: scale(1.18); }
+            30% { transform: scale(1); }
+            45% { transform: scale(1.12); }
+            60% { transform: scale(1); }
+        }
+
+        .gift-image-wrap.highlight {
+            transform-origin: center;
+            animation: triggerGiftsHeartbeat 1.6s ease-in-out infinite;
+        }
+
+        .gift-image-placeholder {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        .trigger-name {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 35%;
+            z-index: 2;
+            min-width: 0;
+            display: flex;
+            align-items: flex-end;
+            justify-content: safe center;
+            padding: 0 12px 16px;
+            background: linear-gradient(to top, rgba(15, 23, 42, 0.78) 0%, rgba(15, 23, 42, 0) 100%);
+            font-family: var(--widget-font-family);
+            overflow: hidden;
+        }
+
+        .trigger-name-track {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 56px;
+            min-width: 0;
+        }
+
+        .trigger-name-track.marquee {
+            animation: triggerNameMarquee var(--name-marquee-duration, 8s) linear infinite;
+        }
+
+        .trigger-name-badge {
+            display: inline-block;
+            flex: 0 0 auto;
+            text-align: center;
+            font-size: var(--name-font-size);
+            font-weight: 800;
+            line-height: 1.3;
+            color: var(--name-color);
+            -webkit-text-stroke: var(--stroke-width) var(--stroke);
+            paint-order: stroke fill;
+            white-space: nowrap;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+
+        .trigger-name-badge-dup {
+            display: none;
+        }
+
+        .trigger-name-track.marquee .trigger-name-badge-dup {
+            display: inline-block;
+        }
+
+        @keyframes triggerNameMarquee {
+            from { transform: translateX(0); }
+            to   { transform: translateX(var(--name-marquee-distance, 0px)); }
+        }
+
+        .empty {
+            font-size: 16px;
+            color: rgba(241, 245, 249, 0.55);
+        }
+
+        .coin-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            gap: 0.3em;
+            padding: 0.25em 0.65em;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.55);
+            font-size: var(--coin-count-size, 14px);
+        }
+
+        .coin-icon {
+            flex: 0 0 auto;
+            width: 1.15em;
+            height: 1.15em;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='coin' cx='35%25' cy='30%25' r='70%25'%3E%3Cstop offset='0%25' stop-color='%23fff7b3'/%3E%3Cstop offset='55%25' stop-color='%23f5c542'/%3E%3Cstop offset='100%25' stop-color='%23d48a14'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23coin)'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23fff4a3' stroke-width='4'/%3E%3Cpath d='M32 18l6 10 10 4-10 4-6 10-6-10-10-4 10-4z' fill='%23fff8d6' opacity='.95'/%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .coin-count {
+            font-size: 1em;
+            font-weight: 800;
+            line-height: 1;
+            color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.35)) var(--stroke);
+            paint-order: stroke fill;
+        }
+
+        .total-coin-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.05em;
+            padding: 0.25em 0.6em;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.55);
+            font-size: var(--coin-count-size, 14px);
+            line-height: 1.15;
+        }
+
+        .total-coin-label {
+            font-size: 0.68em;
+            font-weight: 700;
+            color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.3)) var(--stroke);
+            paint-order: stroke fill;
+        }
+
+        .total-coin-count {
+            font-size: 1em;
+            font-weight: 800;
+            color: #fff8d6;
+            -webkit-text-stroke: max(1px, calc(var(--stroke-width) * 0.35)) var(--stroke);
+            paint-order: stroke fill;
+        }
+
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage">
+        <div class="strip" id="strip"></div>
+    </div>
+
+    <script>
+        const TRIGGER_GIFTS_FONT_FAMILIES = {
+            default:          '"M PLUS Rounded 1c", sans-serif',
+            gothic:           '"Noto Sans JP", sans-serif',
+            'ui-gothic':      '"Zen Kaku Gothic New", sans-serif',
+            mincho:           '"Noto Serif JP", serif',
+            'ud-gothic':      '"Kosugi", sans-serif',
+            'ud-mincho':      '"Zen Old Mincho", serif',
+            meiryo:           '"Klee One", cursive',
+            rounded:          '"Zen Maru Gothic", sans-serif',
+            kyokasho:         '"Klee One", cursive',
+            gyosho:           '"Yuji Syuku", cursive',
+            togarie:          '"Dela Gothic One", sans-serif',
+            'ln-pop':         '"Mochiy Pop One", sans-serif',
+            'comic-impact':   '"Rampart One", sans-serif',
+            'pop-idol':       '"Hachi Maru Pop", cursive',
+            entame:           '"RocknRoll One", sans-serif',
+            marker:           '"Yusei Magic", cursive',
+            'retro-bold':     '"Kaisei Decol", serif',
+            'luxury-mincho':  '"Shippori Mincho B1", serif',
+            'antique-modern': '"Zen Antique", serif',
+            'atelier-brush':  '"Yuji Mai", cursive',
+            'pixel-code':     '"DotGothic16", "Noto Sans JP", sans-serif',
+            'sawarabi-mincho':'"Sawarabi Mincho", serif',
+            'potta-one':      '"Potta One", sans-serif',
+            'murecho-thin':   '"Murecho", sans-serif',
+            stick:            '"Stick", sans-serif'
+        };
+        const TRIGGER_GIFTS_TEXT_STYLES = {
+            'gold-night':      { nameColor: '#fbbf24', strokeColor: '#0f172a' },
+            'ice-night':       { nameColor: '#dbeafe', strokeColor: '#172554' },
+            'candy-pop':       { nameColor: '#f9a8d4', strokeColor: '#831843' },
+            'mint-lime':       { nameColor: '#d9f99d', strokeColor: '#14532d' },
+            'sunset-party':    { nameColor: '#fdba74', strokeColor: '#7c2d12' },
+            'violet-flash':    { nameColor: '#c4b5fd', strokeColor: '#312e81' },
+            'mono-impact':     { nameColor: '#ffffff', strokeColor: '#111827' },
+            'sakura-bloom':    { nameColor: '#fbcfe8', strokeColor: '#9d174d' },
+            'ocean-glow':      { nameColor: '#67e8f9', strokeColor: '#164e63' },
+            'emerald-city':    { nameColor: '#6ee7b7', strokeColor: '#064e3b' },
+            'ruby-flare':      { nameColor: '#fb7185', strokeColor: '#3f0d12' },
+            'lemon-pop':       { nameColor: '#fde047', strokeColor: '#1e3a8a' },
+            'midnight-aqua':   { nameColor: '#99f6e4', strokeColor: '#0f172a' },
+            'peach-fizz':      { nameColor: '#fdba74', strokeColor: '#7f1d1d' },
+            'festival-red':    { nameColor: '#fca5a5', strokeColor: '#1f2937' },
+            'rose-gold':       { nameColor: '#f8b4a6', strokeColor: '#5b342e' },
+            'cyber-teal':      { nameColor: '#67e8f9', strokeColor: '#0f2740' },
+            'aurora-dream':    { nameColor: '#e9d5ff', strokeColor: '#4c1d95' },
+            'coral-soda':      { nameColor: '#fb7185', strokeColor: '#7f1d1d' },
+            'platinum-pop':    { nameColor: '#e2e8f0', strokeColor: '#334155' },
+            'champagne-shine': { nameColor: '#f8e7b5', strokeColor: '#6b4f2a' },
+            'royal-velvet':    { nameColor: '#d8b4fe', strokeColor: '#312e81' },
+            'emerald-luxe':    { nameColor: '#a7f3d0', strokeColor: '#14532d' },
+            'sunrise-opal':    { nameColor: '#fdba74', strokeColor: '#9a3412' },
+            'prism-burst':     { nameColor: '#7dd3fc', strokeColor: '#4338ca' },
+            'tropical-punch':  { nameColor: '#fb7185', strokeColor: '#7f1d1d' },
+            'lagoon-shine':    { nameColor: '#2dd4bf', strokeColor: '#155e75' },
+            'berry-mist':      { nameColor: '#f472b6', strokeColor: '#701a75' },
+            'polar-neon':      { nameColor: '#67e8f9', strokeColor: '#1e293b' },
+            'citrus-splash':   { nameColor: '#a3e635', strokeColor: '#166534' }
+        };
+
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const categoryId = searchParams.get('category') || '';
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        const stripEl = document.getElementById('strip');
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        let currentAppearance = null;
+        let lastRenderSignature = null;
+
+        function clampInt(value, min, max, fallback) {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isInteger(parsed)) return fallback;
+            return Math.max(min, Math.min(max, parsed));
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        const TRIGGER_GIFTS_BG_COLORS = {
+            black:  '15 23 42',
+            white:  '248 250 252',
+            blue:   '37 99 235',
+            green:  '22 163 74',
+            yellow: '234 179 8',
+            purple: '147 51 234',
+            red:    '220 38 38'
+        };
+
+        function buildCardInnerHtml(item, showCoinCount) {
+            const imageHtml = item.giftImageUrl
+                ? `<img class="gift-image" src="${escapeAttr(item.giftImageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'gift-image-placeholder'}))">`
+                : `<div class="gift-image-placeholder"></div>`;
+            const diamondCount = Number(item.diamondCount) || 0;
+            const coinHtml = (showCoinCount && diamondCount > 0)
+                ? `<div class="coin-badge"><span class="coin-icon"></span><span class="coin-count">${diamondCount.toLocaleString()}</span></div>`
+                : '';
+            const dailyCoinTotal = Number(item.dailyCoinTotal) || 0;
+            const totalCoinHtml = dailyCoinTotal > 0
+                ? `<div class="total-coin-badge"><span class="total-coin-label">累計</span><span class="total-coin-count">${dailyCoinTotal.toLocaleString()}</span></div>`
+                : '';
+
+            const highlightClass = item.listOverlayHighlight ? ' highlight' : '';
+            const nameHtml = escapeHtml(item.triggerName);
+
+            return coinHtml +
+                totalCoinHtml +
+                `<div class="gift-image-wrap${highlightClass}">${imageHtml}</div>` +
+                `<div class="trigger-name"><div class="trigger-name-track">` +
+                `<span class="trigger-name-badge">${nameHtml}</span>` +
+                `<span class="trigger-name-badge trigger-name-badge-dup" aria-hidden="true">${nameHtml}</span>` +
+                `</div></div>`;
+        }
+
+        function getCardBgRgb(item) {
+            return TRIGGER_GIFTS_BG_COLORS[String(item.listOverlayBgColor || '').trim().toLowerCase()] || '';
+        }
+
+        function buildCardHtml(item, showCoinCount) {
+            const bgRgb = getCardBgRgb(item);
+            const styleAttr = bgRgb ? ` style="--card-bg-rgb: ${bgRgb};"` : '';
+
+            return `<div class="card" data-trigger-id="${escapeAttr(item.id)}"${styleAttr}>` +
+                buildCardInnerHtml(item, showCoinCount) +
+                `</div>`;
+        }
+
+        // ギフト受信のたびに再描画すると、その都度スライドアニメーションを
+        // 作り直すことになりスクロール位置が先頭へ戻ってしまう。トリガー構成
+        // (件数・並び・表示件数・スライド設定)が前回と同じ場合は要素を作り直さず、
+        // 各カードの中身(累計コインなど)だけを差し替えてアニメーションを継続させる。
+        function computeRenderSignature(items, appearance, capacity, slideActive, axisX, reverse, speed) {
+            return JSON.stringify({
+                ids: items.map((item) => item.id),
+                capacity,
+                slideActive,
+                axisX,
+                reverse,
+                speed
+            });
+        }
+
+        // 表示名がカード幅に収まらない場合、名前を複製して(.trigger-name-track の
+        // gapぶん間隔をあけ)0 → -(1件分の幅+gap) へ linear infinite でスライドさせ、
+        // 継ぎ目のない一方向の無限ループ表示にする(視聴者は配信オーバーレイを
+        // 手動スクロールできないため)。
+        const TRIGGER_NAME_MARQUEE_GAP = 56; // .trigger-name-track の gap と合わせる
+        const TRIGGER_NAME_MARQUEE_SPEED = 60; // px/秒
+
+        function applyNameMarquee(cardEl) {
+            const wrap = cardEl.querySelector('.trigger-name');
+            const track = cardEl.querySelector('.trigger-name-track');
+            const primary = cardEl.querySelector('.trigger-name-badge:not(.trigger-name-badge-dup)');
+            if (!wrap || !track || !primary) return;
+            track.classList.remove('marquee');
+            track.style.removeProperty('--name-marquee-distance');
+            track.style.removeProperty('--name-marquee-duration');
+            const overflow = primary.scrollWidth - wrap.clientWidth;
+            if (overflow > 2) {
+                const distance = primary.offsetWidth + TRIGGER_NAME_MARQUEE_GAP;
+                track.style.setProperty('--name-marquee-distance', `-${distance}px`);
+                track.style.setProperty('--name-marquee-duration', `${Math.max(3, distance / TRIGGER_NAME_MARQUEE_SPEED)}s`);
+                track.classList.add('marquee');
+            }
+        }
+
+        function applyNameMarqueeAll(root) {
+            root.querySelectorAll('.card').forEach(applyNameMarquee);
+        }
+
+        function updateCardContents(items, appearance) {
+            const cardsById = new Map();
+            stripEl.querySelectorAll('.card[data-trigger-id]').forEach((cardEl) => {
+                const id = cardEl.dataset.triggerId;
+                if (!cardsById.has(id)) {
+                    cardsById.set(id, []);
+                }
+                cardsById.get(id).push(cardEl);
+            });
+
+            items.forEach((item) => {
+                const innerHtml = buildCardInnerHtml(item, appearance.showCoinCount);
+                const bgRgb = getCardBgRgb(item);
+                (cardsById.get(String(item.id)) || []).forEach((cardEl) => {
+                    cardEl.innerHTML = innerHtml;
+                    if (bgRgb) {
+                        cardEl.style.setProperty('--card-bg-rgb', bgRgb);
+                    } else {
+                        cardEl.style.removeProperty('--card-bg-rgb');
+                    }
+                    applyNameMarquee(cardEl);
+                });
+            });
+        }
+
+        // 定速無限マーキー: 全アイテムを2連結して描画し、その半分の実測サイズを
+        // 1周の距離としてtransform: translate(0 → -50%)をlinear infiniteで流す。
+        // 半分地点で描画1周目とちょうど同じ見た目に戻るため継ぎ目が見えない。
+        function renderStage(items, appearance) {
+            const cols = clampInt(appearance.columns, 1, 20, 3);
+            const rows = clampInt(appearance.rows, 1, 20, 2);
+            const capacity = cols * rows;
+
+            if (!items.length) {
+                lastRenderSignature = null;
+                stripEl.className = 'strip';
+                stripEl.style.animation = 'none';
+                stripEl.innerHTML = previewMode ? '<div class="empty">有効なトリガーがありません</div>' : '';
+                return;
+            }
+
+            const overflowing = items.length > capacity;
+            const axisX = appearance.slideDirection === 'left' || appearance.slideDirection === 'right';
+            const reverse = appearance.slideDirection === 'right' || appearance.slideDirection === 'down';
+            const slideActive = Boolean(appearance.slideEnabled) && overflowing;
+            const speed = Math.max(5, Number(appearance.slideSpeed) || 60); // px/秒
+
+            const signature = computeRenderSignature(items, appearance, capacity, slideActive, axisX, reverse, speed);
+            if (signature === lastRenderSignature) {
+                // 構成に変化なし: カードの中身だけ更新してアニメーションはそのまま継続する
+                updateCardContents(items, appearance);
+                return;
+            }
+            lastRenderSignature = signature;
+
+            if (!slideActive) {
+                // スライドOFF、またはあふれていない場合: 先頭capacity件のみ静的表示
+                stripEl.className = 'strip page';
+                stripEl.style.animation = 'none';
+                stripEl.innerHTML = items.slice(0, capacity).map((item) => buildCardHtml(item, appearance.showCoinCount)).join('');
+                applyNameMarqueeAll(stripEl);
+                return;
+            }
+
+            const copyHtml = items.map((item) => buildCardHtml(item, appearance.showCoinCount)).join('');
+            stripEl.className = 'strip ' + (axisX ? 'axis-x' : 'axis-y');
+            stripEl.style.animation = 'none';
+            stripEl.innerHTML = copyHtml + copyHtml;
+
+            // 複製後の全長を実測してからアニメーションを開始する(強制リフロー)
+            void stripEl.offsetWidth;
+            applyNameMarqueeAll(stripEl);
+            const fullLength = axisX ? stripEl.scrollWidth : stripEl.scrollHeight;
+            const halfLength = fullLength / 2;
+            const duration = Math.max(2, halfLength / speed);
+            const keyframeName = axisX ? 'triggerGiftsMarqueeX' : 'triggerGiftsMarqueeY';
+            stripEl.style.animation = `${keyframeName} ${duration}s linear infinite${reverse ? ' reverse' : ''}`;
+        }
+
+        function applyAppearance(appearance) {
+            if (!appearance) return;
+            currentAppearance = appearance;
+
+            const fontKey = String(appearance.fontKey || 'default').trim().toLowerCase();
+            const textStyleKey = String(appearance.textStyleKey || 'gold-night').trim().toLowerCase();
+            const strokeWidth = Math.max(0, Math.min(48, Number(appearance.strokeWidth) || 4));
+            const fontSize = Math.max(12, Math.min(96, Number(appearance.fontSize) || 20));
+            const rawBackgroundOpacity = Number(appearance.backgroundOpacity);
+            const backgroundOpacity = Math.max(0, Math.min(100, Number.isFinite(rawBackgroundOpacity) ? rawBackgroundOpacity : 46)) / 100;
+            const rawGiftImageSize = Number(appearance.giftImageSize);
+            const giftImageSize = Math.max(48, Math.min(500, Number.isFinite(rawGiftImageSize) ? rawGiftImageSize : 132));
+            const cols = Math.max(1, Number.parseInt(appearance.columns, 10) || 1);
+            const rows = Math.max(1, Number.parseInt(appearance.rows, 10) || 1);
+            const rawCoinCountSize = Number(appearance.coinCountSize);
+            const coinCountSize = Math.max(10, Math.min(64, Number.isFinite(rawCoinCountSize) ? rawCoinCountSize : 14));
+            const fontFamily = TRIGGER_GIFTS_FONT_FAMILIES[fontKey] || TRIGGER_GIFTS_FONT_FAMILIES.default;
+            const textStyle = TRIGGER_GIFTS_TEXT_STYLES[textStyleKey] || TRIGGER_GIFTS_TEXT_STYLES['gold-night'];
+            const root = document.documentElement.style;
+            root.setProperty('--widget-font-family', fontFamily);
+            root.setProperty('--name-color', textStyle.nameColor);
+            root.setProperty('--stroke', textStyle.strokeColor);
+            root.setProperty('--stroke-width', strokeWidth + 'px');
+            root.setProperty('--name-font-size', fontSize + 'px');
+            root.setProperty('--card-bg-opacity', String(backgroundOpacity));
+            root.setProperty('--gift-image-size', giftImageSize + 'px');
+            root.setProperty('--cols', String(cols));
+            root.setProperty('--rows', String(rows));
+            root.setProperty('--coin-count-size', coinCountSize + 'px');
+        }
+
+        function loadSnapshot() {
+            if (!categoryId) {
+                renderStage([], currentAppearance || { columns: 3, rows: 2, slideEnabled: false, slideSpeed: 60, slideDirection: 'left' });
+                return;
+            }
+
+            fetch(`/api/effects/trigger-gifts?category=${encodeURIComponent(categoryId)}`)
+                .then((r) => r.json())
+                .then((payload) => {
+                    applyAppearance(payload.appearance);
+                    renderStage(payload.items || [], currentAppearance);
+                })
+                .catch(() => {});
+        }
+
+        socket.on('connect', loadSnapshot);
+        socket.on('effects:trigger-gifts:updated', loadSnapshot);
+
+        loadSnapshot();
+    </script>
+</body>
+</html>

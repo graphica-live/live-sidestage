@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Edit(c:/dev/TikCaption/*.js)",
+            "prompt": "A source file in c:/dev/TikCaption was just edited. Hook input: $ARGUMENTS\n\nExtract the file_path from tool_input. If the file is a test file (path contains 'test'), do nothing and exit.\n\nOtherwise:\n1. Read the edited source file\n2. Read c:/dev/TikCaption/tests/server.test.js\n3. Find any newly exported functions, classes, or methods that have NO corresponding test coverage in the test file\n4. If found, append minimal unit tests to tests/server.test.js — one describe block per new export, testing the happy path and one edge case\n5. If nothing new to test, do nothing\n\nNever modify or delete existing tests. Only append.",
+            "timeout": 60,
+            "statusMessage": "Checking for new tests..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(c:/dev/TikCaption/public/app.html)",
+            "command": "Set-Location c:/dev/TikCaption; $r = npx jest tests/app-html.test.js --forceExit 2>&1 | Out-String; if ($LASTEXITCODE -ne 0) { @{hookSpecificOutput=@{hookEventName='PostToolUse';additionalContext=\"app-html tests FAILED. Fix before committing:`n$r\"}} | ConvertTo-Json -Compress | Write-Host }",
+            "shell": "powershell",
+            "timeout": 30,
+            "statusMessage": "Running HTML structure tests..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(c:/dev/TikCaption/public/app.html)",
+            "prompt": "public/app.html was just edited. Hook input: $ARGUMENTS\n\nRead c:/dev/TikCaption/public/app.html and c:/dev/TikCaption/tests/app-html.test.js.\n\nCheck the 'requiredBeforeScript' array in the test file. If app.html now contains element IDs that:\n- Are referenced by getElementById in the inline <script> block, AND\n- Are NOT already in the requiredBeforeScript array\n\nThen append those IDs to the requiredBeforeScript array in the test file.\n\nAlso check the modalPairs array: if app.html has new button/modal pairs (button id + modal id used in showModal()) that are missing from modalPairs, add them.\n\nNever remove existing entries. Only add missing ones.",
+            "timeout": 60,
+            "statusMessage": "Updating HTML tests..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd c:/dev/TikCaption; npm test; if ($LASTEXITCODE -eq 0) { $out = git status --porcelain; if ($out) { git add -A; git commit -m 'chore: auto-save'; git push } }",
+            "shell": "powershell",
+            "timeout": 120,
+            "statusMessage": "Testing → commit → push..."
+          }
+        ]
+      }
+    ]
+  }
+}

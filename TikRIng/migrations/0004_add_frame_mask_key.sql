@@ -1,0 +1,1 @@
+ALTER TABLE frames ADD COLUMN opening_mask_key TEXT;

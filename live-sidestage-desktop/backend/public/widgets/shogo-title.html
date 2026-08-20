@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>称号</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", "Yu Gothic UI", sans-serif;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        /* 1つ目の称号が常に同じ位置から始まるよう、上端を固定したアンカー。
+           称号カードはこの中で top を個別に計算して上から下へ積み上げる。 */
+        .shogo-slot {
+            position: absolute;
+            right: 32px;
+            top: 80px;
+        }
+
+        .shogo-card {
+            --shogo-scale: 1;
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: calc(12px * var(--shogo-scale));
+            padding: calc(14px * var(--shogo-scale)) calc(26px * var(--shogo-scale)) calc(14px * var(--shogo-scale)) calc(18px * var(--shogo-scale));
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.88) 100%);
+            border: 2px solid rgba(251, 191, 36, 0.65);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            white-space: nowrap;
+        }
+
+        .shogo-card.is-large {
+            --shogo-scale: 1.2;
+        }
+
+        .shogo-badge {
+            flex: 0 0 auto;
+            width: calc(64px * var(--shogo-scale));
+            height: calc(64px * var(--shogo-scale));
+            object-fit: contain;
+            filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+        }
+
+        .shogo-title-text {
+            font-size: calc(28px * var(--shogo-scale));
+            font-weight: 900;
+            color: #fff8e1;
+            -webkit-text-stroke: 3px rgba(15, 23, 42, 0.95);
+            paint-order: stroke fill;
+            text-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            letter-spacing: 0.02em;
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage">
+        <div class="shogo-slot" id="shogo-slot"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        const slotEl = document.getElementById('shogo-slot');
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        const SLIDE_MS = 650;
+        const STAGGER_MS = 220;
+        const CARD_GAP = 10;
+        const DEFAULT_HOLD_SECONDS = 6;
+
+        let displayQueue = Promise.resolve();
+
+        function buildShogoCard(entry) {
+            const title = escapeHtml(String(entry?.title || '').slice(0, 40));
+            const badgeImage = String(entry?.badgeImage || '');
+            const badgeHtml = badgeImage ? `<img class="shogo-badge" src="${escapeHtml(badgeImage)}" alt="">` : '';
+
+            const card = document.createElement('div');
+            card.className = 'shogo-card' + (entry?.size === 'large' ? ' is-large' : '');
+            card.innerHTML = `${badgeHtml}<div class="shogo-title-text">${title}</div>`;
+            return { card, hasTitle: Boolean(title) };
+        }
+
+        // 1人分の称号（複数）を、登録順に上から下へスタックしてまとめて表示する。
+        // 1つ目の称号は登録数によらず常に同じ位置（shogo-slot の top）から始まる。
+        function showStack(data) {
+            return new Promise((resolve) => {
+                const rawEntries = Array.isArray(data?.entries) ? data.entries : [];
+                const built = rawEntries.map(buildShogoCard).filter((item) => item.hasTitle);
+
+                if (!built.length) {
+                    resolve();
+                    return;
+                }
+
+                const holdSeconds = Math.max(1, Number(data?.displaySeconds) || DEFAULT_HOLD_SECONDS);
+                const holdMs = holdSeconds * 1000;
+                const totalMs = SLIDE_MS * 2 + holdMs;
+
+                // 先に不可視のまま挿入して実測の高さを取得し、大小サイズが混在しても
+                // 隙間なく積み上がるようにする（CSSの固定値に頼らない）。
+                built.forEach(({ card }) => {
+                    card.style.visibility = 'hidden';
+                    slotEl.appendChild(card);
+                });
+
+                let cumulativeTop = 0;
+                const tops = built.map(({ card }) => {
+                    const top = cumulativeTop;
+                    cumulativeTop += card.offsetHeight + CARD_GAP;
+                    return top;
+                });
+
+                const animations = built.map(({ card }, index) => {
+                    card.style.top = `${tops[index]}px`;
+                    card.style.visibility = 'visible';
+
+                    // easing はキーフレームごとに指定する。トップレベルの単一 easing だと
+                    // 「登場(SLIDE_MS)」「保持(holdMs)」「退場(SLIDE_MS)」という長さの大きく違う
+                    // 区間全体に同じ曲線が伸び縮みして適用され、especially cubic-bezier(0.22,1,0.36,1)
+                    // のような両制御点がy=1の曲線だと登場区間がほぼ一瞬で終わって見えていた
+                    // （"速すぎる"の正体）。区間ごとに easing を持たせることで、SLIDE_MS の変更が
+                    // そのまま体感速度に反映される。
+                    return card.animate([
+                        { transform: 'translateX(140%)', opacity: 0, offset: 0, easing: 'ease-out' },
+                        { transform: 'translateX(0)', opacity: 1, offset: SLIDE_MS / totalMs, easing: 'linear' },
+                        { transform: 'translateX(0)', opacity: 1, offset: (SLIDE_MS + holdMs) / totalMs, easing: 'ease-in' },
+                        { transform: 'translateX(140%)', opacity: 0, offset: 1 }
+                    ], {
+                        duration: totalMs,
+                        delay: index * STAGGER_MS,
+                        // fill:'forwards' だと delay 中は未アニメーション状態（＝素の見た目）が
+                        // 描画されてしまい、2枚目以降が本来のスライドインより先に一瞬フル表示される
+                        // 「チラつき」の原因になっていた。'both' で delay 中も先頭キーフレーム
+                        // （画面外・透明）を適用させる。
+                        fill: 'both'
+                    });
+                });
+
+                Promise.all(animations.map((animation) => new Promise((res) => { animation.onfinish = res; }))).then(() => {
+                    built.forEach(({ card }) => card.remove());
+                    resolve();
+                });
+            });
+        }
+
+        function enqueueShow(data) {
+            displayQueue = displayQueue.then(() => showStack(data)).catch(() => {});
+        }
+
+        socket.on('widgets:shogo:show', enqueueShow);
+
+        if (previewMode) {
+            const runSample = () => enqueueShow({
+                entries: [
+                    { title: '常連さん', badgeImage: '/widgets/badge.png', size: 'large' },
+                    { title: '古参', badgeImage: '/widgets/badge-tiktok-universe.webp', size: 'small' }
+                ],
+                displaySeconds: DEFAULT_HOLD_SECONDS
+            });
+            runSample();
+            window.setInterval(runSample, (SLIDE_MS * 2 + DEFAULT_HOLD_SECONDS * 1000) + STAGGER_MS + 1600);
+        }
+    </script>
+</body>
+</html>

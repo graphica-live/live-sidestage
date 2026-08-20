@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トリガー5倍</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            min-height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "M PLUS Rounded 1c", sans-serif;
+        }
+
+        body.preview-card {
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+        }
+
+        .stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        .win-card {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            opacity: 0;
+            animation: winCardLife 2.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes winCardLife {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.35) rotate(-6deg); }
+            14%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(2deg); }
+            24%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            82%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.88) rotate(0deg); }
+        }
+
+        .avatar-glove-wrap {
+            position: relative;
+            width: 176px;
+            height: 176px;
+        }
+
+        .avatar-circle {
+            width: 148px;
+            height: 148px;
+            margin: 14px 14px 0 0;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 5px solid #fff8e1;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        }
+
+        .avatar-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .avatar-circle.is-empty::after {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, #64748b 0%, #334155 100%);
+        }
+
+        .glove {
+            position: absolute;
+            right: -10px;
+            bottom: -6px;
+            width: 104px;
+            height: 104px;
+            filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5));
+            animation: glovePunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        .glove img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        @keyframes glovePunch {
+            0%          { transform: scale(0) rotate(-40deg); }
+            16%         { transform: scale(1.3) rotate(10deg); }
+            26%, 82%    { transform: scale(1) rotate(-8deg); }
+            100%        { transform: scale(0.92) rotate(-8deg); }
+        }
+
+        /* グローブ（右下）の左右対称位置に、当選を引き当てたギフトの画像を表示する */
+        .win-gift {
+            position: absolute;
+            left: -10px;
+            bottom: -6px;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 4px solid #fff8e1;
+            box-shadow: 0 10px 16px rgba(0, 0, 0, 0.5);
+            animation: winGiftPunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        .win-gift img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        @keyframes winGiftPunch {
+            0%          { transform: scale(0) rotate(40deg); }
+            16%         { transform: scale(1.3) rotate(-10deg); }
+            26%, 82%    { transform: scale(1) rotate(8deg); }
+            100%        { transform: scale(0.92) rotate(8deg); }
+        }
+
+        .mult-badge {
+            position: absolute;
+            left: 190px;
+            top: 130px;
+            transform: translateY(-50%);
+            font-size: 46px;
+            font-weight: 900;
+            color: #fff566;
+            -webkit-text-stroke: 5px #7c2d12;
+            paint-order: stroke fill;
+            text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+            letter-spacing: 1px;
+            white-space: nowrap;
+            animation: multBadgePop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards;
+        }
+
+        @keyframes multBadgePop {
+            0%          { transform: translateY(-50%) scale(0); }
+            20%         { transform: translateY(-50%) scale(1.35) rotate(-6deg); }
+            30%, 82%    { transform: translateY(-50%) scale(1) rotate(-6deg); }
+            100%        { transform: translateY(-50%) scale(0.85) rotate(-6deg); }
+        }
+
+        /* トリガー5倍・6倍の同時当選時だけ出す合成演出。左下にもう一方のグローブを追加し、
+           バッジを一回り大きく・発光させて「×30」の特別感を出す。 */
+        .win-second-glove {
+            position: absolute;
+            left: -10px;
+            bottom: -6px;
+            width: 72px;
+            height: 72px;
+            filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.5));
+            animation: winGiftPunch 2.6s cubic-bezier(0.3, 1, 0.4, 1) forwards;
+        }
+
+        .win-second-glove img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .mult-badge.combo {
+            font-size: 58px;
+            color: #fff9c4;
+            -webkit-text-stroke: 6px #7c2d12;
+            animation: multBadgePop 2.6s cubic-bezier(0.3, 1.4, 0.4, 1) forwards, comboBadgeGlow 0.5s ease-in-out infinite;
+        }
+
+        @keyframes comboBadgeGlow {
+            0%, 100% { text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 214, 0, 0.4); }
+            50%      { text-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 28px rgba(255, 214, 0, 0.95); }
+        }
+
+        .nickname {
+            max-width: 320px;
+            text-align: center;
+            overflow-wrap: break-word;
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            -webkit-text-stroke: 3px rgba(15, 23, 42, 0.92);
+            paint-order: stroke fill;
+            text-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+        }
+
+        /* 発動中インジケーター: 発動ギフト検知で一旦大きく表示され、その後定位置のサイズへ縮小しながら
+           落ち着く。縮小が終わるまではJS側でカウントダウン開始を待つ（tick開始をアニメーション完了後に遅延）。
+           transform-origin を right/top に固定し、拡大時に画面外へはみ出さず角から膨らむようにする。
+           トリガー6倍カード（.shifted）はトリガー5倍が表示中の間だけ下にずれる。5倍が非表示の間は
+           5倍と全く同じ位置（right/top）に重なって表示される。 */
+        .active-card {
+            position: absolute;
+            right: 36px;
+            top: 36px;
+            transform-origin: top right;
+            animation: activeCardPop 3s cubic-bezier(0.22, 1, 0.36, 1);
+            transition: top 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .active-card.shifted {
+            top: 214px;
+        }
+
+        @keyframes activeCardPop {
+            0%   { opacity: 0; transform: scale(2.4) rotate(-10deg); }
+            18%  { opacity: 1; transform: scale(2.6) rotate(4deg); }
+            55%  { opacity: 1; transform: scale(2.5) rotate(2deg); }
+            82%  { opacity: 1; transform: scale(0.92) rotate(-2deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        .active-card.is-ending {
+            animation: activeCardEnd 0.9s ease-in-out forwards;
+        }
+
+        @keyframes activeCardEnd {
+            0%   { opacity: 1; }
+            15%  { opacity: 0.15; }
+            30%  { opacity: 1; }
+            45%  { opacity: 0.15; }
+            60%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(0.85); }
+        }
+
+        .active-card .glove-wrap {
+            position: relative;
+            width: 128px;
+            height: 128px;
+        }
+
+        .active-card .avatar-mini {
+            position: absolute;
+            left: -16px;
+            top: -16px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #334155;
+            border: 3px solid #fff566;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+
+        .active-card .avatar-mini img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .active-card .avatar-mini.is-empty::after {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, #64748b 0%, #334155 100%);
+        }
+
+        /* 発動中インジケーターの心音風エフェクト。トリガー一覧(イベントトリガー)の
+           heartbeat演出(triggerGiftsHeartbeat: scale 1.18/1.12, 1.6s)より、
+           拡大率・発光・テンポの全てを強めて「5倍タイム」の高揚感を出す。 */
+        .active-card .glove-wrap::before {
+            content: '';
+            position: absolute;
+            inset: -16px;
+            border-radius: 50%;
+            border: 4px solid rgba(248, 113, 113, 0.75);
+            opacity: 0;
+            pointer-events: none;
+            animation: gloveHeartbeatRing 1.2s ease-out infinite;
+        }
+
+        @keyframes gloveHeartbeatRing {
+            0%   { transform: scale(0.7); opacity: 0; }
+            12%  { transform: scale(1.1); opacity: 0.9; }
+            30%  { transform: scale(1.4); opacity: 0; }
+            45%  { transform: scale(0.8); opacity: 0; }
+            52%  { transform: scale(1.05); opacity: 1; }
+            70%  { transform: scale(1.5); opacity: 0; }
+            100% { transform: scale(0.7); opacity: 0; }
+        }
+
+        .active-card .glove-wrap .glove {
+            position: static;
+            width: 100%;
+            height: 100%;
+            animation: gloveHeartbeat 1.2s ease-in-out infinite;
+        }
+
+        @keyframes gloveHeartbeat {
+            0%, 100% {
+                transform: scale(1);
+                filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 0 rgba(248, 113, 113, 0));
+            }
+            15% {
+                transform: scale(1.32);
+                filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 20px rgba(248, 113, 113, 0.95));
+            }
+            30% {
+                transform: scale(1);
+                filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 0 rgba(248, 113, 113, 0));
+            }
+            45% {
+                transform: scale(1.24);
+                filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 24px rgba(248, 113, 113, 1));
+            }
+            60%, 100% {
+                transform: scale(1);
+                filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 0 rgba(248, 113, 113, 0));
+            }
+        }
+
+        .active-card .countdown-badge {
+            position: absolute;
+            left: 50%;
+            bottom: -12px;
+            transform: translateX(-50%);
+            min-width: 54px;
+            padding: 2px 9px;
+            font-variant-numeric: tabular-nums;
+            border-radius: 999px;
+            background: #0f172a;
+            border: 3px solid #fff566;
+            color: #fff566;
+            font-size: 18px;
+            font-weight: 900;
+            text-align: center;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 発動中の追加検知（延長）: 電撃フラッシュ + 稲妻アイコン */
+        .zap-flash {
+            position: absolute;
+            inset: -24px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(191, 219, 254, 0.9) 0%, rgba(96, 165, 250, 0.45) 45%, rgba(96, 165, 250, 0) 72%);
+            animation: zapFlash 0.6s ease-out forwards;
+        }
+
+        @keyframes zapFlash {
+            0%   { opacity: 0; }
+            10%  { opacity: 1; }
+            25%  { opacity: 0.2; }
+            40%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* 回転は静的な親要素で固定し、拡大縮小・点滅アニメーションは子要素側で行う
+           （同じ要素のtransformをkeyframeで上書きすると回転が消えてしまうため分離） */
+        .zap-bolt {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+        }
+
+        .zap-bolt.a { top: -14px; left: -18px; transform: rotate(-18deg); }
+        .zap-bolt.b { bottom: -14px; right: -18px; transform: rotate(162deg); }
+
+        .zap-bolt svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 8px #facc15);
+            animation: zapBoltJitter 0.6s ease-out forwards;
+        }
+
+        @keyframes zapBoltJitter {
+            0%   { opacity: 0; transform: scale(0.6); }
+            20%  { opacity: 1; transform: scale(1.3); }
+            45%  { opacity: 0.3; transform: scale(1); }
+            60%  { opacity: 1; transform: scale(1.15); }
+            100% { opacity: 0; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="stage" id="stage"></div>
+
+    <script>
+        const socket = io();
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewMode = searchParams.get('preview') === '1' || searchParams.get('sample') === '1';
+        const stageEl = document.getElementById('stage');
+
+        if (previewMode) {
+            document.body.classList.add('preview-card');
+        }
+
+        const GLOVE_IMG_X5 = `<img src="/widgets/glove-x5.png" alt="">`;
+        const GLOVE_IMG_X6 = `<img src="/widgets/glove-x6.png" alt="">`;
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // トリガー5倍/6倍の各種効果音（発動時／成功時で共通）はこのオーバーレイ自身が再生する。
+        // プレビューiframeはウィジェット一覧ページ(Electron本体)に常駐するため、
+        // デモ再生で実配信オーバーレイと同じ効果音を鳴らしてはいけない。
+        function playConfiguredSound(sound) {
+            if (previewMode) return;
+            if (!sound?.enabled || !sound?.url) return;
+            try {
+                const audio = new Audio(sound.url);
+                const volume = Number(sound.volume);
+                audio.volume = Math.max(0, Math.min(100, Number.isFinite(volume) ? volume : 100)) / 100;
+                audio.play().catch(() => {});
+            } catch {
+                // Audio再生に失敗しても演出は継続する
+            }
+        }
+
+        function buildAvatarHtml(image) {
+            return image
+                ? `<img src="/api/proxy/avatar?url=${encodeURIComponent(image)}" alt="" onerror="this.parentElement.classList.add('is-empty');this.remove();">`
+                : '';
+        }
+
+        // 当選ギフトの画像はTikTok公式CDNから直接取得できるため、アバターと違いプロキシ不要
+        function buildGiftImgHtml(image) {
+            return image
+                ? `<img src="${escapeHtml(image)}" alt="" onerror="this.closest('.win-gift')?.remove();">`
+                : '';
+        }
+
+        function formatCountdown(totalSeconds) {
+            const s = Math.max(0, Math.floor(totalSeconds));
+            const minutes = Math.floor(s / 60);
+            const seconds = s % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function playZapSound() {
+            // プレビューiframeはウィジェット一覧ページ(Electron本体)に常駐するため、
+            // デモ再生で実配信オーバーレイと同じ効果音を鳴らしてはいけない
+            if (previewMode) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                const duration = 0.25;
+                const bufferSize = Math.floor(ctx.sampleRate * duration);
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i += 1) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) ** 2;
+                }
+
+                const noise = ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const bandpass = ctx.createBiquadFilter();
+                bandpass.type = 'bandpass';
+                bandpass.Q.value = 6;
+                bandpass.frequency.setValueAtTime(1800, ctx.currentTime);
+                bandpass.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + duration - 0.02);
+
+                const gainNode = ctx.createGain();
+                gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+                noise.connect(bandpass).connect(gainNode).connect(ctx.destination);
+                noise.start();
+                noise.stop(ctx.currentTime + duration);
+                noise.onended = () => {
+                    if (ctx.state !== 'closed') ctx.close().catch(() => {});
+                };
+            } catch {
+                // AudioContext が利用できない環境では無音のまま演出のみ続行する
+            }
+        }
+
+        const LIGHTNING_SVG = `
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 2 3 14h7l-1 8 11-14h-7z" fill="#fef08a" stroke="#78350f" stroke-width="1"/>
+            </svg>
+        `;
+
+        // トリガー5倍/6倍の当選演出・発動中カウントダウンを共通ロジックで扱うコントローラー。
+        // 5倍と6倍は完全に独立したイベント系統（widgets:trigger-x5:* / widgets:trigger-x6:*）を
+        // 持つが、見た目の挙動（当選ポップ・発動中インジケーターの拡大縮小・カウントダウン・
+        // 延長時の電撃演出）は同一のため、パラメータだけ差し替えて共用する。
+        // isShiftedFn は「このカード（待機中インジケーター）を5倍の下側にずらすべきか」を
+        // 毎フレーム判定する関数（6倍コントローラーにのみ渡す。5倍は常にfalseで自身の定位置に留まる）。
+        function createMultiplierController({ gloveImgHtml, badgeLabel, cardClass, isShiftedFn }) {
+            let activeCardEl = null;
+            let activeDeadline = 0;
+            let activeTickHandle = null;
+            let activePopTimeoutHandle = null;
+
+            // 延長のたびに積み上がる発動者の時間帯（サーバーから毎回フルスナップショットで届く）。
+            let activeAvatarSegments = [];
+            let appliedActiveAvatarHtml = null;
+            let onChange = () => {};
+
+            // activeCardPop アニメーションの尺（CSS側と一致させる）。
+            const ACTIVE_CARD_POP_MS = 3000;
+
+            function isActiveCardVisible() {
+                return Boolean(activeCardEl) && !activeCardEl.classList.contains('is-ending');
+            }
+
+            function syncPosition() {
+                if (!activeCardEl) return;
+                activeCardEl.classList.toggle('shifted', Boolean(isShiftedFn && isShiftedFn()));
+            }
+
+            function showWin(data) {
+                const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
+                const image = String(data?.image || '');
+                const avatarHtml = buildAvatarHtml(image);
+                const giftImgHtml = buildGiftImgHtml(String(data?.giftImage || ''));
+
+                const card = document.createElement('div');
+                card.className = 'win-card';
+                card.innerHTML = `
+                    <div class="avatar-glove-wrap">
+                        <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                        <div class="glove">${gloveImgHtml}</div>
+                        ${giftImgHtml ? `<div class="win-gift">${giftImgHtml}</div>` : ''}
+                        <div class="mult-badge">${badgeLabel}</div>
+                    </div>
+                    <div class="nickname">${escapeHtml(nickname)}</div>
+                `;
+
+                stageEl.appendChild(card);
+                card.addEventListener('animationend', () => card.remove());
+                window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
+
+                playConfiguredSound(data?.sound);
+            }
+
+            function createActiveCard(durationSeconds, avatarHtml) {
+                const card = document.createElement('div');
+                card.className = `active-card ${cardClass}`.trim();
+                card.innerHTML = `
+                    <div class="glove-wrap">
+                        <div class="avatar-mini${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                        <div class="glove">${gloveImgHtml}</div>
+                        <div class="countdown-badge">${formatCountdown(durationSeconds)}</div>
+                    </div>
+                `;
+                stageEl.appendChild(card);
+                return card;
+            }
+
+            function updateActiveCardAvatar(card, avatarHtml) {
+                const avatarEl = card?.querySelector('.avatar-mini');
+                if (!avatarEl) return;
+                avatarEl.classList.toggle('is-empty', !avatarHtml);
+                avatarEl.innerHTML = avatarHtml;
+            }
+
+            // data.activators（延長のたびに積み上がる発動者の時間帯）から、ローカル時計基準の
+            // 締切付きセグメント列を組み立てる。古いペイロード（activators未対応）は
+            // nickname/image/remainingSecondsから単一セグメントとしてフォールバックする。
+            function buildActiveAvatarSegments(data, remainingSeconds) {
+                const now = Date.now();
+                const list = Array.isArray(data?.activators) && data.activators.length > 0
+                    ? data.activators
+                    : [{ image: data?.image, endsInSeconds: remainingSeconds }];
+
+                return list.map((entry) => ({
+                    avatarHtml: buildAvatarHtml(String(entry?.image || '')),
+                    deadline: now + Math.max(0, Number(entry?.endsInSeconds) || 0) * 1000,
+                }));
+            }
+
+            // セグメントは発動順（締切が早い順）に並んでいる。まだ締切が来ていない最初の枠が
+            // 「現在カウントダウン中の発動者」＝表示すべきアイコン。
+            function currentActiveAvatarSegment() {
+                if (activeAvatarSegments.length === 0) return null;
+                const now = Date.now();
+                return activeAvatarSegments.find((seg) => seg.deadline > now)
+                    || activeAvatarSegments[activeAvatarSegments.length - 1];
+            }
+
+            function syncActiveCardAvatarToSegment(card) {
+                const segment = currentActiveAvatarSegment();
+                const avatarHtml = segment ? segment.avatarHtml : '';
+                if (avatarHtml === appliedActiveAvatarHtml) return;
+                appliedActiveAvatarHtml = avatarHtml;
+                updateActiveCardAvatar(card, avatarHtml);
+            }
+
+            function removeActiveCard() {
+                if (!activeCardEl) return;
+                const el = activeCardEl;
+                activeCardEl = null;
+                el.classList.add('is-ending');
+                el.addEventListener('animationend', () => el.remove(), { once: true });
+                window.setTimeout(() => { if (el.isConnected) el.remove(); }, 1000);
+                onChange();
+            }
+
+            function tickActiveCountdown() {
+                if (!activeCardEl) return;
+                syncActiveCardAvatarToSegment(activeCardEl);
+                syncPosition();
+                const remainingMs = activeDeadline - Date.now();
+                const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+                const badge = activeCardEl.querySelector('.countdown-badge');
+                if (badge) badge.textContent = formatCountdown(remainingSeconds);
+
+                if (remainingMs <= 0) {
+                    removeActiveCard();
+                    return;
+                }
+
+                activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+            }
+
+            function playZapEffect() {
+                if (!activeCardEl) return;
+                const gloveWrap = activeCardEl.querySelector('.glove-wrap');
+                if (!gloveWrap) return;
+
+                const zap = document.createElement('div');
+                zap.innerHTML = `
+                    <div class="zap-flash"></div>
+                    <div class="zap-bolt a">${LIGHTNING_SVG}</div>
+                    <div class="zap-bolt b">${LIGHTNING_SVG}</div>
+                `;
+
+                gloveWrap.appendChild(zap);
+                window.setTimeout(() => { if (zap.isConnected) zap.remove(); }, 700);
+
+                playZapSound();
+            }
+
+            function handleWindow(data) {
+                if (!data?.active) return;
+
+                // remainingSeconds はサーバー側で加算済みの実際の残り時間（延長時は上限なく積み上がる）。
+                const fallbackSeconds = Math.max(1, Number(data.durationSeconds) || 15);
+                const remainingSeconds = Math.max(1, Number(data.remainingSeconds) || fallbackSeconds);
+                activeDeadline = Date.now() + remainingSeconds * 1000;
+
+                if (activeTickHandle) window.cancelAnimationFrame(activeTickHandle);
+                if (activePopTimeoutHandle) window.clearTimeout(activePopTimeoutHandle);
+
+                // 発動音は新規発動・延長のどちらでも再生する（電撃演出とは別物）。
+                playConfiguredSound(data.sound);
+
+                activeAvatarSegments = buildActiveAvatarSegments(data, remainingSeconds);
+
+                if (data.extended && activeCardEl) {
+                    playZapEffect();
+                    const badge = activeCardEl.querySelector('.countdown-badge');
+                    if (badge) badge.textContent = formatCountdown(remainingSeconds);
+                    activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+                } else {
+                    if (activeCardEl) activeCardEl.remove();
+                    appliedActiveAvatarHtml = null;
+                    const initialSegment = currentActiveAvatarSegment();
+                    const avatarHtml = initialSegment ? initialSegment.avatarHtml : '';
+                    appliedActiveAvatarHtml = avatarHtml;
+                    activeCardEl = createActiveCard(remainingSeconds, avatarHtml);
+                    syncPosition();
+                    onChange();
+                    // 大きく表示→縮小の出現演出が終わるまでカウントダウン開始を待つ
+                    activePopTimeoutHandle = window.setTimeout(() => {
+                        activePopTimeoutHandle = null;
+                        if (!activeCardEl) return;
+                        activeTickHandle = window.requestAnimationFrame(tickActiveCountdown);
+                    }, ACTIVE_CARD_POP_MS);
+                }
+            }
+
+            return {
+                showWin,
+                handleWindow,
+                isActiveCardVisible,
+                syncPosition,
+                onChange(fn) { onChange = typeof fn === 'function' ? fn : () => {}; },
+            };
+        }
+
+        // トリガー5倍: 常に定位置（画面右上）に表示する。
+        const x5Controller = createMultiplierController({
+            gloveImgHtml: GLOVE_IMG_X5,
+            badgeLabel: '×5',
+            cardClass: '',
+            isShiftedFn: () => false,
+        });
+
+        // トリガー6倍: トリガー5倍が表示中は下にずれ、非表示なら5倍と同じ定位置に重なる。
+        const x6Controller = createMultiplierController({
+            gloveImgHtml: GLOVE_IMG_X6,
+            badgeLabel: '×6',
+            cardClass: 'x6',
+            isShiftedFn: () => x5Controller.isActiveCardVisible(),
+        });
+
+        // 5倍側の表示・非表示が切り替わるたびに、6倍側の位置を即座に再計算する。
+        x5Controller.onChange(() => x6Controller.syncPosition());
+
+        // 5倍・6倍が同一発火で同時当選した時だけ届く合成演出。個別の×5/×6当選カードの
+        // 代わりに、両方のグローブと「×30」バッジを1枚にまとめて表示する。
+        function showComboWin(data) {
+            const nickname = String(data?.nickname || 'リスナー').slice(0, 40);
+            const image = String(data?.image || '');
+            const avatarHtml = buildAvatarHtml(image);
+
+            const card = document.createElement('div');
+            card.className = 'win-card';
+            card.innerHTML = `
+                <div class="avatar-glove-wrap">
+                    <div class="avatar-circle${avatarHtml ? '' : ' is-empty'}">${avatarHtml}</div>
+                    <div class="glove">${GLOVE_IMG_X5}</div>
+                    <div class="win-second-glove">${GLOVE_IMG_X6}</div>
+                    <div class="mult-badge combo">×30</div>
+                </div>
+                <div class="nickname">${escapeHtml(nickname)}</div>
+            `;
+
+            stageEl.appendChild(card);
+            card.addEventListener('animationend', () => card.remove());
+            window.setTimeout(() => { if (card.isConnected) card.remove(); }, 3200);
+
+            playConfiguredSound(data?.sound5);
+            playConfiguredSound(data?.sound6);
+        }
+
+        socket.on('widgets:trigger-x5:won', x5Controller.showWin);
+        socket.on('widgets:trigger-x5:window', x5Controller.handleWindow);
+        socket.on('widgets:trigger-x6:won', x6Controller.showWin);
+        socket.on('widgets:trigger-x6:window', x6Controller.handleWindow);
+        socket.on('widgets:trigger-combo:won', showComboWin);
+
+        if (previewMode) {
+            const runSampleX5 = () => x5Controller.showWin({ nickname: 'サンプルリスナー', image: '' });
+            runSampleX5();
+            window.setInterval(runSampleX5, 3200);
+
+            const runSampleX6 = () => x6Controller.showWin({ nickname: 'サンプルリスナー6', image: '' });
+            window.setTimeout(runSampleX6, 1600);
+            window.setInterval(runSampleX6, 3200);
+
+            // 同時当選の合成演出（×30）も定期的にデモ表示する。
+            const runSampleCombo = () => showComboWin({ nickname: 'サンプルリスナー30', image: '' });
+            window.setTimeout(runSampleCombo, 800);
+            window.setInterval(runSampleCombo, 9600);
+
+            const runActiveDemoX5 = () => {
+                x5Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
+                window.setTimeout(() => {
+                    // 延長は加算・上限なしであることをプレビューでも示す（15秒残っている状態に+15秒）
+                    x5Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
+                }, 4000);
+            };
+            runActiveDemoX5();
+            window.setInterval(runActiveDemoX5, 16000);
+
+            // 6倍は少し遅れて発動させ、5倍が表示中に下へずれる様子と、5倍終了後に定位置へ
+            // 戻る様子の両方をプレビューで確認できるようにする。
+            const runActiveDemoX6 = () => {
+                x6Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 15, extended: false });
+                window.setTimeout(() => {
+                    x6Controller.handleWindow({ active: true, durationSeconds: 15, remainingSeconds: 26, extended: true });
+                }, 4000);
+            };
+            window.setTimeout(runActiveDemoX6, 2000);
+            window.setInterval(runActiveDemoX6, 16000);
+        }
+    </script>
+</body>
+</html>

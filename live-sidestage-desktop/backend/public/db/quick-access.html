@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Access</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <style>
+        :root {
+            --bg: #e8eef5;
+            --panel: rgba(248, 250, 252, 0.92);
+            --line: rgba(24, 37, 58, 0.16);
+            --line-strong: rgba(24, 37, 58, 0.24);
+            --text: #18253a;
+            --muted: #5f6f82;
+            --accent: #0f766e;
+            --accent-strong: #115e59;
+            --accent-soft: rgba(15, 118, 110, 0.14);
+            --shadow: 0 16px 38px rgba(15, 23, 42, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px;
+            color: var(--text);
+            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+            background:
+                radial-gradient(circle at top right, var(--accent-soft) 0%, transparent 28%),
+                linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
+        }
+
+        h1, h2, p {
+            margin: 0;
+        }
+
+        .layout {
+            width: min(920px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+
+        .hero {
+            display: grid;
+            gap: 12px;
+        }
+
+        .eyebrow {
+            width: fit-content;
+            padding: 5px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.7));
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.05;
+        }
+
+        .subtext {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+            max-width: 62ch;
+        }
+
+        .quick-card {
+            display: grid;
+            gap: 18px;
+            padding: 26px;
+            border: 1px solid var(--line-strong);
+            border-radius: 14px;
+            background:
+                linear-gradient(135deg, var(--panel-strong, var(--panel)) 0%, var(--surface, var(--panel)) 100%);
+        }
+
+        .quick-card-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .quick-card-copy {
+            display: grid;
+            gap: 8px;
+        }
+
+        .quick-card-copy h2 {
+            font-size: 24px;
+            line-height: 1.15;
+        }
+
+        .state-chip {
+            width: fit-content;
+            padding: 7px 13px;
+            border: 1px solid var(--line-strong);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.8));
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .state-chip.is-on {
+            color: var(--accent-strong);
+            border-color: var(--accent, rgba(15, 118, 110, 0.32));
+            background: var(--accent-soft);
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .quick-meta {
+            display: grid;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--surface, rgba(255, 255, 255, 0.66));
+            padding: 7px 12px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .status.is-error {
+            color: #a12d2f;
+            border-color: rgba(161, 45, 47, 0.24);
+            background: rgba(254, 242, 242, 0.86);
+        }
+
+        /* チェックボックス行 */
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .check-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .check-label input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--line-strong);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            flex: 0 0 auto;
+            position: relative;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .check-label input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent-strong);
+        }
+
+        .check-label input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            display: block;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'%3E%3Cpath d='M1 5l3.5 3.5L11 1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat;
+        }
+
+        .check-label input[type="checkbox"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* 停止中 chip */
+        .check-label[data-stop] input[type="checkbox"]:checked {
+            background: #dc2626;
+            border-color: #b91c1c;
+        }
+
+        .popout-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .popout-row:first-of-type {
+            border-top: none;
+        }
+
+        .popout-row-label {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .popout-hint {
+            margin: -6px 0 4px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .modal-overlay[hidden] {
+            display: none;
+        }
+
+        .modal-card {
+            width: min(420px, 90%);
+            background: var(--panel);
+            border: 1px solid var(--line-strong);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            padding: 22px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .modal-card h3 {
+            font-size: 17px;
+        }
+
+        .modal-field {
+            display: grid;
+            gap: 6px;
+        }
+
+        .modal-field label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        .modal-field input,
+        .modal-field select {
+            padding: 8px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 8px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.85);
+        }
+
+        .modal-field-hint {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 16px 12px;
+            }
+
+            .panel {
+                padding: 18px;
+            }
+
+            .quick-card {
+                padding: 18px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            .quick-card-copy h2 {
+                font-size: 21px;
+            }
+
+            .quick-actions button {
+                width: 100%;
+            }
+        }
+    </style>
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+</head>
+<body data-admin-settings-root="true">
+    <main class="layout">
+        <div class="eyebrow">Quick Access</div>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>エフェクト制御</h2>
+                </div>
+                <div class="state-chip" id="effects-pause-chip">再生中</div>
+            </div>
+
+            <div class="quick-actions">
+                <div class="check-row">
+                    <label class="check-label" data-stop>
+                        <input type="checkbox" id="effects-pause-checkbox">
+                        全エフェクト停止
+                    </label>
+                </div>
+            </div>
+
+        </section>
+
+        <section class="panel quick-card">
+            <div class="quick-card-head">
+                <div class="quick-card-copy">
+                    <h2>別ウィンドウ表示</h2>
+                </div>
+            </div>
+            <p class="popout-hint">コメント欄・ギフト履歴をそれぞれ独立したウィンドウで開けます。ウィンドウの位置とサイズは次回起動時も記憶されます。</p>
+
+            <div class="popout-row">
+                <span class="popout-row-label">共通設定</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="all-auto-front-checkbox">
+                        新着時に最前面へ（すべて一括）
+                    </label>
+                </div>
+            </div>
+            <p class="popout-hint">有効にすると、コメント欄は新着コメント、ギフト履歴は新着ギフト、コメント＆ギフトは両方を受信した瞬間にそのウィンドウを自動で最前面に表示します。常時最前面固定ではなく、新着があった時だけ一時的に前面へ呼び出します。</p>
+
+            <div class="popout-row">
+                <span class="popout-row-label">コメント＆ギフト</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-gifts-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-gifts-auto-front-checkbox">
+                        新着時に最前面へ
+                    </label>
+                    <button type="button" class="ghost-button" id="open-comments-gifts-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+            <p class="popout-hint">1つのウィンドウを左右に分割し、左にコメント欄・右にギフト履歴を表示します。表示設定はそれぞれの「表示設定」から変更したものがそのまま反映されます。</p>
+
+            <div class="popout-row">
+                <span class="popout-row-label">コメント欄</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="comments-auto-front-checkbox">
+                        新着時に最前面へ
+                    </label>
+                    <button type="button" class="ghost-button" id="comments-popout-settings-button">表示設定</button>
+                    <button type="button" class="ghost-button" id="open-comments-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+
+            <div class="popout-row">
+                <span class="popout-row-label">ギフト履歴</span>
+                <div class="quick-actions">
+                    <label class="check-label">
+                        <input type="checkbox" id="gifts-auto-open-checkbox">
+                        起動時に自動的に開く
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="gifts-auto-front-checkbox">
+                        新着時に最前面へ
+                    </label>
+                    <button type="button" class="ghost-button" id="gifts-popout-settings-button">表示設定</button>
+                    <button type="button" class="ghost-button" id="open-gifts-popout-btn">別ウィンドウで開く</button>
+                </div>
+            </div>
+
+            <p class="popout-hint" id="popout-windows-status" hidden></p>
+        </section>
+    </main>
+
+    <div class="modal-overlay" id="comments-popout-settings-overlay" hidden>
+        <div class="modal-card">
+            <h3>コメント欄（別ウィンドウ）の表示設定</h3>
+            <div class="modal-field">
+                <label for="popout-sort-order-select">並び順</label>
+                <select id="popout-sort-order-select" aria-label="並び順">
+                    <option value="desc">新着を上に</option>
+                    <option value="asc">新着を下に</option>
+                </select>
+            </div>
+            <div class="modal-field">
+                <label for="popout-font-select">フォント</label>
+                <select id="popout-font-select" aria-label="フォント"></select>
+            </div>
+            <div class="modal-field">
+                <label for="popout-font-size-input">フォントサイズ (px)</label>
+                <input type="number" id="popout-font-size-input" min="10" max="48" step="1">
+            </div>
+            <div class="modal-field">
+                <label class="check-label">
+                    <input type="checkbox" id="popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="primary" id="comments-popout-settings-close">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="gifts-popout-settings-overlay" hidden>
+        <div class="modal-card">
+            <h3>ギフト履歴（別ウィンドウ）の表示設定</h3>
+            <div class="modal-field">
+                <label for="gifts-popout-sort-order-select">並び順</label>
+                <select id="gifts-popout-sort-order-select" aria-label="並び順">
+                    <option value="timestamp-desc">新着を上に</option>
+                    <option value="timestamp-asc">新着を下に</option>
+                </select>
+            </div>
+            <div class="modal-field">
+                <label for="gifts-popout-font-select">フォント</label>
+                <select id="gifts-popout-font-select" aria-label="フォント"></select>
+            </div>
+            <div class="modal-field">
+                <label for="gifts-popout-font-size-input">フォントサイズ (px)</label>
+                <input type="number" id="gifts-popout-font-size-input" min="10" max="48" step="1">
+            </div>
+            <div class="modal-field">
+                <label class="check-label">
+                    <input type="checkbox" id="gifts-popout-flash-new-checkbox" checked>
+                    新着を2回点滅させる
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="primary" id="gifts-popout-settings-close">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io({ transports: ['websocket'] });
+
+        const effectsPauseCheckbox = document.getElementById('effects-pause-checkbox');
+        const effectsPauseChip = document.getElementById('effects-pause-chip');
+
+        let updatingEffectsPause = false;
+
+        function syncEffectsPauseUi(paused) {
+            effectsPauseCheckbox.checked = paused;
+            effectsPauseChip.textContent = paused ? '停止中' : '再生中';
+            effectsPauseChip.classList.toggle('is-on', paused);
+        }
+
+        async function loadEffectsGlobalPause() {
+            const response = await fetch('/api/effects/global-pause');
+
+            if (!response.ok) {
+                throw new Error('エフェクト状態の取得に失敗しました。');
+            }
+
+            const payload = await response.json();
+            syncEffectsPauseUi(payload.paused === true);
+            setEffectsFeedback('全エフェクトの停止をここから切り替えられます。');
+        }
+
+        effectsPauseCheckbox.addEventListener('change', async () => {
+            if (updatingEffectsPause) {
+                return;
+            }
+
+            updatingEffectsPause = true;
+            const nextPaused = effectsPauseCheckbox.checked;
+
+            try {
+                const response = await fetch('/api/effects/global-pause', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paused: nextPaused })
+                });
+
+                if (!response.ok) {
+                    throw new Error('エフェクト停止の切り替えに失敗しました。');
+                }
+
+                const payload = await response.json();
+                syncEffectsPauseUi(payload.paused === true);
+            } catch (error) {
+                effectsPauseCheckbox.checked = !nextPaused;
+            } finally {
+                updatingEffectsPause = false;
+            }
+        });
+
+
+        socket.on('effects:global-pause-changed', (payload) => {
+            syncEffectsPauseUi(payload?.paused === true);
+        });
+
+        loadEffectsGlobalPause().catch(() => {});
+    </script>
+
+    <script>
+        (function () {
+            const openButtons = {
+                comments: document.getElementById('open-comments-popout-btn'),
+                gifts: document.getElementById('open-gifts-popout-btn'),
+                'comments-gifts': document.getElementById('open-comments-gifts-popout-btn')
+            };
+            const autoOpenCheckboxes = {
+                comments: document.getElementById('comments-auto-open-checkbox'),
+                gifts: document.getElementById('gifts-auto-open-checkbox'),
+                'comments-gifts': document.getElementById('comments-gifts-auto-open-checkbox')
+            };
+            const autoFrontCheckboxes = {
+                comments: document.getElementById('comments-auto-front-checkbox'),
+                gifts: document.getElementById('gifts-auto-front-checkbox'),
+                'comments-gifts': document.getElementById('comments-gifts-auto-front-checkbox')
+            };
+            const allAutoFrontCheckbox = document.getElementById('all-auto-front-checkbox');
+            const statusEl = document.getElementById('popout-windows-status');
+
+            function showStatus(message) {
+                statusEl.textContent = message;
+                statusEl.hidden = !message;
+            }
+
+            function syncAllAutoFrontCheckbox() {
+                allAutoFrontCheckbox.checked = Object.values(autoFrontCheckboxes).every((checkbox) => checkbox.checked);
+            }
+
+            async function saveAutoFront(kind, enabled) {
+                const res = await fetch('/api/settings/popout-windows/auto-front', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ kind, enabled })
+                });
+                if (!res.ok) throw new Error('サーバーエラー');
+            }
+
+            async function loadState() {
+                try {
+                    const res = await fetch('/api/settings/popout-windows');
+                    const data = await res.json();
+
+                    if (!data.available) {
+                        for (const kind of Object.keys(autoOpenCheckboxes)) {
+                            autoOpenCheckboxes[kind].disabled = true;
+                            autoFrontCheckboxes[kind].disabled = true;
+                            openButtons[kind].disabled = true;
+                        }
+                        allAutoFrontCheckbox.disabled = true;
+                        showStatus('インストール版でのみ利用できます。');
+                        return;
+                    }
+
+                    for (const [kind, checkbox] of Object.entries(autoOpenCheckboxes)) {
+                        checkbox.checked = Boolean(data.windows?.[kind]?.autoOpenOnStartup);
+                    }
+                    for (const [kind, checkbox] of Object.entries(autoFrontCheckboxes)) {
+                        checkbox.checked = Boolean(data.windows?.[kind]?.autoFront);
+                    }
+                    syncAllAutoFrontCheckbox();
+                } catch {
+                    showStatus('状態を取得できませんでした。');
+                }
+            }
+
+            for (const [kind, button] of Object.entries(openButtons)) {
+                button.addEventListener('click', async () => {
+                    button.disabled = true;
+                    try {
+                        const res = await fetch('/api/settings/popout-windows/open', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind })
+                        });
+                        if (!res.ok) throw new Error('サーバーエラー');
+                    } catch (e) {
+                        showStatus('ウィンドウを開けませんでした: ' + e.message);
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            }
+
+            for (const [kind, checkbox] of Object.entries(autoOpenCheckboxes)) {
+                checkbox.addEventListener('change', async () => {
+                    checkbox.disabled = true;
+                    try {
+                        const res = await fetch('/api/settings/popout-windows/auto-open', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind, enabled: checkbox.checked })
+                        });
+                        if (!res.ok) throw new Error('サーバーエラー');
+                    } catch (e) {
+                        showStatus('保存に失敗しました: ' + e.message);
+                        checkbox.checked = !checkbox.checked;
+                    } finally {
+                        checkbox.disabled = false;
+                    }
+                });
+            }
+
+            for (const [kind, checkbox] of Object.entries(autoFrontCheckboxes)) {
+                checkbox.addEventListener('change', async () => {
+                    checkbox.disabled = true;
+                    try {
+                        await saveAutoFront(kind, checkbox.checked);
+                        syncAllAutoFrontCheckbox();
+                    } catch (e) {
+                        showStatus('保存に失敗しました: ' + e.message);
+                        checkbox.checked = !checkbox.checked;
+                    } finally {
+                        checkbox.disabled = false;
+                    }
+                });
+            }
+
+            allAutoFrontCheckbox.addEventListener('change', async () => {
+                const nextEnabled = allAutoFrontCheckbox.checked;
+                allAutoFrontCheckbox.disabled = true;
+                for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                    checkbox.disabled = true;
+                }
+                try {
+                    await Promise.all(Object.keys(autoFrontCheckboxes).map((kind) => saveAutoFront(kind, nextEnabled)));
+                    for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                        checkbox.checked = nextEnabled;
+                    }
+                } catch (e) {
+                    showStatus('保存に失敗しました: ' + e.message);
+                    allAutoFrontCheckbox.checked = !nextEnabled;
+                } finally {
+                    allAutoFrontCheckbox.disabled = false;
+                    for (const checkbox of Object.values(autoFrontCheckboxes)) {
+                        checkbox.disabled = false;
+                    }
+                }
+            });
+
+            loadState();
+        }());
+    </script>
+
+    <script>
+        (function () {
+            const settingsButton = document.getElementById('comments-popout-settings-button');
+            const overlay = document.getElementById('comments-popout-settings-overlay');
+            const closeButton = document.getElementById('comments-popout-settings-close');
+            const sortOrderSelect = document.getElementById('popout-sort-order-select');
+            const fontSelect = document.getElementById('popout-font-select');
+            const fontSizeInput = document.getElementById('popout-font-size-input');
+            const flashNewCheckbox = document.getElementById('popout-flash-new-checkbox');
+
+            fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+
+            let currentCommentSettings = null;
+            let styleSaveTimer = null;
+
+            function applySortOrder() {
+                if (!currentCommentSettings) return;
+                const nextSettings = { ...currentCommentSettings, sortOrder: sortOrderSelect.value };
+                fetch('/api/comments/config', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(nextSettings)
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        currentCommentSettings = data.settings || nextSettings;
+                    })
+                    .catch(() => {});
+            }
+
+            function applyStyle() {
+                clearTimeout(styleSaveTimer);
+                styleSaveTimer = setTimeout(() => {
+                    fetch('/api/settings/popout-comment-style', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fontKey: fontSelect.value,
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            flashNew: flashNewCheckbox.checked
+                        })
+                    }).catch(() => {});
+                }, 300);
+            }
+
+            function openModal() {
+                Promise.all([
+                    fetch('/api/comments/config').then((res) => res.json()).catch(() => null),
+                    fetch('/api/settings/popout-comment-style').then((res) => res.json()).catch(() => null)
+                ]).then(([commentsData, styleData]) => {
+                    currentCommentSettings = commentsData?.settings || null;
+                    sortOrderSelect.value = currentCommentSettings?.sortOrder === 'asc' ? 'asc' : 'desc';
+
+                    const fontKey = styleData?.fontKey || 'default';
+                    fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
+                    fontSizeInput.value = styleData?.fontSize || 13;
+                    flashNewCheckbox.checked = styleData?.flashNew !== false;
+                }).finally(() => {
+                    overlay.hidden = false;
+                });
+            }
+
+            function closeModal() {
+                overlay.hidden = true;
+            }
+
+            settingsButton.addEventListener('click', openModal);
+            closeButton.addEventListener('click', closeModal);
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) closeModal();
+            });
+
+            sortOrderSelect.addEventListener('change', applySortOrder);
+            fontSelect.addEventListener('change', applyStyle);
+            fontSizeInput.addEventListener('input', applyStyle);
+            flashNewCheckbox.addEventListener('change', applyStyle);
+
+            socket.on('admin_comments_updated', (payload) => {
+                if (payload && payload.settings) {
+                    currentCommentSettings = payload.settings;
+                }
+            });
+        }());
+    </script>
+
+    <script>
+        (function () {
+            const settingsButton = document.getElementById('gifts-popout-settings-button');
+            const overlay = document.getElementById('gifts-popout-settings-overlay');
+            const closeButton = document.getElementById('gifts-popout-settings-close');
+            const sortOrderSelect = document.getElementById('gifts-popout-sort-order-select');
+            const fontSelect = document.getElementById('gifts-popout-font-select');
+            const fontSizeInput = document.getElementById('gifts-popout-font-size-input');
+            const flashNewCheckbox = document.getElementById('gifts-popout-flash-new-checkbox');
+
+            fontSelect.innerHTML = buildWidgetFontOptionsMarkup('default');
+
+            let styleSaveTimer = null;
+
+            function saveGiftStyle() {
+                clearTimeout(styleSaveTimer);
+                styleSaveTimer = setTimeout(() => {
+                    fetch('/api/settings/popout-gift-style', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sortOrder: sortOrderSelect.value,
+                            fontKey: fontSelect.value,
+                            fontSize: Number(fontSizeInput.value) || 13,
+                            flashNew: flashNewCheckbox.checked
+                        })
+                    }).catch(() => {});
+                }, 300);
+            }
+
+            function openModal() {
+                fetch('/api/settings/popout-gift-style').then((res) => res.json()).then((data) => {
+                    sortOrderSelect.value = data?.sortOrder === 'timestamp-asc' ? 'timestamp-asc' : 'timestamp-desc';
+
+                    const fontKey = data?.fontKey || 'default';
+                    fontSelect.innerHTML = buildWidgetFontOptionsMarkup(fontKey);
+                    fontSizeInput.value = data?.fontSize || 13;
+                    flashNewCheckbox.checked = data?.flashNew !== false;
+                }).catch(() => {}).finally(() => {
+                    overlay.hidden = false;
+                });
+            }
+
+            function closeModal() {
+                overlay.hidden = true;
+            }
+
+            settingsButton.addEventListener('click', openModal);
+            closeButton.addEventListener('click', closeModal);
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) closeModal();
+            });
+
+            sortOrderSelect.addEventListener('change', saveGiftStyle);
+            fontSelect.addEventListener('change', saveGiftStyle);
+            fontSizeInput.addEventListener('input', saveGiftStyle);
+            flashNewCheckbox.addEventListener('change', saveGiftStyle);
+        }());
+    </script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>

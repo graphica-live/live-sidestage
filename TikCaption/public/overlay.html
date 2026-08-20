@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+html, body {
+  background: transparent;
+  margin: 0;
+  overflow: hidden;
+}
+
+:root {
+  --font-family: "M PLUS Rounded 1c", sans-serif;
+  --font-size: 52px;
+  --fill-color: #ffffff;
+  --note-color: #fde68a;
+  --stroke-color: rgba(10,10,20,0.95);
+  --stroke-width: 6px;
+  --shadow-color: rgba(0,0,0,0.7);
+  --bottom-offset: 120px;
+}
+
+#wrap {
+  position: fixed;
+  bottom: var(--bottom-offset);
+  left: 0; right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 40px;
+  pointer-events: none;
+  transition: background 0.2s, padding 0.2s;
+}
+
+#original {
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  font-weight: 900;
+  color: var(--fill-color);
+  -webkit-text-stroke: var(--stroke-width) var(--stroke-color);
+  paint-order: stroke fill;
+  text-shadow: 0 0 20px var(--shadow-color), 0 3px 12px rgba(0,0,0,.5);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.2;
+  opacity: 1;
+  transition: opacity 0.5s;
+}
+
+#translated {
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  font-family: var(--font-family);
+  font-size: calc(var(--font-size) * 0.72);
+  font-weight: 800;
+  color: var(--note-color);
+  -webkit-text-stroke: calc(var(--stroke-width) - 1px) var(--stroke-color);
+  paint-order: stroke fill;
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.3;
+  opacity: 1;
+  transition: opacity 0.5s;
+}
+
+body.bg-semi #wrap {
+  background: rgba(0,0,0,0.54);
+  border-radius: 12px;
+  padding: 8px 24px;
+  backdrop-filter: blur(4px);
+}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&family=Noto+Sans+JP:wght@900&family=Noto+Serif+JP:wght@900&family=Zen+Kaku+Gothic+New:wght@900&family=Kosugi&family=Klee+One:wght@600&family=Zen+Maru+Gothic:wght@900&family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=RocknRoll+One&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="wrap">
+  <div id="original"></div>
+  <div id="translated"></div>
+</div>
+
+<script src="http://localhost:38200/socket.io/socket.io.js"></script>
+<script>
+const TEXT_STYLES = {
+  'gold-night':     { fill: '#ffffff', note: '#fde68a', stroke: 'rgba(10,10,20,.95)' },
+  'ice-night':      { fill: '#dbeafe', note: '#bfdbfe', stroke: 'rgba(23,37,84,.95)' },
+  'candy-pop':      { fill: '#ffe4f1', note: '#fbcfe8', stroke: 'rgba(131,24,67,.95)' },
+  'mint-lime':      { fill: '#d1fae5', note: '#6ee7b7', stroke: 'rgba(6,78,59,.96)' },
+  'sunset-party':   { fill: '#fed7aa', note: '#fb923c', stroke: 'rgba(120,53,15,.96)' },
+  'violet-flash':   { fill: '#e9d5ff', note: '#c084fc', stroke: 'rgba(59,7,100,.96)' },
+  'mono-impact':    { fill: '#f8fafc', note: '#e2e8f0', stroke: 'rgba(2,6,23,.97)' },
+  'sakura-bloom':   { fill: '#ffe4e6', note: '#fda4af', stroke: 'rgba(136,19,55,.95)' },
+};
+
+const root = document.documentElement;
+const elOriginal = document.getElementById('original');
+const elTranslated = document.getElementById('translated');
+
+let settings = {
+  showOriginal: true,
+  translationEnabled: false,
+  fontSize: 52,
+  verticalOffset: 120,
+  segmentDuration: 6,
+  maxCharsPerSegment: 20,
+  charsPerSec: 12,
+  showInterim: false,
+  bgStyle: 'transparent',
+  fontFamily: 'M PLUS Rounded 1c',
+  textStyleKey: 'gold-night',
+  strokeWidth: 6,
+};
+
+let fadeTimer = null;
+let typeTimer = null;
+let processTimer = null;
+let captionQueue = [];
+let isTyping = false;
+
+function applySettings(s) {
+  Object.assign(settings, s);
+
+  root.style.setProperty('--font-size', settings.fontSize + 'px');
+  root.style.setProperty('--bottom-offset', settings.verticalOffset + 'px');
+  root.style.setProperty('--font-family', `"${settings.fontFamily}", sans-serif`);
+  root.style.setProperty('--stroke-width', settings.strokeWidth + 'px');
+
+  const theme = TEXT_STYLES[settings.textStyleKey] || TEXT_STYLES['gold-night'];
+  root.style.setProperty('--fill-color', theme.fill);
+  root.style.setProperty('--note-color', theme.note);
+  root.style.setProperty('--stroke-color', theme.stroke);
+
+  document.body.classList.toggle('bg-semi', settings.bgStyle === 'semi');
+
+  elOriginal.style.display = settings.showOriginal ? '' : 'none';
+  elTranslated.style.display = settings.translationEnabled ? '' : 'none';
+}
+
+function splitText(text) {
+  const maxLen = settings.maxCharsPerSegment;
+  if (text.length <= maxLen) return [text];
+
+  const isHira  = c => c >= '぀' && c <= 'ゟ';
+  const isKata  = c => c >= '゠' && c <= 'ヿ';
+  const isKanji = c => (c >= '一' && c <= '鿿') || (c >= '㐀' && c <= '䶿');
+
+  function breakScore(i) {
+    const c = text[i], next = text[i + 1];
+    if (!next) return 0;
+    if ('。！？'.includes(c)) return 10;
+    if ('、，'.includes(c)) return 7;
+    if (isHira(c) && isKata(next)) return 5;
+    if (isKata(c) && isHira(next)) return 4;
+    if (isKanji(c) && isHira(next)) return 3;
+    return 0;
+  }
+
+  const segments = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const remaining = text.length - start;
+    if (remaining <= maxLen) { segments.push(text.slice(start)); break; }
+
+    const numSegs = Math.ceil(remaining / maxLen);
+    const idealLen = Math.ceil(remaining / numSegs);
+    const idealEnd = start + idealLen;
+    const margin = Math.floor(idealLen * 0.4);
+    const searchStart = Math.max(start + 1, idealEnd - margin);
+    const searchEnd   = Math.min(start + maxLen, idealEnd + margin);
+
+    let bestPos = idealEnd, bestScore = -1, bestDist = Infinity;
+    for (let i = searchStart; i <= searchEnd; i++) {
+      const score = breakScore(i - 1);
+      const dist  = Math.abs(i - idealEnd);
+      if (score > bestScore || (score === bestScore && dist < bestDist)) {
+        bestScore = score; bestDist = dist; bestPos = i;
+      }
+    }
+    if (bestScore <= 0) bestPos = start + maxLen;
+
+    segments.push(text.slice(start, bestPos));
+    start = bestPos;
+  }
+
+  return segments;
+}
+
+function clearFade() {
+  if (fadeTimer) { clearTimeout(fadeTimer); fadeTimer = null; }
+  if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+  if (processTimer) { clearTimeout(processTimer); processTimer = null; }
+}
+
+function startFadeTimer(duration) {
+  clearTimeout(fadeTimer);
+  fadeTimer = setTimeout(() => {
+    elOriginal.style.opacity = '0';
+    elTranslated.style.opacity = '0';
+  }, (duration ?? settings.segmentDuration) * 1000);
+}
+
+function typewriterDisplay(text, onDone) {
+  elOriginal.style.opacity = '1';
+  const current = elOriginal.textContent || '';
+  let i = (text.startsWith(current) && current.length > 0) ? current.length : 0;
+  if (i === 0) elOriginal.textContent = '';
+  if (i >= text.length) { if (onDone) onDone(); return; }
+  const delay = settings.charsPerSec > 0 ? 1000 / settings.charsPerSec : 16;
+  typeTimer = setInterval(() => {
+    elOriginal.textContent = text.slice(0, ++i);
+    if (i >= text.length) {
+      clearInterval(typeTimer);
+      typeTimer = null;
+      if (onDone) onDone();
+    }
+  }, delay);
+}
+
+function processQueue() {
+  if (captionQueue.length === 0) { isTyping = false; return; }
+  isTyping = true;
+
+  // Heavy backlog: drop intermediate segments, keep only the most recent
+  if (captionQueue.length > 4) captionQueue.splice(0, captionQueue.length - 1);
+
+  const seg = captionQueue.shift();
+
+  clearFade();
+  elOriginal.style.opacity = '1';
+
+  // Boost: backlog pending → cut display time to 40% (min 1s), skip typewriter
+  const boosting = captionQueue.length >= 1;
+  const segDuration = boosting
+    ? Math.max(settings.segmentDuration * 0.4, 1)
+    : settings.segmentDuration;
+
+  if (!settings.showInterim || settings.charsPerSec >= 60 || boosting) {
+    elOriginal.textContent = seg;
+    startFadeTimer(segDuration);
+    processTimer = setTimeout(processQueue, segDuration * 1000);
+  } else {
+    typewriterDisplay(seg, () => {
+      startFadeTimer(segDuration);
+      processTimer = setTimeout(processQueue, segDuration * 1000);
+    });
+  }
+}
+
+function showText(original, translated, isFinal) {
+  clearFade();
+
+  if (!isFinal && settings.showInterim) {
+    // streaming partial: reset queue and show dimmed
+    captionQueue = [];
+    isTyping = false;
+    if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+    elOriginal.style.opacity = '0.5';
+    elOriginal.textContent = original;
+    if (settings.translationEnabled) elTranslated.style.opacity = '1';
+    return;
+  }
+
+  // Final: append to queue so backlog detection can accelerate/drop excess
+  isTyping = false;
+  const segs = splitText(original);
+  captionQueue.push(...segs);
+  processQueue();
+}
+
+const socket = io('http://localhost:38200');
+
+socket.on('connect', () => {
+  fetch('http://localhost:38200/api/caption/config')
+    .then(r => r.json())
+    .then(applySettings)
+    .catch(() => {});
+});
+
+socket.on('caption:updated', ({ original, translated, isFinal }) => {
+  showText(original, translated, isFinal);
+});
+
+socket.on('caption:translation', ({ translated }) => {
+  if (!settings.translationEnabled) return;
+  elOriginal.style.opacity = '1';
+  elTranslated.style.opacity = '1';
+  elTranslated.textContent = translated;
+  startFadeTimer();
+});
+
+socket.on('caption:config', (s) => {
+  applySettings(s);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウィジェット</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/utils.js"></script>
+    <script src="/shared/update-banner.js"></script>
+    <script src="/shared/playback-error-banner.js"></script>
+    <script src="/shared/font-options.js"></script>
+    <link rel="stylesheet" href="/db/admin-buttons.css">
+    <link rel="stylesheet" href="/shared/sound-picker.css">
+    <link rel="stylesheet" href="/shared/gift-suggest.css">
+    <link rel="stylesheet" href="/db/widgets.css">
+    <script src="/shared/gift-suggest.js"></script>
+    <script src="/shared/user-suggest.js"></script>
+    <script>
+        document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
+    </script>
+    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+</head>
+<body>
+    <div class="layout">
+        <section class="panel">
+            <div class="page-hero">
+                <div class="page-hero-main">
+                    <h1>ウィジェット</h1>
+                    <p class="subtext">各ウィジェットの設定とオーバーレイ URL を管理し、カード内で実際の見え方も確認できます。</p>
+                </div>
+                <div class="page-hero-side">
+                    <div class="hero-status-grid">
+                        <div class="status" id="broadcaster-status">配信ユーザーID: 読み込み中</div>
+                        <div class="status" id="today-status">本日: 読み込み中</div>
+                        <div class="status" id="save-status">設定状態: 読み込み中</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="utility-card-grid" style="margin-top: 18px;">
+                <article class="utility-card">
+                    <div class="utility-card-head">
+                        <div>
+                            <h3>共通通知設定</h3>
+                            <p class="subtext">通知音とエフェクトをまとめて調整します。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="shared-notification-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+                    <div class="widget-settings-panel" id="shared-notification-settings-panel" hidden>
+                        <div class="form-grid" style="margin-top: 0;">
+                            <div class="field">
+                                <label for="shared-sound-key">共通通知音</label>
+                                <select id="shared-sound-key" aria-label="全ウィジェット共通通知音"></select>
+                            </div>
+                            <div class="field">
+                                <label for="shared-effect-key">共通エフェクト</label>
+                                <select id="shared-effect-key" aria-label="全ウィジェット共通エフェクト"></select>
+                            </div>
+                            <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                                <button type="button" class="ghost-button" id="test-shared-sound-button">テスト再生</button>
+                                <p class="subtext" style="margin: 0; flex: 1 1 200px;">ローカル音声ファイルを優先再生します。配置先: /audio/feedback/&lt;soundKey&gt;.(mp3|wav|ogg|m4a)</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="grid">
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>貢献目標リスト</h2>
+                            <p class="subtext">指定した貢献額以上のリスナー一覧を OBS 向け URL として開きます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="contributors-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="contributors-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-contributors-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-contributors-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="day-picker-row" id="contributors-day-picker-row">
+                        <button type="button" class="ghost-button" id="contributors-prev-day-button">前日</button>
+                        <div class="day-pill" id="contributors-day-label">読み込み中</div>
+                        <button type="button" class="ghost-button" id="contributors-next-day-button">翌日</button>
+                    </div>
+
+                    <div class="widget-settings-panel" id="contributors-settings-panel" hidden>
+                    <div class="form-grid" style="margin-bottom: 14px;">
+                        <div class="field">
+                            <label for="contributors-font">フォント</label>
+                            <select id="contributors-font" aria-label="フォント"></select>
+                        </div>
+                        <div class="field">
+                            <label for="contributors-text-style">文字色と縁取り</label>
+                            <select id="contributors-text-style" aria-label="文字色と縁取り"></select>
+                        </div>
+                        <div class="field">
+                            <label for="contributors-stroke-width">縁取り太さ</label>
+                            <input id="contributors-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                        </div>
+                    </div>
+                    <div class="field full">
+                        <label for="contributors-range-mode">集計範囲</label>
+                        <select id="contributors-range-mode" aria-label="集計範囲">
+                            <option value="today">0時～24時</option>
+                            <option value="session">配信ごとにリセット</option>
+                        </select>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom: 16px;">
+                        <div class="field">
+                            <label for="contributors-threshold">何コイン以上で表示</label>
+                            <input id="contributors-threshold" type="number" min="100" step="100" inputmode="numeric" aria-label="何コイン以上で表示" />
+                        </div>
+                        <div class="field">
+                            <label for="contributors-goal-count">目標達成人数</label>
+                            <input id="contributors-goal-count" type="number" min="0" step="1" inputmode="numeric" aria-label="目標達成人数" />
+                        </div>
+                        <div class="field">
+                            <label for="contributors-avatar-visibility">表示形式</label>
+                            <select id="contributors-avatar-visibility" aria-label="表示形式">
+                                <option value="avatar-and-name">プロフ画像と名前</option>
+                                <option value="name-only">名前</option>
+                                <option value="count-only">人数のみ</option>
+                            </select>
+                        </div>
+                    </div>
+                    </div><!-- /contributors-settings-panel -->
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="open-admin-button">ユーザーコイン数を開く</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame contributors-preview">
+                            <iframe id="contributors-preview-frame" title="貢献目標リストプレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>貢献コイン数一覧</h2>
+                            <p class="subtext">ユーザーごとのギフトコイン合計を縦に並べて表示するオーバーレイです。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="coin-list-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="coin-list-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-coin-list-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-coin-list-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="coin-list-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="coin-list-font">フォント</label>
+                                <select id="coin-list-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-text-style">文字色と縁取り</label>
+                                <select id="coin-list-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-stroke-width">縁取り太さ</label>
+                                <input id="coin-list-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-bg-style">背景スタイル</label>
+                                <select id="coin-list-bg-style">
+                                    <option value="transparent">透過（OBSクロマキー向け）</option>
+                                    <option value="semi">半透過ブラック</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-sort-order">並び順</label>
+                                <select id="coin-list-sort-order">
+                                    <option value="desc">降順（コインが多い順）</option>
+                                    <option value="asc">昇順（コインが少ない順）</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-max-entries">最大表示件数</label>
+                                <input id="coin-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                            </div>
+                            <div class="field">
+                                <label for="coin-list-row-gap">ユーザー間の間隔 (px)</label>
+                                <input id="coin-list-row-gap" type="number" min="-30" max="80" step="1" inputmode="numeric" placeholder="8">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="coin-list-preview-frame" title="貢献コイン数一覧プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>本日最高ギフト</h2>
+                            <p class="subtext">表示設定だけを管理し、確認はオーバーレイ側で行います。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="top-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="top-gift-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-top-gift-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-top-gift-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="top-gift-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="top-gift-font">フォント</label>
+                                <select id="top-gift-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-text-style">文字色と縁取り</label>
+                                <select id="top-gift-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-stroke-width">縁取り太さ</label>
+                                <input id="top-gift-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-title">表示タイトル</label>
+                                <input id="top-gift-title" type="text" maxlength="40" placeholder="本日最高ギフト">
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-sender-display-mode">同点時の送信者表示</label>
+                                <select id="top-gift-sender-display-mode">
+                                    <option value="latest">最後に投げた人で上書き</option>
+                                    <option value="all">全員の名前を縦に並べる</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="top-gift-metal-effect-enabled">発光エフェクト</label>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="top-gift-metal-effect-enabled">
+                                    <label for="top-gift-metal-effect-enabled">発光エフェクト</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame top-gift-preview">
+                            <iframe id="top-gift-preview-frame" title="本日最高ギフトプレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>Like貢献通知</h2>
+                            <p class="subtext">指定タップ数ごとに名前と総タップ数をバルーン表示します。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="like-contribution-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="like-contribution-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-like-contribution-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-like-contribution-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="like-contribution-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="like-contribution-font">フォント</label>
+                                <select id="like-contribution-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-text-style">文字色と縁取り</label>
+                                <select id="like-contribution-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-stroke-width">縁取り太さ</label>
+                                <input id="like-contribution-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-title">表示タイトル</label>
+                                <input id="like-contribution-title" type="text" maxlength="40" placeholder="Likeありがとう！">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-interval">何タップごとに通知</label>
+                                <input id="like-contribution-interval" type="number" min="1" step="1" inputmode="numeric" placeholder="50">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-balloon-design">バルーンデザイン</label>
+                                <select id="like-contribution-balloon-design">
+                                    <option value="dark-glass">ダークガラス（デフォルト）</option>
+                                    <option value="horizontal-pill">横並びピル</option>
+                                    <option value="big-number">ビッグナンバー</option>
+                                    <option value="side-accent">サイドアクセント</option>
+                                    <option value="compact-banner">コンパクトバナー</option>
+                                    <option value="stacked-center">スタックセンター</option>
+                                    <option value="wa-stamp">和スタンプ</option>
+                                    <option value="singer-stage">シンガーステージ</option>
+                                    <option value="dance-floor">ダンスフロア</option>
+                                    <option value="kitchen-chalk">キッチン黒板</option>
+                                    <option value="paw-pop">ペット・もふもふ</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-count-font-size">タップ数 文字サイズ (px)</label>
+                                <input id="like-contribution-count-font-size" type="number" min="10" max="200" step="1" inputmode="numeric" placeholder="42">
+                            </div>
+                            <div class="field">
+                                <label for="like-contribution-name-font-size">リスナー名 文字サイズ (px)</label>
+                                <input id="like-contribution-name-font-size" type="number" min="8" max="120" step="1" inputmode="numeric" placeholder="34">
+                            </div>
+                            <div class="field full">
+                                <label for="like-contribution-volume">通知音量</label>
+                                <div class="status-row">
+                                    <input id="like-contribution-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Like通知音量" style="flex: 1 1 220px;">
+                                    <div class="chip" id="like-contribution-volume-value">100%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="test-like-contribution-button">通知デモ</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame like-contribution-preview">
+                            <iframe id="like-contribution-preview-frame" title="Like貢献通知プレビュー" loading="eager"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>Like数一覧</h2>
+                            <p class="subtext">ユーザーごとのタップ数を多い順に縦に並べて表示するオーバーレイです。Like貢献通知と同じデータを使用します。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="tap-list-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="tap-list-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-tap-list-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-tap-list-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="tap-list-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="tap-list-font">フォント</label>
+                                <select id="tap-list-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-text-style">文字色と縁取り</label>
+                                <select id="tap-list-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-stroke-width">縁取り太さ</label>
+                                <input id="tap-list-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-bg-style">背景スタイル</label>
+                                <select id="tap-list-bg-style">
+                                    <option value="transparent">透過（OBSクロマキー向け）</option>
+                                    <option value="semi">半透過ブラック</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-max-entries">最大表示件数</label>
+                                <input id="tap-list-max-entries" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="20">
+                            </div>
+                            <div class="field">
+                                <label for="tap-list-row-gap">ユーザー間の間隔 (px)</label>
+                                <input id="tap-list-row-gap" type="number" min="-30" max="80" step="1" inputmode="numeric" placeholder="8">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="reset-tap-list-button">タップ数をリセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="tap-list-preview-frame" title="Like数一覧プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>タップ目標</h2>
+                            <p class="subtext">全リスナーのタップ数を合算し、目標に到達するとエフェクトを発火します。到達後は自動的に0に戻り、繰り返しループします。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="tap-goal-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="tap-goal-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-tap-goal-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-tap-goal-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="tap-goal-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="tap-goal-font">フォント</label>
+                                <select id="tap-goal-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-text-style">文字色と縁取り</label>
+                                <select id="tap-goal-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-stroke-width">縁取り太さ</label>
+                                <input id="tap-goal-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-orientation">プログレスバーの向き</label>
+                                <select id="tap-goal-orientation">
+                                    <option value="horizontal">横向き</option>
+                                    <option value="vertical">縦向き</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-heading-text">見出しテキスト</label>
+                                <input id="tap-goal-heading-text" type="text" maxlength="40" placeholder="タップチャレンジ">
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-heading-position">見出しの位置</label>
+                                <select id="tap-goal-heading-position">
+                                    <option value="top">上</option>
+                                    <option value="bottom">下</option>
+                                    <option value="left">左</option>
+                                    <option value="right">右</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-heading-writing-mode">見出しの書字方向</label>
+                                <select id="tap-goal-heading-writing-mode">
+                                    <option value="horizontal">横書き</option>
+                                    <option value="vertical">縦書き</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-target-count">目標タップ数</label>
+                                <input id="tap-goal-target-count" type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="100">
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-icon-size">リスナーアイコンサイズ</label>
+                                <div class="modal-inline-row">
+                                    <input type="range" id="tap-goal-icon-size" min="30" max="200" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="tap-goal-icon-size-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>到達時の通知音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="tap-goal-myinstants-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="tap-goal-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="tap-goal-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="tap-goal-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="tap-goal-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="tap-goal-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="tap-goal-sound-target">再生するオーバーレイ</label>
+                                <select id="tap-goal-sound-target">
+                                    <option value="tap-goal">タップ目標オーバーレイ</option>
+                                    <option value="screen1">screen 1</option>
+                                    <option value="screen2">screen 2</option>
+                                    <option value="screen3">screen 3</option>
+                                    <option value="screen4">screen 4</option>
+                                    <option value="screen5">screen 5</option>
+                                    <option value="screen6">screen 6</option>
+                                    <option value="screen7">screen 7</option>
+                                    <option value="screen8">screen 8</option>
+                                    <option value="screen9">screen 9</option>
+                                    <option value="screen10">screen 10</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="tap-goal-progress-label">進捗: 0 / 0</div>
+                        <button type="button" class="ghost-button" id="test-tap-goal-button">タップをテスト送信 (+10)</button>
+                        <button type="button" class="ghost-button" id="reset-tap-goal-button">進捗をリセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="tap-goal-preview-frame" title="タップ目標プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>タイマー</h2>
+                            <p class="subtext">指定時間のカウントダウンを表示します。終了時に紙吹雪と効果音が再生されます。ギフトによる時間延長/短縮は「イベント」の「TikEffectウィジェット連携」→「タイマーウィジェット」から設定できます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="timer-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="timer-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-timer-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-timer-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="timer-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="timer-font">フォント</label>
+                                <select id="timer-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="timer-text-style">文字色と縁取り</label>
+                                <select id="timer-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="timer-stroke-width">縁取り太さ</label>
+                                <input id="timer-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="timer-heading-text">見出しテキスト</label>
+                                <input id="timer-heading-text" type="text" maxlength="40" placeholder="カウントダウン">
+                            </div>
+                            <div class="field">
+                                <label for="timer-duration-minutes">開始時間（分）</label>
+                                <input id="timer-duration-minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" placeholder="10">
+                            </div>
+                            <div class="field">
+                                <label for="timer-duration-seconds">開始時間（秒）</label>
+                                <input id="timer-duration-seconds" type="number" min="0" max="59" step="1" inputmode="numeric" placeholder="0">
+                            </div>
+                            <div class="field">
+                                <label for="timer-min-floor-minutes">短縮の下限（分）</label>
+                                <input id="timer-min-floor-minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" placeholder="0">
+                                <span class="subtext">短縮ギフトが飛んでもこの分数を下回りません</span>
+                            </div>
+                            <div class="field">
+                                <label for="timer-max-ceiling-minutes">延長の上限（分）</label>
+                                <input id="timer-max-ceiling-minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" placeholder="0">
+                                <span class="subtext">延長ギフトが飛んでもこの分数を超えません（0で上限なし）。到達時は「タイマーMAX到達」の帯が1分間表示されます</span>
+                            </div>
+                            <div class="field full">
+                                <label>終了時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="timer-myinstants-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-end-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-end-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="timer-end-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="timer-end-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="timer-end-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="timer-end-sound-screen">再生するオーバーレイ</label>
+                                <select id="timer-end-sound-screen">
+                                    <option value="1">screen 1</option>
+                                    <option value="2">screen 2</option>
+                                    <option value="3">screen 3</option>
+                                    <option value="4">screen 4</option>
+                                    <option value="5">screen 5</option>
+                                    <option value="6">screen 6</option>
+                                    <option value="7">screen 7</option>
+                                    <option value="8">screen 8</option>
+                                    <option value="9">screen 9</option>
+                                    <option value="10">screen 10</option>
+                                </select>
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="timer-countdown-sound-enabled">
+                                    <label for="timer-countdown-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">カウントダウン音を有効化 <span style="font-weight:400;opacity:0.7;">— 「24」のような秒読み音を残り指定秒数から鳴らす</span></label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="timer-countdown-sound-threshold">残り何秒からカウント音を鳴らすか</label>
+                                <div class="action-row">
+                                    <input type="range" id="timer-countdown-sound-threshold" min="1" max="60" step="1" value="5" style="flex: 1;">
+                                    <span class="subtext" id="timer-countdown-sound-threshold-value" style="margin-top: 0; width: 42px;">5秒</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>カウントダウン音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="timer-countdown-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-countdown-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="timer-countdown-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="timer-countdown-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="timer-countdown-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="timer-countdown-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="timer-countdown-sound-screen">カウントダウン音を再生するオーバーレイ</label>
+                                <select id="timer-countdown-sound-screen">
+                                    <option value="1">screen 1</option>
+                                    <option value="2">screen 2</option>
+                                    <option value="3">screen 3</option>
+                                    <option value="4">screen 4</option>
+                                    <option value="5">screen 5</option>
+                                    <option value="6">screen 6</option>
+                                    <option value="7">screen 7</option>
+                                    <option value="8">screen 8</option>
+                                    <option value="9">screen 9</option>
+                                    <option value="10">screen 10</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="timer-status-label">残り時間: 00:00（停止中）</div>
+                        <button type="button" class="ghost-button" id="start-timer-button">開始</button>
+                        <button type="button" class="ghost-button" id="pause-timer-button">一時停止</button>
+                        <button type="button" class="ghost-button" id="reset-timer-button">リセット</button>
+                        <button type="button" class="ghost-button" id="test-timer-plus-button">テスト +1分</button>
+                        <button type="button" class="ghost-button" id="test-timer-minus-button">テスト -1分</button>
+                        <button type="button" class="ghost-button" id="test-timer-end-sound-button">終了音をテスト再生</button>
+                        <button type="button" class="ghost-button" id="test-timer-countdown-sound-button">カウントダウン音をテスト再生</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="timer-preview-frame" title="タイマープレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>トリガー5倍</h2>
+                            <p class="subtext">イベントトリガーの「TikEffectウィジェット連携」で「トリガー５倍グローブ発動」をONにすると、そのトリガーが発火した時に「5倍タイム」が始まります。指定秒数の間に発火したイベントトリガーが設定した確率で5倍（動画なら5回再生）になり、当選したリスナーがオーバーレイに表示されます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="trigger-x5-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="trigger-x5-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-trigger-x5-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-trigger-x5-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="trigger-x5-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-enabled">
+                                    <label for="trigger-x5-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">トリガー5倍を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x5-duration-seconds">継続時間（秒）</label>
+                                <input id="trigger-x5-duration-seconds" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="15">
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x5-win-rate">当選確率（%）</label>
+                                <input id="trigger-x5-win-rate" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="30">
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-sound-enabled">
+                                    <label for="trigger-x5-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">発動時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>発動時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x5-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x5-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x5-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x5-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x5-win-sound-enabled">
+                                    <label for="trigger-x5-win-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">5倍成功時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>5倍成功時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x5-win-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-win-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x5-win-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x5-win-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x5-win-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x5-win-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="trigger-x5-status-label">当選確率: -% ／ 倍率: ×5</div>
+                        <button type="button" class="ghost-button" id="test-trigger-x5-button">当選演出をテスト表示</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="trigger-x5-preview-frame" title="トリガー5倍プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>トリガー6倍</h2>
+                            <p class="subtext">イベントトリガーの「TikEffectウィジェット連携」で「トリガー６倍グローブ発動」をONにすると、そのトリガーが発火した時に「6倍タイム」が始まります。トリガー5倍とは完全に独立した抽選で、同時に発動・重複することもあります。オーバーレイはトリガー5倍と共通です。上のトリガー5倍のOverlay URLをそのままご利用ください（同じシーンに6倍グローブも表示されます）。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="trigger-x6-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="widget-settings-panel" id="trigger-x6-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-enabled">
+                                    <label for="trigger-x6-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">トリガー6倍を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x6-duration-seconds">継続時間（秒）</label>
+                                <input id="trigger-x6-duration-seconds" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="15">
+                            </div>
+                            <div class="field">
+                                <label for="trigger-x6-win-rate">当選確率（%）</label>
+                                <input id="trigger-x6-win-rate" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="30">
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-sound-enabled">
+                                    <label for="trigger-x6-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">発動時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>発動時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x6-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x6-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x6-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x6-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="trigger-x6-win-sound-enabled">
+                                    <label for="trigger-x6-win-sound-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">6倍成功時に効果音を再生</label>
+                                </div>
+                            </div>
+                            <div class="field full">
+                                <label>6倍成功時の効果音</label>
+                                <div class="modal-inline-row">
+                                    <button type="button" class="ghost-button" id="trigger-x6-win-sound-picker-button">🔊 サウンドを選ぶ</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-win-sound-preview-button" title="試聴" aria-label="試聴">▶</button>
+                                    <button type="button" class="ghost-button icon-button" id="trigger-x6-win-sound-clear-button" title="クリア" aria-label="クリア">✕</button>
+                                    <span class="modal-asset-name" id="trigger-x6-win-sound-name">未設定</span>
+                                </div>
+                                <div class="action-row">
+                                    <input type="range" id="trigger-x6-win-sound-volume" min="0" max="100" step="5" value="100" style="flex: 1;">
+                                    <span class="subtext" id="trigger-x6-win-sound-volume-value" style="margin-top: 0; width: 42px;">100%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="status" id="trigger-x6-status-label">当選確率: -% ／ 倍率: ×6</div>
+                        <button type="button" class="ghost-button" id="test-trigger-x6-button">当選演出をテスト表示</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー（トリガー5倍と共通のオーバーレイ）</div>
+                        <div class="widget-preview-frame" style="height:240px;">
+                            <iframe id="trigger-x6-preview-frame" title="トリガー6倍プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair">
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>称号</h2>
+                            <p class="subtext">リスナーが「ハートミー」を投げると、事前に登録しておいた称号がバッジ付きで画面右からスライドインして表示されます。称号は下の一覧から視聴者ごとに登録してください。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="shogo-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="shogo-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-shogo-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-shogo-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="shogo-settings-panel" hidden>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="shogo-enabled">
+                                    <label for="shogo-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">称号ウィジェットを有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="shogo-display-seconds">表示時間（秒）</label>
+                                <input id="shogo-display-seconds" type="number" min="1" max="30" step="1" inputmode="numeric" placeholder="6">
+                            </div>
+                            <div class="field full">
+                                <label>称号を登録するユーザー</label>
+                                <div class="modal-inline-row">
+                                    <div class="gift-suggest-shell" style="flex:1;min-width:160px;">
+                                        <input id="shogo-add-user-id" type="text" maxlength="80" autocomplete="off" placeholder="ユーザーID（@なし）">
+                                        <div class="gift-suggestion-panel" id="shogo-add-user-suggestion-panel" hidden></div>
+                                    </div>
+                                    <button type="button" class="ghost-button" id="shogo-add-title-button">ユーザーを登録</button>
+                                </div>
+                                <p class="subtext">ユーザーを登録すると一覧に追加されます。称号は一覧の「+ 称号追加」から、ユーザーIDを再入力せずに何度でも追加できます。</p>
+                            </div>
+                            <div class="field full">
+                                <label>登録済み称号一覧</label>
+                                <div class="modal-inline-row">
+                                    <input id="shogo-filter-user" type="text" maxlength="80" autocomplete="off" placeholder="ユーザーID・名前で絞り込み" style="flex:1;min-width:140px;">
+                                    <input id="shogo-filter-title" type="text" maxlength="40" autocomplete="off" placeholder="称号名で絞り込み" style="flex:1;min-width:140px;">
+                                </div>
+                                <div class="shogo-title-list" id="shogo-title-list"></div>
+                                <div class="gift-suggestion-panel" id="shogo-row-badge-panel" hidden></div>
+                            </div>
+                            <div class="field full">
+                                <label>月間貢献自動集計連携（LiveAnalytics）</label>
+                                <p class="subtext">先月度のギフト累計ダイヤ数をLiveAnalyticsから取得し、MVP・TOP5称号を自動登録します。</p>
+                                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                                    <input type="checkbox" id="shogo-monthly-mvp-enabled">
+                                    <label for="shogo-monthly-mvp-enabled" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">自動反映を有効化</label>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="shogo-monthly-mvp-base-url">LiveAnalytics Base URL</label>
+                                <input id="shogo-monthly-mvp-base-url" type="text" autocomplete="off" placeholder="https://your-app.railway.app">
+                            </div>
+                            <div class="field">
+                                <label for="shogo-monthly-mvp-api-key">APIキー</label>
+                                <input id="shogo-monthly-mvp-api-key" type="text" autocomplete="off" placeholder="LiveAnalyticsのsetup画面で発行したキー">
+                            </div>
+                            <div class="field full">
+                                <div class="action-row">
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-save-button">連携設定を保存</button>
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-test-button">接続テスト</button>
+                                    <button type="button" class="ghost-button" id="shogo-monthly-mvp-run-now-button">今すぐ集計して反映</button>
+                                </div>
+                                <div class="status" id="shogo-monthly-mvp-status">未設定</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="test-shogo-button">称号表示をテスト</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame" style="height:160px;">
+                            <iframe id="shogo-preview-frame" title="称号プレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <div class="jar-pair" style="display:none"><!-- 瓶詰め/オリジナル瓶詰めウィジェット非表示 -->
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>瓶詰めギフト</h2>
+                            <p class="subtext">ギフトが飛ぶとそのギフト画像が瓶に落下して貯まっていきます。コイン数が多いほど画像が大きくなります。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="gift-jar-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="gift-jar-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-gift-jar-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-gift-jar-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label for="gift-jar-theme">瓶テーマ</label>
+                        <select id="gift-jar-theme" style="font-size:14px;padding:4px 8px;max-width:260px;">
+                            <option value="jar">瓶（デフォルト）</option>
+                            <option value="pig">豚のガラス瓶</option>
+                        </select>
+                    </div>
+
+                    <div class="widget-settings-panel" id="gift-jar-settings-panel" hidden>
+                    <div class="form-grid" style="margin-bottom: 14px;">
+                        <div class="field">
+                            <label for="gift-jar-font">フォント</label>
+                            <select id="gift-jar-font" aria-label="フォント"></select>
+                        </div>
+                        <div class="field">
+                            <label for="gift-jar-text-style">文字色と縁取り</label>
+                            <select id="gift-jar-text-style" aria-label="文字色と縁取り"></select>
+                        </div>
+                        <div class="field">
+                            <label for="gift-jar-stroke-width">縁取り太さ</label>
+                            <input id="gift-jar-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="gift-jar-drop-height">落下開始高さ</label>
+                        <input type="range" id="gift-jar-drop-height" min="0" max="400" step="50" value="0" style="width:180px;vertical-align:middle;">
+                        <span id="gift-jar-drop-height-value" style="margin-left:8px;font-size:13px;">0 px</span>
+                    </div>
+
+                    <div class="field">
+                    <div class="field">
+                        <label for="gift-jar-size-multiplier">ギフトサイズ係数</label>
+                        <input type="number" id="gift-jar-size-multiplier" min="0.1" max="5" step="0.05" value="1" style="width:80px;">
+                        <span style="margin-left:6px;font-size:13px;">倍（0.1〜5.0）</span>
+                    </div>
+                    <div class="field">
+                        <label for="gift-jar-size-ratio-coeff">大きさ係数</label>
+                        <input type="range" id="gift-jar-size-ratio-coeff" min="0" max="3" step="0.1" value="1" style="width:180px;vertical-align:middle;">
+                        <span id="gift-jar-size-ratio-coeff-value" style="margin-left:8px;font-size:13px;">1.0</span>
+                        <span style="margin-left:4px;font-size:12px;color:var(--muted);">（1=そのまま、大きいほど差が広がる）</span>
+                    </div>
+                    </div>
+                    </div><!-- /gift-jar-settings-panel -->
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="test-gift-jar-single-button">テストギフト送信</button>
+                        <button type="button" class="ghost-button" id="shake-gift-jar-button">瓶をシェイク</button>
+                        <button type="button" class="ghost-button" id="reset-gift-jar-button">瓶をリセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame gift-jar-preview">
+                            <iframe id="gift-jar-preview-frame" title="瓶詰めギフトプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="gift-jar-wall-settings-panel" hidden>
+                    <div class="gift-jar-wall-editor" id="gift-jar-wall-editor">
+                        <div class="gift-jar-wall-editor-head">
+                            <div>
+                                <div class="widget-preview-label">壁エディタ（管理用）</div>
+                                <div class="gift-jar-wall-editor-note" id="gift-jar-wall-editor-note">豚テーマ専用。ギフトを止めたい壁だけをマウスで線描きして保存します。線を描いていない場所は出入りできます。</div>
+                            </div>
+                            <div class="gift-jar-wall-editor-status" id="gift-jar-wall-editor-status">未保存</div>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-toolbar">
+                            <button type="button" class="ghost-button is-active" id="gift-jar-wall-paint-button">描く</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-erase-button">消す</button>
+                            <label for="gift-jar-wall-brush-size">ブラシ</label>
+                            <input type="range" id="gift-jar-wall-brush-size" min="4" max="48" step="2" value="18" style="width: 160px;">
+                            <span id="gift-jar-wall-brush-size-value" class="subtext" style="margin-top: 0;">18 px</span>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-stage-wrap">
+                            <div class="gift-jar-wall-editor-stage" id="gift-jar-wall-editor-stage">
+                                <img class="gift-jar-wall-editor-background" id="gift-jar-wall-editor-background" alt="wall editor background" hidden>
+                                <canvas class="gift-jar-wall-editor-canvas" id="gift-jar-wall-editor-canvas" width="540" height="540"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="gift-jar-wall-editor-toolbar">
+                            <button type="button" class="ghost-button" id="gift-jar-wall-load-button">保存済み壁を読み込む</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-clear-button">キャンバスを空にする</button>
+                            <button type="button" class="ghost-button" id="gift-jar-wall-delete-button">保存壁を削除</button>
+                            <button type="button" class="primary" id="gift-jar-wall-save-button">今の壁線を初期壁として保存</button>
+                        </div>
+                    </div>
+                    </div><!-- /gift-jar-wall-settings-panel -->
+                </article>
+
+                <!-- ====== オリジナル瓶詰めギフト ====== -->
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>オリジナル瓶詰めギフト</h2>
+                            <p class="subtext">自分で選んだ画像を瓶として使用します。画像を登録し、壁とギフト落下位置を設定してテーマに追加できます。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="custom-jar-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="widget-settings-panel" id="custom-jar-settings-panel" hidden>
+                    <div class="field">
+                        <label for="custom-jar-drop-height">落下開始高さ</label>
+                        <input type="range" id="custom-jar-drop-height" min="0" max="400" step="50" value="0" style="width:180px;vertical-align:middle;">
+                        <span id="custom-jar-drop-height-value" style="margin-left:8px;font-size:13px;">0 px</span>
+                    </div>
+                    <div class="field">
+                    <div class="field">
+                        <label for="custom-jar-size-multiplier">ギフトサイズ係数</label>
+                        <input type="number" id="custom-jar-size-multiplier" min="0.1" max="5" step="0.05" value="0.4" style="width:80px;">
+                        <span style="margin-left:6px;font-size:13px;">倍（0.1〜5.0）</span>
+                    </div>
+                    <div class="field">
+                        <label for="custom-jar-size-ratio-coeff">大きさ係数</label>
+                        <input type="range" id="custom-jar-size-ratio-coeff" min="0" max="3" step="0.1" value="1" style="width:180px;vertical-align:middle;">
+                        <span id="custom-jar-size-ratio-coeff-value" style="margin-left:8px;font-size:13px;">1.0</span>
+                        <span style="margin-left:4px;font-size:12px;color:var(--muted);">（1=そのまま、大きいほど差が広がる）</span>
+                    </div>
+                    </div>
+                    </div><!-- /custom-jar-settings-panel -->
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="custom-jar-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-custom-jar-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-custom-jar-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="action-row" style="margin-bottom:4px;">
+                        <button type="button" class="primary" id="cuj-open-modal-btn">オリジナル画像を登録</button>
+                        <button type="button" class="ghost-button" id="test-custom-jar-single-button">テストギフト送信</button>
+                        <button type="button" class="ghost-button" id="shake-custom-jar-button">瓶をシェイク</button>
+                        <button type="button" class="ghost-button" id="reset-custom-jar-button">瓶をリセット</button>
+                    </div>
+
+                    <div id="cuj-theme-list" class="cuj-theme-list" style="margin-top:6px;"></div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame gift-jar-preview">
+                            <iframe id="custom-jar-preview-frame" title="オリジナル瓶詰めプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+                </div><!-- /jar-pair -->
+
+                <article class="card">
+                    <div class="card-head">
+                        <div>
+                            <h2>プッシュ＆プル</h2>
+                            <p class="subtext">ギフトが飛ぶたびに設定ポイント分だけメーターが傾きます。左（赤）がプッシュ、右（青）がプルです。</p>
+                        </div>
+                        <button type="button" class="settings-toggle-btn" data-panel-id="push-pull-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+                    </div>
+
+                    <div class="field full overlay-url-field top-gift-url-field">
+                        <label>Overlay URL</label>
+                        <div class="overlay-url-row">
+                            <div class="url-box" id="push-pull-url">読み込み中</div>
+                            <button type="button" class="ghost-button icon-button" id="open-push-pull-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                            <button type="button" class="ghost-button icon-button" id="copy-push-pull-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-settings-panel" id="push-pull-settings-panel" hidden>
+                        <div class="form-grid" style="margin-bottom:14px;">
+                            <div class="field">
+                                <label for="push-pull-font">フォント</label>
+                                <select id="push-pull-font" aria-label="フォント"></select>
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-text-style">文字色と縁取り</label>
+                                <select id="push-pull-text-style" aria-label="文字色と縁取り"></select>
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-stroke-width">縁取り太さ</label>
+                                <input id="push-pull-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-gift-size">ギフト画像サイズ (px)</label>
+                                <input id="push-pull-gift-size" type="number" min="40" max="160" step="4" inputmode="numeric" aria-label="ギフト画像サイズ" />
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-gift-pts-size">ポイント文字サイズ (px)</label>
+                                <input id="push-pull-gift-pts-size" type="number" min="8" max="40" step="1" inputmode="numeric" aria-label="ポイント文字サイズ" />
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-score-mode">スコア表示</label>
+                                <select id="push-pull-score-mode" aria-label="スコア表示">
+                                    <option value="absolute">累計ポイント（絶対値）</option>
+                                    <option value="relative">差分（中央が０）</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-push-label">プッシュ側ラベル</label>
+                                <input type="text" id="push-pull-push-label" maxlength="30" placeholder="プッシュ">
+                            </div>
+                            <div class="field">
+                                <label for="push-pull-pull-label">プル側ラベル</label>
+                                <input type="text" id="push-pull-pull-label" maxlength="30" placeholder="プル">
+                            </div>
+                        </div>
+
+                        <div class="push-pull-sides">
+                            <div>
+                                <div class="push-pull-side-head push">プッシュギフト（最大5つ）</div>
+                                <div id="push-pull-push-gifts"></div>
+                            </div>
+                            <div>
+                                <div class="push-pull-side-head pull">プルギフト（最大5つ）</div>
+                                <div id="push-pull-pull-gifts"></div>
+                            </div>
+                        </div>
+                    </div><!-- /push-pull-settings-panel -->
+
+                    <div class="action-row">
+                        <button type="button" class="ghost-button" id="push-pull-test-push-button">プッシュをテスト (+10pt)</button>
+                        <button type="button" class="ghost-button" id="push-pull-test-pull-button">プルをテスト (+10pt)</button>
+                        <button type="button" class="ghost-button" id="push-pull-reset-button">リセット</button>
+                    </div>
+
+                    <div class="widget-preview">
+                        <div class="widget-preview-label">サンプルプレビュー</div>
+                        <div class="widget-preview-frame push-pull-preview">
+                            <iframe id="push-pull-preview-frame" title="プッシュ＆プルプレビュー" loading="eager" allowtransparency="true"></iframe>
+                        </div>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <div class="push-pull-suggest-panel" id="push-pull-suggest-panel" hidden></div>
+        <div class="modal-shell" id="myinstants-modal" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="myinstants-modal-title">
+                <div>
+                    <h2 id="myinstants-modal-title">テンプレートから音声を選ぶ</h2>
+                    <p class="subtext"><a href="https://www.myinstants.com/ja/index/jp/" target="_blank" rel="noopener noreferrer">myinstants.com</a> と <a href="https://soundeffect-lab.info" target="_blank" rel="noopener noreferrer">効果音ラボ</a> のサウンドをまとめて検索して取り込みます。</p>
+                </div>
+                <div class="record-fields modal-fields-vertical">
+                    <div class="field full">
+                        <label>キーワード検索</label>
+                        <div class="modal-inline-row">
+                            <input type="text" id="myinstants-search-input" placeholder="例: 拍手, applause, 効果音">
+                            <button type="button" class="primary" id="myinstants-search-button">検索</button>
+                        </div>
+                    </div>
+                    <div class="field full">
+                        <div class="myinstants-status" id="myinstants-status"></div>
+                        <div class="myinstants-results" id="myinstants-results"></div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" data-action="close-myinstants-modal">閉じる</button>
+                </div>
+            </div>
+        </div>
+
+        <section class="panel">
+            <div class="card-head">
+                <div>
+                    <h2>目標ギフト</h2>
+                    <p class="subtext">ギフト目標の達成状況をオーバーレイ表示します。</p>
+                </div>
+                <button type="button" class="settings-toggle-btn" data-panel-id="goal-gift-settings-panel" aria-expanded="false" title="設定を開く">⚙️</button>
+            </div>
+
+            <div class="field full overlay-url-field">
+                <label>Overlay URL(全ゴール横一列)</label>
+                <div class="overlay-url-row">
+                    <div class="url-box" id="goal-gift-all-url">読み込み中</div>
+                    <button type="button" class="ghost-button icon-button" id="open-goal-gift-all-overlay-button" aria-label="オーバーレイを開く" title="オーバーレイを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+                    <button type="button" class="ghost-button icon-button" id="copy-goal-gift-all-url-button" aria-label="URLをコピー" title="URLをコピー"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg></button>
+                </div>
+            </div>
+
+            <div class="widget-settings-panel" id="goal-gift-settings-panel" hidden>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="goal-gift-font">フォント</label>
+                        <select id="goal-gift-font" aria-label="フォント"></select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-text-style">文字色と縁取り</label>
+                        <select id="goal-gift-text-style" aria-label="文字色と縁取り"></select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-stroke-width">縁取り太さ</label>
+                        <input id="goal-gift-stroke-width" type="number" min="1" max="12" step="1" inputmode="numeric" aria-label="縁取り太さ" />
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-note-font-size">備考文字サイズ</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-note-font-size" min="8" max="96" step="1" value="28" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-layout">並び方向(全ゴール一括URL)</label>
+                        <select id="goal-gift-layout">
+                            <option value="row">横並び</option>
+                            <option value="column">縦並び</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-heading-text">見出し(全ゴール一括URL) <span style="font-weight:400;opacity:0.7;">— 横並び時は上、縦並び時は左に縦書き表示</span></label>
+                        <input type="text" id="goal-gift-heading-text" maxlength="40" placeholder="例: 目標ギフト一覧" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <div class="toggle" style="width:100%;box-sizing:border-box;">
+                            <input type="checkbox" id="goal-gift-heading-scroll">
+                            <label for="goal-gift-heading-scroll" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">見出しスクロール <span style="font-weight:400;opacity:0.7;">— ONで見出しを流し続ける</span></label>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-heading-font-size">見出し文字サイズ</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-heading-font-size" min="12" max="160" step="1" value="32" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-achievement-badge-style">達成バッジ スタイル</label>
+                        <select id="goal-gift-achievement-badge-style">
+                            <option value="stamp-red">赤スタンプ</option>
+                            <option value="stamp-blue">青スタンプ</option>
+                            <option value="stamp-gold">金スタンプ</option>
+                            <option value="stamp-green">緑スタンプ</option>
+                            <option value="stamp-dark">黒スタンプ</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-achievement-badge-size">達成バッジ 幅</label>
+                        <div class="action-row">
+                            <input type="number" id="goal-gift-achievement-badge-size" min="40" max="400" step="4" value="152" style="width: 110px;">
+                            <span class="subtext" style="margin-top: 0;">px</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-progress-ring-color">プログレスバー色</label>
+                        <div class="action-row">
+                            <input type="color" id="goal-gift-progress-ring-color" value="#f59e0b" style="width: 60px; height: 36px; padding: 2px; cursor: pointer;">
+                            <span class="subtext" style="margin-top: 0;">ギフト画像を囲む円形バーの色</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="goal-gift-progress-bg-opacity">全体パネル背景の濃さ</label>
+                        <div class="action-row">
+                            <input type="range" id="goal-gift-progress-bg-opacity" min="0" max="100" step="5" value="46" style="flex: 1;">
+                            <span class="subtext" id="goal-gift-progress-bg-opacity-value" style="margin-top: 0; width: 42px;">46%</span>
+                        </div>
+                        <span class="subtext">横一列・縦一列で全ゴールを囲む半透明グレーパネルの濃さ</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="widget-preview goal-panel-preview">
+                <div class="widget-preview-label">サンプルプレビュー</div>
+                <div class="widget-preview-frame goal-gift-preview">
+                    <iframe id="goal-gift-preview-frame" title="目標ギフトサンプルプレビュー" loading="eager"></iframe>
+                </div>
+            </div>
+
+            <div class="goal-list" id="goal-gift-list"></div>
+            <div class="gift-suggestion-panel" id="goal-gift-suggestion-panel" hidden></div>
+        </section>
+    </div>
+
+    <!-- ====== オリジナル瓶詰めテーマ登録モーダル ====== -->
+    <div class="cuj-modal-overlay" id="cuj-modal" hidden>
+        <div class="cuj-modal-box" role="dialog" aria-modal="true" aria-labelledby="cuj-modal-title">
+            <div class="cuj-modal-head">
+                <h2 id="cuj-modal-title">オリジナル瓶詰めテーマを登録</h2>
+                <button type="button" class="ghost-button" id="cuj-modal-close">✕</button>
+            </div>
+
+            <!-- Step 1: 画像選択 -->
+            <div class="cuj-step" id="cuj-step1">
+                <p style="margin:0;color:var(--muted);font-size:14px;">瓶の透過画像ファイルを選択してください。PNG画像が使用できます。</p>
+                <input type="file" id="cuj-file-input" accept="image/png" style="display:none;">
+                <div class="cuj-file-drop" id="cuj-file-drop" tabindex="0" role="button" aria-label="画像を選択">
+                    <div style="font-size:36px;margin-bottom:8px;">🖼️</div>
+                    <div style="font-weight:700;font-size:15px;">クリックまたはドラッグ＆ドロップで画像を選択</div>
+                    <div style="font-size:13px;color:var(--muted);margin-top:4px;">PNG</div>
+                </div>
+                <div id="cuj-step1-preview" style="display:none;" class="cuj-preview-wrap">
+                    <img id="cuj-step1-img" class="cuj-preview-img" src="" alt="プレビュー">
+                    <div style="flex:1;display:grid;gap:8px;align-content:start;">
+                        <p id="cuj-step1-filename" style="margin:0;font-size:13px;color:var(--muted);word-break:break-all;"></p>
+                        <button type="button" class="primary" id="cuj-step1-next-btn">次へ → 壁を設定する</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: 壁エディタ -->
+            <div class="cuj-step" id="cuj-step2" hidden>
+                <div class="field" style="max-width:320px;">
+                    <label for="cuj-theme-name">テーマ名</label>
+                    <input type="text" id="cuj-theme-name" maxlength="40" placeholder="例：マイボトル">
+                </div>
+
+                <p style="margin:0;font-size:13px;color:var(--muted);">
+                    青い点をドラッグしてギフト落下位置（横）を設定してください。次に瓶の内側と外側の壁をマウスでなぞって描きます。
+                </p>
+
+                <div class="gift-jar-wall-editor-toolbar">
+                    <button type="button" class="ghost-button is-active" id="cuj-paint-btn">描く</button>
+                    <button type="button" class="ghost-button" id="cuj-erase-btn">消す</button>
+                    <label for="cuj-brush-size" style="font-size:13px;">ブラシ</label>
+                    <input type="range" id="cuj-brush-size" min="4" max="48" step="2" value="18" style="width:140px;">
+                    <span id="cuj-brush-size-value" class="subtext" style="margin-top:0;">18 px</span>
+                </div>
+
+                <div class="cuj-stage-outer" id="cuj-stage-outer">
+                    <div class="cuj-stage" id="cuj-stage">
+                        <img class="cuj-bg-img" id="cuj-bg-img" src="" alt="瓶画像">
+                        <div class="cuj-drop-marker" id="cuj-drop-marker" title="ドラッグでギフト落下位置を変更"></div>
+                        <div class="cuj-drop-line" id="cuj-drop-line"></div>
+                        <canvas class="cuj-wall-canvas" id="cuj-wall-canvas" width="540" height="540"></canvas>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button type="button" class="ghost-button" id="cuj-back-btn">← 戻る</button>
+                    <button type="button" class="ghost-button" id="cuj-clear-btn">キャンバスをクリア</button>
+                    <button type="button" class="primary" id="cuj-save-btn">完了・テーマに追加</button>
+                </div>
+                <p id="cuj-error-msg" style="color:var(--error);font-size:13px;margin:0;display:none;"></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-settings-modal" id="widget-settings-modal" hidden>
+        <div class="widget-modal-card" role="dialog" aria-modal="true" aria-labelledby="widget-settings-modal-title">
+            <div class="widget-modal-head">
+                <h2 id="widget-settings-modal-title"></h2>
+                <button type="button" class="ghost-button" id="widget-settings-modal-close">✕</button>
+            </div>
+            <div class="widget-modal-body" id="widget-settings-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="admin-settings-modal" id="goal-row-settings-modal" hidden>
+        <div class="widget-modal-card" role="dialog" aria-modal="true" aria-labelledby="goal-row-settings-modal-title" style="width:min(440px,100%)">
+            <div class="widget-modal-head">
+                <h2 id="goal-row-settings-modal-title"></h2>
+                <button type="button" class="ghost-button" id="goal-row-settings-modal-close">✕</button>
+            </div>
+            <div class="widget-settings-panel" style="border:none;padding:0;background:transparent;">
+                <div class="field">
+                    <label for="goal-row-modal-note">備考 <span style="font-weight:400;opacity:0.7;">(オーバーレイに表示)</span></label>
+                    <input type="text" id="goal-row-modal-note" maxlength="120" placeholder="あと少し、イベントミッション…" autocomplete="off">
+                </div>
+                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                    <input type="checkbox" id="goal-row-modal-count-unique">
+                    <label for="goal-row-modal-count-unique" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">1人1個 <span style="font-weight:400;opacity:0.7;">— 同じユーザーは1回だけカウント</span></label>
+                </div>
+                <div class="toggle" style="width:100%;box-sizing:border-box;">
+                    <input type="checkbox" id="goal-row-modal-reset-at-midnight">
+                    <label for="goal-row-modal-reset-at-midnight" style="font-size:14px;color:var(--text);font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;">0時リセット <span style="font-weight:400;opacity:0.7;">— 毎日0時に現在個数をリセット</span></label>
+                </div>
+                <div class="field">
+                    <label for="goal-row-modal-mission-unit-count">1ミッションあたりの個数 <span style="font-weight:400;opacity:0.7;">— 目標個数を割り切れる数字のみ選択可</span></label>
+                    <select id="goal-row-modal-mission-unit-count"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/shared/sound-picker.js"></script>
+    <script src="/db/widgets.js"></script>
+    <script src="/db/admin-theme-switcher.js"></script>
+</body>
+</html>
