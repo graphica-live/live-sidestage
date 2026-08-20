@@ -12,7 +12,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-brand">LiveAnalytics</h1>
+          <h1 className="flex items-baseline justify-center gap-2 leading-tight">
+            <span className="text-2xl font-bold text-brand">LIVE Sidestage</span>
+            <span className="text-base font-medium text-gray-400">Analytics</span>
+          </h1>
           <p className="text-gray-400 text-sm mt-1">TikTok Live ギフト解析</p>
         </div>
 

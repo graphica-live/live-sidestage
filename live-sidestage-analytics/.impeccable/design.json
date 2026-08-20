@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-08-18T00:00:00.000Z",
-  "title": "Design System: LiveAnalytics",
+  "title": "Design System: LIVE Sidestage Analytics",
   "extensions": {
     "colorMeta": {
       "tiktok-red": { "role": "primary", "displayName": "TikTok Red", "canonical": "#fe2c55" },

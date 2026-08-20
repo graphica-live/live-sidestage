@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _nowSpeakingCharacterName;
   String? _speechError;
 
-  // TikTok ID変更後、LiveAnalytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
+  // TikTok ID変更後、LIVE Sidestage Analytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
   // サーバーは60秒間隔のreconcileループでしか部屋の切り替えを反映しないため、
   // 変更直後にコメントが止まって見えるのを「確認中」として明示する。
   static const Duration _roomSwitchGrace = Duration(seconds: 60);

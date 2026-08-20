@@ -1,5 +1,5 @@
 ---
-name: LiveAnalytics
+name: LIVE Sidestage Analytics
 description: TikTok Live配信のギフト分析＆配信重畳オーバーレイ
 colors:
   tiktok-red: "#fe2c55"
@@ -69,7 +69,7 @@ components:
     padding: "16px"
 ---
 
-# Design System: LiveAnalytics
+# Design System: LIVE Sidestage Analytics
 
 ## Overview
 

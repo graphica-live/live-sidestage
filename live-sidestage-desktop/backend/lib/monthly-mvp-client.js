@@ -70,7 +70,7 @@ module.exports = function createMonthlyMvpClient({ getScopedStateValue, setScope
 
             return { ok: true, status: response.status, data: await response.json() };
         } catch (error) {
-            console.warn('⚠️ LiveAnalyticsへの接続に失敗しました:', error.message);
+            console.warn('⚠️ LIVE Sidestage Analyticsへの接続に失敗しました:', error.message);
             return { ok: false, status: 0, data: null };
         }
     }
@@ -101,7 +101,7 @@ module.exports = function createMonthlyMvpClient({ getScopedStateValue, setScope
             return { ok: false, error: 'APIキーが正しくありません。' };
         }
 
-        return { ok: false, error: 'LiveAnalyticsへの接続に失敗しました。Base URLを確認してください。' };
+        return { ok: false, error: 'LIVE Sidestage Analyticsへの接続に失敗しました。Base URLを確認してください。' };
     }
 
     return {

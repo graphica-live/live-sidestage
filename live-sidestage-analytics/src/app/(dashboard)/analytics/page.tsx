@@ -150,7 +150,7 @@ function downloadCSV(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `liveanalytics_${period}_${date}.csv`;
+  a.download = `live-sidestage-analytics_${period}_${date}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -169,7 +169,7 @@ function downloadHistoryCSV(events: GiftEvent[], period: Period, date: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `liveanalytics_history_${period}_${date}.csv`;
+  a.download = `live-sidestage-analytics_history_${period}_${date}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
