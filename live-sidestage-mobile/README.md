@@ -1,7 +1,7 @@
 # Live Sidestage (live_sidestage_mobile)
 
 TikTok Liveのコメントをリアルタイムに取得し、オンデバイスVOICEVOXで読み上げるAndroidアプリ。
-バックエンドは LiveAnalytics (Railway本番) を利用する。
+バックエンドは LIVE Sidestage Analytics (Railway本番) を利用する。
 
 - アプリ表示名: **Live Sidestage** (PC・Webサービス共通のブランド名)
 - Dartパッケージ名: `live_sidestage_mobile`
@@ -34,7 +34,7 @@ Android OAuth クライアントが登録されていないと必ず失敗する
    - SHA-1: 上で取得した値（リリースビルドでは release keystore の SHA-1 も別途登録する）
 
 3. `lib/core/api_client.dart` の `googleServerClientId` は **ウェブアプリケーション種別**の
-   クライアント ID で、LiveAnalytics バックエンドの `GOOGLE_CLIENT_ID` と同じ値。
+   クライアント ID で、LIVE Sidestage Analytics バックエンドの `GOOGLE_CLIENT_ID` と同じ値。
    パッケージ名を変えてもこちらは変更不要。
 
 Flutter開発が初めての場合は以下を参照:

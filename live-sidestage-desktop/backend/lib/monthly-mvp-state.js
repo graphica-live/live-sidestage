@@ -74,7 +74,7 @@ module.exports = function createMonthlyMvpAutomation({
             const data = await monthlyMvpClient.fetchMonthlyContributors(targetMonth);
 
             if (!data) {
-                setStatus({ ...status, lastRunAt: getTimestamp(), lastError: 'LiveAnalyticsからデータを取得できませんでした。' });
+                setStatus({ ...status, lastRunAt: getTimestamp(), lastError: 'LIVE Sidestage Analyticsからデータを取得できませんでした。' });
                 return { ran: false, reason: 'fetch-failed' };
             }
 

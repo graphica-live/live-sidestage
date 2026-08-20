@@ -152,8 +152,9 @@ export default function DashboardHeader() {
   return (
     <header className="border-b border-border bg-panel sticky top-0 z-10">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <Link href="/analytics" className="text-brand font-bold text-lg shrink-0 hover:opacity-80 transition-opacity">
-          LiveAnalytics
+        <Link href="/analytics" className="flex items-baseline gap-1.5 shrink-0 hover:opacity-80 transition-opacity">
+          <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
+          <span className="hidden sm:inline text-gray-400 font-medium text-sm">Analytics</span>
         </Link>
 
         <div className="flex items-center gap-2 min-w-0">
@@ -171,7 +172,7 @@ export default function DashboardHeader() {
           )}
         </div>
 
-        <div className="relative" ref={overlayPanelRef}>
+        <div className="relative shrink-0" ref={overlayPanelRef}>
           <button
             onClick={() => {
               const next = !showOverlayPanel;
@@ -179,8 +180,10 @@ export default function DashboardHeader() {
               if (next && !overlaySettings) fetchOverlaySettings();
             }}
             className="btn-ghost text-xs shrink-0"
+            aria-label="オーバーレイ設定"
+            title="オーバーレイ設定"
           >
-            🎯 オーバーレイ
+            🎯<span className="hidden sm:inline"> オーバーレイ</span>
           </button>
           {showOverlayPanel && (
             <div className="absolute top-full right-0 mt-1 z-50 bg-panel border border-border rounded-xl p-4 shadow-xl w-80 space-y-3">
@@ -369,8 +372,8 @@ export default function DashboardHeader() {
           )}
         </div>
 
-        <Link href="/setup" className="btn-ghost text-xs shrink-0">
-          ⚙️ 設定
+        <Link href="/setup" className="btn-ghost text-xs shrink-0" aria-label="設定" title="設定">
+          ⚙️<span className="hidden sm:inline"> 設定</span>
         </Link>
 
         <button

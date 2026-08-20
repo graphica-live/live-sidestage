@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | ディレクトリ | 製品名 | パッケージ名 | 統合前リポジトリ | 統合前の既定ブランチ |
 | --- | --- | --- | --- | --- |
-| `live-sidestage-analytics` | LiveAnalytics / Live Sidestage | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
+| `live-sidestage-analytics` | LIVE Sidestage Analytics | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
 | `live-sidestage-desktop` | TikEffect | `tikeffect` | `graphica-live/TikEffect` | `main` |
 | `live-sidestage-mobile` | Live Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
 | `TikCaption` | TikCaption | `tikcaption` | `graphica-live/TikCaption` | `master` |
