@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +29,15 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _randomVoice = true;
   String? _nowSpeakingCharacterName;
   String? _speechError;
+
+  // TikTok ID変更後、LiveAnalytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
+  // サーバーは60秒間隔のreconcileループでしか部屋の切り替えを反映しないため、
+  // 変更直後にコメントが止まって見えるのを「確認中」として明示する。
+  static const Duration _roomSwitchGrace = Duration(seconds: 60);
+
+  Timer? _roomSwitchTimer;
+  DateTime? _roomSwitchDeadline;
+  String? _switchingToTiktokId;
 
   @override
   void initState() {
@@ -122,11 +133,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final ok = await controller.changeTiktokId(newId);
     if (!mounted) return;
-    if (!ok && controller.errorMessage != null) {
+    if (ok) {
+      _beginRoomSwitchGrace(newId);
+    } else if (controller.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(controller.errorMessage!)),
       );
     }
+  }
+
+  bool get _roomSwitching => _roomSwitchDeadline != null;
+
+  int get _roomSwitchRemainingSeconds {
+    final deadline = _roomSwitchDeadline;
+    if (deadline == null) return 0;
+    final remaining = deadline.difference(DateTime.now()).inSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  void _beginRoomSwitchGrace(String tiktokId) {
+    _roomSwitchTimer?.cancel();
+    setState(() {
+      _switchingToTiktokId = tiktokId;
+      _roomSwitchDeadline = DateTime.now().add(_roomSwitchGrace);
+      // 旧IDのコメントは新しい配信と無関係なので破棄する。
+      _comments.clear();
+    });
+    _roomSwitchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_roomSwitchRemainingSeconds <= 0) {
+        _endRoomSwitchGrace();
+      } else {
+        setState(() {}); // 残り秒数の再描画
+      }
+    });
+  }
+
+  // 猶予の終了条件は「新しい部屋のコメントが1件届いた」か「60秒経過」。
+  void _endRoomSwitchGrace() {
+    if (_roomSwitchDeadline == null) return;
+    _roomSwitchTimer?.cancel();
+    _roomSwitchTimer = null;
+    setState(() {
+      _roomSwitchDeadline = null;
+      _switchingToTiktokId = null;
+    });
   }
 
   void _onTaskData(Object data) {
@@ -150,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _speechError = map['errorMessage'] as String?;
         });
       case 'comment':
+        _endRoomSwitchGrace();
         final wasNearBottom = _isNearBottom();
         setState(() {
           _comments.add(Comment.fromJson(map));
@@ -310,15 +362,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+          if (_roomSwitching)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.withValues(alpha: 0.12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '配信情報を確認中…（あと$_roomSwitchRemainingSeconds秒）',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: _comments.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(24),
                       child: Text(
-                        '「読み上げ開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
+                        _roomSwitching
+                            ? '@${_switchingToTiktokId ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「読み上げ開始」を押しておけば、反映され次第コメントが流れ始めます）'
+                            : '「読み上げ開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
+                        style: const TextStyle(color: Colors.grey),
                       ),
                     ),
                   )
@@ -350,6 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    _roomSwitchTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
