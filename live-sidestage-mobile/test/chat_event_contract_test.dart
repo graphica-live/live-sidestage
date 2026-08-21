@@ -41,7 +41,7 @@ void main() {
     expect(event.diamondCount, 1);
     expect(event.repeatCount, 5);
     expect(event.delta, 3);
-    // minCoins 判定に使うのは累計側。delta ではない。
+    // totalCoins は累計側(diamondCount × repeatCount)。増分ではない。
     expect(event.totalCoins, 5);
     expect(event.baselineReset, isFalse);
     expect(event.isCombo, isTrue);

@@ -5,8 +5,11 @@
     <!--
       debug ビルドでのみ平文HTTPを許可する。ローカルの analytics
       (`npm run dev:local` + `adb reverse tcp:3000 tcp:3000`) へ
-      `--dart-define=API_BASE_URL=http://localhost:3000` で向けるため。
+      dart-define の API_BASE_URL=http://localhost:3000 で向けるため。
       release マニフェストには入れないので、本番APKは HTTPS のみのまま。
+
+      注意: XML のコメント内にハイフン2個を書くとパースエラーになる。
+      dart-define をコマンドラインの形（ハイフン2個付き）で書かないこと。
     -->
     <application android:usesCleartextTraffic="true" />
 </manifest>

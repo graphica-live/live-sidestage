@@ -8,7 +8,7 @@ class GiftEvent {
   final String nickname;
   final String? profilePictureUrl;
 
-  /// trim + 小文字化済み。トリガーの giftName と直接比較してよい。
+  /// trim + 小文字化済み。[GiftSound.giftName] と直接比較してよい。
   final String giftName;
   final String? giftId;
   final int diamondCount;
@@ -16,10 +16,13 @@ class GiftEvent {
   /// このtick時点の累計連打数。
   final int repeatCount;
 
-  /// 今回のtickで新たに増えた回数。この回数だけ鳴らす。
+  /// 今回のtickで新たに増えた回数。
+  ///
+  /// まとめ投げは1コンボにつき1回しか鳴らさないので、効果音側はこの値を使わない。
+  /// サーバー契約の一部なので受け取って保持だけする（診断とログ用）。
   final int delta;
 
-  /// diamondCount * repeatCount。minCoins 判定に使う累計側の値。
+  /// diamondCount * repeatCount。コイン数の累計側の値。
   final int totalCoins;
 
   /// サーバー側の状態が失われた後の復帰tickなら true（delta が 1 に切り詰められている）。

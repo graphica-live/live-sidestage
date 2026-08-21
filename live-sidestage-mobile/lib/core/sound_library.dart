@@ -16,6 +16,27 @@ class RemoteSound {
   const RemoteSound({required this.name, required this.mp3Url});
 }
 
+/// 取り込みが完了した音源ファイル。**設定には入っていない。**
+///
+/// [SoundLibrary] は「どのギフトに割り当てるか」「有効か」を決める立場ではないので、
+/// [GiftSound] ではなくこの DTO を返す。編集画面がギフト名などと組み合わせて
+/// [GiftSound] を組み立てる。
+@immutable
+class ImportedSound {
+  /// `sounds/` 配下の実ファイル名（basename）。
+  final String fileName;
+  final String soundName;
+  final SoundSourceKind source;
+  final String? sourceUrl;
+
+  const ImportedSound({
+    required this.fileName,
+    required this.soundName,
+    required this.source,
+    this.sourceUrl,
+  });
+}
+
 class SoundLibraryException implements Exception {
   final String message;
   SoundLibraryException(this.message);
@@ -70,11 +91,24 @@ class SoundLibrary {
     return dir;
   }
 
-  /// 音源IDから実ファイルパスを引く。存在しなければ null。
+  /// ファイル名から実ファイルパスを引く。存在しなければ null。
   /// [SoundEngine] の resolvePath に渡す。
-  String? resolvePathSync(SoundAsset asset, Directory soundsDir) {
-    final file = File('${soundsDir.path}${Platform.pathSeparator}${asset.fileName}');
+  ///
+  /// [fileName] は basename でなければならない。設定は端末内に保存された JSON なので
+  /// 通常は安全だが、壊れた設定やテスト発火コマンド経由で `../` が入りうるため、
+  /// ここでも `sounds/` の外へ出ないことを確認する。
+  String? resolvePathSync(String fileName, Directory soundsDir) {
+    if (!isSafeFileName(fileName)) return null;
+    final file = File('${soundsDir.path}${Platform.pathSeparator}$fileName');
     return file.existsSync() ? file.path : null;
+  }
+
+  /// `sounds/` 直下の単純なファイル名かどうか。
+  static bool isSafeFileName(String fileName) {
+    if (fileName.isEmpty || fileName.length > 200) return false;
+    if (fileName.contains('/') || fileName.contains(r'\')) return false;
+    if (fileName == '.' || fileName == '..') return false;
+    return true;
   }
 
   Future<int> totalBytes() async {
@@ -91,7 +125,7 @@ class SoundLibrary {
   // ── 取り込み ────────────────────────────────────────────────────────────────
 
   /// 端末内のファイルを取り込む。呼び出し側が file_picker などでパスを取得する。
-  Future<SoundAsset> importLocalFile({
+  Future<ImportedSound> importLocalFile({
     required String sourcePath,
     required String displayName,
   }) async {
@@ -150,7 +184,7 @@ class SoundLibrary {
     );
   }
 
-  Future<SoundAsset> downloadRemote({
+  Future<ImportedSound> downloadRemote({
     required RemoteSound sound,
     required SoundSourceKind source,
   }) async {
@@ -176,22 +210,36 @@ class SoundLibrary {
   }
 
   /// 音源ファイルを削除する。設定から参照を外したあとに呼ぶこと。
-  Future<void> deleteAsset(SoundAsset asset) async {
+  Future<void> deleteFile(String fileName) async {
+    if (!isSafeFileName(fileName)) return;
     final dir = await soundsDirectory();
-    final file = File('${dir.path}${Platform.pathSeparator}${asset.fileName}');
+    final file = File('${dir.path}${Platform.pathSeparator}$fileName');
     if (await file.exists()) await file.delete();
   }
 
   /// 設定から参照されていない実ファイルを掃除する。
-  Future<int> pruneOrphans(Iterable<SoundAsset> keep) async {
+  ///
+  /// **設定が正しく読めたときにだけ呼ぶこと。** 壊れたJSONや未対応の未来バージョンで
+  /// 既定値へフォールバックした状態で呼ぶと、ユーザーの音源を全部消してしまう。
+  ///
+  /// [minAge] より新しいファイルは残す。編集画面は「ファイルを保存 → 設定を保存」の
+  /// 順で動くので、その間にサービスが起動すると取り込み直後のファイルが
+  /// まだどこからも参照されていない。時間で猶予を置いて取り違えを防ぐ。
+  Future<int> pruneOrphans(
+    Iterable<String> keepFileNames, {
+    Duration minAge = const Duration(minutes: 10),
+  }) async {
     final dir = await soundsDirectory();
-    final keepNames = keep.map((a) => a.fileName).toSet();
+    final keep = keepFileNames.toSet();
+    final threshold = DateTime.now().subtract(minAge);
     var removed = 0;
     await for (final entity in dir.list()) {
       if (entity is! File) continue;
       final name = entity.uri.pathSegments.last;
       // 取り込み途中で落ちた一時ファイルもここで回収する。
-      if (keepNames.contains(name) && !name.endsWith('.part')) continue;
+      if (keep.contains(name) && !name.endsWith('.part')) continue;
+      final stat = await entity.stat();
+      if (stat.modified.isAfter(threshold)) continue;
       await entity.delete();
       removed++;
     }
@@ -204,7 +252,7 @@ class SoundLibrary {
 
   /// 一時ファイルへ書いてから rename する。途中で失敗しても壊れたファイルが
   /// 音源として設定に残らない。
-  Future<SoundAsset> _commit({
+  Future<ImportedSound> _commit({
     required String id,
     required String extension,
     required String displayName,
@@ -231,10 +279,9 @@ class SoundLibrary {
       throw SoundLibraryException('音源の保存に失敗しました: $e');
     }
 
-    return SoundAsset(
-      id: id,
-      name: displayName.isEmpty ? fileName : displayName,
+    return ImportedSound(
       fileName: fileName,
+      soundName: displayName.isEmpty ? fileName : displayName,
       source: source,
       sourceUrl: sourceUrl,
     );

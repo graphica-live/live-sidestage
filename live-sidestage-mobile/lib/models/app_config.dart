@@ -1,21 +1,6 @@
 import 'dart:convert';
 
-/// トリガーが反応するイベントの種類。
-///
-/// desktop(TikEffect)はトリガー種別を持たず、「giftName が入っていれば gift」
-/// 「commentMode が any/exact なら comment」「follow は予約ギフト名」という
-/// 暗黙の判別をしている。こちらは明示フィールドにする。
-/// 条件判定の意味論(ギフト名一致・minCoins以上・コメント一致・ユーザー絞り込み)は
-/// desktop と同じに保つ。
-enum SoundEventType { gift, comment, follow }
-
-/// desktop の eventPlayMode と同じ意味。
-/// - [sequential]: 登録した音源を **全て** 順に鳴らす（1つ選ぶのではない）
-/// - [random]: 1つだけランダムに選ぶ
-enum SoundPlayMode { sequential, random }
-
-enum SoundCommentMode { any, exact }
-
+/// 音源をどこから取ってきたか。表示と再取得の可否判断にのみ使う。
 enum SoundSourceKind { local, soundEffectLab, myInstants }
 
 T _enumFromName<T extends Enum>(List<T> values, Object? name, T fallback) {
@@ -39,197 +24,107 @@ String _string(Object? value, {int maxLength = 200}) {
   return value.length > maxLength ? value.substring(0, maxLength) : value;
 }
 
-List<String> _stringList(Object? value) {
-  if (value is! List) return const [];
-  return value.whereType<String>().where((s) => s.isNotEmpty).toList(growable: false);
-}
-
-/// 1つの音源。desktop の「イベント」から音声部分だけを取り出したもの。
-class SoundAsset {
+/// 「このギフトが来たらこの音を鳴らす」の1件。
+///
+/// トリガー・イベント・カテゴリ・音源ライブラリという中間概念は持たない。
+/// 音源は1件につき1ファイルを専有し、他の [GiftSound] と共有しない
+/// （同じ音を2つのギフトに割り当てたければ、2回取り込んで2ファイルになる）。
+/// 共有しないので、この行を消せば実ファイルも必ず消せる。
+class GiftSound {
   final String id;
-  final String name;
+  final bool enabled;
 
-  /// アプリ専用ディレクトリ `sounds/` 配下の実ファイル名。
+  /// 一致キー。`chat:gift` の giftName と同じく trim + 小文字化して保持する。
+  /// 空文字は「任意のギフト」。
+  final String giftName;
+
+  /// 画面に出す表記。TikTok が返す元の大文字小文字をそのまま持つ。
+  /// 一致判定には使わない。
+  final String giftLabel;
+
+  /// アプリ専用ディレクトリ `sounds/` 配下の実ファイル名（basename）。
   final String fileName;
+
+  /// 音源の表示名。
+  final String soundName;
+
   final SoundSourceKind source;
   final String? sourceUrl;
 
-  /// 0-100。desktop の mediaVolume と同じ。
+  /// 0-100。再生時に [SoundConfig.masterVolume] と掛け合わせる。
   final int volume;
 
-  const SoundAsset({
+  const GiftSound({
     required this.id,
-    required this.name,
+    required this.giftName,
     required this.fileName,
-    required this.source,
+    this.giftLabel = '',
+    this.soundName = '',
+    this.enabled = true,
+    this.source = SoundSourceKind.local,
     this.sourceUrl,
     this.volume = 100,
   });
 
+  /// 一覧で使う表記。giftLabel が空なら giftName、それも空なら「すべてのギフト」。
+  String get displayGiftName {
+    if (giftLabel.isNotEmpty) return giftLabel;
+    if (giftName.isNotEmpty) return giftName;
+    return 'すべてのギフト';
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
-        'name': name,
+        'enabled': enabled,
+        'giftName': giftName,
+        'giftLabel': giftLabel,
         'fileName': fileName,
+        'soundName': soundName,
         'source': source.name,
         'sourceUrl': sourceUrl,
         'volume': volume,
       };
 
-  static SoundAsset? tryParse(Map<String, dynamic> json) {
+  static GiftSound? tryParse(Map<String, dynamic> json) {
     final id = json['id'];
     final fileName = json['fileName'];
-    if (id is! String || id.isEmpty || fileName is! String || fileName.isEmpty) return null;
-    return SoundAsset(
+    if (id is! String || id.isEmpty) return null;
+    // 実ファイル名が無い行は鳴らしようがないので捨てる。
+    if (fileName is! String || fileName.isEmpty) return null;
+
+    return GiftSound(
       id: id,
-      name: _string(json['name']),
+      enabled: json['enabled'] != false,
+      giftName: _string(json['giftName'], maxLength: 80).trim().toLowerCase(),
+      giftLabel: _string(json['giftLabel'], maxLength: 80),
       fileName: fileName,
+      soundName: _string(json['soundName'], maxLength: 120),
       source: _enumFromName(SoundSourceKind.values, json['source'], SoundSourceKind.local),
       sourceUrl: json['sourceUrl'] as String?,
       volume: _clampInt(json['volume'], min: 0, max: 100, fallback: 100),
     );
   }
 
-  SoundAsset copyWith({String? name, int? volume}) => SoundAsset(
-        id: id,
-        name: name ?? this.name,
-        fileName: fileName,
-        source: source,
-        sourceUrl: sourceUrl,
-        volume: volume ?? this.volume,
-      );
-}
-
-/// カテゴリ。enabled=false で配下のトリガーをまとめて止める。
-/// 個々のトリガーの enabled には干渉しない（desktop と同じ）。
-class SoundCategory {
-  final String id;
-  final String name;
-  final bool enabled;
-
-  const SoundCategory({required this.id, required this.name, this.enabled = true});
-
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'enabled': enabled};
-
-  static SoundCategory? tryParse(Map<String, dynamic> json) {
-    final id = json['id'];
-    if (id is! String || id.isEmpty) return null;
-    return SoundCategory(
-      id: id,
-      name: _string(json['name'], maxLength: 60),
-      enabled: json['enabled'] != false,
-    );
-  }
-
-  SoundCategory copyWith({String? name, bool? enabled}) =>
-      SoundCategory(id: id, name: name ?? this.name, enabled: enabled ?? this.enabled);
-}
-
-class SoundTrigger {
-  final String id;
-  final String name;
-  final String categoryId;
-  final bool enabled;
-
-  /// 鳴らす音源。desktop の eventIds。
-  final List<String> soundIds;
-  final SoundPlayMode playMode;
-  final SoundEventType eventType;
-
-  /// 空 = 任意のギフト。desktop と同じく trim + 小文字化して保持する。
-  final String giftName;
-  final int minCoins;
-
-  /// まとめ投げを1回として扱うか。desktop の既定と同じく true。
-  final bool treatGiftComboAsSingle;
-
-  final SoundCommentMode commentMode;
-
-  /// commentMode が exact のときの一致文字列。小文字化して保持する。
-  final String commentText;
-
-  /// 空 = 全員。desktop と同じく uniqueId で絞り込む。
-  final List<String> userIds;
-
-  const SoundTrigger({
-    required this.id,
-    required this.name,
-    required this.categoryId,
-    this.enabled = true,
-    this.soundIds = const [],
-    this.playMode = SoundPlayMode.sequential,
-    this.eventType = SoundEventType.gift,
-    this.giftName = '',
-    this.minCoins = 0,
-    this.treatGiftComboAsSingle = true,
-    this.commentMode = SoundCommentMode.any,
-    this.commentText = '',
-    this.userIds = const [],
-  });
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'categoryId': categoryId,
-        'enabled': enabled,
-        'soundIds': soundIds,
-        'playMode': playMode.name,
-        'eventType': eventType.name,
-        'giftName': giftName,
-        'minCoins': minCoins,
-        'treatGiftComboAsSingle': treatGiftComboAsSingle,
-        'commentMode': commentMode.name,
-        'commentText': commentText,
-        'userIds': userIds,
-      };
-
-  static SoundTrigger? tryParse(Map<String, dynamic> json) {
-    final id = json['id'];
-    if (id is! String || id.isEmpty) return null;
-    return SoundTrigger(
-      id: id,
-      name: _string(json['name'], maxLength: 80),
-      categoryId: _string(json['categoryId'], maxLength: 80),
-      enabled: json['enabled'] != false,
-      soundIds: _stringList(json['soundIds']),
-      playMode: _enumFromName(SoundPlayMode.values, json['playMode'], SoundPlayMode.sequential),
-      eventType: _enumFromName(SoundEventType.values, json['eventType'], SoundEventType.gift),
-      giftName: _string(json['giftName'], maxLength: 80).trim().toLowerCase(),
-      minCoins: _clampInt(json['minCoins'], min: 0, max: 100000000, fallback: 0),
-      treatGiftComboAsSingle: json['treatGiftComboAsSingle'] != false,
-      commentMode: _enumFromName(SoundCommentMode.values, json['commentMode'], SoundCommentMode.any),
-      commentText: _string(json['commentText'], maxLength: 160).trim().toLowerCase(),
-      userIds: _stringList(json['userIds']),
-    );
-  }
-
-  SoundTrigger copyWith({
-    String? name,
-    String? categoryId,
+  GiftSound copyWith({
     bool? enabled,
-    List<String>? soundIds,
-    SoundPlayMode? playMode,
-    SoundEventType? eventType,
     String? giftName,
-    int? minCoins,
-    bool? treatGiftComboAsSingle,
-    SoundCommentMode? commentMode,
-    String? commentText,
-    List<String>? userIds,
+    String? giftLabel,
+    String? fileName,
+    String? soundName,
+    SoundSourceKind? source,
+    String? sourceUrl,
+    int? volume,
   }) {
-    return SoundTrigger(
+    return GiftSound(
       id: id,
-      name: name ?? this.name,
-      categoryId: categoryId ?? this.categoryId,
       enabled: enabled ?? this.enabled,
-      soundIds: soundIds ?? this.soundIds,
-      playMode: playMode ?? this.playMode,
-      eventType: eventType ?? this.eventType,
       giftName: giftName ?? this.giftName,
-      minCoins: minCoins ?? this.minCoins,
-      treatGiftComboAsSingle: treatGiftComboAsSingle ?? this.treatGiftComboAsSingle,
-      commentMode: commentMode ?? this.commentMode,
-      commentText: commentText ?? this.commentText,
-      userIds: userIds ?? this.userIds,
+      giftLabel: giftLabel ?? this.giftLabel,
+      fileName: fileName ?? this.fileName,
+      soundName: soundName ?? this.soundName,
+      source: source ?? this.source,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      volume: volume ?? this.volume,
     );
   }
 }
@@ -237,49 +132,35 @@ class SoundTrigger {
 class SoundConfig {
   final bool enabled;
   final int masterVolume; // 0-100
-  final List<SoundCategory> categories;
-  final List<SoundTrigger> triggers;
-  final List<SoundAsset> assets;
+
+  /// 設定順。同じギフトに複数一致したときはこの順に鳴らす。
+  final List<GiftSound> gifts;
 
   const SoundConfig({
     this.enabled = true,
     this.masterVolume = 100,
-    this.categories = const [],
-    this.triggers = const [],
-    this.assets = const [],
+    this.gifts = const [],
   });
 
   Map<String, dynamic> toJson() => {
         'enabled': enabled,
         'masterVolume': masterVolume,
-        'categories': categories.map((c) => c.toJson()).toList(),
-        'triggers': triggers.map((t) => t.toJson()).toList(),
-        'assets': assets.map((a) => a.toJson()).toList(),
+        'gifts': gifts.map((g) => g.toJson()).toList(),
       };
 
   static SoundConfig fromJson(Map<String, dynamic> json) {
     return SoundConfig(
       enabled: json['enabled'] != false,
       masterVolume: _clampInt(json['masterVolume'], min: 0, max: 100, fallback: 100),
-      categories: _parseList(json['categories'], SoundCategory.tryParse),
-      triggers: _parseList(json['triggers'], SoundTrigger.tryParse),
-      assets: _parseList(json['assets'], SoundAsset.tryParse),
+      gifts: _parseList(json['gifts'], GiftSound.tryParse),
     );
   }
 
-  SoundConfig copyWith({
-    bool? enabled,
-    int? masterVolume,
-    List<SoundCategory>? categories,
-    List<SoundTrigger>? triggers,
-    List<SoundAsset>? assets,
-  }) {
+  SoundConfig copyWith({bool? enabled, int? masterVolume, List<GiftSound>? gifts}) {
     return SoundConfig(
       enabled: enabled ?? this.enabled,
       masterVolume: masterVolume ?? this.masterVolume,
-      categories: categories ?? this.categories,
-      triggers: triggers ?? this.triggers,
-      assets: assets ?? this.assets,
+      gifts: gifts ?? this.gifts,
     );
   }
 }
@@ -305,7 +186,9 @@ List<T> _parseList<T>(Object? value, T? Function(Map<String, dynamic>) parse) {
 /// revision のときだけ適用する。連続編集で非同期ロードが逆順に完了しても
 /// 古い設定が勝たないようにするため。
 class AppConfig {
-  static const int currentSchemaVersion = 1;
+  /// v1: カテゴリ + トリガー + 音源ライブラリの3層構造。
+  /// v2: 「ギフト → 音」の平坦な1層だけ。
+  static const int currentSchemaVersion = 2;
 
   final int schemaVersion;
   final int revision;
@@ -341,27 +224,45 @@ class AppConfig {
 
   /// 壊れたJSON・未知のスキーマなら既定値を返す。設定が読めないことを理由に
   /// サービスごと起動不能にしない。
-  static AppConfig decode(String? raw) {
-    if (raw == null || raw.isEmpty) return const AppConfig();
+  ///
+  /// **読めたかどうかを知りたい場合は [tryDecode] を使うこと。** 読めなかったのか
+  /// 「空の設定が正しく読めた」のか区別できないと、音源ファイルの掃除で
+  /// ユーザーのファイルを消してしまう。
+  static AppConfig decode(String? raw) => tryDecode(raw) ?? const AppConfig();
+
+  /// 解釈できたときだけ設定を返す。壊れたJSON・未知の未来バージョンなら null。
+  ///
+  /// v1（トリガー構造）は解釈できたものとして扱い、TTS 設定と効果音の
+  /// 全体スイッチ・全体音量だけ引き継ぐ。トリガー・カテゴリ・音源ライブラリは
+  /// v2 に対応物が無いので破棄する（未リリースのため移行対象の実データは無い）。
+  static AppConfig? tryDecode(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! Map) return const AppConfig();
+      if (decoded is! Map) return null;
       final json = Map<String, dynamic>.from(decoded);
 
-      final version = json['schemaVersion'];
-      if (version is int && version > currentSchemaVersion) return const AppConfig();
+      // schemaVersion が無い・数値でないものは最初期(v1)とみなす。読めるものを
+      // 捨てないためで、**未来のバージョンだけ**は解釈できないので拒否する。
+      final rawVersion = json['schemaVersion'];
+      final version = rawVersion is int && rawVersion >= 1 ? rawVersion : 1;
+      if (version > currentSchemaVersion) return null;
 
       final soundRaw = json['sound'];
+      final soundJson = soundRaw is Map ? Map<String, dynamic>.from(soundRaw) : const <String, dynamic>{};
+
+      // v1 は gifts を持たないので、SoundConfig.fromJson が空リストを返す。
+      // enabled / masterVolume は意味が変わっていないのでそのまま引き継ぐ。
       return AppConfig(
-        schemaVersion: _clampInt(version, min: 1, max: currentSchemaVersion, fallback: currentSchemaVersion),
+        schemaVersion: currentSchemaVersion,
         revision: _clampInt(json['revision'], min: 0, max: 1 << 30, fallback: 0),
         ttsEnabled: json['ttsEnabled'] != false,
         randomVoice: json['randomVoice'] != false,
         ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
-        sound: soundRaw is Map ? SoundConfig.fromJson(Map<String, dynamic>.from(soundRaw)) : const SoundConfig(),
+        sound: SoundConfig.fromJson(soundJson),
       );
     } catch (_) {
-      return const AppConfig();
+      return null;
     }
   }
 

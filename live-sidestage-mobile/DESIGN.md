@@ -96,7 +96,9 @@ Live Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ホームのシェルは「AppBar → 接続ステータスバー → 開始/停止ボタン → `IndexedStack`(3タブ) → NavigationBar」の縦積み。`IndexedStack`にしているのは、タブを切り替えてもコメントリストのスクロール位置と`ScrollController`を失わないため。Foreground Serviceからの状態受信(`addTaskDataCallback`)もシェルに集約し、タブ側は表示だけを担う。
 
-タブより深い階層(音源ライブラリ、外部サイト検索、トリガー編集)は`Navigator.push`のフルスクリーンページとして積む。ボトムナビはホーム階層にのみ存在し、pushしたページには出ない。
+タブより深い階層(ギフトと音の編集、外部サイト検索)は`Navigator.push`のフルスクリーンページとして積む。ボトムナビはホーム階層にのみ存在し、pushしたページには出ない。
+
+サウンドタブは「ギフト → 音」の平坦な1階層リスト。カテゴリ・トリガー・音源ライブラリという中間階層は持たない。編集画面も「ギフトを選ぶ」「音を選ぶ」の2行と音量スライダーだけで、条件を組み立てるフォームにはしない。**配信中に片手で触る道具なので、設定の階層を増やさないことを機能追加より優先する。**
 
 各タブおよび各ページの中身は従来どおり単一目的の縦積み(`Column`/`ListView`/`Padding`)で、パディングは8/16/24/32pxの4段階に収まっている。タブレット・横画面・レスポンシブ分岐は未実装で、Android電話サイズの縦持ちのみを前提にしている。TTSタブのコメントリストは新着下寄せで自動スクロールする。
 
@@ -117,33 +119,33 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Shape:** Material3 FilledButtonのデフォルト形状(pill型、明示的なradius指定なし)。
 - **Primary:** `FilledButton`/`FilledButton.icon`。読み上げ開始・ログイン・連携する・変更する、など画面の主アクションに使用。縦paddingは12〜14px程度。
 - **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: Colors.red`で上書きされる。危険/停止アクション専用。
-- **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`はトリガー編集画面の「テスト発火」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。
-- **FAB:** `FloatingActionButton.extended`(サウンドタブ・音源ライブラリの「追加」)。リストへ要素を足す操作にのみ使う。
+- **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`は編集画面の「テスト再生」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。
+- **FAB:** `FloatingActionButton.extended`(サウンドタブの「追加」)。リストへ要素を足す操作にのみ使う。
 
 ### Navigation
 
 - **Bottom Nav:** Material3 `NavigationBar`。TTS(`Icons.record_voice_over`) / サウンド(`Icons.music_note`) / 設定(`Icons.settings`)の3タブ固定。タブは増やさない前提で設計している。
-- **Deeper pages:** タブから`Navigator.push`する全画面ページ(音源ライブラリ、外部サイト検索、トリガー編集)。戻る導線は標準AppBarのback。
+- **Deeper pages:** タブから`Navigator.push`する全画面ページ(ギフトと音の編集、外部サイト検索)。戻る導線は標準AppBarのback。
 
 ### Selection Controls
 
-- **SegmentedButton:** 排他的で選択肢が2〜3個の切替(イベント種別 ギフト/コメント/フォロー、再生モード 全部順に/1つランダム、コメント一致 すべて/完全一致)に使う。ドロップダウンより現在値が読み取りやすいため。4個以上になる場合は`DropdownButtonFormField`(カテゴリ選択)に切り替える。
-- **SwitchListTile / CheckboxListTile:** ON/OFFは`SwitchListTile`、複数選択(トリガーに紐づける音源)は`CheckboxListTile`。
-- **Slider:** 0-100の音量のみ。`divisions: 20`で5刻みに丸め、指先で狙える粒度にする。
+- **SwitchListTile:** ON/OFFに使う(効果音全体、1行ごとの有効/無効)。
+- **Slider:** 0-100の音量のみ。`divisions: 20`で5刻みに丸め、指先で狙える粒度にする。全体音量は`onChangeEnd`で確定する(ドラッグ中に永続化すると1回の操作で数十回の書き込みが走る)。
+- **SegmentedButton / CheckboxListTile:** 現在は使っていない。排他的で選択肢が2〜3個の切替が必要になったら`SegmentedButton`を、複数選択が必要になったら`CheckboxListTile`を使う。
 
 ### Grouping
 
-- **ExpansionTile:** サウンドタブのカテゴリ。既定で展開しておき、trailingにカテゴリ一括ON/OFFの`Switch`と`PopupMenuButton`(名前変更・削除)を並べる。
-- **Section header:** 設定タブ・トリガー編集画面の見出しは12px bold + primary色の`Padding`。`Divider`ではなくこの見出しで区切る。
+- **Section header:** 設定タブ・編集画面の見出しは12px bold + primary色の`Padding`。`Divider`ではなくこの見出しで区切る。
+- **ExpansionTile:** 現在は使っていない。リストが階層を持つときにだけ検討する。
 
 ### Menus / Sheets
 
-- **PopupMenuButton:** リスト項目の副次操作(削除、名前変更、音量変更)。
-- **BottomSheet:** 「追加」FABの分岐(カテゴリ/トリガー、端末内/効果音ラボ/MyInstants)。選択肢が3つ程度で、それぞれが別のフローへ入る場合に使う。
+- **BottomSheet:** 選択肢が3つ程度でそれぞれ別のフローへ入る分岐(端末内/効果音ラボ/MyInstants)と、一覧から1件選ぶピッカー(ギフト選択)に使う。ピッカーは画面高の70%を上限にし、**一覧の上に自由入力を常設する**――サーバーが返す候補は直近の受信履歴でしかなく、目的の項目が無いことが普通にあるため。
+- **PopupMenuButton:** リスト項目の副次操作。現在は使っていない。
 
 ### Dialogs
-- **Style:** 標準`AlertDialog`。タイトル+フォーム1項目+キャンセル/確定の2ボタン、という最小構成を守る(TikTok ID変更、カテゴリ名、対象ユーザー、音量)。
-- **Destructive:** 削除確認のみ確定ボタンを`backgroundColor: Colors.red`で上書きする。本文には影響範囲を数字で書く(「N件のトリガーから参照が外れます」)。
+- **Style:** 標準`AlertDialog`。タイトル+フォーム1項目+キャンセル/確定の2ボタン、という最小構成を守る(TikTok ID変更)。
+- **Destructive:** 削除確認のみ確定ボタンを`backgroundColor: Colors.red`で上書きする。本文には何が消えるかを具体名で書く(「「rose」の設定を削除します。」)。
 
 ### Inputs / Fields
 - **Style:** 標準`TextFormField`、ラベルのみのシンプルな`InputDecoration`(枠線色・アイコン等のカスタムなし)。
@@ -173,3 +175,4 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Don't** ダークテーマは現状未対応(`ThemeData`に`darkTheme`指定なし)。対応するまでは、ダーク前提の配色決め打ちを行わない。
 - **Don't** タブレット・横画面・レスポンシブ分岐は未検証。対応するまでは固定幅前提のレイアウトを増やさない。
 - **Don't** ボトムナビのタブを4つ以上に増やさない。機能が増える場合は既存3タブのいずれかの配下へpushする。
+- **Don't** サウンド設定に中間階層(カテゴリ、トリガー、共有音源ライブラリ)を戻さない。desktop(TikEffect)には全部あるが、モバイルは配信中に片手で触る道具なので「ギフト → 音」の1階層に閉じる。条件を増やしたくなったら、まず既存の1行で表現できないかを疑う。

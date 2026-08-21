@@ -33,14 +33,22 @@ class SpeechState {
 /// 背景Isolateから届く効果音の状態。
 class SoundState {
   final bool enabled;
-  final String? lastTriggerName;
+
+  /// 直近に鳴らしたギフトの表記。
+  final String? lastGiftName;
+
   final int droppedCount;
+
+  /// 1回のギフトで鳴らせる上限を超えて鳴らせなかった件数。
+  final int overflowCount;
+
   final String? errorMessage;
 
   const SoundState({
     this.enabled = true,
-    this.lastTriggerName,
+    this.lastGiftName,
     this.droppedCount = 0,
+    this.overflowCount = 0,
     this.errorMessage,
   });
 }
@@ -255,8 +263,9 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _sound = SoundState(
             enabled: map['enabled'] as bool? ?? true,
-            lastTriggerName: map['lastTriggerName'] as String?,
+            lastGiftName: map['lastGiftName'] as String?,
             droppedCount: map['droppedCount'] as int? ?? 0,
+            overflowCount: map['overflowCount'] as int? ?? 0,
             errorMessage: map['errorMessage'] as String?,
           );
         });
