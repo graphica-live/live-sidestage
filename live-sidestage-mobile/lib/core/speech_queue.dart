@@ -27,19 +27,24 @@ class SpeechQueueController extends ChangeNotifier {
   String? errorMessage;
   String? nowSpeakingCharacterName;
 
-  bool get randomVoice => _voicePool?.randomEnabled ?? true;
+  // VoicePoolはinitialize()完了まで存在しないので、それまでの設定値をここに保持する。
+  // 以前はpoolがnullのときsetterが何もせず、初期化前に設定した値が捨てられていた
+  // (TTSを後からONにする遅延初期化でも同じ経路を通る)。
+  bool _desiredRandomVoice = true;
+
+  bool get randomVoice => _voicePool?.randomEnabled ?? _desiredRandomVoice;
 
   set randomVoice(bool value) {
-    final pool = _voicePool;
-    if (pool == null) return;
-    pool.randomEnabled = value;
+    _desiredRandomVoice = value;
+    _voicePool?.randomEnabled = value;
     notifyListeners();
   }
 
   Future<void> initialize() async {
+    if (initialized) return;
     try {
       await _engine.initialize();
-      _voicePool = VoicePool(_engine.voices);
+      _voicePool = VoicePool(_engine.voices)..randomEnabled = _desiredRandomVoice;
       initialized = true;
     } catch (e) {
       errorMessage = 'VOICEVOXの初期化に失敗しました: $e';
@@ -52,8 +57,11 @@ class SpeechQueueController extends ChangeNotifier {
     _subscription = feed.onComment.listen(_enqueue);
   }
 
-  void toggleEnabled() {
-    enabled = !enabled;
+  void toggleEnabled() => setEnabled(!enabled);
+
+  void setEnabled(bool value) {
+    if (enabled == value) return;
+    enabled = value;
     if (!enabled) _queue.clear();
     notifyListeners();
   }

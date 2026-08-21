@@ -1,7 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!--
+      dataSync は意図的に外している。Android 15 以降、dataSync 型の
+      foreground service は24時間あたり合計6時間でタイムアウトする。
+      配信の待受は6時間を超えうるので、これに当たると読み上げも効果音も
+      途中で止まってしまう。
+
+      このサービスの実体はコメント読み上げ(VOICEVOX)と効果音の再生なので、
+      mediaPlayback 単独で用途としても正しい。mediaPlayback はタイムアウト対象外。
+      Play Console では foreground service の用途説明が必要になる。
+    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
@@ -11,7 +20,7 @@
         android:icon="@mipmap/ic_launcher">
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="dataSync|mediaPlayback"
+            android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
         <activity
             android:name=".MainActivity"
