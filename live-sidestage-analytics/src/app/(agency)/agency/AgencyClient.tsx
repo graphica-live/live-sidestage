@@ -382,7 +382,7 @@ export default function AgencyClient() {
           <ul className="space-y-1 list-disc list-inside">
             <li>
               <code className="text-gray-300">from</code> / <code className="text-gray-300">to</code>{" "}
-              — 必須。YYYY-MM-DD形式。期間は最大92日
+              — 必須。YYYY-MM-DD形式。期間は最大366日(1年)
             </li>
             <li>
               <code className="text-gray-300">tiktokIds</code> — 任意。カンマ区切り。

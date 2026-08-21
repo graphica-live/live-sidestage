@@ -1,8 +1,10 @@
 import { normalizeTiktokId } from "@/lib/tiktok-room";
 
-// 期間の上限。Giftは @@index([roomId, dayKey]) に乗るが、無制限の期間を許すと
-// 監視対象ぶんのフルスキャンを誘発するため上限を設ける。
-export const MAX_RANGE_DAYS = 92;
+// 1リクエストで集計できる期間の上限。年間実績を1回で取れるよう366日(うるう年ぶん)にしてある。
+// Giftは @@index([roomId, dayKey]) に乗るが、無制限の期間を許すと監視対象ぶんの
+// フルスキャンを誘発するため上限自体は残す。
+// 呼び出し頻度の制限(レート制限)は未実装なので、この上限が1リクエストあたりの負荷の唯一の歯止め。
+export const MAX_RANGE_DAYS = 366;
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
