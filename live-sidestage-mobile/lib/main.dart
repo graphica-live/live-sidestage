@@ -47,6 +47,7 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<SessionController>();
+    final configStore = context.watch<AppConfigStore>();
 
     if (!controller.initialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -55,6 +56,13 @@ class AuthGate extends StatelessWidget {
     final session = controller.session;
     if (session == null) return const WelcomeScreen();
     if (session.onboardingRequired) return const OnboardingScreen();
+
+    // HomeScreen 配下だけが AppConfig を編集する。ロード完了前に操作させると、
+    // 既定値からの編集がロード結果を上書きしてユーザーの設定を消す。
+    // ログイン前の画面は AppConfig を触らないのでここまでは待たせない。
+    if (!configStore.loaded) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return const HomeScreen();
   }
 }

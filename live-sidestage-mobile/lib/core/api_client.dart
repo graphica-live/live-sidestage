@@ -23,10 +23,43 @@ const String googleServerClientId =
 
 class ApiException implements Exception {
   final String message;
-  ApiException(this.message);
+
+  /// HTTPステータス。通信自体に失敗した場合は null。
+  /// 401/403 を「一覧が取れない」ではなく「再ログインが必要」として扱うために使う。
+  final int? statusCode;
+
+  ApiException(this.message, {this.statusCode});
+
+  bool get isUnauthorized => statusCode == 401 || statusCode == 403;
 
   @override
   String toString() => message;
+}
+
+/// ピッカーに出すギフト候補。
+class GiftCandidate {
+  /// 一致キー（trim + 小文字化済み）。そのまま [GiftSound.giftName] に入れる。
+  final String name;
+
+  /// 画面に出す表記（TikTok の元の大文字小文字）。
+  final String label;
+
+  final int diamondCount;
+
+  const GiftCandidate({required this.name, required this.label, required this.diamondCount});
+
+  static GiftCandidate? tryParse(Object? value) {
+    if (value is! Map) return null;
+    final name = value['name'];
+    if (name is! String || name.isEmpty) return null;
+    final label = value['label'];
+    final coins = value['diamondCount'];
+    return GiftCandidate(
+      name: name,
+      label: label is String && label.isNotEmpty ? label : name,
+      diamondCount: coins is int ? coins : 0,
+    );
+  }
 }
 
 class LiveAnalyticsApi {
@@ -64,6 +97,15 @@ class LiveAnalyticsApi {
     return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);
   }
 
+  /// 直近に受け取ったギフトの候補一覧。空でもエラーではない
+  /// （まだギフトを受け取っていない・部屋が未割り当て）。
+  Future<List<GiftCandidate>> fetchGiftCandidates({required String token}) async {
+    final data = await _send('GET', '/api/mobile/gifts', null, token: token);
+    final gifts = data['gifts'];
+    if (gifts is! List) return const [];
+    return gifts.map(GiftCandidate.tryParse).whereType<GiftCandidate>().toList();
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }
@@ -71,7 +113,7 @@ class LiveAnalyticsApi {
   Future<Map<String, dynamic>> _send(
     String method,
     String path,
-    Map<String, String> body, {
+    Map<String, String>? body, {
     String? token,
   }) async {
     final http.Response response;
@@ -81,8 +123,9 @@ class LiveAnalyticsApi {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       };
-      final encodedBody = jsonEncode(body);
+      final encodedBody = body == null ? null : jsonEncode(body);
       final request = switch (method) {
+        'GET' => http.get(uri, headers: headers),
         'PATCH' => http.patch(uri, headers: headers, body: encodedBody),
         _ => http.post(uri, headers: headers, body: encodedBody),
       };
@@ -100,15 +143,22 @@ class LiveAnalyticsApi {
       // 握り潰していたため、ログイン失敗時に何が起きたのか追えなかった。
       throw ApiException(
         'サーバーの応答を解析できませんでした (HTTP ${response.statusCode}): ${_snippet(response.bodyBytes)}',
+        statusCode: response.statusCode,
       );
     }
 
     if (decoded is! Map<String, dynamic>) {
-      throw ApiException('サーバーの応答形式が想定と違います (HTTP ${response.statusCode})');
+      throw ApiException(
+        'サーバーの応答形式が想定と違います (HTTP ${response.statusCode})',
+        statusCode: response.statusCode,
+      );
     }
 
     if (response.statusCode >= 400) {
-      throw ApiException(decoded['error'] as String? ?? 'エラーが発生しました (${response.statusCode})');
+      throw ApiException(
+        decoded['error'] as String? ?? 'エラーが発生しました (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
     }
 
     return decoded;

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/app_config.dart';
@@ -37,14 +38,29 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _soundsDir = await _soundLibrary.soundsDirectory();
     final engine = SoundEngine(
       play: _soundPlayers.play,
-      resolvePath: (asset) => _soundLibrary.resolvePathSync(asset, _soundsDir!),
+      resolvePath: (fileName) => _soundLibrary.resolvePathSync(fileName, _soundsDir!),
     );
     engine.addListener(_pushSoundState);
     _soundEngine = engine;
 
     // 永続ストレージから読むのはここだけ。以降はapplyConfigコマンドで受け取る。
-    _config = AppConfig.decode(await FlutterForegroundTask.getData<String>(key: appConfigStorageKey));
+    final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
+    final decoded = AppConfig.tryDecode(raw);
+    _config = decoded ?? const AppConfig();
     _applyConfig(_config);
+
+    // 設定を解釈できたときだけ孤児ファイルを掃除する。壊れたJSONや未対応の
+    // 未来バージョンで既定値へ落ちた状態で掃除すると、ユーザーの音源を全部消す。
+    if (decoded != null) {
+      unawaited(
+        _soundLibrary
+            .pruneOrphans(decoded.sound.gifts.map((g) => g.fileName))
+            .catchError((Object e) {
+          debugPrint('[sound] 孤児ファイルの掃除に失敗: $e');
+          return 0;
+        }),
+      );
+    }
 
     _speechQueue.listenTo(_commentFeed);
     engine.listenTo(_commentFeed);
@@ -76,14 +92,20 @@ class CommentSpeechTaskHandler extends TaskHandler {
         if (revision is! int || json is! String) return;
         // 自分が持っているものより新しいときだけ適用する。連続編集で
         // 逆順に届いても古い設定が勝たない。
-        if (revision <= _config.revision) return;
-        _config = AppConfig.decode(json);
-        _applyConfig(_config);
+        if (revision > _config.revision) {
+          _config = AppConfig.tryDecode(json) ?? _config;
+          _applyConfig(_config);
+        }
+        // 古い・同じ revision でも必ず現在の revision を返す。返さないと
+        // UI 側が「反映待ち」のまま止まり、音源ファイルの削除も進まない。
         FlutterForegroundTask.sendDataToMain({'type': 'configAck', 'revision': _config.revision});
       case 'testPlaySound':
-        final ids = data['soundIds'];
-        if (ids is! List) return;
-        _soundEngine?.testPlay(ids.whereType<String>().toList());
+        // まだ設定に入っていない音源も鳴らせるよう、ファイル名を直接受け取る。
+        // 設定経由ではないぶん検証はこちら側でも行う（resolvePathSync も再検証する）。
+        final fileName = data['fileName'];
+        final volume = data['volume'];
+        if (fileName is! String || !SoundLibrary.isSafeFileName(fileName)) return;
+        _soundEngine?.testPlayFile(fileName, volume is int ? volume.clamp(0, 100) : 100);
     }
   }
 
@@ -141,8 +163,9 @@ class CommentSpeechTaskHandler extends TaskHandler {
     FlutterForegroundTask.sendDataToMain({
       'type': 'sound',
       'enabled': state.enabled,
-      'lastTriggerName': state.lastTriggerName,
+      'lastGiftName': state.lastGiftName,
       'droppedCount': state.droppedCount,
+      'overflowCount': state.overflowCount,
       'baselineResetCount': state.baselineResetCount,
       'errorMessage': state.errorMessage,
     });
