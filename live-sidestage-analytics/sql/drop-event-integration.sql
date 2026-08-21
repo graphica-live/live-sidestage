@@ -5,7 +5,12 @@
 -- 統合後はイベント機能が analytics と同じプロセス・同じ接続で動くため、view は不要になった。
 -- 読み取りは src/event/analytics-db.ts が public のテーブルを直接引く。
 --
--- 適用: superuser で1回実行する。何度流しても同じ結果になる(冪等)。
+-- **これは掃除であって、必須の移行手順ではない。** view が残っていても新しいコードは
+-- それを参照しないので何も壊れない。使われないオブジェクトが public に残るだけ。
+--
+-- 適用: view の所有者ロール(= 元の sql/event-integration.sql を流したロール。Railway の
+-- マネージド Postgres なら既定の postgres)で1回実行する。真の superuser でなくてよい。
+-- 何度流しても同じ結果になる(冪等)。DROP VIEW IF EXISTS なので、view が無ければ何も起きない。
 --
 --   psql "$DATABASE_URL_ADMIN" -f sql/drop-event-integration.sql
 --

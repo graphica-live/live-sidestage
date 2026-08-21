@@ -86,10 +86,12 @@ typecheck / test / build は analytics 共通のものがイベント機能も�
 （`public.event_gift_v` など）で分離していた。統合後はどちらも不要。
 
 1. イベント機能を含む版をデプロイする
-2. `sql/drop-event-integration.sql` を superuser で適用して view を落とす
+2. （掃除。任意）`sql/drop-event-integration.sql` を view の所有者ロールで適用して view を落とす
 
 **順序を逆にしない。** 先に view を落とすと、旧版が動いている間だけ集計が失敗する。
-view を残したままでも新しいコードは動くので、慌てて流す必要はない。
+2 はやらなくても壊れない — 新しいコードは view を参照しないので、使われないオブジェクトが
+`public` に残るだけ。所有者ロールは元の `event-integration.sql` を流したロール
+（Railway のマネージド Postgres なら既定の `postgres`）で、真の superuser でなくてよい。
 
 `event` スキーマ自体と中のテーブルはそのまま使う（データ移行は不要）。所有者が
 `event_migrator` になっている場合は、analytics の接続ロールが `db push` できるよう
