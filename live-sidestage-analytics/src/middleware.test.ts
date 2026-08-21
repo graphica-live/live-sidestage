@@ -93,4 +93,37 @@ describe("middleware の matcher", () => {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
   });
+
+  it("事務所コンソールとセッション認証のAPIは保護される", () => {
+    for (const path of [
+      "/agency",
+      "/agency/",
+      "/api/agency",
+      "/api/agency/api-key",
+      "/api/agency/watches",
+      "/api/agency/watches/abc123",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき`).toBe(true);
+    }
+  });
+
+  it("事務所のログイン導線と企業向けAPIは認証なしで通る", () => {
+    for (const path of [
+      "/agency/login", // 保護すると自分自身へ無限リダイレクトする
+      "/api/agency-auth/session", // NextAuth(事務所)
+      "/api/agency-auth/callback/google",
+      "/api/agency/gifts/summary", // x-api-key ヘッダで route 内認証
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("事務所向けの除外エントリも前置一致にならない", () => {
+    for (const path of [
+      "/agency/logins", // `agency/login` に食われてはいけない
+      "/api/agency/giftsomething", // `api/agency/gifts` に食われてはいけない
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
 });
