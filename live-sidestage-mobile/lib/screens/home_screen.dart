@@ -201,10 +201,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _speechError = map['errorMessage'] as String?;
         });
       case 'comment':
+        final comment = Comment.tryParse(map);
+        if (comment == null) return;
         _endRoomSwitchGrace();
         final wasNearBottom = _isNearBottom();
         setState(() {
-          _comments.add(Comment.fromJson(map));
+          _comments.add(comment);
           if (_comments.length > 200) {
             _comments.removeRange(0, _comments.length - 200);
           }

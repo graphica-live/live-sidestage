@@ -15,13 +15,22 @@ class Comment {
     required this.receivedAt,
   });
 
-  factory Comment.fromJson(Map<String, dynamic> json) {
+  /// 解析できない場合は null を返す。
+  ///
+  /// 以前は必須フィールドを直接castしていたため、想定外の型が1件混ざるだけで
+  /// socketの購読callbackが例外で落ち、以降のコメントを受け取れなくなっていた。
+  /// 不正な1件だけ捨てて受信を継続する。
+  static Comment? tryParse(Map<String, dynamic> json) {
+    final streamerId = json['streamerId'];
+    final uniqueId = json['uniqueId'];
+    if (streamerId is! String || uniqueId is! String) return null;
+
     return Comment(
-      streamerId: json['streamerId'] as String,
-      uniqueId: json['uniqueId'] as String,
-      nickname: json['nickname'] as String,
+      streamerId: streamerId,
+      uniqueId: uniqueId,
+      nickname: json['nickname'] as String? ?? uniqueId,
       profilePictureUrl: json['profilePictureUrl'] as String?,
-      comment: json['comment'] as String,
+      comment: json['comment'] as String? ?? '',
       receivedAt: DateTime.tryParse(json['receivedAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
