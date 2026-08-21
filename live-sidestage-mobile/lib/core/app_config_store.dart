@@ -55,6 +55,12 @@ class AppConfigStore extends ChangeNotifier {
 
   Future<void> setRandomVoice(bool value) => _mutate(_config.bumped(randomVoice: value));
 
+  Future<void> setTtsVolume(int value) {
+    final clamped = value < 0 ? 0 : (value > 100 ? 100 : value);
+    if (clamped == _config.ttsVolume) return Future<void>.value();
+    return _mutate(_config.bumped(ttsVolume: clamped));
+  }
+
   Future<void> updateSound(SoundConfig Function(SoundConfig current) transform) {
     return _mutate(_config.bumped(sound: transform(_config.sound)));
   }

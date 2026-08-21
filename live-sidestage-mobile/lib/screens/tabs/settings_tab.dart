@@ -37,6 +37,16 @@ class SettingsTab extends StatelessWidget {
           value: store.config.randomVoice,
           onChanged: store.config.ttsEnabled ? (value) => store.setRandomVoice(value) : null,
         ),
+        ListTile(
+          title: Text('読み上げの音量  ${store.config.ttsVolume}'),
+          subtitle: Slider(
+            value: store.config.ttsVolume.toDouble(),
+            max: 100,
+            divisions: 20,
+            label: '${store.config.ttsVolume}',
+            onChanged: store.config.ttsEnabled ? (value) => store.setTtsVolume(value.round()) : null,
+          ),
+        ),
         const _SectionHeader('効果音'),
         SwitchListTile(
           title: const Text('効果音を鳴らす'),
