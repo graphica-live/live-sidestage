@@ -1087,6 +1087,40 @@ export function getListenerStatus(roomId: string): ListenerState | null {
   return listeners.get(roomId)?.state ?? null;
 }
 
+// このプロセスが実際にメモリ上に保持しているlistenerの一覧。
+//
+// DBのTiktokRoom.listenerStatusとは別物であることに注意する。あちらはpersistState()が
+// best effortで書いた「最後に書き込めた状態」で、書き込み失敗は握り潰されるうえ、
+// 定期更新があるのはconnectedのときだけ(30秒のheartbeat)。retrying/connecting/idleは
+// 古い値が残り続ける。こちらは今この瞬間のプロセス内の実体を返すので、
+// 「DB上は担当なのにlistenerが存在しない」といった食い違いの検出に使える。
+//
+// Workerプロセスの GET /status (worker.ts) から呼ばれる。
+export type ListenerSnapshot = {
+  roomId: string;
+  tiktokId: string;
+  status: ListenerStatus;
+  message: string;
+  updatedAt: string;
+  subscriberCount: number;
+  /** 最後に実イベント(chat/gift/member等)を受け取ってからの経過ms。watchdogの判断材料と同じ値。 */
+  silentForMs: number;
+  watchdogTriggerCount: number;
+};
+
+export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot[] {
+  return [...listeners.values()].map((inst) => ({
+    roomId: inst.state.roomId,
+    tiktokId: inst.state.tiktokId,
+    status: inst.state.status,
+    message: inst.state.message,
+    updatedAt: inst.state.updatedAt,
+    subscriberCount: inst.subscriberIds.size,
+    silentForMs: Math.max(0, now - inst.lastEventAt),
+    watchdogTriggerCount: inst.watchdogTriggerCount,
+  }));
+}
+
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
 // 接続を維持すべき部屋の条件。次のいずれかが成立していれば対象。
