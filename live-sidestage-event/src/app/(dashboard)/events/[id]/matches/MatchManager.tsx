@@ -219,7 +219,7 @@ export function MatchManager({
           </div>
           <button
             type="button"
-            disabled={busy || seed.length < 2}
+            disabled={busy || seed.length < 2 || started}
             onClick={() =>
               send(
                 `/api/events/${eventId}/matches`,

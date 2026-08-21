@@ -45,16 +45,19 @@ export default async function BracketPage({ params }: { params: { slug: string }
             勝敗は当サービスが受信したギフトのダイヤで決まる。バトル中に投げられたぶんが対象。
           </p>
 
-          {/* 横スクロールで全ラウンドを見せる。ラウンドが増えても縦に潰れないようにする。 */}
+          {/* 横スクロールで全ラウンドを見せる。ラウンドが増えても縦に潰れないようにする。
+              後のラウンドほど試合数が半分になるので、justify-around で前ラウンドの
+              2試合のちょうど中間に来るように置く(トーナメント表の見え方に合わせる)。 */}
           <div className="mt-6 overflow-x-auto pb-4">
-            <div className="flex min-w-max gap-4">
+            <div className="flex min-w-max items-stretch gap-4">
               {Array.from({ length: bracket.roundCount }, (_, i) => i + 1).map((round) => {
                 const matches = bracket.matches.filter((m) => m.round === round);
                 return (
-                  <section key={round} className="w-64 shrink-0 space-y-3">
-                    <h2 className="text-sm font-semibold text-gray-300">
+                  <section key={round} className="flex w-56 shrink-0 flex-col sm:w-64">
+                    <h2 className="mb-3 text-sm font-semibold text-gray-300">
                       {matches[0]?.roundLabel ?? `${round}回戦`}
                     </h2>
+                    <div className="flex flex-1 flex-col justify-around gap-3">
                     {matches.map((match) => (
                       <article key={match.id} className="card space-y-2 p-3">
                         <div className="flex items-center justify-between text-xs text-gray-500">
@@ -83,6 +86,7 @@ export default async function BracketPage({ params }: { params: { slug: string }
                         )}
                       </article>
                     ))}
+                    </div>
                   </section>
                 );
               })}

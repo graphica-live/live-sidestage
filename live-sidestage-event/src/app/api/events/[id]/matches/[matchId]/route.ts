@@ -97,28 +97,42 @@ export async function PATCH(
     }
 
     case "void": {
-      await prisma.eventMatch.update({
-        where: { id: match.id },
-        data: { status: "VOID", winnerSideId: null, winnerDecidedBy: null },
-      });
+      await prisma.$transaction([
+        prisma.eventMatch.update({
+          where: { id: match.id },
+          data: { status: "VOID", winnerSideId: null, winnerDecidedBy: null },
+        }),
+        // 集計済みのスコアも消す。無効にした対戦の数字が残っていると
+        // 「もう結果が出ている」と読めてしまう。
+        prisma.eventMatchSide.updateMany({
+          where: { matchId: match.id },
+          data: { diamonds: 0, score: 0 },
+        }),
+      ]);
       break;
     }
 
     case "reopen": {
       // 検知のやり直し。自動検知の対象へ戻す。
-      await prisma.eventMatch.update({
-        where: { id: match.id },
-        data: {
-          status: "SCHEDULED",
-          winnerSideId: null,
-          winnerDecidedBy: null,
-          detectedBattleId: null,
-          detectedStartAt: null,
-          detectedEndAt: null,
-          detectionConfidence: null,
-          detectedEndSource: null,
-        },
-      });
+      await prisma.$transaction([
+        prisma.eventMatch.update({
+          where: { id: match.id },
+          data: {
+            status: "SCHEDULED",
+            winnerSideId: null,
+            winnerDecidedBy: null,
+            detectedBattleId: null,
+            detectedStartAt: null,
+            detectedEndAt: null,
+            detectionConfidence: null,
+            detectedEndSource: null,
+          },
+        }),
+        prisma.eventMatchSide.updateMany({
+          where: { matchId: match.id },
+          data: { diamonds: 0, score: 0 },
+        }),
+      ]);
       break;
     }
 
