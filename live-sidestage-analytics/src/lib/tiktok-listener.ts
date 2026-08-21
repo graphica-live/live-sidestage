@@ -455,9 +455,17 @@ function jstDateKey(date: Date = new Date()): string {
  * listenerインスタンス側(recentChatMsgIds)とWebプロセス側(isDuplicateChatEvent)の
  * 2層のdedupがどちらも一度も発動していなかった。
  */
+// common.msgId は protobuf の int64 なので、届く値は必ず正の10進数文字列になる。
+// 一方でメッセージ側がフィールドを持たない場合、デコーダは既定値の "0" をそのまま埋める
+// (types/tiktok/data.js の createBaseCommonMessageData)。"0" を実IDとして扱うと、
+// 無関係なイベント同士が同じキーを共有して dedup が誤爆する — 同じ既定値の流入は
+// groupId="0" が本番に3591件ある実績で確認済み。実IDとして使えない値はすべて null に倒す。
+const MSG_ID_PATTERN = /^[1-9][0-9]{0,31}$/;
+
 export function resolveMsgId(data: Record<string, unknown>): string | null {
   const raw = data.msgId;
-  return typeof raw === "string" && raw ? raw : null;
+  if (typeof raw !== "string") return null;
+  return MSG_ID_PATTERN.test(raw) ? raw : null;
 }
 
 /**
@@ -523,6 +531,8 @@ async function saveGift(
         dayKey,
         orderId,
         groupId,
+        msgId: resolveMsgId(data),
+        giftType: Number.isInteger(data.giftType) ? (data.giftType as number) : null,
       },
     });
     return true;
@@ -1147,18 +1157,35 @@ async function runWithConcurrency<T>(
   await Promise.all(workers);
 }
 
-export async function resumeAllListeners() {
+// reconcile の結果。startFailures は「listenerを起動しようとして例外になった部屋の数」で、
+// worker.ts の readiness 判定に使う。
+//
+// TikTok側の接続失敗(オフライン・rate limit・WebSocket断)はここに計上されない —
+// connectAndAttach() が捕まえて scheduleReconnect() へ回すため startListener() は正常終了する。
+// 一方 loadPendingCombos() / getOrCreateDeviceId() / resolveProxyForRoom() のDBアクセスは
+// connectInstance() に catch が無くそのまま throw されるので、startFailures > 0 は
+// 実質「DBに到達できていない」を意味する。TikTokが落ちているだけで unready にはならない。
+export interface ReconcileResult {
+  roomCount: number;
+  startFailures: number;
+}
+
+export async function resumeAllListeners(): Promise<ReconcileResult> {
   const rooms = await getMyRooms();
 
   console.log(`[listener] resumeAllListeners: found ${rooms.length} room(s)`);
 
+  let startFailures = 0;
   await runWithConcurrency(rooms, RESUME_CONCURRENCY, async (r) => {
     console.log(`[listener] starting listener for @${r.tiktokId} (room ${r.id}, ${r.subscriberIds.length} subscriber(s))`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) =>
-      console.error(`[listener] resume failed for ${r.tiktokId}:`, err)
-    );
+    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) => {
+      startFailures++;
+      console.error(`[listener] resume failed for ${r.tiktokId}:`, err);
+    });
     console.log(`[listener] listener state for @${r.tiktokId}:`, listeners.get(r.id)?.state.status);
   });
+
+  return { roomCount: rooms.length, startFailures };
 }
 
 // デプロイ時のグレースフルシャットダウン用。担当中の全部屋のTikTok接続を明示的に切断する。
@@ -1173,10 +1200,11 @@ export async function stopAllListeners() {
 //  - 購読者(subscriberIds)が変わった部屋の更新(再接続はしない)
 //  - 購読者がゼロになった/担当替えで自分の担当でなくなった部屋の切断
 //    (tiktokId変更による旧部屋の切断・Streamer削除・Worker再編のすべてがこの1箇所を通る)
-export async function ensureAllListenersAlive() {
+export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
   const rooms = await getMyRooms();
   const myRoomIds = new Set(rooms.map((r) => r.id));
 
+  let startFailures = 0;
   for (const r of rooms) {
     const existing = listeners.get(r.id);
     if (existing) {
@@ -1184,19 +1212,24 @@ export async function ensureAllListenersAlive() {
       continue;
     }
     console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokId}`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) =>
-      console.error(`[listener] ensureAlive failed for ${r.tiktokId}:`, err)
-    );
+    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) => {
+      startFailures++;
+      console.error(`[listener] ensureAlive failed for ${r.tiktokId}:`, err);
+    });
   }
 
   for (const roomId of Array.from(listeners.keys())) {
     if (!myRoomIds.has(roomId)) {
       console.log(`[listener] ensureAlive: tearing down orphaned/reassigned room ${roomId}`);
+      // teardownの失敗は readiness に計上しない。切断できなかった部屋が残るだけで、
+      // 担当部屋の受信が止まるわけではないため。
       await stopListener(roomId).catch((err) =>
         console.error(`[listener] ensureAlive teardown failed for ${roomId}:`, err)
       );
     }
   }
+
+  return { roomCount: rooms.length, startFailures };
 }
 
 const WATCHDOG_SILENCE_MS = 60_000;

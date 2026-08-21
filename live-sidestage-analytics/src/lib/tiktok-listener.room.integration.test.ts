@@ -285,3 +285,112 @@ describe("monitorUntilによる期限付き監視", () => {
     await cleanupRoom(room.id);
   });
 });
+
+// gift の dedup キーは (roomId, orderId) だが、本番では orderId が 99.85% 空で制約が効いていない。
+// 代わりに使える msgId を、まず観測できる状態にするための保存経路を検証する。
+// unique 制約はまだ張らない — 実データで一意性と充足率を確かめてから昇格させる。
+describe("giftのmsgId/giftType保存", () => {
+  async function fireGiftAndRead(
+    tiktokId: string,
+    emailPrefix: string,
+    payload: Record<string, unknown>
+  ) {
+    const a = await createStreamer(tiktokId, emailPrefix);
+    const roomId = await resolveRoomForStreamer(a.id);
+    await startListener(roomId, tiktokId, [a.id]);
+    const conn = MockConnection.instances[0];
+    expect(conn).toBeDefined();
+
+    conn.fire("gift", payload);
+
+    await vi.waitFor(async () => {
+      const gifts = await prisma.gift.findMany({ where: { roomId } });
+      expect(gifts).toHaveLength(1);
+    });
+    const gifts = await prisma.gift.findMany({ where: { roomId } });
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+    return gifts[0];
+  }
+
+  it("有効なmsgIdとgiftTypeがそのまま保存される", async () => {
+    const gift = await fireGiftAndRead(
+      `itest_msgid_ok_${Date.now()}`,
+      "itest-msgid-ok",
+      {
+        uniqueId: "user_msgid",
+        nickname: "msgIdユーザー",
+        giftType: 1,
+        giftId: 5,
+        giftName: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        msgId: "7412345678901234567",
+        createTime: Date.now(),
+      }
+    );
+
+    expect(gift.msgId).toBe("7412345678901234567");
+    expect(gift.giftType).toBe(1);
+  });
+
+  it('msgId="0" はnullで保存される(既定値を実IDとして残さない)', async () => {
+    // "0" をそのまま入れると、将来 (roomId, msgId) にunique制約を張った瞬間に
+    // 無関係なギフト同士が衝突して P2002 で捨てられる。
+    const gift = await fireGiftAndRead(
+      `itest_msgid_zero_${Date.now()}`,
+      "itest-msgid-zero",
+      {
+        uniqueId: "user_zero",
+        nickname: "ゼロユーザー",
+        giftType: 0,
+        giftId: 6,
+        giftName: "Finger Heart",
+        repeatCount: 1,
+        diamondCount: 5,
+        msgId: "0",
+        createTime: Date.now(),
+      }
+    );
+
+    expect(gift.msgId).toBeNull();
+    expect(gift.giftType).toBe(0);
+  });
+
+  it("msgIdが無いギフトも従来どおり保存される", async () => {
+    const gift = await fireGiftAndRead(
+      `itest_msgid_none_${Date.now()}`,
+      "itest-msgid-none",
+      {
+        uniqueId: "user_none",
+        nickname: "msgId無しユーザー",
+        giftId: 7,
+        giftName: "Rosa",
+        repeatCount: 2,
+        diamondCount: 10,
+        createTime: Date.now(),
+      }
+    );
+
+    expect(gift.msgId).toBeNull();
+    expect(gift.giftType).toBeNull();
+    expect(gift.totalDiamonds).toBe(20);
+  });
+});
+
+// worker.ts の readiness は「startListenerの失敗が0件」を条件にする。その前提として、
+// DBに到達できない状況では startListener が握りつぶさず例外を投げる必要がある。
+// (TikTok側の接続失敗は connectAndAttach が捕まえて再接続へ回すので例外にならない)
+describe("readinessの前提: DB起因の失敗はstartListenerから伝播する", () => {
+  it("DB上に存在しない部屋のstartListenerは例外になる", async () => {
+    const missingRoomId = `itest-missing-room-${Date.now()}`;
+
+    await expect(
+      startListener(missingRoomId, `itest_missing_${Date.now()}`, [])
+    ).rejects.toThrow();
+
+    await stopListener(missingRoomId).catch(() => undefined);
+  });
+});
