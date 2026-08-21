@@ -40,7 +40,11 @@ TikTok Liveのコメント・ギフト・フォローをリアルタイムで取
 
 ## Evidence on Hand
 
-実機検証済み(Pixel 7a、Phase1〜3完了・2026-08-17)。効果音機能とタブ構成(2026-08-21追加)は`flutter analyze`・`flutter test`・サーバー側との契約テストまで通っているが、**実機検証は未実施**。特に以下は未確認: Foreground Serviceを`mediaPlayback`単独にした状態でのDoze/画面オフ6時間超の待受、TTSと効果音の同時再生(audio focus)、ローカルanalyticsを経由したギフト/フォローのエンドツーエンド発火。
+実機検証済み(Pixel 7a、Phase1〜3完了・2026-08-17)。
+
+効果音機能とタブ構成(2026-08-21追加)も同じPixel 7a(Android 16 / API 36)でリリースビルドを実機検証した。確認できたのは、3タブの描画と切替、MyInstants検索と音源の取り込み・保存・試聴、カテゴリとトリガーの作成、テスト発火、Foreground Serviceの起動とsocket接続、そして**TTSと効果音の同時再生**。同時再生は`dumpsys`とlogcatで裏づけを取っており、AudioTrackのセッションが別々に並走し、効果音側は`requestAudioFocus`を一度も発行していない(`AndroidAudioFocus.none`が効いている)。Foreground Serviceは実行時も`types=0x00000002`(mediaPlaybackのみ)で、`dataSync`は立っていない。効果音ラボとMyInstantsのHTMLパーサーは実際のレスポンスに対して別途検証した。
+
+**未確認**: Doze・画面オフ下での6時間超の連続待受(Android 15+のFGSタイムアウトに実際に当たらないか)と、ギフト/フォローのエンドツーエンド発火(サーバー側の変更が本番未デプロイのため、ローカルanalyticsが要る)。
 
 マーケティング素材・スクリーンショット・ユーザーレビュー等の実績データは無し。将来の一般公開に向けたストア掲載文言や実績は未作成として扱い、今後の作業で捏造しない。
 

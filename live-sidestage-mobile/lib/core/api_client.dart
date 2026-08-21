@@ -87,21 +87,39 @@ class LiveAnalyticsApi {
         _ => http.post(uri, headers: headers, body: encodedBody),
       };
       response = await request.timeout(const Duration(seconds: 20));
-    } catch (_) {
-      throw ApiException('サーバーに接続できませんでした。通信環境を確認してください。');
+    } catch (e) {
+      throw ApiException('サーバーに接続できませんでした。通信環境を確認してください。(${e.runtimeType})');
     }
 
-    final Map<String, dynamic> data;
+    final Object? decoded;
     try {
-      data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      decoded = jsonDecode(utf8.decode(response.bodyBytes));
     } catch (_) {
-      throw ApiException('サーバーの応答を解析できませんでした。');
+      // Railwayのコールドスタート中などJSONではなくHTMLのエラーページが返ることがある。
+      // 原因を切り分けられるよう、ステータスと本文の先頭を残す。以前はここで
+      // 握り潰していたため、ログイン失敗時に何が起きたのか追えなかった。
+      throw ApiException(
+        'サーバーの応答を解析できませんでした (HTTP ${response.statusCode}): ${_snippet(response.bodyBytes)}',
+      );
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('サーバーの応答形式が想定と違います (HTTP ${response.statusCode})');
     }
 
     if (response.statusCode >= 400) {
-      throw ApiException(data['error'] as String? ?? 'エラーが発生しました (${response.statusCode})');
+      throw ApiException(decoded['error'] as String? ?? 'エラーが発生しました (${response.statusCode})');
     }
 
-    return data;
+    return decoded;
+  }
+
+  /// エラー表示へ添えるための本文の先頭。HTMLがそのまま返ることがあるので
+  /// タグと連続空白を潰したうえで切り詰める。
+  static String _snippet(List<int> bodyBytes, {int maxLength = 80}) {
+    var text = utf8.decode(bodyBytes, allowMalformed: true);
+    text = text.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isEmpty) return '(空の応答)';
+    return text.length > maxLength ? '${text.substring(0, maxLength)}…' : text;
   }
 }
