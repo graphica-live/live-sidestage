@@ -127,7 +127,7 @@ npm run pages:dev           # build + wrangler pages dev dist
 
 - [server.js](live-sidestage-analytics/server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
 - [worker.ts](live-sidestage-analytics/worker.ts) は Next を持たず、担当 shard の TikTok Webcast 接続だけを維持する軽量プロセス。`hash(streamerId) % WORKER_COUNT` で配信者を分散し、`WORKER_INDEX` が自分の担当番号。`GET /healthz` は初回 `resumeAllListeners()` 完了まで 503 を返し、Railway のゼロダウンタイム切替に使う
-- Worker が接続を維持する部屋の条件は `getMyRooms()`（[tiktok-listener.ts](live-sidestage-analytics/src/lib/tiktok-listener.ts)）の1箇所に集約されている。**「`Streamer` が1人以上いる」か「`TiktokRoom.monitorUntil` が未来」のどちらか**で、後者はイベント機能が期限付きで監視を要求している状態。どちらも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
+- Worker が接続を維持する部屋の条件は `watchedRoomFilter()`（[tiktok-listener.ts](live-sidestage-analytics/src/lib/tiktok-listener.ts)）の1箇所に集約されていて、`getMyRooms()` はこれを使う。**「`Streamer` が1人以上いる」「`AgencyWatch`（事務所の監視対象）が1件以上ある」「`TiktokRoom.monitorUntil` が未来」のいずれか**で、3つ目はイベント機能が期限付きで監視を要求している状態。どれも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
 - Worker → Web は `POST /api/internal/gift-event`（`INTERNAL_API_SECRET` で保護）。`WEB_INTERNAL_URL` 未設定なら Web/Worker 同居とみなして in-process 直呼びにフォールバックする
 - Worker 数を変えたら全プロセスの `WORKER_COUNT` を揃えてから `npm run rebalance-workers -- --apply`
 - **データモデルの肝**: 同一 `tiktokId` は `TiktokRoom` 1行 = TikTok 接続1本を複数の `Streamer`（登録ユーザー）で共有する。ギフト元データ `Gift` は不変で、手動編集・非表示は `GiftEdit(giftId, streamerId)` として別レコードに持ち、表示時に上書きする。したがって編集は編集者本人のビューにしか影響しない
