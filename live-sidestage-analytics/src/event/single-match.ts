@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
+import { acquireEventLock } from "./event-lock";
+import { resolveEventWindows, windowContaining } from "./sessions";
 import type { DbClient } from "./analytics-db";
 
 // デスマッチの対戦カードを1件ずつ組む。
@@ -72,6 +74,10 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
   // 検証も含めて1つのトランザクションで完結させる。**重なり判定を外に出さない** —
   // 同じ枠を2つの操作が同時に組むと、どちらも「重なっていない」と判定して通ってしまう。
   return prisma.$transaction(async (tx) => {
+    // **読む前にロックを取る。** 開催日程の変更と同時に走ると、古い日程で
+    // 「期間内」と判定した枠が、日程が縮んだ後にコミットされてしまう。
+    await acquireEventLock(tx, eventId);
+
     const event = await tx.event.findUnique({
       where: { id: eventId },
       select: { entryMode: true },
@@ -192,8 +198,11 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
 }
 
 /**
- * 対戦の時間枠を検証する。イベント期間内に収まっているか、同じ配信者の枠と
+ * 対戦の時間枠を検証する。開催日程のどれか1つに収まっているか、同じ配信者の枠と
  * 重なっていないか。
+ *
+ * **日程をまたぐ枠は許さない。** 日程の隙間は集計に入らないので、またぐ枠を許すと
+ * 勝敗に使えるギフトが枠の一部にしかない状態になる。
  *
  * 枠が重なると、検知したバトルをどちらの対戦に割り当てるべきか決められない
  * （`assignBattles` は候補が複数あるものを割り当てないので、どちらも検知されない
@@ -221,12 +230,16 @@ export async function assertMatchWindow(
 
   const event = await tx.event.findUnique({
     where: { id: eventId },
-    select: { startAt: true, endAt: true },
+    select: {
+      startAt: true,
+      endAt: true,
+      sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
+    },
   });
   if (!event) throw new SingleMatchError("イベントが見つかりません。", "UNKNOWN_SUBJECT");
-  if (start < event.startAt || end > event.endAt) {
+  if (!windowContaining(resolveEventWindows(event), start, end)) {
     throw new SingleMatchError(
-      "対戦の時間枠がイベント期間の外に出ています。",
+      "対戦の時間枠が開催日程の外に出ています。1つの日程に収まる時間にしてください。",
       "OUT_OF_EVENT_WINDOW"
     );
   }

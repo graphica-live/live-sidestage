@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { formatJst } from "@/event/datetime";
+import { formatJst, formatJstRange } from "@/event/datetime";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS, STATUS_CLASSES, STATUS_LABELS } from "@/event/labels";
 import { findPublicEvent, loadEventSnapshot } from "@/event/public-event";
+import { resolveEventWindows } from "@/event/sessions";
 import type { EntryMode, EventFormat, EventStatus } from "@/event/validation";
 import { EventResults } from "./EventResults";
 
@@ -42,6 +43,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
       : Promise.resolve(0),
   ]);
   const hasBracket = matchCount > 0;
+  const windows = resolveEventWindows(event);
 
   return (
     <main className="min-h-screen px-4 py-12">
@@ -58,9 +60,22 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
 
         <h1 className="mt-3 text-2xl font-bold">{event.title}</h1>
 
-        <p className="mt-2 font-mono text-sm text-gray-400">
-          {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
-        </p>
+        {/* 日程が複数あるイベントは1行にまとめない。外枠だけ出すと、
+            集計されない隙間(1日目の終了〜2日目の開始)まで開催中に見えてしまう。 */}
+        {windows.length === 1 ? (
+          <p className="mt-2 font-mono text-sm text-gray-400">
+            {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
+          </p>
+        ) : (
+          <ul className="mt-2 grid gap-1">
+            {windows.map((w, index) => (
+              <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-sm text-gray-400">
+                <span className="text-xs text-gray-500">{w.name || `${index + 1}日目`}</span>
+                <span className="font-mono">{formatJstRange(w.start, w.end)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {event.description && (
           <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-gray-300">

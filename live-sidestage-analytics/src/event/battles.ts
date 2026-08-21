@@ -13,7 +13,12 @@ import type { TimeRange } from "./scoring";
 //
 // 照合そのものは match-detect.ts の純粋関数が持つ。ここは DB の出し入れだけ。
 
-/** 対戦カードの時間枠より広めに取り込む(枠外で始まったバトルも見えるようにする)。 */
+/**
+ * 対戦カードの時間枠より広めに取り込む(枠外で始まったバトルも見えるようにする)。
+ *
+ * 広げるのは**呼び出し側**(aggregate.ts が開催日程を前後に広げてつなぐ)。
+ * ここで広げると、隣り合う日程を広げた区間が重なって同じバトルを二度 upsert する。
+ */
 export const BATTLE_INGEST_GRACE_MS = 60 * 60 * 1000;
 
 /** 主催者が手を入れたマッチは自動検知で上書きしない。 */
@@ -27,6 +32,8 @@ export const NEEDS_REVIEW = "NEEDS_REVIEW";
  *
  * analytics 側は room ごとに行を持つので、1つのバトルにつき最大で参加人数ぶんの行が入る。
  * 取り込みは冪等(roomId + battleId が一意キー)。
+ *
+ * `start` / `end` は**そのまま**使う。猶予(`BATTLE_INGEST_GRACE_MS`)を足すのは呼び出し側。
  */
 export async function ingestBattles(
   tx: DbClient,
@@ -36,8 +43,8 @@ export async function ingestBattles(
 
   const rows = await fetchBattles(tx, {
     roomIds: params.roomIds,
-    start: new Date(params.start.getTime() - BATTLE_INGEST_GRACE_MS),
-    end: new Date(params.end.getTime() + BATTLE_INGEST_GRACE_MS),
+    start: params.start,
+    end: params.end,
   });
 
   for (const row of rows) {

@@ -167,7 +167,11 @@ export async function resolveWorkerForRoom(
   if (room?.workerId != null) return room.workerId;
 
   const workerId = hashToIndex(roomId, workerCount);
-  await prisma.tiktokRoom.update({
+  // 部屋が消えていても落とさない(updateMany は0件でも例外を投げない)。
+  // getMyRooms が一覧を読んでからここへ来るまでの間に、最後の Streamer が
+  // 部屋を外して削除されることがある。担当番号は hash から決まるので、
+  // 永続化できなくても戻り値は変わらない。
+  await prisma.tiktokRoom.updateMany({
     where: { id: roomId },
     data: { workerId },
   });

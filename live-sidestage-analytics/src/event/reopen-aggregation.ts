@@ -1,5 +1,5 @@
 import type { DbClient } from "./analytics-db";
-import { advisoryLockKey } from "./event-lock";
+import { acquireEventLock } from "./event-lock";
 
 /**
  * 集計をやり直させる。
@@ -25,8 +25,8 @@ import { advisoryLockKey } from "./event-lock";
 export const MUTATION_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 
 export async function reopenAggregation(tx: DbClient, eventId: string): Promise<void> {
-  // 戻り値は void。$queryRaw は void 列を復元できないので $executeRaw を使う。
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${advisoryLockKey(eventId)}::bigint)`;
+  // トランザクションの先頭ですでに取っていれば、これは待たされない。
+  await acquireEventLock(tx, eventId);
   await tx.event.updateMany({
     where: { id: eventId, finalizedAt: { not: null } },
     data: { finalizedAt: null },

@@ -13,9 +13,14 @@ function defaultValues(): EventFormValues {
     entryMode: "SOLO",
     teamPreset: "GENERIC",
     visibility: "UNLISTED",
-    // 既定は「明日から1週間」。JST に丸めるのは toJstInputValue が担当する。
-    startAt: toJstInputValue(new Date(now + 24 * 3600_000)),
-    endAt: toJstInputValue(new Date(now + 8 * 24 * 3600_000)),
+    // 既定は「明日から1週間」の1日程。JST に丸めるのは toJstInputValue が担当する。
+    sessions: [
+      {
+        name: "",
+        startAt: toJstInputValue(new Date(now + 24 * 3600_000)),
+        endAt: toJstInputValue(new Date(now + 8 * 24 * 3600_000)),
+      },
+    ],
   };
 }
 

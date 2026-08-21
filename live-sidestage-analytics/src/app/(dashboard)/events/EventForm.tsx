@@ -12,6 +12,8 @@ import {
 import {
   ENTRY_MODES,
   EVENT_FORMATS,
+  MAX_EVENT_SESSIONS,
+  MAX_SESSION_NAME_LENGTH,
   TEAM_PRESETS,
   VISIBILITIES,
   type EntryMode,
@@ -20,6 +22,13 @@ import {
   type Visibility,
 } from "@/event/validation";
 
+/** 1つの開催日程。日時は JST の "YYYY-MM-DDTHH:mm"。 */
+export type SessionFormValue = {
+  name: string;
+  startAt: string;
+  endAt: string;
+};
+
 export type EventFormValues = {
   title: string;
   description: string;
@@ -27,9 +36,25 @@ export type EventFormValues = {
   entryMode: EntryMode;
   teamPreset: TeamPreset;
   visibility: Visibility;
-  startAt: string; // JST の "YYYY-MM-DDTHH:mm"
-  endAt: string;
+  /** 1件以上。2件以上にすると日程の隙間は集計されない */
+  sessions: SessionFormValue[];
 };
+
+/**
+ * "YYYY-MM-DDTHH:mm" の日付だけ1日進める。日程を足すときの初期値用。
+ *
+ * 文字列のまま `Date` を経由せずに計算する — ブラウザのタイムゾーンで解釈すると
+ * JST 以外の環境で日付がずれる。
+ */
+function nextDay(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/.exec(value);
+  if (!m) return value;
+  const [, year, month, day, time] = m;
+  const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1));
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${time}`;
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export function EventForm({
   mode,
@@ -47,6 +72,28 @@ export function EventForm({
 
   const set = <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
+
+  const setSession = (index: number, patch: Partial<SessionFormValue>) =>
+    setValues((prev) => ({
+      ...prev,
+      sessions: prev.sessions.map((s, i) => (i === index ? { ...s, ...patch } : s)),
+    }));
+
+  const addSession = () =>
+    setValues((prev) => {
+      // 直前の日程の翌日・同じ時間帯を初期値にする(「1日目 22時 / 2日目 22時」が多い)。
+      const last = prev.sessions[prev.sessions.length - 1];
+      return {
+        ...prev,
+        sessions: [
+          ...prev.sessions,
+          { name: "", startAt: nextDay(last?.startAt ?? ""), endAt: nextDay(last?.endAt ?? "") },
+        ],
+      };
+    });
+
+  const removeSession = (index: number) =>
+    setValues((prev) => ({ ...prev, sessions: prev.sessions.filter((_, i) => i !== index) }));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -180,31 +227,77 @@ export function EventForm({
         </div>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="startAt">
-            開始日時(JST)
-          </label>
-          <input
-            id="startAt"
-            type="datetime-local"
-            className="input-field"
-            value={values.startAt}
-            onChange={(e) => set("startAt", e.target.value)}
-          />
+      <div>
+        <span className="label">開催日程(JST)</span>
+        <p className="mb-2 text-xs text-gray-500">
+          日を分けて開催するときは日程を足す(例: 1日目に予選、2日目に決勝)。
+          <strong className="text-gray-400">日程と日程の間のギフトは集計に入らない。</strong>
+        </p>
+
+        <div className="grid gap-3">
+          {values.sessions.map((session, index) => (
+            <div key={index} className="rounded-lg border border-border bg-panel p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-medium text-gray-400">{index + 1} 日程目</span>
+                {values.sessions.length > 1 && (
+                  <button
+                    type="button"
+                    className="text-xs text-red-400 hover:text-red-300"
+                    onClick={() => removeSession(index)}
+                  >
+                    削除
+                  </button>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
+                <div>
+                  <label className="label" htmlFor={`session-${index}-start`}>
+                    開始
+                  </label>
+                  <input
+                    id={`session-${index}-start`}
+                    type="datetime-local"
+                    className="input-field"
+                    value={session.startAt}
+                    onChange={(e) => setSession(index, { startAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`session-${index}-end`}>
+                    終了
+                  </label>
+                  <input
+                    id={`session-${index}-end`}
+                    type="datetime-local"
+                    className="input-field"
+                    value={session.endAt}
+                    onChange={(e) => setSession(index, { endAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`session-${index}-name`}>
+                    名前(任意)
+                  </label>
+                  <input
+                    id={`session-${index}-name`}
+                    className="input-field"
+                    value={session.name}
+                    onChange={(e) => setSession(index, { name: e.target.value })}
+                    placeholder="例: 予選"
+                    maxLength={MAX_SESSION_NAME_LENGTH}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div>
-          <label className="label" htmlFor="endAt">
-            終了日時(JST)
-          </label>
-          <input
-            id="endAt"
-            type="datetime-local"
-            className="input-field"
-            value={values.endAt}
-            onChange={(e) => set("endAt", e.target.value)}
-          />
-        </div>
+
+        {values.sessions.length < MAX_EVENT_SESSIONS && (
+          <button type="button" className="btn-ghost mt-3 text-sm" onClick={addSession}>
+            + 日程を追加
+          </button>
+        )}
       </div>
 
       <div>

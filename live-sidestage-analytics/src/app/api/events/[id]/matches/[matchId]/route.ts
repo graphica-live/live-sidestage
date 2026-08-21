@@ -3,6 +3,7 @@ import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { parseJstLocal } from "@/event/datetime";
 import { nextSlot } from "@/event/bracket";
+import { acquireEventLock } from "@/event/event-lock";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
 import { assertMatchWindow, SingleMatchError } from "@/event/single-match";
 import type { DbClient } from "@/event/analytics-db";
@@ -210,8 +211,11 @@ export async function PATCH(
       }
 
       try {
-        // 追加時と同じ検証を通す(イベント期間内・同じ出場者の枠が重ならない)。
+        // 追加時と同じ検証を通す(開催日程の中・同じ出場者の枠が重ならない)。
         await inTx(async (tx) => {
+          // **日程を読む前にロックを取る。** 日程の変更と同時だと、古い日程で
+          // 通した枠が日程の外に取り残される。
+          await acquireEventLock(tx, params.id);
           await assertMatchWindow(tx, {
             eventId: params.id,
             start,

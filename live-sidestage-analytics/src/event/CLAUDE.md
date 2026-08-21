@@ -68,9 +68,30 @@ access/refresh token は、イベント機能には一切必要ない。
 - 監視期限は最大 120 日（`MAX_LEASE_DAYS`、`src/lib/room-lease.ts`）
 - 監視中 room の総数上限 500（`MAX_ACTIVE_LEASES`）。TikTok 接続はプロキシと Euler 署名の枠を消費する
 
+### 7. 期間を読むときは必ず `resolveEventWindows()` を通す
+
+1イベントは複数の開催日程（`EventSession`）を持つ。**期間の正本は `EventSession` で、
+`Event.startAt` / `endAt` は全日程を覆う外枠（min/max の派生値）**。
+
+`event.startAt` / `event.endAt` を直接ギフトの抽出範囲に使わないこと。日程の隙間
+（1日目の終了〜2日目の開始）のギフトまで集計に入る。読むのは `src/event/sessions.ts` の
+`resolveEventWindows(event)` 一本にする。**日程を1件も持たないイベント（この機能より前に
+作られたもの）が本番に残っている** — バックフィルしていないので、外枠を1日程とみなす
+フォールバックがそこにある。
+
+外枠を使ってよいのは「イベント全体がいつ始まっていつ終わるか」だけ:
+集計対象の判定（`aggregationWindow` の `startAt <= now`）、締切（`aggregationDeadline(endAt)`）、
+`finalizedAt`、room の監視期限（`computeLeaseWindow(endAt)`）、一覧の並び。
+日程の隙間でも監視と集計ワーカーは動き続ける（隙間のギフトが結果に入らないだけ）。
+
+日程を書き換える操作（イベント更新 API）と対戦を組む操作は、**同じ advisory lock を
+トランザクションの先頭で取る**（`acquireEventLock`）。順序を崩すと、古い日程で通した
+対戦枠が新しい日程の外へ取り残される。
+
 ## 集計の規則（実装時に迷ったらここ）
 
-- 期間は `[startAt, endAt)` の半開区間、`receivedAt` 基準、Asia/Tokyo
+- 期間は開催日程ごとの `[start, end)` の半開区間、`receivedAt` 基準、Asia/Tokyo。
+  **日程どうしの隙間は集計しない**。日程は重ならないので、境界のギフトも二重に数えない
 - 公式スコアは元の `gifts` のみ。`gift_edits` は無視する
 - ポイント = ダイヤ実数 × 倍率。**1件のギフトに適用される倍率は必ず1つ**。
   BATTLE 区間に入るなら BATTLE、入らなければ SOLO_STREAM。合計も乗算もしない。
@@ -177,7 +198,18 @@ undefined になる**。
 ### 時間枠は半開区間
 
 `[scheduledStartAt, scheduledEndAt)`。終端ちょうどに始まったバトルが前後2つの枠の候補に
-なるのを防ぐ。イベント期間の扱い（`[startAt, endAt)`）と揃えている。
+なるのを防ぐ。開催日程の扱い（`[start, end)`）と揃えている。
+
+### 検知したバトルは日程で切ってから集計する
+
+観測したバトルは日程の終わりをまたぐことがある（22:59 開始 → 23:04 終了）。
+`match-results.ts` は `intersectWindows()` で `[detectedStartAt, detectedEndAt)` を日程で切り、
+交差した区間のギフトだけで勝敗とライフを決める。**切らずに使わないこと** — 日程の外の
+ギフトが勝敗に効き、順位表（日程内だけ）と食い違う。
+
+バトルの取り込み（`ingestBattles`）は日程を前後 `BATTLE_INGEST_GRACE_MS` 広げてつないだ
+区間ごとに引く。外枠1本で引くと、日程が疎に散っているイベント（90日に週1など）で
+隙間のバトルまで毎回取り込むことになる。
 
 ### バトル倍率は参加者ごとに区間を作る
 

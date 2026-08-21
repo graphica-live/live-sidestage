@@ -21,7 +21,7 @@ export default async function EventsPage() {
       status: true,
       startAt: true,
       endAt: true,
-      _count: { select: { participants: true } },
+      _count: { select: { participants: true, sessions: true } },
     },
   });
 
@@ -55,6 +55,12 @@ export default async function EventsPage() {
                     </p>
                     <p className="mt-1 font-mono text-xs text-gray-500">
                       {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
+                      {/* 外枠だけでは日程の隙間が見えないので、複数日程は件数を添える。 */}
+                      {event._count.sessions > 1 && (
+                        <span className="ml-2 font-sans text-gray-400">
+                          全 {event._count.sessions} 日程
+                        </span>
+                      )}
                     </p>
                   </div>
                   <span

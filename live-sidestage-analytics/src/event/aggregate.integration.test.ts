@@ -51,6 +51,8 @@ async function createEvent(overrides: {
   status?: string;
   startAt?: Date;
   endAt?: Date;
+  /** 省略すると日程を持たないイベントになる(統合前のイベントと同じ状態) */
+  sessions?: { startAt: Date; endAt: Date; name?: string }[];
 } = {}) {
   return prisma.event.create({
     data: {
@@ -62,6 +64,7 @@ async function createEvent(overrides: {
       status: overrides.status ?? "RUNNING",
       startAt: overrides.startAt ?? START,
       endAt: overrides.endAt ?? END,
+      ...(overrides.sessions ? { sessions: { create: overrides.sessions } } : {}),
     },
     select: { id: true },
   });
@@ -178,6 +181,110 @@ describe("aggregateEvent", () => {
     });
     expect(rows.map((r) => r.listenerUniqueId)).toEqual(["at_start"]);
     expect(rows[0].diamonds).toBe(10n);
+  });
+
+  it("日程の隙間のギフトは集計されない", async () => {
+    // 1日目 22:00-23:00 / 2日目 22:00-23:00 (JST)。外枠は両方を覆う。
+    const day1 = {
+      startAt: new Date("2026-09-01T13:00:00.000Z"),
+      endAt: new Date("2026-09-01T14:00:00.000Z"),
+    };
+    const day2 = {
+      startAt: new Date("2026-09-02T13:00:00.000Z"),
+      endAt: new Date("2026-09-02T14:00:00.000Z"),
+    };
+    const event = await newEvent({
+      startAt: day1.startAt,
+      endAt: day2.endAt,
+      sessions: [
+        { ...day1, name: "予選" },
+        { ...day2, name: "決勝" },
+      ],
+    });
+    const a = await newParticipant(event.id, "a");
+
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "day1",
+      diamonds: 10,
+      receivedAt: new Date("2026-09-01T13:30:00.000Z"),
+    });
+    // 1日目の終了〜2日目の開始。外枠の中だが、どの日程にも入らない。
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "gap",
+      diamonds: 5000,
+      receivedAt: new Date("2026-09-02T02:00:00.000Z"),
+    });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "day2",
+      diamonds: 20,
+      receivedAt: new Date("2026-09-02T13:30:00.000Z"),
+    });
+
+    await aggregateEvent(event.id);
+
+    const rows = await prisma.eventContribution.findMany({
+      where: { eventId: event.id, scope: "EVENT" },
+      orderBy: { listenerUniqueId: "asc" },
+    });
+    expect(rows.map((r) => r.listenerUniqueId)).toEqual(["day1", "day2"]);
+
+    const standing = await prisma.eventStanding.findFirst({
+      where: { eventId: event.id, subjectType: "PARTICIPANT" },
+    });
+    expect(standing?.diamonds).toBe(30n);
+  });
+
+  it("各日程も半開区間。境界のギフトを二重に数えない", async () => {
+    // 隣り合う日程(前の終わり = 次の始まり)。境界のギフトが2回入ると 100 が 200 になる。
+    const boundary = new Date("2026-09-01T14:00:00.000Z");
+    const event = await newEvent({
+      startAt: new Date("2026-09-01T13:00:00.000Z"),
+      endAt: new Date("2026-09-01T15:00:00.000Z"),
+      sessions: [
+        { startAt: new Date("2026-09-01T13:00:00.000Z"), endAt: boundary },
+        { startAt: boundary, endAt: new Date("2026-09-01T15:00:00.000Z") },
+      ],
+    });
+    const a = await newParticipant(event.id, "a");
+
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "boundary",
+      diamonds: 100,
+      receivedAt: boundary,
+    });
+
+    await aggregateEvent(event.id);
+
+    const rows = await prisma.eventContribution.findMany({
+      where: { eventId: event.id, scope: "EVENT" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].diamonds).toBe(100n);
+    expect(rows[0].giftCount).toBe(1);
+  });
+
+  it("日程を持たないイベントは外枠をそのまま1日程として集計する", async () => {
+    // 統合前に作られたイベント。バックフィルしていないので sessions は0件。
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "listener1",
+      diamonds: 70,
+      receivedAt: new Date("2026-09-04T12:00:00.000Z"),
+    });
+
+    await aggregateEvent(event.id);
+
+    const standing = await prisma.eventStanding.findFirst({
+      where: { eventId: event.id, subjectType: "PARTICIPANT" },
+    });
+    expect(standing?.diamonds).toBe(70n);
   });
 
   it("倍率を適用したポイントを出す。実弾(ダイヤ)は倍率の影響を受けない", async () => {
