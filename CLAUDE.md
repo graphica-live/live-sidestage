@@ -35,7 +35,7 @@ TikRIng を除く5つは TikTok Live 配信者向けで、`tiktok-live-connector
 
 コード上で確認できる実際の連携ポイント:
 
-- **event → analytics**: 同一 PostgreSQL の `public.event_gift_v` / `event_room_v` / `event_streamer_v`（列を絞った view）を `$queryRaw` で SELECT する。テーブルへの書き込みは一切しない。room の監視要求だけ `POST/DELETE /api/internal/event-room-lease`（`EVENT_INTERNAL_API_SECRET` で保護、Worker 用の `INTERNAL_API_SECRET` とは別の値）経由で行い、analytics 側は `TiktokRoom.monitorUntil` にそれを持つ。view の定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)
+- **event → analytics**: 同一 PostgreSQL の `public.event_gift_v` / `event_room_v` / `event_streamer_v` / `event_battle_v`（列を絞った view）を `$queryRaw` で SELECT する。テーブルへの書き込みは一切しない。room の監視要求だけ `POST/DELETE /api/internal/event-room-lease`（`EVENT_INTERNAL_API_SECRET` で保護、Worker 用の `INTERNAL_API_SECRET` とは別の値）経由で行い、analytics 側は `TiktokRoom.monitorUntil` にそれを持つ。view の定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)。`event_battle_v` は analytics が受信した TikTok の LinkMic バトル（`tiktok_battles`）で、event の対戦自動検知が使う
 - **desktop → analytics**: `GET /api/analytics/monthly-contributors?month=YYYY-MM`（[backend/lib/monthly-mvp-client.js](live-sidestage-desktop/backend/lib/monthly-mvp-client.js)）。baseUrl と apiKey は称号ウィジェット設定として SQLite に保存され、先月の MVP/TOP5 を取り込む
 - **mobile → analytics**: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `?token=` で `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
@@ -149,6 +149,7 @@ npm run pages:dev           # build + wrangler pages dev dist
 - **データモデルの肝**: 同一 `tiktokId` は `TiktokRoom` 1行 = TikTok 接続1本を複数の `Streamer`（登録ユーザー）で共有する。ギフト元データ `Gift` は不変で、手動編集・非表示は `GiftEdit(giftId, streamerId)` として別レコードに持ち、表示時に上書きする。したがって編集は編集者本人のビューにしか影響しない
 - 認証は段階的。BIO 認証（bio に認証コードを貼ってサーバーがスクレイピング確認）前でもオーバーレイは動き、コイン数・履歴だけが `VerifyGate` でぼかされる
 - TikTok 接続は公式 API ではなく匿名 WebSocket。プロキシは `TIKTOK_PROXY_POOL` から sticky 割当されるため、**プールへの追加は必ず配列末尾に**（途中挿入・削除は既存割当をずらす）
+- `linkMicBattle` / `linkMicArmies` を購読して `tiktok_battles` に残す（`src/lib/tiktok-battle.ts` がパーサ、`tiktok-listener.ts` の `persistBattle` が保存）。analytics 自身はこのデータを使わず、live-sidestage-event の対戦自動検知だけが読む。**実 payload は実配信のバトルでしか得られない**ため、`raw` を必ず保存し `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>` で取り出せるようにしてある
 
 ### live-sidestage-event — analytics と DB を共有する別サービス
 

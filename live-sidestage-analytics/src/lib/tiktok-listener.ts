@@ -1,10 +1,18 @@
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
 import { emitChatComment, type ChatCommentPayload } from "./chat-feed";
 import { getEulerSignApiKey } from "./settings";
+import {
+  mergeBattleState,
+  parseArmiesEvent,
+  parseBattleEvent,
+  type BattleRecordState,
+  type ParsedBattle,
+} from "./tiktok-battle";
 
 export type ListenerStatus =
   | "idle"
@@ -498,6 +506,119 @@ async function connectInstance(roomId: string) {
   return inst.connectPromise;
 }
 
+// ---------------------------------------------------------------------------
+// LinkMic バトルの記録(live-sidestage-event の対戦検知が使う)
+// ---------------------------------------------------------------------------
+
+// 1つのバトルにつきイベントが何度も届き、それぞれが read-modify-write になる。
+// 同じ (roomId, battleId) の書き込みは直列に流して、後から届いた古い状態で
+// 上書きされないようにする。
+const battleWriteChains = new Map<string, Promise<void>>();
+
+function queueBattleWrite(key: string, task: () => Promise<void>): void {
+  const prev = battleWriteChains.get(key) ?? Promise.resolve();
+  const next = prev
+    .catch(() => undefined)
+    .then(task)
+    .catch((err) => {
+      // 保存失敗は握りつぶさない。バトルが記録できないとイベントの対戦検知が動かない。
+      console.error("[battle] failed to persist battle", { key, err });
+    })
+    .finally(() => {
+      if (battleWriteChains.get(key) === next) battleWriteChains.delete(key);
+    });
+  battleWriteChains.set(key, next);
+}
+
+// payload には未検証の構造が入りうるので、JSON 化できないものはそこで捨てる。
+// 1件あたりの上限を設けるのは、anchorInfo のアバター画像URL群などで肥大するため。
+const MAX_RAW_BYTES = 64 * 1024;
+
+function toStorableRaw(data: unknown): Prisma.InputJsonValue {
+  try {
+    const json = JSON.stringify(data);
+    if (!json) return { unserializable: true };
+    if (json.length > MAX_RAW_BYTES) {
+      return { truncated: true, bytes: json.length, head: json.slice(0, MAX_RAW_BYTES) };
+    }
+    return JSON.parse(json) as Prisma.InputJsonValue;
+  } catch (err) {
+    return { unserializable: true, error: String(err) };
+  }
+}
+
+async function persistBattle(
+  roomId: string,
+  parsed: ParsedBattle,
+  rawKey: "battle" | "armies",
+  raw: unknown,
+  receivedAt: Date
+): Promise<void> {
+  const existing = await prisma.tiktokBattle.findUnique({
+    where: { roomId_battleId: { roomId, battleId: parsed.battleId } },
+  });
+
+  const previous: BattleRecordState | null = existing
+    ? {
+        action: existing.action,
+        startedAt: existing.startedAt,
+        startedAtEstimated: existing.startedAtEstimated,
+        endedAt: existing.endedAt,
+        durationSec: existing.durationSec,
+        hostUserIds: existing.hostUserIds,
+        hostDisplayIds: existing.hostDisplayIds,
+        hostScores: (existing.hostScores as Record<string, string> | null) ?? {},
+      }
+    : null;
+
+  const state = mergeBattleState(previous, parsed, receivedAt);
+
+  // raw は linkMicBattle と linkMicArmies を別キーで持つ。実 payload の fixture を
+  // 取るとき、両方のイベント形が1レコードから読めるようにするため。
+  const existingRaw =
+    existing && existing.raw && typeof existing.raw === "object" && !Array.isArray(existing.raw)
+      ? (existing.raw as Prisma.JsonObject)
+      : {};
+  const raws: Prisma.InputJsonObject = {
+    ...(existingRaw as Prisma.InputJsonObject),
+    [rawKey]: toStorableRaw(raw),
+  };
+
+  const data = {
+    action: state.action,
+    startedAt: state.startedAt,
+    startedAtEstimated: state.startedAtEstimated,
+    endedAt: state.endedAt,
+    durationSec: state.durationSec,
+    hostUserIds: state.hostUserIds,
+    hostDisplayIds: state.hostDisplayIds,
+    hostScores: state.hostScores,
+    raw: raws,
+  };
+
+  if (existing) {
+    await prisma.tiktokBattle.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.tiktokBattle.create({
+      data: { roomId, battleId: parsed.battleId, ...data },
+    });
+  }
+}
+
+function recordBattleEvent(
+  roomId: string,
+  parsed: ParsedBattle | null,
+  rawKey: "battle" | "armies",
+  raw: unknown
+): void {
+  // 成立していない招待(INVITE / REJECT / CANCEL)やパースできない payload は記録しない。
+  if (!parsed) return;
+  const receivedAt = new Date();
+  queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
+    persistBattle(roomId, parsed, rawKey, raw, receivedAt)
+  );
+}
+
 async function connectAndAttach(
   roomId: string,
   inst: ListenerInstance,
@@ -541,6 +662,16 @@ async function connectAndAttach(
   conn.on("roomUser", markAlive);
   conn.on("social", markAlive);
   conn.on("like", markAlive);
+
+  // バトル中はチャットが流れない配信もあるので、バトルのイベントもwatchdogの生存判定に含める。
+  conn.on("linkMicBattle", (data: unknown) => {
+    markAlive();
+    recordBattleEvent(roomId, parseBattleEvent(data), "battle", data);
+  });
+  conn.on("linkMicArmies", (data: unknown) => {
+    markAlive();
+    recordBattleEvent(roomId, parseArmiesEvent(data), "armies", data);
+  });
 
   conn.on("chat", (data: Record<string, unknown>) => {
     const rawMsgId = (data.common as { msgId?: unknown } | undefined)?.msgId;

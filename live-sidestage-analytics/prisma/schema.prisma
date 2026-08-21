@@ -79,6 +79,7 @@ model TiktokRoom {
 
   streamers Streamer[]
   gifts     Gift[]
+  battles   TiktokBattle[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
@@ -168,4 +169,41 @@ model GiftEdit {
 
   @@map("gift_edits")
   @@unique([giftId, streamerId])
+}
+
+// TikTokのバトル(LinkMic Battle)の観測記録。live-sidestage-eventが対戦の自動検知に使う。
+// analytics自身はこのデータを使わないが、バトル中かどうかはWebcastのイベントでしか
+// 分からないので受信側で残しておく。
+//
+// **1つのバトルについて、参加した両サイドのroomからそれぞれ同じbattleIdのイベントが届く。**
+// (両方をこちらが監視している場合)。したがってbattleIdでグループ化すれば
+// 「そのバトルに誰が参加したか」がpayloadの解釈精度に依存せず分かる。
+// 相手のTikTokハンドル(uniqueId)はpayloadに含まれないため、この照合が唯一の確実な手段。
+model TiktokBattle {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String // TikTokのbattleId。API上stringなので数値化しない
+  action   Int // 最後に観測したBattleAction(OPEN=4 / FINISH=5 / CUT_SHORT=6)
+
+  startedAt DateTime
+  // startedAtが受信時刻からの推定値か。接続はprocessInitialData:falseなので配信の
+  // 途中から繋ぐと開始(OPEN)を取り逃す。BattleSetting.startTimeMsも取れなかった場合、
+  // startedAtは「気づいた時刻」でしかない。イベント側の照合はこれを見て信頼度を決める。
+  startedAtEstimated Boolean @default(true)
+
+  endedAt     DateTime?
+  durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
+  hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
+  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
+  hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
+  raw            Json // 受信したpayloadそのもの。実payloadのfixture取得と後追い調査用
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@map("tiktok_battles")
+  @@unique([roomId, battleId])
+  @@index([roomId, startedAt])
+  @@index([battleId])
 }

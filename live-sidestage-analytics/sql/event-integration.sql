@@ -55,6 +55,30 @@ CREATE OR REPLACE VIEW public.event_streamer_v AS
   FROM public."Streamer";
 
 -- ============================================================
+-- バトル(イベントの対戦自動検知)
+-- ============================================================
+-- 1つのバトルについて、両サイドのroomからそれぞれ同じbattleIdの行ができる
+-- (両方をこちらが監視している場合)。event側はbattleIdでグループ化して
+-- 「そのバトルに参加したroomの集合」を作り、対戦カードと突き合わせる。
+--
+-- raw(受信payloadそのもの)は出さない。event側の照合はroomIdの集合で行うので不要で、
+-- アバターURLやニックネームまで渡す必要がないため。payloadを見たいときは
+-- analytics側の /api/debug/battle-payloads を使う。
+CREATE OR REPLACE VIEW public.event_battle_v AS
+  SELECT "roomId",
+         "battleId",
+         action,
+         "startedAt",
+         "startedAtEstimated",
+         "endedAt",
+         "durationSec",
+         "hostUserIds",
+         "hostDisplayIds",
+         "hostScores",
+         "updatedAt"
+  FROM public.tiktok_battles;
+
+-- ============================================================
 -- GRANT(ロールが存在するときだけ)
 -- ============================================================
 -- NextAuth 用の権限は event_web のみ。event は analytics と同じ User/Account を使うことで
@@ -65,7 +89,8 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'event_web') THEN
     GRANT USAGE ON SCHEMA public TO event_web;
-    GRANT SELECT ON public.event_gift_v, public.event_room_v, public.event_streamer_v TO event_web;
+    GRANT SELECT ON public.event_gift_v, public.event_room_v, public.event_streamer_v,
+                    public.event_battle_v TO event_web;
     GRANT SELECT, INSERT ON public."User" TO event_web;
     GRANT UPDATE (name, email, "emailVerified", image) ON public."User" TO event_web;
     GRANT SELECT, INSERT ON public."Account" TO event_web;
@@ -75,21 +100,10 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'event_worker') THEN
     GRANT USAGE ON SCHEMA public TO event_worker;
-    GRANT SELECT ON public.event_gift_v, public.event_room_v, public.event_streamer_v TO event_worker;
+    GRANT SELECT ON public.event_gift_v, public.event_room_v, public.event_streamer_v,
+                    public.event_battle_v TO event_worker;
   ELSE
     RAISE NOTICE 'role event_worker does not exist — skipping GRANT (local dev?)';
   END IF;
 END
 $$;
-
--- ============================================================
--- フェーズ4で追加する(tiktok_battles テーブルを作った後に有効化)
--- ============================================================
--- CREATE OR REPLACE VIEW public.event_battle_v AS
---   SELECT "roomId", "battleId", action, complete, "startedAt", "endedAt",
---          "hostUniqueIds", "hostScores", raw, "updatedAt"
---   FROM public.tiktok_battles;
---
--- GRANT は上の DO ブロックの各 IF の中に追記すること(ロール不在のローカルで落とさないため)。
---   GRANT SELECT ON public.event_battle_v TO event_web;
---   GRANT SELECT ON public.event_battle_v TO event_worker;
