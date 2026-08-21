@@ -8,6 +8,8 @@ export interface ChatCommentPayload {
   comment: string;
   receivedAt: string; // ISO8601
   // TikTok側が払い出すWebcastChatMessage.common.msgId。欠落時はnull。
+  // connectorのsimplifyObject()がcommonを平坦化するため、listener側では data.msgId として読む
+  // (tiktok-listener.ts の resolveMsgId 参照)。
   msgId: string | null;
 }
 

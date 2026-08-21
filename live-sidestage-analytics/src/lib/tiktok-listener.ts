@@ -41,6 +41,7 @@ interface ListenerInstance {
   // 次にwatchdog起因の強制再接続を許可するepoch ms。now < この値の間はsilentForが閾値を超えていてもスキップする。
   watchdogBackoffUntil: number;
   // TikTok側が払い出すWebcastChatMessage.common.msgIdの直近受信履歴(FIFO)。
+  // 実際の取り出しはresolveMsgId()経由(平坦化済みのdata.msgId)。
   // TikTokのWebSocketは再接続直後やネットワーク瞬断の前後で同一チャットメッセージを
   // 再送してくることがあり、これをそのまま配信すると全クライアントで二重に届く。
   // (tiktok-live-connectorはProtoMessageFetchResult内のisHistoryフラグを握りつぶして
@@ -348,6 +349,27 @@ function jstDateKey(date: Date = new Date()): string {
 }
 
 /**
+ * TikTok共通メッセージヘッダの msgId を取り出す。
+ *
+ * tiktok-live-connector の WebcastPushConnection(レガシー互換クラス)は simplifyObject() で
+ * ネストしたprotobufを平坦化する際、common の中身をトップレベルへ Object.assign したうえで
+ * common 自体を delete する
+ * (node_modules/tiktok-live-connector/dist/lib/_legacy/data-converter.js)。
+ *
+ *   Object.assign(webcastObject, webcastObject.common);
+ *   delete webcastObject.common;
+ *
+ * つまりハンドラに届く時点で data.common は存在せず、msgId はトップレベルにある。
+ * 以前ここは data.common?.msgId を読んでおり、msgId が常に null になっていたため、
+ * listenerインスタンス側(recentChatMsgIds)とWebプロセス側(isDuplicateChatEvent)の
+ * 2層のdedupがどちらも一度も発動していなかった。
+ */
+export function resolveMsgId(data: Record<string, unknown>): string | null {
+  const raw = data.msgId;
+  return typeof raw === "string" && raw ? raw : null;
+}
+
+/**
  * TikTok共通メッセージヘッダの createTime(epoch ms)を優先し、
  * 欠落・不正値の場合のみサーバー受信時刻にフォールバックする。
  * フォールバックは呼び出し側で必ずログに残すこと(サイレントフォールバック禁止)。
@@ -543,8 +565,7 @@ async function connectAndAttach(
   conn.on("like", markAlive);
 
   conn.on("chat", (data: Record<string, unknown>) => {
-    const rawMsgId = (data.common as { msgId?: unknown } | undefined)?.msgId;
-    const msgId = typeof rawMsgId === "string" && rawMsgId ? rawMsgId : null;
+    const msgId = resolveMsgId(data);
     if (msgId) {
       if (inst.recentChatMsgIds.has(msgId)) {
         console.log("[chat] dedup: duplicate msgId skipped (listener instance)", { roomId, msgId });
