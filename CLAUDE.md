@@ -205,7 +205,7 @@ git config core.hooksPath .githooks
 
 モノレポ化でビルドコンテキストがリポジトリルートに変わったため、ホスティング側の設定でプロジェクトのサブディレクトリを指定する必要がある。
 
-- **live-sidestage-analytics → Railway**: Root Directory を `live-sidestage-analytics` にする。[railway.toml](live-sidestage-analytics/railway.toml) と [Dockerfile](live-sidestage-analytics/Dockerfile) はそのディレクトリ基準なので、Root Directory さえ合っていれば中身の変更は不要。**同じイメージを3サービスで使い、start command と環境変数だけを変える** — `npm start`（web）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る）/ `npm run event-worker`（イベント集計）。スキーマ変更は web の build に含まれる `prisma db push --accept-data-loss` が行う
+- **live-sidestage-analytics → Railway**: Root Directory を `live-sidestage-analytics` にする。[railway.toml](live-sidestage-analytics/railway.toml) と [Dockerfile](live-sidestage-analytics/Dockerfile) はそのディレクトリ基準なので、Root Directory さえ合っていれば中身の変更は不要。**同じイメージを3サービスで使い、start command と環境変数だけを変える** — 未指定（web。Dockerfile の CMD）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る）/ `npm run event-worker`（イベント集計）。**スキーマ反映は build ではなく web の起動時**（CMD が `prisma db push --accept-data-loss` を実行する）。start command を上書きする worker と event-worker は CMD を通らないので push しない
 - **TikRIng → Cloudflare Pages**: Root directory を `TikRIng`、ビルドコマンドは `npm run build`、出力は `dist`
 - **live-sidestage-desktop / TikCaption**: electron-builder によるローカルビルドなので、モノレポ化の影響は受けない
 - **live-sidestage-mobile**: `flutter build apk` をディレクトリ内で実行するだけなので影響なし
