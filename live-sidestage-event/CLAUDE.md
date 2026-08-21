@@ -45,6 +45,16 @@ analytics の `/api/internal/event-room-lease` は `EVENT_INTERNAL_API_SECRET` �
 analytics の `INTERNAL_API_SECRET` を使い回すと、event から `/api/internal/gift-event` も叩けてしまい、
 任意の chatEvent / overlay 更新を注入できる。
 
+### 7. room の監視要求を解除するときは、他のイベントが使っていないか必ず確認する
+
+analytics 側の `TiktokRoom.monitorUntil` は room につき**1本しかない**。同じ配信者が複数の
+イベントに出ている状態で片方から解除すると、もう片方の監視まで止まる。
+解除は必ず `src/lib/participants.ts` の `releaseIfUnused()` を通すこと
+(未解放の `EventRoomLease` が他イベントに残っていれば解除しない)。
+
+期限は analytics 側が `max(既存, 要求)` で更新するので、**確保するときは**他イベントの
+期間を縮める心配はいらない。
+
 ## 集計の規則（実装時に迷ったらここ）
 
 - 期間は `[startAt, endAt)` の半開区間、`receivedAt` 基準、Asia/Tokyo
@@ -74,15 +84,22 @@ analytics に揃える。
 
 ## 未実装（計画上のフェーズ）
 
-現在はフェーズ1（walking skeleton）まで。
+現在はフェーズ2まで。
 
 | フェーズ | 内容 |
 | --- | --- |
 | 1 ✅ | プロジェクト雛形、共有 User 認証、イベント CRUD、公開ページの器、CI |
-| 2 | 参加者登録 + room lease（analytics 側の `monitorUntil` / 内部API / `getMyRooms()` 変更を含む） |
+| 2 ✅ | 参加者登録 + room lease（analytics 側の `monitorUntil` / 内部API / `getMyRooms()` 変更を含む） |
 | 3 | 獲得ダイヤレース（集計ワーカー、ランキング、EXPLAIN ANALYZE と SLO の確定） |
 | 4 | バトルトーナメント（実 payload の fixture 取得 → battle 検知 → マッチ照合） |
 | 5 | デスマッチ（ライフポイントエンジン） |
 | 6 | 都道府県UI（日本地図） |
 
-`prisma/schema.prisma` にはフェーズ5までのモデルが入っているが、使っているのはフェーズ1の範囲だけ。
+`prisma/schema.prisma` にはフェーズ5までのモデルが入っているが、使っているのはフェーズ2の範囲だけ。
+
+### フェーズ3で最初にやること
+
+`computeLeaseWindow()` が `clamped: true` を返した lease の**再要求**。イベント終了が
+`ANALYTICS_MAX_LEASE_DAYS`(120日)より先だと analytics 側の期限を切り詰めてしまうので、
+集計ワーカーが `EventRoomLease.monitorUntil`（本来の期限）を見て延長し直す必要がある。
+現状は主催者が参加者を登録し直すことでしか復旧できない。

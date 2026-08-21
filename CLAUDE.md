@@ -35,7 +35,7 @@ TikRIng を除く5つは TikTok Live 配信者向けで、`tiktok-live-connector
 
 コード上で確認できる実際の連携ポイント:
 
-- **event → analytics**: 同一 PostgreSQL の `public.event_gift_v` / `event_room_v` / `event_streamer_v`（列を絞った view）を `$queryRaw` で SELECT する。書き込みは一切せず、room の監視要求だけ analytics の内部API 経由で行う（フェーズ2以降）。定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)
+- **event → analytics**: 同一 PostgreSQL の `public.event_gift_v` / `event_room_v` / `event_streamer_v`（列を絞った view）を `$queryRaw` で SELECT する。テーブルへの書き込みは一切しない。room の監視要求だけ `POST/DELETE /api/internal/event-room-lease`（`EVENT_INTERNAL_API_SECRET` で保護、Worker 用の `INTERNAL_API_SECRET` とは別の値）経由で行い、analytics 側は `TiktokRoom.monitorUntil` にそれを持つ。view の定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)
 - **desktop → analytics**: `GET /api/analytics/monthly-contributors?month=YYYY-MM`（[backend/lib/monthly-mvp-client.js](live-sidestage-desktop/backend/lib/monthly-mvp-client.js)）。baseUrl と apiKey は称号ウィジェット設定として SQLite に保存され、先月の MVP/TOP5 を取り込む
 - **mobile → analytics**: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `?token=` で `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
@@ -141,6 +141,7 @@ npm run pages:dev           # build + wrangler pages dev dist
 
 - [server.js](live-sidestage-analytics/server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
 - [worker.ts](live-sidestage-analytics/worker.ts) は Next を持たず、担当 shard の TikTok Webcast 接続だけを維持する軽量プロセス。`hash(streamerId) % WORKER_COUNT` で配信者を分散し、`WORKER_INDEX` が自分の担当番号。`GET /healthz` は初回 `resumeAllListeners()` 完了まで 503 を返し、Railway のゼロダウンタイム切替に使う
+- Worker が接続を維持する部屋の条件は `getMyRooms()`（[tiktok-listener.ts](live-sidestage-analytics/src/lib/tiktok-listener.ts)）の1箇所に集約されている。**「`Streamer` が1人以上いる」か「`TiktokRoom.monitorUntil` が未来」のどちらか**で、後者は event サービスが期限付きで監視を要求している状態。どちらも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
 - Worker → Web は `POST /api/internal/gift-event`（`INTERNAL_API_SECRET` で保護）。`WEB_INTERNAL_URL` 未設定なら Web/Worker 同居とみなして in-process 直呼びにフォールバックする
 - Worker 数を変えたら全プロセスの `WORKER_COUNT` を揃えてから `npm run rebalance-workers -- --apply`
 - **データモデルの肝**: 同一 `tiktokId` は `TiktokRoom` 1行 = TikTok 接続1本を複数の `Streamer`（登録ユーザー）で共有する。ギフト元データ `Gift` は不変で、手動編集・非表示は `GiftEdit(giftId, streamerId)` として別レコードに持ち、表示時に上書きする。したがって編集は編集者本人のビューにしか影響しない

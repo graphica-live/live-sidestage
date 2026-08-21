@@ -20,6 +20,11 @@ export type EventStatus = (typeof EVENT_STATUSES)[number];
 
 // チーム数の上限。DB制約ではなくここで弾く。
 export const MAX_TEAMS = 100;
+// 1イベントの参加者数の上限。2vs2 で100チーム = 200人を上限とする。
+// TikTok 接続は analytics 側の有限な資源(プロキシ・署名サーバー)を消費するので、
+// 1つのイベントが枠を食い潰さないようにここで止める。
+export const MAX_PARTICIPANTS = 200;
+export const MAX_DISPLAY_NAME_LENGTH = 60;
 export const MAX_TITLE_LENGTH = 100;
 export const MAX_DESCRIPTION_LENGTH = 4000;
 // イベント期間の上限。無制限にすると集計対象が青天井になる。

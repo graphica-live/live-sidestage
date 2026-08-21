@@ -44,4 +44,23 @@ export const STATUS_CLASSES: Record<EventStatus, string> = {
   ARCHIVED: "text-gray-500 bg-white/5",
 };
 
+// analytics 側の TiktokRoom.listenerStatus(src/lib/tiktok-listener.ts の ListenerStatus)。
+// 配信していない配信者への接続は失敗して retrying を繰り返すので、
+// retrying は異常ではなく「監視はしているが、まだ配信が始まっていない」状態を指す。
+export const LISTENER_STATUS_LABELS: Record<string, string> = {
+  idle: "起動中",
+  connecting: "接続中",
+  connected: "配信に接続中",
+  retrying: "配信開始を待機中",
+  error: "接続エラー",
+};
+
+export const LISTENER_STATUS_CLASSES: Record<string, string> = {
+  idle: "text-gray-400 bg-white/5",
+  connecting: "text-yellow-400 bg-yellow-400/10",
+  connected: "text-green-400 bg-green-400/10",
+  retrying: "text-gray-400 bg-white/5",
+  error: "text-red-400 bg-red-400/10",
+};
+
 export { formatJst, toJstInputValue } from "@/lib/datetime";

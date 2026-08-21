@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireEventOwner } from "@/lib/authz";
 import { parseJstLocal } from "@/lib/datetime";
+import { releaseEventLeases } from "@/lib/participants";
 import { EVENT_STATUSES, validateEventInput, type EventStatus } from "@/lib/validation";
 
-async function requireOwnedEvent(id: string): Promise<{ ownerUserId: string } | null> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return null;
-
-  const event = await prisma.event.findUnique({
-    where: { id },
-    select: { ownerUserId: true },
-  });
-  if (!event || event.ownerUserId !== session.user.id) return null;
-
-  return event;
-}
-
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const owned = await requireOwnedEvent(params.id);
+  const owned = await requireEventOwner(params.id);
   if (!owned) {
     // 存在しないのか権限がないのかを区別しない(他人のイベントIDの存在を漏らさない)。
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -74,10 +61,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const owned = await requireOwnedEvent(params.id);
+  const owned = await requireEventOwner(params.id);
   if (!owned) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // 参加者・lease 台帳は cascade で消えるが、analytics 側の monitorUntil は
+  // 明示的に戻さないと期限まで無駄な接続が残る。削除より先に解除する。
+  await releaseEventLeases(params.id);
 
   await prisma.event.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });

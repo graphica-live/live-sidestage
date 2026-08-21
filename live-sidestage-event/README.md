@@ -29,12 +29,21 @@ npx prisma generate
 DB は `live-sidestage-analytics` の docker compose（localhost:5433）を共用する。
 
 ```bash
-cd ../live-sidestage-analytics && docker compose up -d db && cd ../live-sidestage-event
+cd ../live-sidestage-analytics
+docker compose up -d db
+npm run db:push:local     # analytics のテーブル(public)を作る
+# analytics のデータを読むための view。ロールが無いローカルでは GRANT はスキップされる
+docker compose exec -T db psql -U liveanalytics -d liveanalytics_test < sql/event-integration.sql
 
+cd ../live-sidestage-event
 npm run db:push:local     # event スキーマにテーブルを作る
 npm run seed:local        # 動作確認用のイベントを2件入れる
 npm run dev:local         # http://localhost:3100
 ```
+
+参加者登録を試すには analytics の Web も動かしておく(`cd ../live-sidestage-analytics && npm run dev:local`)。
+`.env.local.test` の `ANALYTICS_INTERNAL_URL` がそれを指す。`EVENT_INTERNAL_API_SECRET` は
+analytics 側の同名の変数と一致させ、analytics の `INTERNAL_API_SECRET` とは別の値にする。
 
 `.env.local.test` は git 追跡外。`.env.example` を見て作る。`ENABLE_DEV_LOGIN=1` を入れておくと
 メールアドレスだけでログインできる（本番では絶対に設定しない）。
@@ -106,6 +115,26 @@ DB `Session` を作らないため、`Session` 表を共有しても SSO にも�
 
 `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` は analytics と同じ値を使う。デプロイ先を増やしたら
 Google Cloud Console の Authorized redirect URI に `https://<host>/api/auth/callback/google` を追加すること。
+
+## 参加者登録と配信の監視
+
+主催者が参加者の TikTok ID を登録すると、その配信者の TikTok Live を**イベント終了+24時間**まで
+監視するよう analytics に要求する(`POST /api/internal/event-room-lease`)。
+
+- analytics 側に既にその配信者の room があれば**再利用**する。同じ配信者のギフトが分裂しないため
+- なければ analytics 側が room を新規作成する。この room は会員登録(`Streamer`)を持たないが、
+  `TiktokRoom.monitorUntil` が未来の間だけ Worker の担当に含まれる
+- 監視の開始・停止は analytics の reconcile ループ(60秒間隔)で反映される。UI にもそう出す
+- 期限が切れると監視は止まるが、**受信済みのギフトと room は残る**。後からその配信者が会員登録すれば
+  `streamers` 条件で監視が再開される
+
+同じ配信者が複数のイベントに出ている場合、`monitorUntil` は room につき1本しかないので、
+**未解放の `EventRoomLease` が他イベントに残っている間は解除しない**
+(`src/lib/participants.ts` の `releaseIfUnused()`)。確保のときは analytics 側が
+`max(既存, 要求)` で更新するため、他イベントの期間を縮めることはない。
+
+参加者数の上限は200人(`MAX_PARTICIPANTS`)。analytics 側でも監視中の room 総数に
+上限(500)があり、超えると 429 を返す。
 
 ## 集計の定義
 
