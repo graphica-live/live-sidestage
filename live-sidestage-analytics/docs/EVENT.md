@@ -104,11 +104,90 @@ start command と環境変数だけを変える。**
 
 | サービス | start command | 役割 |
 | --- | --- | --- |
-| web | `npm start` | Next.js + socket.io。イベントの画面と API もここ |
+| web | 未指定（Dockerfile の CMD） | Next.js + socket.io。イベントの画面と API もここ |
 | worker | `npm run worker` | TikTok Webcast 接続の維持（`WORKER_INDEX` / `WORKER_COUNT` が要る） |
 | event-worker | `npm run event-worker` | イベント集計。10秒ごとに再集計 |
 
-スキーマ変更は web の build（`npm run build`）に含まれる `prisma db push --accept-data-loss` が行う。
+**スキーマ反映は build ではなく、web の起動時に走る。** [Dockerfile](../Dockerfile) の CMD が
+`migrate-shared-tiktok-room.ts` → `prisma db push --accept-data-loss` → `node server.js` の順で実行する。
+build（`npx prisma generate && npx next build`）は DB に触らない。
+
+worker と event-worker は start command を上書きするので CMD を通らず、**`db push` を実行しない**。
+スキーマを反映するプロセスが web の1本だけになるようにわざとそうしている。この非対称は
+初回デプロイで問題になる（下記）。
+
+### 初回デプロイ手順
+
+イベント機能を本番へ初めて出すときの手順。analytics の web / worker は既に動いている前提。
+
+#### 0. 事前確認（read-only、DB を変更しない）
+
+**`prisma migrate diff` で、本番に対して何が起きるかを先に読む。** web の起動時に走るのは
+`db push --accept-data-loss` で、警告を出さずにテーブルを消す。事前に差分を目で見ておく。
+
+```bash
+npx prisma migrate diff \
+  --from-url "$PROD_DATABASE_URL" \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+出力の SQL に **`DROP TABLE` / `DROP COLUMN` が1つも無いこと**を確認する。
+期待される出力は `CREATE SCHEMA "event"` と `event` 配下14テーブルの `CREATE TABLE` だけ
+（`public` 側に差分が出るなら本番がスキーマからドリフトしている。その場合は先に原因を潰す）。
+
+#### 1. web をデプロイする
+
+main へマージして push すると web が入れ替わり、起動時の CMD が
+`prisma db push --accept-data-loss` を実行して `event` スキーマと14テーブルを作る。
+
+- `db push` は `CREATE SCHEMA` を含むので、**web の `DATABASE_URL` のロールに対象DBの
+  `CREATE` 権限が要る**。Railway のマネージド Postgres の既定ロール（`postgres`）なら持っている
+- ログに `[startup] PORT=...` の後で Prisma の出力が出る。ここで失敗すると `node server.js` まで
+  進まないので、web が起動しない = すぐ気づける
+
+この時点で `/events` と `/e/<slug>` は動く。集計だけがまだ回っていない状態。
+
+#### 2. event-worker サービスを作る
+
+**web のデプロイが成功してから作る。** 順序が逆だと、`event` スキーマがまだ存在しない DB に対して
+event-worker が起動し、10秒ごとにテーブル不在で落ち続ける
+（`restartPolicyMaxRetries = 3` で停止する）。
+
+Railway で analytics と同じリポジトリ・同じ Root Directory（`live-sidestage-analytics`）の
+サービスを新規作成し、以下だけを変える。
+
+| 設定 | 値 |
+| --- | --- |
+| Start Command | `npm run event-worker` |
+| `DATABASE_URL` | web と同じ |
+| Healthcheck Path | 設定しない（`event-worker.ts` は HTTP を持たない） |
+
+`WORKER_INDEX` / `WORKER_COUNT` / `INTERNAL_API_SECRET` / `TIKTOK_PROXY_POOL` は**不要**。
+これらは TikTok 接続の worker のものなので、混ぜない。
+
+起動ログに `[event-worker] イベント集計ワーカーを開始した(...)` が出れば成功。
+
+#### 3. 動作確認
+
+1. `/events` で新しいイベントを作る（`status` は `DRAFT`）
+2. 参加者を1人登録する → `TiktokRoom.monitorUntil` が立つ
+3. **最大60秒待つ。** TikTok 接続の worker の reconcile が拾って接続を開始する。
+   参加者一覧の監視状態が `connecting` → `connected` に変わる
+4. イベントを `RUNNING` にする
+5. 実際にギフトが飛ぶと、10秒以内に `/e/<slug>` の順位が動く。
+   `Event.lastAggregatedAt` が更新されているかでも確認できる
+
+#### 4.（任意）統合前の view の掃除
+
+`sql/drop-event-integration.sql`。詳細は「統合前の構成から移行するとき」を参照。
+**統合前の event を一度も本番デプロイしていないなら、view はそもそも存在しないので不要。**
+
+#### ロールバック
+
+event-worker サービスを停止するだけでよい。web を戻す必要はない
+（`event` スキーマが残っていても `public` 側の動作には影響しない）。
+`event` スキーマを消すと作ったイベントのデータごと消えるので、慌てて `DROP SCHEMA` しない。
 
 #### `EventLifeLedger` に FK を足すとき（フェーズ5の変更を既存DBへ入れる場合）
 
