@@ -399,11 +399,42 @@ String _sourceLabel(SoundSourceKind source) => switch (source) {
 
 enum _SoundSourceChoice { localFile, soundEffectLab, myInstants }
 
+/// コイン数での絞り込み。
+///
+/// TikTokのギフトは価格帯でだいたい層が分かれる（1コインの連打ギフトと
+/// 1000コイン超の大物では鳴らしたい音が違う）ので、数値入力ではなくレンジの
+/// チップにする。キーボードを出さずに片手で切り替えられる。
+enum _CoinRange {
+  all('すべて', 0, null),
+  tier1('1〜9', 1, 9),
+  tier2('10〜99', 10, 99),
+  tier3('100〜999', 100, 999),
+  tier4('1000以上', 1000, null);
+
+  const _CoinRange(this.label, this.min, this.max);
+
+  final String label;
+  final int min;
+
+  /// null は上限なし。
+  final int? max;
+
+  bool matches(int coins) {
+    if (coins < min) return false;
+    final upper = max;
+    return upper == null || coins <= upper;
+  }
+}
+
 /// ギフト候補のピッカー。
 ///
-/// 一覧はサーバーが返す「直近に受け取ったギフト」なので、目的のギフトが
-/// 載っていないことが普通にありうる。**自由入力は常に出す**（0件のときだけ、
-/// エラーのときだけ、という出し分けでは足りない）。
+/// 一覧はサーバーが返す「自分の部屋が直近に受け取ったギフト」で、TikTokの全ギフト
+/// カタログではない。目的のギフトが載っていないことが普通にありうるので、
+/// **入力した文字列をそのまま使う導線を常に残す**（0件のときだけ、エラーのときだけ、
+/// という出し分けでは足りない）。
+///
+/// 検索は入力のたびにローカルで絞り込む。候補は最大200件なので、キーストロークごとに
+/// サーバーへ問い合わせ直す理由が無い。
 class _GiftPickerSheet extends StatefulWidget {
   const _GiftPickerSheet({required this.token});
 
@@ -414,23 +445,47 @@ class _GiftPickerSheet extends StatefulWidget {
 }
 
 class _GiftPickerSheetState extends State<_GiftPickerSheet> {
-  final TextEditingController _manualController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   List<GiftCandidate>? _candidates;
   String? _error;
   bool _needsRelogin = false;
+  _CoinRange _coinRange = _CoinRange.all;
 
   @override
   void initState() {
     super.initState();
+    // 入力のたびに絞り込みを描き直す。autofocus はしない――未入力で全件を
+    // 見たいときにキーボードが一覧を半分隠してしまうため。
+    _searchController.addListener(() => setState(() {}));
     _load();
   }
 
   @override
   void dispose() {
-    _manualController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  String get _query => _searchController.text.trim();
+
+  List<GiftCandidate> get _filtered {
+    final all = _candidates ?? const <GiftCandidate>[];
+    final q = _query.toLowerCase();
+    return all
+        .where((g) => _coinRange.matches(g.diamondCount))
+        .where((g) => q.isEmpty || g.name.contains(q) || g.label.toLowerCase().contains(q))
+        .toList(growable: false);
+  }
+
+  void _pick(GiftCandidate gift) => Navigator.of(context).pop(gift);
+
+  /// 一覧に無いギフト名として、入力文字列をそのまま採用する。
+  void _useQueryAsIs() {
+    final raw = _query;
+    if (raw.isEmpty) return;
+    _pick(GiftCandidate(name: raw.toLowerCase(), label: raw, diamondCount: 0));
   }
 
   Future<void> _load() async {
@@ -463,24 +518,29 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
     }
   }
 
-  void _submitManual() {
-    final raw = _manualController.text.trim();
-    if (raw.isEmpty) return;
-    Navigator.of(context).pop(
-      GiftCandidate(name: raw.toLowerCase(), label: raw, diamondCount: 0),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final candidates = _candidates;
+    final media = MediaQuery.of(context);
+    final filtered = _filtered;
+    final query = _query;
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.7,
+    // 完全一致が一覧に出ていないときだけ「そのまま使う」を出す。出ているなら
+    // その行をタップすればよく、同じ意味の導線を2つ並べても迷わせるだけ。
+    final showRawEntry =
+        query.isNotEmpty && !filtered.any((g) => g.name == query.toLowerCase());
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: ConstrainedBox(
+        // キーボードの高さを引いてから割合を取る。固定高にすると入力中に
+        // 画面からはみ出す。
+        constraints: BoxConstraints(
+          maxHeight: (media.size.height - media.viewInsets.bottom) * 0.85,
+        ),
+        child: SafeArea(
+          top: false,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -488,33 +548,67 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    labelText: 'ギフト名で検索',
+                    helperText: '未入力なら全件。大文字小文字は区別しません',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'クリア',
+                            onPressed: _searchController.clear,
+                          ),
+                  ),
+                  onSubmitted: (_) {
+                    // 1件に絞れているならそれを採用。絞れないなら入力そのまま。
+                    if (filtered.length == 1) {
+                      _pick(filtered.single);
+                    } else if (showRawEntry) {
+                      _useQueryAsIs();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _manualController,
-                        decoration: const InputDecoration(
-                          labelText: '一覧にないギフト名を入力',
-                          helperText: '大文字小文字は区別しません',
-                        ),
-                        onSubmitted: (_) => _submitManual(),
+                    for (final range in _CoinRange.values) ...[
+                      ChoiceChip(
+                        label: Text(range.label),
+                        selected: _coinRange == range,
+                        onSelected: (_) => setState(() => _coinRange = range),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(onPressed: _submitManual, child: const Text('決定')),
+                      const SizedBox(width: 8),
+                    ],
                   ],
                 ),
               ),
-              ListTile(
-                leading: const Icon(Icons.all_inclusive),
-                title: const Text('すべてのギフト'),
-                subtitle: const Text('どのギフトが来ても鳴らす'),
-                onTap: () => Navigator.of(context).pop(
-                  const GiftCandidate(name: '', label: '', diamondCount: 0),
+              const SizedBox(height: 8),
+              // 絞り込んでいる最中に出すと選択肢として紛らわしいので、
+              // 素の状態のときだけ見せる。
+              if (query.isEmpty && _coinRange == _CoinRange.all)
+                ListTile(
+                  leading: const Icon(Icons.all_inclusive),
+                  title: const Text('すべてのギフト'),
+                  subtitle: const Text('どのギフトが来ても鳴らす'),
+                  onTap: () => _pick(const GiftCandidate(name: '', label: '', diamondCount: 0)),
                 ),
-              ),
+              if (showRawEntry)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text('「$query」を使う'),
+                  subtitle: const Text('一覧にないギフト名として登録'),
+                  onTap: _useQueryAsIs,
+                ),
               const Divider(height: 1),
-              Expanded(child: _buildList(candidates)),
+              Flexible(child: _buildList(filtered)),
             ],
           ),
         ),
@@ -522,7 +616,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
     );
   }
 
-  Widget _buildList(List<GiftCandidate>? candidates) {
+  Widget _buildList(List<GiftCandidate> filtered) {
     if (_error != null) {
       return Center(
         child: Padding(
@@ -543,6 +637,8 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
         ),
       );
     }
+
+    final candidates = _candidates;
     if (candidates == null) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -558,15 +654,42 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
         ),
       );
     }
+    if (filtered.isEmpty) {
+      // 候補はあるが絞り込みに掛からなかった。「履歴が無い」と混同させない。
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '条件に合うギフトがありません',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  _searchController.clear();
+                  _coinRange = _CoinRange.all;
+                }),
+                icon: const Icon(Icons.filter_alt_off_outlined),
+                label: const Text('絞り込みを解除'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return ListView.builder(
-      itemCount: candidates.length,
+      itemCount: filtered.length,
       itemBuilder: (_, index) {
-        final gift = candidates[index];
+        final gift = filtered[index];
         return ListTile(
           dense: true,
           title: Text(gift.label),
           subtitle: gift.diamondCount > 0 ? Text('${gift.diamondCount}コイン') : null,
-          onTap: () => Navigator.of(context).pop(gift),
+          onTap: () => _pick(gift),
         );
       },
     );
