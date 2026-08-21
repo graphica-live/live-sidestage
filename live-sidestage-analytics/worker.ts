@@ -13,6 +13,7 @@ import {
   ensureAllListenersAlive,
   checkWatchdogs,
   stopAllListeners,
+  getListenerSnapshots,
 } from "@/lib/tiktok-listener";
 
 function requireEnv(name: string): string {
@@ -38,13 +39,57 @@ requireEnv("INTERNAL_API_SECRET");
 // Railwayが健全と判断して旧Workerを落としていた。
 let ready = false;
 
+// プロセスの起動時刻。再起動の検知に使うので、モジュールロード時に1度だけ確定させる。
+const processStartedAt = new Date();
+
+// 直近のreconcile結果。管理画面が「reconcileが回り続けているか」を見るために使う。
+// readyフラグだけでは「一度readyになった後にreconcileが止まった」状態を区別できない。
+// 失敗した周回も記録する。「reconcileが止まっている」と「reconcileは回っているが毎回失敗する」を
+// 管理画面で区別できるようにするため、errorを持たせて成否どちらでも at を更新する。
+let lastReconcile: {
+  at: string;
+  durationMs: number;
+  roomCount: number | null;
+  startFailures: number | null;
+  error: string | null;
+} | null = null;
+
 const healthPort = Number(process.env.PORT) || 8080;
 const healthServer = createServer((req, res) => {
+  // Railwayのhealthcheckが叩く。応答を軽く保つため、ここでは診断情報を載せない。
   if (req.url === "/healthz") {
     res.writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" });
     res.end(ready ? "ok" : "starting");
     return;
   }
+
+  // 管理画面(Web)向けの診断情報。Railway private network越しにWebから呼ばれる。
+  // 認証はWorker→Webと同じ x-internal-secret を逆向きに使う。
+  if (req.url === "/status") {
+    const secret = process.env.INTERNAL_API_SECRET;
+    if (!secret || req.headers["x-internal-secret"] !== secret) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
+    const now = Date.now();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        workerIndex: Number(process.env.WORKER_INDEX),
+        workerCount: Number(process.env.WORKER_COUNT),
+        ready,
+        startedAt: processStartedAt.toISOString(),
+        uptimeMs: now - processStartedAt.getTime(),
+        reconcileRunning,
+        lastReconcile,
+        listeners: getListenerSnapshots(now),
+      })
+    );
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
@@ -85,13 +130,28 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 async function reconcileOnce() {
   if (reconcileRunning || shuttingDown) return;
   reconcileRunning = true;
+  const startedAt = Date.now();
   try {
     const { roomCount, startFailures } = await ensureAllListenersAlive();
+    lastReconcile = {
+      at: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      roomCount,
+      startFailures,
+      error: null,
+    };
     if (!ready && startFailures === 0) {
       ready = true;
       console.log(`[worker] ready (recovered by reconcile, rooms=${roomCount})`);
     }
   } catch (err) {
+    lastReconcile = {
+      at: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      roomCount: null,
+      startFailures: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
     console.error("[worker] ensureAllListenersAlive failed:", err);
   } finally {
     reconcileRunning = false;
@@ -121,6 +181,13 @@ async function main() {
   const startedAt = Date.now();
   try {
     const { roomCount, startFailures } = await resumeAllListeners();
+    lastReconcile = {
+      at: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      roomCount,
+      startFailures,
+      error: null,
+    };
     if (startFailures === 0) {
       ready = true;
       console.log(
@@ -132,6 +199,13 @@ async function main() {
       );
     }
   } catch (err) {
+    lastReconcile = {
+      at: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      roomCount: null,
+      startFailures: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
     console.error("[worker] resumeAllListeners failed — staying unready:", err);
   }
 

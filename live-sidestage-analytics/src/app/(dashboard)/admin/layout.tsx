@@ -5,6 +5,7 @@ import { getAdminSession } from "@/lib/admin";
 const NAV_ITEMS = [
   { href: "/admin/euler-api", label: "EulerAPI" },
   { href: "/admin/agencies", label: "事務所" },
+  { href: "/admin/workers", label: "Worker" },
 ];
 
 export default async function AdminLayout({
