@@ -71,10 +71,18 @@ model TiktokRoom {
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
+  // 外部サービス(live-sidestage-event)が期限付きで監視を要求している場合の期限。
+  // これが未来の間は、Streamerが1人もいなくてもWorkerが接続を維持する(getMyRooms参照)。
+  // 期限切れ後は次のreconcileで切断されるが、受信済みのGiftはそのまま残る。
+  monitorUntil      DateTime?
   createdAt         DateTime  @default(now())
 
   streamers Streamer[]
   gifts     Gift[]
+
+  // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
+  // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
+  @@index([workerId, monitorUntil])
 }
 
 model Streamer {

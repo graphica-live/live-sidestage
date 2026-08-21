@@ -809,17 +809,28 @@ type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 // 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。
 // workerId未割当の部屋は resolveWorkerForRoom() で決定的にハッシュ割当し、
 // 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
-// 登録者(Streamer)が1人もいない部屋(全員が退会/re-registration済み)は除外する。
+//
+// 監視対象になる条件は次のどちらか:
+//  - 登録者(Streamer)が1人以上いる — 従来どおり
+//  - monitorUntilが未来 — 外部サービス(live-sidestage-event)が期限付きで監視を要求している
+// どちらも満たさない部屋(全員が退会/re-registration済み、かつ監視要求も期限切れ)は除外され、
+// ensureAllListenersAlive()の同じ経路で切断される。
 async function getMyRooms(): Promise<MyRoom[]> {
   const { index, count } = getWorkerConfig();
 
+  // assignedとunassignedで基準時刻がずれないよう1回だけ評価する。
+  const now = new Date();
+  const monitored = {
+    OR: [{ streamers: { some: {} } }, { monitorUntil: { gt: now } }],
+  };
+
   const assigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: index, streamers: { some: {} } },
+    where: { workerId: index, ...monitored },
     include: { streamers: { select: { id: true } } },
   });
 
   const unassigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: null, streamers: { some: {} } },
+    where: { workerId: null, ...monitored },
     include: { streamers: { select: { id: true } } },
   });
   const claimed: typeof unassigned = [];
