@@ -1,0 +1,101 @@
+// イベント集計ワーカー専用エントリポイント。Next.js は持たず、開催中イベントの再集計だけを回す。
+// `npm run event-worker` で起動する。必須環境変数は DATABASE_URL のみ。
+//
+// TikTok 接続を維持する worker.ts とは別プロセスにする。集計が詰まっても Webcast の
+// WebSocket を巻き込まないようにするため(Railway では別サービスとしてデプロイする)。
+//
+// Web プロセスは Next.js が .env を自動ロードするが、このプロセスは経由しないため明示的に読む。
+// Railway では .env が存在せずプラットフォームが環境変数を注入するので無害。
+import "dotenv/config";
+import { aggregateDueEvents } from "@/event/aggregate";
+import { renewClampedLeases } from "@/event/participants";
+import { prisma } from "@/lib/prisma";
+
+const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
+/** SLO は1周10秒。その半分を超えたら増分 rollup への移行を検討する合図として警告する。 */
+const SLO_WARN_MS = 5_000;
+
+/**
+ * 監視期限の延長を確認する間隔。切り詰めが起きるのは終了が120日以上先のイベントだけなので、
+ * 集計と同じ頻度で回す必要はない。
+ */
+const RENEW_INTERVAL_MS = Number(process.env.LEASE_RENEW_INTERVAL_MS ?? 60 * 60 * 1000);
+
+let inFlight = false;
+let stopping = false;
+let currentTick: Promise<void> = Promise.resolve();
+let renewInFlight = false;
+
+async function tick(): Promise<void> {
+  // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
+  // 前の周が終わる前に次を始めると、advisory lock で弾かれるだけの無駄な往復が増える。
+  if (inFlight || stopping) return;
+  inFlight = true;
+
+  try {
+    const result = await aggregateDueEvents();
+    if (result.processed > 0 || result.failed > 0) {
+      console.log(
+        `[event-worker] 集計 ${result.processed}件 / スキップ ${result.skipped}件 / 失敗 ${result.failed}件 (${result.totalMs}ms)`
+      );
+    }
+    if (result.totalMs > SLO_WARN_MS && result.processed > 0) {
+      console.warn(
+        `[event-worker] 1周が ${result.totalMs}ms かかった(SLO 10000ms の警告閾値 ${SLO_WARN_MS}ms 超過)。` +
+          `増分 rollup への移行を検討すること。`
+      );
+    }
+  } catch (err) {
+    console.error("[event-worker] 集計ループでエラー:", err);
+  } finally {
+    inFlight = false;
+  }
+}
+
+// 監視期限(TiktokRoom.monitorUntil)の延長。
+// 統合前は analytics の内部API を叩いていたため URL と secret が要ったが、
+// 今は同じ DB を直接更新するので追加の環境変数はいらない。
+async function renewTick(): Promise<void> {
+  if (renewInFlight || stopping) return;
+
+  renewInFlight = true;
+  try {
+    const result = await renewClampedLeases();
+    if (result.renewed > 0 || result.failed > 0) {
+      console.log(`[event-worker] 監視期限を延長 ${result.renewed}件 / 失敗 ${result.failed}件`);
+    }
+  } catch (err) {
+    console.error("[event-worker] 監視期限の延長でエラー:", err);
+  } finally {
+    renewInFlight = false;
+  }
+}
+
+async function shutdown(signal: string) {
+  if (stopping) return;
+  stopping = true;
+  console.log(`[event-worker] ${signal} を受信。実行中の集計の完了を待つ。`);
+
+  clearInterval(timer);
+  clearInterval(renewTimer);
+  await currentTick.catch(() => {});
+  await prisma.$disconnect().catch(() => {});
+  console.log("[event-worker] 終了");
+  process.exit(0);
+}
+
+function scheduleTick() {
+  currentTick = tick();
+}
+
+const timer = setInterval(scheduleTick, INTERVAL_MS);
+const renewTimer = setInterval(() => void renewTick(), RENEW_INTERVAL_MS);
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+
+console.log(
+  `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms)`
+);
+scheduleTick();
+void renewTick();
