@@ -1,4 +1,8 @@
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "./prisma";
+
+/** 集計はトランザクション内から呼ぶので、通常のクライアントとトランザクションの両方を受ける。 */
+export type DbClient = PrismaClient | Prisma.TransactionClient;
 
 // analytics(public スキーマ)への読み取りをここに集約する。**ここ以外から public を触らない。**
 //
@@ -70,5 +74,72 @@ export async function findRoomStatuses(roomIds: string[]): Promise<Map<string, R
         listenerUpdatedAt: r.listenerUpdatedAt,
       },
     ])
+  );
+}
+
+export type GiftAggregateRow = {
+  roomId: string;
+  uniqueId: string;
+  diamonds: bigint;
+  giftCount: number;
+};
+
+/**
+ * 倍率が一定な1区間について、room × リスナー単位でギフトを集約する。
+ *
+ * 期間は `[start, end)` の半開区間。analytics の索引は `(roomId, receivedAt)` なので
+ * roomId の IN + receivedAt の範囲でそのまま効く。
+ *
+ * ギフト1件ずつを JS に載せると数十万件になるため、集約は必ず DB 側で行う。
+ */
+export async function aggregateGiftsBySegment(
+  client: DbClient,
+  params: { roomIds: string[]; start: Date; end: Date }
+): Promise<GiftAggregateRow[]> {
+  if (params.roomIds.length === 0) return [];
+
+  // giftCount は analytics の集計(src/lib/gift-analytics.ts)に合わせて
+  // レコード数ではなく repeatCount の合計にする。TikTok のギフトは連打がまとまって
+  // 1レコードになるため、レコード数だと「投げた回数」とずれる。
+  return client.$queryRaw<GiftAggregateRow[]>`
+    SELECT "roomId",
+           "uniqueId",
+           SUM("totalDiamonds")::bigint AS diamonds,
+           SUM("repeatCount")::int AS "giftCount"
+    FROM public.event_gift_v
+    WHERE "roomId" = ANY(${params.roomIds}::text[])
+      AND "receivedAt" >= ${params.start}
+      AND "receivedAt" < ${params.end}
+    GROUP BY "roomId", "uniqueId"
+  `;
+}
+
+export type ListenerProfile = { nickname: string; profileImageUrl: string | null };
+
+/**
+ * リスナーの表示名とアイコン。期間中で最後に観測したものを採る。
+ *
+ * 区間ごとの集約とは別に1回だけ引く(倍率と無関係なので分ける必要がない)。
+ * TikTok のハンドル変更で表示名が変わることがあるため、最新のものを出す。
+ */
+export async function fetchListenerProfiles(
+  client: DbClient,
+  params: { roomIds: string[]; start: Date; end: Date }
+): Promise<Map<string, ListenerProfile>> {
+  if (params.roomIds.length === 0) return new Map();
+
+  const rows = await client.$queryRaw<
+    { uniqueId: string; nickname: string; profileImageUrl: string | null }[]
+  >`
+    SELECT DISTINCT ON ("uniqueId") "uniqueId", nickname, "profileImageUrl"
+    FROM public.event_gift_v
+    WHERE "roomId" = ANY(${params.roomIds}::text[])
+      AND "receivedAt" >= ${params.start}
+      AND "receivedAt" < ${params.end}
+    ORDER BY "uniqueId", "receivedAt" DESC
+  `;
+
+  return new Map(
+    rows.map((r) => [r.uniqueId, { nickname: r.nickname, profileImageUrl: r.profileImageUrl }])
   );
 }

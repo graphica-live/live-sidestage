@@ -52,11 +52,14 @@ analytics 側の同名の変数と一致させ、analytics の `INTERNAL_API_SEC
 
 ```bash
 npm run dev            # 開発サーバー (:3100)
+npm run worker         # 集計ワーカー
+npm run worker:local   # 集計ワーカー(.env.local.test)
 npm run build          # prisma generate + next build
 npm run typecheck      # tsc --noEmit
 npm run test:unit      # vitest（*.integration.test.ts を除外、DB不要）
 npm run test:integration  # ローカル Postgres 必須
 npm test               # unit + integration
+npm run bench:aggregate:local   # 集計の性能を実測する(ローカルDB専用)
 ```
 
 テストを1件だけ流す: `npx vitest run src/lib/validation.test.ts -t "テスト名"`
@@ -136,13 +139,34 @@ Google Cloud Console の Authorized redirect URI に `https://<host>/api/auth/ca
 参加者数の上限は200人(`MAX_PARTICIPANTS`)。analytics 側でも監視中の room 総数に
 上限(500)があり、超えると 429 を返す。
 
-## 集計の定義
+## 集計とランキング
+
+集計ワーカー（`npm run worker`）が10秒ごとに開催中のイベントを再集計する。増分ではなく
+**毎回イベント期間の全ギフトを計算し直す**（バトル区間が後から確定するため、増分では修正できない）。
 
 - 期間は **`[startAt, endAt)` の半開区間**、`receivedAt` 基準
 - タイムゾーンは **Asia/Tokyo**。`gifts.dayKey` は使わない
 - 公式スコアは**元の `gifts` のみ**。`gift_edits`（手動編集・非表示）は反映しない。編集は
   編集した本人のビューにしか影響しない仕様なので、混ぜると主催者と参加者で数字が食い違う
-- ポイント = ダイヤ実数 × 倍率。**1件のギフトに適用される倍率は必ず1つ**
+- ポイント = ダイヤ実数 × 倍率。**1件のギフトに適用される倍率は必ず1つ**。
+  同じ種類の倍率が複数該当したら最大の1つだけを採り、合計も乗算もしない
+- チーム戦のスコアは**所属参加者全員の合計**。どのチームにも所属していない参加者の
+  ダイヤはチーム順位に入らない（参加者順位とイベント全体のランキングには出る）
+- 終了後も締切（終了 + 1時間）までは集計を続け、締切後の1回を最終集計とする。
+  主催者が早めに「終了」にしても、直前のギフトが落ちないようにするため
+
+公開ページ（`/e/<slug>`）で見られるもの:
+
+- 参加者順位 / チーム順位（種目がトーナメント・デスマッチのときは「獲得ダイヤ」として表示する。
+  勝敗判定はフェーズ4以降）
+- リスナー貢献ランキング — イベント全体 / 参加者別、ポイント順 / 実弾（ダイヤ）順で切り替え
+
+開催中は10秒ごとに自動更新する。リスナー貢献の保存は scope ごとに上位200件まで
+（順位表の合計は切り捨て前の全ギフトから計算しているので、合計と順位には影響しない）。
+
+**開催中に参加者やチーム所属を変えると、期間中の全ギフトが計算し直される。** 途中で追加した
+参加者には登録前のギフトも算入され、外した参加者のぶんは順位から消える。登録し忘れの救済と
+不正参加者の除外を優先した仕様で、参加者ページにも警告を出している。
 
 ## 競技データとしての限界
 
@@ -162,4 +186,6 @@ Railway。Root Directory を `live-sidestage-event` にする。
 
 - **web**: 既定の start command（`Dockerfile` の CMD）
 - **worker**: 同じ Dockerfile で start command を `npm run worker` に上書きし、`DATABASE_URL` に
-  `event_worker` の接続文字列を設定する
+  `event_worker` の接続文字列を設定する。監視期限の延長を行うので、worker にも
+  `ANALYTICS_INTERNAL_URL` と `EVENT_INTERNAL_API_SECRET` が要る（未設定だと警告を出して
+  延長だけを飛ばす。終了が120日以上先のイベントで監視が途中で止まる）

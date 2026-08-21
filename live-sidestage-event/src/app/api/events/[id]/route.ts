@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/lib/authz";
 import { parseJstLocal } from "@/lib/datetime";
-import { releaseEventLeases } from "@/lib/participants";
+import { refreshEventLeases, releaseEventLeases } from "@/lib/participants";
 import { EVENT_STATUSES, validateEventInput, type EventStatus } from "@/lib/validation";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -51,11 +51,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ errors: validated.errors }, { status: 400 });
   }
 
+  const before = await prisma.event.findUnique({
+    where: { id: params.id },
+    select: { endAt: true },
+  });
+
   const updated = await prisma.event.update({
     where: { id: params.id },
-    data: validated.value,
+    data: {
+      ...validated.value,
+      // 期間を変えたら最終集計をやり直させる。finalizedAt が立ったままだと
+      // 延長した分のギフトが二度と集計されない。
+      finalizedAt: null,
+    },
     select: { id: true, slug: true },
   });
+
+  // 終了日時が後ろへ動いたら、確保済みの監視期限も伸ばす。
+  if (before && endAt.getTime() > before.endAt.getTime()) {
+    await refreshEventLeases(params.id, endAt);
+  }
 
   return NextResponse.json(updated);
 }

@@ -9,6 +9,7 @@ export type ParticipantRow = {
   tiktokId: string;
   displayName: string;
   status: string;
+  teamId: string | null;
   teamName: string | null;
   /** この配信者が当サービスに会員登録しているか */
   registered: boolean;
@@ -22,10 +23,15 @@ type Notice = { kind: "info" | "warn" | "error"; text: string };
 
 export function ParticipantManager({
   eventId,
+  status,
   participants,
+  teams,
 }: {
   eventId: string;
+  status: string;
   participants: ParticipantRow[];
+  /** チーム戦のときだけ渡す。空配列なら所属の選択欄を出さない */
+  teams: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [tiktokId, setTiktokId] = useState("");
@@ -71,6 +77,25 @@ export function ParticipantManager({
     router.refresh();
   }
 
+  async function changeTeam(p: ParticipantRow, teamId: string) {
+    setBusy(true);
+    setNotices([]);
+
+    const res = await fetch(`/api/events/${eventId}/participants/${p.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId: teamId || null }),
+    });
+    setBusy(false);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setNotices([{ kind: "error", text: body?.error ?? "所属の変更に失敗した。" }]);
+      return;
+    }
+    router.refresh();
+  }
+
   async function remove(p: ParticipantRow) {
     if (!window.confirm(`@${p.tiktokId} を参加者から外す。集計対象からも外れる。`)) return;
     setBusy(true);
@@ -89,6 +114,13 @@ export function ParticipantManager({
 
   return (
     <div className="space-y-6">
+      {status === "RUNNING" && (
+        <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
+          開催中に参加者を変えると<strong className="font-semibold">イベント期間の全ギフトが計算し直される</strong>。
+          途中で追加した参加者には登録前のギフトも算入され、外した参加者のぶんは順位から消える。
+        </p>
+      )}
+
       <form onSubmit={add} className="card">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
@@ -171,11 +203,25 @@ export function ParticipantManager({
                     </span>
                   )}
                 </div>
-                <p className="truncate font-mono text-xs text-gray-500">
-                  @{p.tiktokId}
-                  {p.teamName && <span className="ml-2 font-sans">/ {p.teamName}</span>}
-                </p>
+                <p className="truncate font-mono text-xs text-gray-500">@{p.tiktokId}</p>
               </div>
+
+              {teams.length > 0 && (
+                <select
+                  value={p.teamId ?? ""}
+                  onChange={(e) => changeTeam(p, e.target.value)}
+                  disabled={busy}
+                  aria-label={`${p.displayName} の所属チーム`}
+                  className="input-field w-auto shrink-0 py-1 text-xs"
+                >
+                  <option value="">未所属</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${

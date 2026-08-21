@@ -44,6 +44,23 @@ export const STATUS_CLASSES: Record<EventStatus, string> = {
   ARCHIVED: "text-gray-500 bg-white/5",
 };
 
+// 順位表の見出し。獲得ダイヤレース以外は「順位」を名乗らせない —
+// トーナメントの勝敗もデスマッチの生存も、獲得ダイヤの多寡では決まらないため。
+// (非ダイヤ系でもイベント対象ダイヤは集計する。要件どおり全体リスナーランキングを出すため)
+export const STANDING_HEADINGS: Record<EventFormat, string> = {
+  DIAMOND_RACE: "順位",
+  TOURNAMENT: "獲得ダイヤ",
+  DEATHMATCH: "獲得ダイヤ",
+};
+
+// 種目のうち、まだ勝敗判定を実装していないものの注記。
+export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {
+  TOURNAMENT:
+    "対戦の自動検知とトーナメント表は準備中。現在は期間中に獲得したダイヤだけを集計している。",
+  DEATHMATCH:
+    "ライフポイントの増減は準備中。現在は期間中に獲得したダイヤだけを集計している。",
+};
+
 // analytics 側の TiktokRoom.listenerStatus(src/lib/tiktok-listener.ts の ListenerStatus)。
 // 配信していない配信者への接続は失敗して retrying を繰り返すので、
 // retrying は異常ではなく「監視はしているが、まだ配信が始まっていない」状態を指す。

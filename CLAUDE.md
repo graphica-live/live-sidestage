@@ -77,7 +77,9 @@ npm run typecheck
 npm run test:unit        # vitest（*.integration.test.ts を除外、DB不要）
 npm run test:integration # ローカルDB必須
 npm test                 # unit + integration
-npm run worker           # 集計ワーカー（フェーズ3以降）
+npm run worker           # 集計ワーカー
+npm run worker:local     # 集計ワーカー（.env.local.test）
+npm run bench:aggregate:local  # 集計の性能を実測する（ローカルDB専用）
 ```
 
 単体テストを1つだけ流す: `npx vitest run src/lib/validation.test.ts -t "テスト名"`
@@ -157,6 +159,8 @@ npm run pages:dev           # build + wrangler pages dev dist
 - 認証は `$queryRaw` ベースの自前 NextAuth アダプタ（[src/lib/auth-adapter.ts](live-sidestage-event/src/lib/auth-adapter.ts)）。analytics と同じ `public."User"` / `"Account"` を使うので、同じ Google アカウントなら `User.id` が一致する。**共通なのは `User.id` だけで、セッションは共有しない**（両方とも JWT strategy なので `Session` 表は使われていない）
 - 日時は必ず `src/lib/datetime.ts` の `parseJstLocal()` を通す。`new Date("2026-09-01T20:00")` はサーバーのタイムゾーン依存で、Railway（UTC）では9時間ずれる
 - Dockerfile の CMD に `db push` を入れない。マイグレーションは `event_migrator` の接続で手元から明示実行する
+- **集計は web ではなく [worker.ts](live-sidestage-event/worker.ts) が10秒間隔で回す**。増分ではなく毎回イベント期間の全ギフトを再計算し、結果を `EventContribution` / `EventStanding` にスナップショットとして置き換える（バトル区間が後から確定するため増分では修正できない）。排他は `pg_try_advisory_xact_lock` を interactive transaction 内で取る（セッション単位のロックは Prisma のプールで取得と解放が別接続になりうるので使わない）
+- 集計の打ち切りに `status` を使わない。締切（`endAt` + 1時間）後の集計が成功したら `Event.finalizedAt` を立てて以後スキップする。`endAt` を延ばしたら `finalizedAt` を `null` に戻すこと
 
 ### live-sidestage-desktop — 3レイヤーのローカル完結アプリ
 

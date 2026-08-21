@@ -188,6 +188,80 @@ async function releaseIfUnused(eventId: string, roomId: string): Promise<void> {
 }
 
 /**
+ * イベント期間が変わったとき、確保済みの lease の期限を取り直す。
+ *
+ * **期間を延ばしたときだけ意味がある。** analytics 側の `monitorUntil` は
+ * `max(既存, 要求)` で更新されるので、期間を縮めても監視は短くならない
+ * (同じ room を他イベントが使っている可能性があるため、縮める操作は用意していない)。
+ * 余分な監視は期限が来れば自然に止まる。
+ */
+export async function refreshEventLeases(eventId: string, endAt: Date): Promise<void> {
+  const leases = await prisma.eventRoomLease.findMany({
+    where: { eventId, releasedAt: null },
+    select: { id: true, tiktokId: true },
+  });
+  if (leases.length === 0) return;
+
+  const window = computeLeaseWindow(endAt);
+
+  for (const lease of leases) {
+    try {
+      await requestRoomLease(lease.tiktokId, window.granted);
+      await prisma.eventRoomLease.update({
+        where: { id: lease.id },
+        data: { monitorUntil: window.requested },
+      });
+    } catch (err) {
+      // 期限の取り直しに失敗しても、イベントの更新自体は成立させる。
+      // 切り詰めが起きているならワーカーの renewClampedLeases が次の周回で拾う。
+      console.error(`[participants] @${lease.tiktokId} の監視期限の更新に失敗:`, err);
+    }
+  }
+}
+
+/**
+ * 期限を切り詰めた lease を確保し直す。
+ *
+ * イベント終了が `ANALYTICS_MAX_LEASE_DAYS`(120日)より先だと、analytics へ渡した期限は
+ * 本来必要な期限より手前で切れる。放置すると開催前に監視が止まるので、ワーカーが定期的に
+ * 期限を伸ばし直す。切り詰めが起きていない lease は analytics 側が正しい期限を持っているので触らない。
+ *
+ * analytics 側は `max(既存, 要求)` で更新するため、何度呼んでも短くならない(冪等)。
+ */
+export async function renewClampedLeases(now: Date = new Date()): Promise<{
+  renewed: number;
+  failed: number;
+}> {
+  const leases = await prisma.eventRoomLease.findMany({
+    where: {
+      releasedAt: null,
+      monitorUntil: { gt: now },
+      // 下書きと保管済みのイベントは監視しない。
+      event: { status: { notIn: ["DRAFT", "ARCHIVED"] } },
+    },
+    select: { id: true, tiktokId: true, event: { select: { endAt: true } } },
+  });
+
+  let renewed = 0;
+  let failed = 0;
+
+  for (const lease of leases) {
+    const window = computeLeaseWindow(lease.event.endAt, now);
+    if (!window.clamped) continue;
+
+    try {
+      await requestRoomLease(lease.tiktokId, window.granted);
+      renewed++;
+    } catch (err) {
+      failed++;
+      console.error(`[participants] @${lease.tiktokId} の監視期限の延長に失敗:`, err);
+    }
+  }
+
+  return { renewed, failed };
+}
+
+/**
  * イベント削除前に、そのイベントが確保している監視要求をすべて解除する。
  * 参加者行は Event の cascade で消えるが、analytics 側の monitorUntil は
  * 明示的に解除しないと期限まで残るため、ここで戻す。

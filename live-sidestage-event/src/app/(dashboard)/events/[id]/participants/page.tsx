@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { findRoomStatuses, findStreamerLinks } from "@/lib/analytics-db";
 import { MAX_PARTICIPANTS } from "@/lib/validation";
 import { ParticipantManager, type ParticipantRow } from "./ParticipantManager";
+import { TeamManager, type TeamRow } from "./TeamManager";
 
 export const dynamic = "force-dynamic";
 
@@ -13,23 +14,37 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
     where: { id: params.id, ownerUserId: session!.user.id },
-    select: { id: true, title: true, entryMode: true },
+    select: { id: true, title: true, entryMode: true, teamPreset: true, status: true },
   });
 
   if (!event) notFound();
 
-  const participants = await prisma.eventParticipant.findMany({
-    where: { eventId: event.id },
-    orderBy: { joinedAt: "asc" },
-    select: {
-      id: true,
-      tiktokId: true,
-      roomId: true,
-      displayName: true,
-      status: true,
-      team: { select: { name: true } },
-    },
-  });
+  const [participants, teams] = await Promise.all([
+    prisma.eventParticipant.findMany({
+      where: { eventId: event.id },
+      orderBy: { joinedAt: "asc" },
+      select: {
+        id: true,
+        tiktokId: true,
+        roomId: true,
+        displayName: true,
+        status: true,
+        teamId: true,
+        team: { select: { name: true } },
+      },
+    }),
+    prisma.eventTeam.findMany({
+      where: { eventId: event.id },
+      orderBy: { sortOrder: "asc" },
+      select: {
+        id: true,
+        name: true,
+        colorHex: true,
+        prefectureCode: true,
+        _count: { select: { participants: true } },
+      },
+    }),
+  ]);
 
   // analytics 側の情報(会員登録の有無・接続状態)は view 経由でまとめて引く。
   const roomIds = participants.map((p) => p.roomId);
@@ -43,11 +58,22 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
     tiktokId: p.tiktokId,
     displayName: p.displayName,
     status: p.status,
+    teamId: p.teamId,
     teamName: p.team?.name ?? null,
     registered: links.has(p.roomId),
     verified: links.get(p.roomId)?.verified ?? false,
     listenerStatus: statuses.get(p.roomId)?.listenerStatus ?? null,
   }));
+
+  const teamRows: TeamRow[] = teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    colorHex: t.colorHex,
+    prefectureCode: t.prefectureCode,
+    memberCount: t._count.participants,
+  }));
+
+  const isTeamEvent = event.entryMode === "TEAM";
 
   return (
     <div>
@@ -59,7 +85,18 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         {rows.length} / {MAX_PARTICIPANTS} 人
       </p>
 
-      <ParticipantManager eventId={event.id} participants={rows} />
+      {isTeamEvent && (
+        <div className="mb-8">
+          <TeamManager eventId={event.id} teamPreset={event.teamPreset} teams={teamRows} />
+        </div>
+      )}
+
+      <ParticipantManager
+        eventId={event.id}
+        status={event.status}
+        participants={rows}
+        teams={isTeamEvent ? teamRows.map((t) => ({ id: t.id, name: t.name })) : []}
+      />
     </div>
   );
 }

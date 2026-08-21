@@ -128,6 +128,62 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
   };
 }
 
+export const MAX_TEAM_NAME_LENGTH = 40;
+
+export type TeamInput = {
+  name: string;
+  colorHex?: string | null;
+  prefectureCode?: string | null;
+  teamPreset: TeamPreset;
+};
+
+export type ValidatedTeamInput = {
+  name: string;
+  colorHex: string | null;
+  prefectureCode: string | null;
+};
+
+// 都道府県プリセットでは prefectureCode が主キー相当になる(名前はそこから決まる)。
+// 汎用グループでは名前だけを使い、prefectureCode は必ず null にする
+// (@@unique([eventId, prefectureCode]) があるので、値を入れると他イベント形式と混ざる)。
+export function validateTeamInput(
+  input: TeamInput,
+  resolvePrefectureName: (code: string) => string | null
+): ValidationResult<ValidatedTeamInput> {
+  const errors: string[] = [];
+
+  if (input.teamPreset === "PREFECTURE") {
+    const code = (input.prefectureCode ?? "").trim();
+    const name = code ? resolvePrefectureName(code) : null;
+    if (!name) {
+      errors.push("都道府県の指定が不正です。");
+      return { ok: false, errors };
+    }
+    return { ok: true, value: { name, colorHex: normalizeColor(input.colorHex), prefectureCode: code } };
+  }
+
+  const name = (input.name ?? "").trim();
+  if (!name) {
+    errors.push("チーム名を入力してください。");
+  } else if (name.length > MAX_TEAM_NAME_LENGTH) {
+    errors.push(`チーム名は${MAX_TEAM_NAME_LENGTH}文字以内で入力してください。`);
+  }
+
+  if (input.colorHex && normalizeColor(input.colorHex) === null) {
+    errors.push("色の指定が不正です(#rrggbb 形式)。");
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  return { ok: true, value: { name, colorHex: normalizeColor(input.colorHex), prefectureCode: null } };
+}
+
+function normalizeColor(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (!value) return null;
+  return /^#[0-9a-f]{6}$/.test(value) ? value : null;
+}
+
 export function validateTeamCount(count: number): ValidationResult<number> {
   if (!Number.isInteger(count) || count < 0) {
     return { ok: false, errors: ["チーム数の指定が不正です。"] };

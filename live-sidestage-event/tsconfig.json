@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // ダイヤ合計は BigInt(Int だと 21億を超えうる)。BigInt リテラルには es2020 以上が要る。
+    // ビルドは SWC が行うので、この target は tsc の型チェックにだけ効く。
+    "target": "es2020",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,

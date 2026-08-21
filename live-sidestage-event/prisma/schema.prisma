@@ -35,6 +35,11 @@ model Event {
 
   lastAggregatedAt DateTime?
   aggregateMs      Int? // 直近の再集計にかかった時間(SLO監視用)
+  // 締切(endAt + 猶予)を過ぎてからの最終集計が1回成功した時刻。
+  // これが入るまでは status を FINISHED にしても集計を続ける(遅れて保存された
+  // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。
+  // 主催者が endAt を延ばしたら null に戻して再開させる。
+  finalizedAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

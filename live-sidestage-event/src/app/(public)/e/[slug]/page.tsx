@@ -1,37 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { formatJst } from "@/lib/datetime";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS, STATUS_CLASSES, STATUS_LABELS } from "@/lib/labels";
+import { findPublicEvent, loadEventSnapshot } from "@/lib/public-event";
 import type { EntryMode, EventFormat, EventStatus } from "@/lib/validation";
+import { EventResults } from "./EventResults";
 
 export const dynamic = "force-dynamic";
-
-// 公開してよいイベントの条件。
-// PRIVATE は誰にも見せない。DRAFT は URL を知っていても見せない(準備中のため)。
-async function findPublicEvent(slug: string) {
-  const event = await prisma.event.findUnique({
-    where: { slug },
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      description: true,
-      format: true,
-      entryMode: true,
-      status: true,
-      visibility: true,
-      startAt: true,
-      endAt: true,
-      _count: { select: { participants: true } },
-    },
-  });
-
-  if (!event) return null;
-  if (event.visibility === "PRIVATE") return null;
-  if (event.status === "DRAFT") return null;
-  return event;
-}
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const event = await findPublicEvent(params.slug);
@@ -58,6 +33,8 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
   const event = await findPublicEvent(params.slug);
   if (!event) notFound();
 
+  const snapshot = await loadEventSnapshot(event);
+
   return (
     <main className="min-h-screen px-4 py-12">
       <div className="mx-auto w-full max-w-2xl">
@@ -83,21 +60,19 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
           </p>
         )}
 
-        <div className="card mt-8">
-          <h2 className="text-sm font-semibold text-white">参加ライバー</h2>
-          <p className="mt-1 text-xs text-gray-400">
-            {event._count.participants > 0
-              ? `${event._count.participants} 人が参加`
-              : "参加者はまだ登録されていない。"}
-          </p>
-        </div>
+        <p className="mt-4 text-xs text-gray-500">
+          {event._count.participants > 0
+            ? `${event._count.participants} 人が参加`
+            : "参加者はまだ登録されていない。"}
+        </p>
 
-        <div className="card mt-3">
-          <h2 className="text-sm font-semibold text-white">ランキング</h2>
-          <p className="mt-1 text-xs text-gray-400">
-            イベントが始まると、リスナーの貢献ランキングと順位がここに出る。
-          </p>
-        </div>
+        <EventResults
+          slug={event.slug}
+          status={event.status}
+          entryMode={event.entryMode}
+          format={event.format}
+          initial={{ ...snapshot, participantContributions: null }}
+        />
 
         <p className="mt-8 text-xs leading-relaxed text-gray-600">
           集計は当サービスが受信したギフトに基づく。通信状況により実際の数値と差が出る場合がある。
