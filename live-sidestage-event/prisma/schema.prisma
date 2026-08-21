@@ -140,15 +140,32 @@ model EventMatch {
   bracketPosition Int    @default(0)
   matchType       String @default("1V1") // "1V1" | "2V2"
 
-  scheduledStartAt DateTime // 主催者が指定した時間枠
+  scheduledStartAt DateTime // 主催者が指定した時間枠。判定は [start, end) の半開区間
   scheduledEndAt   DateTime
-  status           String   @default("SCHEDULED") // "SCHEDULED"|"DETECTED"|"LIVE"|"FINISHED"|"NO_SHOW"|"VOID"
+  // "SCHEDULED"    まだバトルを検知していない
+  // "LIVE"         検知して進行中
+  // "DETECTED"     検知して終了。集計で勝者を決める段階
+  // "NEEDS_REVIEW" 検知したが自動確定できない(部分一致 / 2vs2)。主催者の承認待ち
+  // "FINISHED"     勝者が確定した
+  // "NO_SHOW"      時間枠を過ぎても検知できなかった
+  // "VOID"         主催者が無効にした
+  status String @default("SCHEDULED")
 
   detectedBattleId String? // TikTok の battleId。string のまま保持する
   detectedStartAt  DateTime?
   detectedEndAt    DateTime?
-  winnerSideId     String?
-  rules            Json      @default("{}") // 終了時刻をどこから採ったか等の記録を含む
+  // "exact"  = 観測した room の集合が対戦カードと完全一致した
+  // "partial" = 一部の room しか観測できなかった(相手が参加者でない・監視が落ちていた等)
+  detectionConfidence String?
+  // 検知した終了時刻の出所。"observed"(終了イベント) / "duration"(設定値から計算) /
+  // "scheduled"(予定終了時刻へのフォールバック)。後から検証できるように残す。
+  detectedEndSource   String?
+
+  winnerSideId String?
+  // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝)
+  winnerDecidedBy String?
+
+  rules Json @default("{}") // 種目別ルールと、判定時の補足情報
 
   event Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
   sides EventMatchSide[]
@@ -277,21 +294,38 @@ model EventStanding {
 }
 
 // analytics 側で検知したバトルを取り込んだもの(EventMatch への照合前の生データ)
+// analytics の public.event_battle_v から取り込んだバトルの観測記録。照合前の生データ。
+//
+// **1つのバトルにつき、両サイドの room ぶんの行ができる**(両方をイベントが監視している場合)。
+// `battleId` でグループ化した roomId の集合が「そのバトルの参加者」になる。
+// 相手の TikTok ハンドルは payload に含まれない(anchorInfo に uniqueId が無い)ので、
+// この roomId 集合による照合が唯一の確実な手段。`match-detect.ts` を参照。
 model DetectedBattle {
-  id            String    @id @default(cuid())
-  battleId      String // TikTok の battleId。string のまま
-  roomId        String
-  startedAt     DateTime
-  endedAt       DateTime?
-  lastAction    Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
-  complete      Boolean   @default(false) // OPEN と FINISH の両方を観測したか
-  hostUniqueIds String[] // 参加ホストの uniqueId
-  hostScores    Json      @default("{}") // anchorIdStr -> hostScore(string のまま)
-  raw           Json
-  matchedAt     DateTime?
-  createdAt     DateTime  @default(now())
+  id       String @id @default(cuid())
+  battleId String // TikTok の battleId。string のまま
+  roomId   String
+
+  startedAt DateTime
+  // startedAt が受信時刻からの推定値か。配信の途中から接続すると開始(OPEN)を取り逃す。
+  startedAtEstimated Boolean @default(true)
+
+  endedAt     DateTime?
+  durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの推定に使う
+  lastAction  Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
+
+  hostUserIds    String[] @default([]) // anchorIdStr(数値文字列)
+  hostDisplayIds String[] @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
+  hostScores     Json     @default("{}") // anchorIdStr -> hostScore。TikTok 側の集計値、参考のみ
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // **どのマッチに割り当てたかはここに持たない。** 同じ配信者が複数のイベントに
+  // 出られる以上、1つのバトルが複数イベントの対戦カードに該当しうる。
+  // 割当は EventMatch.detectedBattleId 側(イベントごと)だけが持つ。
 
   @@unique([battleId, roomId])
   @@index([startedAt])
+  @@index([roomId, startedAt])
   @@schema("event")
 }

@@ -55,10 +55,43 @@ export const STANDING_HEADINGS: Record<EventFormat, string> = {
 
 // 種目のうち、まだ勝敗判定を実装していないものの注記。
 export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {
-  TOURNAMENT:
-    "対戦の自動検知とトーナメント表は準備中。現在は期間中に獲得したダイヤだけを集計している。",
   DEATHMATCH:
     "ライフポイントの増減は準備中。現在は期間中に獲得したダイヤだけを集計している。",
+};
+
+// 対戦の状態。schema.prisma の EventMatch.status と対応する。
+export const MATCH_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: "検知待ち",
+  LIVE: "進行中",
+  DETECTED: "検知済み",
+  NEEDS_REVIEW: "要確認",
+  FINISHED: "確定",
+  NO_SHOW: "未実施",
+  VOID: "無効",
+};
+
+export const MATCH_STATUS_CLASSES: Record<string, string> = {
+  SCHEDULED: "text-gray-400 bg-white/5",
+  LIVE: "text-green-400 bg-green-400/10",
+  DETECTED: "text-blue-400 bg-blue-400/10",
+  NEEDS_REVIEW: "text-yellow-400 bg-yellow-400/10",
+  FINISHED: "text-white bg-white/10",
+  NO_SHOW: "text-gray-500 bg-white/5",
+  VOID: "text-red-400 bg-red-400/10",
+};
+
+// 勝敗をどう決めたか。公開ページでも出して、自動と手動を区別できるようにする。
+export const WINNER_DECIDED_BY_LABELS: Record<string, string> = {
+  AGGREGATE: "集計",
+  MANUAL: "主催者判定",
+  BYE: "不戦勝",
+};
+
+// 検知の信頼度。要確認になる理由を主催者に説明するために使う。
+export const CONFIDENCE_NOTES: Record<string, string> = {
+  exact: "対戦カードどおりの組み合わせを検知した。",
+  partial:
+    "片側の配信しか観測できなかった。相手が参加者でない配信とのバトルだった可能性があるため、確認してから確定すること。",
 };
 
 // analytics 側の TiktokRoom.listenerStatus(src/lib/tiktok-listener.ts の ListenerStatus)。

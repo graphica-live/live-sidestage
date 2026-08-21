@@ -133,29 +133,83 @@ analytics に揃える。
 - integration は `itest_` プレフィックスでデータを分離し、カスケード削除で後片付けする
 - ロジックは純粋関数に切り出して unit でカバーする（`scoring` / `match-detect` / `bracket` / `deathmatch`）
 
+## バトル検知（フェーズ4）
+
+規則の全体像は [README.md](README.md) の「バトルトーナメント」にある。ここには壊しやすい箇所だけ書く。
+
+### 照合を uniqueId ベースに変えない
+
+バトルの payload に**相手の TikTok ハンドルは入っていない**。`anchorInfo` の値型
+`WebcastLinkMicBattle_BattleUserInfo` の `user` は `BattleBaseUserInfo = { userId, nickName,
+avatarThumb, displayId }` で `uniqueId` フィールドが存在せず、`simplifyObject()` が呼ぶ
+`getUserAttributes()` は `webcastUser.uniqueId` を読むので `battleUsers[].uniqueId` は**常に
+undefined になる**。
+
+照合は `battleId` でグループ化した roomId の集合で行う（`src/lib/match-detect.ts`）。
+`hostDisplayIds` に入る `displayId` はハンドル相当と思われるが**実 payload で未検証**なので、
+照合の根拠にはしていない。検証できたら 2vs2 のサイド構成の裏取りに使える。
+
+### 自動確定の条件を緩めない
+
+`assignBattles` が `autoConfirm: true` を返すのは **1vs1 の完全一致だけ**。緩めると誤検知が
+そのまま勝敗になる。
+
+- partial は「A が部外者と戦った」場合も観測が `{A}` になり、唯一の候補として通ってしまう
+- 2vs2 の完全一致は `[A,B]対[C,D]` と `[A,C]対[B,D]` を room の和集合では区別できない
+
+自動確定しないものは `NEEDS_REVIEW` で止まり、主催者が承認する。**一度承認したマッチを
+再検知で承認待ちへ戻さないこと**（`battles.ts` の `alreadyApproved`）。
+
+### 時間枠は半開区間
+
+`[scheduledStartAt, scheduledEndAt)`。終端ちょうどに始まったバトルが前後2つの枠の候補に
+なるのを防ぐ。イベント期間の扱い（`[startAt, endAt)`）と揃えている。
+
+### バトル倍率は参加者ごとに区間を作る
+
+**`buildRateSegments` の `battleRanges` をイベント全体で1本にしない。** 1人がバトル中という
+だけで同時刻の他の参加者にまで BATTLE 倍率がかかる。`aggregate.ts` はバトル区間を持つ
+参加者だけを個別に回し（`perRoomRooms`）、残りはまとめて1本で集約する。
+BATTLE 倍率が設定されていなければ分割自体をしない（クエリ数を増やさないため）。
+
+### ブラケットの進行は毎回作り直す
+
+`match-results.ts` は確定した勝者から下流を**再構築**する（増分で送らない）。主催者が勝者を
+変えたり VOID にしたりしても、下流に古い勝者が残らないようにするため。ただし下流が
+すでに始まっている（LIVE / DETECTED / NEEDS_REVIEW / FINISHED）場合は書き換えず、
+API 側も 409 で拒否する。
+
+### analytics 側の観測記録
+
+`TiktokBattle`（`@@map("tiktok_battles")`）に room ごとの行として入る。
+
+- **`raw` は `{ battle: <linkMicBattle>, armies: <linkMicArmies> }` の2キー**。実 payload の
+  fixture を取るとき両方のイベント形が1レコードから読めるようにしてある。1件 64KB で打ち切る
+- 同じ (roomId, battleId) の書き込みは `queueBattleWrite` で**直列化**する。
+  イベントが何度も届き、それぞれが read-modify-write になるため
+- `mergeBattleState` は**情報が増える方向にしか動かさない**。確定した開始時刻を推定値で
+  上書きしない、終了を観測した後に OPEN が遅れて届いても action を巻き戻さない
+- 成立していない招待（INVITE / REJECT / CANCEL）は保存しない
+- payload を取り出す口は `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>`。
+  **実配信のバトルでしか実 payload は得られない。** 取れたら
+  `src/lib/tiktok-battle.test.ts` の合成 payload を差し替える
+
 ## 未実装（計画上のフェーズ）
 
-現在はフェーズ3まで。
+現在はフェーズ4まで。
 
 | フェーズ | 内容 |
 | --- | --- |
 | 1 ✅ | プロジェクト雛形、共有 User 認証、イベント CRUD、公開ページの器、CI |
 | 2 ✅ | 参加者登録 + room lease（analytics 側の `monitorUntil` / 内部API / `getMyRooms()` 変更を含む） |
 | 3 ✅ | 獲得ダイヤレース（集計ワーカー、チーム管理、公開ランキング、SLO の実測） |
-| 4 | バトルトーナメント（実 payload の fixture 取得 → battle 検知 → マッチ照合） |
+| 4 ✅ | バトルトーナメント（battle 検知 → マッチ照合 → 勝敗確定 → トーナメント表）※実 payload での検証は未 |
 | 5 | デスマッチ（ライフポイントエンジン） |
 | 6 | 都道府県UI（日本地図） |
 
-`prisma/schema.prisma` にはフェーズ5までのモデルが入っているが、使っているのはフェーズ3の範囲だけ。
-`EventScoreAdjustment`（主催者による手動補正）はモデルだけあって未使用 —
-集計に効かせるコードと管理UIは同時に入れること。
+`prisma/schema.prisma` にはフェーズ5までのモデルが入っているが、`EventLifePoint` /
+`EventLifeLedger` はまだ使っていない。`EventScoreAdjustment`（主催者による手動補正）も
+モデルだけあって未使用 — 集計に効かせるコードと管理UIは同時に入れること。
 
-### フェーズ4で気をつけること
-
-**`buildRateSegments` の `battleRanges` をイベント全体で1本にしない。** バトルは配信者ごとに
-起きるので、1人がバトル中というだけで同時刻の他の参加者にまで BATTLE 倍率がかかってしまう。
-参加者(room)ごとに `buildRateSegments` を呼び直し、区間集約もその参加者の roomId だけを
-対象にすること。区間数 × 参加者数のクエリになるので、性能は再測定が要る。
-
-公開ページの順位表は `STANDING_HEADINGS` で種目ごとに見出しを変えている。トーナメントの
-勝敗が出せるようになったら、そこと `FORMAT_PENDING_NOTES` を更新する。
+公開ページの順位表は `STANDING_HEADINGS` で種目ごとに見出しを変えている。デスマッチの
+勝敗が出せるようになったら `FORMAT_PENDING_NOTES` からも消すこと。

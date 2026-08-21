@@ -54,6 +54,99 @@ export type ContributionDto = {
   giftCount: number;
 };
 
+export type BracketSideDto = {
+  id: string;
+  sideIndex: number;
+  name: string | null;
+  diamonds: string;
+  isWinner: boolean;
+};
+
+export type BracketMatchDto = {
+  id: string;
+  round: number;
+  position: number;
+  roundLabel: string;
+  status: string;
+  scheduledStartAt: string;
+  detectedStartAt: string | null;
+  winnerDecidedBy: string | null;
+  sides: BracketSideDto[];
+};
+
+export type BracketDto = {
+  roundCount: number;
+  matches: BracketMatchDto[];
+};
+
+/**
+ * トーナメント表。勝敗がまだ出ていない対戦も枠として出す。
+ *
+ * 承認待ち(NEEDS_REVIEW)は公開側では「進行中」と同じ扱いにする。主催者の確認待ちであることは
+ * 閲覧者に関係がなく、確定していない結果を出さないという点では同じため。
+ */
+export async function loadBracket(eventId: string): Promise<BracketDto | null> {
+  const matches = await prisma.eventMatch.findMany({
+    where: { eventId },
+    orderBy: [{ round: "asc" }, { bracketPosition: "asc" }],
+    select: {
+      id: true,
+      round: true,
+      bracketPosition: true,
+      status: true,
+      scheduledStartAt: true,
+      detectedStartAt: true,
+      winnerSideId: true,
+      winnerDecidedBy: true,
+      rules: true,
+      sides: {
+        orderBy: { sideIndex: "asc" },
+        select: {
+          id: true,
+          sideIndex: true,
+          diamonds: true,
+          team: { select: { name: true } },
+          participants: { select: { participant: { select: { displayName: true } } } },
+        },
+      },
+    },
+  });
+
+  if (matches.length === 0) return null;
+
+  return {
+    roundCount: Math.max(...matches.map((m) => m.round)),
+    matches: matches.map((m) => ({
+      id: m.id,
+      round: m.round,
+      position: m.bracketPosition,
+      roundLabel:
+        typeof (m.rules as { roundLabel?: unknown } | null)?.roundLabel === "string"
+          ? (m.rules as { roundLabel: string }).roundLabel
+          : `${m.round}回戦`,
+      status: m.status === "NEEDS_REVIEW" ? "LIVE" : m.status,
+      scheduledStartAt: m.scheduledStartAt.toISOString(),
+      detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
+      winnerDecidedBy: m.winnerDecidedBy,
+      sides: m.sides.map((s) => {
+        const name =
+          s.team?.name ??
+          (s.participants.length > 0
+            ? s.participants.map((p) => p.participant.displayName).join(" / ")
+            : null);
+        return {
+          id: s.id,
+          sideIndex: s.sideIndex,
+          name,
+          diamonds: s.diamonds.toString(),
+          // 確定するまでは勝者を出さない(NEEDS_REVIEW のまま公開しない)。
+          isWinner: m.status === "FINISHED" && m.winnerSideId === s.id,
+        };
+      }),
+    })),
+  };
+}
+
 export type EventSnapshot = {
   standings: StandingDto[];
   /** イベント全体のリスナー貢献(scope=EVENT) */

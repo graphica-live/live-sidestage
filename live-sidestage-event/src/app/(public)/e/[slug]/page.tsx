@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { formatJst } from "@/lib/datetime";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS, STATUS_CLASSES, STATUS_LABELS } from "@/lib/labels";
 import { findPublicEvent, loadEventSnapshot } from "@/lib/public-event";
@@ -33,7 +35,13 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
   const event = await findPublicEvent(params.slug);
   if (!event) notFound();
 
-  const snapshot = await loadEventSnapshot(event);
+  const [snapshot, matchCount] = await Promise.all([
+    loadEventSnapshot(event),
+    event.format === "TOURNAMENT"
+      ? prisma.eventMatch.count({ where: { eventId: event.id } })
+      : Promise.resolve(0),
+  ]);
+  const hasBracket = matchCount > 0;
 
   return (
     <main className="min-h-screen px-4 py-12">
@@ -65,6 +73,16 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
             ? `${event._count.participants} 人が参加`
             : "参加者はまだ登録されていない。"}
         </p>
+
+        {event.format === "TOURNAMENT" && hasBracket && (
+          <Link
+            href={`/e/${event.slug}/bracket`}
+            className="card mt-4 flex items-center justify-between hover:border-brand/40"
+          >
+            <span className="text-sm font-medium">トーナメント表</span>
+            <span className="text-xs text-gray-500">対戦と勝敗を見る →</span>
+          </Link>
+        )}
 
         <EventResults
           slug={event.slug}

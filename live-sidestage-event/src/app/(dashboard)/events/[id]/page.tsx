@@ -14,7 +14,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
     where: { id: params.id, ownerUserId: session!.user.id },
-    include: { _count: { select: { participants: true } } },
+    include: { _count: { select: { participants: true, matches: true } } },
   });
 
   if (!event) notFound();
@@ -48,6 +48,18 @@ export default async function EventDetailPage({ params }: { params: { id: string
           {event._count.participants} 人 →
         </span>
       </Link>
+
+      {event.format === "TOURNAMENT" && (
+        <Link
+          href={`/events/${event.id}/matches`}
+          className="card mt-2 flex items-center justify-between hover:border-brand/40"
+        >
+          <span className="text-sm font-medium">対戦</span>
+          <span className="text-xs text-gray-500">
+            {event._count.matches > 0 ? `${event._count.matches} 試合 →` : "表を作る →"}
+          </span>
+        </Link>
+      )}
 
       <h2 className="mb-4 mt-8 text-sm font-semibold text-gray-300">設定</h2>
       <EventForm mode="edit" eventId={event.id} initial={initial} />

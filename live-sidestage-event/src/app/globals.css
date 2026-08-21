@@ -38,6 +38,11 @@ body {
     @apply text-gray-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors;
   }
 
+  /* 主操作と並べる二次操作。承認・勝者確定など、押しても取り返しがつくもの。 */
+  .btn-secondary {
+    @apply bg-white/5 border border-border hover:border-brand/40 hover:bg-white/10 text-white text-sm px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
   .input-field {
     @apply bg-panel border border-border rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-brand/60 transition-colors w-full;
   }

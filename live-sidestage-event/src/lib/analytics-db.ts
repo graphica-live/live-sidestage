@@ -114,6 +114,55 @@ export async function aggregateGiftsBySegment(
   `;
 }
 
+export type BattleRow = {
+  roomId: string;
+  battleId: string;
+  action: number;
+  startedAt: Date;
+  startedAtEstimated: boolean;
+  endedAt: Date | null;
+  durationSec: number | null;
+  hostUserIds: string[];
+  hostDisplayIds: string[];
+  hostScores: Record<string, string> | null;
+  updatedAt: Date;
+};
+
+/**
+ * 参加者の room で観測されたバトルを引く。
+ *
+ * 1つのバトルにつき、両サイドの room ぶんの行が返る(両方を監視している場合)。
+ * `battleId` でグループ化すれば「そのバトルに誰が参加したか」が分かる。
+ *
+ * 期間は `[start, end]` の閉区間で `startedAt` を見る。対戦カードの時間枠より
+ * 広めに取って、時間枠の外で始まったバトルも取り込んでおく(照合側で弾く)。
+ */
+export async function fetchBattles(
+  client: DbClient,
+  params: { roomIds: string[]; start: Date; end: Date }
+): Promise<BattleRow[]> {
+  if (params.roomIds.length === 0) return [];
+
+  return client.$queryRaw<BattleRow[]>`
+    SELECT "roomId",
+           "battleId",
+           action,
+           "startedAt",
+           "startedAtEstimated",
+           "endedAt",
+           "durationSec",
+           "hostUserIds",
+           "hostDisplayIds",
+           "hostScores",
+           "updatedAt"
+    FROM public.event_battle_v
+    WHERE "roomId" = ANY(${params.roomIds}::text[])
+      AND "startedAt" >= ${params.start}
+      AND "startedAt" <= ${params.end}
+    ORDER BY "startedAt"
+  `;
+}
+
 export type ListenerProfile = { nickname: string; profileImageUrl: string | null };
 
 /**

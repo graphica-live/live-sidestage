@@ -10,8 +10,12 @@ import {
   buildRateSegments,
   formatScaledPoints,
   scaledPoints,
+  type MultiplierInput,
   type RateSegment,
+  type TimeRange,
 } from "./scoring";
+import { detectMatches, ingestBattles, loadBattleRangesByRoom } from "./battles";
+import { resolveMatchResults } from "./match-results";
 
 // イベントの集計本体。
 //
@@ -128,7 +132,7 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
 
       const event = await tx.event.findUnique({
         where: { id: eventId },
-        select: { id: true, startAt: true, endAt: true },
+        select: { id: true, format: true, startAt: true, endAt: true },
       });
       if (!event) {
         return { status: "skipped", reason: "no-participants" } as const;
@@ -164,64 +168,96 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
 
       const roomToParticipant = new Map(participants.map((p) => [p.roomId, p]));
       const roomIds = participants.map((p) => p.roomId);
+      const multiplierInputs: MultiplierInput[] = multipliers.map((m) => ({
+        kind: m.kind,
+        factor: m.factor.toString(),
+        startAt: m.startAt,
+        endAt: m.endAt,
+      }));
 
-      const segments = buildRateSegments({
-        eventStart: event.startAt,
-        eventEnd: event.endAt,
-        multipliers: multipliers.map((m) => ({
-          kind: m.kind,
-          factor: m.factor.toString(),
-          startAt: m.startAt,
-          endAt: m.endAt,
-        })),
-        // フェーズ3ではバトル区間がないので SOLO_STREAM の倍率だけが効く。
-        //
-        // フェーズ4で BATTLE 倍率を入れるときは、**ここで全参加者ぶんの区間を
-        // 1本のリストにまとめてはいけない**。バトルは配信者ごとに起きるので、
-        // 1人がバトル中というだけで同時刻の他の参加者にまで BATTLE 倍率がかかってしまう。
-        // 参加者(room)ごとに buildRateSegments を呼び直し、区間集約もその参加者の
-        // roomId だけを対象にすること。
-        battleRanges: [],
-      });
+      // バトルの取り込み・照合・勝敗確定。倍率区間がこれに依存するので集計本体より先に
+      // 済ませる(同じトランザクション内なので読み手に中間状態は見えない)。
+      let battleRanges = new Map<string, TimeRange[]>();
+      if (event.format === "TOURNAMENT" || event.format === "DEATHMATCH") {
+        await ingestBattles(tx as DbClient, {
+          roomIds,
+          start: event.startAt,
+          end: event.endAt,
+        });
+        await detectMatches(tx as DbClient, { eventId, now });
+        await resolveMatchResults(tx as DbClient, {
+          eventId,
+          multipliers: multiplierInputs,
+          now,
+        });
+        battleRanges = await loadBattleRangesByRoom(tx as DbClient, eventId);
+      }
+
+      // BATTLE 倍率が設定されていなければ、バトル区間で分けても倍率は変わらない。
+      // 参加者ごとのクエリは高くつくので、その場合は全員まとめて1本で集約する。
+      const battleFactorInUse =
+        multiplierInputs.some((m) => m.kind === "BATTLE") && battleRanges.size > 0;
+
+      const perRoomRooms = battleFactorInUse
+        ? roomIds.filter((id) => (battleRanges.get(id)?.length ?? 0) > 0)
+        : [];
+      const perRoomSet = new Set(perRoomRooms);
+      const commonRooms = roomIds.filter((id) => !perRoomSet.has(id));
 
       const byParticipant = new Map<string, Map<string, Bucket>>();
       const byTeam = new Map<string, Map<string, Bucket>>();
       const byEvent = new Map<string, Bucket>();
 
-      for (const segment of segments) {
-        const rows = await aggregateGiftsBySegment(tx as DbClient, {
-          roomIds,
-          start: segment.start,
-          end: segment.end,
-        });
+      const consume = (row: { roomId: string; uniqueId: string; diamonds: bigint; giftCount: number }, segment: RateSegment) => {
+        const participant = roomToParticipant.get(row.roomId);
+        if (!participant) return; // 集計中に参加者が外れた場合
 
-        for (const row of rows) {
-          const participant = roomToParticipant.get(row.roomId);
-          if (!participant) continue; // 集計中に参加者が外れた場合
+        const bucket: Bucket = {
+          diamonds: row.diamonds,
+          points: scaledPoints(row.diamonds, segment.scaledFactor),
+          giftCount: row.giftCount,
+        };
 
-          const bucket: Bucket = {
-            diamonds: row.diamonds,
-            points: scaledPoints(row.diamonds, segment.scaledFactor),
-            giftCount: row.giftCount,
-          };
-
-          let perParticipant = byParticipant.get(participant.id);
-          if (!perParticipant) {
-            perParticipant = new Map();
-            byParticipant.set(participant.id, perParticipant);
-          }
-          addTo(perParticipant, row.uniqueId, bucket);
-          addTo(byEvent, row.uniqueId, bucket);
-
-          if (participant.teamId) {
-            let perTeam = byTeam.get(participant.teamId);
-            if (!perTeam) {
-              perTeam = new Map();
-              byTeam.set(participant.teamId, perTeam);
-            }
-            addTo(perTeam, row.uniqueId, bucket);
-          }
+        let perParticipant = byParticipant.get(participant.id);
+        if (!perParticipant) {
+          perParticipant = new Map();
+          byParticipant.set(participant.id, perParticipant);
         }
+        addTo(perParticipant, row.uniqueId, bucket);
+        addTo(byEvent, row.uniqueId, bucket);
+
+        if (participant.teamId) {
+          let perTeam = byTeam.get(participant.teamId);
+          if (!perTeam) {
+            perTeam = new Map();
+            byTeam.set(participant.teamId, perTeam);
+          }
+          addTo(perTeam, row.uniqueId, bucket);
+        }
+      };
+
+      const aggregateRooms = async (rooms: string[], ranges: TimeRange[]) => {
+        if (rooms.length === 0) return;
+        const segments = buildRateSegments({
+          eventStart: event.startAt,
+          eventEnd: event.endAt,
+          multipliers: multiplierInputs,
+          battleRanges: ranges,
+        });
+        for (const segment of segments) {
+          const rows = await aggregateGiftsBySegment(tx as DbClient, {
+            roomIds: rooms,
+            start: segment.start,
+            end: segment.end,
+          });
+          for (const row of rows) consume(row, segment);
+        }
+      };
+
+      // バトル区間を持たない参加者はまとめて1本。持つ参加者だけ個別に回す。
+      await aggregateRooms(commonRooms, []);
+      for (const roomId of perRoomRooms) {
+        await aggregateRooms([roomId], battleRanges.get(roomId) ?? []);
       }
 
       const profiles = await fetchListenerProfiles(tx as DbClient, {
