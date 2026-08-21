@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { agencyAuthOptions } from "@/lib/agency/auth";
 import { getAgencyByEmail, removeWatch } from "@/lib/agency/agency";
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(agencyAuthOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const agency = await getAgencyByEmail(session.user.email);

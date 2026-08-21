@@ -153,15 +153,18 @@ export default function AgencyClient() {
     );
   }
 
-  // 事務所は管理者が発行する。登録されていないアカウントにはここで止まってもらう。
+  // 事務所は管理者が登録する。未登録アカウントでもログインは通るため
+  // (理由は agencyAuthOptions の callbacks コメント参照)、権限判定はここで行う。
+  // 別アカウントで入り直す場合はヘッダーのログアウトを使う。
   if (!agency) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-4">
         <div>
-          <h1 className="text-xl font-bold">利用権限がありません</h1>
+          <h1 className="text-xl font-bold">事務所情報が見つかりません</h1>
           <p className="text-sm text-gray-400 mt-1">
             このGoogleアカウントは事務所として登録されていません。
             利用を希望する場合は、ログインに使うGoogleアカウントのメールアドレスを運営までお知らせください。
+            以前は使えていた場合は、登録が取り消された可能性があります。
           </p>
         </div>
       </main>

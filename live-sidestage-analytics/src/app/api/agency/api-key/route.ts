@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { agencyAuthOptions } from "@/lib/agency/auth";
 import { getAgencyByEmail, issueAgencyApiKey } from "@/lib/agency/agency";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(agencyAuthOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const agency = await getAgencyByEmail(session.user.email);
@@ -15,7 +15,7 @@ export async function GET() {
 
 // APIキーを新規発行(または再発行)する。発行時のみ平文を返す。
 export async function POST() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(agencyAuthOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const agency = await getAgencyByEmail(session.user.email);

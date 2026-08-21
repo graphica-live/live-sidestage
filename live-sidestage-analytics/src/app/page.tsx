@@ -15,15 +15,8 @@ export default async function Home() {
   // verified未完了でもTikTok ID登録済みならダッシュボード(オーバーレイ)を即時利用できる。
   if (streamer) redirect("/analytics");
 
-  // 配信者としての登録が無い場合、管理者に登録された事務所アカウントなら事務所コンソールへ送る。
-  // 両方持つユーザーは配信者画面を既定とし、ヘッダーのリンクで行き来する。
-  if (session.user.email) {
-    const agency = await prisma.agency.findUnique({
-      where: { email: session.user.email.toLowerCase() },
-      select: { id: true },
-    });
-    if (agency) redirect("/agency");
-  }
-
+  // 事務所コンソール(/agency)へはここから振り分けない。事務所は配信者とは別セッションで、
+  // このページのセッションでは事務所としてログイン済みかどうかを判定できないため。
+  // 事務所ユーザーは /agency に直接アクセスして事務所側のログインを行う。
   redirect("/setup");
 }
