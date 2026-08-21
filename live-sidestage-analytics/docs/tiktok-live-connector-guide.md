@@ -584,3 +584,63 @@ const options = {
 | room_id をキャッシュして再利用する | 配信開始時に新 room_id が割り当てられるため古い room_id で接続不可 → 毎回クリアする |
 | `NoWSUpgradeError` を無視して止まる | 一時的な TikTok 側の拒否の場合があるため再接続が必要 |
 | `enableRequestPolling: true` + `disableEulerFallbacks: false` を同時に使う | Euler 経由のポーリングフォールバックが発動し、意図しない認証フローになる可能性がある |
+
+---
+
+## 14. 重複排除キーの実態（本番実測 2026-08-21）
+
+### 14-1. common は必ずトップレベルへ平坦化される
+
+`simplifyObject()`（`dist/lib/_legacy/data-converter.js`）は**型に依存せず** `common` を展開する。
+
+```js
+if (originalObject.common) {
+    Object.assign(webcastObject, webcastObject.common);
+    delete webcastObject.common;
+}
+```
+
+`WebcastGiftMessage` / `WebcastChatMessage` はどちらも `common: CommonMessageData` を持つので、`data.msgId` と `data.createTime` はハンドラに届く時点でトップレベルにある。`data.common?.msgId` を読んではいけない。
+
+実測での裏付け: `gifts` 全 13804 行の `timeSource` が `"tiktok"`（`createTime` 欠落によるフォールバックは 0 件）。
+
+### 14-2. protobuf の既定値がそのまま流れてくる
+
+`CommonMessageData` の既定値は `msgId: "0"`。メッセージ側がフィールドを持たないと、デコード結果は空ではなく **`"0"`** になる。
+
+同じことが `groupId` でも起きていて、本番の `gifts` には `groupId = "0"` の行が **3591 件**ある。
+
+`"0"` を実IDとして扱うと、無関係なイベント同士が同一キーを共有する。実害の形はキーの用途で変わる。
+
+- **dedup キーに使うと**: 2件目以降が「重複」と判定され、正常なイベントが捨てられる
+- **combo キーに使うと**: 別ユーザー・別ギフトが同じ pending state を共有し、`delta` が過少になる
+
+そのため `resolveMsgId()` は `/^[1-9][0-9]{0,31}$/` にマッチしない値をすべて `null` に倒す。`null` は「dedup できない」を意味し、イベント自体は通す（捨てるより重複を許すほうが安全）。
+
+### 14-3. `orderId` は当てにならない
+
+`WebcastGiftMessage.orderId` は型定義には存在するが、既定値は空文字で、実測では **13804 行中 13783 行（99.85%）が空**だった。
+
+`gifts` の `@@unique([roomId, orderId])` は Postgres が NULL 同士を重複とみなさないため、この状態では制約として機能していない。**TikTok の再送があれば二重計上される。**
+
+### 14-4. `msgId` を dedup キーへ昇格させる前に確認すること
+
+現状 `gifts.msgId` は**観測専用**（unique 制約も index も無し）。制約を張る前に、最低限これを確かめる。
+
+```sql
+-- 1. 実際の一意性の単位で重複が無いか（1件でもあると unique index 作成が失敗する）
+SELECT "roomId", "msgId", COUNT(*) FROM gifts
+WHERE "msgId" IS NOT NULL AND "receivedAt" > '<列追加のデプロイ時刻>'
+GROUP BY 1, 2 HAVING COUNT(*) > 1;
+
+-- 2. 充足率（列追加前の行は必ず NULL なので期間で切る）
+SELECT COUNT(*) FILTER (WHERE "msgId" IS NULL)::float / COUNT(*) AS null_ratio
+FROM gifts WHERE "receivedAt" > '<列追加のデプロイ時刻>';
+
+-- 3. combo の各 tick が別 msgId を持つか（同一 groupId 内の分布）
+SELECT "groupId", COUNT(*) AS rows, COUNT(DISTINCT "msgId") AS ids
+FROM gifts WHERE "giftType" = 1 AND "receivedAt" > '<列追加のデプロイ時刻>'
+GROUP BY 1 HAVING COUNT(*) > 1 LIMIT 20;
+```
+
+重複が残っている場合は、削除・統合の手順が要る。`gifts` は `GiftEdit` から参照されている（`onDelete: Cascade`）ので、行を消すとユーザーの手動編集も一緒に消える点に注意。

@@ -29,9 +29,13 @@ requireEnv("WEB_INTERNAL_URL");
 requireEnv("INTERNAL_API_SECRET");
 
 // Railwayのデプロイ時ゼロダウンタイム切替に使うreadiness signal。
-// resumeAllListeners()の初回パスが終わるまでは503を返し、Railwayが
-// 「新Workerが本当にTikTokへ接続を試み終えた」ことを確認してから
-// 旧Workerへのteardownを進められるようにする。
+// 担当部屋のlistenerを1つも取りこぼさずに起動できたときだけ200を返す。
+//
+// 「例外が飛ばなかった」ではなく「起動失敗が0件」を条件にしているのは、
+// resumeAllListeners()が部屋ごとの失敗を内部で握りつぶすため。DBが部分的に不調
+// (接続枯渇など)だと、getMyRooms()は通るのに全部屋のstartListener()が落ちる、という
+// 状態がありうる。以前はそれでもreadyになり、listenerが1つも動いていないWorkerを
+// Railwayが健全と判断して旧Workerを落としていた。
 let ready = false;
 
 const healthPort = Number(process.env.PORT) || 8080;
@@ -45,16 +49,22 @@ const healthServer = createServer((req, res) => {
   res.end();
 });
 
-let ensureAliveTimer: NodeJS.Timeout | null = null;
+// 定常時のreconcile間隔。unready(=担当部屋を起動できていない)の間だけ短くして、
+// DB復旧からready復帰までの空白を詰める。60秒のままだと復旧を最大1分待たされる。
+const RECONCILE_INTERVAL_MS = 60_000;
+const UNREADY_RECONCILE_INTERVAL_MS = 5_000;
+
+let reconcileTimer: NodeJS.Timeout | null = null;
 let watchdogTimer: NodeJS.Timeout | null = null;
 let shuttingDown = false;
+let reconcileRunning = false;
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[worker] received ${signal} — starting graceful shutdown`);
 
-  if (ensureAliveTimer) clearInterval(ensureAliveTimer);
+  if (reconcileTimer) clearTimeout(reconcileTimer);
   if (watchdogTimer) clearInterval(watchdogTimer);
 
   await stopAllListeners().catch((err) =>
@@ -70,6 +80,35 @@ async function shutdown(signal: string) {
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
+// 短間隔リトライとの多重起動を防ぐ。ensureAllListenersAlive()はDBアクセスを伴い、
+// DB不調時ほど1回が長引くため、前回の実行が終わる前に次を重ねない。
+async function reconcileOnce() {
+  if (reconcileRunning || shuttingDown) return;
+  reconcileRunning = true;
+  try {
+    const { roomCount, startFailures } = await ensureAllListenersAlive();
+    if (!ready && startFailures === 0) {
+      ready = true;
+      console.log(`[worker] ready (recovered by reconcile, rooms=${roomCount})`);
+    }
+  } catch (err) {
+    console.error("[worker] ensureAllListenersAlive failed:", err);
+  } finally {
+    reconcileRunning = false;
+  }
+}
+
+function scheduleReconcile() {
+  if (shuttingDown) return;
+  reconcileTimer = setTimeout(
+    async () => {
+      await reconcileOnce();
+      scheduleReconcile();
+    },
+    ready ? RECONCILE_INTERVAL_MS : UNREADY_RECONCILE_INTERVAL_MS
+  );
+}
+
 async function main() {
   console.log(
     `[worker] starting (WORKER_INDEX=${process.env.WORKER_INDEX}, WORKER_COUNT=${process.env.WORKER_COUNT})`
@@ -80,17 +119,23 @@ async function main() {
   });
 
   const startedAt = Date.now();
-  await resumeAllListeners().catch((err) =>
-    console.error("[worker] resumeAllListeners failed:", err)
-  );
-  ready = true;
-  console.log(`[worker] ready (initial resume pass took ${Date.now() - startedAt}ms)`);
+  try {
+    const { roomCount, startFailures } = await resumeAllListeners();
+    if (startFailures === 0) {
+      ready = true;
+      console.log(
+        `[worker] ready (rooms=${roomCount}, initial resume pass took ${Date.now() - startedAt}ms)`
+      );
+    } else {
+      console.error(
+        `[worker] initial resume could not start ${startFailures}/${roomCount} room(s) — staying unready`
+      );
+    }
+  } catch (err) {
+    console.error("[worker] resumeAllListeners failed — staying unready:", err);
+  }
 
-  ensureAliveTimer = setInterval(async () => {
-    await ensureAllListenersAlive().catch((err) =>
-      console.error("[worker] ensureAllListenersAlive failed:", err)
-    );
-  }, 60_000);
+  scheduleReconcile();
 
   watchdogTimer = setInterval(() => {
     checkWatchdogs();
