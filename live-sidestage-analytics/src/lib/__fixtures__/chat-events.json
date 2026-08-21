@@ -1,0 +1,60 @@
+{
+  "_comment": "chat:* イベントの契約。TypeScript 側(chat-feed.contract.test.ts)と Dart 側(live-sidestage-mobile/test/chat_event_contract_test.dart)の両方から読む。片方だけ変えるとどちらかのテストが落ちる。",
+  "gift": {
+    "schemaVersion": 1,
+    "streamerId": "streamer-1",
+    "uniqueId": "viewer_a",
+    "nickname": "Viewer A",
+    "profilePictureUrl": "https://example.invalid/a.png",
+    "giftName": "rose",
+    "giftId": "5655",
+    "diamondCount": 1,
+    "repeatCount": 5,
+    "delta": 3,
+    "totalCoins": 5,
+    "baselineReset": false,
+    "isCombo": true,
+    "repeatEnd": false,
+    "comboId": "group-1",
+    "occurredAt": "2026-08-21T12:34:56.000Z",
+    "receivedAt": "2026-08-21T12:34:56.120Z"
+  },
+  "giftWithoutCombo": {
+    "schemaVersion": 1,
+    "streamerId": "streamer-1",
+    "uniqueId": "viewer_b",
+    "nickname": "Viewer B",
+    "profilePictureUrl": null,
+    "giftName": "galaxy",
+    "giftId": null,
+    "diamondCount": 1000,
+    "repeatCount": 1,
+    "delta": 1,
+    "totalCoins": 1000,
+    "baselineReset": true,
+    "isCombo": false,
+    "repeatEnd": true,
+    "comboId": null,
+    "occurredAt": "2026-08-21T12:35:00.000Z",
+    "receivedAt": "2026-08-21T12:35:00.080Z"
+  },
+  "follow": {
+    "schemaVersion": 1,
+    "streamerId": "streamer-1",
+    "uniqueId": "viewer_c",
+    "nickname": "Viewer C",
+    "profilePictureUrl": "https://example.invalid/c.png",
+    "occurredAt": "2026-08-21T12:36:00.000Z",
+    "receivedAt": "2026-08-21T12:36:00.050Z",
+    "msgId": "msg-follow-1"
+  },
+  "comment": {
+    "streamerId": "streamer-1",
+    "uniqueId": "viewer_d",
+    "nickname": "Viewer D",
+    "profilePictureUrl": null,
+    "comment": "こんばんは",
+    "receivedAt": "2026-08-21T12:37:00.000Z",
+    "msgId": "msg-comment-1"
+  }
+}
