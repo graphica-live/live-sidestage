@@ -1,11 +1,10 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  // src 配下を丸ごと見る。app/ と components/ だけに絞ると、
+  // src/event/labels.ts のように「クラス名の文字列を定数として持つモジュール」が
+  // スキャン対象から外れ、そのクラスだけ CSS から消える(バッジの色が出ない)。
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {

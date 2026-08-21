@@ -369,6 +369,10 @@ export default function DashboardHeader() {
           )}
         </div>
 
+        <Link href="/events" className="btn-ghost text-xs shrink-0">
+          🏆 イベント
+        </Link>
+
         <Link href="/setup" className="btn-ghost text-xs shrink-0">
           ⚙️ 設定
         </Link>

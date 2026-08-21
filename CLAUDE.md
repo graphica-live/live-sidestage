@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## このリポジトリの位置づけ
 
-`c:\dev\live-sidestage` は **6プロジェクトを束ねたモノレポ**（`graphica-live/live-sidestage`）。うち5つは以前それぞれ独立リポジトリで、各リポジトリの全履歴をサブディレクトリのパスへ書き換えたうえで統合した。`live-sidestage-event` だけは統合後にこのモノレポ内で新規に作ったもので、統合前リポジトリを持たない。
+`c:\dev\live-sidestage` は **5プロジェクトを束ねたモノレポ**（`graphica-live/live-sidestage`）。いずれも以前それぞれ独立リポジトリで、各リポジトリの全履歴をサブディレクトリのパスへ書き換えたうえで統合した。
+
+一時期6プロジェクトあり、6番目の `live-sidestage-event`（TikTok Live のイベント運営サービス）だけはモノレポ内で新規に作ったものだったが、**analytics へ統合して `live-sidestage-analytics/src/event/` に移した**（後述の「イベント機能」参照）。
 
 - git 操作はリポジトリルートで行う。サブディレクトリに `.git` はもう存在しない
 - npm / flutter / wrangler などの**ビルド系コマンドは必ず各プロジェクトディレクトリ内で実行する**。ルートに統合 `package.json` はなく、npm workspaces も使っていない（Electron の native module が hoisting で壊れるため意図的に分離している）
@@ -13,8 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | ディレクトリ | 製品名 | パッケージ名 | 統合前リポジトリ | 統合前の既定ブランチ |
 | --- | --- | --- | --- | --- |
-| `live-sidestage-analytics` | LiveAnalytics / Live Sidestage | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
-| `live-sidestage-event` | LIVE Sidestage Event | `live-sidestage-event` | なし（モノレポ内で新規作成） | — |
+| `live-sidestage-analytics` | LiveAnalytics / Live Sidestage / LIVE Sidestage Event | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
 | `live-sidestage-desktop` | TikEffect | `tikeffect` | `graphica-live/TikEffect` | `main` |
 | `live-sidestage-mobile` | Live Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
 | `TikCaption` | TikCaption | `tikcaption` | `graphica-live/TikCaption` | `master` |
@@ -22,20 +23,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 統合前の履歴もサブディレクトリのパスに書き換えて取り込んであるので、`git log -- live-sidestage-analytics/` のようにパス指定で従来どおり追える。モノレポの既定ブランチは `main`。
 
-## 6プロジェクトの関係
+## 5プロジェクトの関係
 
-TikRIng を除く5つは TikTok Live 配信者向けで、`tiktok-live-connector` によるギフト/コメント受信を共通の土台にしている。
+TikRIng を除く4つは TikTok Live 配信者向けで、`tiktok-live-connector` によるギフト/コメント受信を共通の土台にしている。
 
-- **live-sidestage-analytics** — Next.js 14 + Prisma/PostgreSQL + socket.io。Railway ホスティングの Web サービス本体。ギフト集計・ランキング・OBS 用貢献者オーバーレイを提供し、モバイルとデスクトップ両方のバックエンドを兼ねる
-- **live-sidestage-event** — Next.js 14 + Prisma/PostgreSQL。Railway。TikTok Live のイベント（大会）運営サービス。analytics と**同じ PostgreSQL インスタンス**を使うが、Prisma が管理するのは `event` スキーマだけで、analytics のデータは列を絞った view 経由で読むだけ。認証は analytics と同じ `public."User"` / `"Account"` を共有し、`User.id` を全サービス共通にしている
+- **live-sidestage-analytics** — Next.js 14 + Prisma/PostgreSQL + socket.io。Railway ホスティングの Web サービス本体。ギフト集計・ランキング・OBS 用貢献者オーバーレイを提供し、モバイルとデスクトップ両方のバックエンドを兼ねる。**イベント（大会）運営機能もここに入っている**（`src/event/` ほか）
 - **live-sidestage-desktop** — Electron + Express + better-sqlite3。**ローカル完結**の OBS ウィジェット（演出オーバーレイ）アプリ。analytics とは API キー経由の一方向連携のみ
 - **live-sidestage-mobile** — Flutter (Android)。analytics のクライアント。受信コメントをオンデバイス VOICEVOX で読み上げる
 - **TikCaption** — Electron + Python ASR。マイク音声を文字起こしして字幕オーバーレイを出す独立プロダクト（analytics とは繋がっていない）
-- **TikRIng** — Cloudflare Pages + Functions。透過フレームをアップロードしてリスナー向けの着せ替え URL を発行する Web サービス。他4つとはコード上の連携がない独立プロダクト
+- **TikRIng** — Cloudflare Pages + Functions。透過フレームをアップロードしてリスナー向けの着せ替え URL を発行する Web サービス。他3つとはコード上の連携がない独立プロダクト
 
 コード上で確認できる実際の連携ポイント:
 
-- **event → analytics**: 同一 PostgreSQL の `public.event_gift_v` / `event_room_v` / `event_streamer_v` / `event_battle_v`（列を絞った view）を `$queryRaw` で SELECT する。テーブルへの書き込みは一切しない。room の監視要求だけ `POST/DELETE /api/internal/event-room-lease`（`EVENT_INTERNAL_API_SECRET` で保護、Worker 用の `INTERNAL_API_SECRET` とは別の値）経由で行い、analytics 側は `TiktokRoom.monitorUntil` にそれを持つ。view の定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)。`event_battle_v` は analytics が受信した TikTok の LinkMic バトル（`tiktok_battles`）で、event の対戦自動検知が使う
 - **desktop → analytics**: `GET /api/analytics/monthly-contributors?month=YYYY-MM`（[backend/lib/monthly-mvp-client.js](live-sidestage-desktop/backend/lib/monthly-mvp-client.js)）。baseUrl と apiKey は称号ウィジェット設定として SQLite に保存され、先月の MVP/TOP5 を取り込む
 - **mobile → analytics**: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `?token=` で `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
@@ -56,7 +55,10 @@ npm run typecheck           # tsc --noEmit
 npm run test:unit           # vitest（*.integration.test.ts を除外）
 npm run test:integration    # ローカルDB必須
 npm test                    # unit + integration
-npm run worker              # Worker単体プロセス (worker.ts)
+npm run worker              # TikTok接続Worker (worker.ts)
+npm run event-worker        # イベント集計ワーカー (event-worker.ts)
+npm run seed:event:local    # イベント機能のシード
+npm run bench:aggregate:local  # イベント集計の性能を実測する（ローカルDB専用）
 ```
 
 単体テストを1つだけ流す: `npx vitest run src/lib/overlay.test.ts -t "テスト名"`
@@ -64,27 +66,9 @@ npm run worker              # Worker単体プロセス (worker.ts)
 
 **typecheck → docker DB 起動 → db:push:local → npm test** はコミット前に強制される。ただしモノレポ化で hook の置き場所が変わった（後述の「コミット前フック」参照）。Docker Desktop が動いていないとコミットできない点は同じ。
 
-### live-sidestage-event
+**ビルドの検証に `npm run build` を使わない。** analytics の build は `prisma db push --accept-data-loss` を含むので、実行した時点で `DATABASE_URL` の指す DB を書き換える。型とルーティングだけ確かめたいときは `npx next build` を使う。
 
-DB は analytics の docker compose（localhost:5433）を共用する。
-
-```bash
-npm run dev              # 開発サーバー (:3100)
-npm run dev:local        # .env.local.test で起動。dev用の簡易ログイン有効
-npm run db:push:local    # ローカルDBの event スキーマへ反映
-npm run seed:local
-npm run typecheck
-npm run test:unit        # vitest（*.integration.test.ts を除外、DB不要）
-npm run test:integration # ローカルDB必須
-npm test                 # unit + integration
-npm run worker           # 集計ワーカー
-npm run worker:local     # 集計ワーカー（.env.local.test）
-npm run bench:aggregate:local  # 集計の性能を実測する（ローカルDB専用）
-```
-
-単体テストを1つだけ流す: `npx vitest run src/lib/validation.test.ts -t "テスト名"`
-
-**このプロジェクトの DB 構成には壊すと復旧できない箇所がある。** `prisma/schema.prisma` の `schemas` に `public` を足してはいけない（analytics のテーブルが `db push` の削除差分になる）。詳細は [live-sidestage-event/CLAUDE.md](live-sidestage-event/CLAUDE.md) を必ず読むこと。
+**`prisma/schema.prisma` は `public` と `event` の両スキーマを1ファイルで管理している**（`schemas = ["public", "event"]`）。モデルを消したり `@@schema` を外したりすると `db push --accept-data-loss` の削除差分になる。イベント機能を触るときは [live-sidestage-analytics/src/event/CLAUDE.md](live-sidestage-analytics/src/event/CLAUDE.md) を必ず読むこと。
 
 ### live-sidestage-desktop
 
@@ -143,25 +127,27 @@ npm run pages:dev           # build + wrangler pages dev dist
 
 - [server.js](live-sidestage-analytics/server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
 - [worker.ts](live-sidestage-analytics/worker.ts) は Next を持たず、担当 shard の TikTok Webcast 接続だけを維持する軽量プロセス。`hash(streamerId) % WORKER_COUNT` で配信者を分散し、`WORKER_INDEX` が自分の担当番号。`GET /healthz` は初回 `resumeAllListeners()` 完了まで 503 を返し、Railway のゼロダウンタイム切替に使う
-- Worker が接続を維持する部屋の条件は `getMyRooms()`（[tiktok-listener.ts](live-sidestage-analytics/src/lib/tiktok-listener.ts)）の1箇所に集約されている。**「`Streamer` が1人以上いる」か「`TiktokRoom.monitorUntil` が未来」のどちらか**で、後者は event サービスが期限付きで監視を要求している状態。どちらも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
+- Worker が接続を維持する部屋の条件は `getMyRooms()`（[tiktok-listener.ts](live-sidestage-analytics/src/lib/tiktok-listener.ts)）の1箇所に集約されている。**「`Streamer` が1人以上いる」か「`TiktokRoom.monitorUntil` が未来」のどちらか**で、後者はイベント機能が期限付きで監視を要求している状態。どちらも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
 - Worker → Web は `POST /api/internal/gift-event`（`INTERNAL_API_SECRET` で保護）。`WEB_INTERNAL_URL` 未設定なら Web/Worker 同居とみなして in-process 直呼びにフォールバックする
 - Worker 数を変えたら全プロセスの `WORKER_COUNT` を揃えてから `npm run rebalance-workers -- --apply`
 - **データモデルの肝**: 同一 `tiktokId` は `TiktokRoom` 1行 = TikTok 接続1本を複数の `Streamer`（登録ユーザー）で共有する。ギフト元データ `Gift` は不変で、手動編集・非表示は `GiftEdit(giftId, streamerId)` として別レコードに持ち、表示時に上書きする。したがって編集は編集者本人のビューにしか影響しない
 - 認証は段階的。BIO 認証（bio に認証コードを貼ってサーバーがスクレイピング確認）前でもオーバーレイは動き、コイン数・履歴だけが `VerifyGate` でぼかされる
 - TikTok 接続は公式 API ではなく匿名 WebSocket。プロキシは `TIKTOK_PROXY_POOL` から sticky 割当されるため、**プールへの追加は必ず配列末尾に**（途中挿入・削除は既存割当をずらす）
-- `linkMicBattle` / `linkMicArmies` を購読して `tiktok_battles` に残す（`src/lib/tiktok-battle.ts` がパーサ、`tiktok-listener.ts` の `persistBattle` が保存）。analytics 自身はこのデータを使わず、live-sidestage-event の対戦自動検知だけが読む。**実 payload は実配信のバトルでしか得られない**ため、`raw` を必ず保存し `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>` で取り出せるようにしてある
+- `linkMicBattle` / `linkMicArmies` を購読して `tiktok_battles` に残す（`src/lib/tiktok-battle.ts` がパーサ、`tiktok-listener.ts` の `persistBattle` が保存）。読むのはイベント機能の対戦自動検知だけ。**実 payload は実配信のバトルでしか得られない**ため、`raw` を必ず保存し `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>` で取り出せるようにしてある
 
-### live-sidestage-event — analytics と DB を共有する別サービス
+### イベント機能（LIVE Sidestage Event）— 同じコードベース、別プロセス
 
-- analytics と**同じ PostgreSQL インスタンス**を使うが、Prisma が管理するのは `event` スキーマだけ（`schemas = ["event"]`）。analytics のテーブルは Prisma に一切書かない
-- **理由**: Prisma 5.x には「このテーブルは他が管理している」と宣言する手段がない。`public` を `schemas` に含めると schema.prisma に書いていない `gifts` / `TiktokRoom` / `Streamer` が削除差分になり、analytics の `db push --accept-data-loss` が警告なしで消す
-- analytics のデータは列を絞った view（`event_gift_v` / `event_room_v` / `event_streamer_v`）経由で SELECT only。定義は [live-sidestage-analytics/sql/event-integration.sql](live-sidestage-analytics/sql/event-integration.sql)。**analytics の列を変えたらこの view も直すこと**
-- DBロールは3分割: `event_migrator`（event スキーマ所有・マイグレーション専用）/ `event_web` / `event_worker`。`public."User"` の DELETE はどのロールにも与えない（FK cascade で `Streamer` とその `GiftEdit` まで消えるため）
-- 認証は `$queryRaw` ベースの自前 NextAuth アダプタ（[src/lib/auth-adapter.ts](live-sidestage-event/src/lib/auth-adapter.ts)）。analytics と同じ `public."User"` / `"Account"` を使うので、同じ Google アカウントなら `User.id` が一致する。**共通なのは `User.id` だけで、セッションは共有しない**（両方とも JWT strategy なので `Session` 表は使われていない）
-- 日時は必ず `src/lib/datetime.ts` の `parseJstLocal()` を通す。`new Date("2026-09-01T20:00")` はサーバーのタイムゾーン依存で、Railway（UTC）では9時間ずれる
-- Dockerfile の CMD に `db push` を入れない。マイグレーションは `event_migrator` の接続で手元から明示実行する
-- **集計は web ではなく [worker.ts](live-sidestage-event/worker.ts) が10秒間隔で回す**。増分ではなく毎回イベント期間の全ギフトを再計算し、結果を `EventContribution` / `EventStanding` にスナップショットとして置き換える（バトル区間が後から確定するため増分では修正できない）。排他は `pg_try_advisory_xact_lock` を interactive transaction 内で取る（セッション単位のロックは Prisma のプールで取得と解放が別接続になりうるので使わない）
+もとは `live-sidestage-event/` という別プロジェクトだったが、analytics へ統合した。同じ Postgres・同じ `public."User"`・同じ Google OAuth を共有していて分離の実体がなく、「`public` を Prisma の管理下に置けない」制約が恒久的な事故要因として残り続けていたため。**プロセス分離（TikTok 接続を巻き込まない）は Railway のサービス分割で達成している。**
+
+- コードは `src/event/`（ロジック）/ `src/app/(dashboard)/events/`（管理画面）/ `src/app/(public)/e/`（公開ページ）/ `src/app/api/events/` と `api/public/`（API）/ `event-worker.ts`（集計）
+- **`prisma/schema.prisma` が `public` と `event` の両方を管理する**（`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。モデルを消したり `@@schema` を外したりすると `db push --accept-data-loss` の削除差分になる
+- `public` のテーブルを読むのは [src/event/analytics-db.ts](live-sidestage-analytics/src/event/analytics-db.ts) だけ。raw SQL は multiSchema でも自動修飾されないので `public."TiktokRoom"` のように完全修飾する。**列は必ず明示する**（`SELECT *` は `Streamer.apiKey` や `User.password` まで持ってくる）
+- `TiktokRoom.monitorUntil` の書き込みは [src/lib/tiktok-room.ts](live-sidestage-analytics/src/lib/tiktok-room.ts) の `ensureRoomForEvent()` / `releaseRoomMonitor()` を通す。**主催者入力がそのまま届く経路なので、tiktokId の形式検証・120日の期限上限・監視中 room 500件の上限を外さないこと**
+- 認証は analytics の NextAuth をそのまま使う。保護範囲は `src/middleware.ts` の除外リストで決まり、**各エントリには境界 `(?:/|$)` が要る**（境界なしの `e` は `/events` まで公開してしまう）。[src/middleware.test.ts](live-sidestage-analytics/src/middleware.test.ts) が固定している
+- 日時は必ず `src/event/datetime.ts` の `parseJstLocal()` を通す。`new Date("2026-09-01T20:00")` はサーバーのタイムゾーン依存で、Railway（UTC）では9時間ずれる
+- **集計は web でも `worker.ts` でもなく [event-worker.ts](live-sidestage-analytics/event-worker.ts) が10秒間隔で回す**。増分ではなく毎回イベント期間の全ギフトを再計算し、結果を `EventContribution` / `EventStanding` にスナップショットとして置き換える（バトル区間が後から確定するため増分では修正できない）。排他は `pg_try_advisory_xact_lock` を interactive transaction 内で取る（セッション単位のロックは Prisma のプールで取得と解放が別接続になりうるので使わない）
 - 集計の打ち切りに `status` を使わない。締切（`endAt` + 1時間）後の集計が成功したら `Event.finalizedAt` を立てて以後スキップする。`endAt` を延ばしたら `finalizedAt` を `null` に戻すこと
+- 仕様の全体像は [docs/EVENT.md](live-sidestage-analytics/docs/EVENT.md)、実装時の制約は [src/event/CLAUDE.md](live-sidestage-analytics/src/event/CLAUDE.md)
 
 ### live-sidestage-desktop — 3レイヤーのローカル完結アプリ
 
@@ -201,7 +187,7 @@ npm run pages:dev           # build + wrangler pages dev dist
 
 - `tikring-prod-verify.yml` — `TikRIng/**` の push で発火。Cloudflare Pages の本番デプロイ完了を待ち、`TikRIng/scripts/prod-smoke-test.mjs` でスモークテストする。失敗したら直前の成功デプロイへ自動ロールバックする
 - `tikring-cleanup.yml` — 毎日 JST 12:00、期限切れフレームの cleanup API を叩く
-- `event-ci.yml` — `live-sidestage-event/**` の push / PR で発火。typecheck → ユニットテスト → build
+- `analytics-ci.yml` — `live-sidestage-analytics/**` の push / PR で発火。typecheck → ユニットテスト → `db push` → integration テスト（postgres:16 の service コンテナを使う）→ build。イベント機能もここで検証される
 
 ワークフローを足すときは **必ず `paths:` フィルタで対象プロジェクトを絞る**。絞らないと無関係なプロジェクトの push でも発火する。プロジェクトのディレクトリで動くものは `defaults.run.working-directory` も指定する。
 
@@ -213,14 +199,13 @@ analytics の検証（typecheck → docker DB → db:push:local → npm test）�
 git config core.hooksPath .githooks
 ```
 
-`.githooks/pre-commit` はステージされたパスを見て、変更のあったプロジェクトの検証だけを走らせる。`live-sidestage-analytics/` なら typecheck + docker DB + テスト、`live-sidestage-event/` なら typecheck + ユニットテスト（integration はローカル Postgres が要るので hook では走らせない）。他プロジェクトだけの変更なら何も実行しない。`live-sidestage-analytics/.husky/pre-commit` は統合前の履歴として残してあるが、モノレポでは**呼ばれない**ので、検証内容を変えるときはルート側を編集する。
+`.githooks/pre-commit` はステージされたパスを見て、変更のあったプロジェクトの検証だけを走らせる。現在検証があるのは `live-sidestage-analytics/` だけで、typecheck + docker DB + テスト（イベント機能を含む）が走る。他プロジェクトだけの変更なら何も実行しない。`live-sidestage-analytics/.husky/pre-commit` は統合前の履歴として残してあるが、モノレポでは**呼ばれない**ので、検証内容を変えるときはルート側を編集する。
 
 ## デプロイ
 
 モノレポ化でビルドコンテキストがリポジトリルートに変わったため、ホスティング側の設定でプロジェクトのサブディレクトリを指定する必要がある。
 
-- **live-sidestage-analytics → Railway**: Root Directory を `live-sidestage-analytics` にする。[railway.toml](live-sidestage-analytics/railway.toml) と [Dockerfile](live-sidestage-analytics/Dockerfile) はそのディレクトリ基準なので、Root Directory さえ合っていれば中身の変更は不要
-- **live-sidestage-event → Railway**: Root Directory を `live-sidestage-event`。web と worker の2サービスで同じ Dockerfile を使い、worker 側だけ start command を `npm run worker` に、`DATABASE_URL` を `event_worker` の接続文字列に変える。**スキーマ変更は自動では走らない** — デプロイ順序（analytics のスキーマ変更 → view と GRANT の適用 → event の migration → event のデプロイ）は [live-sidestage-event/README.md](live-sidestage-event/README.md) にある
+- **live-sidestage-analytics → Railway**: Root Directory を `live-sidestage-analytics` にする。[railway.toml](live-sidestage-analytics/railway.toml) と [Dockerfile](live-sidestage-analytics/Dockerfile) はそのディレクトリ基準なので、Root Directory さえ合っていれば中身の変更は不要。**同じイメージを3サービスで使い、start command と環境変数だけを変える** — `npm start`（web）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る）/ `npm run event-worker`（イベント集計）。スキーマ変更は web の build に含まれる `prisma db push --accept-data-loss` が行う
 - **TikRIng → Cloudflare Pages**: Root directory を `TikRIng`、ビルドコマンドは `npm run build`、出力は `dist`
 - **live-sidestage-desktop / TikCaption**: electron-builder によるローカルビルドなので、モノレポ化の影響は受けない
 - **live-sidestage-mobile**: `flutter build apk` をディレクトリ内で実行するだけなので影響なし

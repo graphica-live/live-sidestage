@@ -45,21 +45,9 @@ if touched live-sidestage-analytics; then
     echo "[pre-commit] live-sidestage-analytics: ローカルテストDBへスキーマ反映..."
     npm run db:push:local -- --skip-generate
 
+    # イベント機能(src/event, src/app/**/events, src/app/(public)/e)のテストも
+    # このプロジェクトに統合済みなので、npm test で一緒に走る。
     echo "[pre-commit] live-sidestage-analytics: テスト実行..."
     npm test
-  )
-fi
-
-if touched live-sidestage-event; then
-  (
-    cd live-sidestage-event
-
-    echo "[pre-commit] live-sidestage-event: 型チェック..."
-    npm run typecheck
-
-    # integration テストはローカル Postgres が要るのでここでは走らせない
-    # (analytics 側の docker compose を共用する。CI と手元で明示的に実行する)。
-    echo "[pre-commit] live-sidestage-event: ユニットテスト実行..."
-    npm run test:unit
   )
 fi

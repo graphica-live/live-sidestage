@@ -1,0 +1,96 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// middleware の matcher を「実際にデプロイされる文字列そのもの」で検証する。
+//
+// Next.js は matcher にリテラルしか受け付けない(ビルド時に静的解析するため、変数は無視される)。
+// そのため定数を export して共有できず、テスト側に書き写すと本体とずれても気づけない。
+// ここではファイルから matcher を読み出して正規表現として評価する。
+//
+// 実際に守りたいのは「境界なしの前置一致で意図しないパスまで公開されないこと」で、
+// これは HTTP レスポンスからは判別しにくい(除外されていてもページ側の getServerSession が
+// 別途 redirect すれば同じ結果になるため)。matcher を直接見るのが唯一の確実な検証になる。
+function loadMatcher(): RegExp {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(resolve(here, "middleware.ts"), "utf8");
+  const found = src.match(/matcher:\s*\[\s*("(?:[^"\\]|\\.)*")/);
+  if (!found) throw new Error("middleware.ts から matcher を取り出せなかった");
+  const pattern: string = JSON.parse(found[1]);
+  return new RegExp(`^${pattern}$`);
+}
+
+const matcher = loadMatcher();
+
+/** true = middleware が走る = 未ログインならログインへ飛ばされる */
+function isProtected(pathname: string): boolean {
+  return matcher.test(pathname);
+}
+
+describe("middleware の matcher", () => {
+  it("主催者向けの画面とAPIは保護される", () => {
+    for (const path of [
+      "/analytics",
+      "/setup",
+      "/admin",
+      "/events",
+      "/events/new",
+      "/events/abc123",
+      "/events/abc123/participants",
+      "/api/events",
+      "/api/events/abc123/matches",
+      "/api/streamer/api-key",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき`).toBe(true);
+    }
+  });
+
+  it("イベントの公開ページと公開APIは認証なしで通る", () => {
+    for (const path of [
+      "/e/summer-cup",
+      "/e/summer-cup/ranking",
+      "/e/summer-cup/bracket",
+      "/api/public/events/summer-cup/snapshot",
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("既存の公開パスをイベント追加で巻き込んでいない", () => {
+    for (const path of [
+      "/login",
+      "/register",
+      "/api/auth/session",
+      "/api/auth/callback/google",
+      "/api/mobile/streamer",
+      "/api/health",
+      "/api/debug/battle-payloads",
+      "/api/internal/gift-event",
+      "/api/analytics/monthly-contributors",
+      "/api/overlay/settings",
+      "/overlay/contribution",
+      "/_next/static/chunks/main.js",
+      "/_next/image",
+      "/favicon.ico",
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  // ここが本題。除外エントリに境界がないと前置一致になり、
+  // `e` が `/events` を、`login` が `/login-history` を公開してしまう。
+  it("除外エントリは前置一致ではなくパス境界で判定する", () => {
+    for (const path of [
+      "/events", // `e` に食われてはいけない
+      "/events/abc123",
+      "/registered", // `register` に食われてはいけない
+      "/login-history", // `login` に食われてはいけない
+      "/overlays", // `overlay` に食われてはいけない
+      "/api/publicity", // `api/public` に食われてはいけない
+      "/api/internally", // `api/internal` に食われてはいけない
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
+});

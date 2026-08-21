@@ -1,0 +1,73 @@
+name: analytics CI
+
+# モノレポなので paths で対象プロジェクトを必ず絞る。
+# 絞らないと他4プロジェクトの push でも発火する。
+#
+# イベント機能(旧 live-sidestage-event)は live-sidestage-analytics へ統合したので、
+# このワークフローが両方を検証する。
+on:
+  push:
+    paths:
+      - "live-sidestage-analytics/**"
+      - ".github/workflows/analytics-ci.yml"
+  pull_request:
+    paths:
+      - "live-sidestage-analytics/**"
+      - ".github/workflows/analytics-ci.yml"
+
+defaults:
+  run:
+    working-directory: live-sidestage-analytics
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # integration テストは実DBを使う(スナップショット集計・advisory lock・
+    # public と event をまたぐ結合は、モックでは意味のある検証にならない)。
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: liveanalytics
+          POSTGRES_PASSWORD: liveanalytics
+          POSTGRES_DB: liveanalytics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U liveanalytics"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgresql://liveanalytics:liveanalytics@localhost:5432/liveanalytics_test"
+      NEXTAUTH_SECRET: "ci-only"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: live-sidestage-analytics/package-lock.json
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - run: npm run typecheck
+
+      - run: npm run test:unit
+
+      # public と event の両スキーマを作る(multiSchema なのでスキーマ自体も push が作る)。
+      - run: npx prisma db push --skip-generate
+
+      # test:integration は .env.local.test を読む script なので、CI では直接叩く
+      # (env の DATABASE_URL をそのまま使う)。
+      - run: npx vitest run integration
+
+      # build は DB に接続しないが、Prisma Client の初期化に URL の形式だけ要る。
+      # npm run build は prisma db push --accept-data-loss を含むので使わない。
+      - run: npx next build

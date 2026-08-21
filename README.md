@@ -1,11 +1,10 @@
 # live-sidestage
 
-TikTok Live 配信者向けプロダクト群のモノレポ。統合前は5つの独立リポジトリだったものを、全履歴を保持したまま1つにまとめている。その後 `live-sidestage-event` を新規に追加した。
+TikTok Live 配信者向けプロダクト群のモノレポ。統合前は5つの独立リポジトリだったものを、全履歴を保持したまま1つにまとめている。
 
 | ディレクトリ | 製品 | スタック | デプロイ先 |
 | --- | --- | --- | --- |
-| [live-sidestage-analytics](live-sidestage-analytics/) | LiveAnalytics | Next.js 14 + Prisma/PostgreSQL + socket.io | Railway |
-| [live-sidestage-event](live-sidestage-event/) | LIVE Sidestage Event | Next.js 14 + Prisma/PostgreSQL | Railway |
+| [live-sidestage-analytics](live-sidestage-analytics/) | LiveAnalytics / LIVE Sidestage Event | Next.js 14 + Prisma/PostgreSQL + socket.io | Railway |
 | [live-sidestage-desktop](live-sidestage-desktop/) | TikEffect | Electron + Express + better-sqlite3 | ローカル（NSIS インストーラ） |
 | [live-sidestage-mobile](live-sidestage-mobile/) | Live Sidestage (Android) | Flutter | APK |
 | [TikCaption](TikCaption/) | TikCaption | Electron + Python ASR | ローカル（NSIS インストーラ） |
@@ -17,7 +16,6 @@ TikTok Live 配信者向けプロダクト群のモノレポ。統合前は5つ�
 
 ```bash
 cd live-sidestage-analytics && npm ci
-cd live-sidestage-event     && npm ci
 cd live-sidestage-desktop   && npm ci
 cd TikCaption               && npm ci
 cd TikRIng                  && npm ci
@@ -30,7 +28,7 @@ cd live-sidestage-mobile    && flutter pub get
 git config core.hooksPath .githooks
 ```
 
-`live-sidestage-analytics/` に変更があるコミットでは typecheck とテスト（ローカル PostgreSQL が必要）が、`live-sidestage-event/` に変更があるコミットでは typecheck とユニットテストが走る。
+`live-sidestage-analytics/` に変更があるコミットでは typecheck とテスト（ローカル PostgreSQL が必要）が走る。
 
 ## 各プロジェクトのコマンド・アーキテクチャ
 
