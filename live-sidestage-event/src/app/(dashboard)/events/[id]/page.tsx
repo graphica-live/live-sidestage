@@ -1,0 +1,45 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { toJstInputValue } from "@/lib/datetime";
+import { EventForm, type EventFormValues } from "../EventForm";
+import { EventAdminControls } from "./EventAdminControls";
+import type { EntryMode, EventFormat, TeamPreset, Visibility } from "@/lib/validation";
+
+export const dynamic = "force-dynamic";
+
+export default async function EventDetailPage({ params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const event = await prisma.event.findFirst({
+    where: { id: params.id, ownerUserId: session!.user.id },
+  });
+
+  if (!event) notFound();
+
+  const initial: EventFormValues = {
+    title: event.title,
+    description: event.description ?? "",
+    format: event.format as EventFormat,
+    entryMode: event.entryMode as EntryMode,
+    teamPreset: event.teamPreset as TeamPreset,
+    visibility: event.visibility as Visibility,
+    startAt: toJstInputValue(event.startAt),
+    endAt: toJstInputValue(event.endAt),
+  };
+
+  return (
+    <div>
+      <Link href="/events" className="text-xs text-gray-500 hover:text-white">
+        ← イベント一覧
+      </Link>
+      <h1 className="mb-6 mt-2 truncate text-xl font-bold">{event.title}</h1>
+
+      <EventAdminControls id={event.id} slug={event.slug} status={event.status} />
+
+      <h2 className="mb-4 mt-8 text-sm font-semibold text-gray-300">設定</h2>
+      <EventForm mode="edit" eventId={event.id} initial={initial} />
+    </div>
+  );
+}

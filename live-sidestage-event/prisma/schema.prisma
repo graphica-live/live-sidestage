@@ -1,0 +1,292 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+// **schemas に public を含めてはいけない。**
+// Prisma 5.x には「外部管理テーブル」を除外する手段がないため、public を管理下に置くと
+// ここに書いていない gifts / TiktokRoom / Streamer / gift_edits / AppSetting が
+// 削除差分として扱われる。analytics 側のデータは src/lib/analytics-db.ts の
+// $queryRaw で view 経由でのみ読む。
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["event"]
+}
+
+model Event {
+  id            String  @id @default(cuid())
+  slug          String  @unique // 公開URL /e/{slug}
+  title         String
+  description   String? @db.Text
+  coverImageUrl String?
+  ownerUserId   String // 共通 User.id。FKは張らない(将来 auth サービスへ切り出すため)
+
+  format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
+  entryMode  String // "SOLO" | "TEAM"
+  teamPreset String @default("GENERIC") // "GENERIC" | "PREFECTURE"
+  visibility String @default("UNLISTED") // "PUBLIC" | "UNLISTED" | "PRIVATE"
+  status     String @default("DRAFT") // "DRAFT"|"SCHEDULED"|"RUNNING"|"FINISHED"|"ARCHIVED"
+
+  startAt DateTime // 集計区間は [startAt, endAt) の半開区間
+  endAt   DateTime
+  rules   Json     @default("{}") // 種目別ルール(デスマッチの初期ライフ等)
+
+  lastAggregatedAt DateTime?
+  aggregateMs      Int? // 直近の再集計にかかった時間(SLO監視用)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  teams         EventTeam[]
+  participants  EventParticipant[]
+  multipliers   EventMultiplier[]
+  matches       EventMatch[]
+  contributions EventContribution[]
+  standings     EventStanding[]
+  lifePoints    EventLifePoint[]
+  roomLeases    EventRoomLease[]
+  adjustments   EventScoreAdjustment[]
+
+  @@index([status, endAt])
+  @@index([ownerUserId])
+  @@schema("event")
+}
+
+// 倍率オプション。kind を増やすだけで新しい倍率条件を足せる。
+// 1件のギフトに適用される倍率は必ず1つ(src/lib/scoring.ts を参照)。
+model EventMultiplier {
+  id        String    @id @default(cuid())
+  eventId   String
+  kind      String // "BATTLE"(バトル中) | "SOLO_STREAM"(枠投げ)
+  factor    Decimal   @db.Decimal(6, 2) // 2.00 など
+  startAt   DateTime? // 期間限定倍率。null なら常時
+  endAt     DateTime?
+  createdAt DateTime  @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@schema("event")
+}
+
+model EventTeam {
+  id             String  @id @default(cuid())
+  eventId        String
+  name           String
+  colorHex       String?
+  prefectureCode String? // teamPreset = "PREFECTURE" のとき "01".."47"
+  sortOrder      Int     @default(0)
+
+  event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participants EventParticipant[]
+  sides        EventMatchSide[]
+
+  @@unique([eventId, name])
+  @@unique([eventId, prefectureCode])
+  @@schema("event")
+}
+
+model EventParticipant {
+  id          String   @id @default(cuid())
+  eventId     String
+  tiktokId    String // 正規化済み(小文字・trim・先頭@除去)
+  roomId      String // public."TiktokRoom".id(論理参照)
+  teamId      String?
+  displayName String // 表示名スナップショット
+  userId      String? // 会員登録済みならリンク
+  status      String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
+  joinedAt    DateTime @default(now())
+
+  event Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  team  EventTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  sides EventMatchSideParticipant[]
+
+  @@unique([eventId, tiktokId])
+  // 同じ room を別表記で二重登録させない = 同じギフトの二重計上を防ぐ。
+  // TiktokRoom は複数 Streamer に共有されるため、tiktokId の unique だけでは足りない。
+  @@unique([eventId, roomId])
+  @@schema("event")
+}
+
+// イベントのために確保した room 監視の台帳。
+// analytics 側の TiktokRoom.monitorUntil を立てた事実をこちらで持つ。
+model EventRoomLease {
+  id              String    @id @default(cuid())
+  eventId         String
+  roomId          String
+  tiktokId        String
+  createdBySystem Boolean   @default(false) // event が room を新規作成したか
+  monitorUntil    DateTime // 通常は event.endAt + 猶予
+  releasedAt      DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, roomId])
+  @@index([roomId, releasedAt])
+  @@schema("event")
+}
+
+// 対戦(トーナメント1試合 / デスマッチの1マッチ)
+model EventMatch {
+  id              String @id @default(cuid())
+  eventId         String
+  round           Int    @default(1)
+  bracketPosition Int    @default(0)
+  matchType       String @default("1V1") // "1V1" | "2V2"
+
+  scheduledStartAt DateTime // 主催者が指定した時間枠
+  scheduledEndAt   DateTime
+  status           String   @default("SCHEDULED") // "SCHEDULED"|"DETECTED"|"LIVE"|"FINISHED"|"NO_SHOW"|"VOID"
+
+  detectedBattleId String? // TikTok の battleId。string のまま保持する
+  detectedStartAt  DateTime?
+  detectedEndAt    DateTime?
+  winnerSideId     String?
+  rules            Json      @default("{}") // 終了時刻をどこから採ったか等の記録を含む
+
+  event Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sides EventMatchSide[]
+
+  @@index([eventId, scheduledStartAt])
+  @@index([detectedBattleId])
+  @@schema("event")
+}
+
+model EventMatchSide {
+  id        String  @id @default(cuid())
+  matchId   String
+  sideIndex Int // 0 | 1
+  teamId    String?
+  score     Decimal @default(0) @db.Decimal(18, 2) // 倍率適用後
+  diamonds  BigInt  @default(0) // 素のダイヤ
+
+  match        EventMatch                  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team         EventTeam?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  participants EventMatchSideParticipant[]
+
+  @@unique([matchId, sideIndex])
+  @@schema("event")
+}
+
+model EventMatchSideParticipant {
+  id            String @id @default(cuid())
+  sideId        String
+  participantId String
+
+  side        EventMatchSide   @relation(fields: [sideId], references: [id], onDelete: Cascade)
+  participant EventParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([sideId, participantId])
+  @@schema("event")
+}
+
+// デスマッチのライフポイント
+model EventLifePoint {
+  id           String    @id @default(cuid())
+  eventId      String
+  subjectType  String // "PARTICIPANT" | "TEAM"
+  subjectId    String
+  current      Int
+  max          Int
+  eliminatedAt DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, subjectType, subjectId])
+  @@schema("event")
+}
+
+// ライフ増減の履歴。後から検証できるように必ず残す。
+model EventLifeLedger {
+  id          String   @id @default(cuid())
+  eventId     String
+  subjectType String
+  subjectId   String
+  matchId     String?
+  delta       Int
+  reason      String // "MATCH_LOSS" | "DECAY" | "HEAL" | "MANUAL"
+  createdAt   DateTime @default(now())
+
+  @@index([eventId, subjectType, subjectId])
+  @@schema("event")
+}
+
+// 主催者によるスコア手動補正。
+// gifts は取り込み時点の欠落・重複を後から修復できないため、救済手段を必ず持つ。
+model EventScoreAdjustment {
+  id               String   @id @default(cuid())
+  eventId          String
+  scope            String // "PARTICIPANT" | "TEAM" | "MATCH"
+  scopeId          String
+  listenerUniqueId String? // 特定リスナーへの補正なら
+  diamondDelta     BigInt   @default(0)
+  reason           String   @db.Text
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, scope, scopeId])
+  @@schema("event")
+}
+
+// リスナー貢献の集計スナップショット。3種のランキングをこの1テーブルで賄う。
+model EventContribution {
+  id               String   @id @default(cuid())
+  eventId          String
+  scope            String // "EVENT" | "PARTICIPANT" | "TEAM" | "MATCH"
+  scopeId          String   @default("") // participantId / teamId / matchId(EVENT のときは "")
+  listenerUniqueId String // public.gifts.uniqueId
+  nickname         String
+  profileImageUrl  String?
+  diamonds         BigInt   @default(0) // 実弾(素のダイヤ)
+  points           Decimal  @default(0) @db.Decimal(18, 2) // 倍率適用後
+  giftCount        Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, scope, scopeId, listenerUniqueId])
+  @@index([eventId, scope, scopeId, points])
+  @@index([eventId, scope, scopeId, diamonds])
+  @@schema("event")
+}
+
+// 順位表スナップショット(レース・チーム戦・全体順位)
+model EventStanding {
+  id          String   @id @default(cuid())
+  eventId     String
+  subjectType String // "PARTICIPANT" | "TEAM"
+  subjectId   String
+  diamonds    BigInt   @default(0)
+  points      Decimal  @default(0) @db.Decimal(18, 2)
+  rank        Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, subjectType, subjectId])
+  @@index([eventId, subjectType, rank])
+  @@schema("event")
+}
+
+// analytics 側で検知したバトルを取り込んだもの(EventMatch への照合前の生データ)
+model DetectedBattle {
+  id            String    @id @default(cuid())
+  battleId      String // TikTok の battleId。string のまま
+  roomId        String
+  startedAt     DateTime
+  endedAt       DateTime?
+  lastAction    Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
+  complete      Boolean   @default(false) // OPEN と FINISH の両方を観測したか
+  hostUniqueIds String[] // 参加ホストの uniqueId
+  hostScores    Json      @default("{}") // anchorIdStr -> hostScore(string のまま)
+  raw           Json
+  matchedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([battleId, roomId])
+  @@index([startedAt])
+  @@schema("event")
+}
