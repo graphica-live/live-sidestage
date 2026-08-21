@@ -5,22 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 interface Agency {
   id: string;
   name: string;
-  email: string | null;
-  approved: boolean;
-  approvedAt: string | null;
+  email: string;
   maxWatchTargets: number;
+  hasApiKey: boolean;
   watchCount: number;
   createdAt: string;
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("ja-JP", {
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("ja-JP", {
     year: "numeric",
     month: "numeric",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -29,6 +25,11 @@ export default function AgenciesAdminPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [limit, setLimit] = useState("10");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -47,41 +48,33 @@ export default function AgenciesAdminPage() {
     load();
   }, [load]);
 
-  async function patch(id: string, body: Record<string, unknown>, successMessage: string) {
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
     setError("");
     setMessage("");
-    setBusyId(id);
+    setCreating(true);
     try {
       const res = await fetch("/api/admin/agencies", {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...body }),
+        body: JSON.stringify({ name, email, maxWatchTargets: Number(limit) }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "更新に失敗しました");
+        setError(data.error || "発行に失敗しました");
         return;
       }
+      setName("");
+      setEmail("");
+      setLimit("10");
       await load();
-      setMessage(successMessage);
+      setMessage(`${data.agency.name} を発行しました。${data.agency.email} でログインすればすぐ使えます。`);
     } finally {
-      setBusyId(null);
+      setCreating(false);
     }
   }
 
-  function handleToggleApproval(a: Agency) {
-    if (a.approved) {
-      const ok = confirm(
-        `${a.name} の承認を取り消しますか？\n監視対象${a.watchCount}件のTikTok接続が停止し、企業APIも使えなくなります。`
-      );
-      if (!ok) return;
-      patch(a.id, { approved: false }, "承認を取り消しました");
-      return;
-    }
-    patch(a.id, { approved: true }, "承認しました");
-  }
-
-  function handleChangeLimit(a: Agency) {
+  async function handleChangeLimit(a: Agency) {
     const input = prompt(
       `${a.name} の監視対象上限を入力してください(0〜1000)。\n1件ごとにTikTok接続とproxy枠を消費します。`,
       String(a.maxWatchTargets)
@@ -92,7 +85,53 @@ export default function AgenciesAdminPage() {
       setError("上限は0〜1000の整数で入力してください");
       return;
     }
-    patch(a.id, { maxWatchTargets: max }, "上限を変更しました");
+
+    setError("");
+    setMessage("");
+    setBusyId(a.id);
+    try {
+      const res = await fetch("/api/admin/agencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: a.id, maxWatchTargets: max }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "更新に失敗しました");
+        return;
+      }
+      await load();
+      setMessage("上限を変更しました");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(a: Agency) {
+    const ok = confirm(
+      `${a.name} (${a.email}) を削除しますか？\n` +
+        `監視対象${a.watchCount}件も一緒に消え、TikTok接続が停止します。\n` +
+        `このアカウントは事務所コンソールを使えなくなります。`
+    );
+    if (!ok) return;
+
+    setError("");
+    setMessage("");
+    setBusyId(a.id);
+    try {
+      const res = await fetch(`/api/admin/agencies?id=${encodeURIComponent(a.id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "削除に失敗しました");
+        return;
+      }
+      await load();
+      setMessage("削除しました");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -100,30 +139,77 @@ export default function AgenciesAdminPage() {
       <div>
         <h1 className="text-lg font-bold text-brand">事務所</h1>
         <p className="text-xs text-gray-400 mt-1">
-          事務所は承認するまで監視対象を追加できず、企業APIも使えません。承認するとその事務所の監視対象ぶん
-          TikTok接続を消費するため、上限とあわせて確認してください。
+          相手のGoogleアカウントのメールアドレスを登録すると、その人はログインするだけで事務所コンソールを使えます。
+          申請や承認のやり取りはありません。監視対象1件につきTikTok接続とproxy枠を1つ消費するため、上限に注意してください。
         </p>
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
       {message && <p className="text-sm text-green-400">{message}</p>}
 
+      <form onSubmit={handleCreate} className="card space-y-3">
+        <p className="text-xs font-semibold text-gray-300">事務所を発行</p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="sm:col-span-1">
+            <label className="text-xs text-gray-500 block mb-1">事務所名</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="合同会社ネオライブ"
+              maxLength={100}
+              className="input-field"
+              required
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <label className="text-xs text-gray-500 block mb-1">Googleアカウント</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="agency@gmail.com"
+              className="input-field"
+              required
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <label className="text-xs text-gray-500 block mb-1">監視対象の上限</label>
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              className="input-field"
+              required
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={creating || !name.trim() || !email.trim()}
+          className="btn-primary"
+        >
+          {creating ? "発行中..." : "発行する"}
+        </button>
+      </form>
+
       {agencies === null ? (
         <p className="text-sm text-gray-400">読み込み中...</p>
       ) : agencies.length === 0 ? (
         <div className="card">
-          <p className="text-sm text-gray-400">まだ事務所が作成されていません。</p>
+          <p className="text-sm text-gray-400">まだ事務所がありません。上のフォームから発行してください。</p>
         </div>
       ) : (
         <div className="card p-0 overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
+          <table className="w-full text-sm min-w-[680px]">
             <thead>
               <tr className="border-b border-border text-left text-xs text-gray-500">
                 <th className="px-4 py-2 font-medium">事務所名</th>
-                <th className="px-4 py-2 font-medium">アカウント</th>
+                <th className="px-4 py-2 font-medium">Googleアカウント</th>
                 <th className="px-4 py-2 font-medium">監視</th>
-                <th className="px-4 py-2 font-medium">状態</th>
-                <th className="px-4 py-2 font-medium">作成日</th>
+                <th className="px-4 py-2 font-medium">APIキー</th>
+                <th className="px-4 py-2 font-medium">発行日</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -131,7 +217,7 @@ export default function AgenciesAdminPage() {
               {agencies.map((a) => (
                 <tr key={a.id} className="border-b border-border last:border-b-0">
                   <td className="px-4 py-2.5 font-medium">{a.name}</td>
-                  <td className="px-4 py-2.5 text-gray-400 text-xs">{a.email ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-400 text-xs">{a.email}</td>
                   <td className="px-4 py-2.5">
                     <button
                       onClick={() => handleChangeLimit(a)}
@@ -142,32 +228,17 @@ export default function AgenciesAdminPage() {
                       {a.watchCount} / {a.maxWatchTargets}
                     </button>
                   </td>
-                  <td className="px-4 py-2.5">
-                    {a.approved ? (
-                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                        承認済み
-                        <span className="text-gray-600">({formatDate(a.approvedAt)})</span>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5 text-xs text-yellow-500">
-                        <span className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
-                        承認待ち
-                      </span>
-                    )}
+                  <td className="px-4 py-2.5 text-xs text-gray-400">
+                    {a.hasApiKey ? "発行済み" : "未発行"}
                   </td>
                   <td className="px-4 py-2.5 text-gray-400 text-xs">{formatDate(a.createdAt)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button
-                      onClick={() => handleToggleApproval(a)}
+                      onClick={() => handleDelete(a)}
                       disabled={busyId === a.id}
-                      className={
-                        a.approved
-                          ? "btn-ghost text-xs"
-                          : "bg-brand hover:bg-brand-hover text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                      }
+                      className="btn-ghost text-xs hover:text-red-400"
                     >
-                      {busyId === a.id ? "..." : a.approved ? "承認取消" : "承認する"}
+                      {busyId === a.id ? "..." : "削除"}
                     </button>
                   </td>
                 </tr>

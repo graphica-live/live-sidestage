@@ -10,10 +10,16 @@ export function hashApiKey(apiKey: string): string {
   return crypto.createHash("sha256").update(apiKey).digest("hex");
 }
 
+// Googleが返すメールアドレスの大文字小文字の揺れで別アカウント扱いにならないよう、
+// 保存も参照も小文字へ正規化した値で行う。
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 export type AgencyRecord = {
   id: string;
   name: string;
-  approved: boolean;
+  email: string;
   maxWatchTargets: number;
   hasApiKey: boolean;
   watchCount: number;
@@ -29,44 +35,91 @@ export type WatchRecord = {
   listenerUpdatedAt: string | null;
 };
 
-export async function getAgencyByUserId(userId: string): Promise<AgencyRecord | null> {
-  const agency = await prisma.agency.findUnique({
-    where: { userId },
-    select: {
-      id: true,
-      name: true,
-      approved: true,
-      maxWatchTargets: true,
-      apiKeyHash: true,
-      _count: { select: { watches: true } },
-    },
-  });
-  if (!agency) return null;
+const AGENCY_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  maxWatchTargets: true,
+  apiKeyHash: true,
+  _count: { select: { watches: true } },
+} as const;
 
+type AgencyRow = {
+  id: string;
+  name: string;
+  email: string;
+  maxWatchTargets: number;
+  apiKeyHash: string | null;
+  _count: { watches: number };
+};
+
+function toRecord(a: AgencyRow): AgencyRecord {
   return {
-    id: agency.id,
-    name: agency.name,
-    approved: agency.approved,
-    maxWatchTargets: agency.maxWatchTargets,
-    hasApiKey: Boolean(agency.apiKeyHash),
-    watchCount: agency._count.watches,
+    id: a.id,
+    name: a.name,
+    email: a.email,
+    maxWatchTargets: a.maxWatchTargets,
+    hasApiKey: Boolean(a.apiKeyHash),
+    watchCount: a._count.watches,
   };
 }
 
-export async function createAgency(userId: string, rawName: string): Promise<AgencyRecord> {
-  const agency = await prisma.agency.create({
-    data: { userId, name: rawName.trim() },
-    select: { id: true, name: true, approved: true, maxWatchTargets: true, apiKeyHash: true },
+// ログイン中のGoogleアカウントのメールアドレスで事務所を引く。
+// 管理者が登録していないアドレスなら null で、事務所コンソールは利用できない。
+export async function getAgencyByEmail(email: string | null | undefined): Promise<AgencyRecord | null> {
+  if (!email) return null;
+  const agency = await prisma.agency.findUnique({
+    where: { email: normalizeEmail(email) },
+    select: AGENCY_SELECT,
   });
+  return agency ? toRecord(agency) : null;
+}
 
-  return {
-    id: agency.id,
-    name: agency.name,
-    approved: agency.approved,
-    maxWatchTargets: agency.maxWatchTargets,
-    hasApiKey: Boolean(agency.apiKeyHash),
-    watchCount: 0,
-  };
+export type CreateAgencyResult =
+  | { ok: true; agency: AgencyRecord }
+  | { ok: false; code: "invalid" | "duplicate"; error: string };
+
+// 事務所の作成は管理者操作。ここで登録したメールアドレスのGoogleアカウントでログインすれば、
+// 本人側の申請や承認待ちを挟まずそのまま使える。
+export async function createAgency(
+  rawEmail: string,
+  rawName: string,
+  maxWatchTargets?: number
+): Promise<CreateAgencyResult> {
+  const email = normalizeEmail(rawEmail ?? "");
+  const name = (rawName ?? "").trim();
+
+  if (!name) return { ok: false, code: "invalid", error: "事務所名を入力してください。" };
+  if (name.length > 100) {
+    return { ok: false, code: "invalid", error: "事務所名は100文字以内で入力してください。" };
+  }
+  // ログイン前で本人確認ができないぶん、宛先の取り違えを防ぐため形だけは検証する。
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, code: "invalid", error: "メールアドレスの形式が正しくありません。" };
+  }
+  if (maxWatchTargets !== undefined && (!Number.isInteger(maxWatchTargets) || maxWatchTargets < 0 || maxWatchTargets > 1000)) {
+    return { ok: false, code: "invalid", error: "監視対象の上限は0〜1000の整数で指定してください。" };
+  }
+
+  try {
+    const agency = await prisma.agency.create({
+      data: { email, name, ...(maxWatchTargets !== undefined ? { maxWatchTargets } : {}) },
+      select: AGENCY_SELECT,
+    });
+    return { ok: true, agency: toRecord(agency) };
+  } catch (err) {
+    if ((err as { code?: string })?.code === "P2002") {
+      return { ok: false, code: "duplicate", error: "このメールアドレスはすでに登録されています。" };
+    }
+    throw err;
+  }
+}
+
+// 事務所を削除する。監視対象(AgencyWatch)はカスケードで消え、その部屋を他に見ている人が
+// いなければ ensureAllListenersAlive() が次の周回でTikTok接続を切る。
+export async function deleteAgency(id: string): Promise<boolean> {
+  const result = await prisma.agency.deleteMany({ where: { id } });
+  return result.count > 0;
 }
 
 // APIキーを新規発行(または再発行)する。平文を返すのはこの瞬間だけで、DBにはハッシュしか残らない。
@@ -108,7 +161,7 @@ export async function listWatches(agencyId: string): Promise<WatchRecord[]> {
 
 export type AddWatchResult =
   | { ok: true; watch: WatchRecord }
-  | { ok: false; code: "invalid" | "unapproved" | "limit" | "duplicate" | "conflict"; error: string };
+  | { ok: false; code: "invalid" | "limit" | "duplicate" | "conflict"; error: string };
 
 // 監視対象を追加する。src/app/api/listener/start/route.ts と同じく、ここでは部屋の解決と
 // 担当Workerの割当までを行い、実際のTikTok接続は担当Workerのensureループ(最大60秒間隔)が拾う。
@@ -126,21 +179,6 @@ export async function addWatch(
       ok: false,
       code: "invalid",
       error: "TikTok IDの形式が正しくありません(英数字・アンダースコア・ドットの2〜24文字)。",
-    };
-  }
-
-  const agency = await prisma.agency.findUnique({
-    where: { id: agencyId },
-    select: { approved: true },
-  });
-  if (!agency) {
-    return { ok: false, code: "invalid", error: "事務所情報が見つかりません。" };
-  }
-  if (!agency.approved) {
-    return {
-      ok: false,
-      code: "unapproved",
-      error: "この事務所はまだ承認されていません。承認後に監視対象を追加できます。",
     };
   }
 
@@ -266,4 +304,21 @@ export async function listWatchedRooms(agencyId: string): Promise<WatchedRoomRef
     listenerStatus: w.room.listenerStatus,
     listenerUpdatedAt: w.room.listenerUpdatedAt?.toISOString() ?? null,
   }));
+}
+
+export type AdminAgencyRow = AgencyRecord & { createdAt: string };
+
+export async function listAllAgencies(): Promise<AdminAgencyRow[]> {
+  const agencies = await prisma.agency.findMany({
+    orderBy: { createdAt: "desc" },
+    select: { ...AGENCY_SELECT, createdAt: true },
+  });
+  return agencies.map((a) => ({ ...toRecord(a), createdAt: a.createdAt.toISOString() }));
+}
+
+export async function setMaxWatchTargets(id: string, max: number): Promise<AgencyRecord | null> {
+  const agency = await prisma.agency
+    .update({ where: { id }, data: { maxWatchTargets: max }, select: AGENCY_SELECT })
+    .catch(() => null);
+  return agency ? toRecord(agency) : null;
 }

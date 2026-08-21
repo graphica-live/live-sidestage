@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 type Agency = {
   id: string;
   name: string;
-  approved: boolean;
+  email: string;
   maxWatchTargets: number;
   hasApiKey: boolean;
   watchCount: number;
@@ -48,9 +48,6 @@ export default function AgencyClient() {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const [nameInput, setNameInput] = useState("");
-  const [creating, setCreating] = useState(false);
-
   const [tiktokIdInput, setTiktokIdInput] = useState("");
   const [labelInput, setLabelInput] = useState("");
   const [adding, setAdding] = useState(false);
@@ -92,29 +89,6 @@ export default function AgencyClient() {
     const id = setInterval(loadWatches, 15000);
     return () => clearInterval(id);
   }, [agency, loadWatches]);
-
-  async function handleCreateAgency(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setCreating(true);
-    try {
-      const res = await fetch("/api/agency", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameInput }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "作成に失敗しました。");
-        return;
-      }
-      setAgency(data.agency);
-      setNameInput("");
-      await loadWatches();
-    } finally {
-      setCreating(false);
-    }
-  }
 
   async function handleAddWatch(e: React.FormEvent) {
     e.preventDefault();
@@ -179,34 +153,17 @@ export default function AgencyClient() {
     );
   }
 
+  // 事務所は管理者が発行する。登録されていないアカウントにはここで止まってもらう。
   if (!agency) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-4">
         <div>
-          <h1 className="text-xl font-bold">事務所を作成</h1>
+          <h1 className="text-xl font-bold">利用権限がありません</h1>
           <p className="text-sm text-gray-400 mt-1">
-            監視対象ライバーの登録と、企業向けAPIの利用を始めるには事務所の作成が必要です。
+            このGoogleアカウントは事務所として登録されていません。
+            利用を希望する場合は、ログインに使うGoogleアカウントのメールアドレスを運営までお知らせください。
           </p>
         </div>
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <form onSubmit={handleCreateAgency} className="card space-y-3">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">事務所名</label>
-            <input
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              placeholder="株式会社サンプル"
-              maxLength={100}
-              className="input-field"
-              required
-            />
-          </div>
-          <button type="submit" disabled={creating || !nameInput.trim()} className="btn-primary">
-            {creating ? "作成中..." : "作成する"}
-          </button>
-        </form>
       </main>
     );
   }
@@ -221,16 +178,6 @@ export default function AgencyClient() {
           監視対象 {watches.length} / {agency.maxWatchTargets} 件
         </p>
       </div>
-
-      {!agency.approved && (
-        <div className="card border-yellow-600/50 bg-yellow-500/5">
-          <p className="text-sm font-semibold text-yellow-500">承認待ちです</p>
-          <p className="text-xs text-gray-400 mt-1">
-            事務所の承認が完了するまで、監視対象の追加と企業APIの利用はできません。
-            承認については運営までお問い合わせください。
-          </p>
-        </div>
-      )}
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -263,17 +210,13 @@ export default function AgencyClient() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={adding || !tiktokIdInput.trim() || remaining === 0 || !agency.approved}
+              disabled={adding || !tiktokIdInput.trim() || remaining === 0}
               className="btn-primary"
             >
               {adding ? "追加中..." : "追加する"}
             </button>
             <span className="text-xs text-gray-500">
-              {!agency.approved
-                ? "承認後に追加できます"
-                : remaining === 0
-                  ? "上限に達しています"
-                  : `あと${remaining}件追加できます`}
+              {remaining === 0 ? "上限に達しています" : `あと${remaining}件追加できます`}
             </span>
           </div>
         </form>

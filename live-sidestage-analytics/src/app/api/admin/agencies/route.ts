@@ -1,39 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
+import {
+  createAgency,
+  deleteAgency,
+  listAllAgencies,
+  setMaxWatchTargets,
+} from "@/lib/agency/agency";
 
-// 事務所の承認は管理者操作。Googleログインは一般公開されているため、
-// 承認なしで監視対象を追加できるとアカウントを量産するだけでTikTok接続枠を消費できてしまう。
+// 事務所の発行は管理者操作。ここで相手のGoogleアカウントのメールアドレスを登録しておけば、
+// 本人はそのアカウントでログインするだけで事務所コンソールを使える(申請・承認のやり取りはない)。
 export async function GET() {
   const session = await getAdminSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const agencies = await prisma.agency.findMany({
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      approved: true,
-      approvedAt: true,
-      maxWatchTargets: true,
-      createdAt: true,
-      user: { select: { email: true } },
-      _count: { select: { watches: true } },
-    },
-  });
+  return NextResponse.json({ agencies: await listAllAgencies() });
+}
 
-  return NextResponse.json({
-    agencies: agencies.map((a) => ({
-      id: a.id,
-      name: a.name,
-      email: a.user.email,
-      approved: a.approved,
-      approvedAt: a.approvedAt?.toISOString() ?? null,
-      maxWatchTargets: a.maxWatchTargets,
-      watchCount: a._count.watches,
-      createdAt: a.createdAt.toISOString(),
-    })),
-  });
+export async function POST(req: NextRequest) {
+  const session = await getAdminSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = (await req.json().catch(() => null)) as
+    | { name?: unknown; email?: unknown; maxWatchTargets?: unknown }
+    | null;
+
+  const name = typeof body?.name === "string" ? body.name : "";
+  const email = typeof body?.email === "string" ? body.email : "";
+  const maxWatchTargets =
+    body?.maxWatchTargets === undefined || body.maxWatchTargets === null
+      ? undefined
+      : Number(body.maxWatchTargets);
+
+  const result = await createAgency(email, name, maxWatchTargets);
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.code === "duplicate" ? 409 : 400 }
+    );
+  }
+
+  return NextResponse.json({ agency: result.agency }, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -41,46 +47,37 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as
-    | { id?: unknown; approved?: unknown; maxWatchTargets?: unknown }
+    | { id?: unknown; maxWatchTargets?: unknown }
     | null;
 
   const id = typeof body?.id === "string" ? body.id : "";
   if (!id) return NextResponse.json({ error: "idを指定してください。" }, { status: 400 });
 
-  const data: { approved?: boolean; approvedAt?: Date | null; maxWatchTargets?: number } = {};
-
-  if (typeof body?.approved === "boolean") {
-    data.approved = body.approved;
-    data.approvedAt = body.approved ? new Date() : null;
+  const max = Number(body?.maxWatchTargets);
+  if (!Number.isInteger(max) || max < 0 || max > 1000) {
+    return NextResponse.json(
+      { error: "maxWatchTargetsは0〜1000の整数で指定してください。" },
+      { status: 400 }
+    );
   }
 
-  if (body?.maxWatchTargets !== undefined) {
-    const max = Number(body.maxWatchTargets);
-    if (!Number.isInteger(max) || max < 0 || max > 1000) {
-      return NextResponse.json(
-        { error: "maxWatchTargetsは0〜1000の整数で指定してください。" },
-        { status: 400 }
-      );
-    }
-    data.maxWatchTargets = max;
-  }
+  const agency = await setMaxWatchTargets(id, max);
+  if (!agency) return NextResponse.json({ error: "事務所が見つかりません。" }, { status: 404 });
 
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: "変更内容がありません。" }, { status: 400 });
-  }
+  return NextResponse.json({ agency });
+}
 
-  const updated = await prisma.agency.update({
-    where: { id },
-    data,
-    select: { id: true, approved: true, approvedAt: true, maxWatchTargets: true },
-  });
+// 事務所を削除すると監視対象もカスケードで消え、その部屋を他に見ている人がいなければ
+// TikTok接続も次のensure周回で切れる。
+export async function DELETE(req: NextRequest) {
+  const session = await getAdminSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  return NextResponse.json({
-    agency: {
-      id: updated.id,
-      approved: updated.approved,
-      approvedAt: updated.approvedAt?.toISOString() ?? null,
-      maxWatchTargets: updated.maxWatchTargets,
-    },
-  });
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "idを指定してください。" }, { status: 400 });
+
+  const removed = await deleteAgency(id);
+  if (!removed) return NextResponse.json({ error: "事務所が見つかりません。" }, { status: 404 });
+
+  return NextResponse.json({ ok: true });
 }

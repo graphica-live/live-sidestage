@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { addWatch, getAgencyByUserId, listWatches } from "@/lib/agency/agency";
+import { addWatch, getAgencyByEmail, listWatches } from "@/lib/agency/agency";
 
 const STATUS_BY_CODE = {
   invalid: 400,
   limit: 400,
-  unapproved: 403,
   duplicate: 409,
   conflict: 409,
 } as const;
@@ -15,7 +14,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const agency = await getAgencyByUserId(session.user.id);
+  const agency = await getAgencyByEmail(session.user.email);
   if (!agency) return NextResponse.json({ error: "事務所情報が見つかりません。" }, { status: 404 });
 
   const watches = await listWatches(agency.id);
@@ -30,7 +29,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const agency = await getAgencyByUserId(session.user.id);
+  const agency = await getAgencyByEmail(session.user.email);
   if (!agency) return NextResponse.json({ error: "事務所情報が見つかりません。" }, { status: 404 });
 
   const body = (await req.json().catch(() => null)) as

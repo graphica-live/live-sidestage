@@ -20,7 +20,6 @@ model User {
   accounts Account[]
   sessions Session[]
   streamer Streamer?
-  agency   Agency?
 }
 
 model Account {
@@ -81,22 +80,21 @@ model TiktokRoom {
 
 // 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
 // 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
+//
+// Userではなくemailを識別子にしている。管理者が相手のGoogleアカウントのメールアドレスを
+// 先に登録し、本人がそのアカウントでログインした時点で使えるようにするため
+// (ログイン前はUser行が存在しないので、userIdでは紐づけられない)。
+// 事務所が存在すること自体が利用許可であり、別途の承認フラグは持たない。
 model Agency {
   id              String   @id @default(cuid())
-  userId          String   @unique
+  email           String   @unique // 管理者が登録したGoogleアカウント。小文字に正規化して保存する
   name            String
   // 企業向けAPIキーはSHA-256ハッシュで保存する(Streamer.apiKeyの平文保存は踏襲しない)。
   // 参照は常にキー本体のハッシュで引くため、平文を持たなくても認証できる。
   apiKeyHash      String?  @unique
-  // Googleログインは一般公開されているため、事務所を作っただけでは監視を始められない。
-  // 管理者が承認するまで監視対象の追加と企業APIの利用を禁止し、
-  // 匿名アカウントの量産によるTikTok接続枠の消費を防ぐ。
-  approved        Boolean  @default(false)
-  approvedAt      DateTime?
   maxWatchTargets Int      @default(10) // 監視対象の上限。1件ごとにTikTok接続とproxy枠を消費するため必須
   createdAt       DateTime @default(now())
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   watches AgencyWatch[]
 }
 

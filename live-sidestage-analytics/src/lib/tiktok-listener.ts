@@ -807,16 +807,12 @@ export function getListenerStatus(roomId: string): ListenerState | null {
 
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
-// 接続を維持すべき部屋の条件。配信者本人の登録(Streamer)か、承認済み事務所の監視対象
-// (AgencyWatch)のどちらかが1件でもあれば対象。両方が0件になった部屋(全員が退会/
-// re-registration/監視解除済み)は除外され、ensureAllListenersAlive()の第2ループで切断される。
-//
-// 事務所側は approved まで見る。承認を取り消された事務所の監視だけが残っている部屋は
-// 接続を続ける理由がないため、次のensure周回で切断されるべきだから。
+// 接続を維持すべき部屋の条件。配信者本人の登録(Streamer)か、事務所の監視対象(AgencyWatch)の
+// どちらかが1件でもあれば対象。両方が0件になった部屋(全員が退会/re-registration/監視解除/
+// 事務所削除済み)は除外され、ensureAllListenersAlive()の第2ループで切断される。
+// 事務所を削除するとwatchはカスケードで消えるため、この条件だけで接続も止まる。
 export function watchedRoomFilter(): Prisma.TiktokRoomWhereInput {
-  return {
-    OR: [{ streamers: { some: {} } }, { watches: { some: { agency: { approved: true } } } }],
-  };
+  return { OR: [{ streamers: { some: {} } }, { watches: { some: {} } }] };
 }
 
 // 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。

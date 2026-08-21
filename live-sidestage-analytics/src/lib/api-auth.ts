@@ -24,7 +24,7 @@ export async function resolveStreamerByApiKey(req: NextRequest): Promise<{ id: s
 }
 
 // 事務所・企業向けAPIの認証。Streamerの verified(BIO認証)は配信者本人確認の仕組みで
-// 事務所には無関係なため、ここでは「キーが一致し、かつ管理者に承認済み」であることを見る。
+// 事務所には無関係なため、ここではキーの一致だけを見る(事務所の存在自体が管理者による利用許可)。
 // APIキーはハッシュでしか保存していないため、受け取ったキーをハッシュして引き当てる。
 export async function resolveAgencyByApiKey(
   req: NextRequest
@@ -34,10 +34,8 @@ export async function resolveAgencyByApiKey(
 
   const agency = await prisma.agency.findUnique({
     where: { apiKeyHash: hashApiKey(apiKey) },
-    select: { id: true, approved: true, maxWatchTargets: true },
+    select: { id: true, maxWatchTargets: true },
   });
 
-  if (!agency?.approved) return null;
-
-  return { id: agency.id, maxWatchTargets: agency.maxWatchTargets };
+  return agency ?? null;
 }

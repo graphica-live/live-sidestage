@@ -34,9 +34,7 @@ async function main() {
     // 接続対象外の部屋は除外する。条件は src/lib/tiktok-listener.ts の WATCHED_ROOM_FILTER と
     // 揃えること — 配信者本人の登録(Streamer)か事務所の監視対象(AgencyWatch)が1件でもあれば対象。
     const rooms = await prisma.tiktokRoom.findMany({
-      where: {
-        OR: [{ streamers: { some: {} } }, { watches: { some: { agency: { approved: true } } } }],
-      },
+      where: { OR: [{ streamers: { some: {} } }, { watches: { some: {} } }] },
       select: { id: true, tiktokId: true, workerId: true },
     });
 
