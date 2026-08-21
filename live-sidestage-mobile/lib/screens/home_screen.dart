@@ -4,10 +4,46 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
+import '../core/app_config_store.dart';
 import '../core/comment_feed.dart' show SocketStatus;
 import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
 import '../models/comment.dart';
+import 'tabs/settings_tab.dart';
+import 'tabs/sound_tab.dart';
+import 'tabs/tts_tab.dart';
+
+/// 背景Isolateから届く読み上げ状態。
+class SpeechState {
+  final bool initialized;
+  final bool enabled;
+  final bool randomVoice;
+  final String? nowSpeakingCharacterName;
+  final String? errorMessage;
+
+  const SpeechState({
+    this.initialized = false,
+    this.enabled = true,
+    this.randomVoice = true,
+    this.nowSpeakingCharacterName,
+    this.errorMessage,
+  });
+}
+
+/// 背景Isolateから届く効果音の状態。
+class SoundState {
+  final bool enabled;
+  final String? lastTriggerName;
+  final int droppedCount;
+  final String? errorMessage;
+
+  const SoundState({
+    this.enabled = true,
+    this.lastTriggerName,
+    this.droppedCount = 0,
+    this.errorMessage,
+  });
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,16 +55,17 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final List<Comment> _comments = [];
   final ScrollController _scrollController = ScrollController();
+
+  int _tabIndex = 0;
+
   SocketStatus _status = SocketStatus.disconnected;
   String? _connectionError;
 
   bool _serviceRunning = false;
   bool _serviceBusy = false;
 
-  bool _speechInitialized = false;
-  bool _randomVoice = true;
-  String? _nowSpeakingCharacterName;
-  String? _speechError;
+  SpeechState _speech = const SpeechState();
+  SoundState _sound = const SoundState();
 
   // TikTok ID変更後、LIVE Sidestage Analytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
   // サーバーは60秒間隔のreconcileループでしか部屋の切り替えを反映しないため、
@@ -52,9 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _serviceRunning = running);
   }
 
-  // 読み上げ中はForeground Serviceで画面オフ/バックグラウンドでも継続する。
+  // 稼働中はForeground Serviceで画面オフ/バックグラウンドでも継続する。
   // 停止中はサービスを完全に止め、アプリがタスクKillされても問題ない状態にする。
-  Future<void> _startReading() async {
+  Future<void> _startService() async {
     final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
     if (apiKey == null) return;
 
@@ -72,8 +109,8 @@ class _HomeScreenState extends State<HomeScreen> {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'live_sidestage_mobile_speech',
-        channelName: 'コメント読み上げ',
-        channelDescription: 'TikTok Liveのコメントを画面オフでも読み上げ続けます',
+        channelName: 'コメント読み上げ・効果音',
+        channelDescription: 'TikTok Liveのコメント読み上げと効果音を画面オフでも継続します',
       ),
       iosNotificationOptions: const IOSNotificationOptions(showNotification: false),
       foregroundTaskOptions: ForegroundTaskOptions(
@@ -85,10 +122,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!await FlutterForegroundTask.isRunningService) {
+      // dataSync は付けない。Android 15 以降 24時間あたり6時間でタイムアウトし、
+      // 長時間の配信待受が途中で止まるため（AndroidManifest.xml のコメント参照）。
       await FlutterForegroundTask.startService(
-        serviceTypes: [ForegroundServiceTypes.dataSync, ForegroundServiceTypes.mediaPlayback],
+        serviceTypes: [ForegroundServiceTypes.mediaPlayback],
         notificationTitle: 'Live Sidestage',
-        notificationText: 'コメントを読み上げ中です',
+        notificationText: _notificationText(),
         callback: startCallback,
       );
     }
@@ -100,7 +139,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _stopReading() async {
+  String _notificationText() {
+    final config = context.read<AppConfigStore>().config;
+    final tts = config.ttsEnabled;
+    final sound = config.sound.enabled;
+    if (tts && sound) return 'コメント読み上げと効果音が動作中です';
+    if (tts) return 'コメントを読み上げ中です';
+    if (sound) return '効果音が動作中です';
+    return '接続中です（読み上げ・効果音は停止中）';
+  }
+
+  Future<void> _stopService() async {
     setState(() => _serviceBusy = true);
     await FlutterForegroundTask.stopService();
     if (!mounted) return;
@@ -109,13 +158,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _serviceBusy = false;
       _status = SocketStatus.disconnected;
       _connectionError = null;
-      _speechInitialized = false;
-      _nowSpeakingCharacterName = null;
-      _speechError = null;
+      _speech = const SpeechState();
+      _sound = const SoundState();
     });
   }
 
-  Future<void> _changeTiktokId() async {
+  Future<void> changeTiktokId() async {
     final controller = context.read<SessionController>();
     final newId = await showDialog<String>(
       context: context,
@@ -127,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     if (_serviceRunning) {
-      await _stopReading();
+      await _stopService();
       if (!mounted) return;
     }
 
@@ -195,16 +243,41 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       case 'speech':
         setState(() {
-          _speechInitialized = map['initialized'] as bool? ?? false;
-          _randomVoice = map['randomVoice'] as bool? ?? true;
-          _nowSpeakingCharacterName = map['nowSpeakingCharacterName'] as String?;
-          _speechError = map['errorMessage'] as String?;
+          _speech = SpeechState(
+            initialized: map['initialized'] as bool? ?? false,
+            enabled: map['enabled'] as bool? ?? true,
+            randomVoice: map['randomVoice'] as bool? ?? true,
+            nowSpeakingCharacterName: map['nowSpeakingCharacterName'] as String?,
+            errorMessage: map['errorMessage'] as String?,
+          );
         });
+      case 'sound':
+        setState(() {
+          _sound = SoundState(
+            enabled: map['enabled'] as bool? ?? true,
+            lastTriggerName: map['lastTriggerName'] as String?,
+            droppedCount: map['droppedCount'] as int? ?? 0,
+            errorMessage: map['errorMessage'] as String?,
+          );
+        });
+      case 'configAck':
+        final revision = map['revision'];
+        if (revision is int) context.read<AppConfigStore>().onAck(revision);
+      case 'serviceTimeout':
+        setState(() => _serviceRunning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Androidの制限によりバックグラウンド動作が停止しました。もう一度「開始」を押してください。'),
+            duration: Duration(seconds: 8),
+          ),
+        );
       case 'comment':
+        final comment = Comment.tryParse(map);
+        if (comment == null) return;
         _endRoomSwitchGrace();
         final wasNearBottom = _isNearBottom();
         setState(() {
-          _comments.add(Comment.fromJson(map));
+          _comments.add(comment);
           if (_comments.length > 200) {
             _comments.removeRange(0, _comments.length - 200);
           }
@@ -261,55 +334,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final session = context.watch<SessionController>().session;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('@${session?.streamer?.tiktokId ?? ''}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'TikTok IDを変更',
-            onPressed: _changeTiktokId,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'ログアウト',
-            onPressed: () async {
-              await FlutterForegroundTask.stopService();
-              if (!context.mounted) return;
-              await context.read<SessionController>().logout();
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text('@${session?.streamer?.tiktokId ?? ''}')),
       body: Column(
         children: [
-          Container(
-            width: double.infinity,
-            color: _statusColor(_status).withValues(alpha: 0.12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                Icon(Icons.circle, size: 10, color: _statusColor(_status)),
-                const SizedBox(width: 8),
-                Text(_statusLabel(_status)),
-                if (_connectionError != null) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _connectionError!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          _ConnectionStatusBar(
+            label: _statusLabel(_status),
+            color: _statusColor(_status),
+            errorMessage: _connectionError,
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _serviceBusy ? null : (_serviceRunning ? _stopReading : _startReading),
+                onPressed: _serviceBusy ? null : (_serviceRunning ? _stopService : _startService),
                 style: FilledButton.styleFrom(
                   backgroundColor: _serviceRunning ? Colors.red : null,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -321,103 +359,43 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : Icon(_serviceRunning ? Icons.stop : Icons.play_arrow),
-                label: Text(_serviceRunning ? '読み上げ停止' : '読み上げ開始'),
+                label: Text(_serviceRunning ? '停止' : '開始'),
               ),
             ),
           ),
-          if (_serviceRunning)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
-                children: [
-                  const Text('ランダムボイス', style: TextStyle(fontSize: 13)),
-                  // SwitchはVOICEVOX初期化完了後(=常にonChangedありの状態)で
-                  // 初めてマウントする。準備中の無効状態からのちに有効化すると、
-                  // FlutterのSwitchが色の再描画に失敗しONなのにOFF色のまま
-                  // 固まる不具合があったため。
-                  if (_speechInitialized)
-                    Switch(
-                      value: _randomVoice,
-                      onChanged: (value) =>
-                          FlutterForegroundTask.sendDataToTask({'command': 'setRandom', 'value': value}),
-                    )
-                  else
-                    const SizedBox(width: 34, height: 34),
-                  const Spacer(),
-                  if (!_speechInitialized && _speechError == null)
-                    const Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  if (_nowSpeakingCharacterName != null)
-                    Text(
-                      'VOICEVOX:$_nowSpeakingCharacterName',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  if (_speechError != null)
-                    Expanded(
-                      child: Text(
-                        _speechError!,
-                        style: const TextStyle(fontSize: 11, color: Colors.red),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-            ),
           if (_roomSwitching)
-            Container(
-              width: double.infinity,
-              color: Colors.orange.withValues(alpha: 0.12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '配信情報を確認中…（あと$_roomSwitchRemainingSeconds秒）',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _RoomSwitchBanner(remainingSeconds: _roomSwitchRemainingSeconds),
           Expanded(
-            child: _comments.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        _roomSwitching
-                            ? '@${_switchingToTiktokId ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「読み上げ開始」を押しておけば、反映され次第コメントが流れ始めます）'
-                            : '「読み上げ開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _comments.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final c = _comments[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: c.profilePictureUrl != null
-                              ? NetworkImage(c.profilePictureUrl!)
-                              : null,
-                          child: c.profilePictureUrl == null ? const Icon(Icons.person) : null,
-                        ),
-                        title: Text(c.nickname),
-                        subtitle: Text(c.comment),
-                      );
-                    },
-                  ),
+            // タブを切り替えてもコメントリストのスクロール位置とControllerを失わないようIndexedStack。
+            child: IndexedStack(
+              index: _tabIndex,
+              children: [
+                TtsTab(
+                  comments: _comments,
+                  scrollController: _scrollController,
+                  speech: _speech,
+                  serviceRunning: _serviceRunning,
+                  roomSwitching: _roomSwitching,
+                  switchingToTiktokId: _switchingToTiktokId,
+                ),
+                SoundTab(sound: _sound),
+                SettingsTab(
+                  speech: _speech,
+                  onChangeTiktokId: changeTiktokId,
+                  onBeforeLogout: _stopService,
+                ),
+              ],
+            ),
           ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.record_voice_over_outlined), selectedIcon: Icon(Icons.record_voice_over), label: 'TTS'),
+          NavigationDestination(icon: Icon(Icons.music_note_outlined), selectedIcon: Icon(Icons.music_note), label: 'サウンド'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '設定'),
         ],
       ),
     );
@@ -429,6 +407,72 @@ class _HomeScreenState extends State<HomeScreen> {
     _roomSwitchTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+/// ホーム画面上部に常駐する接続状態バー。
+class _ConnectionStatusBar extends StatelessWidget {
+  const _ConnectionStatusBar({required this.label, required this.color, this.errorMessage});
+
+  final String label;
+  final Color color;
+  final String? errorMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: color.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 10, color: color),
+          const SizedBox(width: 8),
+          Text(label),
+          if (errorMessage != null) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                errorMessage!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RoomSwitchBanner extends StatelessWidget {
+  const _RoomSwitchBanner({required this.remainingSeconds});
+
+  final int remainingSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Colors.orange.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '配信情報を確認中…（あと$remainingSeconds秒）',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

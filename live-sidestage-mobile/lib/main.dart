@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
+import 'core/app_config_store.dart';
 import 'core/background_task_handler.dart';
 import 'core/session_controller.dart';
 import 'screens/home_screen.dart';
@@ -29,6 +30,7 @@ class LiveSidestageApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
+        ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
       ],
       child: MaterialApp(
         title: 'Live Sidestage',

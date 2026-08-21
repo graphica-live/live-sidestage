@@ -55,7 +55,7 @@ Live Sidestageは、配信者が画面を見なくても信頼して任せられ
 **Key Characteristics:**
 - Material3のColorScheme/TextThemeにほぼ全面依存し、独自トークンをほとんど持たない
 - 状態(接続・読み上げ・エラー)を色で即座に伝える、機能的な色使い
-- 画面はすべて単一目的の縦積みレイアウト(ナビゲーション構造そのものが存在しない)
+- ホームは3タブのボトムナビ(TTS / サウンド / 設定)。各タブの中身は単一目的の縦積みを保つ
 - 装飾的なshadow・アニメーション・カスタムフォントは無い
 
 ## Colors
@@ -92,7 +92,13 @@ Live Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Layout
 
-全画面が単一目的の縦積み(`Column`/`SafeArea`/`Padding`)で構成され、ナビゲーション構造(タブ・ドロワー・ボトムナビ)は存在しない――画面遷移はAuthGateによる状態駆動(未ログイン→オンボーディング→ホーム)のみ。パディングは8/16/24/32pxの4段階に収まっている。タブレット・横画面・レスポンシブ分岐は未実装で、Android電話サイズの縦持ちのみを前提にしている。ホーム画面のコメントリストは新着下寄せで自動スクロールする。
+アプリ全体の遷移はAuthGateによる状態駆動(未ログイン→オンボーディング→ホーム)。ホーム画面のみ、Material3 `NavigationBar`による3タブ構成(TTS / サウンド / 設定)を持つ。
+
+ホームのシェルは「AppBar → 接続ステータスバー → 開始/停止ボタン → `IndexedStack`(3タブ) → NavigationBar」の縦積み。`IndexedStack`にしているのは、タブを切り替えてもコメントリストのスクロール位置と`ScrollController`を失わないため。Foreground Serviceからの状態受信(`addTaskDataCallback`)もシェルに集約し、タブ側は表示だけを担う。
+
+タブより深い階層(音源ライブラリ、外部サイト検索、トリガー編集)は`Navigator.push`のフルスクリーンページとして積む。ボトムナビはホーム階層にのみ存在し、pushしたページには出ない。
+
+各タブおよび各ページの中身は従来どおり単一目的の縦積み(`Column`/`ListView`/`Padding`)で、パディングは8/16/24/32pxの4段階に収まっている。タブレット・横画面・レスポンシブ分岐は未実装で、Android電話サイズの縦持ちのみを前提にしている。TTSタブのコメントリストは新着下寄せで自動スクロールする。
 
 ## Elevation & Depth
 
@@ -111,10 +117,33 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Shape:** Material3 FilledButtonのデフォルト形状(pill型、明示的なradius指定なし)。
 - **Primary:** `FilledButton`/`FilledButton.icon`。読み上げ開始・ログイン・連携する・変更する、など画面の主アクションに使用。縦paddingは12〜14px程度。
 - **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: Colors.red`で上書きされる。危険/停止アクション専用。
-- **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」)のみ。Outlined variantは未使用。
+- **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`はトリガー編集画面の「テスト発火」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。
+- **FAB:** `FloatingActionButton.extended`(サウンドタブ・音源ライブラリの「追加」)。リストへ要素を足す操作にのみ使う。
+
+### Navigation
+
+- **Bottom Nav:** Material3 `NavigationBar`。TTS(`Icons.record_voice_over`) / サウンド(`Icons.music_note`) / 設定(`Icons.settings`)の3タブ固定。タブは増やさない前提で設計している。
+- **Deeper pages:** タブから`Navigator.push`する全画面ページ(音源ライブラリ、外部サイト検索、トリガー編集)。戻る導線は標準AppBarのback。
+
+### Selection Controls
+
+- **SegmentedButton:** 排他的で選択肢が2〜3個の切替(イベント種別 ギフト/コメント/フォロー、再生モード 全部順に/1つランダム、コメント一致 すべて/完全一致)に使う。ドロップダウンより現在値が読み取りやすいため。4個以上になる場合は`DropdownButtonFormField`(カテゴリ選択)に切り替える。
+- **SwitchListTile / CheckboxListTile:** ON/OFFは`SwitchListTile`、複数選択(トリガーに紐づける音源)は`CheckboxListTile`。
+- **Slider:** 0-100の音量のみ。`divisions: 20`で5刻みに丸め、指先で狙える粒度にする。
+
+### Grouping
+
+- **ExpansionTile:** サウンドタブのカテゴリ。既定で展開しておき、trailingにカテゴリ一括ON/OFFの`Switch`と`PopupMenuButton`(名前変更・削除)を並べる。
+- **Section header:** 設定タブ・トリガー編集画面の見出しは12px bold + primary色の`Padding`。`Divider`ではなくこの見出しで区切る。
+
+### Menus / Sheets
+
+- **PopupMenuButton:** リスト項目の副次操作(削除、名前変更、音量変更)。
+- **BottomSheet:** 「追加」FABの分岐(カテゴリ/トリガー、端末内/効果音ラボ/MyInstants)。選択肢が3つ程度で、それぞれが別のフローへ入る場合に使う。
 
 ### Dialogs
-- **Style:** 標準`AlertDialog`。TikTok ID変更ダイアログで使用。タイトル+フォーム1項目+キャンセル/確定の2ボタン、という最小構成。
+- **Style:** 標準`AlertDialog`。タイトル+フォーム1項目+キャンセル/確定の2ボタン、という最小構成を守る(TikTok ID変更、カテゴリ名、対象ユーザー、音量)。
+- **Destructive:** 削除確認のみ確定ボタンを`backgroundColor: Colors.red`で上書きする。本文には影響範囲を数字で書く(「N件のトリガーから参照が外れます」)。
 
 ### Inputs / Fields
 - **Style:** 標準`TextFormField`、ラベルのみのシンプルな`InputDecoration`(枠線色・アイコン等のカスタムなし)。
@@ -135,10 +164,12 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Do** 状態色(green/orange/red/grey)は接続・読み上げ・エラー状態の伝達にのみ使う。
 - **Do** 主要アクションは`FilledButton`、破壊的/停止アクションのみ赤背景でオーバーライドする。
 - **Do** Material3のロールトークン・tonal elevationに任せ、固定hexやカスタムshadowを増やさない。
-- **Do** 新しい画面もこのアプリの「単一目的の縦積み」構造を踏襲する(複雑なナビゲーション階層を持ち込まない)。
+- **Do** 新しい画面も各ページ内は「単一目的の縦積み」構造を踏襲する。深い階層が要るときはボトムナビを増やさず`Navigator.push`で積む。
+- **Do** 破壊的操作(削除)は必ず`AlertDialog`で確認し、失われるものを具体的に書く。
 
 ### Don't:
 - **Don't** iOS由来のコンポーネント(Cupertinoスイッチ・ダイアログ等)を混在させない。Material3コンポーネントのみを使う。
 - **Don't** 装飾目的で新しい色を追加しない。状態を表さない色は原則Material3のロールトークン(surface/onSurface等)から取る。
 - **Don't** ダークテーマは現状未対応(`ThemeData`に`darkTheme`指定なし)。対応するまでは、ダーク前提の配色決め打ちを行わない。
 - **Don't** タブレット・横画面・レスポンシブ分岐は未検証。対応するまでは固定幅前提のレイアウトを増やさない。
+- **Don't** ボトムナビのタブを4つ以上に増やさない。機能が増える場合は既存3タブのいずれかの配下へpushする。

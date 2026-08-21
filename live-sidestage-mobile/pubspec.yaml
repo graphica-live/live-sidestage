@@ -44,6 +44,15 @@ dependencies:
   audioplayers: ^6.0.0
   path_provider: ^2.1.5
   flutter_foreground_task: ^9.0.0
+  # 11.x へ上げないこと。11.x の android/build.gradle は AGP 9 以上を検出すると
+  # Kotlin Gradle Plugin の適用をスキップし、AGP 側の built-in Kotlin に任せる作りに
+  # なっている。このプロジェクトは AGP 9.1.0 かつ android.builtInKotlin=false なので
+  # プラグインの .kt が一切コンパイルされず、GeneratedPluginRegistrant.java が
+  # FilePickerPlugin を解決できずにビルドが落ちる。
+  # builtInKotlin=true にすると今度は KGP を無条件に適用する flutter_foreground_task が壊れる。
+  # 10.3.x は KGP を無条件適用し compileSdk もアプリ側へ追従するので影響を受けない。
+  # 10.3.11 は pub 上で retracted 済みなので 10.3.10 を上限にする。
+  file_picker: 10.3.10
 
 dev_dependencies:
   flutter_test:

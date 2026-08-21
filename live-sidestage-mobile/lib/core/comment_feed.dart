@@ -4,9 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../models/comment.dart';
+import '../models/follow_event.dart';
+import '../models/gift_event.dart';
 import 'api_client.dart' show liveAnalyticsBaseUrl;
 
 enum SocketStatus { disconnected, connecting, connected, error }
+
+/// gift / follow が付けてくる契約バージョン。これより新しいものは解釈できないので無視する。
+/// chat:comment だけは配信形式を変えていないため schemaVersion を持たない(legacy扱い)。
+const int supportedChatEventSchemaVersion = 1;
 
 class CommentFeed extends ChangeNotifier {
   io.Socket? _socket;
@@ -15,8 +21,16 @@ class CommentFeed extends ChangeNotifier {
   String? errorMessage;
   final List<Comment> comments = [];
 
+  /// 解析に失敗して捨てたイベント数。UI側の診断用。
+  int malformedEventCount = 0;
+
   final StreamController<Comment> _commentController = StreamController<Comment>.broadcast();
+  final StreamController<GiftEvent> _giftController = StreamController<GiftEvent>.broadcast();
+  final StreamController<FollowEvent> _followController = StreamController<FollowEvent>.broadcast();
+
   Stream<Comment> get onComment => _commentController.stream;
+  Stream<GiftEvent> get onGift => _giftController.stream;
+  Stream<FollowEvent> get onFollow => _followController.stream;
 
   void connect(String apiKey) {
     disconnect();
@@ -41,15 +55,25 @@ class CommentFeed extends ChangeNotifier {
     });
 
     socket.on('chat:comment', (data) {
-      if (data is Map) {
-        final comment = Comment.fromJson(Map<String, dynamic>.from(data));
-        comments.insert(0, comment);
-        if (comments.length > 200) {
-          comments.removeRange(200, comments.length);
-        }
-        notifyListeners();
-        _commentController.add(comment);
+      // chat:comment には schemaVersion が無い(既存の配信形式を変えていない)。
+      final comment = _decode(data, Comment.tryParse, requireSchemaVersion: false);
+      if (comment == null) return;
+      comments.insert(0, comment);
+      if (comments.length > 200) {
+        comments.removeRange(200, comments.length);
       }
+      notifyListeners();
+      _commentController.add(comment);
+    });
+
+    socket.on('chat:gift', (data) {
+      final gift = _decode(data, GiftEvent.tryParse);
+      if (gift != null) _giftController.add(gift);
+    });
+
+    socket.on('chat:follow', (data) {
+      final follow = _decode(data, FollowEvent.tryParse);
+      if (follow != null) _followController.add(follow);
     });
 
     socket.onDisconnect((_) {
@@ -73,6 +97,44 @@ class CommentFeed extends ChangeNotifier {
     socket.connect();
   }
 
+  /// socket から届いた生データを安全にモデルへ変換する。
+  ///
+  /// `Map<String, dynamic>.from(data)` 自体が型不一致で投げうるので、
+  /// tryParse だけでなくこの変換も含めて丸ごと保護する。ここで例外を漏らすと
+  /// socket_io_client の購読 callback が壊れ、以降のイベントを一切受け取れなくなる。
+  T? _decode<T>(
+    Object? data,
+    T? Function(Map<String, dynamic>) parse, {
+    bool requireSchemaVersion = true,
+  }) {
+    try {
+      if (data is! Map) return _malformed('not a map');
+
+      final map = Map<String, dynamic>.from(data);
+
+      if (requireSchemaVersion) {
+        final version = map['schemaVersion'];
+        if (version is! int) return _malformed('missing schemaVersion');
+        if (version > supportedChatEventSchemaVersion) {
+          debugPrint('[feed] 未対応の schemaVersion=$version のイベントを無視しました');
+          return null;
+        }
+      }
+
+      final parsed = parse(map);
+      if (parsed == null) return _malformed('required field missing');
+      return parsed;
+    } catch (e) {
+      return _malformed('$e');
+    }
+  }
+
+  T? _malformed<T>(String reason) {
+    malformedEventCount++;
+    debugPrint('[feed] 不正なイベントを1件破棄しました: $reason');
+    return null;
+  }
+
   void disconnect() {
     _socket?.dispose();
     _socket = null;
@@ -88,6 +150,8 @@ class CommentFeed extends ChangeNotifier {
   void dispose() {
     disconnect();
     _commentController.close();
+    _giftController.close();
+    _followController.close();
     super.dispose();
   }
 }

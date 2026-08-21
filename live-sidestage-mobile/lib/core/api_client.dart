@@ -4,7 +4,16 @@ import 'package:http/http.dart' as http;
 
 import '../models/auth_session.dart';
 
-const String liveAnalyticsBaseUrl = 'https://liveanalytics-production.up.railway.app';
+/// バックエンドのベースURL。既定は Railway 本番。
+///
+/// 開発時にローカルの analytics へ向けたいときは
+/// `--dart-define=API_BASE_URL=http://localhost:3000` を渡す
+/// （端末からPCへ届かせるには `adb reverse tcp:3000 tcp:3000` が要る）。
+/// 平文HTTPは debug ビルドのマニフェストでのみ許可している。
+const String liveAnalyticsBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://liveanalytics-production.up.railway.app',
+);
 
 // LIVE Sidestage Analyticsバックエンドの GOOGLE_CLIENT_ID と同じ値(ウェブ アプリケーション種別のクライアントID)。
 // バックエンドは idToken の audience をこの値で検証するため、両者が一致していないと必ず認証に失敗する。
