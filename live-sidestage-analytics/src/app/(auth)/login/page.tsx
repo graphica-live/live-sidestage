@@ -4,25 +4,11 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import GoogleIcon from "@/app/GoogleIcon";
+import { safeCallbackUrl } from "@/lib/callback-url";
 
 const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
 
-// middleware が未ログインのリクエストを弾くとき、元のURLを callbackUrl に載せて
-// ここへ飛ばしてくる。それを読まずに "/" 固定で戻していたため、深いURLを直接開くと
-// ログイン後に必ずトップへ流されていた。オープンリダイレクトを避けるため、
-// 同一オリジンの相対パスだけを受け入れる。
-function useSafeCallbackUrl(): string {
-  const raw = useSearchParams().get("callbackUrl");
-  if (!raw) return "/";
-  try {
-    // 絶対URLで来た場合も、パス部分だけを取り出して同一オリジンに閉じる。
-    const url = new URL(raw, "http://localhost");
-    return `${url.pathname}${url.search}${url.hash}` || "/";
-  } catch {
-    return "/";
-  }
-}
-
+// useSearchParams はクライアント側でしか解決できないので Suspense 境界が要る。
 export default function LoginPage() {
   return (
     <Suspense fallback={null}>
@@ -33,7 +19,15 @@ export default function LoginPage() {
 
 function LoginForm() {
   const [devEmail, setDevEmail] = useState("dev@local.test");
-  const callbackUrl = useSafeCallbackUrl();
+  const searchParams = useSearchParams();
+  // middleware が未ログインのリクエストを弾くとき、元のURLを callbackUrl に載せて
+  // ここへ飛ばしてくる。それを読まずに "/" 固定で戻していたため、イベント管理画面から
+  // 飛ばされたユーザーがログイン後 analytics へ流れていた。
+  // オープンリダイレクトを避けるため safeCallbackUrl() を通す。
+  const callbackUrl = safeCallbackUrl(
+    searchParams.get("callbackUrl"),
+    typeof window === "undefined" ? "" : window.location.origin
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
