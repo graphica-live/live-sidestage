@@ -2,7 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession } from "@/lib/admin";
 
-const NAV_ITEMS = [{ href: "/admin/euler-api", label: "EulerAPI" }];
+const NAV_ITEMS = [
+  { href: "/admin/euler-api", label: "EulerAPI" },
+  { href: "/admin/agencies", label: "事務所" },
+];
 
 export default async function AdminLayout({
   children,
