@@ -13,7 +13,15 @@ export default async function Home() {
   });
 
   // verified未完了でもTikTok ID登録済みならダッシュボード(オーバーレイ)を即時利用できる。
-  if (!streamer) redirect("/setup");
+  if (streamer) redirect("/analytics");
 
-  redirect("/analytics");
+  // 配信者としての登録が無い場合、事務所アカウントなら事務所コンソールへ送る。
+  // 両方持つユーザーは配信者画面を既定とし、ヘッダーのリンクで行き来する。
+  const agency = await prisma.agency.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true },
+  });
+  if (agency) redirect("/agency");
+
+  redirect("/setup");
 }

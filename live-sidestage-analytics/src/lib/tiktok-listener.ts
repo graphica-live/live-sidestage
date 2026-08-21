@@ -1,5 +1,6 @@
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
@@ -806,20 +807,28 @@ export function getListenerStatus(roomId: string): ListenerState | null {
 
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
+// 接続を維持すべき部屋の条件。配信者本人の登録(Streamer)か、事務所の監視対象(AgencyWatch)の
+// どちらかが1件でもあれば対象。両方が0件になった部屋(全員が退会/re-registration/監視解除済み)は
+// 除外され、ensureAllListenersAlive()の第2ループで切断される。
+export function watchedRoomFilter(): Prisma.TiktokRoomWhereInput {
+  return { OR: [{ streamers: { some: {} } }, { watches: { some: {} } }] };
+}
+
 // 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。
 // workerId未割当の部屋は resolveWorkerForRoom() で決定的にハッシュ割当し、
 // 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
-// 登録者(Streamer)が1人もいない部屋(全員が退会/re-registration済み)は除外する。
+// subscriberIdsはStreamerのみから作る。事務所はsocket.ioのoverlay/chatを購読しないため、
+// 監視対象だけの部屋はsubscriberIds空で接続される(ギフト保存はroomId単位なのでデータは貯まる)。
 async function getMyRooms(): Promise<MyRoom[]> {
   const { index, count } = getWorkerConfig();
 
   const assigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: index, streamers: { some: {} } },
+    where: { workerId: index, ...watchedRoomFilter() },
     include: { streamers: { select: { id: true } } },
   });
 
   const unassigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: null, streamers: { some: {} } },
+    where: { workerId: null, ...watchedRoomFilter() },
     include: { streamers: { select: { id: true } } },
   });
   const claimed: typeof unassigned = [];

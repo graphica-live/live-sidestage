@@ -35,7 +35,9 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
   return room.id;
 }
 
-async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
+// 正規化済みtiktokIdに対応するTiktokRoomを取得/作成する。
+// 事務所の監視対象追加(src/lib/agency/)でも同じ部屋を共有するため、ここを唯一の入口にする。
+export async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
   try {
     return await prisma.tiktokRoom.upsert({
       where: { tiktokId },

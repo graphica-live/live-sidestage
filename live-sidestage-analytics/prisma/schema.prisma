@@ -20,6 +20,7 @@ model User {
   accounts Account[]
   sessions Session[]
   streamer Streamer?
+  agency   Agency?
 }
 
 model Account {
@@ -75,6 +76,47 @@ model TiktokRoom {
 
   streamers Streamer[]
   gifts     Gift[]
+  watches   AgencyWatch[]
+}
+
+// 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
+// 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
+model Agency {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  name            String
+  // 企業向けAPIキーはSHA-256ハッシュで保存する(Streamer.apiKeyの平文保存は踏襲しない)。
+  // 参照は常にキー本体のハッシュで引くため、平文を持たなくても認証できる。
+  apiKeyHash      String?  @unique
+  // Googleログインは一般公開されているため、事務所を作っただけでは監視を始められない。
+  // 管理者が承認するまで監視対象の追加と企業APIの利用を禁止し、
+  // 匿名アカウントの量産によるTikTok接続枠の消費を防ぐ。
+  approved        Boolean  @default(false)
+  approvedAt      DateTime?
+  maxWatchTargets Int      @default(10) // 監視対象の上限。1件ごとにTikTok接続とproxy枠を消費するため必須
+  createdAt       DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  watches AgencyWatch[]
+}
+
+// 事務所が監視対象に指定したライバー。ギフトデータはTiktokRoom単位で共有されるため
+// roomIdで紐づける(Streamerと同じ設計)。tiktokIdは事務所の入力値そのままを表示用に保持し、
+// 正規化済みの値はTiktokRoom側だけが単一の正として持つ。
+// 配信者本人の登録(Streamer)は必要なく、Streamerが0人でもwatchがあればWorkerが接続する。
+model AgencyWatch {
+  id        String   @id @default(cuid())
+  agencyId  String
+  roomId    String
+  tiktokId  String   // 表示用。ユーザー入力値そのまま
+  label     String?  // 事務所側の管理名(本名・所属チームなど)
+  createdAt DateTime @default(now())
+
+  agency Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  room   TiktokRoom @relation(fields: [roomId], references: [id])
+
+  @@unique([agencyId, roomId])
+  @@index([roomId])
 }
 
 model Streamer {
