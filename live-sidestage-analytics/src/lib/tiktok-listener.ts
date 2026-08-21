@@ -3,7 +3,14 @@ import { ProxyAgent } from "proxy-agent";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
-import { emitChatComment, type ChatCommentPayload } from "./chat-feed";
+import {
+  emitChatComment,
+  emitChatFollow,
+  emitChatGift,
+  type ChatCommentPayload,
+  type ChatFollowInput,
+  type ChatGiftInput,
+} from "./chat-feed";
 import { getEulerSignApiKey } from "./settings";
 
 export type ListenerStatus =
@@ -196,7 +203,54 @@ export async function resolveProxyForRoom(roomId: string): Promise<string | null
   return pool[idx];
 }
 
+// Worker→Web転送のdelivery semantics: best effort。Webが落ちている/詰まっている間の
+// イベントはドロップし、復旧後にreplayしない。オーバーレイはスナップショット再送で、
+// チャット/ギフトは「その瞬間鳴らせなければ意味がない」ので、遅れて届くより捨てる方がよい。
+const FORWARD_TIMEOUT_MS = 5000;
+// 同時に飛ばすリクエスト数の上限。timeoutだけではWeb障害時に最大5秒分の
+// リクエストが無制限に並行してしまう。
+const FORWARD_MAX_CONCURRENCY = 4;
+// 待ち行列の上限。溢れた分は捨ててカウンタだけ残す。
+const FORWARD_MAX_QUEUE = 256;
+
+let forwardInFlight = 0;
+const forwardQueue: Array<() => void> = [];
+let forwardDroppedCount = 0;
+let forwardDropLoggedAt = 0;
+
+function releaseForwardSlot() {
+  forwardInFlight--;
+  const next = forwardQueue.shift();
+  if (next) next();
+}
+
+function acquireForwardSlot(): Promise<boolean> {
+  if (forwardInFlight < FORWARD_MAX_CONCURRENCY) {
+    forwardInFlight++;
+    return Promise.resolve(true);
+  }
+  if (forwardQueue.length >= FORWARD_MAX_QUEUE) {
+    forwardDroppedCount++;
+    // 溢れている間は毎回ログを出すと、それ自体が負荷になるので間引く。
+    const now = Date.now();
+    if (now - forwardDropLoggedAt > 10_000) {
+      console.error("[listener] internal notify dropped (queue full)", { dropped: forwardDroppedCount });
+      forwardDropLoggedAt = now;
+    }
+    return Promise.resolve(false);
+  }
+  return new Promise<boolean>((resolve) => {
+    forwardQueue.push(() => {
+      forwardInFlight++;
+      resolve(true);
+    });
+  });
+}
+
 async function forwardToWeb(payload: Record<string, unknown>) {
+  const acquired = await acquireForwardSlot();
+  if (!acquired) return;
+
   try {
     const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
       method: "POST",
@@ -205,12 +259,15 @@ async function forwardToWeb(payload: Record<string, unknown>) {
         "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.error("[listener] internal notify failed:", res.status, await res.text().catch(() => ""));
     }
   } catch (err) {
     console.error("[listener] internal notify error:", err);
+  } finally {
+    releaseForwardSlot();
   }
 }
 
@@ -238,6 +295,32 @@ async function notifyChatComment(chat: ChatCommentPayload) {
     return;
   }
   await forwardToWeb({ streamerId: chat.streamerId, chatEvent: chat });
+}
+
+// ギフト/フォローは同じ部屋を購読している全Streamerへ配る。購読者ごとにHTTPを撃つと
+// 人数分の同時リクエストになるため、streamerIdsをまとめて1リクエストにする。
+async function notifyChatGift(streamerIds: string[], gift: Omit<ChatGiftInput, "streamerId">) {
+  if (streamerIds.length === 0) return;
+
+  if (!isWorkerProcess) {
+    for (const streamerId of streamerIds) {
+      emitChatGift({ streamerId, ...gift }).catch((err) => console.error("[gift] chat emit error:", err));
+    }
+    return;
+  }
+  await forwardToWeb({ streamerIds, chatGiftEvent: gift });
+}
+
+async function notifyChatFollow(streamerIds: string[], follow: Omit<ChatFollowInput, "streamerId">) {
+  if (streamerIds.length === 0) return;
+
+  if (!isWorkerProcess) {
+    for (const streamerId of streamerIds) {
+      emitChatFollow({ streamerId, ...follow }).catch((err) => console.error("[follow] chat emit error:", err));
+    }
+    return;
+  }
+  await forwardToWeb({ streamerIds, chatFollowEvent: follow });
 }
 
 function isUserOfflineError(error: unknown): boolean {
@@ -594,6 +677,22 @@ async function connectAndAttach(
     }
   });
 
+  // フォローはモバイルの効果音トリガー専用(集計・保存はしない)。
+  // connectorはWebcastSocialMessageのdisplayTextに"follow"が含まれるときだけ
+  // このイベントをemitするので、こちら側でdisplayTypeを判定する必要はない。
+  conn.on("follow", (data: Record<string, unknown>) => {
+    markAlive();
+    const { time: eventTime } = resolveEventTime(data);
+    notifyChatFollow(Array.from(inst.subscriberIds), {
+      uniqueId: String(data.uniqueId || ""),
+      nickname: String(data.nickname || ""),
+      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+      occurredAt: eventTime.toISOString(),
+      receivedAt: new Date().toISOString(),
+      msgId: resolveMsgId(data),
+    });
+  });
+
   conn.on("gift", (data: Record<string, unknown>) => {
     markAlive();
     const isCombo = data.giftType === 1;
@@ -637,6 +736,28 @@ async function connectAndAttach(
         notifyOverlayUpdate(streamerId);
       }
     };
+
+    // モバイルの効果音トリガー向け配信。saveGift()の成否には紐づけない —
+    // falseは「roomId単位で既に保存済み」を意味するだけで、音を鳴らすべきかとは無関係。
+    // TikTok側の再送による二重発火はWebプロセス側(emitChatGift)が吸収する。
+    // ここではdeltaを一切計算せず、累計値をそのまま送る(新旧Worker並走時に
+    // 各プロセスが別のdeltaを出すのを防ぐため。詳細はchat-feed.tsのChatGiftInput参照)。
+    notifyChatGift(Array.from(inst.subscriberIds), {
+      uniqueId: String(data.uniqueId || ""),
+      nickname: String(data.nickname || ""),
+      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+      giftName: String(data.giftName || "").trim().toLowerCase(),
+      giftId: data.giftId ? String(data.giftId) : null,
+      diamondCount: Number(data.diamondCount) || 0,
+      repeatCount: currentRepeat,
+      isCombo,
+      repeatEnd: Boolean(data.repeatEnd),
+      groupId,
+      orderId: data.orderId ? String(data.orderId) : null,
+      msgId: resolveMsgId(data),
+      occurredAt: eventTime.toISOString(),
+      receivedAt: new Date().toISOString(),
+    });
 
     if (isCombo) {
       const prev = inst.pendingCombos.get(comboKey!);
