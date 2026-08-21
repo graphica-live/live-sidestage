@@ -49,3 +49,17 @@ if touched live-sidestage-analytics; then
     npm test
   )
 fi
+
+if touched live-sidestage-event; then
+  (
+    cd live-sidestage-event
+
+    echo "[pre-commit] live-sidestage-event: 型チェック..."
+    npm run typecheck
+
+    # integration テストはローカル Postgres が要るのでここでは走らせない
+    # (analytics 側の docker compose を共用する。CI と手元で明示的に実行する)。
+    echo "[pre-commit] live-sidestage-event: ユニットテスト実行..."
+    npm run test:unit
+  )
+fi

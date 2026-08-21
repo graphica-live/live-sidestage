@@ -3,7 +3,13 @@
 // tiktok-live-connectorのWebcastPushConnectionをモックし、実際のTikTok接続は行わない。
 import { describe, it, expect, afterAll, vi, beforeEach } from "vitest";
 import { prisma } from "./prisma";
-import { startListener, stopListener, getListenerStatus } from "./tiktok-listener";
+import {
+  startListener,
+  stopListener,
+  getListenerStatus,
+  resumeAllListeners,
+  ensureAllListenersAlive,
+} from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
 // vi.mockのfactoryはファイル先頭へホイストされるため、参照するオブジェクトは
@@ -182,5 +188,100 @@ describe("TiktokRoomによる接続共有", () => {
     await cleanupStreamer(a.id);
     await cleanupRoom(oldRoomId);
     await cleanupRoom(newRoomId);
+  });
+});
+
+// live-sidestage-event が /api/internal/event-room-lease で立てる監視要求の挙動。
+// 会員登録(Streamer)がない配信者でも、イベント期間中だけ接続を維持できることを保証する。
+describe("monitorUntilによる期限付き監視", () => {
+  const FUTURE = () => new Date(Date.now() + 60 * 60 * 1000);
+  const PAST = () => new Date(Date.now() - 60 * 60 * 1000);
+
+  async function createRoom(tiktokId: string, monitorUntil: Date | null) {
+    return prisma.tiktokRoom.create({
+      data: { tiktokId, monitorUntil },
+      select: { id: true },
+    });
+  }
+
+  it("Streamerが1人もいなくても、monitorUntilが未来なら担当部屋に含まれ接続される", async () => {
+    const tiktokId = `itest_lease_active_${Date.now()}`;
+    const room = await createRoom(tiktokId, FUTURE());
+
+    await resumeAllListeners();
+
+    expect(getListenerStatus(room.id)).not.toBeNull();
+
+    await stopListener(room.id);
+    await cleanupRoom(room.id);
+  });
+
+  it("StreamerがおらずmonitorUntilも過去なら担当部屋に含まれない", async () => {
+    const tiktokId = `itest_lease_expired_${Date.now()}`;
+    const room = await createRoom(tiktokId, PAST());
+
+    await resumeAllListeners();
+
+    expect(getListenerStatus(room.id)).toBeNull();
+
+    await cleanupRoom(room.id);
+  });
+
+  it("monitorUntilが切れるとreconcileで切断されるが、部屋と受信済みGiftは残る", async () => {
+    const tiktokId = `itest_lease_teardown_${Date.now()}`;
+    const room = await createRoom(tiktokId, FUTURE());
+
+    await resumeAllListeners();
+    expect(getListenerStatus(room.id)).not.toBeNull();
+
+    await prisma.gift.create({
+      data: {
+        roomId: room.id,
+        uniqueId: "listener_x",
+        nickname: "リスナーX",
+        giftId: 5,
+        giftName: "Finger Heart",
+        repeatCount: 1,
+        diamondCount: 5,
+        totalDiamonds: 5,
+        dayKey: "2026-08-21",
+        orderId: `itest_lease_order_${Date.now()}`,
+      },
+    });
+
+    // イベント終了 = 監視要求の期限切れ
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { monitorUntil: PAST() },
+    });
+
+    await ensureAllListenersAlive();
+
+    expect(getListenerStatus(room.id)).toBeNull();
+    // データは保持したまま監視だけ止める(要件どおり削除はしない)
+    expect(await prisma.tiktokRoom.findUnique({ where: { id: room.id } })).not.toBeNull();
+    expect(await prisma.gift.count({ where: { roomId: room.id } })).toBe(1);
+
+    await cleanupRoom(room.id);
+  });
+
+  it("期限切れ後でも、その部屋を指定したStreamer登録があれば監視が再開される", async () => {
+    const tiktokId = `itest_lease_resume_${Date.now()}`;
+    const room = await createRoom(tiktokId, PAST());
+
+    await resumeAllListeners();
+    expect(getListenerStatus(room.id)).toBeNull();
+
+    const a = await createStreamer(tiktokId, "itest-lease-resume-a");
+    const resolved = await resolveRoomForStreamer(a.id);
+    expect(resolved).toBe(room.id); // 新規作成ではなく既存の部屋に紐づく
+
+    await ensureAllListenersAlive();
+
+    expect(getListenerStatus(room.id)).not.toBeNull();
+
+    await stopListener(room.id);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(room.id);
   });
 });

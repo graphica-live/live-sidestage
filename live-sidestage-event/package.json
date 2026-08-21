@@ -1,0 +1,43 @@
+{
+  "name": "live-sidestage-event",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3100",
+    "worker": "tsx worker.ts",
+    "db:push": "prisma db push",
+    "dev:local": "dotenv -e .env.local.test -- next dev -p 3100",
+    "worker:local": "dotenv -e .env.local.test -- tsx worker.ts",
+    "db:push:local": "dotenv -e .env.local.test -- prisma db push",
+    "seed:local": "dotenv -e .env.local.test -- tsx prisma/seed-local.ts",
+    "bench:aggregate:local": "dotenv -e .env.local.test -- tsx scripts/bench-aggregate.ts",
+    "test:unit": "vitest run --exclude \"**/*.integration.test.ts\"",
+    "test:integration": "dotenv -e .env.local.test -- vitest run integration",
+    "test": "npm run test:unit && npm run test:integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "cuid": "^2.1.8",
+    "dotenv": "^17.4.2",
+    "next": "^14.2.0",
+    "next-auth": "^4.24.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.19",
+    "dotenv-cli": "^11.0.0",
+    "postcss": "^8.4.38",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^3.4.4",
+    "tsx": "^4.23.12",
+    "typescript": "^5.5.2",
+    "vitest": "^4.1.10"
+  }
+}

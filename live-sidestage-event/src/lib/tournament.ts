@@ -1,0 +1,238 @@
+import { prisma } from "./prisma";
+import { resolveBracket, roundLabel } from "./bracket";
+import { parseJstLocal } from "./datetime";
+import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
+
+// トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
+//
+// 進行(勝者を次のラウンドへ送る)は match-results.ts が集計のたびに作り直すので、
+// ここでやるのは枠を用意することと、不戦勝を確定させることだけ。
+
+/** 1試合の既定の長さ。TikTok のバトルは5分が標準。前後の余裕を含めて枠を取る。 */
+export const DEFAULT_MATCH_WINDOW_MIN = 30;
+
+/** ラウンド間の既定の間隔。 */
+export const DEFAULT_ROUND_INTERVAL_MIN = 45;
+
+export type BracketPlanInput = {
+  eventId: string;
+  /** シード順(強い順)に並べたエントリー。個人戦なら participantId、チーム戦なら teamId */
+  entrantIds: string[];
+  entryMode: "SOLO" | "TEAM";
+  /** 1回戦の開始時刻 */
+  firstRoundStartAt: Date;
+  matchWindowMin?: number;
+  roundIntervalMin?: number;
+};
+
+export class BracketError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | "TOO_FEW_ENTRANTS"
+      | "ALREADY_STARTED"
+      | "OUT_OF_EVENT_WINDOW"
+      | "UNKNOWN_ENTRANT"
+  ) {
+    super(message);
+    this.name = "BracketError";
+  }
+}
+
+/**
+ * トーナメント表を作る。既存の表があれば作り直す。
+ *
+ * **1つでも進行済みのマッチがあれば作り直さない。** 検知済みの対戦や確定した勝敗が
+ * 消えてしまうため。作り直したい場合は主催者が個別に VOID にしてから実行する。
+ */
+export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
+  const {
+    eventId,
+    entrantIds,
+    entryMode,
+    firstRoundStartAt,
+    matchWindowMin = DEFAULT_MATCH_WINDOW_MIN,
+    roundIntervalMin = DEFAULT_ROUND_INTERVAL_MIN,
+  } = input;
+
+  if (entrantIds.length < 2) {
+    throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { id: true, startAt: true, endAt: true },
+  });
+  if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
+
+  const bracket = resolveBracket(entrantIds);
+  const lastRoundEnd = new Date(
+    firstRoundStartAt.getTime() +
+      (bracket.roundCount - 1) * roundIntervalMin * 60_000 +
+      matchWindowMin * 60_000
+  );
+  if (firstRoundStartAt < event.startAt || lastRoundEnd > event.endAt) {
+    throw new BracketError(
+      "全ラウンドがイベントの期間内に収まりません。開始時刻か間隔を見直してください。",
+      "OUT_OF_EVENT_WINDOW"
+    );
+  }
+
+  // エントリーが実在するか(チーム戦ならチーム、個人戦なら参加者)を確認する。
+  const participantsByEntrant = await resolveEntrantParticipants(eventId, entrantIds, entryMode);
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.eventMatch.findMany({
+      where: { eventId },
+      select: { id: true, status: true },
+    });
+    if (existing.some((m) => m.status !== "SCHEDULED")) {
+      throw new BracketError(
+        "すでに進行中・確定済みの対戦があるため、表を作り直せません。",
+        "ALREADY_STARTED"
+      );
+    }
+    if (existing.length > 0) {
+      await tx.eventMatch.deleteMany({ where: { eventId } });
+    }
+
+    for (const match of bracket.matches) {
+      const roundStart = new Date(
+        firstRoundStartAt.getTime() + (match.round - 1) * roundIntervalMin * 60_000
+      );
+      const created = await tx.eventMatch.create({
+        data: {
+          eventId,
+          round: match.round,
+          bracketPosition: match.position,
+          matchType: "1V1",
+          scheduledStartAt: roundStart,
+          scheduledEndAt: new Date(roundStart.getTime() + matchWindowMin * 60_000),
+          status: "SCHEDULED",
+          rules: { roundLabel: roundLabel(match.round, bracket.roundCount) },
+        },
+      });
+
+      for (let sideIndex = 0; sideIndex < 2; sideIndex++) {
+        const entrantId = match.sideIds[sideIndex];
+        const side = await tx.eventMatchSide.create({
+          data: {
+            matchId: created.id,
+            sideIndex,
+            teamId: entryMode === "TEAM" ? entrantId : null,
+          },
+        });
+
+        const participantIds = entrantId ? (participantsByEntrant.get(entrantId) ?? []) : [];
+        if (participantIds.length > 0) {
+          await tx.eventMatchSideParticipant.createMany({
+            data: participantIds.map((participantId) => ({ sideId: side.id, participantId })),
+          });
+        }
+      }
+
+      // 不戦勝。バトルは起きないので検知を待たずに確定させる。
+      // 勝者を次のラウンドへ送るのは match-results.ts が集計のたびに行う。
+      if (match.autoWinnerSide !== null) {
+        const sides = await tx.eventMatchSide.findMany({
+          where: { matchId: created.id },
+          select: { id: true, sideIndex: true },
+        });
+        const winner = sides.find((s) => s.sideIndex === match.autoWinnerSide);
+        if (winner) {
+          await tx.eventMatch.update({
+            where: { id: created.id },
+            data: { status: "FINISHED", winnerSideId: winner.id, winnerDecidedBy: "BYE" },
+          });
+        }
+      }
+    }
+
+    // 表を作り直したら、最終集計が済んでいても結果が変わる。
+    await reopenAggregation(tx, eventId);
+
+    return { matches: bracket.matches.length };
+  }, MUTATION_TX_OPTIONS);
+}
+
+/** エントリーID → そのサイドに入る参加者IDの一覧。 */
+async function resolveEntrantParticipants(
+  eventId: string,
+  entrantIds: string[],
+  entryMode: "SOLO" | "TEAM"
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+
+  if (entryMode === "TEAM") {
+    const teams = await prisma.eventTeam.findMany({
+      where: { eventId, id: { in: entrantIds } },
+      select: { id: true, participants: { where: { status: "ACTIVE" }, select: { id: true } } },
+    });
+    for (const team of teams) {
+      // メンバーのいないチームを表に入れると、そのサイドの room が空になり、
+      // バトルの検知(サイドの room 集合との一致)が永久に成立しない。
+      if (team.participants.length === 0) {
+        throw new BracketError(
+          "参加者が1人もいないチームが含まれています。先に参加者をチームへ入れてください。",
+          "UNKNOWN_ENTRANT"
+        );
+      }
+      map.set(team.id, team.participants.map((p) => p.id));
+    }
+  } else {
+    const participants = await prisma.eventParticipant.findMany({
+      where: { eventId, id: { in: entrantIds }, status: "ACTIVE" },
+      select: { id: true },
+    });
+    for (const p of participants) map.set(p.id, [p.id]);
+  }
+
+  const missing = entrantIds.filter((id) => !map.has(id));
+  if (missing.length > 0) {
+    throw new BracketError(
+      `このイベントに存在しないエントリーが含まれています: ${missing.join(", ")}`,
+      "UNKNOWN_ENTRANT"
+    );
+  }
+
+  return map;
+}
+
+/**
+ * シード順の既定値を作る。
+ *
+ * 現在の順位表(獲得ダイヤ)があればその順、なければ登録順。主催者は並べ替えできる。
+ */
+export async function defaultSeedOrder(
+  eventId: string,
+  entryMode: "SOLO" | "TEAM"
+): Promise<string[]> {
+  const subjectType = entryMode === "TEAM" ? "TEAM" : "PARTICIPANT";
+  const standings = await prisma.eventStanding.findMany({
+    where: { eventId, subjectType },
+    orderBy: { rank: "asc" },
+    select: { subjectId: true },
+  });
+  if (standings.length > 0) return standings.map((s) => s.subjectId);
+
+  if (entryMode === "TEAM") {
+    const teams = await prisma.eventTeam.findMany({
+      where: { eventId },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true },
+    });
+    return teams.map((t) => t.id);
+  }
+
+  const participants = await prisma.eventParticipant.findMany({
+    where: { eventId, status: "ACTIVE" },
+    orderBy: { joinedAt: "asc" },
+    select: { id: true },
+  });
+  return participants.map((p) => p.id);
+}
+
+/** `<input type="datetime-local">` の値からトーナメント開始時刻を作る(JST固定)。 */
+export function parseBracketStart(value: string): Date | null {
+  return parseJstLocal(value);
+}

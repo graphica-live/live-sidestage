@@ -4,245 +4,16 @@ generator client {
   binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
 }
 
-// **このファイルが public / event 両スキーマの唯一の正。**
-//
-// 以前は event を別プロジェクト・別 Prisma にしていたが、そちらの schemas に public を
-// 足すと、向こうに書いていない gifts / TiktokRoom / Streamer が
-// `db push --accept-data-loss` の削除差分になるという事故が起きうる構造だった。
-// 1つの schema.prisma が両方を書くことで、その危険が構造的に消える。
-//
-// スキーマを分けたままにしているのは、テーブルの役割が違うため(public = TikTok の受信データと
-// 認証、event = イベント運営)。ロールによる権限分割は行っていない。
+// **schemas に public を含めてはいけない。**
+// Prisma 5.x には「外部管理テーブル」を除外する手段がないため、public を管理下に置くと
+// ここに書いていない gifts / TiktokRoom / Streamer / gift_edits / AppSetting が
+// 削除差分として扱われる。analytics 側のデータは src/lib/analytics-db.ts の
+// $queryRaw で view 経由でのみ読む。
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["public", "event"]
+  schemas  = ["event"]
 }
-
-// ============================================================================
-// public — TikTok Live の受信データと認証
-// ============================================================================
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  createdAt     DateTime  @default(now())
-
-  accounts Account[]
-  sessions Session[]
-  streamer Streamer?
-
-  @@schema("public")
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@schema("public")
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@schema("public")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@schema("public")
-}
-
-// 1つのTikTokアカウント(tiktokId)につき1本のTikTok Live接続を共有するための実体。
-// 複数のStreamer行(=複数ユーザー)が同じtiktokIdを登録した場合、全員がこのTiktokRoomを
-// 経由して同じ接続・同じGiftデータを参照する(接続リソースの重複と、orderIdユニーク制約
-// 違反によるギフト取りこぼしを防ぐため)。
-model TiktokRoom {
-  id                String    @id @default(cuid())
-  tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
-  deviceId          String?
-  workerId          Int?     // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定し固定)
-  proxyKey          String?  // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
-  listenerStatus    String?
-  listenerMessage   String?
-  listenerUpdatedAt DateTime?
-  // イベント(event スキーマ側)が期限付きで監視を要求している場合の期限。
-  // これが未来の間は、Streamerが1人もいなくてもWorkerが接続を維持する(getMyRooms参照)。
-  // 期限切れ後は次のreconcileで切断されるが、受信済みのGiftはそのまま残る。
-  monitorUntil      DateTime?
-  createdAt         DateTime  @default(now())
-
-  streamers Streamer[]
-  gifts     Gift[]
-  battles   TiktokBattle[]
-
-  // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
-  // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
-  @@index([workerId, monitorUntil])
-  @@schema("public")
-}
-
-model Streamer {
-  id               String    @id @default(cuid())
-  userId           String    @unique
-  tiktokId         String    // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
-  verificationCode String
-  verified         Boolean   @default(false)
-  verifiedAt       DateTime?
-  apiKey           String?   @unique
-  createdAt        DateTime  @default(now())
-  roomId           String?   // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
-
-  overlayToken            String? @unique
-  overlayDisplayReference String  @default("today") // "today" | "fixed"
-  overlayDisplayDate      String? // YYYY-MM-DD, overlayDisplayReference="fixed" のときのみ意味を持つ
-  overlayThreshold        Int     @default(1000)
-  overlayGoalCount        Int     @default(5)
-  overlayVisibleRows      Int     @default(5) // この人数を超えたらスナップスクロール
-  overlayNameMaxWidth     Int     @default(140) // px、これを超える名前は省略表示
-  overlayAlign            String  @default("left") // "left" | "right"
-  overlayHeadingBackground String @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
-  overlayDisplaySpeed     Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
-
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  room      TiktokRoom? @relation(fields: [roomId], references: [id])
-  giftEdits GiftEdit[]
-
-  @@index([roomId])
-  @@schema("public")
-}
-
-model AppSetting {
-  key       String   @id
-  value     String?  @db.Text
-  updatedAt DateTime @updatedAt
-
-  @@schema("public")
-}
-
-model Gift {
-  id              String   @id @default(cuid())
-  roomId          String   // TikTokアカウント単位で共有(同じtiktokIdを登録した全ユーザーが同じ行を参照)
-  uniqueId        String
-  nickname        String
-  profileImageUrl String?
-  giftId          Int
-  giftName        String
-  giftPictureUrl  String?
-  repeatCount     Int      @default(1)
-  diamondCount    Int      @default(0)
-  totalDiamonds   Int      @default(0)
-  receivedAt      DateTime @default(now())
-  timeSource      String   @default("tiktok") // "tiktok" | "fallback" — fallback は TikTok createTime 欠落/不正でサーバー受信時刻を使用したことを示す
-  dayKey          String
-  orderId         String?
-  groupId         String?
-
-  room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  edits GiftEdit[]
-
-  @@map("gifts")
-  @@unique([roomId, orderId])
-  @@index([roomId, dayKey])
-  @@index([roomId, receivedAt])
-  @@index([roomId, uniqueId])
-  @@index([roomId, groupId])
-  @@schema("public")
-}
-
-// TikTokから受信したオリジナルのGiftは変更・削除しない。編集内容はここに別レコードとして保持し、
-// 表示時のみ上書きする(オリジナルデータのみでの集計を別途可能にするため)。
-// Giftはtiktokアカウント単位で共有されるため、編集/非表示はstreamerId単位に紐づけ、
-// 編集した本人にしか見えないようにする(他の登録者のデータには影響しない)。
-model GiftEdit {
-  id            String   @id @default(cuid())
-  giftId        String
-  streamerId    String
-  giftName      String
-  totalDiamonds Int
-  hidden        Boolean  @default(false) // trueの場合、この行を編集したstreamerの集計・履歴からのみ除外する
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  gift     Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
-  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-
-  @@map("gift_edits")
-  @@unique([giftId, streamerId])
-  @@schema("public")
-}
-
-// TikTokのバトル(LinkMic Battle)の観測記録。イベントの対戦自動検知が使う。
-// analytics自身はこのデータを使わないが、バトル中かどうかはWebcastのイベントでしか
-// 分からないので受信側で残しておく。
-//
-// **1つのバトルについて、参加した両サイドのroomからそれぞれ同じbattleIdのイベントが届く。**
-// (両方をこちらが監視している場合)。したがってbattleIdでグループ化すれば
-// 「そのバトルに誰が参加したか」がpayloadの解釈精度に依存せず分かる。
-// 相手のTikTokハンドル(uniqueId)はpayloadに含まれないため、この照合が唯一の確実な手段。
-model TiktokBattle {
-  id       String @id @default(cuid())
-  roomId   String
-  battleId String // TikTokのbattleId。API上stringなので数値化しない
-  action   Int // 最後に観測したBattleAction(OPEN=4 / FINISH=5 / CUT_SHORT=6)
-
-  startedAt DateTime
-  // startedAtが受信時刻からの推定値か。接続はprocessInitialData:falseなので配信の
-  // 途中から繋ぐと開始(OPEN)を取り逃す。BattleSetting.startTimeMsも取れなかった場合、
-  // startedAtは「気づいた時刻」でしかない。イベント側の照合はこれを見て信頼度を決める。
-  startedAtEstimated Boolean @default(true)
-
-  endedAt     DateTime?
-  durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
-  hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
-  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
-  hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
-  raw            Json // 受信したpayloadそのもの。実payloadのfixture取得と後追い調査用
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-
-  @@map("tiktok_battles")
-  @@unique([roomId, battleId])
-  @@index([roomId, startedAt])
-  @@index([battleId])
-  @@schema("public")
-}
-
-// ============================================================================
-// event — イベント(大会)運営
-//
-// public のデータ(gifts / TiktokRoom / Streamer)は同じ Prisma Client から
-// 直接読める。以前は列を絞った view 経由で読んでいたが、統合により不要になった。
-// 参照は src/event/analytics-db.ts に集約する。
-// ============================================================================
 
 model Event {
   id            String  @id @default(cuid())
@@ -250,7 +21,7 @@ model Event {
   title         String
   description   String? @db.Text
   coverImageUrl String?
-  ownerUserId   String // User.id。FKは張らない(将来 auth サービスへ切り出すため)
+  ownerUserId   String // 共通 User.id。FKは張らない(将来 auth サービスへ切り出すため)
 
   format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
   entryMode  String // "SOLO" | "TEAM"
@@ -289,7 +60,7 @@ model Event {
 }
 
 // 倍率オプション。kind を増やすだけで新しい倍率条件を足せる。
-// 1件のギフトに適用される倍率は必ず1つ(src/event/scoring.ts を参照)。
+// 1件のギフトに適用される倍率は必ず1つ(src/lib/scoring.ts を参照)。
 model EventMultiplier {
   id        String    @id @default(cuid())
   eventId   String
@@ -326,7 +97,7 @@ model EventParticipant {
   id          String   @id @default(cuid())
   eventId     String
   tiktokId    String // 正規化済み(小文字・trim・先頭@除去)
-  roomId      String // TiktokRoom.id(論理参照)
+  roomId      String // public."TiktokRoom".id(論理参照)
   teamId      String?
   displayName String // 表示名スナップショット
   userId      String? // 会員登録済みならリンク
@@ -345,13 +116,13 @@ model EventParticipant {
 }
 
 // イベントのために確保した room 監視の台帳。
-// TiktokRoom.monitorUntil を立てた事実をこちらで持つ。
+// analytics 側の TiktokRoom.monitorUntil を立てた事実をこちらで持つ。
 model EventRoomLease {
   id              String    @id @default(cuid())
   eventId         String
   roomId          String
   tiktokId        String
-  createdBySystem Boolean   @default(false) // イベントが room を新規作成したか
+  createdBySystem Boolean   @default(false) // event が room を新規作成したか
   monitorUntil    DateTime // 通常は event.endAt + 猶予
   releasedAt      DateTime?
 
@@ -392,7 +163,7 @@ model EventMatch {
   detectedEndSource   String?
 
   winnerSideId String?
-  // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝) / "DRAW"(引き分け)
+  // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝)
   winnerDecidedBy String?
 
   rules Json @default("{}") // 種目別ルールと、判定時の補足情報
@@ -457,7 +228,7 @@ model EventLifeLedger {
   subjectId   String
   matchId     String?
   delta       Int
-  reason      String // "MATCH_LOSS" | "MATCH_WIN" | "MATCH_DRAW"
+  reason      String // "MATCH_LOSS" | "DECAY" | "HEAL" | "MANUAL"
   createdAt   DateTime @default(now())
 
   // イベント削除で一緒に消す。関連を張らないと履歴だけが孤児として残り続ける。
@@ -492,7 +263,7 @@ model EventContribution {
   eventId          String
   scope            String // "EVENT" | "PARTICIPANT" | "TEAM" | "MATCH"
   scopeId          String   @default("") // participantId / teamId / matchId(EVENT のときは "")
-  listenerUniqueId String // gifts.uniqueId
+  listenerUniqueId String // public.gifts.uniqueId
   nickname         String
   profileImageUrl  String?
   diamonds         BigInt   @default(0) // 実弾(素のダイヤ)
@@ -526,12 +297,13 @@ model EventStanding {
   @@schema("event")
 }
 
-// TiktokBattle から取り込んだバトルの観測記録。EventMatch への照合前の生データ。
+// analytics 側で検知したバトルを取り込んだもの(EventMatch への照合前の生データ)
+// analytics の public.event_battle_v から取り込んだバトルの観測記録。照合前の生データ。
 //
 // **1つのバトルにつき、両サイドの room ぶんの行ができる**(両方をイベントが監視している場合)。
 // `battleId` でグループ化した roomId の集合が「そのバトルの参加者」になる。
 // 相手の TikTok ハンドルは payload に含まれない(anchorInfo に uniqueId が無い)ので、
-// この roomId 集合による照合が唯一の確実な手段。`src/event/match-detect.ts` を参照。
+// この roomId 集合による照合が唯一の確実な手段。`match-detect.ts` を参照。
 model DetectedBattle {
   id       String @id @default(cuid())
   battleId String // TikTok の battleId。string のまま
