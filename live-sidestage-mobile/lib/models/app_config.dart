@@ -311,6 +311,12 @@ class AppConfig {
   final int revision;
   final bool ttsEnabled;
   final bool randomVoice;
+
+  /// 読み上げの音量。0-100。効果音の [SoundConfig.masterVolume] と同じ尺度で、
+  /// 再生時の AudioPlayer 音量に掛ける（VOICEVOX の volumeScale は触らない）。
+  /// 合成音声は先読みするので、合成時に掛けると変更が次の1件に効かない。
+  final int ttsVolume;
+
   final SoundConfig sound;
 
   const AppConfig({
@@ -318,6 +324,7 @@ class AppConfig {
     this.revision = 0,
     this.ttsEnabled = true,
     this.randomVoice = true,
+    this.ttsVolume = 100,
     this.sound = const SoundConfig(),
   });
 
@@ -326,6 +333,7 @@ class AppConfig {
         'revision': revision,
         'ttsEnabled': ttsEnabled,
         'randomVoice': randomVoice,
+        'ttsVolume': ttsVolume,
         'sound': sound.toJson(),
       };
 
@@ -349,6 +357,7 @@ class AppConfig {
         revision: _clampInt(json['revision'], min: 0, max: 1 << 30, fallback: 0),
         ttsEnabled: json['ttsEnabled'] != false,
         randomVoice: json['randomVoice'] != false,
+        ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
         sound: soundRaw is Map ? SoundConfig.fromJson(Map<String, dynamic>.from(soundRaw)) : const SoundConfig(),
       );
     } catch (_) {
@@ -360,6 +369,7 @@ class AppConfig {
     int? revision,
     bool? ttsEnabled,
     bool? randomVoice,
+    int? ttsVolume,
     SoundConfig? sound,
   }) {
     return AppConfig(
@@ -367,16 +377,18 @@ class AppConfig {
       revision: revision ?? this.revision,
       ttsEnabled: ttsEnabled ?? this.ttsEnabled,
       randomVoice: randomVoice ?? this.randomVoice,
+      ttsVolume: ttsVolume ?? this.ttsVolume,
       sound: sound ?? this.sound,
     );
   }
 
   /// 編集を1つ進めた新しい設定を作る。保存前に必ず通す。
-  AppConfig bumped({bool? ttsEnabled, bool? randomVoice, SoundConfig? sound}) {
+  AppConfig bumped({bool? ttsEnabled, bool? randomVoice, int? ttsVolume, SoundConfig? sound}) {
     return copyWith(
       revision: revision + 1,
       ttsEnabled: ttsEnabled,
       randomVoice: randomVoice,
+      ttsVolume: ttsVolume,
       sound: sound,
     );
   }

@@ -91,6 +91,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _soundEngine?.applyConfig(config);
     _speechQueue.setEnabled(config.ttsEnabled);
     _speechQueue.randomVoice = config.randomVoice;
+    _speechQueue.volume = config.ttsVolume;
 
     // VOICEVOXの初期化は重い。TTSがOFFのままサウンドだけ使う運用では走らせない。
     if (config.ttsEnabled && !_speechQueue.initialized) {

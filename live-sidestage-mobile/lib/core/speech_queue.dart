@@ -40,6 +40,21 @@ class SpeechQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 読み上げ音量。0-100。
+  ///
+  /// VOICEVOX の volumeScale ではなく再生側で掛ける。合成は次のコメントを
+  /// 先読みしているので、合成時に適用すると音量変更が1件遅れて効く。
+  int _volume = 100;
+
+  int get volume => _volume;
+
+  set volume(int value) {
+    final clamped = value < 0 ? 0 : (value > 100 ? 100 : value);
+    if (_volume == clamped) return;
+    _volume = clamped;
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     if (initialized) return;
     try {
@@ -126,6 +141,8 @@ class SpeechQueueController extends ChangeNotifier {
         sub.cancel();
         if (!completer.isCompleted) completer.complete();
       });
+      // 再生ごとに設定し直す。設定変更は再生中でも入るため。
+      await _player.setVolume(_volume / 100.0);
       await _player.play(DeviceFileSource(file.path));
       await completer.future;
     } catch (e) {
