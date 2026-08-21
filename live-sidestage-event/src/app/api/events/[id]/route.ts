@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/lib/authz";
 import { parseJstLocal } from "@/lib/datetime";
+import { parseDeathmatchRules } from "@/lib/deathmatch";
 import { refreshEventLeases, releaseEventLeases } from "@/lib/participants";
+import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/lib/reopen-aggregation";
 import { EVENT_STATUSES, validateEventInput, type EventStatus } from "@/lib/validation";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -28,6 +31,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       select: { id: true, slug: true, status: true },
     });
     return NextResponse.json(updated);
+  }
+
+  // 種目別ルールだけの更新(デスマッチのライフ設定)。
+  if (body.deathmatchRules !== undefined && body.title === undefined) {
+    const event = await prisma.event.findUnique({
+      where: { id: params.id },
+      select: { format: true, rules: true },
+    });
+    if (event?.format !== "DEATHMATCH") {
+      return NextResponse.json(
+        { errors: ["ライフの設定を持つのはデスマッチだけです。"] },
+        { status: 400 }
+      );
+    }
+
+    // 値の正規化・範囲の丸めは parseDeathmatchRules に任せる(不正値は既定へ落ちる)。
+    const normalized = parseDeathmatchRules({ deathmatch: body.deathmatchRules });
+    const existing =
+      event.rules && typeof event.rules === "object" && !Array.isArray(event.rules)
+        ? (event.rules as Prisma.JsonObject)
+        : {};
+
+    await prisma.$transaction(async (tx) => {
+      // ライフは全期間再計算なので、ルール変更は過去に遡る。最終集計が済んでいても
+      // やり直させないと、新しいルールが順位・脱落に反映されない。
+      await reopenAggregation(tx, params.id);
+      await tx.event.update({
+        where: { id: params.id },
+        data: {
+          rules: { ...(existing as Prisma.InputJsonObject), deathmatch: { ...normalized } },
+        },
+      });
+    }, MUTATION_TX_OPTIONS);
+    return NextResponse.json({ deathmatch: normalized });
   }
 
   const startAt = parseJstLocal(String(body.startAt ?? ""));
@@ -56,16 +93,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     select: { endAt: true },
   });
 
-  const updated = await prisma.event.update({
-    where: { id: params.id },
-    data: {
-      ...validated.value,
-      // 期間を変えたら最終集計をやり直させる。finalizedAt が立ったままだと
-      // 延長した分のギフトが二度と集計されない。
-      finalizedAt: null,
-    },
-    select: { id: true, slug: true },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    // 期間を変えたら最終集計をやり直させる。finalizedAt が立ったままだと
+    // 延長した分のギフトが二度と集計されない。
+    await reopenAggregation(tx, params.id);
+    return tx.event.update({
+      where: { id: params.id },
+      data: validated.value,
+      select: { id: true, slug: true },
+    });
+  }, MUTATION_TX_OPTIONS);
 
   // 終了日時が後ろへ動いたら、確保済みの監視期限も伸ばす。
   if (before && endAt.getTime() > before.endAt.getTime()) {

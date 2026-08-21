@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { rankByLife } from "./deathmatch";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -147,8 +148,17 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
   };
 }
 
+/** デスマッチの残ライフ。ライフ順に並んでいる(獲得ダイヤの順位とは別物)。 */
+export type LifeStandingDto = StandingDto & {
+  current: number;
+  max: number;
+  eliminated: boolean;
+};
+
 export type EventSnapshot = {
   standings: StandingDto[];
+  /** デスマッチのときだけ入る。ライフ順(残ライフ → 脱落の遅さ → 獲得ダイヤ) */
+  lives: LifeStandingDto[] | null;
   /** イベント全体のリスナー貢献(scope=EVENT) */
   eventContributions: ContributionDto[];
   participants: { id: string; displayName: string; tiktokId: string }[];
@@ -183,31 +193,39 @@ function toContributionDto(row: {
  */
 export async function loadEventSnapshot(event: {
   id: string;
+  format: string;
   entryMode: string;
   lastAggregatedAt: Date | null;
 }): Promise<EventSnapshot> {
   const subjectType = event.entryMode === "TEAM" ? "TEAM" : "PARTICIPANT";
 
-  const [standings, contributions, participants, teams, multiplierCount] = await Promise.all([
-    prisma.eventStanding.findMany({
-      where: { eventId: event.id, subjectType },
-      orderBy: { rank: "asc" },
-    }),
-    prisma.eventContribution.findMany({
-      where: { eventId: event.id, scope: "EVENT", scopeId: "" },
-      orderBy: [{ points: "desc" }, { diamonds: "desc" }],
-    }),
-    prisma.eventParticipant.findMany({
-      where: { eventId: event.id },
-      select: { id: true, displayName: true, tiktokId: true, teamId: true },
-      orderBy: { joinedAt: "asc" },
-    }),
-    prisma.eventTeam.findMany({
-      where: { eventId: event.id },
-      select: { id: true, name: true, colorHex: true },
-    }),
-    prisma.eventMultiplier.count({ where: { eventId: event.id } }),
-  ]);
+  const [standings, contributions, participants, teams, multiplierCount, lifePoints] =
+    await Promise.all([
+      prisma.eventStanding.findMany({
+        where: { eventId: event.id, subjectType },
+        orderBy: { rank: "asc" },
+      }),
+      prisma.eventContribution.findMany({
+        where: { eventId: event.id, scope: "EVENT", scopeId: "" },
+        orderBy: [{ points: "desc" }, { diamonds: "desc" }],
+      }),
+      prisma.eventParticipant.findMany({
+        where: { eventId: event.id },
+        select: { id: true, displayName: true, tiktokId: true, teamId: true },
+        orderBy: { joinedAt: "asc" },
+      }),
+      prisma.eventTeam.findMany({
+        where: { eventId: event.id },
+        select: { id: true, name: true, colorHex: true },
+      }),
+      prisma.eventMultiplier.count({ where: { eventId: event.id } }),
+      event.format === "DEATHMATCH"
+        ? prisma.eventLifePoint.findMany({
+            where: { eventId: event.id, subjectType },
+            select: { subjectId: true, current: true, max: true, eliminatedAt: true },
+          })
+        : Promise.resolve([]),
+    ]);
 
   const participantById = new Map(participants.map((p) => [p.id, p]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
@@ -248,8 +266,30 @@ export async function loadEventSnapshot(event: {
     ];
   });
 
+  // デスマッチの順位はライフで決まる。獲得ダイヤの順位(standings)とは別に持つ。
+  let lives: LifeStandingDto[] | null = null;
+  if (event.format === "DEATHMATCH" && lifePoints.length > 0) {
+    const lifeById = new Map(lifePoints.map((l) => [l.subjectId, l]));
+    const withLife = standingDtos.flatMap((s) => {
+      const life = lifeById.get(s.subjectId);
+      if (!life) return [];
+      return [
+        {
+          ...s,
+          current: life.current,
+          max: life.max,
+          eliminated: !!life.eliminatedAt,
+          eliminatedAt: life.eliminatedAt,
+        },
+      ];
+    });
+
+    lives = rankByLife(withLife).map(({ eliminatedAt: _drop, ...row }) => row);
+  }
+
   return {
     standings: standingDtos,
+    lives,
     eventContributions: contributions.map(toContributionDto),
     participants: participants.map((p) => ({
       id: p.id,

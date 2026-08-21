@@ -3,16 +3,30 @@ import { requireEventOwner } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { parseJstLocal } from "@/lib/datetime";
 import { nextSlot } from "@/lib/bracket";
+import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/lib/reopen-aggregation";
+import { assertMatchWindow, SingleMatchError } from "@/lib/single-match";
+import type { DbClient } from "@/lib/analytics-db";
+
+/** 結果を変えるトランザクション。集計とのロック待ちがあるので既定より長く待つ。 */
+function inTx<T>(fn: (tx: DbClient) => Promise<T>): Promise<T> {
+  return prisma.$transaction(fn, MUTATION_TX_OPTIONS);
+}
 
 // 主催者による対戦の手当て。
 //
 // バトルの自動検知は payload の解釈と両サイドの監視が揃って初めて働くので、
 // **検知が失敗しても主催者が手で進められる導線を必ず用意する。**
+//
+// **結果を変える操作は必ず reopenAggregation を同じトランザクションで呼ぶ。**
+// 集計ワーカーは finalizedAt が立ったイベントを飛ばすので、消さないと変更が反映されない。
 
 /** 下流の対戦がこの状態に入っていたら、上流の勝敗は動かさせない。 */
 const DOWNSTREAM_STARTED = new Set(["LIVE", "DETECTED", "NEEDS_REVIEW", "FINISHED"]);
 
-type Action = "approve" | "confirm" | "void" | "reopen" | "schedule";
+/** 時間枠を動かせる状態。検知・確定した後は動かさせない(下の理由を参照)。 */
+const RESCHEDULABLE = new Set(["SCHEDULED", "NO_SHOW"]);
+
+type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "schedule";
 
 export async function PATCH(
   req: NextRequest,
@@ -52,7 +66,7 @@ export async function PATCH(
 
   // 勝敗を動かす操作は、次の対戦が始まっていたら拒否する。
   // 進行中の対戦の参加者が途中で入れ替わると、集計対象が変わって結果が壊れるため。
-  if (action === "confirm" || action === "void" || action === "reopen") {
+  if (action === "confirm" || action === "draw" || action === "void" || action === "reopen") {
     const blocked = await downstreamStarted(params.id, match.round, match.bracketPosition);
     if (blocked) {
       return NextResponse.json(
@@ -74,9 +88,12 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      await prisma.eventMatch.update({
-        where: { id: match.id },
-        data: { status: "DETECTED" },
+      await inTx(async (tx) => {
+        await tx.eventMatch.update({
+          where: { id: match.id },
+          data: { status: "DETECTED" },
+        });
+        await reopenAggregation(tx, params.id);
       });
       break;
     }
@@ -89,33 +106,60 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      await prisma.eventMatch.update({
-        where: { id: match.id },
-        data: { status: "FINISHED", winnerSideId, winnerDecidedBy: "MANUAL" },
+      await inTx(async (tx) => {
+        await tx.eventMatch.update({
+          where: { id: match.id },
+          data: { status: "FINISHED", winnerSideId, winnerDecidedBy: "MANUAL" },
+        });
+        await reopenAggregation(tx, params.id);
+      });
+      break;
+    }
+
+    case "draw": {
+      // 引き分けで確定する。デスマッチでは両者のライフが drawDelta だけ減る。
+      // トーナメントでは勝者が出ないと次へ進めないので使わせない。
+      const event = await prisma.event.findUnique({
+        where: { id: params.id },
+        select: { format: true },
+      });
+      if (event?.format !== "DEATHMATCH") {
+        return NextResponse.json(
+          { error: "引き分けで確定できるのはデスマッチだけです。" },
+          { status: 400 }
+        );
+      }
+      await inTx(async (tx) => {
+        await tx.eventMatch.update({
+          where: { id: match.id },
+          data: { status: "FINISHED", winnerSideId: null, winnerDecidedBy: "DRAW" },
+        });
+        await reopenAggregation(tx, params.id);
       });
       break;
     }
 
     case "void": {
-      await prisma.$transaction([
-        prisma.eventMatch.update({
+      await inTx(async (tx) => {
+        await tx.eventMatch.update({
           where: { id: match.id },
           data: { status: "VOID", winnerSideId: null, winnerDecidedBy: null },
-        }),
+        });
         // 集計済みのスコアも消す。無効にした対戦の数字が残っていると
         // 「もう結果が出ている」と読めてしまう。
-        prisma.eventMatchSide.updateMany({
+        await tx.eventMatchSide.updateMany({
           where: { matchId: match.id },
           data: { diamonds: 0, score: 0 },
-        }),
-      ]);
+        });
+        await reopenAggregation(tx, params.id);
+      });
       break;
     }
 
     case "reopen": {
       // 検知のやり直し。自動検知の対象へ戻す。
-      await prisma.$transaction([
-        prisma.eventMatch.update({
+      await inTx(async (tx) => {
+        await tx.eventMatch.update({
           where: { id: match.id },
           data: {
             status: "SCHEDULED",
@@ -127,16 +171,33 @@ export async function PATCH(
             detectionConfidence: null,
             detectedEndSource: null,
           },
-        }),
-        prisma.eventMatchSide.updateMany({
+        });
+        await tx.eventMatchSide.updateMany({
           where: { matchId: match.id },
           data: { diamonds: 0, score: 0 },
-        }),
-      ]);
+        });
+        await reopenAggregation(tx, params.id);
+      });
       break;
     }
 
     case "schedule": {
+      // **検知・確定した後は時間枠を動かせない。**
+      // デスマッチのライフは決着時刻の順に適用し、その時刻は
+      // `detectedEndAt ?? scheduledEndAt` なので、確定後に枠を動かすと
+      // 過去の対戦順が変わって脱落の結果まで変わってしまう。
+      // 動かしたい場合は先に「検知をやり直す」で SCHEDULED へ戻す。
+      if (!RESCHEDULABLE.has(match.status)) {
+        return NextResponse.json(
+          {
+            error:
+              "検知・確定した対戦の時間枠は変更できません。先に検知をやり直してください。",
+            code: "NOT_RESCHEDULABLE",
+          },
+          { status: 409 }
+        );
+      }
+
       const start =
         typeof body?.scheduledStartAt === "string" ? parseJstLocal(body.scheduledStartAt) : null;
       const end =
@@ -147,10 +208,31 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      await prisma.eventMatch.update({
-        where: { id: match.id },
-        data: { scheduledStartAt: start, scheduledEndAt: end },
-      });
+
+      try {
+        // 追加時と同じ検証を通す(イベント期間内・同じ出場者の枠が重ならない)。
+        await inTx(async (tx) => {
+          await assertMatchWindow(tx, {
+            eventId: params.id,
+            start,
+            end,
+            excludeMatchId: match.id,
+          });
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: { scheduledStartAt: start, scheduledEndAt: end },
+          });
+          await reopenAggregation(tx, params.id);
+        });
+      } catch (err) {
+        if (err instanceof SingleMatchError) {
+          return NextResponse.json(
+            { error: err.message, code: err.code },
+            { status: err.code === "OVERLAPPING" ? 409 : 400 }
+          );
+        }
+        throw err;
+      }
       break;
     }
 
@@ -158,6 +240,55 @@ export async function PATCH(
       return NextResponse.json({ error: "未知の action です。" }, { status: 400 });
   }
 
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * 対戦カードを取り消す。まだ検知していない(SCHEDULED)ものだけ。
+ *
+ * トーナメントの表は枠が繋がっているので個別削除させない。デスマッチ用。
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string; matchId: string } }
+) {
+  const owned = await requireEventOwner(params.id);
+  if (!owned) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: params.id },
+    select: { format: true },
+  });
+  if (event?.format !== "DEATHMATCH") {
+    return NextResponse.json(
+      { error: "対戦を個別に削除できるのはデスマッチだけです。無効にしてください。" },
+      { status: 400 }
+    );
+  }
+
+  const match = await prisma.eventMatch.findFirst({
+    where: { id: params.matchId, eventId: params.id },
+    select: { id: true, status: true },
+  });
+  if (!match) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (match.status !== "SCHEDULED") {
+    return NextResponse.json(
+      {
+        error: "すでに検知・確定した対戦は削除できません。無効にしてください。",
+        code: "ALREADY_STARTED",
+      },
+      { status: 409 }
+    );
+  }
+
+  await inTx(async (tx) => {
+    await tx.eventMatch.delete({ where: { id: match.id } });
+    await reopenAggregation(tx, params.id);
+  });
   return NextResponse.json({ ok: true });
 }
 

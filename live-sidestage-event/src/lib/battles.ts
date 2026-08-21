@@ -3,6 +3,7 @@ import { fetchBattles, type DbClient } from "./analytics-db";
 import {
   assignBattles,
   findMissedMatches,
+  MANUAL_DECISIONS,
   type BattleObservation,
   type MatchCandidate,
 } from "./match-detect";
@@ -147,7 +148,9 @@ export async function detectMatches(
   })) as MatchWithSides[];
 
   const open = matches.filter(
-    (m) => !LOCKED_STATUSES.has(m.status) && m.winnerDecidedBy !== "MANUAL"
+    (m) =>
+      !LOCKED_STATUSES.has(m.status) &&
+      !(m.winnerDecidedBy && MANUAL_DECISIONS.has(m.winnerDecidedBy))
   );
   if (open.length === 0) return { detected: 0, missed: 0 };
 

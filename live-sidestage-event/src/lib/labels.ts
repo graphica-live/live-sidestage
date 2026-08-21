@@ -54,10 +54,8 @@ export const STANDING_HEADINGS: Record<EventFormat, string> = {
 };
 
 // 種目のうち、まだ勝敗判定を実装していないものの注記。
-export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {
-  DEATHMATCH:
-    "ライフポイントの増減は準備中。現在は期間中に獲得したダイヤだけを集計している。",
-};
+// フェーズ4・5で TOURNAMENT と DEATHMATCH を実装したので、現在は空。
+export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {};
 
 // 対戦の状態。schema.prisma の EventMatch.status と対応する。
 export const MATCH_STATUS_LABELS: Record<string, string> = {
@@ -84,6 +82,7 @@ export const MATCH_STATUS_CLASSES: Record<string, string> = {
 export const WINNER_DECIDED_BY_LABELS: Record<string, string> = {
   AGGREGATE: "集計",
   MANUAL: "主催者判定",
+  DRAW: "引き分け",
   BYE: "不戦勝",
 };
 

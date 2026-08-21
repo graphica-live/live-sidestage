@@ -14,8 +14,11 @@ import {
   type RateSegment,
   type TimeRange,
 } from "./scoring";
+import { advisoryLockKey } from "./event-lock";
 import { detectMatches, ingestBattles, loadBattleRangesByRoom } from "./battles";
 import { resolveMatchResults } from "./match-results";
+import { parseDeathmatchRules } from "./deathmatch";
+import { applyLifePoints } from "./life-points";
 
 // イベントの集計本体。
 //
@@ -59,20 +62,7 @@ export function aggregationDeadline(endAt: Date): Date {
   return new Date(endAt.getTime() + AGGREGATE_GRACE_MS);
 }
 
-/**
- * イベントIDから advisory lock のキーを作る(FNV-1a 64bit)。
- *
- * Postgres の bigint は符号付きなので範囲へ落とす。ハッシュが衝突しても、
- * 別イベントの集計が一巡待たされるだけで結果は壊れない。
- */
-export function advisoryLockKey(eventId: string): bigint {
-  const MASK = (1n << 64n) - 1n;
-  let hash = 0xcbf29ce484222325n;
-  for (let i = 0; i < eventId.length; i++) {
-    hash = ((hash ^ BigInt(eventId.charCodeAt(i))) * 0x100000001b3n) & MASK;
-  }
-  return hash >= 1n << 63n ? hash - (1n << 64n) : hash;
-}
+export { advisoryLockKey };
 
 type Bucket = { diamonds: bigint; points: bigint; giftCount: number };
 
@@ -132,7 +122,14 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
 
       const event = await tx.event.findUnique({
         where: { id: eventId },
-        select: { id: true, format: true, startAt: true, endAt: true },
+        select: {
+          id: true,
+          format: true,
+          entryMode: true,
+          rules: true,
+          startAt: true,
+          endAt: true,
+        },
       });
       if (!event) {
         return { status: "skipped", reason: "no-participants" } as const;
@@ -157,8 +154,12 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
 
       if (participants.length === 0) {
         // 参加者がいなくなったらスナップショットも空にする(古い順位を残さない)。
+        // **ライフも消す。** 残すと、参加者を全員外した後も脱落済みの表示が残り、
+        // 対戦を組む導線が「脱落した出場者は組めません」で塞がれ続ける。
         await tx.eventContribution.deleteMany({ where: { eventId } });
         await tx.eventStanding.deleteMany({ where: { eventId } });
+        await tx.eventLifePoint.deleteMany({ where: { eventId } });
+        await tx.eventLifeLedger.deleteMany({ where: { eventId } });
         await tx.event.update({
           where: { id: eventId },
           data: { lastAggregatedAt: now, aggregateMs: Date.now() - startedAt, finalizedAt },
@@ -191,6 +192,15 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           now,
         });
         battleRanges = await loadBattleRangesByRoom(tx as DbClient, eventId);
+
+        if (event.format === "DEATHMATCH") {
+          // 確定したマッチからライフを計算し直す。勝敗が確定した後でないと動かせない。
+          await applyLifePoints(tx as DbClient, {
+            eventId,
+            entryMode: event.entryMode,
+            rules: parseDeathmatchRules(event.rules),
+          });
+        }
       }
 
       // BATTLE 倍率が設定されていなければ、バトル区間で分けても倍率は変わらない。

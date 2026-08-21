@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { resolveBracket, roundLabel } from "./bracket";
 import { parseJstLocal } from "./datetime";
+import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 
 // トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
 //
@@ -147,8 +148,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       }
     }
 
+    // 表を作り直したら、最終集計が済んでいても結果が変わる。
+    await reopenAggregation(tx, eventId);
+
     return { matches: bracket.matches.length };
-  });
+  }, MUTATION_TX_OPTIONS);
 }
 
 /** エントリーID → そのサイドに入る参加者IDの一覧。 */
@@ -164,7 +168,17 @@ async function resolveEntrantParticipants(
       where: { eventId, id: { in: entrantIds } },
       select: { id: true, participants: { where: { status: "ACTIVE" }, select: { id: true } } },
     });
-    for (const team of teams) map.set(team.id, team.participants.map((p) => p.id));
+    for (const team of teams) {
+      // メンバーのいないチームを表に入れると、そのサイドの room が空になり、
+      // バトルの検知(サイドの room 集合との一致)が永久に成立しない。
+      if (team.participants.length === 0) {
+        throw new BracketError(
+          "参加者が1人もいないチームが含まれています。先に参加者をチームへ入れてください。",
+          "UNKNOWN_ENTRANT"
+        );
+      }
+      map.set(team.id, team.participants.map((p) => p.id));
+    }
   } else {
     const participants = await prisma.eventParticipant.findMany({
       where: { eventId, id: { in: entrantIds }, status: "ACTIVE" },

@@ -1,5 +1,6 @@
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
+import { MANUAL_DECISIONS } from "./match-detect";
 import {
   buildRateSegments,
   formatScaledPoints,
@@ -81,7 +82,8 @@ export async function resolveMatchResults(
   // 1. スコアの確定と勝者の決定
   // ------------------------------------------------------------------
   for (const match of matches) {
-    if (match.winnerDecidedBy === "MANUAL" || match.status === "VOID") continue;
+    if (match.winnerDecidedBy && MANUAL_DECISIONS.has(match.winnerDecidedBy)) continue;
+    if (match.status === "VOID") continue;
     if (!match.detectedStartAt || !match.detectedEndAt) continue;
     // 進行中と承認待ちは確定させない。
     if (match.status !== "DETECTED" && match.status !== "FINISHED") continue;

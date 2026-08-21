@@ -10,8 +10,26 @@ import {
   formatJst,
   toJstInputValue,
 } from "@/lib/labels";
+import type { DeathmatchRules } from "@/lib/deathmatch";
 
-export type EntrantOption = { id: string; label: string };
+export type EntrantOption = {
+  id: string;
+  label: string;
+  /** 個人戦なら本人1人、チーム戦なら所属メンバー。対戦に出す人をここから選ぶ */
+  members: { id: string; label: string }[];
+};
+
+/** 1サイドに出せる人数(サーバー側の MAX_SIDE_SIZE と揃える)。 */
+const MAX_SIDE_SIZE = 2;
+
+export type LifeRow = {
+  subjectId: string;
+  label: string;
+  /** まだ集計が回っていなければ null */
+  current: number | null;
+  max: number | null;
+  eliminated: boolean;
+};
 
 export type MatchSideRow = {
   id: string;
@@ -53,6 +71,8 @@ export function MatchManager({
   eventEndAt,
   entrants,
   matches,
+  lives,
+  rules,
 }: {
   eventId: string;
   format: string;
@@ -61,6 +81,9 @@ export function MatchManager({
   eventEndAt: string;
   entrants: EntrantOption[];
   matches: MatchRow[];
+  /** デスマッチのときだけ中身が入る */
+  lives: LifeRow[];
+  rules: DeathmatchRules;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -108,10 +131,57 @@ export function MatchManager({
     setSeed(next);
   }
 
+  if (format === "DEATHMATCH") {
+    return (
+      <div className="space-y-6">
+        {error && (
+          <p className="rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2 text-sm text-red-300">
+            {error}
+          </p>
+        )}
+
+        <LifeTable lives={lives} rules={rules} entryMode={entryMode} />
+
+        <RulesEditor eventId={eventId} rules={rules} busy={busy} onSend={send} started={started} />
+
+        <SingleMatchBuilder
+          eventId={eventId}
+          entryMode={entryMode}
+          entrants={entrants}
+          lives={lives}
+          eventStartAt={eventStartAt}
+          eventEndAt={eventEndAt}
+          busy={busy}
+          onSend={send}
+        />
+
+        {matches.length === 0 ? (
+          <div className="card text-sm text-gray-500">
+            まだ対戦がない。上のフォームから組むと、その時間枠のバトルを自動で照合する。
+          </div>
+        ) : (
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold text-gray-300">対戦</h2>
+            {matches.map((match) => (
+              <MatchCard
+                key={match.id}
+                eventId={eventId}
+                match={match}
+                format={format}
+                busy={busy}
+                onSend={send}
+              />
+            ))}
+          </section>
+        )}
+      </div>
+    );
+  }
+
   if (format !== "TOURNAMENT") {
     return (
       <div className="card text-sm text-gray-500">
-        対戦管理はバトルトーナメントの種目でのみ使う。
+        獲得ダイヤレースには対戦がない。順位は期間中のダイヤだけで決まる。
       </div>
     );
   }
@@ -257,6 +327,7 @@ export function MatchManager({
                 key={match.id}
                 eventId={eventId}
                 match={match}
+                format={format}
                 busy={busy}
                 onSend={send}
               />
@@ -268,14 +339,387 @@ export function MatchManager({
   );
 }
 
+/** 残ライフの一覧。デスマッチの進行状況はこれが主。 */
+function LifeTable({
+  lives,
+  rules,
+  entryMode,
+}: {
+  lives: LifeRow[];
+  rules: DeathmatchRules;
+  entryMode: string;
+}) {
+  if (lives.length === 0) {
+    return (
+      <div className="card text-sm text-gray-500">
+        {entryMode === "TEAM"
+          ? "まだチームがない。チームを作ってから対戦を組む。"
+          : "まだ参加者がいない。参加者を登録してから対戦を組む。"}
+      </div>
+    );
+  }
+
+  const alive = lives.filter((l) => !l.eliminated).length;
+
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">ライフ</h2>
+        <p className="text-xs text-gray-500">
+          初期{rules.initialLife} / 敗北 -{rules.lossDelta}
+          {rules.winDelta > 0 && ` / 勝利 +${rules.winDelta}`}
+          {rules.drawDelta > 0 && ` / 引き分け -${rules.drawDelta}`} ・ 残り{alive}
+        </p>
+      </div>
+
+      <ul className="space-y-1">
+        {lives.map((life) => {
+          // まだ集計が回っていない出場者は、まだ何も起きていないので初期値そのもの。
+          // 「集計待ち」とだけ出すと、ライフを持っていないように読めてしまう。
+          const pending = life.current === null;
+          const current = life.current ?? rules.initialLife;
+          const max = life.max ?? rules.maxLife ?? rules.initialLife;
+
+          return (
+            <li
+              key={life.subjectId}
+              className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm ${
+                life.eliminated ? "bg-white/[0.02] text-gray-600" : "bg-white/5"
+              }`}
+            >
+              <span className="min-w-0 flex-1 truncate">{life.label}</span>
+              {life.eliminated ? (
+                <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs">脱落</span>
+              ) : (
+                <span className="shrink-0 font-mono text-xs" aria-label={`残ライフ ${current}`}>
+                  {"♥".repeat(Math.min(current, 10))}
+                  <span className="ml-1.5 text-gray-400">
+                    {current} / {max}
+                  </span>
+                  {pending && <span className="ml-1.5 font-sans text-gray-600">初期値</span>}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** ライフの増減量。変更すると全期間を計算し直すので、開催中でも安全に変えられる。 */
+function RulesEditor({
+  eventId,
+  rules,
+  busy,
+  started,
+  onSend,
+}: {
+  eventId: string;
+  rules: DeathmatchRules;
+  busy: boolean;
+  started: boolean;
+  onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(rules);
+
+  const field = (
+    key: "initialLife" | "lossDelta" | "winDelta" | "drawDelta",
+    label: string,
+    min: number
+  ) => (
+    <div>
+      <label htmlFor={key} className="label">
+        {label}
+      </label>
+      <input
+        id={key}
+        type="number"
+        min={min}
+        max={99}
+        value={draft[key]}
+        onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })}
+        className="input-field w-24"
+      />
+    </div>
+  );
+
+  return (
+    <section className="card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">ライフの増減</h2>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs text-gray-400 hover:text-white"
+        >
+          {open ? "閉じる" : "変更する"}
+        </button>
+      </div>
+
+      {open && (
+        <>
+          {started && (
+            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
+              すでに確定した対戦がある。ここを変えると
+              <strong className="font-semibold">全期間のライフが計算し直される</strong>ため、
+              脱落済みの{"　"}出場者が復活したり、その逆が起きたりする。
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-end gap-3">
+            {field("initialLife", "初期ライフ", 1)}
+            {field("lossDelta", "敗北で減る", 0)}
+            {field("winDelta", "勝利で増える", 0)}
+            {field("drawDelta", "引き分けで減る", 0)}
+            <div>
+              <label htmlFor="maxLife" className="label">
+                回復の上限
+              </label>
+              <input
+                id="maxLife"
+                type="number"
+                min={draft.initialLife}
+                max={99}
+                value={draft.maxLife ?? draft.initialLife}
+                onChange={(e) => setDraft({ ...draft, maxLife: Number(e.target.value) })}
+                className="input-field w-24"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const ok = await onSend(`/api/events/${eventId}`, { deathmatchRules: draft });
+                if (ok) setOpen(false);
+              }}
+              className="btn-primary shrink-0"
+            >
+              保存
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** デスマッチの対戦カードを1件ずつ組む。トーナメントのような表は作らない。 */
+function SingleMatchBuilder({
+  eventId,
+  entryMode,
+  entrants,
+  lives,
+  eventStartAt,
+  eventEndAt,
+  busy,
+  onSend,
+}: {
+  eventId: string;
+  entryMode: string;
+  entrants: EntrantOption[];
+  lives: LifeRow[];
+  eventStartAt: string;
+  eventEndAt: string;
+  busy: boolean;
+  onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
+}) {
+  const isTeam = entryMode === "TEAM";
+  const [sideA, setSideA] = useState("");
+  const [sideB, setSideB] = useState("");
+  const [membersA, setMembersA] = useState<string[]>([]);
+  const [membersB, setMembersB] = useState<string[]>([]);
+  const [start, setStart] = useState(() => toJstInputValue(new Date()));
+  const [windowMin, setWindowMin] = useState(30);
+
+  // 脱落した出場者は組めない(API 側でも弾く)。
+  const selectable = entrants.filter(
+    (e) => !lives.find((l) => l.subjectId === e.id)?.eliminated
+  );
+
+  const label = isTeam ? "チーム" : "参加者";
+  const byId = new Map(entrants.map((e) => [e.id, e]));
+
+  /**
+   * エントリーを選び直したら出場者もリセットする。
+   * メンバーが上限以下のチームは全員を既定にする(選び忘れを防ぐ)。
+   */
+  function pick(entrantId: string, setSide: (v: string) => void, setMembers: (v: string[]) => void) {
+    setSide(entrantId);
+    const members = byId.get(entrantId)?.members ?? [];
+    setMembers(members.length > 0 && members.length <= MAX_SIDE_SIZE ? members.map((m) => m.id) : []);
+  }
+
+  function toggleMember(id: string, members: string[], setMembers: (v: string[]) => void) {
+    if (members.includes(id)) setMembers(members.filter((m) => m !== id));
+    else if (members.length < MAX_SIDE_SIZE) setMembers([...members, id]);
+  }
+
+  const ready =
+    !!sideA &&
+    !!sideB &&
+    membersA.length > 0 &&
+    membersA.length === membersB.length;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    const startDate = new Date(start);
+    const end = new Date(startDate.getTime() + windowMin * 60_000);
+
+    const ok = await onSend(
+      `/api/events/${eventId}/matches/single`,
+      {
+        sideA: { teamId: isTeam ? sideA : null, participantIds: membersA },
+        sideB: { teamId: isTeam ? sideB : null, participantIds: membersB },
+        scheduledStartAt: start,
+        scheduledEndAt: toJstInputValue(end),
+      },
+      "POST"
+    );
+    if (ok) {
+      setSideA("");
+      setSideB("");
+      setMembersA([]);
+      setMembersB([]);
+    }
+  }
+
+  const sidePicker = (
+    key: "A" | "B",
+    value: string,
+    setValue: (v: string) => void,
+    members: string[],
+    setMembers: (v: string[]) => void,
+    other: string
+  ) => {
+    const entrant = byId.get(value);
+    return (
+      <div className="min-w-0 flex-1 space-y-2">
+        <label htmlFor={`side${key}`} className="label">
+          {label} {key}
+        </label>
+        <select
+          id={`side${key}`}
+          value={value}
+          onChange={(e) => pick(e.target.value, setValue, setMembers)}
+          required
+          className="input-field"
+        >
+          <option value="">選択</option>
+          {selectable
+            .filter((e) => e.id !== other)
+            .map((e) => (
+              <option key={e.id} value={e.id} disabled={e.members.length === 0}>
+                {e.label}
+                {e.members.length === 0 && "（メンバーなし）"}
+              </option>
+            ))}
+        </select>
+
+        {/* チーム戦は出場するメンバーを明示させる。全員をサイドに入れると、
+            バトルの検知(room 集合の一致)が成立しなくなるため。 */}
+        {isTeam && entrant && (
+          <div className="space-y-1 rounded-lg bg-white/[0.03] px-3 py-2">
+            <p className="text-xs text-gray-400">
+              出場するメンバー（{MAX_SIDE_SIZE}人まで）
+            </p>
+            {entrant.members.length === 0 ? (
+              <p className="text-xs text-yellow-200/80">
+                このチームには参加者がいない。先に参加者をチームへ入れる。
+              </p>
+            ) : (
+              entrant.members.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={members.includes(m.id)}
+                    onChange={() => toggleMember(m.id, members, setMembers)}
+                    className="h-4 w-4 rounded border-white/20 bg-transparent"
+                  />
+                  <span className="min-w-0 truncate">{m.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <form onSubmit={submit} className="card space-y-4">
+      <div>
+        <h2 className="font-semibold">対戦を組む</h2>
+        <p className="mt-1 text-xs leading-relaxed text-gray-400">
+          時間枠のあいだに実際のバトルが起きると自動で照合する。
+          脱落した{label}は選べない。同じ{label}の枠は重ねられない。
+          {isTeam && "チームからは実際にバトルへ出るメンバーだけを選ぶ。"}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        {sidePicker("A", sideA, setSideA, membersA, setMembersA, sideB)}
+        {sidePicker("B", sideB, setSideB, membersB, setMembersB, sideA)}
+      </div>
+
+      {sideA && sideB && membersA.length !== membersB.length && (
+        <p className="text-xs text-yellow-200/80">
+          両サイドの出場人数を揃える（1vs1 か 2vs2）。
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="dmStart" className="label">
+            開始
+          </label>
+          <input
+            id="dmStart"
+            type="datetime-local"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            required
+            className="input-field"
+          />
+        </div>
+        <div>
+          <label htmlFor="dmWindow" className="label">
+            枠(分)
+          </label>
+          <input
+            id="dmWindow"
+            type="number"
+            min={5}
+            max={600}
+            value={windowMin}
+            onChange={(e) => setWindowMin(Number(e.target.value))}
+            className="input-field w-28"
+          />
+        </div>
+        <button type="submit" disabled={busy || !ready} className="btn-primary shrink-0">
+          対戦を追加
+        </button>
+      </div>
+
+      <p className="text-xs text-gray-500">
+        イベント期間: {formatJst(new Date(eventStartAt))} 〜 {formatJst(new Date(eventEndAt))}
+      </p>
+    </form>
+  );
+}
+
 function MatchCard({
   eventId,
   match,
+  format,
   busy,
   onSend,
 }: {
   eventId: string;
   match: MatchRow;
+  format: string;
   busy: boolean;
   onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
 }) {
@@ -285,6 +729,10 @@ function MatchCard({
 
   const url = `/api/events/${eventId}/matches/${match.id}`;
   const decided = match.status === "FINISHED";
+  // 検知・確定した後は時間枠を動かせない(API 側でも 409 で拒否する)。
+  // デスマッチのライフは決着時刻の順に適用するので、確定後に枠を動かすと
+  // 過去の対戦順が変わって脱落の結果まで変わってしまう。
+  const reschedulable = match.status === "SCHEDULED" || match.status === "NO_SHOW";
 
   return (
     <div className="card space-y-3">
@@ -305,16 +753,22 @@ function MatchCard({
           {formatJst(new Date(match.scheduledStartAt))} 〜{" "}
           {formatJst(new Date(match.scheduledEndAt))}
         </span>
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          className="ml-auto text-xs text-gray-400 hover:text-white"
-        >
-          {editing ? "閉じる" : "時間枠を変更"}
-        </button>
+        {reschedulable ? (
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            className="ml-auto text-xs text-gray-400 hover:text-white"
+          >
+            {editing ? "閉じる" : "時間枠を変更"}
+          </button>
+        ) : (
+          <span className="ml-auto text-xs text-gray-600">
+            時間枠の変更には検知のやり直しが要る
+          </span>
+        )}
       </div>
 
-      {editing && (
+      {editing && reschedulable && (
         <div className="flex flex-wrap items-end gap-2 rounded-lg bg-white/5 p-3">
           <div>
             <label className="label">開始</label>
@@ -424,6 +878,21 @@ function MatchCard({
               </button>
             ))}
 
+        {/* 引き分けはデスマッチだけ。トーナメントは勝者が出ないと次へ進めない。 */}
+        {format === "DEATHMATCH" && !decided && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm("引き分けとして確定する。")) return;
+              onSend(url, { action: "draw" });
+            }}
+            className="btn-secondary"
+          >
+            引き分けにする
+          </button>
+        )}
+
         {(match.status === "VOID" || match.status === "NO_SHOW" || decided) && (
           <button
             type="button"
@@ -440,12 +909,34 @@ function MatchCard({
             type="button"
             disabled={busy}
             onClick={() => {
-              if (!window.confirm("この対戦を無効にする。勝者は次のラウンドへ進まない。")) return;
+              if (
+                !window.confirm(
+                  format === "DEATHMATCH"
+                    ? "この対戦を無効にする。ライフは元に戻る。"
+                    : "この対戦を無効にする。勝者は次のラウンドへ進まない。"
+                )
+              )
+                return;
               onSend(url, { action: "void" });
             }}
             className="text-xs text-red-400 hover:text-red-300"
           >
             無効にする
+          </button>
+        )}
+
+        {/* まだ検知していない対戦は取り消せる(デスマッチのみ。表のあるトーナメントは無効化で対応)。 */}
+        {format === "DEATHMATCH" && match.status === "SCHEDULED" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm("この対戦を取り消す。")) return;
+              onSend(url, null, "DELETE");
+            }}
+            className="text-xs text-gray-500 hover:text-gray-300"
+          >
+            取り消す
           </button>
         )}
       </div>

@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FORMAT_PENDING_NOTES, STANDING_HEADINGS } from "@/lib/labels";
-import type { ContributionDto, EventSnapshot, StandingDto } from "@/lib/public-event";
+import type {
+  ContributionDto,
+  EventSnapshot,
+  LifeStandingDto,
+  StandingDto,
+} from "@/lib/public-event";
 import { formatNumber, formatPoints } from "@/lib/public-event";
 import type { EventFormat } from "@/lib/validation";
 
@@ -63,7 +68,9 @@ export function EventResults({
 
   const notAggregated = snapshot.standings.length === 0 && snapshot.eventContributions.length === 0;
 
-  const heading = STANDING_HEADINGS[format as EventFormat] ?? "順位";
+  // デスマッチの順位はライフで決まる。獲得ダイヤの順位表とは別のものを出す。
+  const lives = format === "DEATHMATCH" ? snapshot.lives : null;
+  const heading = lives ? "ライフ" : (STANDING_HEADINGS[format as EventFormat] ?? "順位");
   const pendingNote = FORMAT_PENDING_NOTES[format as EventFormat];
 
   return (
@@ -90,7 +97,11 @@ export function EventResults({
             : "まだ集計されたギフトがない。"}
         </p>
       ) : tab === "standings" ? (
-        <StandingsTable rows={snapshot.standings} hasMultiplier={snapshot.hasMultiplier} />
+        lives ? (
+          <LifeStandingsTable rows={lives} />
+        ) : (
+          <StandingsTable rows={snapshot.standings} hasMultiplier={snapshot.hasMultiplier} />
+        )
       ) : (
         <div className="mt-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -238,6 +249,55 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
                 実弾 {formatNumber(r.diamonds)}
               </p>
             )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * デスマッチの順位表。残ライフが多い順(同じなら遅く脱落した順 → 獲得ダイヤ順)。
+ * 獲得ダイヤの順位(StandingsTable)とは別物なので、混ぜて表示しない。
+ */
+function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
+  if (rows.length === 0) {
+    return <p className="card mt-4 text-sm text-gray-500">まだ順位がついていない。</p>;
+  }
+
+  return (
+    <ul className="mt-4 space-y-2">
+      {rows.map((r) => (
+        <li
+          key={r.subjectId}
+          className={`card flex items-center gap-3 ${r.eliminated ? "opacity-50" : ""}`}
+        >
+          <RankBadge rank={r.rank} />
+          {r.colorHex && (
+            <span
+              className="h-3 w-3 shrink-0 rounded-full"
+              style={{ backgroundColor: r.colorHex }}
+              aria-hidden
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{r.name}</p>
+            {r.sub && <p className="truncate font-mono text-xs text-gray-500">{r.sub}</p>}
+          </div>
+          <div className="shrink-0 text-right">
+            {r.eliminated ? (
+              <p className="text-sm text-gray-500">脱落</p>
+            ) : (
+              <p className="text-sm text-brand" aria-label={`残ライフ ${r.current}`}>
+                {"♥".repeat(Math.min(r.current, 10))}
+                <span className="ml-1.5 font-mono text-xs text-gray-400 tabular-nums">
+                  {r.current} / {r.max}
+                </span>
+              </p>
+            )}
+            <p className="font-mono text-xs text-gray-600 tabular-nums">
+              {formatNumber(r.diamonds)} ダイヤ
+            </p>
           </div>
         </li>
       ))}

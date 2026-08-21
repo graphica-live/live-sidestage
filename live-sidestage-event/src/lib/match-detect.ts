@@ -30,6 +30,15 @@ export type BattleObservation = {
 
 export type EndedAtSource = "observed" | "duration" | "scheduled";
 
+/**
+ * 主催者が決めた結果、または対戦なしで決まった結果。**自動集計で上書きしない。**
+ *
+ * - MANUAL: 主催者が勝者を確定した
+ * - DRAW:   主催者が引き分けとして確定した(デスマッチのみ)
+ * - BYE:    不戦勝。バトルは起きていない
+ */
+export const MANUAL_DECISIONS = new Set(["MANUAL", "DRAW", "BYE"]);
+
 export type MatchAssignment = {
   matchId: string;
   battleId: string;

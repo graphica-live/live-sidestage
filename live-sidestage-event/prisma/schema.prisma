@@ -50,6 +50,7 @@ model Event {
   contributions EventContribution[]
   standings     EventStanding[]
   lifePoints    EventLifePoint[]
+  lifeLedger    EventLifeLedger[]
   roomLeases    EventRoomLease[]
   adjustments   EventScoreAdjustment[]
 
@@ -229,6 +230,9 @@ model EventLifeLedger {
   delta       Int
   reason      String // "MATCH_LOSS" | "DECAY" | "HEAL" | "MANUAL"
   createdAt   DateTime @default(now())
+
+  // イベント削除で一緒に消す。関連を張らないと履歴だけが孤児として残り続ける。
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, subjectType, subjectId])
   @@schema("event")
