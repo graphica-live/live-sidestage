@@ -1,6 +1,6 @@
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
 import { emitOverlaySnapshot } from "./overlay";
@@ -1079,23 +1079,32 @@ export function getListenerStatus(roomId: string): ListenerState | null {
 
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
+// 接続を維持すべき部屋の条件。次のいずれかが成立していれば対象。
+//  - 配信者本人の登録(Streamer)が1人以上いる — 従来どおり
+//  - 事務所の監視対象(AgencyWatch)が1件以上ある
+//  - monitorUntilが未来 — 外部サービス(live-sidestage-event)が期限付きで監視を要求している
+// どれも満たさない部屋(全員が退会/re-registration/監視解除/事務所削除済みで、監視要求も期限切れ)は
+// 除外され、ensureAllListenersAlive()の第2ループで切断される。
+// 事務所を削除するとwatchはカスケードで消えるため、この条件だけで接続も止まる。
+// nowは呼び出し側が1回だけ評価した時刻を渡す(複数クエリ間で基準時刻がずれないようにするため)。
+export function watchedRoomFilter(now: Date = new Date()): Prisma.TiktokRoomWhereInput {
+  return {
+    OR: [{ streamers: { some: {} } }, { watches: { some: {} } }, { monitorUntil: { gt: now } }],
+  };
+}
+
 // 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。
 // workerId未割当の部屋は resolveWorkerForRoom() で決定的にハッシュ割当し、
 // 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
 //
-// 監視対象になる条件は次のどちらか:
-//  - 登録者(Streamer)が1人以上いる — 従来どおり
-//  - monitorUntilが未来 — 外部サービス(live-sidestage-event)が期限付きで監視を要求している
-// どちらも満たさない部屋(全員が退会/re-registration済み、かつ監視要求も期限切れ)は除外され、
-// ensureAllListenersAlive()の同じ経路で切断される。
+// 監視対象の条件は watchedRoomFilter() が単一の正。
+// subscriberIdsはStreamerのみから作る。事務所はsocket.ioのoverlay/chatを購読しないため、
+// 監視対象だけの部屋はsubscriberIds空で接続される(ギフト保存はroomId単位なのでデータは貯まる)。
 async function getMyRooms(): Promise<MyRoom[]> {
   const { index, count } = getWorkerConfig();
 
   // assignedとunassignedで基準時刻がずれないよう1回だけ評価する。
-  const now = new Date();
-  const monitored = {
-    OR: [{ streamers: { some: {} } }, { monitorUntil: { gt: now } }],
-  };
+  const monitored = watchedRoomFilter(new Date());
 
   const assigned = await prisma.tiktokRoom.findMany({
     where: { workerId: index, ...monitored },
