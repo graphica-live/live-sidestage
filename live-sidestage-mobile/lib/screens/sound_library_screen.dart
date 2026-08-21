@@ -54,7 +54,7 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
   }
 
   Future<void> _addLocal() async {
-    final result = await FilePicker.pickFiles(type: FileType.audio);
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     final path = result?.files.single.path;
     if (path == null) return;
     final name = result!.files.single.name;
