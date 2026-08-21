@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
   const range = parseDateRange(searchParams.get("from"), searchParams.get("to"));
   if (!range.ok) return NextResponse.json({ error: range.error }, { status: 400 });
 
-  const requested = parseTiktokIdsParam(searchParams.get("tiktokIds"));
+  const parsedIds = parseTiktokIdsParam(searchParams.get("tiktokIds"));
+  if (!parsedIds.ok) return NextResponse.json({ error: parsedIds.error }, { status: 400 });
+
+  const requested = parsedIds.value;
   if (requested && requested.length > agency.maxWatchTargets) {
     return NextResponse.json(
       { error: `tiktokIdsは最大${agency.maxWatchTargets}件までです。` },
@@ -70,6 +73,8 @@ export async function GET(req: NextRequest) {
     {
       from: range.value.from,
       to: range.value.to,
+      // from/to は日本時間の日付として解釈される(ギフトの集計キーがJSTの日付のため)。
+      timezone: "Asia/Tokyo",
       basis: "raw",
       livers,
       total,

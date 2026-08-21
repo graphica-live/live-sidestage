@@ -17,10 +17,12 @@ async function createRoom(prefix: string) {
   return room;
 }
 
-async function createAgency() {
+async function createAgency(approved = true) {
   const user = await prisma.user.create({ data: { email: `itest-watched-${suffix()}@local.test` } });
   createdUserIds.push(user.id);
-  return prisma.agency.create({ data: { userId: user.id, name: "テスト事務所" } });
+  return prisma.agency.create({
+    data: { userId: user.id, name: "テスト事務所", approved, approvedAt: approved ? new Date() : null },
+  });
 }
 
 async function isWatched(roomId: string): Promise<boolean> {
@@ -71,6 +73,36 @@ describe("watchedRoomFilter", () => {
 
     await prisma.agencyWatch.delete({ where: { id: watch.id } });
     expect(await isWatched(room.id)).toBe(false);
+  });
+
+  it("事務所の承認が取り消されると接続対象から外れる", async () => {
+    const room = await createRoom("unapproved");
+    const agency = await createAgency();
+    await prisma.agencyWatch.create({
+      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+    });
+
+    expect(await isWatched(room.id)).toBe(true);
+
+    await prisma.agency.update({
+      where: { id: agency.id },
+      data: { approved: false, approvedAt: null },
+    });
+    expect(await isWatched(room.id)).toBe(false);
+  });
+
+  it("承認済み事務所が1つでも監視していれば接続を続ける", async () => {
+    const room = await createRoom("mixed");
+    const revoked = await createAgency(false);
+    const active = await createAgency(true);
+    await prisma.agencyWatch.create({
+      data: { agencyId: revoked.id, roomId: room.id, tiktokId: "someliver" },
+    });
+    await prisma.agencyWatch.create({
+      data: { agencyId: active.id, roomId: room.id, tiktokId: "someliver" },
+    });
+
+    expect(await isWatched(room.id)).toBe(true);
   });
 
   it("Streamerが居る従来の部屋は引き続き接続対象", async () => {

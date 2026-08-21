@@ -197,7 +197,12 @@ export async function addWatch(
   }
 
   // 担当Workerを確定させる。すでに他の登録者/事務所が同じ部屋を使っていれば既存の割当が返る。
-  await resolveWorkerForRoom(room.id, getWorkerCount());
+  // ここは高速化のための先回りでしかなく、失敗しても各Workerのensureループが未割当の部屋を
+  // 自分でclaimする(getMyRooms)。watchは作成済みなので、ここで例外を投げて500にすると
+  // 「登録されているのにAPIはエラー、再試行するとduplicate」という不整合になる。
+  await resolveWorkerForRoom(room.id, getWorkerCount()).catch((err) =>
+    console.error("[agency] resolveWorkerForRoom failed (ensure loop will claim it):", err)
+  );
 
   return {
     ok: true,

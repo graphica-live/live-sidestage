@@ -93,14 +93,20 @@ describe("addWatch", () => {
   });
 
   it("形式が不正なIDは部屋を作らずに弾く", async () => {
-    const before = await prisma.tiktokRoom.count();
+    const bads = ["@", "https://www.tiktok.com/@someone", "some liver", "a"];
 
-    for (const bad of ["@", "https://www.tiktok.com/@someone", "some liver", "a"]) {
+    for (const bad of bads) {
       const result = await addWatch(agencyA.agencyId, bad, null);
       expect(result).toMatchObject({ ok: false, code: "invalid" });
     }
 
-    expect(await prisma.tiktokRoom.count()).toBe(before);
+    // 全体件数は他のテストファイルと並行実行されるため、この入力に対応する部屋の不在で判定する。
+    const normalized = bads.map((b) => b.trim().replace(/^@/, "").toLowerCase());
+    const created = await prisma.tiktokRoom.findMany({
+      where: { tiktokId: { in: normalized } },
+      select: { tiktokId: true },
+    });
+    expect(created).toEqual([]);
   });
 
   it("未承認の事務所は監視対象を追加できない", async () => {

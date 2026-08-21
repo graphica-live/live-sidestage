@@ -62,20 +62,29 @@ export function parseDateRange(
   return { ok: true, value: { from, to } };
 }
 
-// カンマ区切りのtiktokIdsを正規化して重複を除く。未指定(null/空文字)は「全監視対象」を意味するnullを返す。
-export function parseTiktokIdsParam(raw: string | null): string[] | null {
-  if (raw === null) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
+// カンマ区切りのtiktokIdsを正規化して重複を除く。
+//
+// パラメータ自体が無い場合だけ「全監視対象」を意味するnullを返す。`tiktokIds=` のように
+// 明示されていて中身が空のときは400にする — 呼び出し側の変数が空だっただけのつもりが
+// 全監視対象の取得にすり替わる(スコープの意図しない拡大)のを防ぐため。
+export function parseTiktokIdsParam(raw: string | null): ParseResult<string[] | null> {
+  if (raw === null) return { ok: true, value: null };
 
   // 不正な形のIDもここでは落とさない。監視対象は追加時に検証済みなので必ずマッチせず、
   // selectWatchedRooms() が unknownTiktokIds に入れて呼び出し元へ知らせる。
-  const normalized = trimmed
+  const normalized = raw
     .split(",")
     .map((v) => normalizeTiktokId(v))
     .filter((v) => v.length > 0);
 
-  return Array.from(new Set(normalized));
+  if (normalized.length === 0) {
+    return {
+      ok: false,
+      error: "tiktokIdsが空です。全監視対象を集計する場合はパラメータ自体を省略してください。",
+    };
+  }
+
+  return { ok: true, value: Array.from(new Set(normalized)) };
 }
 
 export type WatchedRoom = { roomId: string; normalizedTiktokId: string };

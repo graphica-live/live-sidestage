@@ -69,18 +69,25 @@ describe("isValidNormalizedTiktokId", () => {
 });
 
 describe("parseTiktokIdsParam", () => {
-  it("未指定はnull(=全監視対象)を返す", () => {
-    expect(parseTiktokIdsParam(null)).toBeNull();
-    expect(parseTiktokIdsParam("")).toBeNull();
-    expect(parseTiktokIdsParam("   ")).toBeNull();
+  it("パラメータ自体が無い場合だけnull(=全監視対象)を返す", () => {
+    expect(parseTiktokIdsParam(null)).toEqual({ ok: true, value: null });
+  });
+
+  it("明示された空値は拒否する(全監視対象へすり替わらない)", () => {
+    expect(parseTiktokIdsParam("").ok).toBe(false);
+    expect(parseTiktokIdsParam("   ").ok).toBe(false);
+    expect(parseTiktokIdsParam(",,").ok).toBe(false);
   });
 
   it("正規化して重複を除く", () => {
-    expect(parseTiktokIdsParam("@Alice, BOB ,alice")).toEqual(["alice", "bob"]);
+    expect(parseTiktokIdsParam("@Alice, BOB ,alice")).toEqual({
+      ok: true,
+      value: ["alice", "bob"],
+    });
   });
 
   it("空要素を落とす", () => {
-    expect(parseTiktokIdsParam("alice,,bob,")).toEqual(["alice", "bob"]);
+    expect(parseTiktokIdsParam("alice,,bob,")).toEqual({ ok: true, value: ["alice", "bob"] });
   });
 });
 
