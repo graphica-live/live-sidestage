@@ -1,11 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { DEFAULT_CALLBACK_URL, safeCallbackUrl } from "@/lib/callback-url";
 
 const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
 
+// useSearchParams はクライアント側でしか解決できないので Suspense 境界が要る。
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginCard callbackUrl={DEFAULT_CALLBACK_URL} />}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
+  const searchParams = useSearchParams();
+  // middleware が付ける `?callbackUrl=/events` を尊重する。これを無視して "/" 固定にすると、
+  // イベント管理画面から飛ばされたユーザーがログイン後 analytics へ流れてしまう。
+  const callbackUrl = safeCallbackUrl(
+    searchParams.get("callbackUrl"),
+    typeof window === "undefined" ? "" : window.location.origin
+  );
+
+  return <LoginCard callbackUrl={callbackUrl} />;
+}
+
+function LoginCard({ callbackUrl }: { callbackUrl: string }) {
   const [devEmail, setDevEmail] = useState("dev@local.test");
 
   return (
@@ -21,7 +44,7 @@ export default function LoginPage() {
 
         <div className="card">
           <button
-            onClick={() => signIn("google", { callbackUrl: "/" })}
+            onClick={() => signIn("google", { callbackUrl })}
             className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
           >
             <GoogleIcon />
@@ -35,7 +58,7 @@ export default function LoginPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                signIn("dev-login", { email: devEmail, callbackUrl: "/" });
+                signIn("dev-login", { email: devEmail, callbackUrl });
               }}
               className="flex gap-2"
             >
