@@ -160,8 +160,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <Link href={`/events/${event.id}`} className="text-sm text-gray-400 hover:text-white">
-        ← {event.title}
+      <Link href={`/events/${event.id}/participants`} className="text-sm text-gray-400 hover:text-white">
+        ← 参加者
       </Link>
       <h1 className="mt-2 text-2xl font-bold">対戦管理</h1>
       <p className="mt-1 text-sm text-gray-400">

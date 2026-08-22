@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ENTRY_MODE_LABELS,
@@ -92,6 +93,20 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
 
   return (
     <div className="grid gap-5">
+      {stepIndex > 0 ? (
+        <button
+          type="button"
+          onClick={() => goTo(stepIndex - 1)}
+          className="text-left text-xs text-gray-500 hover:text-white"
+        >
+          ← 前の手順
+        </button>
+      ) : (
+        <Link href="/events" className="text-xs text-gray-500 hover:text-white">
+          ← イベント一覧
+        </Link>
+      )}
+
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         {WIZARD_STEPS.map((s, index) => {
           const done = index < stepIndex;

@@ -78,8 +78,8 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
 
   return (
     <div>
-      <Link href={`/events/${event.id}`} className="text-xs text-gray-500 hover:text-white">
-        ← {event.title}
+      <Link href="/events" className="text-xs text-gray-500 hover:text-white">
+        ← イベント一覧
       </Link>
       <h1 className="mb-1 mt-2 text-xl font-bold">参加者</h1>
 

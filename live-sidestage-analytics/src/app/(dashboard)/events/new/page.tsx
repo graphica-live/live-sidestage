@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { toJstInputValue } from "@/event/datetime";
 import type { EventDraft } from "@/event/wizard";
 import { EventWizard } from "../EventWizard";
@@ -38,10 +37,7 @@ function defaultDraft(): EventDraft {
 export default function NewEventPage() {
   return (
     <div>
-      <Link href="/events" className="text-xs text-gray-500 hover:text-white">
-        ← イベント一覧
-      </Link>
-      <h1 className="mb-6 mt-2 text-xl font-bold">新しいイベント</h1>
+      <h1 className="mb-6 text-xl font-bold">新しいイベント</h1>
       <EventWizard initial={defaultDraft()} />
     </div>
   );
