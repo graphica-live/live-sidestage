@@ -207,8 +207,11 @@ model Gift {
   orderId         String?
   groupId         String?
   // TikTok common.msgId。protobufの既定値"0"等、実IDとして使えない値は resolveMsgId() が null にする。
-  // 現状は観測専用で、unique制約もindexも張っていない — 実データで (roomId, msgId) の一意性と
-  // 充足率を確かめてから dedup キーに昇格させる(それまでリトライ導入も保留)。
+  // dedupキー。saveGift() が「直近5分に同じ (roomId, msgId) があるか」を引くのに使う
+  // (@@index([roomId, msgId]))。**unique制約は張らない** — roomIdは配信セッション
+  // ではなく永続的なTiktokRoom.idなので、将来の別ライブでmsgIdが再利用されたら正当なギフトを
+  // 恒久的に弾いてしまう。加えて prisma db push は Dockerfile の CMD でコンテナ起動時に走るため、
+  // 既存の重複行があるとunique index作成に失敗してWebが起動しなくなる。
   msgId           String?
   // 1 = combo可能ギフト。groupId="0" が3591件流入していて、それが実際にcomboなのか
   // 単発ギフトなのかを本番DBだけでは判定できないため、combo キーの設計見直し用に残す。
@@ -223,6 +226,7 @@ model Gift {
   @@index([roomId, receivedAt])
   @@index([roomId, uniqueId])
   @@index([roomId, groupId])
+  @@index([roomId, msgId])
   @@schema("public")
 }
 

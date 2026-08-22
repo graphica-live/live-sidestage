@@ -64,12 +64,37 @@ interface ListenerInstance {
   //  emitするため、再送バッチをライブラリ側で見分ける手段がなく、msgIdでの後追い判定に頼るしかない)
   recentChatMsgIds: Set<string>;
   recentChatMsgIdOrder: string[];
+  // ギフト版。chatと同じくTikTok側の再送で同一イベントが2回届くことがあり、
+  // non-comboの保存パスは無条件にinsertするためそのまま二重計上になる
+  // (comboはdelta=0になるので元々弾かれる)。実データで1件確認済み。
+  recentGiftMsgIds: Set<string>;
+  recentGiftMsgIdOrder: string[];
 }
 
 // ack未達等によるTikTok側の再送バッチは、盛り上がっている配信だと直近のコメントとの間隔が
 // 数百件を優に超えることがある。小さすぎるFIFOだと再送到達前に対象msgIdが枠から追い出され、
 // dedupをすり抜けて二重配信してしまう(2026-08-18に発覚)。msgId文字列は軽量なので余裕を持たせる。
 const CHAT_DEDUP_CACHE_SIZE = 3000;
+
+// ギフトはコメントよりずっと流量が少ないので、同じ再送バッチを覆うのに必要な枠も小さい。
+const GIFT_DEDUP_CACHE_SIZE = 1000;
+
+// msgIdのFIFOキャッシュ。未登録なら記録してtrueを返し、既に入っていれば(=再送)falseを返す。
+function rememberMsgId(
+  seen: Set<string>,
+  order: string[],
+  msgId: string,
+  capacity: number
+): boolean {
+  if (seen.has(msgId)) return false;
+  seen.add(msgId);
+  order.push(msgId);
+  if (order.length > capacity) {
+    const oldest = order.shift();
+    if (oldest !== undefined) seen.delete(oldest);
+  }
+  return true;
+}
 
 export interface GiftLogEntry {
   ts: string;
@@ -506,7 +531,36 @@ async function loadPendingCombos(
   return map;
 }
 
+// 同じギフトイベントを二重に保存しないための時刻窓。
+//
+// 二重保存が起きる経路は主に2つ。
+//   1. TikTok側の再送(再接続直後やネットワーク瞬断の前後)
+//   2. デプロイ中の新旧Worker並走(RAILWAY_DEPLOYMENT_OVERLAP_SECONDS=10)
+// どちらも数秒〜十数秒の範囲なので、5分あれば十分に覆える。
+//
+// 1はgiftハンドラ側のrecentGiftMsgIds(プロセス内FIFO)が先に落とす。こちらの
+// DB照会は主に2 — 別プロセスが既に書いた行を見つけるため — を担当する。
+// プロセス内キャッシュだけでは新旧Worker並走を防げず、DB照会だけでは同一tickの
+// 再送を防げないので、両方が要る。
+//
+// **DBのunique制約ではなくアプリ側の時刻窓で弾いている理由**:
+// Gift.roomIdはTikTokの配信セッションIDではなく永続的なTiktokRoom.idなので、
+// (roomId, msgId)をunique制約にすると「将来の別ライブで同じmsgIdが来たら弾かれる」
+// 可能性を永久に抱える。msgIdは実測でsnowflake(上位ビットがms時刻、1msあたりの
+// 増分が2^22)と確認できており再利用の心配はほぼ無いが、外したときの被害が
+// 「正当なギフトを黙って捨てる」= データロストなので、時刻窓で限定する方を選ぶ。
+//
+// unique制約を避けるもう1つの理由は適用手順。prisma db pushはDockerfileのCMDで
+// **コンテナ起動時**に走るため、既存の重複行が残っていると制約作成に失敗し、
+// Webが起動しなくなる。非uniqueなindexなら重複があっても必ず作成できる。
+const GIFT_DEDUP_WINDOW_MS = 5 * 60_000;
+
 // 保存に成功したらtrueを返す(呼び出し側はこれを見てオーバーレイ通知の要否を判断する)。
+//
+// falseは「このイベントを保存しなかった」であって「ギフトが無かった」ではない。
+// モバイルの効果音配信(notifyChatGift)はこの戻り値に紐づけていない — 呼び出し側の
+// コメントの通り、鳴らすかどうかは別の判断で、Webプロセス側(emitChatGift)が
+// 独自にdedupする。ここで抑えるのはDBの行とオーバーレイ更新だけ。
 async function saveGift(
   roomId: string,
   data: Record<string, unknown>,
@@ -514,11 +568,35 @@ async function saveGift(
   receivedAt: Date,
   timeSource: "tiktok" | "fallback"
 ): Promise<boolean> {
+  // catch側のログでも参照するのでtryの外で確定させる(いずれも例外を投げない純粋な変換)。
+  const orderId = data.orderId ? String(data.orderId) : null;
+  const groupId = data.groupId ? String(data.groupId) : null;
+  const msgId = resolveMsgId(data);
+
   try {
     const dayKey = jstDateKey(receivedAt);
     const diamondCount = Number(data.diamondCount) || 0;
-    const orderId = data.orderId ? String(data.orderId) : null;
-    const groupId = data.groupId ? String(data.groupId) : null;
+
+    // msgIdが取れているときだけ効く。resolveMsgId()がprotobufの既定値を弾いてnullに
+    // した場合は従来どおりそのまま保存する(dedupキーが無いだけで、ギフト自体は
+    // 実際に届いているため、捨てるとダイヤ数がそのまま失われる)。
+    if (msgId) {
+      const duplicate = await prisma.gift.findFirst({
+        where: {
+          roomId,
+          msgId,
+          receivedAt: { gte: new Date(receivedAt.getTime() - GIFT_DEDUP_WINDOW_MS) },
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        console.log(
+          `[gift] dedup: msgId=${msgId} は直近${GIFT_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, gift=${String(data.giftName || "")})`
+        );
+        return false;
+      }
+    }
+
     await prisma.gift.create({
       data: {
         roomId,
@@ -540,14 +618,20 @@ async function saveGift(
         dayKey,
         orderId,
         groupId,
-        msgId: resolveMsgId(data),
+        msgId,
         giftType: Number.isInteger(data.giftType) ? (data.giftType as number) : null,
       },
     });
     return true;
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
-      console.log("[gift] dedup: duplicate orderId skipped", data.orderId);
+      // どのunique制約で弾かれたかを残す。現状効きうるのは (roomId, orderId) だけだが、
+      // orderIdは本番で100%nullなので実際には発火しない。将来TikTokがorderIdを返し
+      // 始めたとき、comboの正当な加算を黙って捨てていないか気づけるようにしておく。
+      const target = (err as { meta?: { target?: unknown } })?.meta?.target;
+      console.log(
+        `[gift] dedup: unique制約違反でスキップ target=${JSON.stringify(target)} orderId=${orderId} msgId=${msgId} groupId=${groupId} room=${roomId}`
+      );
       return false;
     }
     console.error("[listener] gift save error:", err);
@@ -799,17 +883,12 @@ async function connectAndAttach(
 
   conn.on("chat", (data: Record<string, unknown>) => {
     const msgId = resolveMsgId(data);
-    if (msgId) {
-      if (inst.recentChatMsgIds.has(msgId)) {
-        console.log("[chat] dedup: duplicate msgId skipped (listener instance)", { roomId, msgId });
-        return;
-      }
-      inst.recentChatMsgIds.add(msgId);
-      inst.recentChatMsgIdOrder.push(msgId);
-      if (inst.recentChatMsgIdOrder.length > CHAT_DEDUP_CACHE_SIZE) {
-        const oldest = inst.recentChatMsgIdOrder.shift();
-        if (oldest !== undefined) inst.recentChatMsgIds.delete(oldest);
-      }
+    if (
+      msgId &&
+      !rememberMsgId(inst.recentChatMsgIds, inst.recentChatMsgIdOrder, msgId, CHAT_DEDUP_CACHE_SIZE)
+    ) {
+      console.log("[chat] dedup: duplicate msgId skipped (listener instance)", { roomId, msgId });
+      return;
     }
 
     const { time: eventTime } = resolveEventTime(data);
@@ -879,6 +958,31 @@ async function connectAndAttach(
 
     console.log("[gift]", JSON.stringify(baseLog));
 
+    // 同一プロセスに同じイベントが2回届いた場合をここで落とす。
+    // saveGift()側のDB照会だけでは足りない — このハンドラはsaveGift()をawaitせず
+    // .then()で流すので、同じtickに再送が2件届くと双方のfindFirstが「まだ無い」を
+    // 見てしまい2行入る。実データで確認した二重計上(間隔0.00秒)はこの経路。
+    // comboは同じrepeatCountならdelta=0で元々保存されないが、non-comboは無条件に
+    // insertするため、msgId単位で先に弾く必要がある。
+    // (プロセスをまたぐ重複 — デプロイ中の新旧Worker並走 — はsaveGift()側が担当する)
+    const eventMsgId = resolveMsgId(data);
+    if (
+      eventMsgId &&
+      !rememberMsgId(
+        inst.recentGiftMsgIds,
+        inst.recentGiftMsgIdOrder,
+        eventMsgId,
+        GIFT_DEDUP_CACHE_SIZE
+      )
+    ) {
+      console.log("[gift] dedup: duplicate msgId skipped (listener instance)", {
+        roomId,
+        msgId: eventMsgId,
+      });
+      notifyGiftLog({ ...baseLog, action: "dropped", reason: "duplicate_msgId" });
+      return;
+    }
+
     // ギフトデータはroomId単位で1行だけ保存される(登録者全員で共有)。
     // 保存に成功したときだけ、購読している全Streamerのオーバーレイへ更新通知を送る。
     const notifyAllSubscribers = () => {
@@ -904,7 +1008,7 @@ async function connectAndAttach(
       repeatEnd: Boolean(data.repeatEnd),
       groupId,
       orderId: data.orderId ? String(data.orderId) : null,
-      msgId: resolveMsgId(data),
+      msgId: eventMsgId,
       occurredAt: eventTime.toISOString(),
       receivedAt: new Date().toISOString(),
     });
@@ -1057,6 +1161,8 @@ export async function startListener(
     watchdogBackoffUntil: 0,
     recentChatMsgIds: new Set(),
     recentChatMsgIdOrder: [],
+    recentGiftMsgIds: new Set(),
+    recentGiftMsgIdOrder: [],
   };
 
   listeners.set(roomId, inst);
