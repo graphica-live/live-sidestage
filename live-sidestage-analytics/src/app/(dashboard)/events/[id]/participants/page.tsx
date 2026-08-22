@@ -4,7 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { findRoomStatuses, findStreamerLinks } from "@/event/analytics-db";
-import { MAX_PARTICIPANTS } from "@/event/validation";
+import { MAX_PARTICIPANTS, type EventFormat } from "@/event/validation";
+import { EventSetupSteps } from "../../EventSetupSteps";
 import { ParticipantManager, type ParticipantRow } from "./ParticipantManager";
 import { TeamManager, type TeamRow } from "./TeamManager";
 
@@ -14,7 +15,7 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
     where: { id: params.id, ownerUserId: session!.user.id },
-    select: { id: true, title: true, entryMode: true, teamPreset: true, status: true },
+    select: { id: true, title: true, format: true, entryMode: true, teamPreset: true, status: true },
   });
 
   if (!event) notFound();
@@ -81,6 +82,9 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         ← {event.title}
       </Link>
       <h1 className="mb-1 mt-2 text-xl font-bold">参加者</h1>
+
+      <EventSetupSteps format={event.format as EventFormat} current="participants" />
+
       <p className="mb-6 text-xs text-gray-500">
         {rows.length} / {MAX_PARTICIPANTS} 人
       </p>
@@ -97,6 +101,21 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         participants={rows}
         teams={isTeamEvent ? teamRows.map((t) => ({ id: t.id, name: t.name })) : []}
       />
+
+      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        <Link
+          href={
+            event.format === "TOURNAMENT" ? `/events/${event.id}/matches` : `/events/${event.id}`
+          }
+          className="btn-primary text-sm"
+        >
+          {event.format === "TOURNAMENT" ? "次へ: トーナメント表を作る" : "次へ: 完了"}
+        </Link>
+        <span className="text-xs text-gray-500">
+          {rows.length === 0 && "参加者は0人でも先へ進める。"}
+          参加者はあとからでも追加・変更・削除できる。
+        </span>
+      </div>
     </div>
   );
 }

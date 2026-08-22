@@ -7,13 +7,11 @@ import {
   FORMAT_DESCRIPTIONS,
   FORMAT_LABELS,
   TEAM_PRESET_LABELS,
-  VISIBILITY_LABELS,
 } from "@/event/labels";
 import {
   ENTRY_MODES,
   MAX_TITLE_LENGTH,
   TEAM_PRESETS,
-  VISIBILITIES,
   type EntryMode,
   type EventFormat,
   type TeamPreset,
@@ -182,27 +180,6 @@ export function EventForm({
       <div>
         <span className="label">開催日程(JST)</span>
         <SessionsField sessions={values.sessions} onChange={(s) => set("sessions", s)} />
-      </div>
-
-      <div>
-        <label className="label" htmlFor="visibility">
-          公開範囲
-        </label>
-        <select
-          id="visibility"
-          className="input-field"
-          value={values.visibility}
-          onChange={(e) => set("visibility", e.target.value as Visibility)}
-        >
-          {VISIBILITIES.map((v) => (
-            <option key={v} value={v}>
-              {VISIBILITY_LABELS[v]}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1.5 text-xs text-gray-500">
-          結果とランキングの公開ページに適用される。作成・参加者管理・設定は常にログインが要る。
-        </p>
       </div>
 
       <div className="flex gap-3">

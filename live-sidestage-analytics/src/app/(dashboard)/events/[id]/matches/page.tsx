@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { defaultSeedOrder } from "@/event/tournament";
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { resolveEventWindows } from "@/event/sessions";
+import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
 
 export const dynamic = "force-dynamic";
@@ -167,6 +168,12 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         主催者が組んだ時間枠と組み合わせに対して、実際の TikTok バトルを自動で照合する。
       </p>
 
+      {event.format === "TOURNAMENT" && (
+        <div className="mt-4">
+          <EventSetupSteps format="TOURNAMENT" current="bracket" />
+        </div>
+      )}
+
       <div className="mt-6">
         <MatchManager
           eventId={event.id}
@@ -183,6 +190,17 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           rules={parseDeathmatchRules(event.rules)}
         />
       </div>
+
+      {event.format === "TOURNAMENT" && (
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <Link href={`/events/${event.id}`} className="btn-primary text-sm">
+            次へ: 完了
+          </Link>
+          <span className="text-xs text-gray-500">
+            トーナメント表はあとからでも作り直せる。
+          </span>
+        </div>
+      )}
     </div>
   );
 }

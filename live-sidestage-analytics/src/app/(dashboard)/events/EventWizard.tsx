@@ -7,16 +7,13 @@ import {
   FORMAT_DESCRIPTIONS,
   FORMAT_LABELS,
   TEAM_PRESET_LABELS,
-  VISIBILITY_LABELS,
 } from "@/event/labels";
 import {
   ENTRY_MODES,
   EVENT_FORMATS,
   MAX_TITLE_LENGTH,
   TEAM_PRESETS,
-  VISIBILITIES,
   type TeamPreset,
-  type Visibility,
 } from "@/event/validation";
 import {
   WIZARD_STEPS,
@@ -88,7 +85,8 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
       return;
     }
 
-    router.push(`/events/${body.id}`);
+    // 作成しただけでは参加者もトーナメント表もない。続けて参加者登録へ進ませる。
+    router.push(`/events/${body.id}/participants`);
     router.refresh();
   }
 
@@ -266,27 +264,6 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
 
         {step === "publish" && (
           <div className="grid gap-4">
-            <div>
-              <label className="label" htmlFor="visibility">
-                公開範囲
-              </label>
-              <select
-                id="visibility"
-                className="input-field"
-                value={values.visibility}
-                onChange={(e) => set("visibility", e.target.value as Visibility)}
-              >
-                {VISIBILITIES.map((v) => (
-                  <option key={v} value={v}>
-                    {VISIBILITY_LABELS[v]}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-xs text-gray-500">
-                結果とランキングの公開ページに適用される。作成・参加者管理・設定は常にログインが要る。
-              </p>
-            </div>
-
             <dl className="grid gap-2 rounded-lg border border-border bg-panel p-3 text-sm">
               <Row label="種目">
                 {values.format ? FORMAT_LABELS[values.format] : "未選択"}
@@ -310,7 +287,9 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
             </dl>
 
             <p className="text-xs text-gray-500">
-              作成すると下書きとして保存される。参加者を登録してから「開催予定にする」で公開する。
+              作成すると同時に公開ページが有効になる。続けて参加者登録
+              {values.format === "TOURNAMENT" && "→トーナメント表作成"}
+              に進む。ここで決めた内容も含め、いつでもあとから編集できる。
             </p>
           </div>
         )}

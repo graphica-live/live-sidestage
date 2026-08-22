@@ -14,7 +14,8 @@ function defaultDraft(): EventDraft {
     description: "",
     entryMode: "SOLO",
     teamPreset: "GENERIC",
-    visibility: "PRIVATE",
+    // 公開範囲の選択UIは廃止した。常に公開で作成する(下の EventWizard 参照)。
+    visibility: "PUBLIC",
     // 既定は「明日から1週間」の1日程。JST に丸めるのは toJstInputValue が担当する。
     sessions: [
       {
