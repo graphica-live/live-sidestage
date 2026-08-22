@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { MATCH_STATUS_CLASSES, MATCH_STATUS_LABELS } from "@/event/labels";
 import type { MatchRow } from "./MatchManager";
 
@@ -11,10 +14,18 @@ import type { MatchRow } from "./MatchManager";
 //      (承認・勝者確定などの操作は呼び出し元がモーダルで開く MatchCard に任せる)
 //
 // 幾何を変えるときは src/event/CLAUDE.md の「公開トーナメント表の幾何を壊さない」を読むこと。
+//
+// スマホ幅では表全体がはみ出るため、初期表示は画面幅に収まる縮小率(fitZoom)で
+// 描画し、+/-/全体表示ボタンでユーザーが任意にズームできるようにする。
+// transform: scale() は要素の占有スペースを変えないので、スペーサー div の
+// width/height を縮小後のサイズに明示して overflow-auto のスクロール領域を合わせている。
 
 const CARD_W = "w-40 sm:w-44";
 const CONN_W = "w-5";
 const CARD_H = "h-24";
+
+const MAX_ZOOM = 1.5;
+const ZOOM_STEP = 0.15;
 
 type MatchIndex = Map<string, MatchRow>;
 
@@ -29,6 +40,36 @@ export function AdminBracketTree({
   matches: MatchRow[];
   onSelect: (matchId: string) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
+  const [fitZoom, setFitZoom] = useState(1);
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const tree = treeRef.current;
+    if (!container || !tree) return;
+
+    function fit() {
+      const width = tree!.scrollWidth;
+      const height = tree!.scrollHeight;
+      if (width === 0 || height === 0) return;
+      setTreeSize({ width, height });
+      const next = Math.min(1, container!.clientWidth / width);
+      setFitZoom(next);
+      setZoom(next);
+    }
+
+    fit();
+    // container(overflow-auto)自体を observe すると、ズームでスペーサー div の
+    // 高さが変わるたびに container の content box も追従して変化し、それを
+    // ResizeObserver が「リサイズされた」と誤検知して zoom を fitZoom へ戻してしまう。
+    // 画面幅の変化(回転・リサイズ)だけを見ればよいので window の resize で足りる。
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [matches]);
+
   if (matches.length === 0) return null;
 
   const roundCount = Math.max(...matches.map((m) => m.round));
@@ -36,36 +77,74 @@ export function AdminBracketTree({
   const hasWings = roundCount >= 2;
 
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="min-w-max">
-        <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-1 text-xs text-gray-400">
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.max(fitZoom, Number((z - ZOOM_STEP).toFixed(2))))}
+          disabled={zoom <= fitZoom}
+          className="rounded-full px-2 py-1.5 hover:bg-white/10 disabled:opacity-30"
+          aria-label="縮小"
+        >
+          −
+        </button>
+        <span className="w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.min(MAX_ZOOM, Number((z + ZOOM_STEP).toFixed(2))))}
+          disabled={zoom >= MAX_ZOOM}
+          className="rounded-full px-2 py-1.5 hover:bg-white/10 disabled:opacity-30"
+          aria-label="拡大"
+        >
+          ＋
+        </button>
+        {zoom !== fitZoom && (
+          <button
+            type="button"
+            onClick={() => setZoom(fitZoom)}
+            className="ml-1 rounded-full px-2 py-1.5 hover:bg-white/10"
+          >
+            全体表示
+          </button>
+        )}
+      </div>
 
-        <div className="flex items-center pt-2">
-          {hasWings && (
-            <MatchNode
-              round={roundCount - 1}
-              position={0}
-              mirror={false}
-              index={index}
-              onSelect={onSelect}
-            />
-          )}
-          {hasWings && <StraightConnector />}
+      <div ref={containerRef} className="overflow-auto pb-2">
+        <div style={{ width: treeSize.width * zoom, height: treeSize.height * zoom }}>
+          <div
+            ref={treeRef}
+            style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: "max-content" }}
+          >
+            <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-          <div className={`${CARD_W} shrink-0`}>
-            <MatchCardOrEmpty match={index.get(key(roundCount, 0))} mirror={false} onSelect={onSelect} />
+            <div className="flex items-center pt-2">
+              {hasWings && (
+                <MatchNode
+                  round={roundCount - 1}
+                  position={0}
+                  mirror={false}
+                  index={index}
+                  onSelect={onSelect}
+                />
+              )}
+              {hasWings && <StraightConnector />}
+
+              <div className={`${CARD_W} shrink-0`}>
+                <MatchCardOrEmpty match={index.get(key(roundCount, 0))} mirror={false} onSelect={onSelect} />
+              </div>
+
+              {hasWings && <StraightConnector />}
+              {hasWings && (
+                <MatchNode
+                  round={roundCount - 1}
+                  position={1}
+                  mirror
+                  index={index}
+                  onSelect={onSelect}
+                />
+              )}
+            </div>
           </div>
-
-          {hasWings && <StraightConnector />}
-          {hasWings && (
-            <MatchNode
-              round={roundCount - 1}
-              position={1}
-              mirror
-              index={index}
-              onSelect={onSelect}
-            />
-          )}
         </div>
       </div>
     </div>
