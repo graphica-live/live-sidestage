@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { findPublicEvent, loadBracket } from "@/event/public-event";
-import { formatJst } from "@/event/datetime";
-import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
+import { BracketTree } from "./BracketTree";
 
 export const dynamic = "force-dynamic";
 
@@ -45,52 +44,10 @@ export default async function BracketPage({ params }: { params: { slug: string }
             勝敗は当サービスが受信したギフトのダイヤで決まる。バトル中に投げられたぶんが対象。
           </p>
 
-          {/* 横スクロールで全ラウンドを見せる。ラウンドが増えても縦に潰れないようにする。
-              後のラウンドほど試合数が半分になるので、justify-around で前ラウンドの
-              2試合のちょうど中間に来るように置く(トーナメント表の見え方に合わせる)。 */}
-          <div className="mt-6 overflow-x-auto pb-4">
-            <div className="flex min-w-max items-stretch gap-4">
-              {Array.from({ length: bracket.roundCount }, (_, i) => i + 1).map((round) => {
-                const matches = bracket.matches.filter((m) => m.round === round);
-                return (
-                  <section key={round} className="flex w-56 shrink-0 flex-col sm:w-64">
-                    <h2 className="mb-3 text-sm font-semibold text-gray-300">
-                      {matches[0]?.roundLabel ?? `${round}回戦`}
-                    </h2>
-                    <div className="flex flex-1 flex-col justify-around gap-3">
-                    {matches.map((match) => (
-                      <article key={match.id} className="card space-y-2 p-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>{formatJst(new Date(match.scheduledStartAt))}</span>
-                          <span>{MATCH_STATUS_LABELS[match.status] ?? match.status}</span>
-                        </div>
-                        {match.sides.map((side) => (
-                          <div
-                            key={side.id}
-                            className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                              side.isWinner ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
-                            }`}
-                          >
-                            <span className="min-w-0 flex-1 truncate">
-                              {side.name ?? <span className="text-gray-600">未確定</span>}
-                            </span>
-                            <span className="shrink-0 text-xs tabular-nums text-gray-400">
-                              {Number(side.diamonds).toLocaleString("ja-JP")}
-                            </span>
-                          </div>
-                        ))}
-                        {match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE" && (
-                          <p className="text-xs text-gray-500">
-                            {WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy]}
-                          </p>
-                        )}
-                      </article>
-                    ))}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
+          {/* 決勝を中央に置き、左右へブロックを分けて描く。狭い画面では横スクロールになるが、
+              初期位置は決勝(中央)に合わせてある(BracketScroller)。 */}
+          <div className="mt-6">
+            <BracketTree roundCount={bracket.roundCount} matches={bracket.matches} />
           </div>
 
           <p className="mt-2 text-xs leading-relaxed text-gray-600">

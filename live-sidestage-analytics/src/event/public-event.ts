@@ -39,6 +39,26 @@ export async function findPublicEvent(slug: string) {
   return event;
 }
 
+/**
+ * 公開してよいイベントに属する参加者の TikTok ハンドル。
+ *
+ * アイコン配信(`/api/public/avatar/[participantId]`)が、参加者IDを推測して
+ * DRAFT / PRIVATE のイベントの出場者を引き当てられないようにするための絞り込み。
+ * 公開条件は `findPublicEvent()` と同じにしてある。
+ */
+export async function findPublicParticipantTiktokId(
+  participantId: string
+): Promise<string | null> {
+  const row = await prisma.eventParticipant.findFirst({
+    where: {
+      id: participantId,
+      event: { visibility: { not: "PRIVATE" }, status: { not: "DRAFT" } },
+    },
+    select: { tiktokId: true },
+  });
+  return row?.tiktokId ?? null;
+}
+
 export type StandingDto = {
   subjectId: string;
   name: string;
@@ -59,10 +79,21 @@ export type ContributionDto = {
   giftCount: number;
 };
 
+/**
+ * サイドに出る1人。アイコンは `/api/public/avatar/<participantId>` から引く
+ * (URL をここに埋めない — TikTok の avatar URL は署名付きで約2日で失効する)。
+ */
+export type BracketEntrantDto = {
+  participantId: string;
+  displayName: string;
+};
+
 export type BracketSideDto = {
   id: string;
   sideIndex: number;
   name: string | null;
+  /** 個人戦なら1人、チーム戦は出場メンバー全員。未確定のサイドは空。 */
+  entrants: BracketEntrantDto[];
   diamonds: string;
   isWinner: boolean;
 };
@@ -111,7 +142,9 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           sideIndex: true,
           diamonds: true,
           team: { select: { name: true } },
-          participants: { select: { participant: { select: { displayName: true } } } },
+          participants: {
+            select: { participant: { select: { id: true, displayName: true } } },
+          },
         },
       },
     },
@@ -143,6 +176,10 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           id: s.id,
           sideIndex: s.sideIndex,
           name,
+          entrants: s.participants.map((p) => ({
+            participantId: p.participant.id,
+            displayName: p.participant.displayName,
+          })),
           diamonds: s.diamonds.toString(),
           // 確定するまでは勝者を出さない(NEEDS_REVIEW のまま公開しない)。
           isWinner: m.status === "FINISHED" && m.winnerSideId === s.id,
