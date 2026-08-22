@@ -50,7 +50,7 @@ export const WIZARD_STEP_TITLES: Record<WizardStep, string> = {
   format: "種目を選ぶ",
   title: "イベント名を決める",
   entry: "参加形式を決める",
-  sessions: "開催日程を決める",
+  sessions: "開催日程(監視対象)を決める",
   publish: "内容を確認して作成する",
 };
 
@@ -58,7 +58,7 @@ export const WIZARD_STEP_HINTS: Record<WizardStep, string> = {
   format: "何を競うイベントか。作成すると変更できない。",
   title: "公開ページに出る名前。あとから変更できる。",
   entry: "1人ずつ競うか、チームでまとめて競うか。",
-  sessions: "ギフトを集計する時間帯。日を分けて開催するなら日程を足す。",
+  sessions: "ギフトを集計する時間帯。この時間だけ配信者を監視対象にする。日を分けて開催するなら日程を足す。",
   publish: "内容を確認してイベントを作る。作成後は続けて参加者登録に進む。",
 };
 
