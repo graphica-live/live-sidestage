@@ -4,14 +4,40 @@ import { resolveUserByMobileToken } from "@/lib/mobile-auth";
 
 // モバイルの「ギフトを選ぶ」ピッカーへ返す候補一覧。
 //
-// 全期間の厳密なカタログではなく、**直近に実際に受け取ったギフトの候補**を返す。
-// TikTokのギフト一覧APIは持っていないので、自分の部屋の受信履歴が唯一の情報源になる。
-// 一覧に無いギフトはクライアント側の自由入力で登録できる。
+// 情報源は2つで、**和集合**を返す。
+//  1. TikTokの全ギフトカタログ(`public."tiktok_gift_catalog"`。worker が gift/list/ から取る)
+//  2. 自分の部屋が最近受け取ったギフトの履歴(`public."gifts"` の直近 MAX_SCAN_ROWS 行)
+//
+// どちらか片方が欠けても動く。カタログ未取得なら履歴だけ、部屋が未割り当てならカタログだけ返る。
+// カタログも網羅ではない(部屋限定ギフト・新ギフト)ので、一覧に無い名前はクライアント側の
+// 自由入力で登録できる導線を残してある。
+//
+// **畳む単位はギフト名。** 効果音の一致キーが名前だから(socket.ioの `chat:gift` は
+// `giftName` を trim + 小文字化して配信し、モバイルはそれと `GiftSound.giftName` を比較する)。
+// gift/list/ は同じ名前に複数の giftId を割り当てているので、giftId で畳むと
+// ピッカーに区別のつかない同名行が並ぶ。
 
 // 走査するGift行数の上限。[roomId, receivedAt] インデックスで新しい順に取る。
 const MAX_SCAN_ROWS = 5000;
-// 返すギフト種類数の上限。
-const MAX_KINDS = 200;
+// 返す候補数の上限。実測のカタログは670件なので、全件+履歴が収まる。
+const MAX_CANDIDATES = 1000;
+
+interface Candidate {
+  name: string;
+  label: string;
+  minDiamondCount: number;
+  maxDiamondCount: number;
+  seen: boolean;
+  // 履歴での新しさ(小さいほど新しい)。並べ替えにだけ使い、レスポンスには含めない。
+  seenRank: number;
+  // カタログ側で代表に選んだ行のgiftId。同名複数行のlabelを決定的に選ぶためだけに使う。
+  catalogGiftId: number;
+}
+
+function widen(candidate: Candidate, coins: number) {
+  candidate.minDiamondCount = Math.min(candidate.minDiamondCount, coins);
+  candidate.maxDiamondCount = Math.max(candidate.maxDiamondCount, coins);
+}
 
 export async function GET(req: NextRequest) {
   const auth = resolveUserByMobileToken(req);
@@ -28,37 +54,115 @@ export async function GET(req: NextRequest) {
   if (!streamer) {
     return NextResponse.json({ error: "TikTokアカウントが未登録です" }, { status: 404 });
   }
-  if (!streamer.roomId) {
-    // まだWorkerが部屋を割り当てていない。候補は空でよい(エラーではない)。
-    return NextResponse.json({ gifts: [] });
+
+  const [catalogRows, historyRows] = await Promise.all([
+    prisma.tiktokGiftCatalog.findMany({
+      select: { giftId: true, name: true, label: true, diamondCount: true },
+    }),
+    // 部屋が未割り当てならまだ1件も受け取っていない。カタログだけで返す。
+    //
+    // Prismaの `distinct` はこのリポジトリでは nativeDistinct を有効にしていないため
+    // SQL DISTINCT にならず、SELECT後にメモリ上で重複排除される。素朴に使うと全期間を
+    // 引いてしまうので、新しい順に上限件数だけ取ってここで正規化・重複排除する。
+    streamer.roomId
+      ? prisma.gift.findMany({
+          where: { roomId: streamer.roomId },
+          select: { giftName: true, diamondCount: true },
+          orderBy: { receivedAt: "desc" },
+          take: MAX_SCAN_ROWS,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const byName = new Map<string, Candidate>();
+
+  // --- カタログ ---
+  // 同じ名前に複数行あるとき(実測638ユニーク名 / 670行)は、コイン数を範囲へ畳む。
+  // **最大値だけを1つの価格として見せない。** `freestyle` は 1c と 1800c の両方が存在し、
+  // 1800cとして出すと「大物ギフト用」に仕込んだ音が1cでも鳴る。
+  // labelは最小giftIdの行を採る(どれを選んでも表示は同じだが、決定的にするため)。
+  for (const row of catalogRows) {
+    const name = row.name;
+    if (!name) continue;
+    const existing = byName.get(name);
+    if (!existing) {
+      byName.set(name, {
+        name,
+        label: row.label || name,
+        minDiamondCount: row.diamondCount,
+        maxDiamondCount: row.diamondCount,
+        seen: false,
+        seenRank: Number.MAX_SAFE_INTEGER,
+        catalogGiftId: row.giftId,
+      });
+      continue;
+    }
+    widen(existing, row.diamondCount);
+    if (row.giftId < existing.catalogGiftId) {
+      existing.catalogGiftId = row.giftId;
+      existing.label = row.label || existing.label;
+    }
   }
 
-  // Prismaの `distinct` はこのリポジトリでは nativeDistinct を有効にしていないため
-  // SQL DISTINCT にならず、SELECT後にメモリ上で重複排除される。
-  // 素朴に使うと全期間を引いてしまうので、新しい順に上限件数だけ取って
-  // ここで正規化・重複排除する。
-  const rows = await prisma.gift.findMany({
-    where: { roomId: streamer.roomId },
-    select: { giftName: true, diamondCount: true },
-    orderBy: { receivedAt: "desc" },
-    take: MAX_SCAN_ROWS,
-  });
-
-  // DBには元の大文字小文字のまま保存されているが、socket.ioの `chat:gift` は
-  // trim + 小文字化して配信している。効果音の一致キーは後者なので、
-  // 正規化した name をキーに畳み、表示用の label には最新行の元表記を残す。
+  // --- 受信履歴 ---
+  // DBには元の大文字小文字のまま保存されているので、一致キーへ正規化してから畳む。
+  // 最初に見つかった行 = 最新行を代表にする。
+  //
+  // labelは**履歴側を優先**する。カタログのロケール表記より、実際に飛んできた表記の方が
+  // ユーザーの見慣れたものに近い。
   //
   // GiftEdit によるギフト名の手動リネームは**適用しない**。あれは表示・集計用の
   // 上書きであって、TikTokが実際に送ってくる名前ではないため、一致キーにならない。
-  const byName = new Map<string, { name: string; label: string; diamondCount: number }>();
-  for (const row of rows) {
-    const label = row.giftName ?? "";
-    const name = label.trim().toLowerCase();
+  let seenRank = 0;
+  for (const row of historyRows) {
+    const label = (row.giftName ?? "").trim();
+    const name = label.toLowerCase();
     if (!name) continue;
-    if (byName.has(name)) continue; // 最初に見つかった = 最新行を代表にする
-    byName.set(name, { name, label: label.trim(), diamondCount: row.diamondCount });
-    if (byName.size >= MAX_KINDS) break;
+
+    const existing = byName.get(name);
+    if (existing?.seen) continue; // すでに新しい行で代表を決めている
+
+    if (!existing) {
+      byName.set(name, {
+        name,
+        label,
+        minDiamondCount: row.diamondCount,
+        maxDiamondCount: row.diamondCount,
+        seen: true,
+        seenRank: seenRank++,
+        catalogGiftId: Number.MAX_SAFE_INTEGER,
+      });
+      continue;
+    }
+
+    existing.label = label || existing.label;
+    existing.seen = true;
+    existing.seenRank = seenRank++;
+    // 実際に観測した値も範囲へ含める(カタログに無い価格で飛んでくることがある)。
+    widen(existing, row.diamondCount);
   }
 
-  return NextResponse.json({ gifts: Array.from(byName.values()) });
+  // 受け取ったことのあるギフトを先頭へ(その中は受信の新しい順)。
+  // 残りはコイン数の下限が小さい順、同値は名前順で決定的に並べる。
+  // **集約が全部終わってから並べて切る。** 先に切ると同名の別行を取りこぼす。
+  const gifts = Array.from(byName.values())
+    .sort((a, b) => {
+      if (a.seen !== b.seen) return a.seen ? -1 : 1;
+      if (a.seen && b.seen) return a.seenRank - b.seenRank;
+      if (a.minDiamondCount !== b.minDiamondCount) return a.minDiamondCount - b.minDiamondCount;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    })
+    .slice(0, MAX_CANDIDATES)
+    .map((c) => ({
+      name: c.name,
+      label: c.label,
+      // 旧クライアント互換。min/maxを知らないクライアントには下限を1つの価格として見せる
+      // (上限を見せると「大物ギフト」と誤解させるため)。
+      diamondCount: c.minDiamondCount,
+      minDiamondCount: c.minDiamondCount,
+      maxDiamondCount: c.maxDiamondCount,
+      seen: c.seen,
+    }));
+
+  return NextResponse.json({ gifts });
 }

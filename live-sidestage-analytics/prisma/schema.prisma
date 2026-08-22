@@ -241,6 +241,30 @@ model GiftEdit {
   @@schema("public")
 }
 
+// TikTokの全ギフトカタログ(webcastの `gift/list/` の結果)。全部屋で共有する1枚のテーブル。
+// ギフトはほぼグローバルなので部屋ごとには持たない(部屋限定ギフトは和集合として混ざる)。
+//
+// **効果音の一致キーはgiftIdではなく名前。** gift/list/ は同じ名前に複数のgiftIdを割り当てており
+// (実測670件中29名が重複)、giftId自体もレスポンス内で重複する(実測4行)。giftId照合にすると
+// 同名の別IDを取りこぼすうえ、ピッカーに区別のつかない同名行が並ぶ。
+// giftIdを主キーにしているのはカタログを素直な鏡として持つためだけで、
+// 消費側(GET /api/mobile/gifts)は name で畳んでコイン数の範囲に集約して返す。
+//
+// upsertのみで削除はしない。したがって実体は「現在のカタログ」ではなく
+// **「これまでに観測したカタログの和集合」**になる。候補一覧を出すのが目的なので意図的にそうしている
+// (TikTok側のA/Bやproxyの地域差で一時的に欠けたギフトを消したくない)。
+model TiktokGiftCatalog {
+  giftId       Int      @id // gift/list/ の gift.id
+  name         String // 一致キー。trim + 小文字化済み(chat:giftのgiftNameと同じ正規化)
+  label        String // 表示用。カタログの元表記
+  diamondCount Int      @default(0)
+  fetchedAt    DateTime @default(now()) // 最後にカタログから見た時刻。TTL判定に使う。**upsert時に明示更新する**
+
+  @@map("tiktok_gift_catalog")
+  @@index([name])
+  @@schema("public")
+}
+
 // TikTokのバトル(LinkMic Battle)の観測記録。イベントの対戦自動検知が使う。
 // analytics自身はこのデータを使わないが、バトル中かどうかはWebcastのイベントでしか
 // 分からないので受信側で残しておく。

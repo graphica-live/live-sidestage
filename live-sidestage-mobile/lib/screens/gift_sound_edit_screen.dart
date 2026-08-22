@@ -419,22 +419,20 @@ enum _CoinRange {
   /// null は上限なし。
   final int? max;
 
-  bool matches(int coins) {
-    if (coins < min) return false;
-    final upper = max;
-    return upper == null || coins <= upper;
-  }
+  /// 候補のコイン数範囲と重なれば通す。同名で価格の違うギフト
+  /// （`freestyle` の 1c と 1800c）はどちらの帯でも見つかってほしい。
+  bool matches(GiftCandidate gift) => gift.overlapsCoins(min, max);
 }
 
 /// ギフト候補のピッカー。
 ///
-/// 一覧はサーバーが返す「自分の部屋が直近に受け取ったギフト」で、TikTokの全ギフト
-/// カタログではない。目的のギフトが載っていないことが普通にありうるので、
+/// 一覧はサーバーが返す「TikTokの全ギフトカタログ ∪ 自分の部屋が最近受け取ったギフト」。
+/// カタログも網羅ではない（部屋限定ギフト、まだ取得できていない新ギフト）ので、
 /// **入力した文字列をそのまま使う導線を常に残す**（0件のときだけ、エラーのときだけ、
 /// という出し分けでは足りない）。
 ///
-/// 検索は入力のたびにローカルで絞り込む。候補は最大200件なので、キーストロークごとに
-/// サーバーへ問い合わせ直す理由が無い。
+/// 検索は入力のたびにローカルで絞り込む。候補は最大1000件で `ListView.builder` は
+/// 遅延生成なので、キーストロークごとにサーバーへ問い合わせ直す理由が無い。
 class _GiftPickerSheet extends StatefulWidget {
   const _GiftPickerSheet({required this.token});
 
@@ -474,7 +472,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
     final all = _candidates ?? const <GiftCandidate>[];
     final q = _query.toLowerCase();
     return all
-        .where((g) => _coinRange.matches(g.diamondCount))
+        .where(_coinRange.matches)
         .where((g) => q.isEmpty || g.name.contains(q) || g.label.toLowerCase().contains(q))
         .toList(growable: false);
   }
@@ -485,7 +483,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
   void _useQueryAsIs() {
     final raw = _query;
     if (raw.isEmpty) return;
-    _pick(GiftCandidate(name: raw.toLowerCase(), label: raw, diamondCount: 0));
+    _pick(GiftCandidate.single(name: raw.toLowerCase(), label: raw, diamondCount: 0));
   }
 
   Future<void> _load() async {
@@ -598,7 +596,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                   leading: const Icon(Icons.all_inclusive),
                   title: const Text('すべてのギフト'),
                   subtitle: const Text('どのギフトが来ても鳴らす'),
-                  onTap: () => _pick(const GiftCandidate(name: '', label: '', diamondCount: 0)),
+                  onTap: () => _pick(const GiftCandidate.single(name: '', label: '', diamondCount: 0)),
                 ),
               if (showRawEntry)
                 ListTile(
@@ -647,7 +645,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            '受け取ったギフトの履歴がまだありません。\n上の入力欄にギフト名を直接入力できます。',
+            'ギフトの一覧をまだ取得できていません。\n上の入力欄にギフト名を直接入力できます。',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey),
           ),
@@ -681,18 +679,35 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       );
     }
 
+    final primary = Theme.of(context).colorScheme.primary;
+
     return ListView.builder(
       itemCount: filtered.length,
       itemBuilder: (_, index) {
         final gift = filtered[index];
         return ListTile(
           dense: true,
+          // 受信済みかどうかで行がずれないよう、印が無くても幅を確保する。
+          leading: SizedBox(
+            width: 24,
+            child: gift.seen
+                ? Icon(Icons.check_circle, size: 18, color: primary, semanticLabel: '受信したことがある')
+                : null,
+          ),
           title: Text(gift.label),
-          subtitle: gift.diamondCount > 0 ? Text('${gift.diamondCount}コイン') : null,
+          subtitle: _coinLabel(gift) == null ? null : Text(_coinLabel(gift)!),
           onTap: () => _pick(gift),
         );
       },
     );
+  }
+
+  /// 同名で価格の違うギフトがある場合は範囲で見せる。上限だけを出すと
+  /// 「大物ギフト用」に仕込んだ音が安い方でも鳴ることが伝わらない。
+  String? _coinLabel(GiftCandidate gift) {
+    if (gift.maxDiamondCount <= 0) return null;
+    if (!gift.hasCoinRange) return '${gift.maxDiamondCount}コイン';
+    return '${gift.minDiamondCount}〜${gift.maxDiamondCount}コイン';
   }
 }
 

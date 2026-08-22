@@ -13,7 +13,9 @@ import {
   ensureAllListenersAlive,
   checkWatchdogs,
   stopAllListeners,
+  resolveGiftCatalogSource,
 } from "@/lib/tiktok-listener";
+import { refreshGiftCatalogIfStale } from "@/lib/tiktok-gift-catalog";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -90,6 +92,9 @@ async function main() {
     await ensureAllListenersAlive().catch((err) =>
       console.error("[worker] ensureAllListenersAlive failed:", err)
     );
+    // ギフトカタログの取り直し。TTL(24時間)内なら即returnするので実質1日1回しか走らない。
+    // 内部で例外を握るのでライブ接続には影響しない。
+    await refreshGiftCatalogIfStale(resolveGiftCatalogSource);
   }, 60_000);
 
   watchdogTimer = setInterval(() => {
