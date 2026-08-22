@@ -232,6 +232,9 @@ function MatchCard({
     match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE"
       ? WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy]
       : null;
+  // 不戦勝は対戦相手がそもそも存在しない。相手側の「未確定」枠は出さず、本人だけを表示する。
+  const byeWinner =
+    match.winnerDecidedBy === "BYE" ? match.sides.find((s) => s.isWinner) : undefined;
 
   return (
     <article
@@ -252,9 +255,11 @@ function MatchCard({
         </span>
       </div>
 
-      {match.sides.map((side) => (
-        <SideRow key={side.id} side={side} />
-      ))}
+      {byeWinner ? (
+        <SideRow side={byeWinner} />
+      ) : (
+        match.sides.map((side) => <SideRow key={side.id} side={side} />)
+      )}
     </article>
   );
 }

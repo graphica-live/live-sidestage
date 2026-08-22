@@ -200,6 +200,12 @@ function MatchCardOrEmpty({
     );
   }
 
+  // 不戦勝は対戦相手がそもそも存在しない。相手側の「未確定」枠は出さず、本人だけを表示する。
+  const byeWinner =
+    match.winnerDecidedBy === "BYE"
+      ? match.sides.find((s) => s.id === match.winnerSideId)
+      : undefined;
+
   return (
     <button
       type="button"
@@ -220,18 +226,26 @@ function MatchCardOrEmpty({
         </span>
       </div>
 
-      {match.sides.map((side) => (
-        <div
-          key={side.id}
-          className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-sm ${
-            match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
-          } ${mirror ? "flex-row-reverse" : ""}`}
-        >
-          <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
-            {side.empty ? <span className="text-gray-600">未確定</span> : side.label}
-          </span>
+      {byeWinner ? (
+        <div className="flex flex-1 items-center">
+          <div className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand/10 px-1.5 py-1 text-sm ring-1 ring-brand/40">
+            <span className="min-w-0 truncate">{byeWinner.label}</span>
+          </div>
         </div>
-      ))}
+      ) : (
+        match.sides.map((side) => (
+          <div
+            key={side.id}
+            className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-sm ${
+              match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
+            } ${mirror ? "flex-row-reverse" : ""}`}
+          >
+            <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
+              {side.empty ? <span className="text-gray-600">未確定</span> : side.label}
+            </span>
+          </div>
+        ))
+      )}
     </button>
   );
 }
