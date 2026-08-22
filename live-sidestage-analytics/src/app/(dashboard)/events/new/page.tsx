@@ -5,8 +5,17 @@ import { EventWizard } from "../EventWizard";
 
 export const dynamic = "force-dynamic";
 
+// "YYYY-MM-DDTHH:mm" の分を00に切り上げる(JSTはUTC+9固定でDSTがないため、UTC msでの丸めがそのままJSTの時刻境界になる)。
+function ceilToHour(date: Date): Date {
+  const hourMs = 3600_000;
+  return new Date(Math.ceil(date.getTime() / hourMs) * hourMs);
+}
+
 function defaultDraft(): EventDraft {
   const now = Date.now();
+  // 既定は「現在時刻の6時間後を00分に切り上げ」から2時間の1日程。JST に丸めるのは toJstInputValue が担当する。
+  const startAt = ceilToHour(new Date(now + 6 * 3600_000));
+  const endAt = new Date(startAt.getTime() + 2 * 3600_000);
   return {
     // 種目は既定値を持たせない。作成後に変更できないので、必ず主催者に選ばせる。
     format: null,
@@ -16,12 +25,11 @@ function defaultDraft(): EventDraft {
     teamPreset: "GENERIC",
     // 公開範囲の選択UIは廃止した。常に公開で作成する(下の EventWizard 参照)。
     visibility: "PUBLIC",
-    // 既定は「明日から1週間」の1日程。JST に丸めるのは toJstInputValue が担当する。
     sessions: [
       {
         name: "",
-        startAt: toJstInputValue(new Date(now + 24 * 3600_000)),
-        endAt: toJstInputValue(new Date(now + 8 * 24 * 3600_000)),
+        startAt: toJstInputValue(startAt),
+        endAt: toJstInputValue(endAt),
       },
     ],
   };
