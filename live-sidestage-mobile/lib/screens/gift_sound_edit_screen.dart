@@ -655,7 +655,15 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              if (!_needsRelogin)
+              if (_needsRelogin)
+                // ログイン切れは再試行しても直らない。ログアウトすると AuthGate が
+                // WelcomeScreen へ差し替えるので、このシートは開いたままでよい。
+                ElevatedButton.icon(
+                  onPressed: () => context.read<SessionController>().logout(),
+                  icon: const Icon(Icons.logout),
+                  label: const Text('ログインし直す'),
+                )
+              else
                 OutlinedButton.icon(
                   onPressed: _load,
                   icon: const Icon(Icons.refresh),
