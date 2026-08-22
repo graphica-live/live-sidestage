@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { EventForm, type EventFormValues } from "../EventForm";
 import { toJstInputValue } from "@/event/datetime";
+import type { EventDraft } from "@/event/wizard";
+import { EventWizard } from "../EventWizard";
 
 export const dynamic = "force-dynamic";
 
-function defaultValues(): EventFormValues {
+function defaultDraft(): EventDraft {
   const now = Date.now();
   return {
+    // 種目は既定値を持たせない。作成後に変更できないので、必ず主催者に選ばせる。
+    format: null,
     title: "",
     description: "",
-    format: "DIAMOND_RACE",
     entryMode: "SOLO",
     teamPreset: "GENERIC",
     visibility: "UNLISTED",
@@ -31,7 +33,7 @@ export default function NewEventPage() {
         ← イベント一覧
       </Link>
       <h1 className="mb-6 mt-2 text-xl font-bold">新しいイベント</h1>
-      <EventForm mode="create" initial={defaultValues()} />
+      <EventWizard initial={defaultDraft()} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   MAX_EVENT_DAYS,
   MAX_TEAMS,
   normalizeTiktokId,
+  resolveEventFormatForUpdate,
   validateEventInput,
   validateTeamCount,
 } from "./validation";
@@ -125,6 +126,30 @@ describe("validateEventInput", () => {
     const result = validateEventInput(withoutPreset);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.teamPreset).toBe("GENERIC");
+  });
+});
+
+describe("resolveEventFormatForUpdate", () => {
+  it("種目を省略したリクエストは現在の種目のまま通す", () => {
+    const result = resolveEventFormatForUpdate("TOURNAMENT", undefined);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("TOURNAMENT");
+  });
+
+  it("現在と同じ種目を送ってきたら通す(読み取り専用のフォームがそのまま送る)", () => {
+    const result = resolveEventFormatForUpdate("DEATHMATCH", "DEATHMATCH");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("DEATHMATCH");
+  });
+
+  it("違う種目への変更は拒否する", () => {
+    const result = resolveEventFormatForUpdate("TOURNAMENT", "DIAMOND_RACE");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]).toContain("変更できません");
+  });
+
+  it("現在の種目が不正な値なら弾く", () => {
+    expect(resolveEventFormatForUpdate("UNKNOWN", undefined).ok).toBe(false);
   });
 });
 

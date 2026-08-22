@@ -11,9 +11,7 @@ import {
 } from "@/event/labels";
 import {
   ENTRY_MODES,
-  EVENT_FORMATS,
-  MAX_EVENT_SESSIONS,
-  MAX_SESSION_NAME_LENGTH,
+  MAX_TITLE_LENGTH,
   TEAM_PRESETS,
   VISIBILITIES,
   type EntryMode,
@@ -21,14 +19,12 @@ import {
   type TeamPreset,
   type Visibility,
 } from "@/event/validation";
+import type { SessionFormValue } from "@/event/wizard";
+import { SessionsField } from "./SessionsField";
 
-/** 1つの開催日程。日時は JST の "YYYY-MM-DDTHH:mm"。 */
-export type SessionFormValue = {
-  name: string;
-  startAt: string;
-  endAt: string;
-};
+export type { SessionFormValue };
 
+/** 作成済みイベントの設定。**種目(format)は表示するだけで変更できない。** */
 export type EventFormValues = {
   title: string;
   description: string;
@@ -41,28 +37,17 @@ export type EventFormValues = {
 };
 
 /**
- * "YYYY-MM-DDTHH:mm" の日付だけ1日進める。日程を足すときの初期値用。
+ * 作成済みイベントの設定フォーム。新規作成は EventWizard が受け持つ。
  *
- * 文字列のまま `Date` を経由せずに計算する — ブラウザのタイムゾーンで解釈すると
- * JST 以外の環境で日付がずれる。
+ * 種目は作成時にしか決められないので選択肢を出さない。値自体は従来どおり送信し、
+ * サーバー(`resolveEventFormatForUpdate`)が現在の値と一致することを確認する
+ * — 送らない形にすると、デプロイ中に古い API へ当たったとき保存に失敗する。
  */
-function nextDay(value: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/.exec(value);
-  if (!m) return value;
-  const [, year, month, day, time] = m;
-  const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1));
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${time}`;
-}
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
 export function EventForm({
-  mode,
   eventId,
   initial,
 }: {
-  mode: "create" | "edit";
-  eventId?: string;
+  eventId: string;
   initial: EventFormValues;
 }) {
   const router = useRouter();
@@ -73,35 +58,13 @@ export function EventForm({
   const set = <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
-  const setSession = (index: number, patch: Partial<SessionFormValue>) =>
-    setValues((prev) => ({
-      ...prev,
-      sessions: prev.sessions.map((s, i) => (i === index ? { ...s, ...patch } : s)),
-    }));
-
-  const addSession = () =>
-    setValues((prev) => {
-      // 直前の日程の翌日・同じ時間帯を初期値にする(「1日目 22時 / 2日目 22時」が多い)。
-      const last = prev.sessions[prev.sessions.length - 1];
-      return {
-        ...prev,
-        sessions: [
-          ...prev.sessions,
-          { name: "", startAt: nextDay(last?.startAt ?? ""), endAt: nextDay(last?.endAt ?? "") },
-        ],
-      };
-    });
-
-  const removeSession = (index: number) =>
-    setValues((prev) => ({ ...prev, sessions: prev.sessions.filter((_, i) => i !== index) }));
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setErrors([]);
 
-    const res = await fetch(mode === "create" ? "/api/events" : `/api/events/${eventId}`, {
-      method: mode === "create" ? "POST" : "PATCH",
+    const res = await fetch(`/api/events/${eventId}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
     });
@@ -131,6 +94,18 @@ export function EventForm({
       )}
 
       <div>
+        <span className="label">種目</span>
+        {/* 選択肢は出さない。決まっている種目だけを見せる(変更は作成時のみ)。 */}
+        <div className="rounded-lg border border-border bg-panel p-3">
+          <p className="text-sm font-medium text-white">{FORMAT_LABELS[values.format]}</p>
+          <p className="mt-0.5 text-xs text-gray-400">{FORMAT_DESCRIPTIONS[values.format]}</p>
+          <p className="mt-2 text-xs text-gray-500">
+            種目は作成後に変更できない。別の種目で開催するときは新しいイベントを作る。
+          </p>
+        </div>
+      </div>
+
+      <div>
         <label className="label" htmlFor="title">
           イベント名
         </label>
@@ -140,7 +115,7 @@ export function EventForm({
           value={values.title}
           onChange={(e) => set("title", e.target.value)}
           placeholder="例: 第1回 全国ライバー対抗戦"
-          maxLength={100}
+          maxLength={MAX_TITLE_LENGTH}
         />
       </div>
 
@@ -157,32 +132,6 @@ export function EventForm({
         />
       </div>
 
-      <div>
-        <span className="label">種目</span>
-        <div className="grid gap-2">
-          {EVENT_FORMATS.map((format) => (
-            <label
-              key={format}
-              className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
-                values.format === format ? "border-brand bg-brand/5" : "border-border bg-panel"
-              }`}
-            >
-              <input
-                type="radio"
-                name="format"
-                className="mt-1 accent-brand"
-                checked={values.format === format}
-                onChange={() => set("format", format)}
-              />
-              <span>
-                <span className="block text-sm font-medium text-white">{FORMAT_LABELS[format]}</span>
-                <span className="mt-0.5 block text-xs text-gray-400">{FORMAT_DESCRIPTIONS[format]}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="entryMode">
@@ -194,9 +143,12 @@ export function EventForm({
             value={values.entryMode}
             onChange={(e) => {
               const next = e.target.value as EntryMode;
-              set("entryMode", next);
-              // 個人戦にチーム形式は存在しない
-              if (next === "SOLO") set("teamPreset", "GENERIC");
+              setValues((prev) => ({
+                ...prev,
+                entryMode: next,
+                // 個人戦にチーム形式は存在しない
+                teamPreset: next === "SOLO" ? "GENERIC" : prev.teamPreset,
+              }));
             }}
           >
             {ENTRY_MODES.map((m) => (
@@ -229,75 +181,7 @@ export function EventForm({
 
       <div>
         <span className="label">開催日程(JST)</span>
-        <p className="mb-2 text-xs text-gray-500">
-          日を分けて開催するときは日程を足す(例: 1日目に予選、2日目に決勝)。
-          <strong className="text-gray-400">日程と日程の間のギフトは集計に入らない。</strong>
-        </p>
-
-        <div className="grid gap-3">
-          {values.sessions.map((session, index) => (
-            <div key={index} className="rounded-lg border border-border bg-panel p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-gray-400">{index + 1} 日程目</span>
-                {values.sessions.length > 1 && (
-                  <button
-                    type="button"
-                    className="text-xs text-red-400 hover:text-red-300"
-                    onClick={() => removeSession(index)}
-                  >
-                    削除
-                  </button>
-                )}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
-                <div>
-                  <label className="label" htmlFor={`session-${index}-start`}>
-                    開始
-                  </label>
-                  <input
-                    id={`session-${index}-start`}
-                    type="datetime-local"
-                    className="input-field"
-                    value={session.startAt}
-                    onChange={(e) => setSession(index, { startAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor={`session-${index}-end`}>
-                    終了
-                  </label>
-                  <input
-                    id={`session-${index}-end`}
-                    type="datetime-local"
-                    className="input-field"
-                    value={session.endAt}
-                    onChange={(e) => setSession(index, { endAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor={`session-${index}-name`}>
-                    名前(任意)
-                  </label>
-                  <input
-                    id={`session-${index}-name`}
-                    className="input-field"
-                    value={session.name}
-                    onChange={(e) => setSession(index, { name: e.target.value })}
-                    placeholder="例: 予選"
-                    maxLength={MAX_SESSION_NAME_LENGTH}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {values.sessions.length < MAX_EVENT_SESSIONS && (
-          <button type="button" className="btn-ghost mt-3 text-sm" onClick={addSession}>
-            + 日程を追加
-          </button>
-        )}
+        <SessionsField sessions={values.sessions} onChange={(s) => set("sessions", s)} />
       </div>
 
       <div>
@@ -323,7 +207,7 @@ export function EventForm({
 
       <div className="flex gap-3">
         <button type="submit" className="btn-primary" disabled={submitting}>
-          {submitting ? "保存中..." : mode === "create" ? "イベントを作る" : "保存する"}
+          {submitting ? "保存中..." : "保存する"}
         </button>
         <button type="button" className="btn-ghost" onClick={() => router.back()}>
           キャンセル

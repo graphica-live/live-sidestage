@@ -5,9 +5,19 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toJstInputValue } from "@/event/datetime";
 import { resolveEventWindows } from "@/event/sessions";
+import { ENTRY_MODE_LABELS, FORMAT_LABELS } from "@/event/labels";
 import { EventForm, type EventFormValues } from "../EventForm";
 import { EventAdminControls } from "./EventAdminControls";
 import type { EntryMode, EventFormat, TeamPreset, Visibility } from "@/event/validation";
+
+/**
+ * 種目ごとの対戦管理への導線。**選んだ種目のものだけ出す。**
+ * 獲得ダイヤレースに対戦は無いので出さない(ただし対戦が既にあるイベントは下で救済する)。
+ */
+const MATCH_LINK_LABELS: Partial<Record<EventFormat, string>> = {
+  TOURNAMENT: "トーナメント表",
+  DEATHMATCH: "対戦カード",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +48,21 @@ export default async function EventDetailPage({ params }: { params: { id: string
     })),
   };
 
+  const format = event.format as EventFormat;
+  // 種目と噛み合わない対戦が残っている既存イベント(種目を変更できた頃に作られたもの)でも
+  // 対戦管理へ行けるようにする。導線ごと消すと、残った対戦を片付けられなくなる。
+  const matchLinkLabel = MATCH_LINK_LABELS[format] ?? (event._count.matches > 0 ? "対戦" : null);
+
   return (
     <div>
       <Link href="/events" className="text-xs text-gray-500 hover:text-white">
         ← イベント一覧
       </Link>
-      <h1 className="mb-6 mt-2 truncate text-xl font-bold">{event.title}</h1>
+      <h1 className="mb-2 mt-2 truncate text-xl font-bold">{event.title}</h1>
+      {/* 選んだ種目だけを出す。他の種目は作成後に選べないので並べない。 */}
+      <p className="mb-6 text-xs text-gray-400">
+        {FORMAT_LABELS[format]} ・ {ENTRY_MODE_LABELS[event.entryMode as EntryMode]}
+      </p>
 
       <EventAdminControls
         id={event.id}
@@ -62,20 +81,24 @@ export default async function EventDetailPage({ params }: { params: { id: string
         </span>
       </Link>
 
-      {event.format === "TOURNAMENT" && (
+      {matchLinkLabel && (
         <Link
           href={`/events/${event.id}/matches`}
           className="card mt-2 flex items-center justify-between hover:border-brand/40"
         >
-          <span className="text-sm font-medium">対戦</span>
+          <span className="text-sm font-medium">{matchLinkLabel}</span>
           <span className="text-xs text-gray-500">
-            {event._count.matches > 0 ? `${event._count.matches} 試合 →` : "表を作る →"}
+            {event._count.matches > 0
+              ? `${event._count.matches} 試合 →`
+              : format === "TOURNAMENT"
+                ? "表を作る →"
+                : "対戦を組む →"}
           </span>
         </Link>
       )}
 
       <h2 className="mb-4 mt-8 text-sm font-semibold text-gray-300">設定</h2>
-      <EventForm mode="edit" eventId={event.id} initial={initial} />
+      <EventForm eventId={event.id} initial={initial} />
     </div>
   );
 }
