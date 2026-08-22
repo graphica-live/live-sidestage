@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { MATCH_RULES_DEFAULT } from "./match-rules";
 import {
   nextDay,
   validateWizardDraft,
@@ -14,6 +15,9 @@ const baseDraft: EventDraft = {
   teamPreset: "GENERIC",
   visibility: "PRIVATE",
   sessions: [{ name: "", startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" }],
+  matchRules: MATCH_RULES_DEFAULT,
+  prizeText: "",
+  noticeText: "",
 };
 
 describe("validateWizardStep", () => {
@@ -98,6 +102,22 @@ describe("validateWizardStep", () => {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("90日以内");
+  });
+
+  it("matchRulesは選択肢しか作らせないので常に通す", () => {
+    expect(validateWizardStep("matchRules", baseDraft)).toEqual([]);
+  });
+
+  it("優勝賞品が長すぎれば弾く", () => {
+    const errors = validateWizardStep("prize", { ...baseDraft, prizeText: "あ".repeat(301) });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("300文字以内");
+  });
+
+  it("注意事項が長すぎれば弾く", () => {
+    const errors = validateWizardStep("notice", { ...baseDraft, noticeText: "あ".repeat(8001) });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("8000文字以内");
   });
 
   it("複数日程が正しければ通す", () => {

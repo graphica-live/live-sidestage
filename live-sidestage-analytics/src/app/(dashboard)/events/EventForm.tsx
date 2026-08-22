@@ -8,8 +8,11 @@ import {
   FORMAT_LABELS,
   TEAM_PRESET_LABELS,
 } from "@/event/labels";
+import type { MatchRules } from "@/event/match-rules";
 import {
   ENTRY_MODES,
+  MAX_NOTICE_LENGTH,
+  MAX_PRIZE_LENGTH,
   MAX_TITLE_LENGTH,
   TEAM_PRESETS,
   type EntryMode,
@@ -18,6 +21,7 @@ import {
   type Visibility,
 } from "@/event/validation";
 import type { SessionFormValue } from "@/event/wizard";
+import { MatchRulesField } from "./MatchRulesField";
 import { SessionsField } from "./SessionsField";
 
 export type { SessionFormValue };
@@ -32,6 +36,9 @@ export type EventFormValues = {
   visibility: Visibility;
   /** 1件以上。2件以上にすると日程の隙間は集計されない */
   sessions: SessionFormValue[];
+  prizeText: string;
+  noticeText: string;
+  matchRules: MatchRules;
 };
 
 /**
@@ -180,6 +187,38 @@ export function EventForm({
       <div>
         <span className="label">開催日程(JST)</span>
         <SessionsField sessions={values.sessions} onChange={(s) => set("sessions", s)} />
+      </div>
+
+      <div>
+        <span className="label">ルール</span>
+        <MatchRulesField value={values.matchRules} onChange={(v) => set("matchRules", v)} />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="prizeText">
+          優勝賞品(任意)
+        </label>
+        <textarea
+          id="prizeText"
+          className="input-field min-h-24"
+          value={values.prizeText}
+          onChange={(e) => set("prizeText", e.target.value)}
+          placeholder="例: トップライバーXX氏とコラボ/〇〇出演権"
+          maxLength={MAX_PRIZE_LENGTH}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="noticeText">
+          注意事項とFAQ
+        </label>
+        <textarea
+          id="noticeText"
+          className="input-field min-h-96 font-mono text-xs leading-relaxed"
+          value={values.noticeText}
+          onChange={(e) => set("noticeText", e.target.value)}
+          maxLength={MAX_NOTICE_LENGTH}
+        />
       </div>
 
       <div className="flex gap-3">

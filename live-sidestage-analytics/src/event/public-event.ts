@@ -29,11 +29,15 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
+      rules: true,
+      coverImageKey: true,
+      prizeText: true,
+      noticeText: true,
       sessions: {
         orderBy: { startAt: "asc" },
         select: { id: true, name: true, startAt: true, endAt: true },
       },
-      _count: { select: { participants: true } },
+      _count: { select: { participants: true, teams: true } },
     },
   });
 
@@ -202,13 +206,25 @@ export type LifeStandingDto = StandingDto & {
   eliminated: boolean;
 };
 
+/** 出場者一覧(プロフィールカード)用。既にloadEventSnapshotが取得済みのデータを流用する。 */
+export type RosterParticipantDto = {
+  id: string;
+  displayName: string;
+  tiktokId: string;
+  teamId: string | null;
+};
+
+export type RosterTeamDto = { id: string; name: string; colorHex: string | null };
+
 export type EventSnapshot = {
   standings: StandingDto[];
   /** デスマッチのときだけ入る。ライフ順(残ライフ → 脱落の遅さ → 獲得ダイヤ) */
   lives: LifeStandingDto[] | null;
   /** イベント全体のリスナー貢献(scope=EVENT) */
   eventContributions: ContributionDto[];
-  participants: { id: string; displayName: string; tiktokId: string }[];
+  participants: RosterParticipantDto[];
+  /** チーム戦のときだけ意味を持つ。出場者一覧のチーム名表示に使う。 */
+  teams: RosterTeamDto[];
   lastAggregatedAt: string | null;
   /** 倍率が設定されているか。ないならポイント表示を出さずダイヤだけ見せる */
   hasMultiplier: boolean;
@@ -342,7 +358,9 @@ export async function loadEventSnapshot(event: {
       id: p.id,
       displayName: p.displayName,
       tiktokId: p.tiktokId,
+      teamId: p.teamId,
     })),
+    teams: teams.map((t) => ({ id: t.id, name: t.name, colorHex: t.colorHex })),
     lastAggregatedAt: event.lastAggregatedAt?.toISOString() ?? null,
     hasMultiplier: multiplierCount > 0,
   };

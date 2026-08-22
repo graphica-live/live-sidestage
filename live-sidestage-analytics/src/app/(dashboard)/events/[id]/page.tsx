@@ -4,10 +4,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toJstInputValue } from "@/event/datetime";
+import { parseMatchRules } from "@/event/match-rules";
 import { resolveEventWindows } from "@/event/sessions";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS } from "@/event/labels";
+import { getCoverImageUrl, isCoverUploadEnabled } from "@/lib/media-storage";
 import { EventForm, type EventFormValues } from "../EventForm";
 import { EventAdminControls } from "./EventAdminControls";
+import { EventCoverUpload } from "./EventCoverUpload";
 import type { EntryMode, EventFormat, TeamPreset, Visibility } from "@/event/validation";
 
 /**
@@ -46,7 +49,13 @@ export default async function EventDetailPage({ params }: { params: { id: string
       startAt: toJstInputValue(w.start),
       endAt: toJstInputValue(w.end),
     })),
+    prizeText: event.prizeText ?? "",
+    noticeText: event.noticeText ?? "",
+    matchRules: parseMatchRules(event.rules),
   };
+
+  const coverImageUrl = await getCoverImageUrl(event.coverImageKey);
+  const uploadEnabled = isCoverUploadEnabled();
 
   const format = event.format as EventFormat;
   // 種目と噛み合わない対戦が残っている既存イベント(種目を変更できた頃に作られたもの)でも
@@ -70,6 +79,14 @@ export default async function EventDetailPage({ params }: { params: { id: string
         status={event.status}
         visibility={event.visibility}
       />
+
+      <div className="mt-4">
+        <EventCoverUpload
+          eventId={event.id}
+          initialImageUrl={coverImageUrl}
+          uploadEnabled={uploadEnabled}
+        />
+      </div>
 
       <Link
         href={`/events/${event.id}/participants`}

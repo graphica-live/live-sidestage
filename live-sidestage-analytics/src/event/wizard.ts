@@ -8,11 +8,14 @@
 // (`validateEventInput()`)。二重に規則を書くとサーバーとずれる。
 
 import { parseJstLocal } from "./datetime";
+import type { MatchRules } from "./match-rules";
 import { normalizeSessionInputs } from "./sessions";
 import {
   ENTRY_MODES,
   EVENT_FORMATS,
   MAX_DESCRIPTION_LENGTH,
+  MAX_NOTICE_LENGTH,
+  MAX_PRIZE_LENGTH,
   MAX_TITLE_LENGTH,
   TEAM_PRESETS,
   VISIBILITIES,
@@ -41,9 +44,21 @@ export type EventDraft = {
   teamPreset: TeamPreset;
   visibility: Visibility;
   sessions: SessionFormValue[];
+  matchRules: MatchRules;
+  prizeText: string;
+  noticeText: string;
 };
 
-export const WIZARD_STEPS = ["format", "title", "entry", "sessions", "publish"] as const;
+export const WIZARD_STEPS = [
+  "format",
+  "title",
+  "entry",
+  "sessions",
+  "matchRules",
+  "prize",
+  "notice",
+  "publish",
+] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 
 export const WIZARD_STEP_TITLES: Record<WizardStep, string> = {
@@ -51,6 +66,9 @@ export const WIZARD_STEP_TITLES: Record<WizardStep, string> = {
   title: "イベント名を決める",
   entry: "参加形式を決める",
   sessions: "開催日程(監視対象)を決める",
+  matchRules: "ルールを決める",
+  prize: "優勝賞品を決める",
+  notice: "注意事項を決める",
   publish: "内容を確認して作成する",
 };
 
@@ -59,6 +77,9 @@ export const WIZARD_STEP_HINTS: Record<WizardStep, string> = {
   title: "公開ページに出る名前。あとから変更できる。",
   entry: "1人ずつ競うか、チームでまとめて競うか。",
   sessions: "ギフトを集計する時間帯。この時間だけ配信者を監視対象にする。日を分けて開催するなら日程を足す。",
+  matchRules: "対戦で使う装備と、違反があったときの扱い。公開ページに表示される。",
+  prize: "優勝者に贈るもの。公開ページに表示される。空でもよい。",
+  notice: "参加者・視聴者向けの注意事項とFAQ。テンプレートを自由に編集できる。",
   publish: "内容を確認してイベントを作る。作成後は続けて参加者登録に進む。",
 };
 
@@ -135,6 +156,24 @@ export function validateWizardStep(step: WizardStep, values: EventDraft): string
 
       const normalized = normalizeSessionInputs(parsed);
       return normalized.ok ? [] : normalized.errors;
+    }
+
+    case "matchRules":
+      // 全項目 <select> / 2択ボタンでしか値を作らせないため、不正な組み合わせは起きない。
+      return [];
+
+    case "prize": {
+      const prizeText = values.prizeText.trim();
+      return prizeText.length > MAX_PRIZE_LENGTH
+        ? [`優勝賞品は${MAX_PRIZE_LENGTH}文字以内で入力してください。`]
+        : [];
+    }
+
+    case "notice": {
+      const noticeText = values.noticeText.trim();
+      return noticeText.length > MAX_NOTICE_LENGTH
+        ? [`注意事項は${MAX_NOTICE_LENGTH}文字以内で入力してください。`]
+        : [];
     }
 
     case "publish":

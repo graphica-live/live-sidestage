@@ -1,5 +1,6 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
+import { type MatchRules, parseMatchRules } from "./match-rules";
 import {
   MAX_EVENT_DAYS,
   normalizeSessionInputs,
@@ -33,6 +34,8 @@ export const MAX_PARTICIPANTS = 200;
 export const MAX_DISPLAY_NAME_LENGTH = 60;
 export const MAX_TITLE_LENGTH = 100;
 export const MAX_DESCRIPTION_LENGTH = 4000;
+export const MAX_PRIZE_LENGTH = 300;
+export const MAX_NOTICE_LENGTH = 8000;
 
 export type EventInput = {
   title: string;
@@ -43,6 +46,12 @@ export type EventInput = {
   visibility?: string;
   /** 開催日程。1件以上。重なりは許さない(sessions.ts が検証する) */
   sessions: SessionInput[];
+  /** 優勝賞品。任意。 */
+  prizeText?: string | null;
+  /** 注意事項+FAQ。任意。 */
+  noticeText?: string | null;
+  /** グローブ/ブースター等。不正値・欠損は既定へ丸める(parseMatchRules)ので型は緩い。 */
+  matchRules?: unknown;
 };
 
 export type ValidatedEventInput = {
@@ -56,6 +65,10 @@ export type ValidatedEventInput = {
   startAt: Date;
   endAt: Date;
   sessions: NormalizedSession[];
+  prizeText: string | null;
+  noticeText: string | null;
+  /** 常に正規化済み(parseMatchRulesが不正値を既定へ丸める)。 */
+  matchRules: MatchRules;
 };
 
 export type ValidationResult<T> =
@@ -76,6 +89,19 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
   if (description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(`説明は${MAX_DESCRIPTION_LENGTH}文字以内で入力してください。`);
   }
+
+  const prizeText = (input.prizeText ?? "").trim();
+  if (prizeText.length > MAX_PRIZE_LENGTH) {
+    errors.push(`優勝賞品は${MAX_PRIZE_LENGTH}文字以内で入力してください。`);
+  }
+
+  const noticeText = (input.noticeText ?? "").trim();
+  if (noticeText.length > MAX_NOTICE_LENGTH) {
+    errors.push(`注意事項は${MAX_NOTICE_LENGTH}文字以内で入力してください。`);
+  }
+
+  // 不正値・欠損は既定へ丸める(deathmatchRulesと同じ方針)ので、ここではエラーを積まない。
+  const matchRules = parseMatchRules({ matchRules: input.matchRules });
 
   if (!EVENT_FORMATS.includes(input.format as EventFormat)) {
     errors.push("イベント種目の指定が不正です。");
@@ -115,6 +141,9 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
       startAt: sessions.startAt,
       endAt: sessions.endAt,
       sessions: sessions.value,
+      prizeText: prizeText || null,
+      noticeText: noticeText || null,
+      matchRules,
     },
   };
 }

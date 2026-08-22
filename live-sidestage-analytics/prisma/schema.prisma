@@ -323,11 +323,15 @@ model TiktokBattle {
 // ============================================================================
 
 model Event {
-  id            String  @id @default(cuid())
-  slug          String  @unique // 公開URL /e/{slug}
-  title         String
-  description   String? @db.Text
-  coverImageUrl String?
+  id          String  @id @default(cuid())
+  slug        String  @unique // 公開URL /e/{slug}
+  title       String
+  description String? @db.Text
+  // Railway Bucket(S3互換)上のオブジェクトキー。生のURLは保存しない
+  // — 読み出しのたびに src/lib/media-storage.ts が presigned GET を発行する(media-storage.ts参照)。
+  coverImageKey String?
+  prizeText     String? @db.Text // 優勝賞品。公開ページでは空なら賞品セクション自体を出さない
+  noticeText    String? @db.Text // 注意事項+FAQ(軽量Markdownサブセット。src/event/notice-blocks.ts が解釈する)
   ownerUserId   String // User.id。FKは張らない(将来 auth サービスへ切り出すため)
 
   format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
@@ -345,7 +349,10 @@ model Event {
   // **書き込みは日程と必ず同じトランザクションで行う**(イベント作成・更新APIだけ)。
   startAt DateTime
   endAt   DateTime
-  rules   Json     @default("{}") // 種目別ルール(デスマッチの初期ライフ等)
+  // 名前空間ごとのルール。"deathmatch"(初期ライフ等、parseDeathmatchRules)と
+  // "matchRules"(グローブ/ブースター等、parseMatchRules)を持つ。
+  // 名前空間の追加・更新は既存キーを潰さないよう必ず `{ ...existing, <namespace>: ... }` で書く。
+  rules Json @default("{}")
 
   lastAggregatedAt DateTime?
   aggregateMs      Int? // 直近の再集計にかかった時間(SLO監視用)
