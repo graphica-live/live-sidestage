@@ -391,3 +391,70 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(match?.detectedEndAt?.getTime()).toBe(BATTLE_START.getTime() + 300_000);
   });
 });
+
+describe("トーナメント表の作り直し", () => {
+  it("不戦勝(BYE)だけが確定している状態なら作り直せる", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    // 参加3人 = 2のべき乗でないので1回戦にBYEが入り、その場でFINISHEDへ自動確定する。
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id, c.id],
+      entryMode: "SOLO",
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+
+    const byeMatch = await prisma.eventMatch.findFirst({
+      where: { eventId: event.id, round: 1, winnerDecidedBy: "BYE" },
+    });
+    expect(byeMatch?.status).toBe("FINISHED");
+
+    // BYEしか確定していないので、entrantIds を変えて作り直しても拒否されない。
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id, c.id].reverse(),
+        entryMode: "SOLO",
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+      })
+    ).resolves.toMatchObject({ matches: expect.any(Number) });
+  });
+
+  it("主催者が手動確定した対戦があると作り直しは拒否される", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      entryMode: "SOLO",
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+
+    const match = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1 },
+      include: { sides: true },
+    });
+    await prisma.eventMatch.update({
+      where: { id: match.id },
+      data: { status: "FINISHED", winnerSideId: match.sides[0].id, winnerDecidedBy: "MANUAL" },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        entryMode: "SOLO",
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+      })
+    ).rejects.toMatchObject({ code: "ALREADY_STARTED" });
+  });
+});

@@ -153,7 +153,9 @@ export function MatchManager({
     return [...groups.entries()].sort((a, b) => a[0] - b[0]);
   }, [matches]);
 
-  const started = matches.some((m) => m.status !== "SCHEDULED");
+  // 不戦勝(BYE)はバトルを待たずに自動確定しただけなので「進行中」に含めない。
+  // 含めると、参加者が2のべき乗でないイベントは表を作った瞬間に作り直せなくなる。
+  const started = matches.some((m) => m.status !== "SCHEDULED" && m.winnerDecidedBy !== "BYE");
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) ?? null;
 
   async function send(url: string, body: unknown, method = "PATCH") {
@@ -340,7 +342,13 @@ export function MatchManager({
           <button
             type="button"
             disabled={busy || seed.length < 2 || started}
-            onClick={() =>
+            onClick={() => {
+              if (
+                matches.length > 0 &&
+                !window.confirm("既存のトーナメント表を破棄して作り直す。よろしいか?")
+              ) {
+                return;
+              }
               send(
                 `/api/events/${eventId}/matches`,
                 {
@@ -350,8 +358,8 @@ export function MatchManager({
                   roundIntervalMin,
                 },
                 "POST"
-              )
-            }
+              );
+            }}
             className="btn-primary shrink-0"
           >
             {matches.length > 0 ? "表を作り直す" : "表を作る"}

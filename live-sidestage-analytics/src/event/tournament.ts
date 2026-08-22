@@ -146,9 +146,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
 
     const existing = await tx.eventMatch.findMany({
       where: { eventId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, winnerDecidedBy: true },
     });
-    if (existing.some((m) => m.status !== "SCHEDULED")) {
+    // 不戦勝(BYE)は表を作った時点でバトルを待たずに自動確定させただけで、
+    // 主催者や実際の対戦が進行したわけではない。作り直しのブロック対象にしない。
+    if (existing.some((m) => m.status !== "SCHEDULED" && m.winnerDecidedBy !== "BYE")) {
       throw new BracketError(
         "すでに進行中・確定済みの対戦があるため、表を作り直せません。",
         "ALREADY_STARTED"
