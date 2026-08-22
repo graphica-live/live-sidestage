@@ -7,6 +7,8 @@ import {
   probeWorkers,
   type AssignedRoom,
 } from "@/lib/worker-status";
+import { AUDIT_LOG_SETTING_KEY, type MigrationAuditEntry } from "@/lib/worker-guardian";
+import { getSetting } from "@/lib/settings";
 
 // Worker プロセスの稼働状況。DB(担当予定の部屋)と各 Worker の /status(実際の listener)を
 // 突き合わせて返す。読み取り専用。
@@ -38,7 +40,20 @@ export async function GET() {
 
   const report = buildWorkerReport({ workerCount, urls, probes, rooms, dbError, now });
 
-  return NextResponse.json(report, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  // worker-guardian.ts が積む自動移送の履歴。読めなくても画面は落とさない。
+  let guardianAuditLog: MigrationAuditEntry[] = [];
+  try {
+    const raw = await getSetting(AUDIT_LOG_SETTING_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) guardianAuditLog = parsed;
+    }
+  } catch (err) {
+    console.error("[admin/workers] guardian audit log の取得に失敗:", err);
+  }
+
+  return NextResponse.json(
+    { ...report, guardianAuditLog },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

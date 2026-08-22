@@ -19,8 +19,8 @@ import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
 //
 // どちらかが取れなくても、取れた方だけで可能な範囲を返す(DB 障害時も Worker の死活は分かる)。
 
-/** 定常時の reconcile 間隔(worker.ts の RECONCILE_INTERVAL_MS)の3周ぶん。 */
-const RECONCILE_STALE_MS = 180_000;
+/** 定常時の reconcile 間隔(worker.ts の RECONCILE_INTERVAL_MS)の3周ぶん。worker-guardian.ts も再利用する。 */
+export const RECONCILE_STALE_MS = 180_000;
 
 /** 各 Worker の /status を待つ上限。3台に対して直列には投げないので、短くてよい。 */
 export const PROBE_TIMEOUT_MS = 3000;

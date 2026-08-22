@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-// 型のみの import なので、prisma を含む worker-status.ts の実体はクライアントに入らない。
+// 型のみの import なので、prisma を含む worker-status.ts / worker-guardian.ts の実体はクライアントに入らない。
 import type { WorkerIssue, WorkerReport } from "@/lib/worker-status";
+import type { MigrationAuditEntry } from "@/lib/worker-guardian";
+
+type WorkerReportWithAudit = WorkerReport & { guardianAuditLog: MigrationAuditEntry[] };
 
 // Worker の /status は reconcile 間隔(60秒)と listener heartbeat(30秒)で更新される。
 // それより短い間隔で叩いても新しい情報は増えないので、15秒で足りる。
@@ -53,7 +56,7 @@ function IssueRow({ issue }: { issue: WorkerIssue }) {
 }
 
 export default function WorkersAdminPage() {
-  const [report, setReport] = useState<WorkerReport | null>(null);
+  const [report, setReport] = useState<WorkerReportWithAudit | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -74,7 +77,7 @@ export default function WorkersAdminPage() {
         setError(res.status === 401 ? "権限がありません" : "取得に失敗しました");
         return;
       }
-      setReport((await res.json()) as WorkerReport);
+      setReport((await res.json()) as WorkerReportWithAudit);
       setError("");
     } catch {
       if (id === requestId.current) setError("取得に失敗しました");
@@ -214,6 +217,36 @@ export default function WorkersAdminPage() {
           </div>
         ))}
       </div>
+
+      {report && report.guardianAuditLog.length > 0 && (
+        <div className="mt-4 rounded border border-border bg-panel">
+          <div className="px-4 py-2 border-b border-border text-sm text-white">
+            worker-guardian 自動移送履歴(直近{report.guardianAuditLog.length}件)
+          </div>
+          <div className="divide-y divide-border">
+            {[...report.guardianAuditLog].reverse().map((entry, i) => (
+              <div key={i} className="px-4 py-2 text-xs text-gray-400">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-gray-300">
+                    {new Date(entry.at).toLocaleString("ja-JP")}
+                  </span>
+                  <span className="text-red-300">worker {entry.deadWorkerIndex} 死亡確定</span>
+                  {entry.reason === "no_eligible_targets" ? (
+                    <span className="text-yellow-300">移送先候補0件 — 手動対応が必要</span>
+                  ) : (
+                    <span className="text-green-300">{entry.assignments.length}件を移送</span>
+                  )}
+                </div>
+                {entry.assignments.length > 0 && (
+                  <div className="mt-1 text-gray-500">
+                    {entry.assignments.map((a) => `@${a.tiktokId}→worker${a.toWorker}`).join(", ")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {report && report.unassignedRooms.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel">
