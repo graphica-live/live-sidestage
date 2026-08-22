@@ -45,7 +45,12 @@ export default async function EventDetailPage({ params }: { params: { id: string
       </Link>
       <h1 className="mb-6 mt-2 truncate text-xl font-bold">{event.title}</h1>
 
-      <EventAdminControls id={event.id} slug={event.slug} status={event.status} />
+      <EventAdminControls
+        id={event.id}
+        slug={event.slug}
+        status={event.status}
+        visibility={event.visibility}
+      />
 
       <Link
         href={`/events/${event.id}/participants`}
