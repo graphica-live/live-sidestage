@@ -125,6 +125,33 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
   };
 }
 
+/**
+ * 更新リクエストで使う種目を決める。**種目は作成時にだけ決められる。**
+ *
+ * 種目は集計の仕方（`aggregate.ts`）・対戦の組み方・公開ページの見せ方を切り替えるので、
+ * 参加者や対戦が入った後に変えると、既にある結果と噛み合わなくなる。
+ * リクエストの値は「今の種目と同じか」の確認にしか使わない。
+ *
+ * - 省略(`undefined` / `null`)は現在の種目のまま。フォームが送らなくても通す
+ * - 同じ値なら通す。現在の値を読み取り専用で送ってくるフォーム用
+ * - 違う値は拒否する。黙って無視すると、変更できたと誤解したまま運用される
+ */
+export function resolveEventFormatForUpdate(
+  current: string,
+  requested: unknown
+): ValidationResult<EventFormat> {
+  if (!EVENT_FORMATS.includes(current as EventFormat)) {
+    return { ok: false, errors: ["このイベントの種目が不正です。"] };
+  }
+  if (requested == null || requested === "") {
+    return { ok: true, value: current as EventFormat };
+  }
+  if (requested === current) {
+    return { ok: true, value: current as EventFormat };
+  }
+  return { ok: false, errors: ["イベントの種目は作成後に変更できません。"] };
+}
+
 export const MAX_TEAM_NAME_LENGTH = 40;
 
 export type TeamInput = {

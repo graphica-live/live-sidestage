@@ -7,7 +7,12 @@ import { parseDeathmatchRules } from "@/event/deathmatch";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
 import { parseSessionRequest, windowContaining } from "@/event/sessions";
-import { EVENT_STATUSES, validateEventInput, type EventStatus } from "@/event/validation";
+import {
+  EVENT_STATUSES,
+  resolveEventFormatForUpdate,
+  validateEventInput,
+  type EventStatus,
+} from "@/event/validation";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const owned = await requireEventOwner(params.id);
@@ -72,11 +77,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id },
     select: {
       endAt: true,
+      format: true,
       sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
     },
   });
   if (!before) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // 種目は作成時にしか決められない。リクエストの値は「今と同じか」の確認にだけ使い、
+  // 実際に保存するのは常に既存の値。入力の形式エラーではなく現在の状態との競合なので 409。
+  const format = resolveEventFormatForUpdate(before.format, body.format);
+  if (!format.ok) {
+    return NextResponse.json({ errors: format.errors, code: "FORMAT_IMMUTABLE" }, { status: 409 });
   }
 
   // `sessions` が**無い**リクエストは日程を触らない。旧形式のクライアントが
@@ -101,7 +114,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const validated = validateEventInput({
     title: String(body.title ?? ""),
     description: body.description == null ? null : String(body.description),
-    format: String(body.format ?? ""),
+    format: format.value,
     entryMode: String(body.entryMode ?? ""),
     teamPreset: body.teamPreset == null ? undefined : String(body.teamPreset),
     visibility: body.visibility == null ? undefined : String(body.visibility),
