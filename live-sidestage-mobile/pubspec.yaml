@@ -83,6 +83,9 @@ flutter:
   assets:
     - assets/open_jtalk_dic_utf_8-1.11/
     - assets/voicevox_models/
+    # ギフト名の日本語辞書。モノレポ共通資産 shared/gift-names/ の生成コピー
+    # (shared/gift-names/sync.mjs が配る)。直接編集しない。
+    - assets/gift_names/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

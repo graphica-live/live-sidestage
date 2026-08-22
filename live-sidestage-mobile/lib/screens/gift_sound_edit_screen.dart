@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
 import '../core/app_config_store.dart';
+import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
 import '../core/sound_library.dart';
 import '../models/app_config.dart';
@@ -271,7 +272,9 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('削除'),
-        content: Text('「${_draft.displayGiftName}」の設定を削除します。'),
+        content: Text(
+          '「${GiftNameJa.display(_draft.giftName, fallback: _draft.displayGiftName)}」の設定を削除します。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -336,7 +339,7 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
           const _SectionHeader('ギフト'),
           ListTile(
             leading: const Icon(Icons.card_giftcard),
-            title: Text(_draft.displayGiftName),
+            title: Text(GiftNameJa.display(_draft.giftName, fallback: _draft.displayGiftName)),
             subtitle: _draft.giftName.isEmpty
                 ? const Text('どのギフトでも鳴ります')
                 : null,
@@ -426,6 +429,21 @@ enum _CoinRange {
   }
 }
 
+/// ギフト候補が検索文字列に一致するか。
+///
+/// 一覧は日本語で表示しているので、日本語で引けないと探せない。一方、一致キーである
+/// 英語名（`name`）とサーバーが返す元表記（`label`）でも従来どおり引けるようにしておく。
+/// 大文字小文字は区別しない。[query] が空なら全件一致。
+///
+/// ピッカー本体から切り離してあるのは、Widget を組み立てずにテストできるようにするため。
+bool matchesGiftQuery(GiftCandidate gift, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  if (gift.name.toLowerCase().contains(q)) return true;
+  if (gift.label.toLowerCase().contains(q)) return true;
+  return GiftNameJa.display(gift.name, fallback: gift.label).toLowerCase().contains(q);
+}
+
 /// ギフト候補のピッカー。
 ///
 /// 一覧はサーバーが返す「自分の部屋が直近に受け取ったギフト」で、TikTokの全ギフト
@@ -472,16 +490,21 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
 
   List<GiftCandidate> get _filtered {
     final all = _candidates ?? const <GiftCandidate>[];
-    final q = _query.toLowerCase();
+    final query = _query;
     return all
         .where((g) => _coinRange.matches(g.diamondCount))
-        .where((g) => q.isEmpty || g.name.contains(q) || g.label.toLowerCase().contains(q))
+        .where((g) => matchesGiftQuery(g, query))
         .toList(growable: false);
   }
 
   void _pick(GiftCandidate gift) => Navigator.of(context).pop(gift);
 
   /// 一覧に無いギフト名として、入力文字列をそのまま採用する。
+  ///
+  /// 一致キーは TikTok が送ってくる英語名でないと鳴らない。日本語から英語名を
+  /// 逆引きすることはしない――辞書のキーは正規化済み（アポストロフィ統一・空白畳み込み）だが、
+  /// 鳴らす側の照合は `trim` + `toLowerCase` だけなので、逆引き結果を保存すると
+  /// 表記の違うギフトで鳴らなくなる。日本語は候補の検索にだけ使う。
   void _useQueryAsIs() {
     final raw = _query;
     if (raw.isEmpty) return;
@@ -526,8 +549,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
 
     // 完全一致が一覧に出ていないときだけ「そのまま使う」を出す。出ているなら
     // その行をタップすればよく、同じ意味の導線を2つ並べても迷わせるだけ。
-    final showRawEntry =
-        query.isNotEmpty && !filtered.any((g) => g.name == query.toLowerCase());
+    final showRawEntry = query.isNotEmpty && !filtered.any((g) => g.name == query.toLowerCase());
 
     return Padding(
       padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
@@ -553,7 +575,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     labelText: 'ギフト名で検索',
-                    helperText: '未入力なら全件。大文字小文字は区別しません',
+                    helperText: '日本語名・英語名どちらでも。未入力なら全件',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: query.isEmpty
                         ? null
@@ -604,7 +626,9 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: Text('「$query」を使う'),
-                  subtitle: const Text('一覧にないギフト名として登録'),
+                  // 鳴らすときの照合は TikTok が送ってくる英語名で行う。日本語で
+                  // 登録しても一致しないので、ここだけは英語名を入れてもらう。
+                  subtitle: const Text('一覧にないギフト名として登録（TikTokの英語名で入力してください）'),
                   onTap: _useQueryAsIs,
                 ),
               const Divider(height: 1),
@@ -685,10 +709,17 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       itemCount: filtered.length,
       itemBuilder: (_, index) {
         final gift = filtered[index];
+        final displayName = GiftNameJa.display(gift.name, fallback: gift.label);
+        // 日本語名を出したときだけ英語名を添える（同じなら二度書かない）。
+        // 配信画面や他ツールでは英語名で出ることがあるので、対応を隠さない。
+        final details = [
+          if (displayName != gift.label) gift.label,
+          if (gift.diamondCount > 0) '${gift.diamondCount}コイン',
+        ];
         return ListTile(
           dense: true,
-          title: Text(gift.label),
-          subtitle: gift.diamondCount > 0 ? Text('${gift.diamondCount}コイン') : null,
+          title: Text(displayName),
+          subtitle: details.isEmpty ? null : Text(details.join(' · ')),
           onTap: () => _pick(gift),
         );
       },

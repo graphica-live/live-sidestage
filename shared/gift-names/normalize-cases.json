@@ -1,0 +1,21 @@
+{
+  "comment": "辞書キー正規化の共有テストベクタ。live-sidestage-desktop/tests/unit/gift-name-ja.test.js と live-sidestage-mobile/test/gift_name_ja_test.dart が両方これを読む。片方だけ実装を変えると、同じギフトの表示が端末とデスクトップで食い違うため。",
+  "cases": [
+    { "input": "Rose", "expected": "rose" },
+    { "input": "  Rose  ", "expected": "rose" },
+    { "input": "\tRose\n", "expected": "rose" },
+    { "input": "Music  Album", "expected": "music album" },
+    { "input": "Music　Album", "expected": "music album" },
+    { "input": "　Music　Album　", "expected": "music album" },
+    { "input": "Adam's Dream", "expected": "adam's dream" },
+    { "input": "Adam’s Dream", "expected": "adam's dream" },
+    { "input": "Adam‘s Dream", "expected": "adam's dream" },
+    { "input": "Adamʼs Dream", "expected": "adam's dream" },
+    { "input": "Adam´s Dream", "expected": "adam's dream" },
+    { "input": "Adam`s Dream", "expected": "adam's dream" },
+    { "input": "TikTok Universe+", "expected": "tiktok universe+" },
+    { "input": "GG", "expected": "gg" },
+    { "input": "   ", "expected": "" },
+    { "input": "", "expected": "" }
+  ]
+}

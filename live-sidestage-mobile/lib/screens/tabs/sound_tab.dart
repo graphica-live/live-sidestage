@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_config_store.dart';
+import '../../core/gift_name_ja.dart';
 import '../../models/app_config.dart';
 import '../gift_sound_edit_screen.dart';
 import '../home_screen.dart' show SoundState;
@@ -24,7 +25,10 @@ class SoundTab extends StatelessWidget {
           SwitchListTile(
             title: const Text('効果音を鳴らす'),
             subtitle: sound.lastGiftName != null
-                ? Text('直近: ${sound.lastGiftName}', style: const TextStyle(fontSize: 12))
+                // 受信した英語名がそのまま入っている。一覧のタイトルと表記が
+                // 揃っていないと同じギフトだと分からないので、ここも辞書を通す。
+                ? Text('直近: ${GiftNameJa.display(sound.lastGiftName!)}',
+                    style: const TextStyle(fontSize: 12))
                 : null,
             value: config.enabled,
             onChanged: (value) => store.updateSound((c) => c.copyWith(enabled: value)),
@@ -96,7 +100,9 @@ class _GiftSoundTile extends StatelessWidget {
 
     return ListTile(
       leading: const Icon(Icons.card_giftcard),
-      title: Text(gift.displayGiftName),
+      // 保存してあるのは TikTok の英語名。表示だけ辞書で日本語にするので、
+      // あとから辞書が増えれば登録済みの設定にも効く。
+      title: Text(GiftNameJa.display(gift.giftName, fallback: gift.displayGiftName)),
       subtitle: Text(
         gift.soundName.isEmpty ? gift.fileName : gift.soundName,
         style: const TextStyle(fontSize: 12),
