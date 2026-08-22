@@ -12,8 +12,8 @@ void main() {
     await GiftNameJa.ensureLoaded();
   });
 
-  const rose = GiftCandidate(name: 'rose', label: 'Rose', diamondCount: 1);
-  const universe = GiftCandidate(name: 'tiktok universe+', label: 'TikTok Universe+', diamondCount: 44999);
+  const rose = GiftCandidate.single(name: 'rose', label: 'Rose', diamondCount: 1);
+  const universe = GiftCandidate.single(name: 'tiktok universe+', label: 'TikTok Universe+', diamondCount: 44999);
 
   test('空の検索文字列は全件一致', () {
     expect(matchesGiftQuery(rose, ''), isTrue);

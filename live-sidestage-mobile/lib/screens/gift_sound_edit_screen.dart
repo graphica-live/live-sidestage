@@ -722,7 +722,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
         final coinLabel = _coinLabel(gift);
         final details = [
           if (displayName != gift.label) gift.label,
-          if (coinLabel != null) coinLabel,
+          ?coinLabel,
         ];
         return ListTile(
           dense: true,
