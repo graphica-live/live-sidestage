@@ -39,6 +39,20 @@ TikRIng を除く4つは TikTok Live 配信者向けで、`tiktok-live-connector
 - **mobile → analytics**: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `?token=` で `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
 
+## 共通資産 `shared/`
+
+プロジェクトをまたいで同じデータを使う場合だけ、ルート直下の `shared/` に正本を置く。コードは共有しない（言語もランタイムも揃っていないため）。
+
+- **`shared/gift-names/`** — TikTok ギフト名（英語）→日本語表示名の辞書。もとは TikEffect の `backend/lib/gift-name-ja.js` にインラインで埋め込まれていたものを切り出した。現在は TikEffect と mobile（ギフト選択画面・登録済み一覧）が参照する
+  - 正本は `shared/gift-names/gift-names-ja.json` と `gift-names-ja-reference.json` **だけ**
+  - 各プロジェクトのビルドはリポジトリルートを参照できない（electron-builder の `files` はアプリディレクトリ配下のみ、Flutter の asset も package 外を辿れない）ので、`node shared/gift-names/sync.mjs` が配布コピーを生成する。**コピーは生成物。直接編集しない**
+    - `live-sidestage-desktop/backend/lib/gift-names/`
+    - `live-sidestage-mobile/assets/gift_names/`
+  - `node shared/gift-names/sync.mjs --check` が正本の整形・キーの正規化・重複・配布コピーの更新漏れを検証する。ルートの [.githooks/pre-commit](.githooks/pre-commit) と [.github/workflows/shared-gift-names.yml](.github/workflows/shared-gift-names.yml) の両方から走る
+  - 辞書を引くキーの正規化（アポストロフィ統一・空白畳み込み・小文字化）は **JS / Dart で別々に実装されている**（`sync.mjs` / `backend/lib/gift-name-ja.js` / `lib/core/gift_name_ja.dart` の3箇所）。片方だけ直すと同じギフトの表示が端末とデスクトップで食い違うので、入出力の組を `shared/gift-names/normalize-cases.json` に置き、JS と Dart 双方のテストがそれを読んでいる
+  - **表示専用**。ギフトの一致判定（効果音のトリガ、集計キー）は TikTok が送ってくる英語名のまま行う。辞書のキーは正規化済みだが照合側は `trim` + `toLowerCase` しかしないため、日本語→英語の逆引きをして保存すると鳴らなくなる（意図的に逆引き API を持たせていない）
+  - 追加ルール・配布先一覧は [shared/gift-names/README.md](shared/gift-names/README.md)
+
 ## コマンド
 
 いずれも**各プロジェクトディレクトリに `cd` してから**実行する。

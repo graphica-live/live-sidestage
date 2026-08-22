@@ -17,6 +17,13 @@ touched() {
   echo "$changed" | grep -q "^$1/"
 }
 
+# ギフト名日本語辞書（共通資産）。正本を触ったか、生成コピーを触ったかのどちらでも、
+# 正本と全プロジェクトの配布コピーが揃っているか確認する。node だけで一瞬で終わる。
+if echo "$changed" | grep -qE "^(shared/gift-names/|live-sidestage-desktop/backend/lib/gift-names/|live-sidestage-mobile/assets/gift_names/)"; then
+  echo "[pre-commit] ギフト名辞書: 正本と配布コピーの整合を確認..."
+  node shared/gift-names/sync.mjs --check
+fi
+
 if touched live-sidestage-analytics; then
   (
     cd live-sidestage-analytics

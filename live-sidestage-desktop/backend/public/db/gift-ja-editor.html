@@ -84,6 +84,8 @@
             color: var(--muted);
         }
 
+        .status-line.error { color: var(--accent-strong); }
+
         .list-panel { padding: 10px 10px 16px; }
 
         .row {
@@ -194,7 +196,9 @@
             <h1>ギフト日本語名 手動編集</h1>
             <p class="subtext">
                 左に実際のカタログ画像・英語名・コイン数、右に日本語名の入力欄です。入力すると自動保存され、
-                <code>backend/lib/gift-name-ja.js</code> に即座に反映されます（サーバー再起動不要）。
+                モノレポ共通の辞書 <code>shared/gift-names/gift-names-ja.json</code> に即座に反映されます（サーバー再起動不要）。
+                辞書はTikEffectだけでなくスマホアプリ側でも使うので、変更はコミットして共有してください。
+                パッケージ版（インストーラで入れたTikEffect）には共通辞書が同梱されないため、この画面からは保存できません。
                 入力欄をクリックすると、コイン価格の近さから推定した候補が下に出ます。文字を打つと
                 参照リスト全体から絞り込みます。候補は目安なので、実際のTikTokクライアントと見比べて選んでください。
                 一度使った日本語名は他の行の候補から自動的に消えます。
@@ -341,7 +345,9 @@
         function updateStatusLine() {
             const total = gifts.length;
             const translated = gifts.filter(isTranslated).length;
-            document.getElementById('statusLine').textContent =
+            const statusLine = document.getElementById('statusLine');
+            statusLine.className = 'status-line';
+            statusLine.textContent =
                 `全 ${total} 件中 ${translated} 件に日本語名あり（${total - translated} 件が英語フォールバック中）`;
         }
 
@@ -499,8 +505,15 @@
                 // 全体再描画はせず開いているドロップダウンだけ再計算する(フォーカス維持のため)。
                 if (autocompleteState) renderAutocomplete();
             } catch (err) {
+                // 「共通辞書が見つからない（パッケージ版）」など、理由が分からないと
+                // 対処できない失敗があるので、印だけでなく文言も画面に出す。
+                const message = err && err.message ? err.message : String(err);
                 indicator.textContent = '!';
                 indicator.className = 'save-indicator visible error';
+                indicator.title = message;
+                const statusLine = document.getElementById('statusLine');
+                statusLine.className = 'status-line error';
+                statusLine.textContent = `「${name}」を保存できませんでした: ${message}`;
                 console.error('gift-name-ja save failed', err);
             }
         }

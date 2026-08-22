@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'core/app_config_store.dart';
 import 'core/background_task_handler.dart';
+import 'core/gift_name_ja.dart';
 import 'core/session_controller.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -17,8 +18,13 @@ void startCallback() {
   FlutterForegroundTask.setTaskHandler(CommentSpeechTaskHandler());
 }
 
-void main() {
+Future<void> main() async {
+  // ギフト名辞書はアセットなので rootBundle が要る。
+  WidgetsFlutterBinding.ensureInitialized();
   FlutterForegroundTask.initCommunicationPort();
+  // 25KB ほどの JSON を1度だけ読む。以降はどの画面からも同期で引ける。
+  // 読めなくても英語名のまま動くので、失敗しても起動は止めない。
+  await GiftNameJa.ensureLoaded();
   runApp(const LiveSidestageApp());
 }
 
