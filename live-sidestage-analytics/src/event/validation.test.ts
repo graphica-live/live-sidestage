@@ -14,8 +14,12 @@ const baseInput = {
   entryMode: "TEAM",
   teamPreset: "PREFECTURE",
   visibility: "UNLISTED",
-  startAt: new Date("2026-09-01T11:00:00.000Z"),
-  endAt: new Date("2026-09-08T11:00:00.000Z"),
+  sessions: [
+    {
+      startAt: new Date("2026-09-01T11:00:00.000Z"),
+      endAt: new Date("2026-09-08T11:00:00.000Z"),
+    },
+  ],
 };
 
 describe("validateEventInput", () => {
@@ -26,6 +30,37 @@ describe("validateEventInput", () => {
       expect(result.value.title).toBe("第1回 全国ライバー対抗戦");
       expect(result.value.teamPreset).toBe("PREFECTURE");
     }
+  });
+
+  it("複数の日程を受け付け、外枠は全日程のmin/maxになる", () => {
+    const result = validateEventInput({
+      ...baseInput,
+      sessions: [
+        // 順不同で渡しても startAt 昇順に並ぶ。
+        {
+          startAt: new Date("2026-09-02T13:00:00.000Z"),
+          endAt: new Date("2026-09-02T14:00:00.000Z"),
+          name: "決勝",
+        },
+        {
+          startAt: new Date("2026-09-01T13:00:00.000Z"),
+          endAt: new Date("2026-09-01T14:00:00.000Z"),
+          name: "予選",
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.sessions.map((s) => s.name)).toEqual(["予選", "決勝"]);
+      expect(result.value.startAt.toISOString()).toBe("2026-09-01T13:00:00.000Z");
+      expect(result.value.endAt.toISOString()).toBe("2026-09-02T14:00:00.000Z");
+    }
+  });
+
+  it("日程が1件もなければ弾く", () => {
+    const result = validateEventInput({ ...baseInput, sessions: [] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join()).toContain("開催日程");
   });
 
   it("タイトルが空なら弾く", () => {
@@ -42,17 +77,39 @@ describe("validateEventInput", () => {
   it("終了が開始より前なら弾く", () => {
     const result = validateEventInput({
       ...baseInput,
-      startAt: new Date("2026-09-08T11:00:00.000Z"),
-      endAt: new Date("2026-09-01T11:00:00.000Z"),
+      sessions: [
+        {
+          startAt: new Date("2026-09-08T11:00:00.000Z"),
+          endAt: new Date("2026-09-01T11:00:00.000Z"),
+        },
+      ],
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.join()).toContain("終了日時");
   });
 
+  it("日程が重なっていたら弾く", () => {
+    const result = validateEventInput({
+      ...baseInput,
+      sessions: [
+        {
+          startAt: new Date("2026-09-01T13:00:00.000Z"),
+          endAt: new Date("2026-09-01T15:00:00.000Z"),
+        },
+        {
+          startAt: new Date("2026-09-01T14:00:00.000Z"),
+          endAt: new Date("2026-09-01T16:00:00.000Z"),
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join()).toContain("重なって");
+  });
+
   it("期間が上限を超えたら弾く", () => {
     const start = new Date("2026-09-01T00:00:00.000Z");
     const end = new Date(start.getTime() + (MAX_EVENT_DAYS + 1) * 86_400_000);
-    const result = validateEventInput({ ...baseInput, startAt: start, endAt: end });
+    const result = validateEventInput({ ...baseInput, sessions: [{ startAt: start, endAt: end }] });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.join()).toContain(`${MAX_EVENT_DAYS}日`);
   });

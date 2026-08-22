@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toJstInputValue } from "@/event/datetime";
+import { resolveEventWindows } from "@/event/sessions";
 import { EventForm, type EventFormValues } from "../EventForm";
 import { EventAdminControls } from "./EventAdminControls";
 import type { EntryMode, EventFormat, TeamPreset, Visibility } from "@/event/validation";
@@ -14,7 +15,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
     where: { id: params.id, ownerUserId: session!.user.id },
-    include: { _count: { select: { participants: true, matches: true } } },
+    include: {
+      sessions: { orderBy: { startAt: "asc" } },
+      _count: { select: { participants: true, matches: true } },
+    },
   });
 
   if (!event) notFound();
@@ -26,8 +30,12 @@ export default async function EventDetailPage({ params }: { params: { id: string
     entryMode: event.entryMode as EntryMode,
     teamPreset: event.teamPreset as TeamPreset,
     visibility: event.visibility as Visibility,
-    startAt: toJstInputValue(event.startAt),
-    endAt: toJstInputValue(event.endAt),
+    // 日程を持たないイベント(この機能より前に作られたもの)は外枠を1日程として出す。
+    sessions: resolveEventWindows(event).map((w) => ({
+      name: w.name ?? "",
+      startAt: toJstInputValue(w.start),
+      endAt: toJstInputValue(w.end),
+    })),
   };
 
   return (

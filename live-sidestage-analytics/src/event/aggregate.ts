@@ -15,7 +15,13 @@ import {
   type TimeRange,
 } from "./scoring";
 import { advisoryLockKey } from "./event-lock";
-import { detectMatches, ingestBattles, loadBattleRangesByRoom } from "./battles";
+import {
+  BATTLE_INGEST_GRACE_MS,
+  detectMatches,
+  ingestBattles,
+  loadBattleRangesByRoom,
+} from "./battles";
+import { expandAndMergeWindows, resolveEventWindows, type EventWindow } from "./sessions";
 import { resolveMatchResults } from "./match-results";
 import { parseDeathmatchRules } from "./deathmatch";
 import { applyLifePoints } from "./life-points";
@@ -129,11 +135,19 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           rules: true,
           startAt: true,
           endAt: true,
+          sessions: {
+            orderBy: { startAt: "asc" },
+            select: { startAt: true, endAt: true, name: true },
+          },
         },
       });
       if (!event) {
         return { status: "skipped", reason: "no-participants" } as const;
       }
+
+      // 集計するのは開催日程の中だけ。日程の隙間のギフトは入らない。
+      // 日程を持たないイベント(この機能より前に作られたもの)は外枠が1日程になる。
+      const windows = resolveEventWindows(event);
 
       const [participants, multipliers, teams] = await Promise.all([
         tx.eventParticipant.findMany({
@@ -180,15 +194,20 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
       // 済ませる(同じトランザクション内なので読み手に中間状態は見えない)。
       let battleRanges = new Map<string, TimeRange[]>();
       if (event.format === "TOURNAMENT" || event.format === "DEATHMATCH") {
-        await ingestBattles(tx as DbClient, {
-          roomIds,
-          start: event.startAt,
-          end: event.endAt,
-        });
+        // 日程を前後に広げてつないだ区間だけ取り込む。外枠1本で引くと、日程が疎に
+        // 散っているイベント(90日に週1など)で隙間のバトルまで毎回取り込むことになる。
+        for (const span of expandAndMergeWindows(windows, BATTLE_INGEST_GRACE_MS)) {
+          await ingestBattles(tx as DbClient, {
+            roomIds,
+            start: span.start,
+            end: span.end,
+          });
+        }
         await detectMatches(tx as DbClient, { eventId, now });
         await resolveMatchResults(tx as DbClient, {
           eventId,
           multipliers: multiplierInputs,
+          windows,
           now,
         });
         battleRanges = await loadBattleRangesByRoom(tx as DbClient, eventId);
@@ -207,12 +226,6 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
       // 参加者ごとのクエリは高くつくので、その場合は全員まとめて1本で集約する。
       const battleFactorInUse =
         multiplierInputs.some((m) => m.kind === "BATTLE") && battleRanges.size > 0;
-
-      const perRoomRooms = battleFactorInUse
-        ? roomIds.filter((id) => (battleRanges.get(id)?.length ?? 0) > 0)
-        : [];
-      const perRoomSet = new Set(perRoomRooms);
-      const commonRooms = roomIds.filter((id) => !perRoomSet.has(id));
 
       const byParticipant = new Map<string, Map<string, Bucket>>();
       const byTeam = new Map<string, Map<string, Bucket>>();
@@ -246,11 +259,15 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         }
       };
 
-      const aggregateRooms = async (rooms: string[], ranges: TimeRange[]) => {
+      const aggregateRooms = async (
+        rooms: string[],
+        ranges: TimeRange[],
+        window: EventWindow
+      ) => {
         if (rooms.length === 0) return;
         const segments = buildRateSegments({
-          eventStart: event.startAt,
-          eventEnd: event.endAt,
+          eventStart: window.start,
+          eventEnd: window.end,
           multipliers: multiplierInputs,
           battleRanges: ranges,
         });
@@ -264,17 +281,37 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         }
       };
 
-      // バトル区間を持たない参加者はまとめて1本。持つ参加者だけ個別に回す。
-      await aggregateRooms(commonRooms, []);
-      for (const roomId of perRoomRooms) {
-        await aggregateRooms([roomId], battleRanges.get(roomId) ?? []);
+      // 日程ごとに集計する。日程どうしは重ならないので二重計上にならない。
+      for (const window of windows) {
+        // 個別化するのは**その日程と重なるバトル区間を持つ参加者だけ**。
+        // 日程数 × 参加者数のクエリにしないため、他の日程でしかバトルがない参加者は
+        // まとめて1本で集約する。
+        const perRoomRooms = battleFactorInUse
+          ? roomIds.filter((id) =>
+              (battleRanges.get(id) ?? []).some(
+                (r) => r.start < window.end && r.end > window.start
+              )
+            )
+          : [];
+        const perRoomSet = new Set(perRoomRooms);
+        const commonRooms = roomIds.filter((id) => !perRoomSet.has(id));
+
+        await aggregateRooms(commonRooms, [], window);
+        for (const roomId of perRoomRooms) {
+          await aggregateRooms([roomId], battleRanges.get(roomId) ?? [], window);
+        }
       }
 
-      const profiles = await fetchListenerProfiles(tx as DbClient, {
-        roomIds,
-        start: event.startAt,
-        end: event.endAt,
-      });
+      // 表示名は日程ごとに引いて後勝ちでまとめる(最後に観測したものが残る)。
+      const profiles = new Map<string, ListenerProfile>();
+      for (const window of windows) {
+        const found = await fetchListenerProfiles(tx as DbClient, {
+          roomIds,
+          start: window.start,
+          end: window.end,
+        });
+        for (const [uniqueId, profile] of found) profiles.set(uniqueId, profile);
+      }
 
       const contributions = [
         ...buildContributionRows(eventId, "EVENT", "", byEvent, profiles),

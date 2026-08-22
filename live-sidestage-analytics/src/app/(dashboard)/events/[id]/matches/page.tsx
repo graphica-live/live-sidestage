@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { defaultSeedOrder } from "@/event/tournament";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { resolveEventWindows } from "@/event/sessions";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,10 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       rules: true,
       startAt: true,
       endAt: true,
+      sessions: {
+        orderBy: { startAt: "asc" },
+        select: { startAt: true, endAt: true, name: true },
+      },
     },
   });
 
@@ -167,8 +172,11 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           eventId={event.id}
           format={event.format}
           entryMode={event.entryMode}
-          eventStartAt={event.startAt.toISOString()}
-          eventEndAt={event.endAt.toISOString()}
+          sessions={resolveEventWindows(event).map((w) => ({
+            name: w.name,
+            startAt: w.start.toISOString(),
+            endAt: w.end.toISOString(),
+          }))}
           entrants={entrants}
           matches={rows}
           lives={lives}

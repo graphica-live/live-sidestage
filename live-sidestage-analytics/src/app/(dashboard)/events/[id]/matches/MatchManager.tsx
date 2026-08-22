@@ -12,6 +12,13 @@ import {
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
 
+/** 開催日程1件。日時は ISO 文字列(サーバーコンポーネントから Date を渡せないため)。 */
+export type SessionRow = {
+  name: string | null;
+  startAt: string;
+  endAt: string;
+};
+
 export type EntrantOption = {
   id: string;
   label: string;
@@ -63,12 +70,49 @@ const END_SOURCE_NOTES: Record<string, string> = {
   scheduled: "終了イベントも設定時間も取れなかったため、予定終了時刻を使った。",
 };
 
+/**
+ * いま対戦を組むならどの日程か。開催中ならその日程、まだなら次の日程、
+ * 全部終わっていたら最後の日程。対戦の初期値に使う。
+ */
+function currentSession(sessions: SessionRow[]): SessionRow | null {
+  if (sessions.length === 0) return null;
+  const now = Date.now();
+  return (
+    sessions.find((s) => now < new Date(s.endAt).getTime()) ?? sessions[sessions.length - 1]
+  );
+}
+
+/** 開催日程の一覧。対戦の時間枠がどこに収まるべきかを主催者へ示す。 */
+function SessionNote({ sessions }: { sessions: SessionRow[] }) {
+  if (sessions.length === 0) return null;
+  if (sessions.length === 1) {
+    return (
+      <p className="text-xs text-gray-500">
+        開催日程: {formatJst(new Date(sessions[0].startAt))} 〜{" "}
+        {formatJst(new Date(sessions[0].endAt))}
+      </p>
+    );
+  }
+  return (
+    <div className="text-xs text-gray-500">
+      <p>開催日程(対戦は1つの日程に収める):</p>
+      <ul className="mt-1 space-y-0.5">
+        {sessions.map((s, index) => (
+          <li key={index}>
+            {s.name || `${index + 1}日目`}: {formatJst(new Date(s.startAt))} 〜{" "}
+            {formatJst(new Date(s.endAt))}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function MatchManager({
   eventId,
   format,
   entryMode,
-  eventStartAt,
-  eventEndAt,
+  sessions,
   entrants,
   matches,
   lives,
@@ -77,8 +121,8 @@ export function MatchManager({
   eventId: string;
   format: string;
   entryMode: string;
-  eventStartAt: string;
-  eventEndAt: string;
+  /** 開催日程(startAt 昇順)。日程を持たないイベントは外枠1件が入る */
+  sessions: SessionRow[];
   entrants: EntrantOption[];
   matches: MatchRow[];
   /** デスマッチのときだけ中身が入る */
@@ -89,7 +133,10 @@ export function MatchManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seed, setSeed] = useState<string[]>(entrants.map((e) => e.id));
-  const [startAt, setStartAt] = useState(() => toJstInputValue(new Date(eventStartAt)));
+  const [startAt, setStartAt] = useState(() =>
+    // 1回戦は日程の中で始めないと表を作れない(サーバー側が拒否する)。
+    toJstInputValue(new Date(sessions[0]?.startAt ?? Date.now()))
+  );
   const [matchWindowMin, setMatchWindowMin] = useState(30);
   const [roundIntervalMin, setRoundIntervalMin] = useState(45);
 
@@ -149,8 +196,7 @@ export function MatchManager({
           entryMode={entryMode}
           entrants={entrants}
           lives={lives}
-          eventStartAt={eventStartAt}
-          eventEndAt={eventEndAt}
+          sessions={sessions}
           busy={busy}
           onSend={send}
         />
@@ -307,9 +353,12 @@ export function MatchManager({
             {matches.length > 0 ? "表を作り直す" : "表を作る"}
           </button>
         </div>
-        <p className="text-xs text-gray-500">
-          イベント期間: {formatJst(new Date(eventStartAt))} 〜 {formatJst(new Date(eventEndAt))}
-        </p>
+        <SessionNote sessions={sessions} />
+        {sessions.length > 1 && (
+          <p className="text-xs text-gray-500">
+            ラウンドの枠が日程からはみ出す場合は、次の日程の開始時刻へ送る。
+          </p>
+        )}
       </section>
 
       {byRound.length === 0 ? (
@@ -511,8 +560,7 @@ function SingleMatchBuilder({
   entryMode,
   entrants,
   lives,
-  eventStartAt,
-  eventEndAt,
+  sessions,
   busy,
   onSend,
 }: {
@@ -520,8 +568,7 @@ function SingleMatchBuilder({
   entryMode: string;
   entrants: EntrantOption[];
   lives: LifeRow[];
-  eventStartAt: string;
-  eventEndAt: string;
+  sessions: SessionRow[];
   busy: boolean;
   onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
 }) {
@@ -530,7 +577,13 @@ function SingleMatchBuilder({
   const [sideB, setSideB] = useState("");
   const [membersA, setMembersA] = useState<string[]>([]);
   const [membersB, setMembersB] = useState<string[]>([]);
-  const [start, setStart] = useState(() => toJstInputValue(new Date()));
+  const [start, setStart] = useState(() => {
+    // 日程の外に枠を作るとサーバー側が拒否する。開催中でなければ日程の開始を初期値にする。
+    const session = currentSession(sessions);
+    if (!session) return toJstInputValue(new Date());
+    const from = new Date(session.startAt);
+    return toJstInputValue(from.getTime() > Date.now() ? from : new Date());
+  });
   const [windowMin, setWindowMin] = useState(30);
 
   // 脱落した出場者は組めない(API 側でも弾く)。
@@ -703,9 +756,7 @@ function SingleMatchBuilder({
         </button>
       </div>
 
-      <p className="text-xs text-gray-500">
-        イベント期間: {formatJst(new Date(eventStartAt))} 〜 {formatJst(new Date(eventEndAt))}
-      </p>
+      <SessionNote sessions={sessions} />
     </form>
   );
 }

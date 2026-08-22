@@ -45,6 +45,12 @@ async function main() {
       status: "RUNNING",
       startAt: new Date(now - 24 * 3600_000),
       endAt: new Date(now + 6 * 24 * 3600_000),
+      // 通しで1日程のイベント。外枠と一致する。
+      sessions: {
+        create: [
+          { startAt: new Date(now - 24 * 3600_000), endAt: new Date(now + 6 * 24 * 3600_000) },
+        ],
+      },
     },
   });
 
@@ -59,8 +65,24 @@ async function main() {
       entryMode: "SOLO",
       visibility: "UNLISTED",
       status: "DRAFT",
+      // 外枠は全日程を覆う。集計されるのは下の2日程の中だけで、
+      // 1日目の終了〜2日目の開始のギフトは入らない。
       startAt: new Date(now + 7 * 24 * 3600_000),
-      endAt: new Date(now + 8 * 24 * 3600_000),
+      endAt: new Date(now + 8 * 24 * 3600_000 + 3600_000),
+      sessions: {
+        create: [
+          {
+            name: "予選",
+            startAt: new Date(now + 7 * 24 * 3600_000),
+            endAt: new Date(now + 7 * 24 * 3600_000 + 3600_000),
+          },
+          {
+            name: "決勝",
+            startAt: new Date(now + 8 * 24 * 3600_000),
+            endAt: new Date(now + 8 * 24 * 3600_000 + 3600_000),
+          },
+        ],
+      },
     },
   });
 

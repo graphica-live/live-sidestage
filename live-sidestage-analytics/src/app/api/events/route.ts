@@ -3,8 +3,8 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseJstLocal } from "@/event/datetime";
 import { buildEventSlug } from "@/event/slug";
+import { parseSessionRequest } from "@/event/sessions";
 import { validateEventInput } from "@/event/validation";
 
 const SLUG_RETRY = 5;
@@ -21,10 +21,12 @@ export async function POST(req: NextRequest) {
   }
 
   // datetime-local の値はサーバーのタイムゾーンに依存させず JST として解釈する。
-  const startAt = parseJstLocal(String(body.startAt ?? ""));
-  const endAt = parseJstLocal(String(body.endAt ?? ""));
-  if (!startAt || !endAt) {
-    return NextResponse.json({ errors: ["開始日時と終了日時を入力してください。"] }, { status: 400 });
+  // `sessions` が無い body は、開始・終了を1日程とみなす(旧形式のクライアント)。
+  const parsedSessions = parseSessionRequest(
+    body.sessions !== undefined ? body.sessions : [{ startAt: body.startAt, endAt: body.endAt }]
+  );
+  if (!parsedSessions.ok) {
+    return NextResponse.json({ errors: parsedSessions.errors }, { status: 400 });
   }
 
   const validated = validateEventInput({
@@ -34,23 +36,26 @@ export async function POST(req: NextRequest) {
     entryMode: String(body.entryMode ?? ""),
     teamPreset: body.teamPreset == null ? undefined : String(body.teamPreset),
     visibility: body.visibility == null ? undefined : String(body.visibility),
-    startAt,
-    endAt,
+    sessions: parsedSessions.value,
   });
 
   if (!validated.ok) {
     return NextResponse.json({ errors: validated.errors }, { status: 400 });
   }
 
+  const { sessions, ...event } = validated.value;
+
   // slug はランダム suffix 付きなので実質衝突しないが、unique 制約に任せて数回リトライする。
   for (let attempt = 0; attempt < SLUG_RETRY; attempt++) {
     try {
       const created = await prisma.event.create({
         data: {
-          ...validated.value,
-          slug: buildEventSlug(validated.value.title),
+          ...event,
+          slug: buildEventSlug(event.title),
           ownerUserId: session.user.id,
           status: "DRAFT",
+          // 外枠(startAt/endAt)と日程は必ず同じトランザクションで書く。
+          sessions: { create: sessions },
         },
         select: { id: true, slug: true },
       });

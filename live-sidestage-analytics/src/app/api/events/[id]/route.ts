@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/event/authz";
-import { parseJstLocal } from "@/event/datetime";
+import { formatJstRange } from "@/event/datetime";
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
+import { parseSessionRequest, windowContaining } from "@/event/sessions";
 import { EVENT_STATUSES, validateEventInput, type EventStatus } from "@/event/validation";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -67,10 +68,34 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ deathmatch: normalized });
   }
 
-  const startAt = parseJstLocal(String(body.startAt ?? ""));
-  const endAt = parseJstLocal(String(body.endAt ?? ""));
-  if (!startAt || !endAt) {
-    return NextResponse.json({ errors: ["開始日時と終了日時を入力してください。"] }, { status: 400 });
+  const before = await prisma.event.findUnique({
+    where: { id: params.id },
+    select: {
+      endAt: true,
+      sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
+    },
+  });
+  if (!before) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // `sessions` が**無い**リクエストは日程を触らない。旧形式のクライアントが
+  // タイトルだけ直したときに、複数日程が外枠1本へ潰れるのを防ぐ。
+  // 日程を1件も持たないイベント(この機能より前に作られたもの)だけ、
+  // 旧形式の開始・終了から1日程を作る。
+  const sessionSource =
+    body.sessions !== undefined
+      ? body.sessions
+      : before.sessions.length > 0
+        ? null
+        : [{ startAt: body.startAt, endAt: body.endAt }];
+
+  const parsedSessions =
+    sessionSource === null
+      ? ({ ok: true, value: before.sessions } as const)
+      : parseSessionRequest(sessionSource);
+  if (!parsedSessions.ok) {
+    return NextResponse.json({ errors: parsedSessions.errors }, { status: 400 });
   }
 
   const validated = validateEventInput({
@@ -80,36 +105,78 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     entryMode: String(body.entryMode ?? ""),
     teamPreset: body.teamPreset == null ? undefined : String(body.teamPreset),
     visibility: body.visibility == null ? undefined : String(body.visibility),
-    startAt,
-    endAt,
+    sessions: parsedSessions.value,
   });
 
   if (!validated.ok) {
     return NextResponse.json({ errors: validated.errors }, { status: 400 });
   }
 
-  const before = await prisma.event.findUnique({
-    where: { id: params.id },
-    select: { endAt: true },
-  });
+  const { sessions, ...event } = validated.value;
+  const windows = sessions.map((s) => ({ start: s.startAt, end: s.endAt, name: s.name }));
 
-  const updated = await prisma.$transaction(async (tx) => {
-    // 期間を変えたら最終集計をやり直させる。finalizedAt が立ったままだと
-    // 延長した分のギフトが二度と集計されない。
-    await reopenAggregation(tx, params.id);
-    return tx.event.update({
-      where: { id: params.id },
-      data: validated.value,
-      select: { id: true, slug: true },
-    });
-  }, MUTATION_TX_OPTIONS);
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      // 期間を変えたら最終集計をやり直させる。finalizedAt が立ったままだと
+      // 延長した分のギフトが二度と集計されない。
+      // **これがトランザクションの先頭でロックを取る。** 対戦を組む側も同じロックを
+      // 先頭で取るので、古い日程で通した枠が後からコミットされることはない。
+      await reopenAggregation(tx, params.id);
+
+      // 日程の外に取り残される対戦がないか確かめる。**勝手に VOID にも移動もしない** —
+      // 主催者に、先に対戦の時間を直させる。
+      const matches = await tx.eventMatch.findMany({
+        where: { eventId: params.id, status: { not: "VOID" } },
+        orderBy: { scheduledStartAt: "asc" },
+        select: { scheduledStartAt: true, scheduledEndAt: true },
+      });
+      const stray = matches.filter(
+        (m) => !windowContaining(windows, m.scheduledStartAt, m.scheduledEndAt)
+      );
+      if (stray.length > 0) {
+        throw new StrayMatchError(stray.length, stray[0].scheduledStartAt, stray[0].scheduledEndAt);
+      }
+
+      // 日程は全置換する。差分更新にすると順序と重なりの検証をやり直す羽目になる。
+      await tx.eventSession.deleteMany({ where: { eventId: params.id } });
+      await tx.eventSession.createMany({
+        data: sessions.map((s) => ({ eventId: params.id, ...s })),
+      });
+
+      return tx.event.update({
+        where: { id: params.id },
+        data: event,
+        select: { id: true, slug: true },
+      });
+    }, MUTATION_TX_OPTIONS);
+  } catch (err) {
+    if (err instanceof StrayMatchError) {
+      return NextResponse.json(
+        { errors: [err.message], code: "MATCH_OUT_OF_SESSION" },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   // 終了日時が後ろへ動いたら、確保済みの監視期限も伸ばす。
-  if (before && endAt.getTime() > before.endAt.getTime()) {
-    await refreshEventLeases(params.id, endAt);
+  if (event.endAt.getTime() > before.endAt.getTime()) {
+    await refreshEventLeases(params.id, event.endAt);
   }
 
   return NextResponse.json(updated);
+}
+
+/** 新しい日程に収まらない対戦が残っている。 */
+class StrayMatchError extends Error {
+  constructor(count: number, start: Date, end: Date) {
+    super(
+      `対戦の時間枠が新しい開催日程の外に出ます(${count}件。最初は ${formatJstRange(start, end)})。` +
+        "先に対戦の時間を変更するか、日程を見直してください。"
+    );
+    this.name = "StrayMatchError";
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {

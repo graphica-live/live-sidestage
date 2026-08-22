@@ -308,7 +308,13 @@ model Event {
   visibility String @default("UNLISTED") // "PUBLIC" | "UNLISTED" | "PRIVATE"
   status     String @default("DRAFT") // "DRAFT"|"SCHEDULED"|"RUNNING"|"FINISHED"|"ARCHIVED"
 
-  startAt DateTime // 集計区間は [startAt, endAt) の半開区間
+  // 全開催日程を覆う外枠。**sessions からの派生値**で、
+  // startAt = min(sessions.startAt) / endAt = max(sessions.endAt)。
+  // 集計する区間そのものは sessions(EventSession)。日程の隙間は集計に入らない。
+  // 外枠を持つのは、集計対象の抽出・最終集計の締切・room 監視期限・一覧の表示が
+  // 子テーブルの min/max を毎回引かずに済むようにするため。
+  // **書き込みは日程と必ず同じトランザクションで行う**(イベント作成・更新APIだけ)。
+  startAt DateTime
   endAt   DateTime
   rules   Json     @default("{}") // 種目別ルール(デスマッチの初期ライフ等)
 
@@ -322,6 +328,7 @@ model Event {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  sessions      EventSession[]
   teams         EventTeam[]
   participants  EventParticipant[]
   multipliers   EventMultiplier[]
@@ -335,6 +342,29 @@ model Event {
 
   @@index([status, endAt])
   @@index([ownerUserId])
+  @@schema("event")
+}
+
+// 開催日程。1つのイベントを複数の時間帯に分けて開催できる
+// (例: 1日目 22:00-23:00 予選 / 2日目 22:00-23:00 決勝)。
+//
+// - 集計区間は日程ごとの [startAt, endAt) の半開区間。**日程の隙間は集計に入らない**
+// - 日程どうしは重ならない(重なると同じギフトを二重に数える)。検証は
+//   src/event/sessions.ts の normalizeSessionInputs が持つ
+// - 並び順は startAt 昇順。重なりがないので sortOrder 列は持たない
+// - **0件のイベントがありうる**(この機能より前に作られたもの)。その場合は
+//   Event の外枠 [startAt, endAt) を1日程とみなす(resolveEventWindows)
+model EventSession {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String? // "予選" などの任意ラベル
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, startAt])
   @@schema("event")
 }
 

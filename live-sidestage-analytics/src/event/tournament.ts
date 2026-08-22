@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { resolveBracket, roundLabel } from "./bracket";
 import { parseJstLocal } from "./datetime";
+import { acquireEventLock } from "./event-lock";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
+import { resolveEventWindows, type EventWindow } from "./sessions";
 
 // トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
 //
@@ -40,6 +42,52 @@ export class BracketError extends Error {
 }
 
 /**
+ * 各ラウンドの開始時刻を決める。開催日程をまたぐときは次の日程の頭へ送る。
+ *
+ * - **1回戦は指定された時刻から動かさない。** どの日程にも収まらなければ null を返し、
+ *   主催者に直させる(黙って別の日へ動かすと、意図しない日程で表ができてしまう)
+ * - 2回戦以降は `roundIntervalMin` 間隔。枠(`matchWindowMin`)がその日程からはみ出すなら
+ *   次の日程の開始時刻へ送る。これで「1日目に予選、2日目に決勝」が組める
+ * - 日程を使い切っても置ききれなければ null
+ */
+export function planRoundStarts(input: {
+  windows: EventWindow[];
+  firstRoundStartAt: Date;
+  roundCount: number;
+  matchWindowMin: number;
+  roundIntervalMin: number;
+}): Date[] | null {
+  const { windows, firstRoundStartAt, roundCount, matchWindowMin, roundIntervalMin } = input;
+  const windowMs = matchWindowMin * 60_000;
+  const intervalMs = roundIntervalMin * 60_000;
+
+  let index = windows.findIndex(
+    (w) =>
+      firstRoundStartAt >= w.start && firstRoundStartAt.getTime() + windowMs <= w.end.getTime()
+  );
+  if (index < 0) return null;
+
+  const starts = [firstRoundStartAt];
+  let cursor = firstRoundStartAt.getTime() + intervalMs;
+
+  for (let round = 2; round <= roundCount; round++) {
+    while (index < windows.length) {
+      const w = windows[index];
+      if (cursor < w.start.getTime()) cursor = w.start.getTime();
+      if (cursor + windowMs <= w.end.getTime()) break;
+      index++;
+      if (index < windows.length) cursor = windows[index].start.getTime();
+    }
+    if (index >= windows.length) return null;
+
+    starts.push(new Date(cursor));
+    cursor += intervalMs;
+  }
+
+  return starts;
+}
+
+/**
  * トーナメント表を作る。既存の表があれば作り直す。
  *
  * **1つでも進行済みのマッチがあれば作り直さない。** 検知済みの対戦や確定した勝敗が
@@ -59,29 +107,43 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
   }
 
-  const event = await prisma.event.findUnique({
-    where: { id: eventId },
-    select: { id: true, startAt: true, endAt: true },
-  });
-  if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
-
   const bracket = resolveBracket(entrantIds);
-  const lastRoundEnd = new Date(
-    firstRoundStartAt.getTime() +
-      (bracket.roundCount - 1) * roundIntervalMin * 60_000 +
-      matchWindowMin * 60_000
-  );
-  if (firstRoundStartAt < event.startAt || lastRoundEnd > event.endAt) {
-    throw new BracketError(
-      "全ラウンドがイベントの期間内に収まりません。開始時刻か間隔を見直してください。",
-      "OUT_OF_EVENT_WINDOW"
-    );
-  }
 
   // エントリーが実在するか(チーム戦ならチーム、個人戦なら参加者)を確認する。
   const participantsByEntrant = await resolveEntrantParticipants(eventId, entrantIds, entryMode);
 
   return prisma.$transaction(async (tx) => {
+    // **日程を読む前にロックを取る。** 日程の変更と同時に走ると、古い日程で
+    // 組んだ枠がそのままコミットされて日程の外に取り残される。
+    await acquireEventLock(tx, eventId);
+
+    const event = await tx.event.findUnique({
+      where: { id: eventId },
+      select: {
+        startAt: true,
+        endAt: true,
+        sessions: {
+          orderBy: { startAt: "asc" },
+          select: { startAt: true, endAt: true, name: true },
+        },
+      },
+    });
+    if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
+
+    const roundStarts = planRoundStarts({
+      windows: resolveEventWindows(event),
+      firstRoundStartAt,
+      roundCount: bracket.roundCount,
+      matchWindowMin,
+      roundIntervalMin,
+    });
+    if (!roundStarts) {
+      throw new BracketError(
+        "全ラウンドが開催日程に収まりません。1回戦の開始時刻・間隔・日程を見直してください。",
+        "OUT_OF_EVENT_WINDOW"
+      );
+    }
+
     const existing = await tx.eventMatch.findMany({
       where: { eventId },
       select: { id: true, status: true },
@@ -97,9 +159,7 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     }
 
     for (const match of bracket.matches) {
-      const roundStart = new Date(
-        firstRoundStartAt.getTime() + (match.round - 1) * roundIntervalMin * 60_000
-      );
+      const roundStart = roundStarts[match.round - 1];
       const created = await tx.eventMatch.create({
         data: {
           eventId,

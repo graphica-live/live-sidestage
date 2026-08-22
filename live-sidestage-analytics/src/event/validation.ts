@@ -1,5 +1,17 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
+import {
+  MAX_EVENT_DAYS,
+  normalizeSessionInputs,
+  type NormalizedSession,
+  type SessionInput,
+} from "./sessions";
+
+// 期間の検証そのものは sessions.ts が持つ(日程が複数あるため)。
+// 既存の import 元のために、上限値だけここからも見えるようにしておく。
+export { MAX_EVENT_DAYS };
+export { MAX_EVENT_SESSIONS, MAX_SESSION_NAME_LENGTH } from "./sessions";
+
 export const EVENT_FORMATS = ["TOURNAMENT", "DIAMOND_RACE", "DEATHMATCH"] as const;
 export const ENTRY_MODES = ["SOLO", "TEAM"] as const;
 export const TEAM_PRESETS = ["GENERIC", "PREFECTURE"] as const;
@@ -27,8 +39,6 @@ export const MAX_PARTICIPANTS = 200;
 export const MAX_DISPLAY_NAME_LENGTH = 60;
 export const MAX_TITLE_LENGTH = 100;
 export const MAX_DESCRIPTION_LENGTH = 4000;
-// イベント期間の上限。無制限にすると集計対象が青天井になる。
-export const MAX_EVENT_DAYS = 90;
 
 export type EventInput = {
   title: string;
@@ -37,8 +47,8 @@ export type EventInput = {
   entryMode: string;
   teamPreset?: string;
   visibility?: string;
-  startAt: string | Date;
-  endAt: string | Date;
+  /** 開催日程。1件以上。重なりは許さない(sessions.ts が検証する) */
+  sessions: SessionInput[];
 };
 
 export type ValidatedEventInput = {
@@ -48,18 +58,15 @@ export type ValidatedEventInput = {
   entryMode: EntryMode;
   teamPreset: TeamPreset;
   visibility: Visibility;
+  /** 全日程を覆う外枠。sessions からの派生値 */
   startAt: Date;
   endAt: Date;
+  sessions: NormalizedSession[];
 };
 
 export type ValidationResult<T> =
   | { ok: true; value: T }
   | { ok: false; errors: string[] };
-
-function parseDate(value: string | Date): Date | null {
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 export function validateEventInput(input: EventInput): ValidationResult<ValidatedEventInput> {
   const errors: string[] = [];
@@ -96,22 +103,11 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
     errors.push("公開範囲の指定が不正です。");
   }
 
-  const startAt = parseDate(input.startAt);
-  const endAt = parseDate(input.endAt);
-  if (!startAt) errors.push("開始日時の指定が不正です。");
-  if (!endAt) errors.push("終了日時の指定が不正です。");
-  if (startAt && endAt) {
-    if (startAt >= endAt) {
-      errors.push("終了日時は開始日時より後にしてください。");
-    } else {
-      const days = (endAt.getTime() - startAt.getTime()) / 86_400_000;
-      if (days > MAX_EVENT_DAYS) {
-        errors.push(`イベント期間は${MAX_EVENT_DAYS}日以内にしてください。`);
-      }
-    }
-  }
+  // 期間は日程ごと。外枠(startAt/endAt)はここで作った min/max を保存する。
+  const sessions = normalizeSessionInputs(input.sessions ?? []);
+  if (!sessions.ok) errors.push(...sessions.errors);
 
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0 || !sessions.ok) return { ok: false, errors };
 
   return {
     ok: true,
@@ -122,8 +118,9 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
       entryMode: input.entryMode as EntryMode,
       teamPreset,
       visibility,
-      startAt: startAt!,
-      endAt: endAt!,
+      startAt: sessions.startAt,
+      endAt: sessions.endAt,
+      sessions: sessions.value,
     },
   };
 }

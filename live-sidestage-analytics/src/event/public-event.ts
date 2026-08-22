@@ -25,6 +25,10 @@ export async function findPublicEvent(slug: string) {
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
+      sessions: {
+        orderBy: { startAt: "asc" },
+        select: { id: true, name: true, startAt: true, endAt: true },
+      },
       _count: { select: { participants: true } },
     },
   });

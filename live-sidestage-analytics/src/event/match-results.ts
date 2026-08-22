@@ -1,6 +1,7 @@
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
 import { MANUAL_DECISIONS } from "./match-detect";
+import { intersectWindows, type EventWindow } from "./sessions";
 import {
   buildRateSegments,
   formatScaledPoints,
@@ -45,6 +46,8 @@ export async function resolveMatchResults(
   params: {
     eventId: string;
     multipliers: MultiplierInput[];
+    /** 開催日程。検知区間がここからはみ出したぶんは勝敗に数えない */
+    windows: EventWindow[];
     now: Date;
   }
 ): Promise<MatchResultSummary> {
@@ -93,6 +96,7 @@ export async function resolveMatchResults(
       sides: match.sides as SideRow[],
       start: match.detectedStartAt,
       end: match.detectedEndAt,
+      windows: params.windows,
       multipliers: params.multipliers,
     });
 
@@ -209,13 +213,20 @@ export async function resolveMatchResults(
 
 type SideTotal = { sideId: string; diamonds: bigint; points: bigint };
 
-/** 検知区間のギフトをサイドごとに集計する。 */
+/**
+ * 検知区間のギフトをサイドごとに集計する。
+ *
+ * **開催日程の外にはみ出したぶんは数えない。** バトルは日程の終わりをまたぐことがあり
+ * (22:59 開始 → 23:04 終了)、そのまま数えると「イベントの順位には入らないギフトが
+ * 勝敗とデスマッチのライフには効く」という食い違いになる。
+ */
 async function scoreSides(
   tx: DbClient,
   params: {
     sides: SideRow[];
     start: Date;
     end: Date;
+    windows: EventWindow[];
     multipliers: MultiplierInput[];
   }
 ): Promise<SideTotal[]> {
@@ -233,26 +244,30 @@ async function scoreSides(
 
   // 検知区間の全体が「バトル中」。期間限定の倍率が区間内で切り替わることがあるので、
   // 区間そのものを buildRateSegments に通して倍率の変わり目で分ける。
-  const segments = buildRateSegments({
-    eventStart: params.start,
-    eventEnd: params.end,
-    multipliers: params.multipliers,
-    battleRanges: [{ start: params.start, end: params.end }],
-  });
+  const spans = intersectWindows({ start: params.start, end: params.end }, params.windows);
 
-  for (const segment of segments) {
-    const rows = await aggregateGiftsBySegment(tx, {
-      roomIds,
-      start: segment.start,
-      end: segment.end,
+  for (const span of spans) {
+    const segments = buildRateSegments({
+      eventStart: span.start,
+      eventEnd: span.end,
+      multipliers: params.multipliers,
+      battleRanges: [span],
     });
-    for (const row of rows) {
-      const sideId = roomToSide.get(row.roomId);
-      if (!sideId) continue;
-      const total = totals.get(sideId);
-      if (!total) continue;
-      total.diamonds += row.diamonds;
-      total.points += scaledPoints(row.diamonds, segment.scaledFactor);
+
+    for (const segment of segments) {
+      const rows = await aggregateGiftsBySegment(tx, {
+        roomIds,
+        start: segment.start,
+        end: segment.end,
+      });
+      for (const row of rows) {
+        const sideId = roomToSide.get(row.roomId);
+        if (!sideId) continue;
+        const total = totals.get(sideId);
+        if (!total) continue;
+        total.diamonds += row.diamonds;
+        total.points += scaledPoints(row.diamonds, segment.scaledFactor);
+      }
     }
   }
 
