@@ -230,9 +230,6 @@ function MatchCardOrEmpty({
           <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
             {side.empty ? <span className="text-gray-600">未確定</span> : side.label}
           </span>
-          <span className="shrink-0 font-mono text-[10px] text-gray-400">
-            {Number(side.diamonds).toLocaleString("ja-JP")}
-          </span>
         </div>
       ))}
     </button>

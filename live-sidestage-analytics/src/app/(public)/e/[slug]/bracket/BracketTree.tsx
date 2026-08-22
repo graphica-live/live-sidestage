@@ -22,8 +22,8 @@ import { BracketScroller } from "./BracketScroller";
 const CARD_W = "w-40 sm:w-44";
 /** コネクタ列の幅。見出しの間隔にも同じ幅を使う。 */
 const CONN_W = "w-5";
-/** カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。 */
-const CARD_H = "h-28";
+/** カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。アイコン+名前を縦積みにした分、h-28から拡張。 */
+const CARD_H = "h-36";
 
 type MatchIndex = Map<string, BracketMatchDto>;
 
@@ -58,7 +58,11 @@ export function BracketTree({
             <div className="absolute inset-x-0 bottom-full mb-2">
               <Champion final={final} />
             </div>
-            {final ? <MatchCard match={final} mirror={false} /> : <EmptyCard />}
+            {final ? (
+              <MatchCard match={final} mirror={false} isFinal />
+            ) : (
+              <EmptyCard isFinal />
+            )}
           </div>
 
           {hasWings && <StraightConnector />}
@@ -99,7 +103,7 @@ function RoundHeadings({
           </div>
         ))}
 
-      <div className={`${CARD_W} shrink-0 text-center text-xs font-semibold text-gray-300`}>
+      <div className={`${CARD_W} shrink-0 text-center text-xs font-semibold text-brand`}>
         {label(roundCount)}
       </div>
 
@@ -185,14 +189,17 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] tracking-[0.2em] text-gray-500">優勝</span>
+      <span className="flex items-center gap-1 text-[10px] font-semibold tracking-[0.2em] text-brand">
+        <TrophyIcon />
+        優勝
+      </span>
       {winner ? (
         <div className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-2 py-2">
           <EntrantAvatars entrants={winner.entrants} size="md" />
           <span className="min-w-0 truncate text-sm font-semibold">{winner.name}</span>
         </div>
       ) : (
-        <div className="w-full rounded-xl border border-dashed border-border px-2 py-2 text-center text-xs text-gray-600">
+        <div className="w-full rounded-xl border border-dashed border-brand/40 px-2 py-2 text-center text-xs text-gray-600">
           未確定
         </div>
       )}
@@ -200,11 +207,27 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
   );
 }
 
+function TrophyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={11} height={11} fill="currentColor" aria-hidden>
+      <path d="M6 2h12v2h3v3a4 4 0 0 1-4 4h-.35A6.02 6.02 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1A6.02 6.02 0 0 1 7.35 11H7a4 4 0 0 1-4-4V4h3V2Zm0 4H5v1a2 2 0 0 0 2 2V6Zm12 0v3a2 2 0 0 0 2-2V6h-2Z" />
+    </svg>
+  );
+}
+
 /**
  * 対戦カード。**高さを固定している**(理由はファイル冒頭)。
  * そのため行数を増やせない — 不戦勝などの補足は状態の表示に畳んである。
  */
-function MatchCard({ match, mirror }: { match: BracketMatchDto; mirror: boolean }) {
+function MatchCard({
+  match,
+  mirror,
+  isFinal,
+}: {
+  match: BracketMatchDto;
+  mirror: boolean;
+  isFinal?: boolean;
+}) {
   const decided =
     match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE"
       ? WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy]
@@ -212,7 +235,11 @@ function MatchCard({ match, mirror }: { match: BracketMatchDto; mirror: boolean 
 
   return (
     <article
-      className={`card flex ${CARD_H} flex-col justify-between overflow-hidden p-2.5`}
+      className={`card flex ${CARD_H} flex-col justify-between overflow-hidden p-2.5 ${
+        isFinal
+          ? "border-2 border-brand/50 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+          : ""
+      }`}
     >
       <div
         className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
@@ -226,25 +253,23 @@ function MatchCard({ match, mirror }: { match: BracketMatchDto; mirror: boolean 
       </div>
 
       {match.sides.map((side) => (
-        <SideRow key={side.id} side={side} mirror={mirror} />
+        <SideRow key={side.id} side={side} />
       ))}
     </article>
   );
 }
 
-function SideRow({ side, mirror }: { side: BracketSideDto; mirror: boolean }) {
+/** アイコンを上、名前を下に縦積みして横幅を節約する。 */
+function SideRow({ side }: { side: BracketSideDto }) {
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-sm ${
+      className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-0.5 text-center ${
         side.isWinner ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
-      } ${mirror ? "flex-row-reverse" : ""}`}
+      }`}
     >
       <EntrantAvatars entrants={side.entrants} size="sm" />
-      <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
+      <span className="min-w-0 max-w-full truncate text-sm">
         {side.name ?? <span className="text-gray-600">未確定</span>}
-      </span>
-      <span className="shrink-0 font-mono text-[10px] text-gray-400">
-        {Number(side.diamonds).toLocaleString("ja-JP")}
       </span>
     </div>
   );
@@ -301,11 +326,13 @@ function EntrantAvatars({
   );
 }
 
-/** 表に穴があるとき(データ不整合)の枠。通常は出ない。 */
-function EmptyCard() {
+/** 表に穴があるとき(データ不整合)の枠。通常は出ない。決勝枠は未確定でも装飾を保つため isFinal を受け取る。 */
+function EmptyCard({ isFinal }: { isFinal?: boolean } = {}) {
   return (
     <div
-      className={`flex ${CARD_H} items-center justify-center rounded-xl border border-dashed border-border text-[10px] text-gray-600`}
+      className={`flex ${CARD_H} items-center justify-center rounded-xl border border-dashed text-[10px] text-gray-600 ${
+        isFinal ? "border-brand/40" : "border-border"
+      }`}
     >
       —
     </div>

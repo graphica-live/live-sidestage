@@ -117,3 +117,24 @@ worktreeでのタスクが完了（コミット済み）しても、mainへは**
 - 画像のアスペクト比を維持し、意図しない引き伸ばしをしない
 - PC表示とスマートフォン表示を確認する
 - 動作確認していない状態で「完了」と報告しない
+
+## コマンド
+
+```bash
+flutter pub get
+flutter run                 # 実機/エミュレータ
+flutter analyze             # analysis_options.yaml (flutter_lints)
+flutter test                # test/widget_test.dart
+flutter test test/widget_test.dart --plain-name "テスト名"
+flutter build apk --release
+```
+
+## アーキテクチャの要点 — Flutter + オンデバイス VOICEVOX
+
+- `lib/core/` が中核: `SessionController`（認証・セッション、ChangeNotifier）/ `CommentFeed`（socket.io 受信）/ `SpeechQueue` + `TtsEngine` + `VoicePool`（VOICEVOX 合成）/ `background_task_handler.dart`（`flutter_foreground_task` で画面オフ中も読み上げ継続）
+- 本番バックエンド URL は `lib/core/api_client.dart` にハードコード（`https://liveanalytics-production.up.railway.app`）
+- 認証フロー: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
+- Google サインインは **パッケージ名 + 署名 SHA-1 の組**を Google Cloud Console に Android OAuth クライアントとして登録しないと必ず `DEVELOPER_ERROR`(code 10) になる。`applicationId` を変えたら再登録が必要。手順は [README.md](README.md)
+- VOICEVOX モデルと OpenJTalk 辞書は `assets/` に同梱（サイズ大）
+- ギフト名の日本語表示は `lib/core/gift_name_ja.dart` が `assets/gift_names/gift_names_ja.json` を参照する。この JSON はモノレポ `shared/gift-names/` からの生成物なので直接編集しない（詳細は [../shared/gift-names/README.md](../shared/gift-names/README.md)）
+- このリポジトリは統合前の git remote を持たないローカル専用リポジトリだった。モノレポが唯一のリモートバックアップ

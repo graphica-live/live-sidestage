@@ -21,6 +21,9 @@ function isPngSignature(bytes: Uint8Array): boolean {
   );
 }
 
+const UPLOAD_RATE_LIMIT = 5;
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const request = context.request;
@@ -155,6 +158,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // IPベースのレートリミット: 1時間に5回まで
+    const ip = request.headers.get('CF-Connecting-IP')
+      || request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+      || 'unknown';
+    const rateLimitKey = `ratelimit:upload:${ip}`;
+
+    let uploadTimes: number[] = [];
+    try {
+      const stored = await context.env.SESSIONS.get(rateLimitKey);
+      if (stored) {
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          uploadTimes = (parsed as unknown[]).filter((t): t is number => typeof t === 'number');
+        }
+      }
+    } catch {
+      // KV読み取りエラーは無視してアップロードを続行
+    }
+
+    const nowForRateLimit = Date.now();
+    uploadTimes = uploadTimes.filter(t => nowForRateLimit - t < UPLOAD_WINDOW_MS);
+
+    if (uploadTimes.length >= UPLOAD_RATE_LIMIT) {
+      const oldestTime = Math.min(...uploadTimes);
+      const resetTime = oldestTime + UPLOAD_WINDOW_MS;
+      const remainingMs = Math.max(0, resetTime - nowForRateLimit);
+      const remainingMinutes = Math.ceil(remainingMs / 60000);
+
+      return new Response(JSON.stringify({
+        error: 'RATE_LIMITED',
+        message: `1時間以内のアップロード上限（${UPLOAD_RATE_LIMIT}枚）に達しました。あと約${remainingMinutes}分後に再試行できます。`,
+      }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // ログインユーザーのプラン取得
     const session = await getSession(context.env, context.request);
     const ownerId = session?.userId ?? null;
@@ -239,6 +279,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     await context.env.DB.prepare(
       'INSERT INTO frames (id, owner_id, image_key, created_at, custom_name, expires_at, password_hash, password_ciphertext, opening_mask_key, exclude_from_rankings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(uuid, ownerId, uuid, nowMs, customName, expiresAtMs, passwordHash, passwordCiphertext, openingMaskKey, excludeFromRankings).run();
+
+    // レートリミットカウンターを更新
+    const updatedTimes = [...uploadTimes, nowMs];
+    await context.env.SESSIONS.put(rateLimitKey, JSON.stringify(updatedTimes), {
+      expirationTtl: Math.ceil(UPLOAD_WINDOW_MS / 1000), // 3600秒
+    }).catch(() => {}); // 失敗してもアップロード結果には影響させない
 
     return new Response(JSON.stringify({ id: uuid }), {
       status: 200,
