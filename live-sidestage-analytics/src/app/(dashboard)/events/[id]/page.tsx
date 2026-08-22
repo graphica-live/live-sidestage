@@ -97,8 +97,17 @@ export default async function EventDetailPage({ params }: { params: { id: string
         </Link>
       )}
 
-      <h2 className="mb-4 mt-8 text-sm font-semibold text-gray-300">設定</h2>
-      <EventForm eventId={event.id} initial={initial} />
+      {/* 参加者と無関係なイベント全体の設定。新規作成後はあまり触らないのでアコーディオンで畳んでおく。 */}
+      <details className="group mt-8 rounded-lg border border-border bg-panel">
+        <summary className="flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm font-semibold text-gray-300">
+          設定
+          <span className="text-xs font-normal text-gray-500 group-open:hidden">開く ▾</span>
+          <span className="hidden text-xs font-normal text-gray-500 group-open:inline">閉じる ▴</span>
+        </summary>
+        <div className="border-t border-border p-4">
+          <EventForm eventId={event.id} initial={initial} />
+        </div>
+      </details>
     </div>
   );
 }
