@@ -21,19 +21,34 @@ const NEXT_STATUS: Partial<Record<EventStatus, { to: EventStatus; label: string 
   ARCHIVED: [{ to: "FINISHED", label: "アーカイブを解除する" }],
 };
 
+// 公開ページ(/e/[slug])が 404 を返す条件。findPublicEvent() と対になっている
+// (src/event/public-event.ts)。あちらを変えたらここも変えること。
+function publicPageBlockedReason(status: string, visibility: string): string | null {
+  if (status === "DRAFT") {
+    return "下書きのうちは公開ページが404になる。上の「開催予定にする」を押すと公開される。";
+  }
+  if (visibility === "PRIVATE") {
+    return "公開範囲が「非公開」のあいだは公開ページが404になる。下の設定で「限定公開」か「公開」に変えること。";
+  }
+  return null;
+}
+
 export function EventAdminControls({
   id,
   slug,
   status,
+  visibility,
 }: {
   id: string;
   slug: string;
   status: string;
+  visibility: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const blockedReason = publicPageBlockedReason(status, visibility);
 
   // origin はサーバーレンダリング時には存在しない。初回レンダーで参照すると
   // サーバー(相対パス)とクライアント(絶対URL)で出力が食い違い、hydration エラーになる。
@@ -105,15 +120,26 @@ export function EventAdminControls({
           >
             {copied ? "コピーした" : "URLをコピー"}
           </button>
-          <a
-            href={`/e/${slug}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-ghost shrink-0 text-xs"
-          >
-            開く
-          </a>
+          {blockedReason ? (
+            <span
+              aria-disabled="true"
+              title={blockedReason}
+              className="btn-ghost shrink-0 cursor-not-allowed text-xs opacity-40"
+            >
+              開く
+            </span>
+          ) : (
+            <a
+              href={`/e/${slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-ghost shrink-0 text-xs"
+            >
+              開く
+            </a>
+          )}
         </div>
+        {blockedReason && <p className="mt-2 text-xs text-amber-400">{blockedReason}</p>}
       </div>
 
       <div className="mt-4 border-t border-border pt-4">
