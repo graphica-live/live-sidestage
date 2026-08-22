@@ -43,6 +43,9 @@ interface ListenerInstance {
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
   heartbeatInterval: NodeJS.Timeout | null;
+  // **groupIdが欠落したcombo専用のフォールバック。** キーは `uniqueId:giftId`。
+  // 有効なgroupIdを持つcomboはここを通らず、saveComboGift()がDBの確定値から
+  // deltaを計算する(プロセスごとに前回値がズレて二重計上するのを防ぐため)。
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
   // この部屋(TiktokRoom)を購読しているStreamer.idの集合。ギフトデータの書き込み先ではなく、
   // オーバーレイ更新通知・チャット配信を「誰に」送るかを決めるためだけに使う
@@ -94,6 +97,43 @@ function rememberMsgId(
     if (oldest !== undefined) seen.delete(oldest);
   }
   return true;
+}
+
+// FIFOから取り消す。保存に失敗したイベントを再送で拾い直せるようにするため。
+// 記録は保存の前に行う(同一tickの二重処理を止めるにはそうするしかない)ので、
+// 失敗したまま残すと同じmsgIdの再送が同一プロセス内で永久に捨てられる。
+function forgetMsgId(seen: Set<string>, order: string[], msgId: string): void {
+  if (!seen.delete(msgId)) return;
+  const at = order.lastIndexOf(msgId);
+  if (at >= 0) order.splice(at, 1);
+}
+
+/**
+ * 同じキーへの書き込みを直列に流すキュー。
+ *
+ * read-modify-write を並行させると、後から届いた古い状態で上書きしたり、
+ * 全員が同じ「変更前の値」を読んでしまったりする。加えて、待ち合わせをDB側の
+ * ロックだけに任せると待機中もコネクションを掴み続けるので、プロセス内で先に絞る。
+ */
+function createWriteQueue(label: string) {
+  const chains = new Map<string, Promise<void>>();
+  return {
+    run(key: string, task: () => Promise<void>): Promise<void> {
+      const prev = chains.get(key) ?? Promise.resolve();
+      const next = prev
+        .catch(() => undefined)
+        .then(task)
+        .catch((err) => {
+          // 握りつぶさない。ここへ来るのは task 自身が捕まえ損ねた例外だけ。
+          console.error(`[${label}] queued write failed`, { key, err });
+        })
+        .finally(() => {
+          if (chains.get(key) === next) chains.delete(key);
+        });
+      chains.set(key, next);
+      return next;
+    },
+  };
 }
 
 export interface GiftLogEntry {
@@ -503,6 +543,25 @@ export function resolveMsgId(data: Record<string, unknown>): string | null {
 }
 
 /**
+ * combo の識別子として使える groupId だけを返す。
+ *
+ * msgId と同じく protobuf の既定値 "0" が流れてくる(本番の gifts に groupId="0" が3655行)。
+ * `data.groupId ? ... : null` では文字列 "0" が truthy なのですり抜け、combo キーにすると
+ * **別ユーザー・別ギフトが1つの pending state / 1つの集計グループを共有する**。
+ * docs/tiktok-live-connector-guide.md 14-2 参照。
+ *
+ * 実測では giftType=1 の265行すべてが実 groupId を持ち "0" は0件なので現状の実害はないが、
+ * saveComboGift() は groupId 単位で SUM して delta を出すため、ここを緩めると
+ * 無関係なギフトの合計を引いて delta が過少になる(= ダイヤが消える)。
+ */
+export function resolveGroupId(data: Record<string, unknown>): string | null {
+  const raw = data.groupId;
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw);
+  return MSG_ID_PATTERN.test(text) ? text : null;
+}
+
+/**
  * TikTok共通メッセージヘッダの createTime(epoch ms)を優先し、
  * 欠落・不正値の場合のみサーバー受信時刻にフォールバックする。
  * フォールバックは呼び出し側で必ずログに残すこと(サイレントフォールバック禁止)。
@@ -515,23 +574,10 @@ function resolveEventTime(data: Record<string, unknown>): { time: Date; source: 
   return { time: new Date(), source: "fallback" };
 }
 
-async function loadPendingCombos(
-  roomId: string
-): Promise<Map<string, { repeatCount: number }>> {
-  const dayKey = jstDateKey();
-  const rows = await prisma.gift.groupBy({
-    by: ["groupId"],
-    where: { roomId, dayKey, groupId: { not: null } },
-    _sum: { repeatCount: true },
-  });
-  const map = new Map<string, { repeatCount: number }>();
-  for (const row of rows) {
-    if (row.groupId) map.set(row.groupId, { repeatCount: row._sum.repeatCount ?? 0 });
-  }
-  return map;
-}
-
 // 同じギフトイベントを二重に保存しないための時刻窓。
+//
+// **これが効くのはnon-comboと、groupIdが欠落したcomboだけ。** 有効なgroupIdを持つcomboは
+// saveComboGift()の「delta = 累計 - 保存済み合計」が冪等なdedupを兼ねるのでここを通らない。
 //
 // 二重保存が起きる経路は主に2つ。
 //   1. TikTok側の再送(再接続直後やネットワーク瞬断の前後)
@@ -555,22 +601,64 @@ async function loadPendingCombos(
 // Webが起動しなくなる。非uniqueなindexなら重複があっても必ず作成できる。
 const GIFT_DEDUP_WINDOW_MS = 5 * 60_000;
 
-// 保存に成功したらtrueを返す(呼び出し側はこれを見てオーバーレイ通知の要否を判断する)。
-//
-// falseは「このイベントを保存しなかった」であって「ギフトが無かった」ではない。
-// モバイルの効果音配信(notifyChatGift)はこの戻り値に紐づけていない — 呼び出し側の
-// コメントの通り、鳴らすかどうかは別の判断で、Webプロセス側(emitChatGift)が
-// 独自にdedupする。ここで抑えるのはDBの行とオーバーレイ更新だけ。
+// GiftのINSERT行を組み立てる。saveGift()とsaveComboGift()で共有する。
+// dedupキー(orderId/groupId/msgId)だけは経路ごとに扱いが違うので呼び出し側から渡す。
+function buildGiftRow(
+  roomId: string,
+  data: Record<string, unknown>,
+  count: number,
+  receivedAt: Date,
+  timeSource: "tiktok" | "fallback",
+  keys: { orderId: string | null; groupId: string | null; msgId: string | null }
+): Prisma.GiftUncheckedCreateInput {
+  const diamondCount = Number(data.diamondCount) || 0;
+  return {
+    roomId,
+    uniqueId: String(data.uniqueId || ""),
+    nickname: String(data.nickname || ""),
+    profileImageUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+    giftId: Number(data.giftId) || 0,
+    giftName: String(data.giftName || ""),
+    giftPictureUrl: data.giftPictureUrl ? String(data.giftPictureUrl) : null,
+    repeatCount: count,
+    diamondCount,
+    totalDiamonds: diamondCount * count,
+    receivedAt,
+    timeSource,
+    dayKey: jstDateKey(receivedAt),
+    orderId: keys.orderId,
+    groupId: keys.groupId,
+    msgId: keys.msgId,
+    giftType: Number.isInteger(data.giftType) ? (data.giftType as number) : null,
+  };
+}
+
+/**
+ * ギフト保存の結果。
+ *
+ * `"duplicate"` と `"error"` を分けているのは、呼び出し側が msgId の FIFO を
+ * 取り消すかどうかを判断するため。重複でスキップしたなら記録を残すのが正しく、
+ * DBエラーで落ちたなら取り消して再送で拾い直せるようにしたい。
+ *
+ * `"saved"` 以外は「このイベントを保存しなかった」であって「ギフトが無かった」ではない。
+ * モバイルの効果音配信(notifyChatGift)はこの戻り値に紐づけていない — 鳴らすかどうかは
+ * 別の判断で、Webプロセス側(emitChatGift)が独自にdedupする。
+ * ここで抑えるのはDBの行とオーバーレイ更新だけ。
+ */
+type GiftSaveResult = "saved" | "duplicate" | "error";
+
 async function saveGift(
   roomId: string,
   data: Record<string, unknown>,
   count: number,
   receivedAt: Date,
   timeSource: "tiktok" | "fallback"
-): Promise<boolean> {
+): Promise<GiftSaveResult> {
   // catch側のログでも参照するのでtryの外で確定させる(いずれも例外を投げない純粋な変換)。
   const orderId = data.orderId ? String(data.orderId) : null;
-  const groupId = data.groupId ? String(data.groupId) : null;
+  // protobufの既定値"0"はキーとして使えないのでnullで保存する。
+  // 列の意味を「使えるcombo/dedup識別子、無ければnull」に揃える。
+  const groupId = resolveGroupId(data);
   const msgId = resolveMsgId(data);
 
   try {
@@ -593,36 +681,14 @@ async function saveGift(
         console.log(
           `[gift] dedup: msgId=${msgId} は直近${GIFT_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, gift=${String(data.giftName || "")})`
         );
-        return false;
+        return "duplicate";
       }
     }
 
     await prisma.gift.create({
-      data: {
-        roomId,
-        uniqueId: String(data.uniqueId || ""),
-        nickname: String(data.nickname || ""),
-        profileImageUrl: data.profilePictureUrl
-          ? String(data.profilePictureUrl)
-          : null,
-        giftId: Number(data.giftId) || 0,
-        giftName: String(data.giftName || ""),
-        giftPictureUrl: data.giftPictureUrl
-          ? String(data.giftPictureUrl)
-          : null,
-        repeatCount: count,
-        diamondCount,
-        totalDiamonds: diamondCount * count,
-        receivedAt,
-        timeSource,
-        dayKey,
-        orderId,
-        groupId,
-        msgId,
-        giftType: Number.isInteger(data.giftType) ? (data.giftType as number) : null,
-      },
+      data: buildGiftRow(roomId, data, count, receivedAt, timeSource, { orderId, groupId, msgId }),
     });
-    return true;
+    return "saved";
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
       // どのunique制約で弾かれたかを残す。現状効きうるのは (roomId, orderId) だけだが、
@@ -632,12 +698,91 @@ async function saveGift(
       console.log(
         `[gift] dedup: unique制約違反でスキップ target=${JSON.stringify(target)} orderId=${orderId} msgId=${msgId} groupId=${groupId} room=${roomId}`
       );
-      return false;
+      return "duplicate";
     }
     console.error("[listener] gift save error:", err);
-    return false;
+    return "error";
   }
 }
+
+// comboのtickは「その時点の累計」で届くが、Giftに保存するのは前回からの増分(delta)。
+// 合計が最終連打数になるようにしてある(消費側はどこも SUM(repeatCount) で数える)。
+//
+// **deltaの計算元をプロセスのメモリに置かない。** 以前は listener インスタンスの
+// pendingCombos が持つ「前回値」から引いていたが、デプロイ中は
+// RAILWAY_DEPLOYMENT_OVERLAP_SECONDS の並走で新旧2プロセスが同じ部屋に繋がり、
+// 新プロセスの起動時読み出しが旧プロセスの未commit行を読み逃すと前回値がズレる。
+// 同じイベントに対して片方が delta=2、もう片方が delta=4 を出し、msgId dedup は
+// 「先に書いた方を採用」するだけなので合計が過大になる(行は1つなのに数字が違う)。
+//
+// DBの確定値から引けば、何プロセスが並走しても保存後の合計は max(保存済み, 累計) に
+// 収束する。重複・逆順到着・再試行はすべて delta<=0 として自然に落ちる。
+//
+// 集計範囲に時間窓もdayKeyも付けない。窓を付けると移動SUMになり、窓より長く続いた
+// comboで古いdeltaが窓から落ちて過大計上が累積する。groupIdは1回の連打バーストに
+// 対応し再利用されない(実測: 複数行を持つ948グループすべてが1分未満、5分超のギャップ0件、
+// JST日付をまたいだグループ0件)ので、グループ全行を合計してよい。
+// dayKeyを外したことで、日付境界をまたぐバーストがリセットされる潜在バグも消える。
+const COMBO_TX_MAX_WAIT_MS = 10_000;
+const COMBO_TX_TIMEOUT_MS = 15_000;
+
+export async function saveComboGift(
+  roomId: string,
+  groupId: string,
+  data: Record<string, unknown>,
+  currentRepeat: number,
+  receivedAt: Date,
+  timeSource: "tiktok" | "fallback"
+): Promise<GiftSaveResult> {
+  const msgId = resolveMsgId(data);
+  try {
+    return await prisma.$transaction<GiftSaveResult>(
+      async (tx) => {
+        // 同じグループへの同時書き込みを直列化する。プロセス内は comboWriteChains が
+        // 先に絞っているので、ここで待つのは別プロセス(並走中の新旧Worker)だけ。
+        // event集計は単一bigintキーのpg_try_advisory_xact_lockなのでキー空間が重ならない。
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${roomId}), hashtext(${groupId}))`;
+
+        const agg = await tx.gift.aggregate({
+          where: { roomId, groupId },
+          _sum: { repeatCount: true },
+        });
+        const saved = agg._sum.repeatCount ?? 0;
+        const delta = currentRepeat - saved;
+        if (delta <= 0) {
+          console.log("[gift/combo] skip", { roomId, groupId, currentRepeat, saved, delta });
+          return "duplicate";
+        }
+
+        await tx.gift.create({
+          data: buildGiftRow(roomId, data, delta, receivedAt, timeSource, {
+            // comboの各段に同じorderIdが付くとunique(roomId, orderId)で2段目以降がP2002になる。
+            // comboのdedupはgroupId単位の単調増加判定でできているのでorderIdは要らない。
+            orderId: null,
+            groupId,
+            msgId,
+          }),
+        });
+        console.log("[gift/combo] save", { roomId, groupId, currentRepeat, saved, delta });
+        return "saved";
+      },
+      // Prismaの既定(maxWait=2s / timeout=5s)はadvisory lockの待ち行列には短すぎる。
+      { maxWait: COMBO_TX_MAX_WAIT_MS, timeout: COMBO_TX_TIMEOUT_MS }
+    );
+  } catch (err: unknown) {
+    // saveGift()と同じ契約: 例外を外へ出さずGiftSaveResultを返す。呼び出し側は
+    // 保存をawaitせず.then()で流すので、ここで捕まえないと未処理rejectionになる。
+    // ロック待ちのtimeout・コネクション枯渇もここへ来る。
+    console.error("[gift/combo] save error:", { roomId, groupId, currentRepeat, msgId, err });
+    return "error";
+  }
+}
+
+// comboの書き込みは (roomId, groupId) 単位で直列化する。
+// saveComboGift() は advisory lock で待てるが、待っている間もPrismaのコネクションを
+// 掴んだままになる。ハンドラは保存をawaitしないので、連打の全tickが同時に
+// transactionを開くとプールを食い潰す。プロセス内で先に1本へ絞る。
+const comboWrites = createWriteQueue("gift/combo");
 
 function createConnection(
   tiktokId: string,
@@ -720,22 +865,12 @@ async function connectInstance(roomId: string) {
 
 // 1つのバトルにつきイベントが何度も届き、それぞれが read-modify-write になる。
 // 同じ (roomId, battleId) の書き込みは直列に流して、後から届いた古い状態で
-// 上書きされないようにする。
-const battleWriteChains = new Map<string, Promise<void>>();
+// 上書きされないようにする。保存失敗を握りつぶすと対戦検知が動かなくなるので、
+// createWriteQueue() 側が必ずログに残す。
+const battleWrites = createWriteQueue("battle");
 
 function queueBattleWrite(key: string, task: () => Promise<void>): void {
-  const prev = battleWriteChains.get(key) ?? Promise.resolve();
-  const next = prev
-    .catch(() => undefined)
-    .then(task)
-    .catch((err) => {
-      // 保存失敗は握りつぶさない。バトルが記録できないとイベントの対戦検知が動かない。
-      console.error("[battle] failed to persist battle", { key, err });
-    })
-    .finally(() => {
-      if (battleWriteChains.get(key) === next) battleWriteChains.delete(key);
-    });
-  battleWriteChains.set(key, next);
+  void battleWrites.run(key, task);
 }
 
 // payload には未検証の構造が入りうるので、JSON 化できないものはそこで捨てる。
@@ -925,8 +1060,12 @@ async function connectAndAttach(
   conn.on("gift", (data: Record<string, unknown>) => {
     markAlive();
     const isCombo = data.giftType === 1;
-    const groupId = data.groupId ? String(data.groupId) : null;
-    const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
+    // protobufの既定値"0"はcomboキーにもdedupキーにも使えない(全ユーザー・全ギフトが
+    // 同じキーを共有してしまう)。resolveGroupId()がそれをnullへ倒す。
+    const groupId = resolveGroupId(data);
+    // groupIdが取れないcomboだけ、プロセス内の前回値で追う従来経路に落とす。
+    // DBから合計を引く手が無いため(この形のキーはGift行に残らない)。
+    const fallbackComboKey = isCombo && !groupId ? `${data.uniqueId}:${data.giftId}` : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
     const { time: eventTime, source: timeSource } = resolveEventTime(data);
 
@@ -958,31 +1097,6 @@ async function connectAndAttach(
 
     console.log("[gift]", JSON.stringify(baseLog));
 
-    // 同一プロセスに同じイベントが2回届いた場合をここで落とす。
-    // saveGift()側のDB照会だけでは足りない — このハンドラはsaveGift()をawaitせず
-    // .then()で流すので、同じtickに再送が2件届くと双方のfindFirstが「まだ無い」を
-    // 見てしまい2行入る。実データで確認した二重計上(間隔0.00秒)はこの経路。
-    // comboは同じrepeatCountならdelta=0で元々保存されないが、non-comboは無条件に
-    // insertするため、msgId単位で先に弾く必要がある。
-    // (プロセスをまたぐ重複 — デプロイ中の新旧Worker並走 — はsaveGift()側が担当する)
-    const eventMsgId = resolveMsgId(data);
-    if (
-      eventMsgId &&
-      !rememberMsgId(
-        inst.recentGiftMsgIds,
-        inst.recentGiftMsgIdOrder,
-        eventMsgId,
-        GIFT_DEDUP_CACHE_SIZE
-      )
-    ) {
-      console.log("[gift] dedup: duplicate msgId skipped (listener instance)", {
-        roomId,
-        msgId: eventMsgId,
-      });
-      notifyGiftLog({ ...baseLog, action: "dropped", reason: "duplicate_msgId" });
-      return;
-    }
-
     // ギフトデータはroomId単位で1行だけ保存される(登録者全員で共有)。
     // 保存に成功したときだけ、購読している全Streamerのオーバーレイへ更新通知を送る。
     const notifyAllSubscribers = () => {
@@ -991,8 +1105,50 @@ async function connectAndAttach(
       }
     };
 
+    // 同一プロセスに同じイベントが2回届いた場合をここで落とす。
+    // saveGift()側のDB照会だけでは足りない — このハンドラはsaveGift()をawaitせず
+    // .then()で流すので、同じtickに再送が2件届くと双方のfindFirstが「まだ無い」を
+    // 見てしまい2行入る。実データで確認した二重計上(間隔0.00秒)はこの経路。
+    // (プロセスをまたぐ重複 — デプロイ中の新旧Worker並走 — はsaveGift()側が担当する)
+    //
+    // **有効なgroupIdを持つcomboはこのFIFOを通さない。** saveComboGift()の
+    // 「delta = 累計 - 保存済み合計」がそのままdedupを兼ねており、プロセスを跨いでも
+    // 効くうえに冪等。逆にFIFOは保存の前に記録するので、DB保存が失敗したあとに
+    // TikTokが同じmsgIdを再送しても同一プロセス内で捨ててしまう。
+    const useMsgIdFifo = !(isCombo && groupId);
+    const eventMsgId = resolveMsgId(data);
+    const fifoRecorded =
+      useMsgIdFifo && eventMsgId
+        ? rememberMsgId(
+            inst.recentGiftMsgIds,
+            inst.recentGiftMsgIdOrder,
+            eventMsgId,
+            GIFT_DEDUP_CACHE_SIZE
+          )
+        : true;
+    if (!fifoRecorded) {
+      console.log("[gift] dedup: duplicate msgId skipped (listener instance)", {
+        roomId,
+        msgId: eventMsgId,
+      });
+      notifyGiftLog({ ...baseLog, action: "dropped", reason: "duplicate_msgId" });
+      return;
+    }
+
+    // 保存がDBエラーで落ちたらFIFOの記録を取り消す(再送で拾い直せるようにする)。
+    // 重複スキップのときは取り消さない — そちらは記録が残っているのが正しい。
+    const applySaveResult = (result: GiftSaveResult) => {
+      if (result === "saved") {
+        notifyAllSubscribers();
+        return;
+      }
+      if (result === "error" && useMsgIdFifo && eventMsgId) {
+        forgetMsgId(inst.recentGiftMsgIds, inst.recentGiftMsgIdOrder, eventMsgId);
+      }
+    };
+
     // モバイルの効果音トリガー向け配信。saveGift()の成否には紐づけない —
-    // falseは「roomId単位で既に保存済み」を意味するだけで、音を鳴らすべきかとは無関係。
+    // 保存しなかったことは「roomId単位で既に保存済み」を意味するだけで、音を鳴らすべきかとは無関係。
     // TikTok側の再送による二重発火はWebプロセス側(emitChatGift)が吸収する。
     // ここではdeltaを一切計算せず、累計値をそのまま送る(新旧Worker並走時に
     // 各プロセスが別のdeltaを出すのを防ぐため。詳細はchat-feed.tsのChatGiftInput参照)。
@@ -1013,50 +1169,60 @@ async function connectAndAttach(
       receivedAt: new Date().toISOString(),
     });
 
+    // combo(有効なgroupIdあり): deltaはDBの確定値から引く。プロセスの記憶を持たない。
+    // 同じグループの書き込みは1本ずつ流し、DB側のadvisory lockで待つ本数を抑える。
+    if (isCombo && groupId) {
+      notifyGiftLog({ ...baseLog, action: "combo" });
+      void comboWrites.run(`${roomId}:${groupId}`, async () => {
+        applySaveResult(
+          await saveComboGift(roomId, groupId, data, currentRepeat, eventTime, timeSource)
+        );
+      });
+      return;
+    }
+
+    // combo(groupId欠落): 保存済み合計を引く手がかりがGift行に残らないため、
+    // 従来どおりプロセス内の前回値でdeltaを追う。実データでは発生していない経路
+    // (giftType=1の265行はすべて実groupIdを持つ)だが、各tickのcurrentRepeatを
+    // そのまま保存すると 1+3+5=9 のように累計を多重計上するので消せない。
     if (isCombo) {
-      const prev = inst.pendingCombos.get(comboKey!);
+      const comboKey = fallbackComboKey!;
+      const prev = inst.pendingCombos.get(comboKey);
       const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
       const delta = Math.max(0, currentRepeat - prevRepeat);
       if (data.repeatEnd) {
-        inst.pendingCombos.delete(comboKey!);
+        inst.pendingCombos.delete(comboKey);
       } else {
-        inst.pendingCombos.set(comboKey!, { ...data, repeatCount: currentRepeat });
+        inst.pendingCombos.set(comboKey, { ...data, repeatCount: currentRepeat });
       }
-      console.log("[gift/combo]", { comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd, saving: delta > 0 });
-      notifyGiftLog({ ...baseLog, action: "combo", delta, prevRepeat });
+      console.warn("[gift/combo] groupId欠落 — プロセス内の前回値でdeltaを計算する", {
+        roomId, comboKey, prevRepeat, currentRepeat, delta, repeatEnd: data.repeatEnd,
+      });
+      notifyGiftLog({ ...baseLog, action: "combo", reason: "missing_groupId", delta, prevRepeat });
       if (delta > 0) {
-        saveGift(roomId, data, delta, eventTime, timeSource).then((saved) => {
-          if (saved) notifyAllSubscribers();
-        });
+        saveGift(roomId, data, delta, eventTime, timeSource).then(applySaveResult);
       }
       return;
     }
 
-    // Non-combo: use orderId for dedup, fall back to groupId (e.g. giftType=2 gifts like Compact send empty orderId).
-    // orderId/groupIdが両方欠落するケースもある(一部のgiftType=2ギフト) — dedupキーが無いだけで
-    // ギフト自体は実際に届いているため、保存せず捨てるとダイヤ数がそのまま失われる。
-    // orderIdカラムは(roomId, orderId)複合ユニーク制約付きだがPostgresはNULL同士を重複とみなさないため、
-    // orderId=nullのまま保存してもDB側の衝突は起きない。
-    const orderId =
-      (data.orderId ? String(data.orderId) : null) ||
-      (data.groupId ? String(data.groupId) : null);
-    if (!orderId) {
+    // Non-combo: dedupキーはorderId、無ければgroupIdで代用する
+    // (giftType=2のCompact等はorderIdが空で届く)。両方欠落するケースもあるが、
+    // dedupキーが無いだけでギフト自体は実際に届いているため、捨てるとダイヤ数がそのまま失われる。
+    // 実際に保存するorderIdはsaveGift()が data.orderId から決める(ここでの代用は判定用)。
+    const dedupKey = (data.orderId ? String(data.orderId) : null) ?? groupId;
+    if (!dedupKey) {
       console.warn("[gift/non-combo] missing orderId and groupId — saving without dedup key", {
         uniqueId: data.uniqueId,
         giftId: data.giftId,
         giftName: data.giftName,
       });
       notifyGiftLog({ ...baseLog, action: "non-combo", reason: "missing_orderId_and_groupId" });
-      saveGift(roomId, data, currentRepeat, eventTime, timeSource).then((saved) => {
-        if (saved) notifyAllSubscribers();
-      });
+      saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
       return;
     }
-    console.log("[gift/non-combo]", { orderId, uniqueId: data.uniqueId });
+    console.log("[gift/non-combo]", { dedupKey, uniqueId: data.uniqueId });
     notifyGiftLog({ ...baseLog, action: "non-combo" });
-    saveGift(roomId, data, currentRepeat, eventTime, timeSource).then((saved) => {
-      if (saved) notifyAllSubscribers();
-    });
+    saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
   });
 
   if (conn.clientParams) {
@@ -1139,8 +1305,6 @@ export async function startListener(
     await stopListener(roomId);
   }
 
-  const pendingCombos = await loadPendingCombos(roomId);
-
   const inst: ListenerInstance = {
     state: {
       roomId,
@@ -1153,7 +1317,10 @@ export async function startListener(
     connectPromise: null,
     reconnectTimer: null,
     heartbeatInterval: null,
-    pendingCombos,
+    // 起動時にDBから復元しない。有効なgroupIdを持つcomboはsaveComboGift()が
+    // 毎回DBの確定値を引くので前回値を持ち越す必要がなく、groupId欠落comboの
+    // キー(`uniqueId:giftId`)はGift行に残らないので元々復元できない。
+    pendingCombos: new Map(),
     subscriberIds: new Set(subscriberIds),
     stopped: false,
     lastEventAt: Date.now(),
@@ -1311,7 +1478,7 @@ async function runWithConcurrency<T>(
 //
 // TikTok側の接続失敗(オフライン・rate limit・WebSocket断)はここに計上されない —
 // connectAndAttach() が捕まえて scheduleReconnect() へ回すため startListener() は正常終了する。
-// 一方 loadPendingCombos() / getOrCreateDeviceId() / resolveProxyForRoom() のDBアクセスは
+// 一方 getOrCreateDeviceId() / resolveProxyForRoom() のDBアクセスは
 // connectInstance() に catch が無くそのまま throw されるので、startFailures > 0 は
 // 実質「DBに到達できていない」を意味する。TikTokが落ちているだけで unready にはならない。
 export interface ReconcileResult {

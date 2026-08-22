@@ -272,33 +272,39 @@ async function disconnect() {
 コンボギフト（連続送信）は `giftType === 1` の間、`repeatEnd` が `false` で複数イベントが来る。
 コンボ完了は `repeatEnd === true` のイベントで確定する。
 
+**`repeatCount` は「その時点の累計」であって増分ではない。** 1→3→5 と届いたら実際に送られたのは
+5個。各イベントの `repeatCount` をそのまま足すと 9 個になってしまう。
+
+### 単一プロセスなら：前回値との差分
+
 ```js
 const pendingCombos = new Map(); // comboKey -> { repeatCount, ... }
 
 connection.on('gift', (data) => {
     const isCombo = data.giftType === 1;
-    const comboKey = isCombo ? `${data.uniqueId}:${data.giftId}` : null;
+    // groupId は1回の連打バーストの識別子。protobuf の既定値 "0" は除く（後述 14-2）
+    const groupId = /^[1-9][0-9]{0,31}$/.test(String(data.groupId ?? '')) ? String(data.groupId) : null;
+    const comboKey = isCombo ? (groupId ?? `${data.uniqueId}:${data.giftId}`) : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
 
-    if (isCombo && !data.repeatEnd) {
-        // コンボ継続中：差分だけ処理
-        const prev = pendingCombos.get(comboKey);
-        const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
-        const delta = Math.max(0, currentRepeat - prevRepeat);
-
-        pendingCombos.set(comboKey, { ...data, repeatCount: currentRepeat });
-
-        if (delta > 0) {
-            onGiftReceived(data, delta); // delta 個分だけ処理
-        }
+    if (!isCombo) {
+        onGiftReceived(data, currentRepeat);
         return;
     }
 
-    // コンボ終了 or 通常ギフト
-    if (comboKey) {
+    const prev = pendingCombos.get(comboKey);
+    const prevRepeat = prev ? Number(prev.repeatCount) || 0 : 0;
+    const delta = Math.max(0, currentRepeat - prevRepeat);
+
+    if (data.repeatEnd) {
         pendingCombos.delete(comboKey);
+    } else {
+        pendingCombos.set(comboKey, { ...data, repeatCount: currentRepeat });
     }
-    onGiftReceived(data, currentRepeat);
+
+    // repeatEnd のイベントも「累計」なので、ここでも差分だけ処理する。
+    // currentRepeat を渡すとコンボ全体を二重計上する。
+    if (delta > 0) onGiftReceived(data, delta);
 });
 
 function onGiftReceived(data, count) {
@@ -306,6 +312,29 @@ function onGiftReceived(data, count) {
     // 例: diamonds = (data.diamondCount || 0) * count
 }
 ```
+
+### 複数プロセスが同じ配信を見るなら：前回値を共有ストアから引く
+
+上のやり方は「前回値」がプロセスのメモリにある。デプロイの入れ替えで新旧2プロセスが
+同じ配信に同時接続する構成（Railway の deployment overlap など）だと、両者の前回値がズレて
+**同じイベントから別の delta が出る**。片方が 5-3=2、もう片方が 5-1=4 を書き、どちらが
+採用されるかはタイミング次第になる。行の重複排除では直らない（行は1つで、中の数字が違う）。
+
+analytics 側（`src/lib/tiktok-listener.ts` の `saveComboGift()`）はこれを避けるため、
+delta を DB から計算している。
+
+```sql
+-- 同じグループへの同時書き込みを直列化してから
+SELECT pg_advisory_xact_lock(hashtext($roomId), hashtext($groupId));
+-- 保存済みの増分合計 = そのバーストの現在の累計
+SELECT COALESCE(SUM("repeatCount"), 0) FROM gifts WHERE "roomId" = $roomId AND "groupId" = $groupId;
+-- delta = 受信した累計 - 保存済み合計。0以下なら再送・逆順到着なので何もしない
+```
+
+保存後の合計は必ず `max(保存済み, 受信した累計)` になるので、重複・逆順・再試行・複数プロセスの
+どれでも壊れない。集計範囲に時間窓や日付の区切りを入れないこと — 窓から古い増分が落ちると
+差分が過大になり、長いコンボで誤差が累積する。`groupId` が1回のバーストに対応していて
+再利用されないことが前提（実測: 複数行を持つ948グループすべてが1分未満、5分超の間隔0件）。
 
 ---
 
@@ -615,20 +644,54 @@ if (originalObject.common) {
 - **dedup キーに使うと**: 2件目以降が「重複」と判定され、正常なイベントが捨てられる
 - **combo キーに使うと**: 別ユーザー・別ギフトが同じ pending state を共有し、`delta` が過少になる
 
-そのため `resolveMsgId()` は `/^[1-9][0-9]{0,31}$/` にマッチしない値をすべて `null` に倒す。`null` は「dedup できない」を意味し、イベント自体は通す（捨てるより重複を許すほうが安全）。
+そのため `resolveMsgId()` / `resolveGroupId()` は `/^[1-9][0-9]{0,31}$/` にマッチしない値をすべて `null` に倒す。`null` は「dedup できない」を意味し、イベント自体は通す（捨てるより重複を許すほうが安全）。`groupId` は `Gift.groupId` 列にも `null` で保存する — 列の意味を「使える combo/dedup 識別子、無ければ null」に揃えるため。
+
+**`data.groupId ? String(data.groupId) : null` では弾けない。** 文字列 `"0"` は truthy なのでそのまま通る。数値 `0` は落ちるが、実際に届くのは文字列側。
 
 ### 14-3. `orderId` は当てにならない
 
 `WebcastGiftMessage.orderId` は型定義には存在するが、既定値は空文字で、実測では **13804 行中 13783 行（99.85%）が空**だった。
 
-`gifts` の `@@unique([roomId, orderId])` は Postgres が NULL 同士を重複とみなさないため、この状態では制約として機能していない。**TikTok の再送があれば二重計上される。**
+`gifts` の `@@unique([roomId, orderId])` は Postgres が NULL 同士を重複とみなさないため、この状態では制約として機能していない。**この制約に dedup を期待してはいけない。**
 
-### 14-4. `msgId` を dedup キーへ昇格させる前に確認すること
+combo の各段に同じ `orderId` が付くと、2段目以降が P2002 で落ちて正当な増分が消える。
+`saveComboGift()` は combo 行の `orderId` を常に `null` で保存してこれを構造的に避けている
+（combo の dedup は `groupId` 単位の単調増加判定で足りるため）。
 
-現状 `gifts.msgId` は**観測専用**（unique 制約も index も無し）。制約を張る前に、最低限これを確かめる。
+### 14-4. 現在の dedup（2026-08-22 時点の実装）
+
+`msgId` は dedup キーとして使っている。**unique 制約は張っていない**。
+
+- `Gift.roomId` は配信セッションではなく永続的な `TiktokRoom.id` なので、将来の別ライブで
+  `msgId` が再利用されたら正当なギフトを恒久的に弾く
+- `prisma db push` は Dockerfile の CMD でコンテナ起動時に走る。既存の重複行があると
+  unique index の作成に失敗して web が起動しなくなる
+
+代わりに非 unique な `@@index([roomId, msgId])` を張り、アプリ側で2層に分けて判定する。
+
+| 層 | 実体 | 効く範囲 |
+| --- | --- | --- |
+| プロセス内 FIFO | `ListenerInstance.recentGiftMsgIds`（1000件） | 同一プロセスへの再送。同じ tick の二重処理も止まる |
+| DB 照会 | `saveGift()` が直近5分の `(roomId, msgId)` を引く | 別プロセスが既に書いた行（デプロイ中の新旧 Worker 並走） |
+
+片方だけでは塞げない。FIFO はプロセスを跨げず、DB 照会は保存を待たない `.then()` 経路の
+同一 tick 競合を防げない。
+
+**有効な `groupId` を持つ combo はこの2層をどちらも通さない。** `saveComboGift()` の
+「delta = 受信した累計 − 保存済み合計」がそのまま冪等な dedup になっているため
+（同じ tick が何度届いても delta が 0 以下になる）。FIFO を通すと、保存前に記録する都合上、
+DB エラー後の再送を同一プロセス内で捨ててしまう副作用のほうが大きい。
+
+`msgId` の性質（実測）:
+
+- snowflake 形式。上位ビットが ms 時刻で、1ms あたりの増分が 2^22 前後
+- combo は段階ごとに別の `msgId` を持つ（同一 `groupId` 29行で `msgId` も29種類）
+- 部屋をまたいで同じ `msgId` が使われた例は0件
+
+再確認したくなったときのクエリ:
 
 ```sql
--- 1. 実際の一意性の単位で重複が無いか（1件でもあると unique index 作成が失敗する）
+-- 1. 同じ (roomId, msgId) の重複が残っていないか
 SELECT "roomId", "msgId", COUNT(*) FROM gifts
 WHERE "msgId" IS NOT NULL AND "receivedAt" > '<列追加のデプロイ時刻>'
 GROUP BY 1, 2 HAVING COUNT(*) > 1;
@@ -641,6 +704,14 @@ FROM gifts WHERE "receivedAt" > '<列追加のデプロイ時刻>';
 SELECT "groupId", COUNT(*) AS rows, COUNT(DISTINCT "msgId") AS ids
 FROM gifts WHERE "giftType" = 1 AND "receivedAt" > '<列追加のデプロイ時刻>'
 GROUP BY 1 HAVING COUNT(*) > 1 LIMIT 20;
+
+-- 4. groupId が1回のバーストに対応しているか（再利用されていたら delta 計算が壊れる）
+SELECT MAX(span) FROM (
+  SELECT EXTRACT(EPOCH FROM (MAX("receivedAt") - MIN("receivedAt"))) AS span
+  FROM gifts WHERE "groupId" IS NOT NULL
+  GROUP BY "roomId", "groupId" HAVING COUNT(*) > 1
+) t;
 ```
 
-重複が残っている場合は、削除・統合の手順が要る。`gifts` は `GiftEdit` から参照されている（`onDelete: Cascade`）ので、行を消すとユーザーの手動編集も一緒に消える点に注意。
+行を消す必要が出た場合、`gifts` は `GiftEdit` から参照されている（`onDelete: Cascade`）ので、
+ユーザーの手動編集も一緒に消える点に注意。
