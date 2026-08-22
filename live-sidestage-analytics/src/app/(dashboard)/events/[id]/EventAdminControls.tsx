@@ -5,14 +5,10 @@ import { useRouter } from "next/navigation";
 import { STATUS_CLASSES, STATUS_LABELS } from "@/event/labels";
 import type { EventStatus } from "@/event/validation";
 
-// DRAFT から先へ進める操作。RUNNING への遷移は集計ワーカーの対象になることを意味する
-// (フェーズ3以降)。取り消せる遷移だけをここに出す。
+// RUNNING への遷移は集計ワーカーの対象になることを意味する(フェーズ3以降)。
+// 取り消せる遷移だけをここに出す。
 const NEXT_STATUS: Partial<Record<EventStatus, { to: EventStatus; label: string }[]>> = {
-  DRAFT: [{ to: "SCHEDULED", label: "開催予定にする" }],
-  SCHEDULED: [
-    { to: "RUNNING", label: "開催中にする" },
-    { to: "DRAFT", label: "下書きに戻す" },
-  ],
+  SCHEDULED: [{ to: "RUNNING", label: "開催中にする" }],
   RUNNING: [{ to: "FINISHED", label: "終了にする" }],
   FINISHED: [
     { to: "RUNNING", label: "開催中に戻す" },
@@ -21,14 +17,11 @@ const NEXT_STATUS: Partial<Record<EventStatus, { to: EventStatus; label: string 
   ARCHIVED: [{ to: "FINISHED", label: "アーカイブを解除する" }],
 };
 
-// 公開ページ(/e/[slug])が 404 を返す条件。findPublicEvent() と対になっている
-// (src/event/public-event.ts)。あちらを変えたらここも変えること。
-function publicPageBlockedReason(status: string, visibility: string): string | null {
-  if (status === "DRAFT") {
-    return "下書きのうちは公開ページが404になる。上の「開催予定にする」を押すと公開される。";
-  }
+// 公開範囲が非公開のときの注記。findPublicEvent()(src/event/public-event.ts)と対になっている
+// — オーナー自身は非公開でも公開ページを開けるが、それ以外には見えないことを伝える。
+function privateNotice(visibility: string): string | null {
   if (visibility === "PRIVATE") {
-    return "公開範囲が「非公開」のあいだは公開ページが404になる。下の設定で「限定公開」か「公開」に変えること。";
+    return "公開範囲が「非公開」のため、あなた(主催者)以外には表示されない。「開く」はあなた自身のプレビュー用。";
   }
   return null;
 }
@@ -48,7 +41,7 @@ export function EventAdminControls({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const blockedReason = publicPageBlockedReason(status, visibility);
+  const notice = privateNotice(visibility);
 
   // origin はサーバーレンダリング時には存在しない。初回レンダーで参照すると
   // サーバー(相対パス)とクライアント(絶対URL)で出力が食い違い、hydration エラーになる。
@@ -120,26 +113,11 @@ export function EventAdminControls({
           >
             {copied ? "コピーした" : "URLをコピー"}
           </button>
-          {blockedReason ? (
-            <span
-              aria-disabled="true"
-              title={blockedReason}
-              className="btn-ghost shrink-0 cursor-not-allowed text-xs opacity-40"
-            >
-              開く
-            </span>
-          ) : (
-            <a
-              href={`/e/${slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-ghost shrink-0 text-xs"
-            >
-              開く
-            </a>
-          )}
+          <a href={`/e/${slug}`} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 text-xs">
+            開く
+          </a>
         </div>
-        {blockedReason && <p className="mt-2 text-xs text-amber-400">{blockedReason}</p>}
+        {notice && <p className="mt-2 text-xs text-amber-400">{notice}</p>}
       </div>
 
       <div className="mt-4 border-t border-border pt-4">

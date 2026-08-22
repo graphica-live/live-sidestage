@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
           ...event,
           slug: buildEventSlug(event.title),
           ownerUserId: session.user.id,
-          status: "DRAFT",
+          status: "SCHEDULED",
           // 外枠(startAt/endAt)と日程は必ず同じトランザクションで書く。
           sessions: { create: sessions },
         },

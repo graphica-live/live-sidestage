@@ -333,8 +333,9 @@ model Event {
   format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
   entryMode  String // "SOLO" | "TEAM"
   teamPreset String @default("GENERIC") // "GENERIC" | "PREFECTURE"
-  visibility String @default("UNLISTED") // "PUBLIC" | "UNLISTED" | "PRIVATE"
-  status     String @default("DRAFT") // "DRAFT"|"SCHEDULED"|"RUNNING"|"FINISHED"|"ARCHIVED"
+  // 公開範囲がすべてを制御する。PRIVATE はオーナー以外誰にも見せない(下書き概念を統合)。
+  visibility String @default("PRIVATE") // "PUBLIC" | "PRIVATE"
+  status     String @default("SCHEDULED") // "SCHEDULED"|"RUNNING"|"FINISHED"|"ARCHIVED"
 
   // 全開催日程を覆う外枠。**sessions からの派生値**で、
   // startAt = min(sessions.startAt) / endAt = max(sessions.endAt)。

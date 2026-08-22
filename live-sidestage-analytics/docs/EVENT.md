@@ -170,7 +170,7 @@ Railway で analytics と同じリポジトリ・同じ Root Directory（`live-s
 
 #### 3. 動作確認
 
-1. `/events` で新しいイベントを作る（`status` は `DRAFT`）
+1. `/events` で新しいイベントを作る（`status` は `SCHEDULED`、`visibility` は既定で `PRIVATE`）
 2. 参加者を1人登録する → `TiktokRoom.monitorUntil` が立つ
 3. **最大60秒待つ。** TikTok 接続の worker の reconcile が拾って接続を開始する。
    参加者一覧の監視状態が `connecting` → `connected` に変わる
@@ -380,7 +380,7 @@ analytics の `src/lib/auth.ts`（NextAuth + `PrismaAdapter`）をそのまま�
 **URL を DB に持たない。** TikTok の avatar URL は署名付きで `x-expires` がおよそ47時間、
 つまり値そのものが賞味期限つきのキャッシュでしかなく、保存すると
 
-- 終わったイベントの表で画像が壊れる（公開判定は PRIVATE / DRAFT を除くだけなので、
+- 終わったイベントの表で画像が壊れる（公開判定は PRIVATE(オーナー以外) を除くだけなので、
   終了・アーカイブ済みのイベントもずっと見られる）
 - 取り直しの成否・間隔・排他をアプリ側で管理することになる
 - ロールバックのたびに列を残すか消すかの判断が要る
@@ -396,7 +396,7 @@ analytics の `src/lib/auth.ts`（NextAuth + `PrismaAdapter`）をそのまま�
 - 引けなかった場合も 404 ではなく**プレースホルダ画像（200）**を返すので、表示側に
   読み込み失敗のフォールバックが要らない
 - 参加者IDからハンドルへの解決は `findPublicParticipantTiktokId()` を通し、
-  公開してよいイベントに属するものだけに絞る（DRAFT / PRIVATE の出場者を引き当てさせない）
+  公開してよいイベントに属するものだけに絞る（PRIVATE(オーナー以外) の出場者を引き当てさせない）
 
 ### バトル倍率は参加者ごと
 

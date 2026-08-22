@@ -7,9 +7,12 @@ import { rankByLife } from "./deathmatch";
 
 /**
  * 公開してよいイベントか。
- * PRIVATE は誰にも見せない。DRAFT は URL を知っていても見せない(準備中のため)。
+ *
+ * PRIVATE はオーナー以外の誰にも見せない(下書き概念はここに統合されている)。
+ * `viewerUserId` はログイン中のユーザーID(未ログインなら undefined)。呼び出し側は
+ * `getServerSession(authOptions)` で取った `session?.user?.id` をそのまま渡すこと。
  */
-export async function findPublicEvent(slug: string) {
+export async function findPublicEvent(slug: string, viewerUserId?: string) {
   const event = await prisma.event.findUnique({
     where: { slug },
     select: {
@@ -22,6 +25,7 @@ export async function findPublicEvent(slug: string) {
       teamPreset: true,
       status: true,
       visibility: true,
+      ownerUserId: true,
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
@@ -34,8 +38,7 @@ export async function findPublicEvent(slug: string) {
   });
 
   if (!event) return null;
-  if (event.visibility === "PRIVATE") return null;
-  if (event.status === "DRAFT") return null;
+  if (event.visibility === "PRIVATE" && event.ownerUserId !== viewerUserId) return null;
   return event;
 }
 
@@ -43,20 +46,23 @@ export async function findPublicEvent(slug: string) {
  * 公開してよいイベントに属する参加者の TikTok ハンドル。
  *
  * アイコン配信(`/api/public/avatar/[participantId]`)が、参加者IDを推測して
- * DRAFT / PRIVATE のイベントの出場者を引き当てられないようにするための絞り込み。
+ * PRIVATE イベント(オーナー以外)の出場者を引き当てられないようにするための絞り込み。
  * 公開条件は `findPublicEvent()` と同じにしてある。
+ *
+ * `visibility` も返すのは、呼び出し側がオーナー限定の応答をキャッシュしないようにするため
+ * (PUBLIC のときだけ共有キャッシュを許してよい)。
  */
 export async function findPublicParticipantTiktokId(
-  participantId: string
-): Promise<string | null> {
+  participantId: string,
+  viewerUserId?: string
+): Promise<{ tiktokId: string; visibility: string } | null> {
   const row = await prisma.eventParticipant.findFirst({
-    where: {
-      id: participantId,
-      event: { visibility: { not: "PRIVATE" }, status: { not: "DRAFT" } },
-    },
-    select: { tiktokId: true },
+    where: { id: participantId },
+    select: { tiktokId: true, event: { select: { visibility: true, ownerUserId: true } } },
   });
-  return row?.tiktokId ?? null;
+  if (!row) return null;
+  if (row.event.visibility === "PRIVATE" && row.event.ownerUserId !== viewerUserId) return null;
+  return { tiktokId: row.tiktokId, visibility: row.event.visibility };
 }
 
 export type StandingDto = {

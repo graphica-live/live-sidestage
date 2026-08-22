@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { findPublicEvent, loadBracket } from "@/event/public-event";
 import { BracketTree } from "./BracketTree";
 
@@ -11,7 +13,8 @@ export async function generateMetadata({
 }: {
   params: { slug: string };
 }): Promise<Metadata> {
-  const event = await findPublicEvent(params.slug);
+  const session = await getServerSession(authOptions);
+  const event = await findPublicEvent(params.slug, session?.user?.id);
   if (!event) return { title: "見つかりません" };
   return {
     title: `${event.title} — トーナメント表`,
@@ -20,7 +23,8 @@ export async function generateMetadata({
 }
 
 export default async function BracketPage({ params }: { params: { slug: string } }) {
-  const event = await findPublicEvent(params.slug);
+  const session = await getServerSession(authOptions);
+  const event = await findPublicEvent(params.slug, session?.user?.id);
   if (!event) notFound();
 
   const bracket = event.format === "TOURNAMENT" ? await loadBracket(event.id) : null;

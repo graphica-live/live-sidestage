@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { findPublicParticipantTiktokId } from "@/event/public-event";
 import { avatarCache } from "@/lib/tiktok-avatar";
 
-// 参加者のアイコンを返す。認証なし(middleware の matcher が api/public を除外している)。
+// 参加者のアイコンを返す。認証は必須ではない(middleware の matcher が api/public を
+// 除外している)が、非公開イベントをオーナーがプレビューしたときにアイコンが欠けないよう
+// セッションがあれば読む。
 //
 // **画像そのものは中継せず、TikTok の CDN へ 302 で送る。** 帯域を使わずに済み、
 // 2回目以降はブラウザが CDN から直接取る。URL は署名付きで約47時間で失効するので、
@@ -12,7 +16,7 @@ import { avatarCache } from "@/lib/tiktok-avatar";
 // 常に <img> を1つ置くだけでよく、読み込み失敗時のフォールバックを持たなくて済む。
 //
 // 参加者IDから TikTok ハンドルへの解決は、公開してよいイベントに属するものだけに限る
-// (DRAFT / PRIVATE のイベントの参加者を、IDを推測して引き当てられないように)。
+// (PRIVATE イベント(オーナー以外)の参加者を、IDを推測して引き当てられないように)。
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,10 +52,11 @@ export async function GET(
   const participantId = params.participantId;
   if (!participantId || participantId.length > MAX_ID_LENGTH) return placeholder(3600);
 
-  const tiktokId = await findPublicParticipantTiktokId(participantId);
-  if (!tiktokId) return placeholder(3600);
+  const session = await getServerSession(authOptions);
+  const resolved = await findPublicParticipantTiktokId(participantId, session?.user?.id);
+  if (!resolved) return placeholder(3600);
 
-  const url = await avatarCache.get(tiktokId);
+  const url = await avatarCache.get(resolved.tiktokId);
   if (!url) return placeholder(300);
 
   return new NextResponse(null, {
@@ -59,7 +64,9 @@ export async function GET(
     headers: {
       Location: url,
       // 署名の有効期限(約47時間)より十分短く。ブラウザにリダイレクトを持たせすぎない。
-      "Cache-Control": "public, max-age=3600",
+      // 非公開(オーナー限定)は共有キャッシュに乗せない(理由は snapshot API と同じ)。
+      "Cache-Control":
+        resolved.visibility === "PUBLIC" ? "public, max-age=3600" : "private, max-age=3600",
     },
   });
 }
