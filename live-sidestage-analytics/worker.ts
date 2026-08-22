@@ -14,7 +14,9 @@ import {
   checkWatchdogs,
   stopAllListeners,
   getListenerSnapshots,
+  resolveGiftCatalogSource,
 } from "@/lib/tiktok-listener";
+import { refreshGiftCatalogIfStale } from "@/lib/tiktok-gift-catalog";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -163,6 +165,9 @@ function scheduleReconcile() {
   reconcileTimer = setTimeout(
     async () => {
       await reconcileOnce();
+      // ギフトカタログの取り直し。TTL(24時間)内なら即returnするので実質1日1回しか走らない。
+      // 内部で例外を握るのでライブ接続には影響しない。
+      if (!shuttingDown) await refreshGiftCatalogIfStale(resolveGiftCatalogSource);
       scheduleReconcile();
     },
     ready ? RECONCILE_INTERVAL_MS : UNREADY_RECONCILE_INTERVAL_MS

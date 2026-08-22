@@ -37,6 +37,11 @@ class ApiException implements Exception {
 }
 
 /// ピッカーに出すギフト候補。
+///
+/// コイン数を1つの値ではなく **範囲** で持つ。TikTok のカタログには同じ名前で
+/// コイン数の違うギフトが存在する（`freestyle` は 1 コインと 1800 コインの両方が実在する）。
+/// 一致キーは名前なのでどちらが飛んできても同じ音が鳴る。単一の値として見せると
+/// 「大物ギフト用」に仕込んだ音が安いギフトでも鳴る、という誤解を招く。
 class GiftCandidate {
   /// 一致キー（trim + 小文字化済み）。そのまま [GiftSound.giftName] に入れる。
   final String name;
@@ -44,20 +49,63 @@ class GiftCandidate {
   /// 画面に出す表記（TikTok の元の大文字小文字）。
   final String label;
 
-  final int diamondCount;
+  /// この名前で存在しうるコイン数の下限。
+  final int minDiamondCount;
 
-  const GiftCandidate({required this.name, required this.label, required this.diamondCount});
+  /// 同上、上限。[minDiamondCount] と同じなら価格は1種類。
+  final int maxDiamondCount;
+
+  /// 自分の部屋で受け取ったことがあるか。サーバーが見るのは直近の履歴だけなので、
+  /// 厳密には「最近受け取った」の意味。
+  final bool seen;
+
+  const GiftCandidate({
+    required this.name,
+    required this.label,
+    required this.minDiamondCount,
+    required this.maxDiamondCount,
+    this.seen = false,
+  });
+
+  /// コイン数が1種類しかない候補。自由入力やテストから作るとき用。
+  const GiftCandidate.single({
+    required this.name,
+    required this.label,
+    required int diamondCount,
+    this.seen = false,
+  })  : minDiamondCount = diamondCount,
+        maxDiamondCount = diamondCount;
+
+  bool get hasCoinRange => minDiamondCount != maxDiamondCount;
+
+  /// [min]〜[max] のコイン帯と重なるか。範囲同士の重なりで判定する
+  /// （下限だけ・上限だけを見ると価格違いのあるギフトが帯から漏れる）。
+  bool overlapsCoins(int min, int? max) {
+    if (maxDiamondCount < min) return false;
+    return max == null || minDiamondCount <= max;
+  }
 
   static GiftCandidate? tryParse(Object? value) {
     if (value is! Map) return null;
     final name = value['name'];
     if (name is! String || name.isEmpty) return null;
     final label = value['label'];
-    final coins = value['diamondCount'];
+
+    // 旧サーバーは diamondCount しか返さない。
+    final fallback = value['diamondCount'];
+    final base = fallback is int && fallback >= 0 ? fallback : 0;
+    final rawMin = value['minDiamondCount'];
+    final rawMax = value['maxDiamondCount'];
+    final min = rawMin is int && rawMin >= 0 ? rawMin : base;
+    final max = rawMax is int && rawMax >= 0 ? rawMax : base;
+
     return GiftCandidate(
       name: name,
       label: label is String && label.isNotEmpty ? label : name,
-      diamondCount: coins is int ? coins : 0,
+      // 壊れた組み合わせ（min > max）が来ても順序だけは保証する。
+      minDiamondCount: min <= max ? min : max,
+      maxDiamondCount: min <= max ? max : min,
+      seen: value['seen'] == true,
     );
   }
 }

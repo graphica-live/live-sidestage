@@ -13,6 +13,7 @@ import {
   type ChatGiftInput,
 } from "./chat-feed";
 import { getEulerSignApiKey } from "./settings";
+import type { GiftCatalogSource } from "./tiktok-gift-catalog";
 import {
   mergeBattleState,
   parseArmiesEvent,
@@ -156,26 +157,30 @@ function getWorkerConfig(): { index: number; count: number } {
 // deviceId(src/lib/device-id.ts)と同じ「初回決定→永続化→再利用」パターン。
 // WORKER_COUNTが変わらない限り、再起動やWorker再編を挟んでも同じ部屋(TiktokRoom)は
 // 同じworkerIdになる。同じtiktokIdを複数人が登録しても部屋は1つなので、必ず同じWorkerが担当する。
+//
+// 部屋が消えていた場合は null を返す。**投げてはいけない** — findUniqueとupdateのあいだに
+// tiktokId変更やStreamer削除で部屋が消えることがあり、投げると getMyRooms() が丸ごと失敗して
+// 無関係な部屋まで巻き添えで再接続されなくなる。
 export async function resolveWorkerForRoom(
   roomId: string,
   workerCount: number
-): Promise<number> {
+): Promise<number | null> {
   const room = await prisma.tiktokRoom.findUnique({
     where: { id: roomId },
     select: { workerId: true },
   });
-  if (room?.workerId != null) return room.workerId;
+  if (!room) return null;
+  if (room.workerId != null) return room.workerId;
 
   const workerId = hashToIndex(roomId, workerCount);
   // 部屋が消えていても落とさない(updateMany は0件でも例外を投げない)。
   // getMyRooms が一覧を読んでからここへ来るまでの間に、最後の Streamer が
-  // 部屋を外して削除されることがある。担当番号は hash から決まるので、
-  // 永続化できなくても戻り値は変わらない。
-  await prisma.tiktokRoom.updateMany({
+  // 部屋を外して削除されることがある。
+  const { count } = await prisma.tiktokRoom.updateMany({
     where: { id: roomId },
     data: { workerId },
   });
-  return workerId;
+  return count === 0 ? null : workerId;
 }
 
 function getProxyPool(): string[] {
@@ -1224,6 +1229,22 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
   });
 
   return { roomCount: rooms.length, startFailures };
+}
+
+// ギフトカタログ(gift/list/)を取りにいくための部屋を1つ選ぶ。worker.tsの60秒ループから使う。
+//
+// **ライブ中かどうかは問わない。** fetchAvailableGifts()はHTTPだけで済み、WS接続を必要としない。
+// 「接続成功後」に置くと、担当している配信が全部オフラインのあいだカタログが永久に空のままになり、
+// 「まだ貰ったことのないギフトを事前に仕込む」という目的そのものが果たせない。
+export async function resolveGiftCatalogSource(): Promise<GiftCatalogSource | null> {
+  const rooms = await getMyRooms();
+  const room = rooms[0];
+  if (!room) return null;
+
+  // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない。
+  const deviceId = await getOrCreateDeviceId(room.id);
+  const proxyUrl = await resolveProxyForRoom(room.id);
+  return { tiktokId: room.tiktokId, deviceId, proxyUrl };
 }
 
 // デプロイ時のグレースフルシャットダウン用。担当中の全部屋のTikTok接続を明示的に切断する。

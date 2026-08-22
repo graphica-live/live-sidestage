@@ -134,6 +134,8 @@ npm run pages:dev           # build + wrangler pages dev dist
 - 認証は段階的。BIO 認証（bio に認証コードを貼ってサーバーがスクレイピング確認）前でもオーバーレイは動き、コイン数・履歴だけが `VerifyGate` でぼかされる
 - TikTok 接続は公式 API ではなく匿名 WebSocket。プロキシは `TIKTOK_PROXY_POOL` から sticky 割当されるため、**プールへの追加は必ず配列末尾に**（途中挿入・削除は既存割当をずらす）
 - `linkMicBattle` / `linkMicArmies` を購読して `tiktok_battles` に残す（`src/lib/tiktok-battle.ts` がパーサ、`tiktok-listener.ts` の `persistBattle` が保存）。読むのはイベント機能の対戦自動検知だけ。**実 payload は実配信のバトルでしか得られない**ため、`raw` を必ず保存し `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>` で取り出せるようにしてある
+- **ギフトの一致キーは `giftId` ではなく名前**（trim + 小文字化）。`chat:gift` はその形で配信し、モバイルの効果音設定はそれと文字列比較する。全ギフトカタログ `tiktok_gift_catalog`（[src/lib/tiktok-gift-catalog.ts](live-sidestage-analytics/src/lib/tiktok-gift-catalog.ts) が `gift/list/` から取得、Worker の60秒 reconcile が24時間TTLで叩く）も **giftId 主キーで持つが消費側は名前で畳む**。実測で **670件中29の名前が複数 giftId を持ち、giftId 自体もレスポンス内で重複する**ので、giftId 照合にすると同名の別IDを取りこぼす。カタログ名は英語で、`app_language: "ja"` を渡しても日本語にならない（実イベント側も英語なので照合は成立する）
+- カタログ取得で `enableExtendedGiftInfo: true` を**使わない**。あれを立てると `connect()` の内部で `fetchAvailableGifts()` が呼ばれ、失敗時に `InvalidResponseError` で**ライブ接続そのものが落ちる**。未接続の使い捨て接続から明示的に呼び、失敗はログのみに留める
 
 ### イベント機能（LIVE Sidestage Event）— 同じコードベース、別プロセス
 
