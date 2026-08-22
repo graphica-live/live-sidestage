@@ -1,3 +1,4 @@
+import type { BoosterLevel, GloveLevel, ViolationHandling } from "@/event/match-rules";
 import type { EntryMode, EventFormat, EventStatus, TeamPreset, Visibility } from "@/event/validation";
 
 export const FORMAT_LABELS: Record<EventFormat, string> = {
@@ -108,6 +109,28 @@ export const LISTENER_STATUS_CLASSES: Record<string, string> = {
   connected: "text-green-400 bg-green-400/10",
   retrying: "text-gray-400 bg-white/5",
   error: "text-red-400 bg-red-400/10",
+};
+
+// 対戦ルール(Event.rules.matchRules)のラベル。
+export const GLOVE_LEVEL_LABELS: Record<GloveLevel, string> = {
+  NONE: "なし",
+  ONE: "1個",
+  TWO: "2個",
+  THREE: "3個",
+  FREE: "自由(フルグローブ可)",
+};
+
+export const BOOSTER_LEVEL_LABELS: Record<BoosterLevel, string> = {
+  NONE: "なし",
+  ONE_EACH: "各1つ",
+  TWO_EACH: "各2つ",
+  FREE: "自由(フルブースター可)",
+};
+
+export const VIOLATION_HANDLING_LABELS: Record<ViolationHandling, string> = {
+  DISQUALIFY: "失格",
+  REVIEW: "審議",
+  WARNING_ONLY: "警告のみ",
 };
 
 export { formatJst, toJstInputValue } from "@/event/datetime";

@@ -1,4 +1,6 @@
 import { toJstInputValue } from "@/event/datetime";
+import { MATCH_RULES_DEFAULT } from "@/event/match-rules";
+import { DEFAULT_NOTICE_TEMPLATE } from "@/event/notice-template";
 import type { EventDraft } from "@/event/wizard";
 import { EventWizard } from "../EventWizard";
 
@@ -31,6 +33,9 @@ function defaultDraft(): EventDraft {
         endAt: toJstInputValue(endAt),
       },
     ],
+    matchRules: MATCH_RULES_DEFAULT,
+    prizeText: "",
+    noticeText: DEFAULT_NOTICE_TEMPLATE,
   };
 }
 

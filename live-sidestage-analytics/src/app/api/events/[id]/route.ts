@@ -5,6 +5,7 @@ import { requireEventOwner } from "@/event/authz";
 import { formatJstRange } from "@/event/datetime";
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
+import { deleteCoverObject } from "@/lib/media-storage";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
 import { parseSessionRequest, windowContaining } from "@/event/sessions";
 import {
@@ -43,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.deathmatchRules !== undefined && body.title === undefined) {
     const event = await prisma.event.findUnique({
       where: { id: params.id },
-      select: { format: true, rules: true },
+      select: { format: true },
     });
     if (event?.format !== "DEATHMATCH") {
       return NextResponse.json(
@@ -54,15 +55,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // 値の正規化・範囲の丸めは parseDeathmatchRules に任せる(不正値は既定へ落ちる)。
     const normalized = parseDeathmatchRules({ deathmatch: body.deathmatchRules });
-    const existing =
-      event.rules && typeof event.rules === "object" && !Array.isArray(event.rules)
-        ? (event.rules as Prisma.JsonObject)
-        : {};
 
     await prisma.$transaction(async (tx) => {
       // ライフは全期間再計算なので、ルール変更は過去に遡る。最終集計が済んでいても
       // やり直させないと、新しいルールが順位・脱落に反映されない。
       await reopenAggregation(tx, params.id);
+
+      // rules はロック取得後にここで読み直す(トランザクション開始前の読み取りだと、
+      // 下の一般更新ブランチが同時に matchRules 名前空間を書いたとき、
+      // どちらか片方の変更が古いスナップショットで上書きされうる)。
+      const current = await tx.event.findUnique({
+        where: { id: params.id },
+        select: { rules: true },
+      });
+      const existing =
+        current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
+          ? (current.rules as Prisma.JsonObject)
+          : {};
+
       await tx.event.update({
         where: { id: params.id },
         data: {
@@ -78,6 +88,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     select: {
       endAt: true,
       format: true,
+      prizeText: true,
+      noticeText: true,
       sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
     },
   });
@@ -111,6 +123,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ errors: parsedSessions.errors }, { status: 400 });
   }
 
+  // prizeText/noticeText/matchRules は、body に無ければ現在の値のまま扱う
+  // (このフィールドを知らない旧クライアントがタイトルだけ直したとき、デプロイ境目で
+  // 既定値へ巻き戻さないため。sessions が無い旧形式リクエストを before.sessions で
+  // 補う既存の扱いと同じ考え方)。
   const validated = validateEventInput({
     title: String(body.title ?? ""),
     description: body.description == null ? null : String(body.description),
@@ -119,13 +135,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     teamPreset: body.teamPreset == null ? undefined : String(body.teamPreset),
     visibility: body.visibility == null ? undefined : String(body.visibility),
     sessions: parsedSessions.value,
+    prizeText: body.prizeText !== undefined ? (body.prizeText == null ? null : String(body.prizeText)) : before.prizeText,
+    noticeText:
+      body.noticeText !== undefined ? (body.noticeText == null ? null : String(body.noticeText)) : before.noticeText,
+    matchRules: body.matchRules,
   });
 
   if (!validated.ok) {
     return NextResponse.json({ errors: validated.errors }, { status: 400 });
   }
 
-  const { sessions, ...event } = validated.value;
+  // matchRules は rules(JSON) の一名前空間なので、実際にリクエストが送ってきたときだけ
+  // マージ書き込みする(未送信なら rules 列自体に触らない)。
+  const matchRulesProvided = body.matchRules !== undefined;
+  const { sessions, matchRules, ...event } = validated.value;
   const windows = sessions.map((s) => ({ start: s.startAt, end: s.endAt, name: s.name }));
 
   let updated;
@@ -157,9 +180,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         data: sessions.map((s) => ({ eventId: params.id, ...s })),
       });
 
+      // rules はロック取得後にここで読み直してからマージする(デスマッチ専用ブランチと
+      // 同時に走っても、どちらか片方の名前空間が古いスナップショットで消されないように)。
+      let rulesPatch: Prisma.InputJsonValue | undefined;
+      if (matchRulesProvided) {
+        const current = await tx.event.findUnique({
+          where: { id: params.id },
+          select: { rules: true },
+        });
+        const existing =
+          current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
+            ? (current.rules as Prisma.JsonObject)
+            : {};
+        rulesPatch = { ...(existing as Prisma.InputJsonObject), matchRules };
+      }
+
       return tx.event.update({
         where: { id: params.id },
-        data: event,
+        data: rulesPatch !== undefined ? { ...event, rules: rulesPatch } : event,
         select: { id: true, slug: true },
       });
     }, MUTATION_TX_OPTIONS);
@@ -202,6 +240,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   // 明示的に戻さないと期限まで無駄な接続が残る。削除より先に解除する。
   await releaseEventLeases(params.id);
 
+  const existing = await prisma.event.findUnique({
+    where: { id: params.id },
+    select: { coverImageKey: true },
+  });
+
   await prisma.event.delete({ where: { id: params.id } });
+
+  // ベストエフォート。バケット側の削除に失敗してもイベント削除自体は完了させる。
+  if (existing?.coverImageKey) {
+    await deleteCoverObject(existing.coverImageKey);
+  }
+
   return NextResponse.json({ ok: true });
 }

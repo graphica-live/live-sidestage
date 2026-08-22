@@ -16,6 +16,7 @@ import {
   TEAM_PRESETS,
   type TeamPreset,
 } from "@/event/validation";
+import { MAX_PRIZE_LENGTH, MAX_NOTICE_LENGTH } from "@/event/validation";
 import {
   WIZARD_STEPS,
   WIZARD_STEP_HINTS,
@@ -24,6 +25,7 @@ import {
   validateWizardStep,
   type EventDraft,
 } from "@/event/wizard";
+import { MatchRulesField } from "./MatchRulesField";
 import { SessionsField } from "./SessionsField";
 
 /**
@@ -277,6 +279,44 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
           <SessionsField sessions={values.sessions} onChange={(s) => set("sessions", s)} />
         )}
 
+        {step === "matchRules" && (
+          <MatchRulesField value={values.matchRules} onChange={(v) => set("matchRules", v)} />
+        )}
+
+        {step === "prize" && (
+          <div>
+            <label className="label" htmlFor="prizeText">
+              優勝賞品(任意)
+            </label>
+            <textarea
+              id="prizeText"
+              className="input-field min-h-24"
+              value={values.prizeText}
+              onChange={(e) => set("prizeText", e.target.value)}
+              placeholder="例: トップライバーXX氏とコラボ/〇〇出演権"
+              maxLength={MAX_PRIZE_LENGTH}
+            />
+          </div>
+        )}
+
+        {step === "notice" && (
+          <div>
+            <label className="label" htmlFor="noticeText">
+              注意事項とFAQ
+            </label>
+            <textarea
+              id="noticeText"
+              className="input-field min-h-96 font-mono text-xs leading-relaxed"
+              value={values.noticeText}
+              onChange={(e) => set("noticeText", e.target.value)}
+              maxLength={MAX_NOTICE_LENGTH}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              テンプレートを自由に編集・削除できる。全部消して空にしてもよい。
+            </p>
+          </div>
+        )}
+
         {step === "publish" && (
           <div className="grid gap-4">
             <dl className="grid gap-2 rounded-lg border border-border bg-panel p-3 text-sm">
@@ -305,6 +345,9 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
               作成すると同時に公開ページが有効になる。続けて参加者登録
               {values.format === "TOURNAMENT" && "→トーナメント表作成"}
               に進む。ここで決めた内容も含め、いつでもあとから編集できる。
+            </p>
+            <p className="text-xs text-gray-500">
+              ルール・優勝賞品・注意事項は前の手順で決めた内容のまま作成される。
             </p>
           </div>
         )}
