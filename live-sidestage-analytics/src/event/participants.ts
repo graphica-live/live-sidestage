@@ -236,8 +236,8 @@ export async function renewClampedLeases(now: Date = new Date()): Promise<{
     where: {
       releasedAt: null,
       monitorUntil: { gt: now },
-      // 下書きと保管済みのイベントは監視しない。
-      event: { status: { notIn: ["DRAFT", "ARCHIVED"] } },
+      // 保管済みのイベントは監視しない。
+      event: { status: { notIn: ["ARCHIVED"] } },
     },
     select: { id: true, tiktokId: true, event: { select: { endAt: true } } },
   });

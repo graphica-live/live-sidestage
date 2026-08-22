@@ -14,7 +14,7 @@ function defaultDraft(): EventDraft {
     description: "",
     entryMode: "SOLO",
     teamPreset: "GENERIC",
-    visibility: "UNLISTED",
+    visibility: "PRIVATE",
     // 既定は「明日から1週間」の1日程。JST に丸めるのは toJstInputValue が担当する。
     sessions: [
       {

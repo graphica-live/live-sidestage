@@ -22,14 +22,13 @@ export const TEAM_PRESET_LABELS: Record<TeamPreset, string> = {
   PREFECTURE: "都道府県(日本地図UI)",
 };
 
+// 公開範囲がすべてを制御する(下書き概念は無い)。非公開ならオーナー以外誰にも見えない。
 export const VISIBILITY_LABELS: Record<Visibility, string> = {
   PUBLIC: "公開",
-  UNLISTED: "限定公開(URLを知っている人だけ)",
   PRIVATE: "非公開",
 };
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
-  DRAFT: "下書き",
   SCHEDULED: "開催予定",
   RUNNING: "開催中",
   FINISHED: "終了",
@@ -37,7 +36,6 @@ export const STATUS_LABELS: Record<EventStatus, string> = {
 };
 
 export const STATUS_CLASSES: Record<EventStatus, string> = {
-  DRAFT: "text-gray-400 bg-white/5",
   SCHEDULED: "text-yellow-400 bg-yellow-400/10",
   RUNNING: "text-green-400 bg-green-400/10",
   FINISHED: "text-gray-400 bg-white/5",

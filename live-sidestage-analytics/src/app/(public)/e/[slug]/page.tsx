@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatJst, formatJstRange } from "@/event/datetime";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS, STATUS_CLASSES, STATUS_LABELS } from "@/event/labels";
@@ -12,7 +14,8 @@ import { EventResults } from "./EventResults";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const event = await findPublicEvent(params.slug);
+  const session = await getServerSession(authOptions);
+  const event = await findPublicEvent(params.slug, session?.user?.id);
   if (!event) return { title: "イベントが見つからない" };
 
   const description =
@@ -27,13 +30,14 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       description,
       type: "website",
     },
-    // UNLISTED は URL を知っている人だけのものなので検索避けする。
+    // 非公開(オーナーのプレビュー)は検索避けする。
     robots: event.visibility === "PUBLIC" ? undefined : { index: false, follow: false },
   };
 }
 
 export default async function PublicEventPage({ params }: { params: { slug: string } }) {
-  const event = await findPublicEvent(params.slug);
+  const session = await getServerSession(authOptions);
+  const event = await findPublicEvent(params.slug, session?.user?.id);
   if (!event) notFound();
 
   const [snapshot, matchCount] = await Promise.all([

@@ -2,8 +2,15 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ENTRY_MODE_LABELS, FORMAT_LABELS, STATUS_CLASSES, STATUS_LABELS, formatJst } from "@/event/labels";
-import type { EntryMode, EventFormat, EventStatus } from "@/event/validation";
+import {
+  ENTRY_MODE_LABELS,
+  FORMAT_LABELS,
+  STATUS_CLASSES,
+  STATUS_LABELS,
+  VISIBILITY_LABELS,
+  formatJst,
+} from "@/event/labels";
+import type { EntryMode, EventFormat, EventStatus, Visibility } from "@/event/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +26,7 @@ export default async function EventsPage() {
       format: true,
       entryMode: true,
       status: true,
+      visibility: true,
       startAt: true,
       endAt: true,
       _count: { select: { participants: true, sessions: true } },
@@ -63,11 +71,22 @@ export default async function EventsPage() {
                       )}
                     </p>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${STATUS_CLASSES[event.status as EventStatus]}`}
-                  >
-                    {STATUS_LABELS[event.status as EventStatus]}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${STATUS_CLASSES[event.status as EventStatus]}`}
+                    >
+                      {STATUS_LABELS[event.status as EventStatus]}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        event.visibility === "PUBLIC"
+                          ? "bg-green-400/10 text-green-400"
+                          : "bg-white/5 text-gray-500"
+                      }`}
+                    >
+                      {VISIBILITY_LABELS[event.visibility as Visibility]}
+                    </span>
+                  </div>
                 </div>
               </Link>
             </li>

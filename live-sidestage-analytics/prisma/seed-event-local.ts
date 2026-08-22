@@ -41,7 +41,7 @@ async function main() {
       format: "DIAMOND_RACE",
       entryMode: "TEAM",
       teamPreset: "PREFECTURE",
-      visibility: "UNLISTED",
+      visibility: "PUBLIC",
       status: "RUNNING",
       startAt: new Date(now - 24 * 3600_000),
       endAt: new Date(now + 6 * 24 * 3600_000),
@@ -54,17 +54,17 @@ async function main() {
     },
   });
 
-  const draft = await prisma.event.upsert({
-    where: { slug: "seed-tournament-draft" },
+  const unpublished = await prisma.event.upsert({
+    where: { slug: "seed-tournament-private" },
     update: {},
     create: {
-      slug: "seed-tournament-draft",
-      title: "シード用 バトルトーナメント(下書き)",
+      slug: "seed-tournament-private",
+      title: "シード用 バトルトーナメント(非公開)",
       ownerUserId,
       format: "TOURNAMENT",
       entryMode: "SOLO",
-      visibility: "UNLISTED",
-      status: "DRAFT",
+      visibility: "PRIVATE",
+      status: "SCHEDULED",
       // 外枠は全日程を覆う。集計されるのは下の2日程の中だけで、
       // 1日目の終了〜2日目の開始のギフトは入らない。
       startAt: new Date(now + 7 * 24 * 3600_000),
@@ -88,7 +88,7 @@ async function main() {
 
   await seedRaceEntries(race.id, race.startAt, race.endAt);
 
-  console.log("seeded:", { ownerUserId, race: race.slug, draft: draft.slug });
+  console.log("seeded:", { ownerUserId, race: race.slug, unpublished: unpublished.slug });
   console.log("集計を流すには: npm run event-worker:local");
 }
 

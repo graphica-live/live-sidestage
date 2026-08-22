@@ -14,7 +14,7 @@ const baseInput = {
   format: "DIAMOND_RACE",
   entryMode: "TEAM",
   teamPreset: "PREFECTURE",
-  visibility: "UNLISTED",
+  visibility: "PRIVATE",
   sessions: [
     {
       startAt: new Date("2026-09-01T11:00:00.000Z"),

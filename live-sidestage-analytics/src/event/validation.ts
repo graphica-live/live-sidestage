@@ -15,14 +15,8 @@ export { MAX_EVENT_SESSIONS, MAX_SESSION_NAME_LENGTH } from "./sessions";
 export const EVENT_FORMATS = ["TOURNAMENT", "DIAMOND_RACE", "DEATHMATCH"] as const;
 export const ENTRY_MODES = ["SOLO", "TEAM"] as const;
 export const TEAM_PRESETS = ["GENERIC", "PREFECTURE"] as const;
-export const VISIBILITIES = ["PUBLIC", "UNLISTED", "PRIVATE"] as const;
-export const EVENT_STATUSES = [
-  "DRAFT",
-  "SCHEDULED",
-  "RUNNING",
-  "FINISHED",
-  "ARCHIVED",
-] as const;
+export const VISIBILITIES = ["PUBLIC", "PRIVATE"] as const;
+export const EVENT_STATUSES = ["SCHEDULED", "RUNNING", "FINISHED", "ARCHIVED"] as const;
 
 export type EventFormat = (typeof EVENT_FORMATS)[number];
 export type EntryMode = (typeof ENTRY_MODES)[number];
@@ -98,7 +92,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
     errors.push("個人戦ではチーム形式を指定できません。");
   }
 
-  const visibility = (input.visibility ?? "UNLISTED") as Visibility;
+  const visibility = (input.visibility ?? "PRIVATE") as Visibility;
   if (!VISIBILITIES.includes(visibility)) {
     errors.push("公開範囲の指定が不正です。");
   }

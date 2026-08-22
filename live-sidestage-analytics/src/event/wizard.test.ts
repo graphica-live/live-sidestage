@@ -12,7 +12,7 @@ const baseDraft: EventDraft = {
   description: "",
   entryMode: "SOLO",
   teamPreset: "GENERIC",
-  visibility: "UNLISTED",
+  visibility: "PRIVATE",
   sessions: [{ name: "", startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" }],
 };
 

@@ -11,6 +11,7 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
+import { AdminBracketTree } from "./AdminBracketTree";
 
 /** 開催日程1件。日時は ISO 文字列(サーバーコンポーネントから Date を渡せないため)。 */
 export type SessionRow = {
@@ -139,6 +140,8 @@ export function MatchManager({
   );
   const [matchWindowMin, setMatchWindowMin] = useState(30);
   const [roundIntervalMin, setRoundIntervalMin] = useState(45);
+  const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   const byRound = useMemo(() => {
     const groups = new Map<number, MatchRow[]>();
@@ -151,6 +154,7 @@ export function MatchManager({
   }, [matches]);
 
   const started = matches.some((m) => m.status !== "SCHEDULED");
+  const selectedMatch = matches.find((m) => m.id === selectedMatchId) ?? null;
 
   async function send(url: string, body: unknown, method = "PATCH") {
     setBusy(true);
@@ -366,23 +370,79 @@ export function MatchManager({
           まだ対戦表がない。シード順を決めて「表を作る」を実行する。
         </div>
       ) : (
-        byRound.map(([round, rows]) => (
-          <section key={round} className="space-y-2">
-            <h2 className="text-sm font-semibold text-gray-300">
-              {rows[0]?.roundLabel ?? `${round}回戦`}
-            </h2>
-            {rows.map((match) => (
-              <MatchCard
-                key={match.id}
-                eventId={eventId}
-                match={match}
-                format={format}
-                busy={busy}
-                onSend={send}
-              />
-            ))}
-          </section>
-        ))
+        <>
+          <div className="flex items-center gap-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded-full px-3 py-1 ${
+                viewMode === "list" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
+              }`}
+            >
+              一覧
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("bracket")}
+              className={`rounded-full px-3 py-1 ${
+                viewMode === "bracket" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
+              }`}
+            >
+              表
+            </button>
+          </div>
+
+          {viewMode === "list" ? (
+            byRound.map(([round, rows]) => (
+              <section key={round} className="space-y-2">
+                <h2 className="text-sm font-semibold text-gray-300">
+                  {rows[0]?.roundLabel ?? `${round}回戦`}
+                </h2>
+                {rows.map((match) => (
+                  <MatchCard
+                    key={match.id}
+                    eventId={eventId}
+                    match={match}
+                    format={format}
+                    busy={busy}
+                    onSend={send}
+                  />
+                ))}
+              </section>
+            ))
+          ) : (
+            <AdminBracketTree matches={matches} onSelect={setSelectedMatchId} />
+          )}
+        </>
+      )}
+
+      {selectedMatch && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setSelectedMatchId(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-panel p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedMatchId(null)}
+                className="btn-ghost text-xs"
+              >
+                閉じる
+              </button>
+            </div>
+            <MatchCard
+              eventId={eventId}
+              match={selectedMatch}
+              format={format}
+              busy={busy}
+              onSend={send}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
