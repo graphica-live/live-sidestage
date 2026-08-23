@@ -18,13 +18,16 @@
 // 存在しない」と区別できない — 改名後は旧uniqueIdへの問い合わせが同じNOT_FOUNDになる。**
 // 上のGift件数チェックが、既にギフトを受けていた改名済みアカウントの誤削除は防ぐ。
 //
-// TikTokのレスポンス(api-live/user/room/のdata.user)には永続的な安定ID `secUid` / `id` が
-// 含まれるが、これを鍵にした逆引き(secUid→現在のuniqueId)は無認証では不可能と実測済み
-// (2026-08確認):
-//   - api/user/detail/?secUid=... → HTTP 200だが本文が完全に空(msToken等の署名必須API)
-//   - api-live/user/room/?secUid=...(uniqueIdなし) → params_error。uniqueIdが必須パラメータ
-//   - 正しいsecUid + 存在しないuniqueId → user_not_found(secUidは検索条件に一切使われない)
-//   - node/share/user/@<id> → 403 Forbidden(即ブロック)
+// TikTokのレスポンス(api-live/user/room/のdata.user)には永続的な安定ID `secUid` / `id`
+// (数値userId)が含まれるが、どちらを鍵にした逆引き(→現在のuniqueId)も無認証では不可能と
+// 実測済み(2026-08確認)。`id`(user_id)側もsecUidと全く同じ失敗パターンだった:
+//   - api/user/detail/?secUid=... / ?user_id=... → いずれもHTTP 200だが本文が完全に空
+//     (msToken等の署名必須API)
+//   - api-live/user/room/?secUid=... / ?user_id=...(uniqueIdなし) → params_error。
+//     uniqueIdが必須パラメータ
+//   - 正しいsecUid/user_id + 存在しないuniqueId → user_not_found(どちらも検索条件に
+//     一切使われない)
+//   - node/share/user/@<uniqueId> / node/share/user/<数値id> → いずれも403 Forbidden(即ブロック)
 // EulerStream等の署名サービス経由でapi/user/detailを叩けば理論上は可能だが、追加コスト・
 // 複雑性が見合わないため見送っている。同じ調査を繰り返さないための記録。
 //
