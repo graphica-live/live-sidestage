@@ -89,11 +89,10 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   // ── ギフトを選ぶ ────────────────────────────────────────────────────────────
 
   Future<void> _pickGift() async {
-    final token = context.read<SessionController>().session?.token;
     final selected = await showModalBottomSheet<GiftCandidate>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _GiftPickerSheet(token: token),
+      builder: (_) => const _GiftPickerSheet(),
     );
     if (selected == null || !mounted) return;
     setState(() {
@@ -458,10 +457,32 @@ bool matchesGiftQuery(GiftCandidate gift, String query) {
 ///
 /// 検索は入力のたびにローカルで絞り込む。候補は最大1000件で `ListView.builder` は
 /// 遅延生成なので、キーストロークごとにサーバーへ問い合わせ直す理由が無い。
-class _GiftPickerSheet extends StatefulWidget {
-  const _GiftPickerSheet({required this.token});
+/// ギフト候補を取りに行く。401 のときだけトークンを取り直して**1回だけ**やり直す。
+///
+/// JWT は90日で失効するのに、常用のコメント受信は socket.io の apiKey なので
+/// 失効しても画面上はログイン済みのまま見える。JWT を使う数少ない導線である
+/// この一覧だけが 401 になるため、ここで無言の再発行を挟む。
+/// 再発行できない（＝ Google の無言サインインが通らない）ときだけ、
+/// 従来どおり「ログインし直す」導線を出す。
+///
+/// Widget を組み立てずにテストできるよう、ピッカー本体から切り離してある。
+Future<List<GiftCandidate>> fetchGiftCandidatesWithRefresh({
+  required LiveAnalyticsApi api,
+  required String token,
+  required Future<String?> Function() refreshToken,
+}) async {
+  try {
+    return await api.fetchGiftCandidates(token: token);
+  } on ApiException catch (e) {
+    if (!e.isUnauthorized) rethrow;
+    final refreshed = await refreshToken();
+    if (refreshed == null) rethrow;
+    return api.fetchGiftCandidates(token: refreshed);
+  }
+}
 
-  final String? token;
+class _GiftPickerSheet extends StatefulWidget {
+  const _GiftPickerSheet();
 
   @override
   State<_GiftPickerSheet> createState() => _GiftPickerSheetState();
@@ -517,7 +538,10 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
   }
 
   Future<void> _load() async {
-    final token = widget.token;
+    // 毎回 SessionController から取り直す。トークンを widget に固定すると、
+    // 再発行しても古い値のままになる。
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
     if (token == null) {
       setState(() {
         _error = 'ログイン情報がありません。';
@@ -531,7 +555,11 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       _candidates = null;
     });
     try {
-      final gifts = await _api.fetchGiftCandidates(token: token);
+      final gifts = await fetchGiftCandidatesWithRefresh(
+        api: _api,
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
       if (!mounted) return;
       setState(() => _candidates = gifts);
     } on ApiException catch (e) {
@@ -539,6 +567,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       setState(() {
         // 401/403 を黙って手入力へフォールバックさせない。セッションが切れている
         // ことをそのまま伝えないと、ユーザーは原因の分からないまま使い続ける。
+        // ここへ来るのはトークンの再発行にも失敗したときだけ。
         _needsRelogin = e.isUnauthorized;
         _error = e.isUnauthorized ? 'ログインの有効期限が切れています。ログインし直してください。' : e.message;
         _candidates = const [];
