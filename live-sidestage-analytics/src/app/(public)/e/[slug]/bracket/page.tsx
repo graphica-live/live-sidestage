@@ -48,8 +48,8 @@ export default async function BracketPage({ params }: { params: { slug: string }
             勝敗は当サービスが受信したギフトのダイヤで決まる。バトル中に投げられたぶんが対象。
           </p>
 
-          {/* 決勝を中央に置き、左右へブロックを分けて描く。狭い画面では横スクロールになるが、
-              初期位置は決勝(中央)に合わせてある(BracketScroller)。 */}
+          {/* 決勝を中央に置き、左右へブロックを分けて描く。狭い画面では初期表示を
+              画面幅に収まるよう縮小する(BracketScroller)。拡大はピンチズームで行う。 */}
           <div className="mt-6">
             <BracketTree roundCount={bracket.roundCount} matches={bracket.matches} />
           </div>
