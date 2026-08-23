@@ -795,7 +795,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
 /// URL が無い・読み込み中・失敗のいずれも同じプレースホルダに落とす。ここで空白を返すと
 /// スクロール中に行の見た目が点滅する。
 class GiftThumbnail extends StatelessWidget {
-  const GiftThumbnail(this.imageUrl);
+  const GiftThumbnail(this.imageUrl, {super.key});
 
   final String? imageUrl;
 
