@@ -14,10 +14,13 @@
 //    「途中まで書けた状態が他プロセスから新しい fetchedAt に見える」が構造的に起きない
 //  - `fetchedAt` は create/update の**両方で明示的に**入れる。`@default(now())` は
 //    既存行の更新時には発火しないため、これを怠ると MAX(fetchedAt) が永久に進まない
+//  - `imageUrl`(ピッカーに出すギフトのアイコン)は検証を通ったURLだけ入れる。取れなくても
+//    エントリは捨てない。TTL内でも1回だけ前倒しで取り直す条件があるので shouldBackfillImages() を参照
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { isAllowedAvatarUrl } from "./tiktok-profile";
 
 // カタログの鮮度。これより新しければ何もしない。
 export const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
@@ -46,6 +49,8 @@ export interface CatalogEntry {
   /** 表示用。カタログの元表記。 */
   label: string;
   diamondCount: number;
+  /** ギフトのアイコン。検証を通ったURLだけ。取れなければ null(エントリは捨てない)。 */
+  imageUrl: string | null;
 }
 
 /** カタログ取得に使う部屋の情報。使い捨て接続のconstructorへそのまま渡す。 */
@@ -89,6 +94,34 @@ function pickLabel(raw: Record<string, unknown>): string | null {
   return null;
 }
 
+// 画像URLが入りうる場所。実測は `image.url_list` だが、payload変化への保険として
+// desktop の `getTikTokGiftImageUrl()` と同じ候補を並べる。
+const IMAGE_CONTAINERS = ["image", "giftImage", "icon"] as const;
+const IMAGE_URL_KEYS = ["url_list", "urlList", "url"] as const;
+
+/**
+ * ギフトのアイコンURLを取り出す。
+ *
+ * **`<img src>` / `Image.network` へ渡る値なので、検証を通ったものだけ採る。**
+ * 候補配列は先頭から順に見て、最初に [isAllowedAvatarUrl] を通ったURLを返す
+ * (先頭が見知らぬCDNでも後続に使えるURLがあれば拾う)。1つも通らなければ null。
+ */
+export function pickImageUrl(raw: Record<string, unknown>): string | null {
+  for (const container of IMAGE_CONTAINERS) {
+    const value = raw[container];
+    if (typeof value !== "object" || value === null) continue;
+    const record = value as Record<string, unknown>;
+    for (const key of IMAGE_URL_KEYS) {
+      const urls = record[key];
+      if (!Array.isArray(urls)) continue;
+      for (const url of urls) {
+        if (isAllowedAvatarUrl(url)) return url;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * `gift/list/` のレスポンスを正規化する。
  *
@@ -115,7 +148,13 @@ export function normalizeCatalogEntries(raw: unknown): CatalogEntry[] {
       toBoundedInt(record.diamondCount, PG_INT4_MAX) ??
       0;
 
-    byGiftId.set(giftId, { giftId, name: label.toLowerCase(), label, diamondCount });
+    byGiftId.set(giftId, {
+      giftId,
+      name: label.toLowerCase(),
+      label,
+      diamondCount,
+      imageUrl: pickImageUrl(record),
+    });
   }
 
   return Array.from(byGiftId.values()).sort((a, b) => a.giftId - b.giftId);
@@ -182,11 +221,38 @@ const defaultDeps: GiftCatalogDeps = {
 let inFlight: Promise<void> | null = null;
 // 最後に失敗した時刻。CATALOG_FAILURE_BACKOFF_MS のあいだ再試行しない。
 let lastFailureAt = 0;
+// `imageUrl` 列を足したあとの前倒し取得を、**プロセスごとに1回だけ**に絞るフラグ。
+// 詳細は shouldBackfillImages() のコメント。
+let imageBackfillDone = false;
 
 /** テスト用。モジュールスコープの状態を初期化する。 */
 export function __resetGiftCatalogStateForTest() {
   inFlight = null;
   lastFailureAt = 0;
+  imageBackfillDone = false;
+}
+
+/**
+ * TTL内でも取り直すべきか(`imageUrl` の前倒しバックフィル)。
+ *
+ * 列を足した直後は全行 null なので、TTLだけ見ていると最大24時間ピッカーに画像が出ない。
+ * そこで「画像を持つ行が1件も無い」ときに一度だけ stale とみなす。
+ *
+ * **プロセスごとに1回で打ち切る。** 「取得は成功したが画像が1件も取れない」
+ * (TikTokが `image` を返さなくなった・CDNホストがallowlist外へ変わった)場合、
+ * 条件だけで判定すると `lastFailureAt` は成功で0のまま条件が真であり続け、
+ * **60秒ごとのreconcileが `gift/list/` を叩き続ける**。ライブ接続と共有しているproxyを
+ * 消耗させるので、成否に関わらず1周したらフラグを消費して通常のTTLへ戻す。
+ */
+async function shouldBackfillImages(): Promise<boolean> {
+  if (imageBackfillDone) return false;
+  const withImage = await prisma.tiktokGiftCatalog.count({ where: { imageUrl: { not: null } } });
+  if (withImage > 0) {
+    // すでに画像がある。以後この判定自体を省く。
+    imageBackfillDone = true;
+    return false;
+  }
+  return true;
 }
 
 async function writeCatalog(entries: CatalogEntry[], fetchedAt: Date): Promise<void> {
@@ -195,16 +261,18 @@ async function writeCatalog(entries: CatalogEntry[], fetchedAt: Date): Promise<v
   // **1文で書き切る。** 複数文をトランザクション無しで流すと、先頭だけ更新された時点で
   // 他プロセスに新しい MAX(fetchedAt) が見えてしまい、途中で失敗しても24時間成功扱いになる。
   const values = entries.map(
-    (e) => Prisma.sql`(${e.giftId}, ${e.name}, ${e.label}, ${e.diamondCount}, ${fetchedAt})`
+    (e) =>
+      Prisma.sql`(${e.giftId}, ${e.name}, ${e.label}, ${e.diamondCount}, ${e.imageUrl}, ${fetchedAt})`
   );
 
   await prisma.$executeRaw`
-    INSERT INTO public."tiktok_gift_catalog" ("giftId", "name", "label", "diamondCount", "fetchedAt")
+    INSERT INTO public."tiktok_gift_catalog" ("giftId", "name", "label", "diamondCount", "imageUrl", "fetchedAt")
     VALUES ${Prisma.join(values)}
     ON CONFLICT ("giftId") DO UPDATE SET
       "name" = EXCLUDED."name",
       "label" = EXCLUDED."label",
       "diamondCount" = EXCLUDED."diamondCount",
+      "imageUrl" = EXCLUDED."imageUrl",
       "fetchedAt" = EXCLUDED."fetchedAt"
   `;
 }
@@ -231,7 +299,8 @@ export async function refreshGiftCatalogIfStale(
     try {
       const latest = await prisma.tiktokGiftCatalog.aggregate({ _max: { fetchedAt: true } });
       const fetchedAt = latest._max.fetchedAt;
-      if (fetchedAt && startedAt - fetchedAt.getTime() < CATALOG_TTL_MS) return;
+      const fresh = fetchedAt !== null && startedAt - fetchedAt.getTime() < CATALOG_TTL_MS;
+      if (fresh && !(await shouldBackfillImages())) return;
 
       const source = await resolveSource();
       if (!source) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
@@ -244,6 +313,8 @@ export async function refreshGiftCatalogIfStale(
 
       await writeCatalog(entries, new Date(deps.now()));
       lastFailureAt = 0;
+      // 画像が取れたかどうかに関わらず消費する(取れなければ通常のTTLへ戻す)。
+      imageBackfillDone = true;
       console.log(`[gift-catalog] refreshed ${entries.length} gift(s)`);
     } catch (err) {
       lastFailureAt = deps.now();

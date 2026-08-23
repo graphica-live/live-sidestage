@@ -68,7 +68,12 @@ afterAll(async () => {
 
 let orderSeq = 0;
 
-async function addGift(giftName: string, diamondCount: number, receivedAt: Date) {
+async function addGift(
+  giftName: string,
+  diamondCount: number,
+  receivedAt: Date,
+  giftPictureUrl?: string | null
+) {
   orderSeq++;
   return prisma.gift.create({
     data: {
@@ -77,6 +82,7 @@ async function addGift(giftName: string, diamondCount: number, receivedAt: Date)
       nickname: "ユーザーA",
       giftId: 1,
       giftName,
+      giftPictureUrl: giftPictureUrl ?? null,
       repeatCount: 1,
       diamondCount,
       totalDiamonds: diamondCount,
@@ -87,9 +93,20 @@ async function addGift(giftName: string, diamondCount: number, receivedAt: Date)
   });
 }
 
-async function addCatalog(giftId: number, label: string, diamondCount: number) {
+async function addCatalog(
+  giftId: number,
+  label: string,
+  diamondCount: number,
+  imageUrl?: string | null
+) {
   return prisma.tiktokGiftCatalog.create({
-    data: { giftId, name: label.trim().toLowerCase(), label: label.trim(), diamondCount },
+    data: {
+      giftId,
+      name: label.trim().toLowerCase(),
+      label: label.trim(),
+      diamondCount,
+      imageUrl: imageUrl ?? null,
+    },
   });
 }
 
@@ -106,6 +123,7 @@ interface GiftCandidate {
   minDiamondCount: number;
   maxDiamondCount: number;
   seen: boolean;
+  imageUrl: string | null;
 }
 
 async function fetchGifts(bearer?: string) {
@@ -295,5 +313,66 @@ describe("GET /api/mobile/gifts — カタログとの和集合", () => {
     expect(gifts.filter((g) => g.seen).length).toBeGreaterThan(0);
 
     await prisma.tiktokGiftCatalog.deleteMany({ where: { giftId: { gte: 500000 } } });
+  });
+});
+
+// ピッカーに出すギフトのアイコン。カタログを優先し、無ければ受信履歴の giftPictureUrl。
+// TikTokのギフト画像URLは avatar と違って署名(x-expires)が付かないので、履歴に残った
+// 古いURLでも使える。ただしモバイルへ渡す以上、どちらの経路も検証を通したものだけ返す。
+describe("GET /api/mobile/gifts — アイコン", () => {
+  const IMAGE = "https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/pic1.png~tplv-obj.webp";
+  const IMAGE2 = "https://p19-webcast.tiktokcdn-us.com/img/maliva/pic2.png~tplv-obj.webp";
+
+  it("カタログのアイコンを返す", async () => {
+    await addCatalog(70001, "PicGift", 10, IMAGE);
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "picgift").imageUrl).toBe(IMAGE);
+  });
+
+  it("同名複数行では、画像を持つ行のうち最小giftIdを採る", async () => {
+    // ラベルの代表(最小giftId=70010)が画像を持たないケース。取りこぼしてはいけない。
+    await addCatalog(70010, "MultiPic", 10, null);
+    await addCatalog(70012, "multipic", 20, IMAGE2);
+    await addCatalog(70011, "MULTIPIC", 30, IMAGE);
+
+    const { gifts } = await fetchGifts(token);
+    const hit = find(gifts, "multipic");
+    expect(hit.label).toBe("MultiPic"); // ラベルの規則は変わらない
+    expect(hit.imageUrl).toBe(IMAGE); // 画像は 70011(画像を持つ行の最小giftId)
+  });
+
+  it("カタログに画像が無ければ受信履歴の giftPictureUrl を使う", async () => {
+    await addGift("HistPic", 5, new Date("2026-08-20T13:00:00Z"), IMAGE);
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "histpic").imageUrl).toBe(IMAGE);
+  });
+
+  it("カタログの画像が履歴より優先される", async () => {
+    await addCatalog(70020, "BothPic", 10, IMAGE);
+    await addGift("BothPic", 10, new Date("2026-08-20T13:10:00Z"), IMAGE2);
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "bothpic").imageUrl).toBe(IMAGE);
+  });
+
+  it("履歴の最新行に画像が無くても、少し前の行から拾う", async () => {
+    await addGift("OldPic", 5, new Date("2026-08-20T13:20:00Z"), IMAGE);
+    await addGift("OldPic", 5, new Date("2026-08-20T13:30:00Z"), null); // こちらが代表行
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "oldpic").imageUrl).toBe(IMAGE);
+  });
+
+  it("検証を通らないURLは返さない(過去に保存された値も遮断する)", async () => {
+    await addCatalog(70030, "BadCatalogPic", 10, "https://evil.example/a.png");
+    await addGift("BadHistPic", 5, new Date("2026-08-20T13:40:00Z"), "javascript:alert(1)");
+
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "badcatalogpic").imageUrl).toBeNull();
+    expect(find(gifts, "badhistpic").imageUrl).toBeNull();
+  });
+
+  it("画像が無ければ null(候補自体は消えない)", async () => {
+    await addCatalog(70040, "NoPic", 10);
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "nopic").imageUrl).toBeNull();
   });
 });

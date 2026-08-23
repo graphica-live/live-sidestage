@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveUserByMobileToken } from "@/lib/mobile-auth";
+import { isAllowedAvatarUrl } from "@/lib/tiktok-profile";
 
 // モバイルの「ギフトを選ぶ」ピッカーへ返す候補一覧。
 //
@@ -11,6 +12,10 @@ import { resolveUserByMobileToken } from "@/lib/mobile-auth";
 // どちらか片方が欠けても動く。カタログ未取得なら履歴だけ、部屋が未割り当てならカタログだけ返る。
 // カタログも網羅ではない(部屋限定ギフト・新ギフト)ので、一覧に無い名前はクライアント側の
 // 自由入力で登録できる導線を残してある。
+//
+// ピッカーに出すアイコン(`imageUrl`)は**カタログを優先し、無ければ受信履歴の `giftPictureUrl`**。
+// TikTokのギフト画像URLは avatar と違って署名(x-expires)が付かないので、履歴に保存された
+// 古いURLでも腐らない。どちらの経路も `isAllowedAvatarUrl()` を通したものだけ返す。
 //
 // **畳む単位はギフト名。** 効果音の一致キーが名前だから(socket.ioの `chat:gift` は
 // `giftName` を trim + 小文字化して配信し、モバイルはそれと `GiftSound.giftName` を比較する)。
@@ -32,11 +37,32 @@ interface Candidate {
   seenRank: number;
   // カタログ側で代表に選んだ行のgiftId。同名複数行のlabelを決定的に選ぶためだけに使う。
   catalogGiftId: number;
+  // ピッカーに出すアイコン。取れなければ null。
+  imageUrl: string | null;
+  // 画像の採用元にした行のgiftId。**labelの代表(最小giftId)とは別に持つ** —
+  // 最小giftIdの行が画像を持たないとき、同名の別行にある画像を取りこぼさないため。
+  imageGiftId: number;
 }
 
 function widen(candidate: Candidate, coins: number) {
   candidate.minDiamondCount = Math.min(candidate.minDiamondCount, coins);
   candidate.maxDiamondCount = Math.max(candidate.maxDiamondCount, coins);
+}
+
+// 履歴由来の画像に与える順位。**どのカタログ行の giftId よりも大きい**ので、
+// カタログに画像があればそちらが勝ち、無いときだけ履歴が入る。履歴同士では
+// 先に来た行(=受信の新しい行)が勝つ。
+const HISTORY_IMAGE_RANK = Number.MAX_SAFE_INTEGER - 1;
+
+// 画像URLの採否。**「画像を持つ行のうち最小giftId」**を採る。
+// 非nullを優先するのはカバレッジを落とさないため、その中で最小giftIdなのは決定的にするため。
+//
+// **検証はここで行う。** カタログは書き込み時にも検証しているが、モバイルへ渡るURLが
+// 「必ずこのプロセスで検証済み」と1箇所で言えるようにするため、履歴由来と揃えて通す。
+function adoptImage(candidate: Candidate, url: unknown, giftId: number) {
+  if (!isAllowedAvatarUrl(url) || giftId >= candidate.imageGiftId) return;
+  candidate.imageUrl = url;
+  candidate.imageGiftId = giftId;
 }
 
 export async function GET(req: NextRequest) {
@@ -57,7 +83,7 @@ export async function GET(req: NextRequest) {
 
   const [catalogRows, historyRows] = await Promise.all([
     prisma.tiktokGiftCatalog.findMany({
-      select: { giftId: true, name: true, label: true, diamondCount: true },
+      select: { giftId: true, name: true, label: true, diamondCount: true, imageUrl: true },
     }),
     // 部屋が未割り当てならまだ1件も受け取っていない。カタログだけで返す。
     //
@@ -67,7 +93,7 @@ export async function GET(req: NextRequest) {
     streamer.roomId
       ? prisma.gift.findMany({
           where: { roomId: streamer.roomId },
-          select: { giftName: true, diamondCount: true },
+          select: { giftName: true, diamondCount: true, giftPictureUrl: true },
           orderBy: { receivedAt: "desc" },
           take: MAX_SCAN_ROWS,
         })
@@ -86,7 +112,7 @@ export async function GET(req: NextRequest) {
     if (!name) continue;
     const existing = byName.get(name);
     if (!existing) {
-      byName.set(name, {
+      const created: Candidate = {
         name,
         label: row.label || name,
         minDiamondCount: row.diamondCount,
@@ -94,10 +120,15 @@ export async function GET(req: NextRequest) {
         seen: false,
         seenRank: Number.MAX_SAFE_INTEGER,
         catalogGiftId: row.giftId,
-      });
+        imageUrl: null,
+        imageGiftId: Number.MAX_SAFE_INTEGER,
+      };
+      adoptImage(created, row.imageUrl, row.giftId);
+      byName.set(name, created);
       continue;
     }
     widen(existing, row.diamondCount);
+    adoptImage(existing, row.imageUrl, row.giftId);
     if (row.giftId < existing.catalogGiftId) {
       existing.catalogGiftId = row.giftId;
       existing.label = row.label || existing.label;
@@ -120,10 +151,15 @@ export async function GET(req: NextRequest) {
     if (!name) continue;
 
     const existing = byName.get(name);
-    if (existing?.seen) continue; // すでに新しい行で代表を決めている
+    if (existing?.seen) {
+      // 代表は決まっているが、**画像だけは拾い続ける**。代表になった最新行の
+      // giftPictureUrl が null でも、少し前の行が持っていることがある。
+      adoptImage(existing, row.giftPictureUrl, HISTORY_IMAGE_RANK);
+      continue;
+    }
 
     if (!existing) {
-      byName.set(name, {
+      const created: Candidate = {
         name,
         label,
         minDiamondCount: row.diamondCount,
@@ -131,10 +167,15 @@ export async function GET(req: NextRequest) {
         seen: true,
         seenRank: seenRank++,
         catalogGiftId: Number.MAX_SAFE_INTEGER,
-      });
+        imageUrl: null,
+        imageGiftId: Number.MAX_SAFE_INTEGER,
+      };
+      adoptImage(created, row.giftPictureUrl, HISTORY_IMAGE_RANK);
+      byName.set(name, created);
       continue;
     }
 
+    adoptImage(existing, row.giftPictureUrl, HISTORY_IMAGE_RANK);
     existing.label = label || existing.label;
     existing.seen = true;
     existing.seenRank = seenRank++;
@@ -162,6 +203,7 @@ export async function GET(req: NextRequest) {
       minDiamondCount: c.minDiamondCount,
       maxDiamondCount: c.maxDiamondCount,
       seen: c.seen,
+      imageUrl: c.imageUrl,
     }));
 
   return NextResponse.json({ gifts });

@@ -287,6 +287,9 @@ model TiktokGiftCatalog {
   name         String // 一致キー。trim + 小文字化済み(chat:giftのgiftNameと同じ正規化)
   label        String // 表示用。カタログの元表記
   diamondCount Int      @default(0)
+  // ギフトのアイコン。gift/list/ の `image.url_list` から isAllowedAvatarUrl() を通ったURLだけを入れる。
+  // avatar と違って**署名(x-expires)が付かないので永続化しても腐らない**。取れなければ null。
+  imageUrl     String?
   fetchedAt    DateTime @default(now()) // 最後にカタログから見た時刻。TTL判定に使う。**upsert時に明示更新する**
 
   @@map("tiktok_gift_catalog")

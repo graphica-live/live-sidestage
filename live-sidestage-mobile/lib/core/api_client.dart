@@ -59,12 +59,17 @@ class GiftCandidate {
   /// 厳密には「最近受け取った」の意味。
   final bool seen;
 
+  /// ギフトのアイコン。サーバー側で TikTok の画像 CDN に限定済み。
+  /// 取れないギフト（カタログに画像が無い・自由入力）では null。
+  final String? imageUrl;
+
   const GiftCandidate({
     required this.name,
     required this.label,
     required this.minDiamondCount,
     required this.maxDiamondCount,
     this.seen = false,
+    this.imageUrl,
   });
 
   /// コイン数が1種類しかない候補。自由入力やテストから作るとき用。
@@ -73,6 +78,7 @@ class GiftCandidate {
     required this.label,
     required int diamondCount,
     this.seen = false,
+    this.imageUrl,
   })  : minDiamondCount = diamondCount,
         maxDiamondCount = diamondCount;
 
@@ -106,7 +112,20 @@ class GiftCandidate {
       minDiamondCount: min <= max ? min : max,
       maxDiamondCount: min <= max ? max : min,
       seen: value['seen'] == true,
+      imageUrl: _parseImageUrl(value['imageUrl']),
     );
+  }
+
+  /// 画像URLとして受け入れてよい値か。
+  ///
+  /// サーバーが TikTok の画像 CDN に限定して返しているが、`Image.network` へそのまま
+  /// 渡る値なので https だけは端末側でも確かめる（多層防御）。旧サーバーはキー自体を
+  /// 返さないので、欠落は null として扱う。
+  static String? _parseImageUrl(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return value;
   }
 }
 
