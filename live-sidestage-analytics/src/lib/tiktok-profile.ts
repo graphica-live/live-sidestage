@@ -32,7 +32,11 @@ const ENDPOINT = "https://www.tiktok.com/api-live/user/room/";
 
 const TIMEOUT_MS = 10_000;
 
-/** `<img src>` に出す URL なので、TikTok の画像 CDN に限定する。 */
+/**
+ * `<img src>` に出す URL なので、TikTok の画像 CDN に限定する。
+ * ギフトのアイコン(`gift/list/` の `image.url_list`、`chat:gift` の `giftPictureUrl`)も
+ * 同じ CDN 群なので、この allowlist を共用する。
+ */
 const ALLOWED_AVATAR_HOSTS = [
   ".tiktokcdn.com",
   ".tiktokcdn-us.com",

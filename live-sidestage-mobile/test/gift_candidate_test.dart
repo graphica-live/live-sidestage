@@ -71,6 +71,37 @@ void main() {
       expect(gift.maxDiamondCount, 500);
     });
 
+    test('アイコンURLを読む', () {
+      const url = 'https://p16-webcast.tiktokcdn.com/img/maliva/rose.png~tplv-obj.webp';
+      final gift = GiftCandidate.tryParse({'name': 'rose', 'imageUrl': url})!;
+      expect(gift.imageUrl, url);
+    });
+
+    test('https でないURL・空・文字列でない値は捨てる', () {
+      // サーバー側でも allowlist で絞っているが、Image.network へそのまま渡る値なので
+      // 端末側でも scheme だけは確かめる。
+      final bad = <Object?>[
+        'http://p16-webcast.tiktokcdn.com/a.png',
+        'javascript:alert(1)',
+        'data:image/png;base64,AAAA',
+        'https://',
+        '',
+        123,
+        {'url': 'https://example.com/a.png'},
+      ];
+      for (final value in bad) {
+        expect(
+          GiftCandidate.tryParse({'name': 'rose', 'imageUrl': value})!.imageUrl,
+          isNull,
+          reason: '$value',
+        );
+      }
+    });
+
+    test('imageUrl が無ければ null（旧サーバー互換）', () {
+      expect(GiftCandidate.tryParse({'name': 'rose'})!.imageUrl, isNull);
+    });
+
     test('未知のフィールドを無視する', () {
       final gift = GiftCandidate.tryParse({
         'name': 'rose',
