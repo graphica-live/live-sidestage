@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { rankByLife } from "./deathmatch";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
@@ -105,6 +106,11 @@ export type BracketSideDto = {
   /** 個人戦なら1人、チーム戦は出場メンバー全員。未確定のサイドは空。 */
   entrants: BracketEntrantDto[];
   diamonds: string;
+  /**
+   * TikTok 側が配信したバトルスコア(`hostScore`)の合計。**当サービスの集計とは別物**で、
+   * 勝敗はこちらではなく `diamonds` で決まる。帰属できなかったサイドは null(表示しない)。
+   */
+  tiktokScore: string | null;
   isWinner: boolean;
 };
 
@@ -142,6 +148,8 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
       status: true,
       scheduledStartAt: true,
       detectedStartAt: true,
+      detectedBattleId: true,
+      detectionConfidence: true,
       winnerSideId: true,
       winnerDecidedBy: true,
       rules: true,
@@ -153,7 +161,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           diamonds: true,
           team: { select: { name: true } },
           participants: {
-            select: { participant: { select: { id: true, displayName: true } } },
+            select: { participant: { select: { id: true, displayName: true, roomId: true } } },
           },
         },
       },
@@ -161,6 +169,21 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
   });
 
   if (matches.length === 0) return null;
+
+  // TikTok 側のバトルスコア。公開側は誤解のコストが大きいので exact 検知のマッチだけに出す。
+  // roomId は帰属の突き合わせにだけ使い、DTO には出さない。
+  const tiktokScores = await loadMatchTiktokScores(
+    prisma,
+    matches
+      .filter((m) => canShowTiktokScore(m, "public"))
+      .map((m) => ({
+        detectedBattleId: m.detectedBattleId,
+        sides: m.sides.map((s) => ({
+          sideId: s.id,
+          roomIds: s.participants.map((p) => p.participant.roomId),
+        })),
+      }))
+  );
 
   return {
     roundCount: Math.max(...matches.map((m) => m.round)),
@@ -191,6 +214,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
             displayName: p.participant.displayName,
           })),
           diamonds: s.diamonds.toString(),
+          tiktokScore: tiktokScores.get(s.id) ?? null,
           // 確定するまでは勝者を出さない(NEEDS_REVIEW のまま公開しない)。
           isWinner: m.status === "FINISHED" && m.winnerSideId === s.id,
         };

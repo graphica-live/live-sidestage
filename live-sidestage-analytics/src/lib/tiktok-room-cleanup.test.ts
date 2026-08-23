@@ -9,7 +9,10 @@ import type { TiktokProfileResult } from "./tiktok-profile";
 
 const NOW = new Date("2026-08-23T12:00:00.000Z");
 
-const OK: TiktokProfileResult = { ok: true, profile: { avatarUrl: "https://p16.tiktokcdn.com/x", nickname: null } };
+const OK: TiktokProfileResult = {
+  ok: true,
+  profile: { avatarUrl: "https://p16.tiktokcdn.com/x", nickname: null, userId: null },
+};
 const NOT_FOUND: TiktokProfileResult = { ok: false, reason: "NOT_FOUND" };
 const RATE_LIMITED: TiktokProfileResult = { ok: false, reason: "RATE_LIMITED" };
 const ERROR: TiktokProfileResult = { ok: false, reason: "ERROR" };

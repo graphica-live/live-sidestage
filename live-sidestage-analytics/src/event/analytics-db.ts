@@ -168,6 +168,31 @@ export async function fetchBattles(
   `;
 }
 
+/**
+ * room の配信者の TikTok 数値 userId を引く。**取れていない room は Map に入らない。**
+ *
+ * バトル payload の `hostScores` は `anchorIdStr`(数値 userId)をキーに持つので、
+ * これがないと観測したスコアをどちらのサイドのものか決められない。
+ * 埋めるのは `src/lib/tiktok-host-id.ts` の補完ジョブで、未取得の room は null のまま。
+ */
+export async function fetchRoomHostUserIds(
+  client: DbClient,
+  roomIds: string[]
+): Promise<Map<string, string>> {
+  if (roomIds.length === 0) return new Map();
+
+  const rows = await client.$queryRaw<{ id: string; hostUserId: string | null }[]>`
+    SELECT id, "hostUserId"
+    FROM public."TiktokRoom"
+    WHERE id = ANY(${roomIds}::text[])
+      AND "hostUserId" IS NOT NULL
+  `;
+
+  return new Map(
+    rows.flatMap((row) => (row.hostUserId === null ? [] : [[row.id, row.hostUserId] as const]))
+  );
+}
+
 export type ListenerProfile = { nickname: string; profileImageUrl: string | null };
 
 /**

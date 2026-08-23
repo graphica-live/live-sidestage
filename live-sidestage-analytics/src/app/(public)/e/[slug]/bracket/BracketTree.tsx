@@ -1,6 +1,11 @@
 import { formatJst } from "@/event/datetime";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
-import type { BracketEntrantDto, BracketMatchDto, BracketSideDto } from "@/event/public-event";
+import {
+  formatNumber,
+  type BracketEntrantDto,
+  type BracketMatchDto,
+  type BracketSideDto,
+} from "@/event/public-event";
 import { CARD_CLIP, CARD_CLIP_MIRROR, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BracketScroller } from "./BracketScroller";
 
@@ -15,6 +20,11 @@ import { BracketScroller } from "./BracketScroller";
 // 25% / 75% に来て、コネクタの縦線をその位置へ絶対配置できる。
 // 逆に言うと、カードの中身を可変行数にすると幾何が崩れて線がずれる —
 // だから状態・不戦勝・時刻は1行にまとめ、カードに固定高を与えている(CARD_H)。
+//
+// **バトルスコアは行を増やさず、サイド枠の右上へ絶対配置している。** 通常フローの行にすると、
+// サイドの境目へ絶対配置している「VS」バッジ(高さ18px)が上側のサイドの最終行に7px重なって
+// 数字が読めなくなる(実測で確認済み)。VS は水平中央にいるので、右端へ逃がせば当たらない。
+// おかげで CARD_H も据え置ける。
 //
 // 決勝カラムの「優勝」バナーを絶対配置にしているのも同じ理由。通常フローに置くと
 // カラムの中心がカードの中心からずれ、左右から来る線が決勝カードに刺さらなくなる。
@@ -302,11 +312,16 @@ function MatchCard({
   );
 }
 
-/** アイコンを上、名前を下に縦積みして横幅を節約する。 */
+/**
+ * アイコンを上、名前を下に縦積みして横幅を節約する。
+ *
+ * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
+ * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。
+ */
 function SideRow({ side }: { side: BracketSideDto }) {
   return (
     <div
-      className={`flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-0.5 text-center ${
+      className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-0.5 text-center ${
         side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.03]"
       }`}
     >
@@ -314,6 +329,11 @@ function SideRow({ side }: { side: BracketSideDto }) {
       <span className="min-w-0 max-w-full truncate text-sm">
         {side.name ?? <span className="text-gray-600">未確定</span>}
       </span>
+      {side.tiktokScore !== null && (
+        <span className="absolute right-1 top-0.5 font-mono text-[10px] leading-none text-gray-400">
+          {formatNumber(side.tiktokScore)}
+        </span>
+      )}
     </div>
   );
 }

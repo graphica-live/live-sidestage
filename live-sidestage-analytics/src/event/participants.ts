@@ -220,6 +220,26 @@ export async function refreshEventLeases(eventId: string, endAt: Date): Promise<
 }
 
 /**
+ * いまイベント機能が監視を要求しているアカウントのハンドル一覧。
+ *
+ * 絞り込みは `renewClampedLeases()` と揃える(解放前・期限内・非 ARCHIVED)。
+ * `TiktokRoom.hostUserId` の補完対象を決めるのに使う(`src/lib/tiktok-host-id.ts`)。
+ * lease は開催前から立っているので、バトル本番までに埋まる。
+ */
+export async function activeLeaseTiktokIds(now: Date = new Date()): Promise<string[]> {
+  const leases = await prisma.eventRoomLease.findMany({
+    where: {
+      releasedAt: null,
+      monitorUntil: { gt: now },
+      event: { status: { notIn: ["ARCHIVED"] } },
+    },
+    select: { tiktokId: true },
+    distinct: ["tiktokId"],
+  });
+  return leases.map((lease) => lease.tiktokId);
+}
+
+/**
  * 期限を切り詰めた lease を確保し直す。
  *
  * イベント終了が `MAX_LEASE_DAYS`(120日)より先だと、設定できた期限は本来必要な期限より

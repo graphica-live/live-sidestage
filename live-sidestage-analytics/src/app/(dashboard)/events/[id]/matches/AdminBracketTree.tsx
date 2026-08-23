@@ -322,6 +322,13 @@ function MatchCardOrEmpty({
             <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
               {side.empty ? <span className="text-gray-600">未確定</span> : side.label}
             </span>
+            {/* TikTok 側のバトルスコア。**行を増やさず同じ行に置く** — カード高(CARD_H)を
+                変えると公開側と同じくコネクタの幾何が崩れるため。 */}
+            {side.tiktokScore !== null && (
+              <span className="shrink-0 font-mono text-[11px] text-gray-400">
+                {side.tiktokScore}
+              </span>
+            )}
           </div>
         ))
       )}

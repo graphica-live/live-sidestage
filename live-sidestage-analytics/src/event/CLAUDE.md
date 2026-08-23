@@ -30,6 +30,11 @@ access/refresh token は、イベント機能には一切必要ない。
 `TiktokRoom` への**書き込み**は `src/lib/tiktok-room.ts` の
 `ensureRoomForEvent()` / `releaseRoomMonitor()` だけを通す（後述の 5 を参照）。
 
+例外は `hostUserId` の補完だけで、これは `src/lib/tiktok-host-id.ts` の
+`backfillHostUserIds()` を通す（event-worker が回す）。**`monitorUntil` には触らない**ので
+上のルールの目的（監視期限の上限・検証・他イベントへの干渉）とは衝突しない。
+`hostUserId` は不変値なので `where` に `hostUserId: null` を入れて上書き不能にしてある。
+
 ### 2. `prisma/schema.prisma` は public と event の両方を1ファイルで管理する
 
 `schemas = ["public", "event"]`。**analytics のモデルを消したり `@@schema` を外したりしない。**
@@ -240,6 +245,26 @@ API 側も 409 で拒否する。
   **実配信のバトルでしか実 payload は得られない。** 取れたら
   `src/lib/tiktok-battle.test.ts` の合成 payload を差し替える
 
+### TikTok のバトルスコアはサイドへ帰属できたときだけ出す
+
+`hostScores` のキーは `anchorIdStr`（TikTok の数値 userId）。対応表は `TiktokRoom.hostUserId` で、
+`src/lib/tiktok-host-id.ts` が `api-live/user/room/` の `data.user.id` から後追いで埋める
+（**参加者登録の経路からは引かない**。後述の「参加者登録から TikTok へ問い合わせを足さない」）。
+
+帰属は `src/event/battle-score.ts` に閉じている。**表示専用で勝敗には一切効かない**ので、
+迷ったら出さない側に倒す。守ること:
+
+- 行のマージは anchorId ごとに**最大値**を採る。`DetectedBattle.updatedAt` は `ingestBattles` の
+  毎周 upsert で書き換わるため鮮度に使えず、上書きマージだと落ちた room の古い値が新しい値を潰す
+- `BigInt()` に渡す前に `/^\d{1,30}$/` で弾く。`"12.5"` のような値で公開ページを 500 にしない
+- サイドの出場者が1人でも解決できなければ**そのサイドは出さない**（部分和にしない）
+- 同じ `hostUserId` が複数 room から解決されたら**マッチごと出さない**（改名で旧 room と
+  新 room が同じ配信者を指すと二重加算になる）
+- 公開側は `detectionConfidence === "exact"` のマッチだけ。partial は「A が部外者と戦った」
+  ケースでも付くので、カード上の対戦相手とは別の戦いの数字が載りうる
+
+lease が切れた room は補完対象外なので、**終了済みイベントの表にはスコアが出ない**（仕様）。
+
 ### 公開トーナメント表の幾何を壊さない
 
 `BracketTree.tsx` は決勝を中央に置いた再帰レイアウトで、接続線を絶対配置している。
@@ -247,6 +272,11 @@ API 側も 409 で拒否する。
 子カードの中心が 25% / 75% からずれ、線が刺さらなくなる。
 
 - 状態・不戦勝・時刻は1行に畳んである。補足を足したいときは行を増やさず既存の行に入れる
+- バトルスコアも行を増やしていない。公開側は**サイド枠の右上へ絶対配置**した。
+  通常フローの行にすると、サイドの境目に絶対配置している「VS」バッジ（高さ18px）が
+  上側サイドの最終行に7px重なって数字が読めなくなる（実測で確認）。VS は水平中央にいるので
+  右端へ逃がせば当たらない。管理側（`AdminBracketTree.tsx`）は既存の行の右端に入れた。
+  どちらも `CARD_H` は据え置き
 - 「優勝」バナーは `absolute bottom-full`。通常フローに戻すと決勝カードの中心がずれる
 - 変えたときは実ブラウザで確認する。カード高さが1種類か、コネクタの 25/50/75% が
   カード中心と一致するかを見れば足りる（6人・11人・16人で検証済み）
@@ -263,6 +293,10 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 
 **参加者登録（`registerParticipant`）から TikTok へ問い合わせを足さない。** 主催者の
 登録リクエストが外部サービスの応答時間に引きずられる。アイコンは付随情報でしかない。
+
+同じ `api-live/user/room/` から取れる `data.user.id`（数値 userId）は**逆に不変**なので
+`TiktokRoom.hostUserId` に保存してよい（バトルスコアの帰属に要る）。ただし取得タイミングは
+アイコンと同じ理由で登録経路から切り離し、event-worker の補完ジョブに任せる。
 
 ## デスマッチ（フェーズ5）
 
