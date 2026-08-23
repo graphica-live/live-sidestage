@@ -1,4 +1,4 @@
-import type { BoosterLevel, GloveLevel, ViolationHandling } from "@/event/match-rules";
+import type { BoosterLevel, GloveLevel, RetryLevel, ViolationHandling } from "@/event/match-rules";
 import type { EntryMode, EventFormat, EventStatus, TeamPreset, Visibility } from "@/event/validation";
 
 export const FORMAT_LABELS: Record<EventFormat, string> = {
@@ -131,6 +131,12 @@ export const VIOLATION_HANDLING_LABELS: Record<ViolationHandling, string> = {
   DISQUALIFY: "失格",
   REVIEW: "審議",
   WARNING_ONLY: "警告のみ",
+};
+
+export const RETRY_LEVEL_LABELS: Record<RetryLevel, string> = {
+  NONE: "やり直し無し",
+  FIRST_X3: "ファースト3倍まで",
+  SPICHA_X3: "スピチャ3倍まで",
 };
 
 export { formatJst, toJstInputValue } from "@/event/datetime";

@@ -9,6 +9,7 @@ import {
   ENTRY_MODE_LABELS,
   FORMAT_LABELS,
   GLOVE_LEVEL_LABELS,
+  RETRY_LEVEL_LABELS,
   STATUS_CLASSES,
   STATUS_LABELS,
   VIOLATION_HANDLING_LABELS,
@@ -165,6 +166,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
               <RuleRow label="違反時の取り扱い">
                 {VIOLATION_HANDLING_LABELS[matchRules.violation]}
               </RuleRow>
+              <RuleRow label="やり直し">{RETRY_LEVEL_LABELS[matchRules.retry]}</RuleRow>
             </dl>
           </section>
         )}

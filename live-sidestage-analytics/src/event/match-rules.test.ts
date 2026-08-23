@@ -19,7 +19,14 @@ describe("parseMatchRules", () => {
     expect(parseMatchRules({})).toEqual(MATCH_RULES_DEFAULT);
     expect(
       parseMatchRules({
-        matchRules: { glove: "UNKNOWN", booster: 123, bonusTime: "yes", mist: 1, violation: "???" },
+        matchRules: {
+          glove: "UNKNOWN",
+          booster: 123,
+          bonusTime: "yes",
+          mist: 1,
+          violation: "???",
+          retry: "UNKNOWN",
+        },
       })
     ).toEqual(MATCH_RULES_DEFAULT);
   });
@@ -27,7 +34,14 @@ describe("parseMatchRules", () => {
   it("deathmatch名前空間と混在していてもmatchRulesだけを読む", () => {
     const result = parseMatchRules({
       deathmatch: { initialLife: 3 },
-      matchRules: { glove: "TWO", booster: "ONE_EACH", bonusTime: true, mist: true, violation: "REVIEW" },
+      matchRules: {
+        glove: "TWO",
+        booster: "ONE_EACH",
+        bonusTime: true,
+        mist: true,
+        violation: "REVIEW",
+        retry: "FIRST_X3",
+      },
     });
     expect(result).toEqual({
       glove: "TWO",
@@ -35,6 +49,7 @@ describe("parseMatchRules", () => {
       bonusTime: true,
       mist: true,
       violation: "REVIEW",
+      retry: "FIRST_X3",
     });
   });
 
@@ -43,5 +58,11 @@ describe("parseMatchRules", () => {
     expect(result.glove).toBe("FREE");
     expect(result.violation).toBe(MATCH_RULES_DEFAULT.violation);
     expect(result.booster).toBe(MATCH_RULES_DEFAULT.booster);
+    expect(result.retry).toBe(MATCH_RULES_DEFAULT.retry);
+  });
+
+  it("retryはSPICHA_X3も受け付ける", () => {
+    const result = parseMatchRules({ matchRules: { retry: "SPICHA_X3" } });
+    expect(result.retry).toBe("SPICHA_X3");
   });
 });
