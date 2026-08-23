@@ -98,6 +98,22 @@ model TiktokRoom {
   monitorUntil      DateTime?
   createdAt         DateTime  @default(now())
 
+  // --- TikTok非実在Streamer自動削除(tiktok-room-cleanup.ts)用 ---
+  // listenerStatusがretrying/errorに入った最初の時刻。connectedに戻ったらnullに戻す。
+  // "connecting"遷移では絶対に触らない(再接続試行のたびに数十秒間隔で走るため、
+  // ここでリセットすると不健全継続時間が永久にゼロへ巻き戻ってしまう)。
+  // 書き込みはpersistState()(tiktok-listener.ts)に一本化する。
+  unhealthySince       DateTime?
+  // fetchTiktokProfile()がNOT_FOUNDを連続で返した回数。ok:trueで確定的に0へリセットする。
+  // RATE_LIMITED/ERRORでは増減しない(判定不能として無視。TikTok側の一時的なレート制限が
+  // 続く間は永久に連続回数を達成できなくなる自己矛盾を避けるため)。
+  notFoundStreak       Int       @default(0)
+  // 上記ストリークの初回NOT_FOUND検出時刻。ストリークが0に戻ったらnullに戻す。
+  notFoundFirstAt      DateTime?
+  // このRoomに対しfetchTiktokProfile()を最後に実行した時刻(結果を問わず)。
+  // 同じ部屋への過度な再チェックを防ぐクールダウンと、候補選定の公平なローテーションに使う。
+  lastExistenceCheckAt DateTime?
+
   streamers Streamer[]
   gifts     Gift[]
   battles   TiktokBattle[]
@@ -106,6 +122,8 @@ model TiktokRoom {
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
   @@index([workerId, monitorUntil])
+  // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
+  @@index([listenerStatus, unhealthySince])
   @@schema("public")
 }
 
