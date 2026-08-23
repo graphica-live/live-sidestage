@@ -177,6 +177,7 @@ void main() {
               id: 'g1',
               giftName: 'rose',
               giftLabel: 'Rose',
+              giftImageUrl: 'https://p16.tiktokcdn.com/rose.png',
               fileName: 'a.mp3',
               soundName: 'Drumroll',
               source: SoundSourceKind.soundEffectLab,
@@ -194,12 +195,47 @@ void main() {
       expect(gift.id, 'g1');
       expect(gift.giftName, 'rose');
       expect(gift.giftLabel, 'Rose');
+      expect(gift.giftImageUrl, 'https://p16.tiktokcdn.com/rose.png');
       expect(gift.fileName, 'a.mp3');
       expect(gift.soundName, 'Drumroll');
       expect(gift.source, SoundSourceKind.soundEffectLab);
       expect(gift.sourceUrl, 'https://soundeffect-lab.info/sound/a.mp3');
       expect(gift.volume, 80);
       expect(gift.enabled, false);
+    });
+  });
+
+  group('GiftSound.giftImageUrl', () {
+    GiftSound parseImage(Object? value) => GiftSound.tryParse({
+          'id': 'g1',
+          'fileName': 'a.mp3',
+          'giftImageUrl': value,
+        })!;
+
+    test('https のURLだけ受け入れる', () {
+      expect(parseImage('https://p16.tiktokcdn.com/rose.png').giftImageUrl,
+          'https://p16.tiktokcdn.com/rose.png');
+      expect(parseImage('http://p16.tiktokcdn.com/rose.png').giftImageUrl, isNull);
+      expect(parseImage('javascript:alert(1)').giftImageUrl, isNull);
+      expect(parseImage('/rose.png').giftImageUrl, isNull);
+      expect(parseImage(42).giftImageUrl, isNull);
+    });
+
+    test('キーを持たない旧設定は null', () {
+      expect(GiftSound.tryParse({'id': 'g1', 'fileName': 'a.mp3'})!.giftImageUrl, isNull);
+    });
+
+    test('copyWith は未指定なら保ち、null を渡せば消す', () {
+      const gift = GiftSound(
+        id: 'g1',
+        giftName: 'rose',
+        fileName: 'a.mp3',
+        giftImageUrl: 'https://p16.tiktokcdn.com/rose.png',
+      );
+
+      expect(gift.copyWith(volume: 50).giftImageUrl, 'https://p16.tiktokcdn.com/rose.png');
+      // 画像を持たないギフトへ選び直したら前の絵が残ってはいけない。
+      expect(gift.copyWith(giftName: 'other', giftImageUrl: null).giftImageUrl, isNull);
     });
   });
 }

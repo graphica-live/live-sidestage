@@ -42,6 +42,10 @@ class GiftSound {
   /// 一致判定には使わない。
   final String giftLabel;
 
+  /// 選んだギフトの絵（TikTok の画像 CDN の https URL）。
+  /// 画像を持たないギフト・自由入力・「どのギフトでも」では null。
+  final String? giftImageUrl;
+
   /// アプリ専用ディレクトリ `sounds/` 配下の実ファイル名（basename）。
   final String fileName;
 
@@ -59,6 +63,7 @@ class GiftSound {
     required this.giftName,
     required this.fileName,
     this.giftLabel = '',
+    this.giftImageUrl,
     this.soundName = '',
     this.enabled = true,
     this.source = SoundSourceKind.local,
@@ -78,6 +83,7 @@ class GiftSound {
         'enabled': enabled,
         'giftName': giftName,
         'giftLabel': giftLabel,
+        'giftImageUrl': giftImageUrl,
         'fileName': fileName,
         'soundName': soundName,
         'source': source.name,
@@ -97,6 +103,7 @@ class GiftSound {
       enabled: json['enabled'] != false,
       giftName: _string(json['giftName'], maxLength: 80).trim().toLowerCase(),
       giftLabel: _string(json['giftLabel'], maxLength: 80),
+      giftImageUrl: _httpsUrl(json['giftImageUrl']),
       fileName: fileName,
       soundName: _string(json['soundName'], maxLength: 120),
       source: _enumFromName(SoundSourceKind.values, json['source'], SoundSourceKind.local),
@@ -105,10 +112,24 @@ class GiftSound {
     );
   }
 
+  /// `Image.network` へそのまま渡る値なので、保存済み設定から読み直すときも
+  /// https だけは確かめる（旧バージョンの設定はキー自体を持たないので null）。
+  static String? _httpsUrl(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return value;
+  }
+
+  /// 未指定と「null にする」を区別するための番兵。ギフトを選び直したとき、
+  /// 画像を持たないギフトなら前のギフトの絵を消さなければならない。
+  static const Object _unset = Object();
+
   GiftSound copyWith({
     bool? enabled,
     String? giftName,
     String? giftLabel,
+    Object? giftImageUrl = _unset,
     String? fileName,
     String? soundName,
     SoundSourceKind? source,
@@ -120,6 +141,9 @@ class GiftSound {
       enabled: enabled ?? this.enabled,
       giftName: giftName ?? this.giftName,
       giftLabel: giftLabel ?? this.giftLabel,
+      giftImageUrl: identical(giftImageUrl, _unset)
+          ? this.giftImageUrl
+          : giftImageUrl as String?,
       fileName: fileName ?? this.fileName,
       soundName: soundName ?? this.soundName,
       source: source ?? this.source,
