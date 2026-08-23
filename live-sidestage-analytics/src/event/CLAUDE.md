@@ -122,6 +122,12 @@ access/refresh token は、イベント機能には一切必要ない。
   参加者一覧・チーム一覧そのものから作ること（集計結果の Map から作ると0点が消える）
 - `EventContribution` は scope ごとに `MAX_CONTRIBUTION_ROWS`(200) 件で打ち切る。
   順位表の合計は**切り捨て前の全ギフト**から計算しているので、合計や順位には影響しない
+- `topParticipantId` / `participantCount`（リスナーの支援先）は **scope=EVENT の行にだけ**入れる。
+  判定は `top-participant.ts` の `resolveListenerAttribution()` で、**打ち切り前の
+  `byParticipant` 全量**から出す（打ち切り後だと参加者側の上位200位に入らない分を拾えない）。
+  基準は常にポイント（公開ページを実弾順に並べ替えても支援先は動かさない）。
+  FK は張らない（`EventStanding.subjectId` と同じ扱い）ので、読み側は名前を解決できなければ
+  表示しないこと
 - スナップショットの入れ替えは delete → createMany を同一トランザクションで行う
   （読み手が中間状態を見ないように）
 
@@ -224,6 +230,23 @@ BATTLE 倍率が設定されていなければ分割自体をしない（クエ�
 変えたり VOID にしたりしても、下流に古い勝者が残らないようにするため。ただし下流が
 すでに始まっている（LIVE / DETECTED / NEEDS_REVIEW / FINISHED）場合は書き換えず、
 API 側も 409 で拒否する。
+
+**不戦勝行（`EventMatch.rules.bye === true`）はこの STARTED_STATUSES ブロックの対象外にする。**
+段階的不戦勝方式（`buildStagedBracket()`、`src/event/bracket.ts`）では相手が実試合の勝者
+（WINNER_OF）である「動的な不戦勝行」が生成時点では未確定（両サイド空）のまま作られる。
+`match-results.ts` の進行処理が、片側に参加者が転送された時点で `FINISHED + winnerDecidedBy:
+"BYE"` へ自動確定する。この行は検知対象にならない（空側があると `assignBattles` が候補から
+外す）ので LIVE/DETECTED/NEEDS_REVIEW には絶対にならず、STARTED_STATUSES ブロックを外しても
+安全 — むしろ外さないと、上流の勝者が変わった（VOID・手動上書き等）ときにこの行が古い勝者の
+まま固まってしまう。不戦勝行への `confirm`/`draw`/`void`/`reopen` は `[matchId]/route.ts` が
+拒否する（対戦が起きていないので結果操作に意味がなく、`reopen` すると検知対象化して部外者との
+バトルを誤って拾うリスクがある）。`downstreamStarted()` も不戦勝行を透過してさらに下流を見る。
+
+**`buildStagedBracket()` が「不戦勝行」と印を付けてよいのは、`nextSlot()` の機械的な座標
+（`floor(position/2)`）で見て、相手側に構造的に誰も来ないことが保証されている場合だけ。**
+このpositionの座標と実際の転送内容の整合性が崩れると、無関係な2人の実試合を丸ごと不戦勝処理
+してしまうデータ破損バグになる（実データで一度発生し、修正済み）。ブラケット生成のロジックを
+触るときは `src/event/bracket.test.ts` の「座標の整合性」テストを必ず通すこと。
 
 ### analytics 側の観測記録
 

@@ -160,6 +160,36 @@ describe("aggregateEvent", () => {
     ]);
   });
 
+  it("イベント全体の行に、最も多く投げた参加者と投げた参加者の人数が入る", async () => {
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    const at = new Date("2026-09-02T12:00:00.000Z");
+    // listener1 は b の方へ多く投げている(a:30 / b:100)
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
+    // listener2 は a だけ
+    await insertGift({ roomId: a.roomId, uniqueId: "listener2", diamonds: 50, receivedAt: at });
+
+    await aggregateEvent(event.id);
+
+    const eventScope = await prisma.eventContribution.findMany({
+      where: { eventId: event.id, scope: "EVENT" },
+    });
+    const byListener = new Map(eventScope.map((c) => [c.listenerUniqueId, c]));
+    expect(byListener.get("listener1")?.topParticipantId).toBe(b.id);
+    expect(byListener.get("listener1")?.participantCount).toBe(2);
+    expect(byListener.get("listener2")?.topParticipantId).toBe(a.id);
+    expect(byListener.get("listener2")?.participantCount).toBe(1);
+
+    // 参加者スコープは scope 自体が答えなので持たない
+    const forA = await prisma.eventContribution.findMany({
+      where: { eventId: event.id, scope: "PARTICIPANT", scopeId: a.id },
+    });
+    expect(forA.every((c) => c.topParticipantId === null && c.participantCount === 0)).toBe(true);
+  });
+
   it("期間外(半開区間の外)のギフトは集計されない", async () => {
     const event = await newEvent();
     const a = await newParticipant(event.id, "a");

@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BRACKET_METHODS, type BracketMethod } from "@/event/bracket";
 import {
+  BRACKET_METHOD_DESCRIPTIONS,
+  BRACKET_METHOD_LABELS,
+  BRACKET_METHOD_SUBTITLES,
   ENTRY_MODE_LABELS,
   FORMAT_DESCRIPTIONS,
   FORMAT_LABELS,
@@ -24,6 +28,7 @@ import {
   validateWizardStep,
   type EventDraft,
 } from "@/event/wizard";
+import { BracketMethodDiagram } from "./BracketMethodDiagram";
 import { MatchRulesField } from "./MatchRulesField";
 import { SessionsField } from "./SessionsField";
 
@@ -165,6 +170,60 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
               種目は作成すると変更できない。参加者や対戦の入ったイベントで種目だけ差し替えると、
               集計済みの結果と噛み合わなくなるため。
             </p>
+
+            {values.format === "TOURNAMENT" && (
+              <div className="mt-2 grid gap-3 border-t border-border pt-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">
+                    トーナメント表の不戦勝(BYE)方式
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    参加人数が2のべき乗でない場合、不戦勝が出る。その配り方を選ぶ。
+                    総試合数はどちらの方式でも同じで、不戦勝の配り方だけが違う。
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {BRACKET_METHODS.map((method) => (
+                    <label
+                      key={method}
+                      className={`flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors ${
+                        values.bracketMethod === method
+                          ? "border-brand bg-brand/5"
+                          : "border-border bg-panel"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="bracketMethod"
+                          className="mt-1 accent-brand"
+                          checked={values.bracketMethod === method}
+                          onChange={() => set("bracketMethod", method as BracketMethod)}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-white">
+                            {BRACKET_METHOD_LABELS[method]}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-gray-500">
+                            {BRACKET_METHOD_SUBTITLES[method]}
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-gray-400">
+                        {BRACKET_METHOD_DESCRIPTIONS[method]}
+                      </p>
+                      <div className="flex justify-center rounded-lg bg-black/20 p-3">
+                        <BracketMethodDiagram method={method} />
+                      </div>
+                      <p className="text-center text-[10px] text-gray-600">
+                        例: 5人参加の場合(奇数の最小構成)
+                      </p>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -309,6 +368,9 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                 {values.format ? FORMAT_LABELS[values.format] : "未選択"}
                 <span className="ml-2 text-xs text-amber-400">作成後は変更できない</span>
               </Row>
+              {values.format === "TOURNAMENT" && (
+                <Row label="不戦勝方式">{BRACKET_METHOD_LABELS[values.bracketMethod]}</Row>
+              )}
               <Row label="イベント名">{values.title.trim() || "未入力"}</Row>
               <Row label="参加形式">
                 {ENTRY_MODE_LABELS[values.entryMode]}

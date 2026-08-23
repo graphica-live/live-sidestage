@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { resolveBracket, roundLabel } from "./bracket";
+import { resolveBracket, roundLabel, stagedRoundLabel } from "./bracket";
+import { parseBracketMethod } from "./bracket-rules";
 import { parseJstLocal } from "./datetime";
 import { acquireEventLock } from "./event-lock";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
@@ -107,8 +108,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
   }
 
-  const bracket = resolveBracket(entrantIds);
-
   // エントリーが実在するか(チーム戦ならチーム、個人戦なら参加者)を確認する。
   const participantsByEntrant = await resolveEntrantParticipants(eventId, entrantIds, entryMode);
 
@@ -122,6 +121,7 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       select: {
         startAt: true,
         endAt: true,
+        rules: true,
         sessions: {
           orderBy: { startAt: "asc" },
           select: { startAt: true, endAt: true, name: true },
@@ -129,6 +129,12 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       },
     });
     if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
+
+    // ブラケット方式はイベントの rules から読む(主催者が作成ウィザードで決めた値)。
+    // 表を作るたびに読み直すので、旧方式で作った表を消して別方式で作り直すこともできる。
+    const method = parseBracketMethod(event.rules);
+    const bracket = resolveBracket(entrantIds, method);
+    const label = method === "STAGED_BYE" ? stagedRoundLabel : roundLabel;
 
     const roundStarts = planRoundStarts({
       windows: resolveEventWindows(event),
@@ -162,6 +168,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
 
     for (const match of bracket.matches) {
       const roundStart = roundStarts[match.round - 1];
+      // 片方が BYE の行は「不戦勝行」として印を残す。静的(相手が確定済みの ENTRANT)・
+      // 動的(段階的方式で、相手がまだ勝者未確定の WINNER_OF)のどちらも該当する。
+      // match-results.ts の進行処理と [matchId] API の操作ガードがこの印を見る
+      // (詳細はそれぞれのファイルのコメントを参照)。
+      const isBye = match.isBye;
       const created = await tx.eventMatch.create({
         data: {
           eventId,
@@ -171,7 +182,10 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
           scheduledStartAt: roundStart,
           scheduledEndAt: new Date(roundStart.getTime() + matchWindowMin * 60_000),
           status: "SCHEDULED",
-          rules: { roundLabel: roundLabel(match.round, bracket.roundCount) },
+          rules: {
+            roundLabel: label(match.round, bracket.roundCount),
+            ...(isBye ? { bye: true } : {}),
+          },
         },
       });
 

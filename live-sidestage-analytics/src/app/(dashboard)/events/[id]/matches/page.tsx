@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseBracketMethod } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { resolveEventWindows } from "@/event/sessions";
@@ -188,6 +189,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           matches={rows}
           lives={lives}
           rules={parseDeathmatchRules(event.rules)}
+          bracketMethod={parseBracketMethod(event.rules)}
         />
       </div>
 
