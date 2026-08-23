@@ -13,12 +13,16 @@ export type BoosterLevel = (typeof BOOSTER_LEVELS)[number];
 export const VIOLATION_HANDLINGS = ["DISQUALIFY", "REVIEW", "WARNING_ONLY"] as const;
 export type ViolationHandling = (typeof VIOLATION_HANDLINGS)[number];
 
+export const RETRY_LEVELS = ["NONE", "FIRST_X3", "SPICHA_X3"] as const;
+export type RetryLevel = (typeof RETRY_LEVELS)[number];
+
 export type MatchRules = {
   glove: GloveLevel;
   booster: BoosterLevel;
   bonusTime: boolean;
   mist: boolean;
   violation: ViolationHandling;
+  retry: RetryLevel;
 };
 
 export const MATCH_RULES_DEFAULT: MatchRules = {
@@ -27,6 +31,7 @@ export const MATCH_RULES_DEFAULT: MatchRules = {
   bonusTime: false,
   mist: false,
   violation: "DISQUALIFY",
+  retry: "NONE",
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -54,6 +59,9 @@ export function parseMatchRules(rules: unknown): MatchRules {
   const violation = VIOLATION_HANDLINGS.includes(source.violation as ViolationHandling)
     ? (source.violation as ViolationHandling)
     : MATCH_RULES_DEFAULT.violation;
+  const retry = RETRY_LEVELS.includes(source.retry as RetryLevel)
+    ? (source.retry as RetryLevel)
+    : MATCH_RULES_DEFAULT.retry;
 
-  return { glove, booster, bonusTime, mist, violation };
+  return { glove, booster, bonusTime, mist, violation, retry };
 }

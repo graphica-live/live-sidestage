@@ -3,15 +3,18 @@
 import {
   BOOSTER_LEVEL_LABELS,
   GLOVE_LEVEL_LABELS,
+  RETRY_LEVEL_LABELS,
   VIOLATION_HANDLING_LABELS,
 } from "@/event/labels";
 import {
   BOOSTER_LEVELS,
   GLOVE_LEVELS,
+  RETRY_LEVELS,
   VIOLATION_HANDLINGS,
   type BoosterLevel,
   type GloveLevel,
   type MatchRules,
+  type RetryLevel,
   type ViolationHandling,
 } from "@/event/match-rules";
 
@@ -78,22 +81,42 @@ export function MatchRulesField({
         <ToggleField label="ミスト" value={value.mist} onChange={(next) => set("mist", next)} />
       </div>
 
-      <div>
-        <label className="label" htmlFor="matchRules-violation">
-          違反時の取り扱い
-        </label>
-        <select
-          id="matchRules-violation"
-          className="input-field"
-          value={value.violation}
-          onChange={(e) => set("violation", e.target.value as ViolationHandling)}
-        >
-          {VIOLATION_HANDLINGS.map((v) => (
-            <option key={v} value={v}>
-              {VIOLATION_HANDLING_LABELS[v]}
-            </option>
-          ))}
-        </select>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="matchRules-violation">
+            違反時の取り扱い
+          </label>
+          <select
+            id="matchRules-violation"
+            className="input-field"
+            value={value.violation}
+            onChange={(e) => set("violation", e.target.value as ViolationHandling)}
+          >
+            {VIOLATION_HANDLINGS.map((v) => (
+              <option key={v} value={v}>
+                {VIOLATION_HANDLING_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="matchRules-retry">
+            やり直し
+          </label>
+          <select
+            id="matchRules-retry"
+            className="input-field"
+            value={value.retry}
+            onChange={(e) => set("retry", e.target.value as RetryLevel)}
+          >
+            {RETRY_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {RETRY_LEVEL_LABELS[level]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );
