@@ -1,3 +1,4 @@
+import type { BracketMethod } from "@/event/bracket";
 import type { BoosterLevel, GloveLevel, RetryLevel, ViolationHandling } from "@/event/match-rules";
 import type { EntryMode, EventFormat, EventStatus, TeamPreset, Visibility } from "@/event/validation";
 
@@ -11,6 +12,23 @@ export const FORMAT_DESCRIPTIONS: Record<EventFormat, string> = {
   TOURNAMENT: "対戦カードと時間枠を組み、実際のバトルを自動検知して勝敗を決める",
   DIAMOND_RACE: "イベント期間中の獲得ダイヤを競う",
   DEATHMATCH: "ライフポイント制。マッチ結果に応じてライフが増減する",
+};
+
+export const BRACKET_METHOD_LABELS: Record<BracketMethod, string> = {
+  STANDARD: "標準シード方式",
+  STAGED_BYE: "段階的不戦勝方式",
+};
+
+export const BRACKET_METHOD_SUBTITLES: Record<BracketMethod, string> = {
+  STANDARD: "プロ大会でよく使われる方式",
+  STAGED_BYE: "アマチュア大会でよく使われる方式",
+};
+
+export const BRACKET_METHOD_DESCRIPTIONS: Record<BracketMethod, string> = {
+  STANDARD:
+    "不戦勝を1回戦にまとめ、上位シードへ優先的に割り当てる。参加者が2のべき乗でない場合、1回戦で複数人が同時に不戦勝になることがある(例: 5人なら3人が同時に不戦勝)。上位シードほど早い段階で潰し合わずに済む。",
+  STAGED_BYE:
+    "各ラウンドの参加者数を半分に分け、奇数なら1人だけ不戦勝にする。同じラウンドで複数人が同時に不戦勝になることはない(例: 5人なら1回戦は1人だけ不戦勝で、標準方式の「3人同時」にはならない)。ただし、同じ人が複数ラウンドにわたって不戦勝になることはある。",
 };
 
 export const ENTRY_MODE_LABELS: Record<EntryMode, string> = {

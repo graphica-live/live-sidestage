@@ -16,6 +16,7 @@ const baseDraft: EventDraft = {
   visibility: "PRIVATE",
   sessions: [{ name: "", startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" }],
   matchRules: MATCH_RULES_DEFAULT,
+  bracketMethod: "STANDARD",
   prizeText: "",
   noticeText: "",
 };
@@ -29,6 +30,26 @@ describe("validateWizardStep", () => {
 
   it("種目を選んでいれば通す", () => {
     expect(validateWizardStep("format", { ...baseDraft, format: "TOURNAMENT" })).toEqual([]);
+  });
+
+  it("トーナメントで不戦勝方式が不正なら弾く", () => {
+    expect(
+      validateWizardStep("format", {
+        ...baseDraft,
+        format: "TOURNAMENT",
+        bracketMethod: "INVALID" as never,
+      })
+    ).toEqual(["トーナメント表の方式を選んでください。"]);
+  });
+
+  it("トーナメント以外では不戦勝方式を見ない", () => {
+    expect(
+      validateWizardStep("format", {
+        ...baseDraft,
+        format: "DIAMOND_RACE",
+        bracketMethod: "INVALID" as never,
+      })
+    ).toEqual([]);
   });
 
   it("イベント名が空なら弾く", () => {

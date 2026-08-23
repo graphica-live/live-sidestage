@@ -34,6 +34,8 @@ function defaultDraft(): EventDraft {
       },
     ],
     matchRules: MATCH_RULES_DEFAULT,
+    // 標準シード方式(プロ大会方式)を既定にする。段階的方式はTOURNAMENT選択時に選べる。
+    bracketMethod: "STANDARD",
     prizeText: "",
     noticeText: DEFAULT_NOTICE_TEMPLATE,
   };

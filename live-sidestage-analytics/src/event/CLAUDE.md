@@ -231,6 +231,23 @@ BATTLE 倍率が設定されていなければ分割自体をしない（クエ�
 すでに始まっている（LIVE / DETECTED / NEEDS_REVIEW / FINISHED）場合は書き換えず、
 API 側も 409 で拒否する。
 
+**不戦勝行（`EventMatch.rules.bye === true`）はこの STARTED_STATUSES ブロックの対象外にする。**
+段階的不戦勝方式（`buildStagedBracket()`、`src/event/bracket.ts`）では相手が実試合の勝者
+（WINNER_OF）である「動的な不戦勝行」が生成時点では未確定（両サイド空）のまま作られる。
+`match-results.ts` の進行処理が、片側に参加者が転送された時点で `FINISHED + winnerDecidedBy:
+"BYE"` へ自動確定する。この行は検知対象にならない（空側があると `assignBattles` が候補から
+外す）ので LIVE/DETECTED/NEEDS_REVIEW には絶対にならず、STARTED_STATUSES ブロックを外しても
+安全 — むしろ外さないと、上流の勝者が変わった（VOID・手動上書き等）ときにこの行が古い勝者の
+まま固まってしまう。不戦勝行への `confirm`/`draw`/`void`/`reopen` は `[matchId]/route.ts` が
+拒否する（対戦が起きていないので結果操作に意味がなく、`reopen` すると検知対象化して部外者との
+バトルを誤って拾うリスクがある）。`downstreamStarted()` も不戦勝行を透過してさらに下流を見る。
+
+**`buildStagedBracket()` が「不戦勝行」と印を付けてよいのは、`nextSlot()` の機械的な座標
+（`floor(position/2)`）で見て、相手側に構造的に誰も来ないことが保証されている場合だけ。**
+このpositionの座標と実際の転送内容の整合性が崩れると、無関係な2人の実試合を丸ごと不戦勝処理
+してしまうデータ破損バグになる（実データで一度発生し、修正済み）。ブラケット生成のロジックを
+触るときは `src/event/bracket.test.ts` の「座標の整合性」テストを必ず通すこと。
+
 ### analytics 側の観測記録
 
 `TiktokBattle`（`@@map("tiktok_battles")`）に room ごとの行として入る。
