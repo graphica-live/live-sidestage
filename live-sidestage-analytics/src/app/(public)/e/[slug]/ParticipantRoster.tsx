@@ -1,4 +1,5 @@
 import type { RosterParticipantDto, RosterTeamDto } from "@/event/public-event";
+import { CARD_CLIP } from "./battle-ui";
 
 /**
  * 出場者一覧・プロフィール。既存の順位表(EventResults)とは別の、名前+アイコン+ハンドルだけの
@@ -15,7 +16,7 @@ export function ParticipantRoster({
   entryMode: string;
 }) {
   if (participants.length === 0) {
-    return <p className="card text-sm text-gray-500">まだ出場者が登録されていない。</p>;
+    return <p className={`border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ出場者が登録されていない。</p>;
   }
 
   if (entryMode !== "TEAM") {
@@ -55,7 +56,7 @@ export function ParticipantRoster({
                   aria-hidden
                 />
               )}
-              <span className="text-sm font-medium text-white">{team.name}</span>
+              <span className="text-sm font-bold text-white">{team.name}</span>
             </div>
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {members.map((p) => (
@@ -87,14 +88,14 @@ function ParticipantCard({ participant }: { participant: RosterParticipantDto })
         href={`https://www.tiktok.com/@${participant.tiktokId}`}
         target="_blank"
         rel="noreferrer"
-        className="card flex items-center gap-2 hover:border-brand/40"
+        className={`flex items-center gap-2 border border-white/10 bg-panel p-3 transition-colors hover:border-brand/50 hover:bg-white/[0.04] ${CARD_CLIP}`}
       >
         {/* 外部(TikTok CDN)経由の画像なのでnext/imageの最適化は通さない。 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`/api/public/avatar/${participant.id}`}
           alt=""
-          className="h-9 w-9 shrink-0 rounded-full bg-white/5 object-cover"
+          className="h-9 w-9 shrink-0 rounded-full border border-white/10 bg-white/5 object-cover"
           loading="lazy"
         />
         <div className="min-w-0">

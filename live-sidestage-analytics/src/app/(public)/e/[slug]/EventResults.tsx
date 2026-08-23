@@ -10,6 +10,7 @@ import type {
 } from "@/event/public-event";
 import { formatNumber, formatPoints } from "@/event/public-event";
 import type { EventFormat } from "@/event/validation";
+import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "./battle-ui";
 
 // 公開ページの結果表示。開催中だけポーリングして更新する。
 // 集計ワーカーの間隔が10秒なので、それより短く引いても新しい値は出てこない。
@@ -74,24 +75,27 @@ export function EventResults({
   const pendingNote = FORMAT_PENDING_NOTES[format as EventFormat];
 
   return (
-    <div className="mt-8">
+    <div className="mt-10">
       {pendingNote && (
-        <p className="mb-4 rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
+        <p className={`mb-4 border border-yellow-400/25 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80 ${CARD_CLIP}`}>
           {pendingNote}
         </p>
       )}
 
-      <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === "standings"} onClick={() => setTab("standings")}>
-          {entryMode === "TEAM" ? `チーム${heading}` : `参加者${heading}`}
-        </TabButton>
-        <TabButton active={tab === "listeners"} onClick={() => setTab("listeners")}>
-          リスナー貢献
-        </TabButton>
+      <div className="flex items-center gap-2.5">
+        <span className="h-5 w-1.5 shrink-0 -skew-x-12 bg-brand" aria-hidden />
+        <div className="flex gap-1 border-b border-white/10">
+          <TabButton active={tab === "standings"} onClick={() => setTab("standings")}>
+            {entryMode === "TEAM" ? `チーム${heading}` : `参加者${heading}`}
+          </TabButton>
+          <TabButton active={tab === "listeners"} onClick={() => setTab("listeners")}>
+            リスナー貢献
+          </TabButton>
+        </div>
       </div>
 
       {notAggregated ? (
-        <p className="card mt-4 text-sm text-gray-500">
+        <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
           {status === "SCHEDULED"
             ? "イベントが始まると、順位とリスナーの貢献ランキングがここに出る。"
             : "まだ集計されたギフトがない。"}
@@ -108,7 +112,7 @@ export function EventResults({
             <select
               value={participantId}
               onChange={(e) => setParticipantId(e.target.value)}
-              className="input-field w-auto text-xs"
+              className="w-auto border border-white/10 bg-panel px-3 py-2 text-xs text-white focus:border-brand/60 focus:outline-none"
               aria-label="集計対象"
             >
               <option value="">イベント全体</option>
@@ -166,9 +170,9 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-brand font-medium text-white"
+          ? "border-brand text-white"
           : "border-transparent text-gray-500 hover:text-gray-300"
       }`}
     >
@@ -189,11 +193,11 @@ function SortButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-2 py-1.5 text-xs transition-colors ${
-        active ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-300"
+      className={`${TAG_SKEW} border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+        active ? "border-brand/50 bg-brand/10 text-brand" : "border-white/10 text-gray-500 hover:text-gray-300"
       }`}
     >
-      {children}
+      <span className={`inline-block ${TAG_UNSKEW}`}>{children}</span>
     </button>
   );
 }
@@ -201,30 +205,35 @@ function SortButton({
 function RankBadge({ rank }: { rank: number }) {
   const medal =
     rank === 1
-      ? "bg-yellow-400/15 text-yellow-300"
+      ? "border-yellow-400/60 bg-yellow-400/15 text-yellow-300"
       : rank === 2
-        ? "bg-gray-300/15 text-gray-200"
+        ? "border-gray-300/50 bg-gray-300/15 text-gray-200"
         : rank === 3
-          ? "bg-orange-400/15 text-orange-300"
-          : "text-gray-500";
+          ? "border-orange-400/50 bg-orange-400/15 text-orange-300"
+          : "border-white/10 text-gray-500";
   return (
     <span
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums ${medal}`}
+      className={`flex h-8 w-8 shrink-0 -skew-x-12 items-center justify-center border font-mono text-xs font-black tabular-nums ${medal}`}
     >
-      {rank}
+      <span className={`inline-block ${TAG_UNSKEW}`}>{rank}</span>
     </span>
   );
 }
 
 function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMultiplier: boolean }) {
   if (rows.length === 0) {
-    return <p className="card mt-4 text-sm text-gray-500">まだ順位がついていない。</p>;
+    return <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ順位がついていない。</p>;
   }
 
   return (
     <ul className="mt-4 space-y-2">
       {rows.map((r) => (
-        <li key={r.subjectId} className="card flex items-center gap-3">
+        <li
+          key={r.subjectId}
+          className={`flex items-center gap-3 border p-3 ${CARD_CLIP} ${
+            r.rank === 1 ? "border-brand/40 bg-brand/[0.06]" : "border-white/10 bg-panel"
+          }`}
+        >
           <RankBadge rank={r.rank} />
           {r.colorHex && (
             <span
@@ -262,7 +271,7 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
  */
 function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
   if (rows.length === 0) {
-    return <p className="card mt-4 text-sm text-gray-500">まだ順位がついていない。</p>;
+    return <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ順位がついていない。</p>;
   }
 
   return (
@@ -270,7 +279,7 @@ function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
       {rows.map((r) => (
         <li
           key={r.subjectId}
-          className={`card flex items-center gap-3 ${r.eliminated ? "opacity-50" : ""}`}
+          className={`flex items-center gap-3 border border-white/10 bg-panel p-3 ${CARD_CLIP} ${r.eliminated ? "opacity-50" : ""}`}
         >
           <RankBadge rank={r.rank} />
           {r.colorHex && (
@@ -313,13 +322,13 @@ function ListenerTable({
   hasMultiplier: boolean;
 }) {
   if (rows.length === 0) {
-    return <p className="card text-sm text-gray-500">まだギフトが記録されていない。</p>;
+    return <p className={`border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだギフトが記録されていない。</p>;
   }
 
   return (
     <ul className="space-y-2">
       {rows.map((r, i) => (
-        <li key={r.listenerUniqueId} className="card flex items-center gap-3">
+        <li key={r.listenerUniqueId} className={`flex items-center gap-3 border border-white/10 bg-panel p-3 ${CARD_CLIP}`}>
           <RankBadge rank={i + 1} />
           {r.profileImageUrl ? (
             // 外部(TikTok CDN)の画像なので next/image の最適化は通さない。
