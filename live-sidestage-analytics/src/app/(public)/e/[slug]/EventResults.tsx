@@ -328,36 +328,47 @@ function ListenerTable({
   return (
     <ul className="space-y-2">
       {rows.map((r, i) => (
-        <li key={r.listenerUniqueId} className={`flex items-center gap-3 border border-white/10 bg-panel p-3 ${CARD_CLIP}`}>
-          <RankBadge rank={i + 1} />
-          {r.profileImageUrl ? (
-            // 外部(TikTok CDN)の画像なので next/image の最適化は通さない。
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={r.profileImageUrl}
-              alt=""
-              className="h-8 w-8 shrink-0 rounded-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <span className="h-8 w-8 shrink-0 rounded-full bg-white/5" aria-hidden />
+        <li key={r.listenerUniqueId} className={`border border-white/10 bg-panel p-3 ${CARD_CLIP}`}>
+          <div className="flex items-center gap-3">
+            <RankBadge rank={i + 1} />
+            {r.profileImageUrl ? (
+              // 外部(TikTok CDN)の画像なので next/image の最適化は通さない。
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={r.profileImageUrl}
+                alt=""
+                className="h-8 w-8 shrink-0 rounded-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <span className="h-8 w-8 shrink-0 rounded-full bg-white/5" aria-hidden />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm">{r.nickname}</p>
+              <p className="truncate font-mono text-xs text-gray-500">@{r.listenerUniqueId}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="font-mono text-sm tabular-nums">
+                {hasMultiplier ? formatPoints(r.points) : formatNumber(r.diamonds)}
+                <span className="ml-1 text-xs text-gray-500">
+                  {hasMultiplier ? "pt" : "ダイヤ"}
+                </span>
+              </p>
+              <p className="font-mono text-xs text-gray-600 tabular-nums">
+                {hasMultiplier && `実弾 ${formatNumber(r.diamonds)} ・ `}
+                {formatNumber(String(r.giftCount))} 個
+              </p>
+            </div>
+          </div>
+          {/* 支援先。イベント全体の表示でだけ入る(参加者を選んでいるときは自明なので出ない)。
+              判定はポイント基準なので、実弾(ダイヤ)順に並べ替えても所属は動かない。
+              名前が長いとモバイルで切れるので、上の行の中ではなくカード幅いっぱいに置く。 */}
+          {r.topParticipantName && (
+            <p className="mt-2 truncate border-t border-white/5 pt-2 text-xs text-gray-500">
+              <span className="text-brand/80">{r.topParticipantName}</span> のリスナー
+              {r.participantCount > 1 && <>（他{r.participantCount - 1}人にも）</>}
+            </p>
           )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm">{r.nickname}</p>
-            <p className="truncate font-mono text-xs text-gray-500">@{r.listenerUniqueId}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="font-mono text-sm tabular-nums">
-              {hasMultiplier ? formatPoints(r.points) : formatNumber(r.diamonds)}
-              <span className="ml-1 text-xs text-gray-500">
-                {hasMultiplier ? "pt" : "ダイヤ"}
-              </span>
-            </p>
-            <p className="font-mono text-xs text-gray-600 tabular-nums">
-              {hasMultiplier && `実弾 ${formatNumber(r.diamonds)} ・ `}
-              {formatNumber(String(r.giftCount))} 個
-            </p>
-          </div>
         </li>
       ))}
     </ul>

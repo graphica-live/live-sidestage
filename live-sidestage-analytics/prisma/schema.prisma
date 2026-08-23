@@ -632,6 +632,13 @@ model EventContribution {
   diamonds         BigInt   @default(0) // 実弾(素のダイヤ)
   points           Decimal  @default(0) @db.Decimal(18, 2) // 倍率適用後
   giftCount        Int      @default(0)
+  // そのリスナーが最も多くポイントを入れた参加者。scope="EVENT" のときだけ入る
+  // (PARTICIPANT / TEAM は scope 自体が答えなので null)。
+  // EventStanding.subjectId と同じく **FK を張らない** — 参加者が消えても集計を壊さず、
+  // 次の再集計で消える/付け替わるのに任せる。読み側は解決できなければ表示しない。
+  topParticipantId String?
+  // そのリスナーがギフトを入れた参加者の人数。scope="EVENT" のときだけ意味を持つ
+  participantCount Int      @default(0)
   updatedAt        DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
