@@ -14,6 +14,20 @@
 // 手動確認が要る一覧として出す(そのIDが過去に配信できていた=一時的な削除/凍結の可能性があり、
 // 「打ち間違いで一度も繋がったことがない」ケースだけを機械的に消すため)。
 //
+// **配信者がTikTokで改名(uniqueId変更)した場合、この判定だけでは「打ち間違いで最初から
+// 存在しない」と区別できない — 改名後は旧uniqueIdへの問い合わせが同じNOT_FOUNDになる。**
+// 上のGift件数チェックが、既にギフトを受けていた改名済みアカウントの誤削除は防ぐ。
+//
+// TikTokのレスポンス(api-live/user/room/のdata.user)には永続的な安定ID `secUid` / `id` が
+// 含まれるが、これを鍵にした逆引き(secUid→現在のuniqueId)は無認証では不可能と実測済み
+// (2026-08確認):
+//   - api/user/detail/?secUid=... → HTTP 200だが本文が完全に空(msToken等の署名必須API)
+//   - api-live/user/room/?secUid=...(uniqueIdなし) → params_error。uniqueIdが必須パラメータ
+//   - 正しいsecUid + 存在しないuniqueId → user_not_found(secUidは検索条件に一切使われない)
+//   - node/share/user/@<id> → 403 Forbidden(即ブロック)
+// EulerStream等の署名サービス経由でapi/user/detailを叩けば理論上は可能だが、追加コスト・
+// 複雑性が見合わないため見送っている。同じ調査を繰り返さないための記録。
+//
 // 使い方:
 //   npx tsx scripts/cleanup-nonexistent-streamers.ts           # dry-run(一覧表示のみ)
 //   npx tsx scripts/cleanup-nonexistent-streamers.ts --apply   # 実際に削除
