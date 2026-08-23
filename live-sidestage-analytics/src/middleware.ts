@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { AGENCY_LOGIN_PATH, AGENCY_SESSION_COOKIE } from "@/lib/agency/session-cookie";
+import { AGENCY_SESSION_COOKIE } from "@/lib/agency/session-cookie";
+import { isAgencyPath, loginPathFor } from "@/lib/login-path";
 
-// 認証は2系統ある。どちらのセッションを見るかをパスで振り分ける。
+// セッションは2系統ある。どちらの Cookie を見るかをパスで振り分ける。
 //
 //   /agency, /api/agency  → 事務所セッション(Cookie: agency-auth.session-token)
 //   それ以外              → 配信者/管理者セッション(Cookie: next-auth.session-token)
@@ -10,14 +11,14 @@ import { AGENCY_LOGIN_PATH, AGENCY_SESSION_COOKIE } from "@/lib/agency/session-c
 // Cookie が別なので、同じブラウザで両方に同時ログインでき、片方のログアウトは
 // もう片方に影響しない。詳細は src/lib/agency/session-cookie.ts を参照。
 //
+// **ログイン画面は3系統ある**(analytics / イベント / 事務所)。イベントは表向き別サービス
+// として分離してあるので、/events から弾かれたユーザーを analytics ブランドの /login へ
+// 送らない。飛び先の判定は src/lib/login-path.ts の loginPathFor() に集約してある。
+// セッション Cookie はイベントと analytics で共有したままなので、**変わるのは飛び先だけで
+// 保護範囲(matcher)は動かない**。
+//
 // このファイルは Edge ランタイムで動くため、Prisma を引き込むモジュール
 // (src/lib/agency/auth.ts など)を import してはいけない。
-const AGENCY_PREFIXES = ["/agency", "/api/agency"];
-
-function isAgencyPath(pathname: string): boolean {
-  return AGENCY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
 export default async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const agency = isAgencyPath(pathname);
@@ -30,7 +31,7 @@ export default async function middleware(req: NextRequest) {
 
   if (token) return NextResponse.next();
 
-  const loginUrl = new URL(agency ? AGENCY_LOGIN_PATH : "/login", req.url);
+  const loginUrl = new URL(loginPathFor(pathname), req.url);
   loginUrl.searchParams.set("callbackUrl", `${pathname}${search}`);
   return NextResponse.redirect(loginUrl);
 }
@@ -43,6 +44,8 @@ export default async function middleware(req: NextRequest) {
 // 公開してよいものだけを列挙している:
 //   login / register  — 配信者/管理者のログイン導線そのもの
 //   agency/login      — 事務所のログイン導線そのもの(保護すると自分自身へ無限リダイレクトする)
+//   event/login       — イベント主催者のログイン導線そのもの(同上)。`e` は境界付きなので
+//                       /event/login にはマッチせず、専用エントリが要る
 //   e                 — イベントの公開ページ(URLを知っていれば誰でも閲覧可)
 //   api/public        — 上記が読む公開API
 //   api/auth          — NextAuth(配信者/管理者)
@@ -60,6 +63,6 @@ export default async function middleware(req: NextRequest) {
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };

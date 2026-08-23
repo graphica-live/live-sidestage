@@ -1,8 +1,12 @@
 # CLAUDE.md — イベント機能（LIVE Sidestage Event）
 
-`src/event/` はイベント（大会）運営機能の中核。画面は `src/app/(dashboard)/events/`、
+`src/event/` はイベント（大会）運営機能の中核。画面は `src/app/(event)/events/`、
 公開ページは `src/app/(public)/e/`、API は `src/app/api/events/` と `src/app/api/public/`、
 集計ワーカーは `event-worker.ts`。
+
+**UI は analytics と表向き分離してある。** 管理画面が `(dashboard)` ではなく `(event)` route group に
+あるのはそのため。`(event)` 配下へ analytics の機能・ブランド・導線を持ち込まないこと。
+内部のデータ結合（`analytics-db.ts`）は分離対象ではない。
 
 仕様の全体像・セットアップ・デプロイ順序は [docs/EVENT.md](../../docs/EVENT.md) にある。
 ここには、コードを読むだけでは気づけない制約と、壊しやすい箇所だけを書く。

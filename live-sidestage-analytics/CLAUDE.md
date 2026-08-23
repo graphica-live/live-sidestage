@@ -167,11 +167,12 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 もとは `live-sidestage-event/` という別プロジェクトだったが、analytics へ統合した。同じ Postgres・同じ `public."User"`・同じ Google OAuth を共有していて分離の実体がなく、「`public` を Prisma の管理下に置けない」制約が恒久的な事故要因として残り続けていたため。**プロセス分離（TikTok 接続を巻き込まない）は Railway のサービス分割で達成している。**
 
-- コードは `src/event/`（ロジック）/ `src/app/(dashboard)/events/`（管理画面）/ `src/app/(public)/e/`（公開ページ）/ `src/app/api/events/` と `api/public/`（API）/ `event-worker.ts`（集計）
+- コードは `src/event/`（ロジック）/ `src/app/(event)/events/`（管理画面）/ `src/app/(public)/e/`（公開ページ）/ `src/app/api/events/` と `api/public/`（API）/ `event-worker.ts`（集計）
+- **UI は analytics と表向き分離してある。** 管理画面は `(dashboard)` ではなく専用の `(event)` route group に置き、`src/app/(event)/EventHeader.tsx`（ブランドのみ）と専用 metadata を持つ。**`(event)` 配下に analytics の機能・ブランド・導線を持ち込まないこと**（リスナー接続ステータス、貢献リストオーバーレイ設定、`/setup`、`/admin` など）。逆に analytics 側の `DashboardHeader.tsx` からも `/events` への導線は外してある。内部のデータ結合（`src/event/analytics-db.ts`）は分離対象ではないのでそのまま
 - **`prisma/schema.prisma` が `public` と `event` の両方を管理する**（`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。モデルを消したり `@@schema` を外したりすると `db push --accept-data-loss` の削除差分になる
 - `public` のテーブルを読むのは [src/event/analytics-db.ts](src/event/analytics-db.ts) だけ。raw SQL は multiSchema でも自動修飾されないので `public."TiktokRoom"` のように完全修飾する。**列は必ず明示する**（`SELECT *` は `Streamer.apiKey` や `User.password` まで持ってくる）
 - `TiktokRoom.monitorUntil` の書き込みは [src/lib/tiktok-room.ts](src/lib/tiktok-room.ts) の `ensureRoomForEvent()` / `releaseRoomMonitor()` を通す。**主催者入力がそのまま届く経路なので、tiktokId の形式検証・120日の期限上限・監視中 room 500件の上限を外さないこと**
-- 認証は analytics の NextAuth をそのまま使う。保護範囲は `src/middleware.ts` の除外リストで決まり、**各エントリには境界 `(?:/|$)` が要る**（境界なしの `e` は `/events` まで公開してしまう）。[src/middleware.test.ts](src/middleware.test.ts) が固定している
+- 認証は analytics の NextAuth をそのまま使う（セッション Cookie も共有）。保護範囲は `src/middleware.ts` の除外リストで決まり、**各エントリには境界 `(?:/|$)` が要る**（境界なしの `e` は `/events` まで公開してしまう）。[src/middleware.test.ts](src/middleware.test.ts) が固定している。未ログイン時の**飛び先**は [src/lib/login-path.ts](src/lib/login-path.ts) の `loginPathFor()` が決め、イベント側は analytics の `/login` ではなく `/event/login` へ送る。飛び先を変えても保護範囲は動かない
 - 日時は必ず `src/event/datetime.ts` の `parseJstLocal()` を通す。`new Date("2026-09-01T20:00")` はサーバーのタイムゾーン依存で、Railway（UTC）では9時間ずれる
 - **集計は web でも `worker.ts` でもなく [event-worker.ts](event-worker.ts) が10秒間隔で回す**。増分ではなく毎回イベント期間の全ギフトを再計算し、結果を `EventContribution` / `EventStanding` にスナップショットとして置き換える（バトル区間が後から確定するため増分では修正できない）。排他は `pg_try_advisory_xact_lock` を interactive transaction 内で取る（セッション単位のロックは Prisma のプールで取得と解放が別接続になりうるので使わない）
 - 集計の打ち切りに `status` を使わない。締切（`endAt` + 1時間）後の集計が成功したら `Event.finalizedAt` を立てて以後スキップする。`endAt` を延ばしたら `finalizedAt` を `null` に戻すこと

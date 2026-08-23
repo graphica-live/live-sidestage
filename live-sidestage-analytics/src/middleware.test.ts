@@ -52,6 +52,7 @@ describe("middleware の matcher", () => {
       "/e/summer-cup/ranking",
       "/e/summer-cup/bracket",
       "/api/public/events/summer-cup/snapshot",
+      "/event/login", // 主催者のログイン導線そのもの(保護すると自分自身へ無限リダイレクト)
     ]) {
       expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
     }
@@ -82,8 +83,9 @@ describe("middleware の matcher", () => {
   // `e` が `/events` を、`login` が `/login-history` を公開してしまう。
   it("除外エントリは前置一致ではなくパス境界で判定する", () => {
     for (const path of [
-      "/events", // `e` に食われてはいけない
+      "/events", // `e` にも `event/login` にも食われてはいけない
       "/events/abc123",
+      "/event/logins", // `event/login` に食われてはいけない
       "/registered", // `register` に食われてはいけない
       "/login-history", // `login` に食われてはいけない
       "/overlays", // `overlay` に食われてはいけない
