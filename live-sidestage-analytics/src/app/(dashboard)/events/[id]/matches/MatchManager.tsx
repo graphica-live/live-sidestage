@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CONFIDENCE_NOTES,
@@ -134,6 +134,9 @@ export function MatchManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seed, setSeed] = useState<string[]>(entrants.map((e) => e.id));
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const seedRowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
   const [startAt, setStartAt] = useState(() =>
     // 1回戦は日程の中で始めないと表を作れない(サーバー側が拒否する)。
     toJstInputValue(new Date(sessions[0]?.startAt ?? Date.now()))
@@ -176,12 +179,34 @@ export function MatchManager({
     return true;
   }
 
-  function moveSeed(index: number, delta: number) {
-    const next = [...seed];
-    const target = index + delta;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    setSeed(next);
+  function handleSeedDragStart(e: React.DragEvent, index: number, id: string) {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    const row = seedRowRefs.current.get(id);
+    if (row) e.dataTransfer.setDragImage(row, row.offsetWidth / 2, row.offsetHeight / 2);
+  }
+
+  function handleSeedDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (index !== dragOverIndex) setDragOverIndex(index);
+  }
+
+  function handleSeedDrop(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (draggedIndex !== null && draggedIndex !== index) {
+      const next = [...seed];
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(index, 0, moved);
+      setSeed(next);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }
+
+  function handleSeedDragEnd() {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   }
 
   if (format === "DEATHMATCH") {
@@ -268,31 +293,42 @@ export function MatchManager({
           {seed.map((id, index) => {
             const entrant = entrants.find((e) => e.id === id);
             if (!entrant) return null;
+            const isDragging = draggedIndex === index;
+            const isDragOver =
+              dragOverIndex === index && draggedIndex !== null && draggedIndex !== index;
             return (
               <li
                 key={id}
-                className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm"
+                ref={(el) => {
+                  if (el) seedRowRefs.current.set(id, el);
+                  else seedRowRefs.current.delete(id);
+                }}
+                onDragOver={(e) => handleSeedDragOver(e, index)}
+                onDrop={(e) => handleSeedDrop(e, index)}
+                onDragEnd={handleSeedDragEnd}
+                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition ${
+                  isDragging ? "opacity-40" : "bg-white/5"
+                } ${isDragOver ? "ring-1 ring-brand/60" : ""}`}
               >
+                <span
+                  draggable={!busy}
+                  onDragStart={(e) => handleSeedDragStart(e, index, id)}
+                  aria-label="ドラッグして並び替え"
+                  className={`shrink-0 text-gray-500 hover:text-gray-300 ${
+                    busy ? "cursor-not-allowed opacity-30" : "cursor-grab active:cursor-grabbing"
+                  }`}
+                >
+                  <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+                    <circle cx="2" cy="2" r="1.5" />
+                    <circle cx="8" cy="2" r="1.5" />
+                    <circle cx="2" cy="8" r="1.5" />
+                    <circle cx="8" cy="8" r="1.5" />
+                    <circle cx="2" cy="14" r="1.5" />
+                    <circle cx="8" cy="14" r="1.5" />
+                  </svg>
+                </span>
                 <span className="w-8 shrink-0 text-xs text-gray-500">第{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate">{entrant.label}</span>
-                <button
-                  type="button"
-                  onClick={() => moveSeed(index, -1)}
-                  disabled={busy || index === 0}
-                  className="rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-white/10 disabled:opacity-30"
-                  aria-label="1つ上へ"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveSeed(index, 1)}
-                  disabled={busy || index === seed.length - 1}
-                  className="rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-white/10 disabled:opacity-30"
-                  aria-label="1つ下へ"
-                >
-                  ↓
-                </button>
               </li>
             );
           })}
