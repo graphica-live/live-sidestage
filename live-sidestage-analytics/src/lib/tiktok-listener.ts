@@ -471,12 +471,36 @@ function parseSignatureRateLimitError(error: unknown): {
   return { isRateLimited: true, retryAfterMs: withRetryAfter?.retryAfter ?? null };
 }
 
-async function persistState(roomId: string, status: ListenerStatus, message: string) {
+// 1回のUPDATE文(CASE式)で条件付き更新する。read-modify-writeにしないのは、
+// "retrying"が高頻度(オフライン配信者は10〜30秒間隔で再接続ループ)に呼ばれるため
+// 余分なSELECTを避けたいのと、書き込みの原子性を保つため。
+//
+// unhealthySince/notFoundStreak/notFoundFirstAt(tiktok-room-cleanup.ts用)の扱い:
+//  - "retrying"/"error"にCOALESCEで初回到達時刻を書く。**"connecting"は一切触らない**
+//    (再接続タイマーが発火するたびに必ず先に"connecting"を経由するため、ここでリセットすると
+//    数十秒に1回クロックが巻き戻り、不健全継続の閾値へ永久に到達しなくなる)。
+//  - "connected"復帰で全てクリアする(要件: 実在確認できたら判定をやり直す)。
+//  - "idle"(部屋が監視対象から外れた/デプロイのグレースフルシャットダウン。コード上区別不可)では
+//    意図的に何もリセットしない。デプロイのたびに全部屋のクロックが巻き戻るのを避けるため。
+// exportはtiktok-listener.unhealthy.integration.test.ts用(実際の再接続ループ/モック接続を
+// 経由せず、CASE式の挙動そのものを直接検証するため)。呼び出し元は本ファイル内のみ。
+export async function persistState(roomId: string, status: ListenerStatus, message: string) {
+  const now = new Date();
   try {
-    await prisma.tiktokRoom.update({
-      where: { id: roomId },
-      data: { listenerStatus: status, listenerMessage: message, listenerUpdatedAt: new Date() },
-    });
+    await prisma.$executeRaw`
+      UPDATE public."TiktokRoom"
+      SET "listenerStatus" = ${status},
+          "listenerMessage" = ${message},
+          "listenerUpdatedAt" = ${now},
+          "unhealthySince" = CASE
+            WHEN ${status} IN ('retrying', 'error') THEN COALESCE("unhealthySince", ${now})
+            WHEN ${status} = 'connected' THEN NULL
+            ELSE "unhealthySince"
+          END,
+          "notFoundStreak" = CASE WHEN ${status} = 'connected' THEN 0 ELSE "notFoundStreak" END,
+          "notFoundFirstAt" = CASE WHEN ${status} = 'connected' THEN NULL ELSE "notFoundFirstAt" END
+      WHERE "id" = ${roomId}
+    `;
   } catch (err) {
     console.error("[listener] persistState error:", err);
   }
