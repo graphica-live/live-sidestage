@@ -1,82 +1,56 @@
-"use client";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import GoogleLoginPanel from "../GoogleLoginPanel";
+import { isEventPath } from "@/lib/login-path";
 
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
-import GoogleIcon from "@/app/GoogleIcon";
-import { safeCallbackUrl } from "@/lib/callback-url";
+// NextAuth が戻り先を覚えている Cookie。本番(https)では __Secure- が付く。
+const CALLBACK_COOKIES = ["next-auth.callback-url", "__Secure-next-auth.callback-url"];
 
-const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
-
-// useSearchParams はクライアント側でしか解決できないので Suspense 境界が要る。
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
-  );
+function callbackPathFromCookie(): string | null {
+  const jar = cookies();
+  for (const name of CALLBACK_COOKIES) {
+    const value = jar.get(name)?.value;
+    if (!value) continue;
+    try {
+      // 絶対URLで入っていることも相対パスのこともある。
+      return new URL(value, "http://localhost").pathname;
+    } catch {
+      // 壊れた値は無視する。
+    }
+  }
+  return null;
 }
 
-function LoginForm() {
-  const [devEmail, setDevEmail] = useState("dev@local.test");
-  const searchParams = useSearchParams();
-  // middleware が未ログインのリクエストを弾くとき、元のURLを callbackUrl に載せて
-  // ここへ飛ばしてくる。それを読まずに "/" 固定で戻していたため、イベント管理画面から
-  // 飛ばされたユーザーがログイン後 analytics へ流れていた。
-  // オープンリダイレクトを避けるため safeCallbackUrl() を通す。
-  const callbackUrl = safeCallbackUrl(
-    searchParams.get("callbackUrl"),
-    typeof window === "undefined" ? "" : window.location.origin
-  );
+/**
+ * analytics(配信者/管理者)のログイン画面。
+ *
+ * イベント側から始まったフローがここへ落ちてくる経路が1つだけある。
+ * src/lib/auth.ts は `pages: { signIn: "/login" }` だけを設定していて `pages.error` が無く、
+ * NextAuth v4 は OAuth コールバックのエラー(**Google の同意画面でのキャンセルを含む**)を
+ * `pages.error ?? pages.signIn` へ `?error=` 付きで戻す。そのままだとイベント主催者が
+ * analytics ブランドの画面を見ることになるので、NextAuth が持っている callback-url Cookie が
+ * /events 配下を指していたらイベント側のログインへ送り直す。
+ */
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
+  const path = callbackPathFromCookie();
+  if (path && isEventPath(path)) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (typeof value === "string") params.set(key, value);
+    }
+    const query = params.toString();
+    redirect(query ? `/event/login?${query}` : "/event/login");
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="flex items-baseline justify-center gap-2 leading-tight">
-            <span className="text-2xl font-bold text-brand">LIVE Sidestage</span>
-            <span className="text-base font-medium text-gray-400">Analytics</span>
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">TikTok Live ギフト解析</p>
-        </div>
-
-        <div className="card">
-          <button
-            onClick={() => signIn("google", { callbackUrl })}
-            className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
-          >
-            <GoogleIcon />
-            Googleでログイン
-          </button>
-        </div>
-
-        {DEV_LOGIN_ENABLED && (
-          <div className="card mt-4 border-dashed">
-            <p className="text-xs text-gray-500 mb-2">開発用ログイン(ローカルテスト環境専用)</p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                signIn("dev-login", { email: devEmail, callbackUrl });
-              }}
-              className="flex gap-2"
-            >
-              <input
-                type="email"
-                value={devEmail}
-                onChange={(e) => setDevEmail(e.target.value)}
-                className="input-field text-sm flex-1"
-                placeholder="dev@local.test"
-              />
-              <button
-                type="submit"
-                className="bg-brand text-white rounded-lg px-3 text-sm font-medium hover:opacity-90"
-              >
-                ログイン
-              </button>
-            </form>
-          </div>
-        )}
-      </div>
-    </div>
+    <GoogleLoginPanel
+      brandSuffix="Analytics"
+      tagline="TikTok Live ギフト解析"
+      defaultCallbackUrl="/"
+    />
   );
 }

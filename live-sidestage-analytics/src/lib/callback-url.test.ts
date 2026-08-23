@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { safeCallbackUrl } from "./callback-url";
+import { clampCallbackUrl, safeCallbackUrl } from "./callback-url";
 
 const ORIGIN = "https://liveanalytics.example.com";
 
@@ -56,5 +56,73 @@ describe("safeCallbackUrl", () => {
 
   it("origin が壊れていれば既定へ落とす", () => {
     expect(safeCallbackUrl("/events", "")).toBe("/");
+  });
+
+  it("イベント側のログイン画面自身も既定へ落とす", () => {
+    expect(safeCallbackUrl("/event/login", ORIGIN)).toBe("/");
+    expect(safeCallbackUrl("/agency/login", ORIGIN)).toBe("/");
+  });
+
+  it("/event/login で始まるだけの別パスは通す", () => {
+    expect(safeCallbackUrl("/event/logins", ORIGIN)).toBe("/event/logins");
+  });
+
+  // fallback は「弾いたときの戻り先」なので、**拒否する枝すべて**が返さなければならない。
+  // 1つでも "/" のまま残すと、その入力のときだけイベント主催者が analytics へ流れる。
+  describe("fallback 指定時、拒否する枝はすべて fallback を返す", () => {
+    const FB = "/events";
+
+    it("未指定", () => {
+      expect(safeCallbackUrl(null, ORIGIN, FB)).toBe(FB);
+      expect(safeCallbackUrl("", ORIGIN, FB)).toBe(FB);
+    });
+
+    it("origin が壊れている(parse失敗)", () => {
+      expect(safeCallbackUrl("/events/abc", "", FB)).toBe(FB);
+    });
+
+    it("別オリジン", () => {
+      expect(safeCallbackUrl("https://evil.example/steal", ORIGIN, FB)).toBe(FB);
+    });
+
+    it("ログイン画面自身(ループガード)", () => {
+      expect(safeCallbackUrl("/event/login", ORIGIN, FB)).toBe(FB);
+      expect(safeCallbackUrl("/login?callbackUrl=%2Fevents", ORIGIN, FB)).toBe(FB);
+    });
+
+    it("プロトコル相対・バックスラッシュ", () => {
+      expect(safeCallbackUrl("//evil.example/steal", ORIGIN, FB)).toBe(FB);
+      expect(safeCallbackUrl("/\\evil.example", ORIGIN, FB)).toBe(FB);
+    });
+
+    it("通す入力には影響しない", () => {
+      expect(safeCallbackUrl("/events/abc?tab=1", ORIGIN, FB)).toBe("/events/abc?tab=1");
+    });
+  });
+});
+
+describe("clampCallbackUrl", () => {
+  const FB = "/events";
+
+  it("prefix 配下はそのまま通す", () => {
+    expect(clampCallbackUrl("/events", "/events", FB)).toBe("/events");
+    expect(clampCallbackUrl("/events/abc/matches?tab=1", "/events", FB)).toBe(
+      "/events/abc/matches?tab=1"
+    );
+  });
+
+  it("prefix の外は fallback へ落とす", () => {
+    expect(clampCallbackUrl("/analytics", "/events", FB)).toBe(FB);
+    expect(clampCallbackUrl("/setup", "/events", FB)).toBe(FB);
+  });
+
+  // 事務所ログインの既存実装は境界なしの startsWith で、ここを通してしまう。
+  it("前置一致ではなくパス境界で判定する", () => {
+    expect(clampCallbackUrl("/eventsomething", "/events", FB)).toBe(FB);
+  });
+
+  it("クエリ・ハッシュに prefix が現れても騙されない", () => {
+    expect(clampCallbackUrl("/analytics?next=/events", "/events", FB)).toBe(FB);
+    expect(clampCallbackUrl("/analytics#/events", "/events", FB)).toBe(FB);
   });
 });

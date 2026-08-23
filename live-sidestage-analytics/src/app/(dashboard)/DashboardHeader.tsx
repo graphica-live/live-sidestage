@@ -372,15 +372,8 @@ export default function DashboardHeader() {
           )}
         </div>
 
-        <Link
-          href="/events"
-          className="btn-ghost text-xs shrink-0"
-          aria-label="イベント"
-          title="イベント"
-        >
-          🏆<span className="hidden sm:inline"> イベント</span>
-        </Link>
-
+        {/* イベント(/events)への導線はここに置かない。表向き別サービスとして分離してあり、
+            analytics 側からイベント側の存在が見えないようにしている。 */}
         <Link href="/setup" className="btn-ghost text-xs shrink-0" aria-label="設定" title="設定">
           ⚙️<span className="hidden sm:inline"> 設定</span>
         </Link>

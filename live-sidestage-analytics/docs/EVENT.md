@@ -10,7 +10,8 @@ analytics が受信した `gifts` から集計し、順位とリスナーの貢�
 | 役割 | パス |
 | --- | --- |
 | ロジック（集計・照合・スコア計算など） | `src/event/` |
-| 主催者向け画面 | `src/app/(dashboard)/events/` |
+| 主催者向け画面 | `src/app/(event)/events/` |
+| 主催者向けログイン | `src/app/(auth)/event/login/` |
 | 公開ページ | `src/app/(public)/e/` |
 | 主催者向け API | `src/app/api/events/` |
 | 公開 API | `src/app/api/public/` |
@@ -212,9 +213,25 @@ analytics の `src/lib/auth.ts`（NextAuth + `PrismaAdapter`）をそのまま�
 標準の `PrismaAdapter` に戻し、`src/event/auth-adapter.ts` と `cuid` 依存は削除した。
 
 `src/middleware.ts` が保護範囲を決める。イベントの公開ページ（`/e/...`）と公開API
-（`/api/public/...`）は認証なしで通し、それ以外は全部ログインを要求する。
+（`/api/public/...`）、それに主催者向けログイン（`/event/login`）は認証なしで通し、
+それ以外は全部ログインを要求する。
 **除外エントリには必ず境界 `(?:/|$)` を付けること** — 境界なしの `e` は `/events`
 （主催者向け管理画面）まで公開してしまう。`src/middleware.test.ts` がこれを固定している。
+
+### ログイン画面は analytics と別
+
+セッションは共有だが、**画面と導線は表向き分離してある**。未ログインで `/events` を開くと
+analytics ブランドの `/login` ではなく `/event/login`（「LIVE Sidestage Event」）へ飛ぶ。
+飛び先の判定は `src/lib/login-path.ts` の `loginPathFor()` に集約してあり、
+`/agency` 系 → `/agency/login`、`/event` `/events` `/api/events` 系 → `/event/login`、
+それ以外 → `/login`。**これは飛び先だけを決める** ので、保護範囲（matcher）とは独立している。
+
+- `/event/login` の戻り先は `src/lib/callback-url.ts` の `clampCallbackUrl()` で `/events` 配下へ
+  閉じ込める。これが無いと `?callbackUrl=/analytics` で analytics に着地してしまう
+- `src/lib/auth.ts` は `pages.error` を持たないため、OAuth のエラー（**Google 同意画面での
+  キャンセルを含む**）は `pages.signIn` = `/login` に戻ってくる。`src/app/(auth)/login/page.tsx`
+  が NextAuth の callback-url Cookie を見て、`/events` 配下ならイベント側へ送り直している
+- パス名は `/event/login`。`/events/login` にすると `events/[id]` の動的ルートと衝突する
 
 ## 参加者登録と配信の監視
 
