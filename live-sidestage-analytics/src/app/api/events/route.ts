@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     prizeText: body.prizeText == null ? null : String(body.prizeText),
     noticeText: body.noticeText == null ? null : String(body.noticeText),
     matchRules: body.matchRules,
+    bracketMethod: body.bracketMethod,
   });
 
   if (!validated.ok) {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 新規作成なので既存の rules(deathmatch名前空間等)は無い。マージ不要でそのまま書く。
-  const { sessions, matchRules, ...event } = validated.value;
+  const { sessions, matchRules, bracketMethod, ...event } = validated.value;
 
   // slug はランダム suffix 付きなので実質衝突しないが、unique 制約に任せて数回リトライする。
   for (let attempt = 0; attempt < SLUG_RETRY; attempt++) {
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
       const created = await prisma.event.create({
         data: {
           ...event,
-          rules: { matchRules },
+          rules: { matchRules, bracket: { method: bracketMethod } },
           slug: buildEventSlug(event.title),
           ownerUserId: session.user.id,
           status: "SCHEDULED",

@@ -21,6 +21,23 @@ import {
 /** 下流のマッチがこの状態に入っていたら、上流の結果変更で参加者を書き換えない。 */
 const STARTED_STATUSES = new Set(["LIVE", "DETECTED", "NEEDS_REVIEW", "FINISHED"]);
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 不戦勝行(`EventMatch.rules.bye === true`)か。tournament.ts が表の生成時に付ける。
+ *
+ * 段階的不戦勝方式では、相手が実試合の勝者(WINNER_OF)である不戦勝行は生成時点では
+ * 確定できず、SCHEDULED のまま作られる。この行は検知対象にならない(空側があると
+ * assignBattles が候補から外す)ので、LIVE/DETECTED/NEEDS_REVIEW には絶対にならない —
+ * つまり STARTED_STATUSES による書き換えブロックの対象にする必要がなく、
+ * 上流の勝者が変わるたびに常に追従させてよい。
+ */
+function isByeRow(rules: unknown): boolean {
+  return isPlainObject(rules) && rules.bye === true;
+}
+
 export type MatchResultSummary = {
   finished: number;
   /** 同点で勝者を決められなかったマッチ。主催者の手動確定に回す */
@@ -143,6 +160,7 @@ export async function resolveMatchResults(
       bracketPosition: true,
       status: true,
       winnerSideId: true,
+      rules: true,
       sides: {
         orderBy: { sideIndex: "asc" },
         select: {
@@ -182,29 +200,50 @@ export async function resolveMatchResults(
     const sameParticipants =
       desiredParticipants.length === currentParticipants.length &&
       desiredParticipants.every((id) => currentParticipants.includes(id));
-    if (sameParticipants && targetSide.teamId === desiredTeam) continue;
+    const participantsChanged = !sameParticipants || targetSide.teamId !== desiredTeam;
+    const targetIsBye = isByeRow(target.rules);
 
-    if (STARTED_STATUSES.has(target.status)) {
+    if (participantsChanged) {
       // 次戦がすでに始まっている。ここで参加者を差し替えると、進行中の対戦の
-      // 集計対象が途中で変わってしまうので触らない。主催者に警告を出す。
-      summary.blocked++;
-      continue;
+      // 集計対象が途中で変わってしまうので触らない(主催者に警告を出す)。
+      // ただし不戦勝行(targetIsBye)は検知が起きないので LIVE/DETECTED/NEEDS_REVIEW に
+      // ならず、FINISHED も自動確定の結果でしかない — 常に上流の勝者へ追従させる。
+      if (!targetIsBye && STARTED_STATUSES.has(target.status)) {
+        summary.blocked++;
+        continue;
+      }
+
+      await tx.eventMatchSideParticipant.deleteMany({ where: { sideId: targetSide.id } });
+      if (desiredParticipants.length > 0) {
+        await tx.eventMatchSideParticipant.createMany({
+          data: desiredParticipants.map((participantId) => ({
+            sideId: targetSide.id,
+            participantId,
+          })),
+        });
+      }
+      if (targetSide.teamId !== desiredTeam) {
+        await tx.eventMatchSide.update({
+          where: { id: targetSide.id },
+          data: { teamId: desiredTeam },
+        });
+      }
     }
 
-    await tx.eventMatchSideParticipant.deleteMany({ where: { sideId: targetSide.id } });
-    if (desiredParticipants.length > 0) {
-      await tx.eventMatchSideParticipant.createMany({
-        data: desiredParticipants.map((participantId) => ({
-          sideId: targetSide.id,
-          participantId,
-        })),
-      });
-    }
-    if (targetSide.teamId !== desiredTeam) {
-      await tx.eventMatchSide.update({
-        where: { id: targetSide.id },
-        data: { teamId: desiredTeam },
-      });
+    if (targetIsBye) {
+      // 段階的不戦勝方式の不戦勝行。相手側は永久に空(BYE)なので、こちら側に
+      // 勝者が来た時点でバトルを待たずに確定し、逆に上流が VOID 等で勝者を失ったら
+      // 未確定へ戻す(自動で導出される状態なので、他の行のような「進行中は触らない」
+      // 保護は不要 — 上のガードで STARTED_STATUSES チェック自体を素通りさせている)。
+      const shouldFinish = desiredParticipants.length > 0;
+      const newStatus = shouldFinish ? "FINISHED" : "SCHEDULED";
+      const newWinnerSideId = shouldFinish ? targetSide.id : null;
+      if (target.status !== newStatus || target.winnerSideId !== newWinnerSideId) {
+        await tx.eventMatch.update({
+          where: { id: target.id },
+          data: { status: newStatus, winnerSideId: newWinnerSideId, winnerDecidedBy: shouldFinish ? "BYE" : null },
+        });
+      }
     }
   }
 

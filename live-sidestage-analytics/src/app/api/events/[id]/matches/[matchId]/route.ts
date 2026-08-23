@@ -27,6 +27,15 @@ const DOWNSTREAM_STARTED = new Set(["LIVE", "DETECTED", "NEEDS_REVIEW", "FINISHE
 /** 時間枠を動かせる状態。検知・確定した後は動かさせない(下の理由を参照)。 */
 const RESCHEDULABLE = new Set(["SCHEDULED", "NO_SHOW"]);
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 不戦勝行(`EventMatch.rules.bye === true`)か。tournament.ts が表の生成時に付ける。 */
+function isByeRow(rules: unknown): boolean {
+  return isPlainObject(rules) && rules.bye === true;
+}
+
 type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "schedule";
 
 export async function PATCH(
@@ -46,6 +55,7 @@ export async function PATCH(
       bracketPosition: true,
       status: true,
       winnerSideId: true,
+      rules: true,
       sides: { select: { id: true, sideIndex: true } },
     },
   });
@@ -63,6 +73,20 @@ export async function PATCH(
   const action = body?.action as Action | undefined;
   if (!action) {
     return NextResponse.json({ error: "action を指定してください。" }, { status: 400 });
+  }
+
+  // 不戦勝行は主催者が結果を操作する対象ではない(対戦が起きていないので勝者確定・
+  // 引き分け・無効化・検知やり直しのいずれも意味を持たない)。段階的不戦勝方式では
+  // 相手側が永久に空なので、放置すると検知対象化(部外者との対戦を誤って拾う)や
+  // NO_SHOW 化のリスクがある。勝者は match-results.ts の進行処理が自動で決める。
+  if (
+    isByeRow(match.rules) &&
+    (action === "confirm" || action === "draw" || action === "void" || action === "reopen")
+  ) {
+    return NextResponse.json(
+      { error: "不戦勝の対戦は結果を変更できません。", code: "BYE_ROW" },
+      { status: 400 }
+    );
   }
 
   // 勝敗を動かす操作は、次の対戦が始まっていたら拒否する。
@@ -307,12 +331,25 @@ async function downstreamStarted(
   });
   const roundCount = agg._max.round ?? round;
 
-  const slot = nextSlot(round, position, roundCount);
-  if (!slot) return false;
+  // 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
+  // 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
+  // わたることがある)。ラウンド数で有界なので無限ループにはならない。
+  let cur = { round, position };
+  for (let hop = 0; hop < roundCount; hop++) {
+    const slot = nextSlot(cur.round, cur.position, roundCount);
+    if (!slot) return false;
 
-  const next = await prisma.eventMatch.findFirst({
-    where: { eventId, round: slot.round, bracketPosition: slot.position },
-    select: { status: true },
-  });
-  return next ? DOWNSTREAM_STARTED.has(next.status) : false;
+    const next = await prisma.eventMatch.findFirst({
+      where: { eventId, round: slot.round, bracketPosition: slot.position },
+      select: { status: true, rules: true },
+    });
+    if (!next) return false;
+
+    if (isByeRow(next.rules)) {
+      cur = { round: slot.round, position: slot.position };
+      continue;
+    }
+    return DOWNSTREAM_STARTED.has(next.status);
+  }
+  return false;
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { BracketMethod } from "@/event/bracket";
 import {
   CONFIDENCE_NOTES,
   MATCH_STATUS_CLASSES,
@@ -118,6 +119,7 @@ export function MatchManager({
   matches,
   lives,
   rules,
+  bracketMethod,
 }: {
   eventId: string;
   format: string;
@@ -129,6 +131,8 @@ export function MatchManager({
   /** デスマッチのときだけ中身が入る */
   lives: LifeRow[];
   rules: DeathmatchRules;
+  /** トーナメントの不戦勝配分方式(TOURNAMENTのときだけ意味を持つ)。 */
+  bracketMethod: BracketMethod;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -253,7 +257,9 @@ export function MatchManager({
             シード順に並べると、上位の
             {entryMode === "TEAM" ? "チーム" : "参加者"}
             どうしが早い段階で当たらないように振り分ける。
-            参加数が2のべき乗でない場合、上位から順に1回戦が不戦勝になる。
+            {bracketMethod === "STAGED_BYE"
+              ? "参加数が2のべき乗でない場合、各ラウンド最大1人ずつ不戦勝になる(段階的不戦勝方式)。"
+              : "参加数が2のべき乗でない場合、上位から順に1回戦が不戦勝になる(標準シード方式)。"}
           </p>
         </div>
 

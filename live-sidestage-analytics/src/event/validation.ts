@@ -1,5 +1,7 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
+import type { BracketMethod } from "./bracket";
+import { parseBracketMethod } from "./bracket-rules";
 import { type MatchRules, parseMatchRules } from "./match-rules";
 import {
   MAX_EVENT_DAYS,
@@ -52,6 +54,8 @@ export type EventInput = {
   noticeText?: string | null;
   /** グローブ/ブースター等。不正値・欠損は既定へ丸める(parseMatchRules)ので型は緩い。 */
   matchRules?: unknown;
+  /** トーナメント表の不戦勝配分方式。不正値・欠損は既定(STANDARD)へ丸める。TOURNAMENT以外では無視。 */
+  bracketMethod?: unknown;
 };
 
 export type ValidatedEventInput = {
@@ -69,6 +73,8 @@ export type ValidatedEventInput = {
   noticeText: string | null;
   /** 常に正規化済み(parseMatchRulesが不正値を既定へ丸める)。 */
   matchRules: MatchRules;
+  /** 常に正規化済み(parseBracketMethodが不正値を既定へ丸める)。 */
+  bracketMethod: BracketMethod;
 };
 
 export type ValidationResult<T> =
@@ -102,6 +108,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
 
   // 不正値・欠損は既定へ丸める(deathmatchRulesと同じ方針)ので、ここではエラーを積まない。
   const matchRules = parseMatchRules({ matchRules: input.matchRules });
+  const bracketMethod = parseBracketMethod({ bracket: { method: input.bracketMethod } });
 
   if (!EVENT_FORMATS.includes(input.format as EventFormat)) {
     errors.push("イベント種目の指定が不正です。");
@@ -144,6 +151,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
       prizeText: prizeText || null,
       noticeText: noticeText || null,
       matchRules,
+      bracketMethod,
     },
   };
 }

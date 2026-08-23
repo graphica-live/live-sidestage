@@ -7,6 +7,7 @@
 // 呼ぶ。ここは「次へ進ませない」ための早期表示で、正本はあくまでサーバー側
 // (`validateEventInput()`)。二重に規則を書くとサーバーとずれる。
 
+import { BRACKET_METHODS, type BracketMethod } from "./bracket";
 import { parseJstLocal } from "./datetime";
 import type { MatchRules } from "./match-rules";
 import { normalizeSessionInputs } from "./sessions";
@@ -45,6 +46,8 @@ export type EventDraft = {
   visibility: Visibility;
   sessions: SessionFormValue[];
   matchRules: MatchRules;
+  /** トーナメント表の不戦勝配分方式。TOURNAMENT のときだけ意味を持つ。 */
+  bracketMethod: BracketMethod;
   prizeText: string;
   noticeText: string;
 };
@@ -107,10 +110,16 @@ const pad = (n: number) => String(n).padStart(2, "0");
  */
 export function validateWizardStep(step: WizardStep, values: EventDraft): string[] {
   switch (step) {
-    case "format":
-      return values.format && EVENT_FORMATS.includes(values.format)
-        ? []
-        : ["種目を選んでください。"];
+    case "format": {
+      const errors: string[] = [];
+      if (!values.format || !EVENT_FORMATS.includes(values.format)) {
+        errors.push("種目を選んでください。");
+      }
+      if (values.format === "TOURNAMENT" && !BRACKET_METHODS.includes(values.bracketMethod)) {
+        errors.push("トーナメント表の方式を選んでください。");
+      }
+      return errors;
+    }
 
     case "title": {
       const errors: string[] = [];
