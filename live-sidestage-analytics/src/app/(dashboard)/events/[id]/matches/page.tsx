@@ -5,7 +5,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseBracketMethod } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
+import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { formatNumber } from "@/event/public-event";
 import { resolveEventWindows } from "@/event/sessions";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
@@ -49,6 +51,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         detectedEndAt: true,
         detectionConfidence: true,
         detectedEndSource: true,
+        detectedBattleId: true,
         winnerSideId: true,
         winnerDecidedBy: true,
         rules: true,
@@ -60,7 +63,9 @@ export default async function MatchesPage({ params }: { params: { id: string } }
             diamonds: true,
             team: { select: { name: true } },
             participants: {
-              select: { participant: { select: { displayName: true, tiktokId: true } } },
+              select: {
+                participant: { select: { displayName: true, tiktokId: true, roomId: true } },
+              },
             },
           },
         },
@@ -129,6 +134,23 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     };
   });
 
+  // TikTok 側のバトルスコア。管理側は partial 検知でも出す(detectionConfidence のバッジが
+  // カードに出ているので、主催者は生の信号として読める)。
+  // 整形はここで済ませてクライアントへは文字列で渡す(client から prisma を持つモジュールへ
+  // 依存させない)。
+  const tiktokScores = await loadMatchTiktokScores(
+    prisma,
+    matches
+      .filter((m) => canShowTiktokScore(m, "admin"))
+      .map((m) => ({
+        detectedBattleId: m.detectedBattleId,
+        sides: m.sides.map((s) => ({
+          sideId: s.id,
+          roomIds: s.participants.map((p) => p.participant.roomId),
+        })),
+      }))
+  );
+
   const rows: MatchRow[] = matches.map((m) => ({
     id: m.id,
     round: m.round,
@@ -151,6 +173,11 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       sideIndex: s.sideIndex,
       // BigInt はクライアントへ渡せないので文字列にする。
       diamonds: s.diamonds.toString(),
+      // TikTok 側のバトルスコア。帰属できなければ null(表示しない)。整形済みの文字列。
+      tiktokScore: (() => {
+        const raw = tiktokScores.get(s.id);
+        return raw === undefined ? null : formatNumber(raw);
+      })(),
       label:
         s.team?.name ??
         s.participants.map((p) => p.participant.displayName).join(" / ") ??

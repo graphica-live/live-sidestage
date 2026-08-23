@@ -10,12 +10,47 @@
 //
 // **返ってくる avatar の URL は署名付きで、`x-expires` はおよそ47時間後。**
 // 永続化すると必ず腐るので、DB へ保存せずキャッシュとして扱う(src/lib/tiktok-avatar.ts)。
+//
+// 同じレスポンスの `data.user.id` は TikTok の数値 userId で、こちらは**不変**なので
+// TiktokRoom.hostUserId へ保存する(src/lib/tiktok-host-id.ts)。avatar URL とは扱いが逆になる。
 
 /** 取得できたプロフィール。avatarUrl は検証済みの https URL。 */
 export type TiktokProfile = {
   avatarUrl: string;
   nickname: string | null;
+  /**
+   * TikTok の数値 userId(`data.user.id`)。バトル payload の `anchorIdStr` と同じ空間で、
+   * `tiktok_battles.hostScores` のキーと突き合わせるのに使う。**不変**なので保存してよい。
+   *
+   * **avatar が取れないと null ではなくプロフィール全体が取れない**(parseProfileResponse は
+   * avatar URL の検証に落ちると null を返す)。TikTok が画像 CDN のホストを変えると
+   * アイコンとこの id が同時に取れなくなるが、avatarUrl を nullable にすると
+   * tiktok-avatar.ts まで波及するため、この結合は意図的に受け入れている。
+   */
+  userId: string | null;
 };
+
+/** 数値 userId として保存してよい形か。 */
+const USER_ID_PATTERN = /^\d{1,32}$/;
+
+/**
+ * `data.user.id` を保存できる形へ寄せる。取れなければ null(付随情報なので取得失敗にはしない)。
+ *
+ * 実測(2026-08)では `"id":"5831967"` のように**クォートされた JSON 文字列**で返るため、
+ * 19桁の新しい userId でも `JSON.parse` の精度落ちは起きない。ただし将来クォートが外れると
+ * 16桁以上は Number.MAX_SAFE_INTEGER を超えて**既に壊れた値**になっているので、
+ * 誤った id を保存するより捨てる。
+ */
+export function parseUserId(value: unknown): string | null {
+  if (typeof value === "string") {
+    return USER_ID_PATTERN.test(value) ? value : null;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value <= 0) return null;
+    return String(value);
+  }
+  return null;
+}
 
 /**
  * 取得結果。**失敗の理由で扱いを変えたいので null では返さない。**
@@ -105,6 +140,7 @@ export function parseProfileResponse(
     avatarThumb?: unknown;
     nickname?: unknown;
     uniqueId?: unknown;
+    id?: unknown;
   };
 
   if (
@@ -121,7 +157,7 @@ export function parseProfileResponse(
   const nickname =
     typeof u.nickname === "string" && u.nickname.trim().length > 0 ? u.nickname.trim() : null;
 
-  return { avatarUrl, nickname };
+  return { avatarUrl, nickname, userId: parseUserId(u.id) };
 }
 
 /**

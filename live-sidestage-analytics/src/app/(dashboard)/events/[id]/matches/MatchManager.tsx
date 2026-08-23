@@ -45,6 +45,11 @@ export type MatchSideRow = {
   sideIndex: number;
   /** BigInt を渡せないので文字列。表示のときだけ数値化する */
   diamonds: string;
+  /**
+   * TikTok 側のバトルスコア(`hostScore`)。**サーバー側で整形済みの表示文字列**で、
+   * 帰属できなかったサイドは null。当サービスの集計(`diamonds`)とは別物で、勝敗には効かない。
+   */
+  tiktokScore: string | null;
   label: string;
   empty: boolean;
 };
@@ -982,6 +987,10 @@ function MatchCard({
             </div>
             <div className="mt-0.5 text-xs text-gray-400">
               {Number(side.diamonds).toLocaleString("ja-JP")} ダイヤ
+              {/* TikTok 側のバトルスコア。勝敗は左のダイヤで決まるので、別物と分かるよう並べる。 */}
+              {side.tiktokScore !== null && (
+                <span className="ml-2 text-gray-500">TikTok {side.tiktokScore}</span>
+              )}
               {match.winnerSideId === side.id && (
                 <span className="ml-2 text-brand">勝者</span>
               )}

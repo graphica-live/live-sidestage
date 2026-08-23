@@ -114,6 +114,13 @@ model TiktokRoom {
   // 同じ部屋への過度な再チェックを防ぐクールダウンと、候補選定の公平なローテーションに使う。
   lastExistenceCheckAt DateTime?
 
+  // TikTokの数値userId(api-live/user/room/ の data.user.id)。バトルpayloadのanchorIdStrと
+  // 同じ空間で、tiktok_battles.hostScoresのキーと突き合わせてバトルスコアを配信者へ帰属させる。
+  // avatar URLと違って**不変**なので保存してよい(署名付きURLのように失効しない)。
+  // 書き込みはsrc/lib/tiktok-host-id.tsの1箇所だけ。一度入った値は上書きしない
+  // (updateManyのwhereでhostUserId: nullを条件にして構造的に保証する)。
+  hostUserId           String?
+
   streamers Streamer[]
   gifts     Gift[]
   battles   TiktokBattle[]

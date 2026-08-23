@@ -8,7 +8,8 @@
 // Railway では .env が存在せずプラットフォームが環境変数を注入するので無害。
 import "dotenv/config";
 import { aggregateDueEvents } from "@/event/aggregate";
-import { renewClampedLeases } from "@/event/participants";
+import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
+import { backfillHostUserIds } from "@/lib/tiktok-host-id";
 import { prisma } from "@/lib/prisma";
 
 const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
@@ -21,10 +22,18 @@ const SLO_WARN_MS = 5_000;
  */
 const RENEW_INTERVAL_MS = Number(process.env.LEASE_RENEW_INTERVAL_MS ?? 60 * 60 * 1000);
 
+/**
+ * TiktokRoom.hostUserId(TikTok の数値 userId)の補完を回す間隔。
+ * バトルスコアをサイドへ帰属させるのに要る対応表で、一度埋まれば二度と引かない。
+ * **0 を指定すると補完自体を止める**(TikTok 側のレート制限に困ったときの逃げ道)。
+ */
+const HOST_ID_INTERVAL_MS = Number(process.env.TIKTOK_HOST_ID_INTERVAL_MS ?? 60_000);
+
 let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
 let renewInFlight = false;
+let hostIdInFlight = false;
 
 async function tick(): Promise<void> {
   // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
@@ -71,6 +80,33 @@ async function renewTick(): Promise<void> {
   }
 }
 
+// TiktokRoom.hostUserId の補完。バトル payload の hostScores は数値 userId をキーに持つので、
+// この対応表がないとスコアをサイドへ帰属させられない。
+//
+// 参加者登録の経路からは切り離してある(src/event/CLAUDE.md「参加者登録から TikTok へ
+// 問い合わせを足さない」)。TikTok を叩くので、失敗しても集計ループには影響させない。
+async function hostIdTick(): Promise<void> {
+  if (hostIdInFlight || stopping) return;
+
+  hostIdInFlight = true;
+  try {
+    const tiktokIds = await activeLeaseTiktokIds();
+    if (tiktokIds.length === 0) return;
+
+    const result = await backfillHostUserIds(tiktokIds);
+    if (result.filled > 0 || result.aborted) {
+      console.log(
+        `[event-worker] hostUserId を補完 ${result.filled}件 / 失敗 ${result.failed}件 / ` +
+          `バックオフ中 ${result.skipped}件${result.aborted ? " (連続失敗で打ち切り)" : ""}`
+      );
+    }
+  } catch (err) {
+    console.error("[event-worker] hostUserId の補完でエラー:", err);
+  } finally {
+    hostIdInFlight = false;
+  }
+}
+
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
@@ -78,6 +114,7 @@ async function shutdown(signal: string) {
 
   clearInterval(timer);
   clearInterval(renewTimer);
+  if (hostIdTimer) clearInterval(hostIdTimer);
   await currentTick.catch(() => {});
   await prisma.$disconnect().catch(() => {});
   console.log("[event-worker] 終了");
@@ -90,12 +127,16 @@ function scheduleTick() {
 
 const timer = setInterval(scheduleTick, INTERVAL_MS);
 const renewTimer = setInterval(() => void renewTick(), RENEW_INTERVAL_MS);
+const hostIdTimer =
+  HOST_ID_INTERVAL_MS > 0 ? setInterval(() => void hostIdTick(), HOST_ID_INTERVAL_MS) : null;
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 console.log(
-  `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms)`
+  `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms / ` +
+    `hostUserId の補完 ${HOST_ID_INTERVAL_MS > 0 ? `${HOST_ID_INTERVAL_MS}ms` : "無効"})`
 );
 scheduleTick();
 void renewTick();
+if (hostIdTimer) void hostIdTick();

@@ -5,7 +5,7 @@ import type { TiktokProfileResult } from "./tiktok-profile";
 const AVATAR = "https://p16-common-sign.tiktokcdn.com/x.webp?x-expires=1";
 
 function ok(url = AVATAR): TiktokProfileResult {
-  return { ok: true, profile: { avatarUrl: url, nickname: null } };
+  return { ok: true, profile: { avatarUrl: url, nickname: null, userId: null } };
 }
 
 /** 呼び出し回数を数えつつ、決めた結果を返すフェッチャ。 */

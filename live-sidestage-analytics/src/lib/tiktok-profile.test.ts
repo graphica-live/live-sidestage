@@ -46,7 +46,7 @@ describe("parseProfileResponse", () => {
         nickname: "テスト配信者",
       })
     );
-    expect(parsed).toEqual({ avatarUrl: REAL_AVATAR, nickname: "テスト配信者" });
+    expect(parsed).toEqual({ avatarUrl: REAL_AVATAR, nickname: "テスト配信者", userId: null });
   });
 
   it("解像度の高いものが使えなければ順に落とす", () => {
@@ -57,7 +57,7 @@ describe("parseProfileResponse", () => {
         nickname: "  ",
       })
     );
-    expect(parsed).toEqual({ avatarUrl: "https://p16.tiktokcdn.com/medium.webp", nickname: null });
+    expect(parsed).toEqual({ avatarUrl: "https://p16.tiktokcdn.com/medium.webp", nickname: null, userId: null });
   });
 
   it("statusCode がエラーなら null", () => {
@@ -80,14 +80,43 @@ describe("parseProfileResponse", () => {
     expect(parseProfileResponse(body, "target_user")).toBeNull();
     // 大文字小文字は無視する(TikTok のハンドルは大小を区別しない)。
     expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, uniqueId: "Target_User" }), "target_user"))
-      .toEqual({ avatarUrl: REAL_AVATAR, nickname: null });
+      .toEqual({ avatarUrl: REAL_AVATAR, nickname: null, userId: null });
   });
 
   it("uniqueId がレスポンスに無ければ照合しない", () => {
     expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR }), "target_user")).toEqual({
       avatarUrl: REAL_AVATAR,
       nickname: null,
+      userId: null,
     });
+  });
+
+  it("data.user.id を数値 userId として拾う", () => {
+    // 実測(2026-08)では文字列で返る。19桁でも JSON.parse の精度落ちが起きない。
+    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "5831967" }))?.userId).toBe(
+      "5831967"
+    );
+    expect(
+      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "6745191554084586437" }))?.userId
+    ).toBe("6745191554084586437");
+  });
+
+  it("数値で来ても安全な範囲なら拾い、精度が落ちている値は捨てる", () => {
+    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 107955 }))?.userId).toBe(
+      "107955"
+    );
+    // 19桁の数値リテラルは JSON.parse の時点で既に別の値になっている。誤った id は保存しない。
+    expect(
+      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 6745191554084586437 }))?.userId
+    ).toBeNull();
+  });
+
+  it("id が無い・数字でない場合は userId を null にする(アイコンは返す)", () => {
+    for (const id of [undefined, "", "abc", "12.5", null, {}]) {
+      const parsed = parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id }));
+      expect(parsed?.avatarUrl).toBe(REAL_AVATAR);
+      expect(parsed?.userId).toBeNull();
+    }
   });
 
   it("想定外の形でも落ちない", () => {
