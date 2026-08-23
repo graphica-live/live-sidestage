@@ -1,6 +1,7 @@
 import { formatJst } from "@/event/datetime";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import type { BracketEntrantDto, BracketMatchDto, BracketSideDto } from "@/event/public-event";
+import { CARD_CLIP, CARD_CLIP_MIRROR, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BracketScroller } from "./BracketScroller";
 
 // 決勝を中央に置き、左右へブロックを分けて描くトーナメント表。
@@ -17,6 +18,9 @@ import { BracketScroller } from "./BracketScroller";
 //
 // 決勝カラムの「優勝」バナーを絶対配置にしているのも同じ理由。通常フローに置くと
 // カラムの中心がカードの中心からずれ、左右から来る線が決勝カードに刺さらなくなる。
+//
+// カードの角は右下(mirror時は左下)を斜めに切り落とす(CARD_CLIP)。中央へ向かって
+// 刃が入っているように見えるのが狙いで、これがこの表全体で唯一のシェイプ言語。
 
 /** カード幅。ラウンド見出しの列と揃えるため、見出し側にも同じ幅を使う。 */
 const CARD_W = "w-40 sm:w-44";
@@ -96,26 +100,40 @@ function RoundHeadings({
       {hasWings &&
         wings.map((round) => (
           <div key={`l${round}`} className="flex">
-            <div className={`${CARD_W} shrink-0 text-center text-xs text-gray-500`}>
-              {label(round)}
+            <div className={`${CARD_W} shrink-0`}>
+              <RoundLabel>{label(round)}</RoundLabel>
             </div>
             <div className={`${CONN_W} shrink-0`} />
           </div>
         ))}
 
-      <div className={`${CARD_W} shrink-0 text-center text-xs font-semibold text-brand`}>
-        {label(roundCount)}
+      <div className={`${CARD_W} shrink-0`}>
+        <RoundLabel highlight>{label(roundCount)}</RoundLabel>
       </div>
 
       {hasWings &&
         [...wings].reverse().map((round) => (
           <div key={`r${round}`} className="flex">
             <div className={`${CONN_W} shrink-0`} />
-            <div className={`${CARD_W} shrink-0 text-center text-xs text-gray-500`}>
-              {label(round)}
+            <div className={`${CARD_W} shrink-0`}>
+              <RoundLabel>{label(round)}</RoundLabel>
             </div>
           </div>
         ))}
+    </div>
+  );
+}
+
+function RoundLabel({ children, highlight }: { children: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className="flex justify-center">
+      <span
+        className={`${TAG_SKEW} border px-2.5 py-0.5 text-center text-[11px] font-bold tracking-wide ${
+          highlight ? "border-brand/50 bg-brand/10 text-brand" : "border-white/10 text-gray-400"
+        }`}
+      >
+        <span className={`inline-block ${TAG_UNSKEW}`}>{children}</span>
+      </span>
     </div>
   );
 }
@@ -134,7 +152,7 @@ function MatchNode({
   const match = index.get(key(round, position));
   const card = (
     <div className={`${CARD_W} shrink-0`}>
-      {match ? <MatchCard match={match} mirror={mirror} /> : <EmptyCard />}
+      {match ? <MatchCard match={match} mirror={mirror} /> : <EmptyCard mirror={mirror} />}
     </div>
   );
 
@@ -161,16 +179,17 @@ function MatchNode({
   );
 }
 
-/** 子2つ(25% / 75%)を束ねて親(50%)へ繋ぐ線。 */
+/** 子2つ(25% / 75%)を束ねて親(50%)へ繋ぐ線。エネルギーラインのような発光ラインにする。 */
 function PairConnector({ mirror }: { mirror: boolean }) {
   const fromChildren = mirror ? "right-0" : "left-0";
   const spine = mirror ? "right-1/2" : "left-1/2";
+  const line = "bg-brand/40 shadow-[0_0_6px_rgba(254,44,85,0.45)]";
   return (
     <div className={`relative ${CONN_W} shrink-0 self-stretch`} aria-hidden>
-      <span className={`absolute ${fromChildren} top-1/4 h-px w-1/2 bg-border`} />
-      <span className={`absolute ${fromChildren} bottom-1/4 h-px w-1/2 bg-border`} />
-      <span className={`absolute ${spine} bottom-1/4 top-1/4 w-px bg-border`} />
-      <span className={`absolute ${spine} top-1/2 h-px w-1/2 bg-border`} />
+      <span className={`absolute ${fromChildren} top-1/4 h-px w-1/2 ${line}`} />
+      <span className={`absolute ${fromChildren} bottom-1/4 h-px w-1/2 ${line}`} />
+      <span className={`absolute ${spine} bottom-1/4 top-1/4 w-px ${line}`} />
+      <span className={`absolute ${spine} top-1/2 h-px w-1/2 ${line}`} />
     </div>
   );
 }
@@ -179,7 +198,7 @@ function PairConnector({ mirror }: { mirror: boolean }) {
 function StraightConnector() {
   return (
     <div className={`relative ${CONN_W} shrink-0`} aria-hidden>
-      <span className="absolute inset-x-0 top-1/2 h-px bg-white/20" />
+      <span className="absolute inset-x-0 top-1/2 h-px bg-brand/40 shadow-[0_0_6px_rgba(254,44,85,0.45)]" />
     </div>
   );
 }
@@ -189,17 +208,19 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="flex items-center gap-1 text-[10px] font-semibold tracking-[0.2em] text-brand">
+      <span className="flex items-center gap-1 text-[10px] font-black tracking-[0.25em] text-brand">
         <TrophyIcon />
         優勝
       </span>
       {winner ? (
-        <div className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-2 py-2">
+        <div
+          className={`motion-safe:animate-pulse flex w-full items-center justify-center gap-1.5 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
+        >
           <EntrantAvatars entrants={winner.entrants} size="md" />
-          <span className="min-w-0 truncate text-sm font-semibold">{winner.name}</span>
+          <span className="min-w-0 truncate text-sm font-bold text-white">{winner.name}</span>
         </div>
       ) : (
-        <div className="w-full rounded-xl border border-dashed border-brand/40 px-2 py-2 text-center text-xs text-gray-600">
+        <div className={`w-full border border-dashed border-brand/40 px-2 py-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}>
           未確定
         </div>
       )}
@@ -218,6 +239,8 @@ function TrophyIcon() {
 /**
  * 対戦カード。**高さを固定している**(理由はファイル冒頭)。
  * そのため行数を増やせない — 不戦勝などの補足は状態の表示に畳んである。
+ * 2人(2チーム)が両方揃うときだけ、中央に「VS」バッジを重ねる
+ * (絶対配置なので高さの budget を消費しない)。
  */
 function MatchCard({
   match,
@@ -235,13 +258,15 @@ function MatchCard({
   // 不戦勝は対戦相手がそもそも存在しない。相手側の「未確定」枠は出さず、本人だけを表示する。
   const byeWinner =
     match.winnerDecidedBy === "BYE" ? match.sides.find((s) => s.isWinner) : undefined;
+  const isLive = match.status === "LIVE";
+  const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
   return (
     <article
-      className={`card flex ${CARD_H} flex-col justify-between overflow-hidden p-2.5 ${
+      className={`relative flex ${CARD_H} flex-col justify-between overflow-hidden border p-2.5 ${clip} ${
         isFinal
-          ? "border-2 border-brand/50 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-          : ""
+          ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+          : "border-white/10 bg-panel"
       }`}
     >
       <div
@@ -249,17 +274,30 @@ function MatchCard({
           mirror ? "flex-row-reverse" : ""
         }`}
       >
-        <span className="shrink-0">{formatJst(new Date(match.scheduledStartAt))}</span>
-        <span className="truncate">
+        <span className="shrink-0 font-mono">{formatJst(new Date(match.scheduledStartAt))}</span>
+        <span
+          className={`truncate font-semibold ${isLive ? "text-green-400" : decided ? "text-brand" : ""}`}
+        >
           {decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status}
         </span>
       </div>
 
-      {byeWinner ? (
-        <SideRow side={byeWinner} />
-      ) : (
-        match.sides.map((side) => <SideRow key={side.id} side={side} />)
-      )}
+      <div className="relative">
+        {byeWinner ? (
+          <SideRow side={byeWinner} />
+        ) : (
+          <>
+            {match.sides.map((side) => (
+              <SideRow key={side.id} side={side} />
+            ))}
+            <span
+              className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${TAG_SKEW} border border-white/15 bg-[#0a0a0a] px-1.5 py-px text-[9px] font-black tracking-wide text-gray-400`}
+            >
+              <span className={`inline-block ${TAG_UNSKEW}`}>VS</span>
+            </span>
+          </>
+        )}
+      </div>
     </article>
   );
 }
@@ -268,8 +306,8 @@ function MatchCard({
 function SideRow({ side }: { side: BracketSideDto }) {
   return (
     <div
-      className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-0.5 text-center ${
-        side.isWinner ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
+      className={`flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-0.5 text-center ${
+        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.03]"
       }`}
     >
       <EntrantAvatars entrants={side.entrants} size="sm" />
@@ -332,11 +370,12 @@ function EntrantAvatars({
 }
 
 /** 表に穴があるとき(データ不整合)の枠。通常は出ない。決勝枠は未確定でも装飾を保つため isFinal を受け取る。 */
-function EmptyCard({ isFinal }: { isFinal?: boolean } = {}) {
+function EmptyCard({ isFinal, mirror }: { isFinal?: boolean; mirror?: boolean } = {}) {
+  const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
   return (
     <div
-      className={`flex ${CARD_H} items-center justify-center rounded-xl border border-dashed text-[10px] text-gray-600 ${
-        isFinal ? "border-brand/40" : "border-border"
+      className={`flex ${CARD_H} items-center justify-center border border-dashed text-[10px] text-gray-600 ${clip} ${
+        isFinal ? "border-brand/40" : "border-white/15"
       }`}
     >
       —
