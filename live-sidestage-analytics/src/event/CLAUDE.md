@@ -122,6 +122,12 @@ access/refresh token は、イベント機能には一切必要ない。
   参加者一覧・チーム一覧そのものから作ること（集計結果の Map から作ると0点が消える）
 - `EventContribution` は scope ごとに `MAX_CONTRIBUTION_ROWS`(200) 件で打ち切る。
   順位表の合計は**切り捨て前の全ギフト**から計算しているので、合計や順位には影響しない
+- `topParticipantId` / `participantCount`（リスナーの支援先）は **scope=EVENT の行にだけ**入れる。
+  判定は `top-participant.ts` の `resolveListenerAttribution()` で、**打ち切り前の
+  `byParticipant` 全量**から出す（打ち切り後だと参加者側の上位200位に入らない分を拾えない）。
+  基準は常にポイント（公開ページを実弾順に並べ替えても支援先は動かさない）。
+  FK は張らない（`EventStanding.subjectId` と同じ扱い）ので、読み側は名前を解決できなければ
+  表示しないこと
 - スナップショットの入れ替えは delete → createMany を同一トランザクションで行う
   （読み手が中間状態を見ないように）
 

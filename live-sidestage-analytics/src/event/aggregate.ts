@@ -25,6 +25,7 @@ import { expandAndMergeWindows, resolveEventWindows, type EventWindow } from "./
 import { resolveMatchResults } from "./match-results";
 import { parseDeathmatchRules } from "./deathmatch";
 import { applyLifePoints } from "./life-points";
+import { resolveListenerAttribution, type ListenerAttribution } from "./top-participant";
 
 // イベントの集計本体。
 //
@@ -313,8 +314,12 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         for (const [uniqueId, profile] of found) profiles.set(uniqueId, profile);
       }
 
+      // イベント全体の行だけ「どの参加者のリスナーか」を持たせる。打ち切り前の
+      // byParticipant 全量から出す(打ち切り後だと上位に入らない分が拾えない)。
+      const attribution = resolveListenerAttribution(byParticipant);
+
       const contributions = [
-        ...buildContributionRows(eventId, "EVENT", "", byEvent, profiles),
+        ...buildContributionRows(eventId, "EVENT", "", byEvent, profiles, attribution),
         ...[...byParticipant].flatMap(([id, map]) =>
           buildContributionRows(eventId, "PARTICIPANT", id, map, profiles)
         ),
@@ -381,12 +386,15 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
   );
 }
 
+// 支援先は EVENT scope でだけ意味を持つ(PARTICIPANT / TEAM は scope 自体が答え)。
+// 渡されない scope でも null / 0 を明示して詰め、createMany の行の形を揃える。
 function buildContributionRows(
   eventId: string,
   scope: string,
   scopeId: string,
   map: Map<string, Bucket>,
-  profiles: Map<string, ListenerProfile>
+  profiles: Map<string, ListenerProfile>,
+  attribution?: Map<string, ListenerAttribution>
 ) {
   return topRows(map).map(([uniqueId, bucket]) => ({
     eventId,
@@ -398,6 +406,8 @@ function buildContributionRows(
     diamonds: bucket.diamonds,
     points: formatScaledPoints(bucket.points),
     giftCount: bucket.giftCount,
+    topParticipantId: attribution?.get(uniqueId)?.topParticipantId ?? null,
+    participantCount: attribution?.get(uniqueId)?.participantCount ?? 0,
   }));
 }
 

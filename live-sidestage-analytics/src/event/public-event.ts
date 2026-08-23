@@ -87,6 +87,13 @@ export type ContributionDto = {
   diamonds: string;
   points: string;
   giftCount: number;
+  /**
+   * 最も多くポイントを入れた参加者。イベント全体(scope=EVENT)でだけ入る。
+   * 参加者が抜けた直後などで名前を解決できなければ null。
+   */
+  topParticipantName: string | null;
+  /** ギフトを入れた参加者の人数。イベント全体でだけ意味を持つ */
+  participantCount: number;
 };
 
 /**
@@ -230,14 +237,23 @@ export type EventSnapshot = {
   hasMultiplier: boolean;
 };
 
-function toContributionDto(row: {
-  listenerUniqueId: string;
-  nickname: string;
-  profileImageUrl: string | null;
-  diamonds: bigint;
-  points: unknown;
-  giftCount: number;
-}): ContributionDto {
+/**
+ * `topParticipantId` は FK ではないので、名前は呼び出し側が持っている参加者一覧から引く。
+ * 解決できない(参加者が抜けた直後など)ときは支援先を出さない。
+ */
+function toContributionDto(
+  row: {
+    listenerUniqueId: string;
+    nickname: string;
+    profileImageUrl: string | null;
+    diamonds: bigint;
+    points: unknown;
+    giftCount: number;
+    topParticipantId: string | null;
+    participantCount: number;
+  },
+  participantNameById: Map<string, string>
+): ContributionDto {
   return {
     listenerUniqueId: row.listenerUniqueId,
     nickname: row.nickname,
@@ -245,6 +261,10 @@ function toContributionDto(row: {
     diamonds: row.diamonds.toString(),
     points: String(row.points),
     giftCount: row.giftCount,
+    topParticipantName: row.topParticipantId
+      ? (participantNameById.get(row.topParticipantId) ?? null)
+      : null,
+    participantCount: row.participantCount,
   };
 }
 
@@ -291,6 +311,7 @@ export async function loadEventSnapshot(event: {
     ]);
 
   const participantById = new Map(participants.map((p) => [p.id, p]));
+  const participantNameById = new Map(participants.map((p) => [p.id, p.displayName]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
   const teamSize = new Map<string, number>();
   for (const p of participants) {
@@ -353,7 +374,7 @@ export async function loadEventSnapshot(event: {
   return {
     standings: standingDtos,
     lives,
-    eventContributions: contributions.map(toContributionDto),
+    eventContributions: contributions.map((c) => toContributionDto(c, participantNameById)),
     participants: participants.map((p) => ({
       id: p.id,
       displayName: p.displayName,
@@ -366,7 +387,10 @@ export async function loadEventSnapshot(event: {
   };
 }
 
-/** 参加者1人ぶんのリスナー貢献ランキング。 */
+/**
+ * 参加者1人ぶんのリスナー貢献ランキング。
+ * 支援先は自明(選択中の参加者そのもの)なので、この scope では常に出さない。
+ */
 export async function loadParticipantContributions(
   eventId: string,
   participantId: string
@@ -375,7 +399,7 @@ export async function loadParticipantContributions(
     where: { eventId, scope: "PARTICIPANT", scopeId: participantId },
     orderBy: [{ points: "desc" }, { diamonds: "desc" }],
   });
-  return rows.map(toContributionDto);
+  return rows.map((row) => toContributionDto(row, new Map()));
 }
 
 /** 3桁区切り。BigInt 由来の文字列をそのまま整形する(Number へ落とさない)。 */
