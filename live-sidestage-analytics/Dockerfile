@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npx prisma generate && npx next build
+RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" npx prisma generate && npx next build
 
 EXPOSE 3000
 
