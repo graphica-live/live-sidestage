@@ -1,0 +1,89 @@
+import { describe, it, expect } from "vitest";
+import { isByeRow, isReadyForDetection, isStartedMatch } from "./match-status";
+
+const progress = (
+  status: string,
+  winnerDecidedBy: string | null = null,
+  isBye = false
+) => ({ status, winnerDecidedBy, isBye });
+
+describe("isStartedMatch", () => {
+  it("実際の対戦が付いている状態は進行中と数える", () => {
+    for (const status of ["LIVE", "DETECTED", "NEEDS_REVIEW"]) {
+      expect(isStartedMatch(progress(status))).toBe(true);
+    }
+    expect(isStartedMatch(progress("FINISHED", "AGGREGATE"))).toBe(true);
+    expect(isStartedMatch(progress("FINISHED", "MANUAL"))).toBe(true);
+  });
+
+  it("SCHEDULED は進行中と数えない", () => {
+    expect(isStartedMatch(progress("SCHEDULED"))).toBe(false);
+  });
+
+  it("NO_SHOW は進行中と数えない(表を作り直せなくなるため)", () => {
+    // 1回戦の開始時刻を過去に置くと、表を作った直後の集計で NO_SHOW が並ぶ。
+    // これを進行済みに数えると、その表は二度と作り直せなくなる。
+    expect(isStartedMatch(progress("NO_SHOW"))).toBe(false);
+  });
+
+  it("VOID は進行中と数えない(無効にしたのに作り直せないのは矛盾する)", () => {
+    expect(isStartedMatch(progress("VOID"))).toBe(false);
+  });
+
+  it("未知の status は進行中と数える(fail closed)", () => {
+    expect(isStartedMatch(progress("SOMETHING_NEW"))).toBe(true);
+    expect(isStartedMatch(progress(""))).toBe(true);
+  });
+
+  it("不戦勝行は FINISHED でも進行中と数えない", () => {
+    expect(isStartedMatch(progress("FINISHED", "BYE", true))).toBe(false);
+  });
+
+  it("rules.bye を持たない旧データも winnerDecidedBy で不戦勝と分かる", () => {
+    expect(isStartedMatch(progress("FINISHED", "BYE", false))).toBe(false);
+  });
+});
+
+describe("isByeRow", () => {
+  it("rules.bye === true のときだけ true", () => {
+    expect(isByeRow({ bye: true })).toBe(true);
+    expect(isByeRow({ bye: false })).toBe(false);
+    expect(isByeRow({ roundLabel: "決勝" })).toBe(false);
+  });
+
+  it("オブジェクト以外は false", () => {
+    expect(isByeRow(null)).toBe(false);
+    expect(isByeRow(undefined)).toBe(false);
+    expect(isByeRow([{ bye: true }])).toBe(false);
+    expect(isByeRow("bye")).toBe(false);
+  });
+});
+
+describe("isReadyForDetection", () => {
+  it("両サイドに出場者がいれば検知の対象", () => {
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"], ["b"]] })).toBe(true);
+    expect(
+      isReadyForDetection({ isBye: false, sideRoomIds: [["a1", "a2"], ["b1", "b2"]] })
+    ).toBe(true);
+  });
+
+  it("片側の出場者が未確定なら対象にしない", () => {
+    // 上流の勝者が片方しか決まっていない枠。room の和集合で見ると {a} になり、
+    // a が部外者と戦ったバトルが完全一致で載ってしまう。
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"], []] })).toBe(false);
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [[], ["b"]] })).toBe(false);
+  });
+
+  it("両サイドとも未確定なら対象にしない", () => {
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [[], []] })).toBe(false);
+  });
+
+  it("不戦勝行は両サイドが埋まっていても対象にしない", () => {
+    expect(isReadyForDetection({ isBye: true, sideRoomIds: [["a"], ["b"]] })).toBe(false);
+  });
+
+  it("サイドが2つ揃っていなければ対象にしない", () => {
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [] })).toBe(false);
+    expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"]] })).toBe(false);
+  });
+});

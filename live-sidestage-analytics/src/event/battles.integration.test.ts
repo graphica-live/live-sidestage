@@ -4,7 +4,7 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { aggregateEvent } from "./aggregate";
-import { createBracket } from "./tournament";
+import { createBracket, destroyBracket } from "./tournament";
 
 const PREFIX = "itest_battle";
 // 検知の判定は現在時刻との前後関係で決まるので、固定日付ではなく now からの相対で組む。
@@ -16,6 +16,10 @@ const ROUND1_START = new Date(NOW - 2 * 86_400_000);
 const BATTLE_START = new Date(ROUND1_START.getTime() + 10 * 60_000);
 const BATTLE_END = new Date(ROUND1_START.getTime() + 20 * 60_000);
 const GIFT_AT = new Date(ROUND1_START.getTime() + 15 * 60_000);
+// 締切(endAt + 猶予1時間)を過ぎたイベント用。最終集計の打ち切りを見るのに使う。
+const PAST_START = new Date(NOW - 10 * 86_400_000);
+const PAST_END = new Date(NOW - 8 * 86_400_000);
+const PAST_ROUND1_START = new Date(PAST_START.getTime() + 60 * 60_000);
 
 let seq = 0;
 const uniqueSuffix = () => `${Date.now()}_${seq++}`;
@@ -90,6 +94,46 @@ async function newTournament() {
   return event;
 }
 
+/** 締切(endAt + 猶予1時間)を過ぎたイベント。最終集計の挙動を見るのに使う。 */
+async function newPastTournament() {
+  const event = await prisma.event.create({
+    data: {
+      slug: `${PREFIX}-${uniqueSuffix()}`,
+      title: `${PREFIX} 終了済みトーナメント`,
+      ownerUserId: `${PREFIX}_owner`,
+      format: "TOURNAMENT",
+      entryMode: "SOLO",
+      status: "FINISHED",
+      startAt: PAST_START,
+      endAt: PAST_END,
+    },
+    select: { id: true },
+  });
+  createdEventIds.push(event.id);
+  return event;
+}
+
+async function eventTitle(eventId: string): Promise<string> {
+  const event = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    select: { title: true },
+  });
+  return event.title;
+}
+
+/** 1回戦の1件を手動確定して「進行済み」の表を作る。戻り値はそのマッチID。 */
+async function finishFirstMatch(eventId: string): Promise<string> {
+  const match = await prisma.eventMatch.findFirstOrThrow({
+    where: { eventId, round: 1 },
+    include: { sides: true },
+  });
+  await prisma.eventMatch.update({
+    where: { id: match.id },
+    data: { status: "FINISHED", winnerSideId: match.sides[0].id, winnerDecidedBy: "MANUAL" },
+  });
+  return match.id;
+}
+
 async function newParticipant(eventId: string, name: string) {
   const tiktokId = `${PREFIX}_${name}_${uniqueSuffix()}`;
   const roomId = await createRoom(tiktokId);
@@ -128,7 +172,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id, d.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
       roundIntervalMin: 120,
@@ -183,7 +226,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -228,7 +270,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       // すでに過ぎた時間枠
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
@@ -250,7 +291,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -294,7 +334,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
       roundIntervalMin: 120,
@@ -329,7 +368,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -359,7 +397,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -403,7 +440,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -418,7 +454,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id, c.id].reverse(),
-        entryMode: "SOLO",
         firstRoundStartAt: ROUND1_START,
         matchWindowMin: 60,
       })
@@ -433,7 +468,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      entryMode: "SOLO",
       firstRoundStartAt: ROUND1_START,
       matchWindowMin: 60,
     });
@@ -451,10 +485,433 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        entryMode: "SOLO",
         firstRoundStartAt: ROUND1_START,
         matchWindowMin: 60,
       })
     ).rejects.toMatchObject({ code: "ALREADY_STARTED" });
+  });
+
+  it("NO_SHOW だけの表は確認なしで作り直せる", async () => {
+    // 1回戦の開始を過去に置くと、集計の周回で NO_SHOW が付く。これを進行済みに
+    // 数えていたせいで、その表は二度と作り直せなくなっていた。
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    await prisma.eventMatch.updateMany({
+      where: { eventId: event.id },
+      data: { status: "NO_SHOW" },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+      })
+    ).resolves.toMatchObject({ matches: 1 });
+  });
+
+  it("VOID だけの表は確認なしで作り直せる", async () => {
+    // 「作り直すには対戦を無効にすること」と案内しておきながら、無効にすると
+    // 永久にブロックされる状態だった。
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    await prisma.eventMatch.updateMany({
+      where: { eventId: event.id },
+      data: { status: "VOID" },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+      })
+    ).resolves.toMatchObject({ matches: 1 });
+  });
+
+  it("イベント名を入力すれば確定済みの対戦があっても作り直せる", async () => {
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    const before = await finishFirstMatch(event.id);
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { finalizedAt: new Date() },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+        confirm: title,
+      })
+    ).resolves.toMatchObject({ matches: 1 });
+
+    const after = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true, status: true },
+    });
+    expect(after).toHaveLength(1);
+    expect(after[0].id).not.toBe(before);
+    expect(after[0].status).toBe("SCHEDULED");
+    // 表を作り直したら結果が変わる。最終集計が済んでいてもやり直させる。
+    const reopened = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(reopened.finalizedAt).toBeNull();
+  });
+
+  it("イベント名が一致しなければ拒否し、既存の表と結果を残す", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    const kept = await finishFirstMatch(event.id);
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+        confirm: "まったく違うイベント名",
+      })
+    ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
+
+    const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
+    expect(still.status).toBe("FINISHED");
+  });
+
+  it("イベント名を変えた後は、古い名前の確認では破棄できない", async () => {
+    // 確認の照合は route 層ではなくロックを取った後に行う。外で読むと、
+    // 名前の変更と競合したときに古い名前で新しいイベントの表を消せてしまう。
+    const event = await newTournament();
+    const oldTitle = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    await finishFirstMatch(event.id);
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { title: `${oldTitle} 改` },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+        confirm: oldTitle,
+      })
+    ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
+  });
+
+  it("表が入れ替わっていたら BRACKET_CHANGED で拒否する", async () => {
+    // 別タブが作り直した表を、古い画面のリクエストが消さないようにする。
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    const staleIds = (
+      await prisma.eventMatch.findMany({ where: { eventId: event.id }, select: { id: true } })
+    ).map((m) => m.id);
+
+    // 別タブが作り直す。
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [b.id, a.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    const current = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+        confirm: title,
+        expectedMatchIds: staleIds,
+      })
+    ).rejects.toMatchObject({ code: "BRACKET_CHANGED" });
+
+    const after = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
+    });
+    expect(after.map((m) => m.id).sort()).toEqual(current.map((m) => m.id).sort());
+  });
+
+  it("作り直しが日程不正で失敗したら、既存の表と結果はそのまま残る", async () => {
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    const kept = await finishFirstMatch(event.id);
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { finalizedAt: new Date() },
+    });
+
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id],
+        // 開催期間の外。planRoundStarts が通らない。
+        firstRoundStartAt: new Date(END.getTime() + 86_400_000),
+        matchWindowMin: 60,
+        confirm: title,
+      })
+    ).rejects.toMatchObject({ code: "OUT_OF_EVENT_WINDOW" });
+
+    // 破棄と再作成は同じトランザクション。片方だけ通って表を失うことはない。
+    const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
+    expect(still.status).toBe("FINISHED");
+    const untouched = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(untouched.finalizedAt).not.toBeNull();
+  });
+});
+
+describe("トーナメント表の破棄", () => {
+  it("表を全部消し、最終集計をやり直させる", async () => {
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    await finishFirstMatch(event.id);
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { finalizedAt: new Date() },
+    });
+
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 1,
+    });
+
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(0);
+    // サイドはカスケードで消える(手で消していない)。
+    expect(
+      await prisma.eventMatchSide.count({ where: { match: { eventId: event.id } } })
+    ).toBe(0);
+    const reopened = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(reopened.finalizedAt).toBeNull();
+  });
+
+  it("何も進行していなくてもイベント名の入力が要る", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+
+    await expect(destroyBracket(event.id, {})).rejects.toMatchObject({
+      code: "CONFIRM_MISMATCH",
+    });
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(1);
+  });
+
+  it("表が無くても確認は要求し、最終集計は勝手にやり直させない", async () => {
+    // 空撃ちで finalizedAt が外れると、確定済みのイベントが再集計へ戻ってしまう。
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const finalizedAt = new Date();
+    await prisma.event.update({ where: { id: event.id }, data: { finalizedAt } });
+
+    await expect(destroyBracket(event.id, {})).rejects.toMatchObject({
+      code: "CONFIRM_MISMATCH",
+    });
+
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 0,
+    });
+    const still = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(still.finalizedAt).not.toBeNull();
+  });
+
+  it("参加者が2組未満に減っていても破棄できる", async () => {
+    // createBracket が永久に通らない状態でも古い表を消せること。
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+    await prisma.eventParticipant.update({
+      where: { id: b.id },
+      data: { status: "REMOVED" },
+    });
+
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 1,
+    });
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(0);
+  });
+});
+
+describe("時間枠を過ぎた表が永久にブロックされない", () => {
+  it("出場者が未確定の枠は NO_SHOW にならず、そのまま作り直せる", async () => {
+    // 1回戦の開始が過去(= 時間枠切れ)の表を作り、集計を1周させる。
+    // 以前はこの周回で2回戦以降まで NO_SHOW になり、以後その表は
+    // 「進行済み」と判定されて二度と作り直せなくなっていた。
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id, c.id],
+      firstRoundStartAt: ROUND1_START,
+      matchWindowMin: 60,
+    });
+
+    await aggregateEvent(event.id);
+
+    const matches = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      orderBy: [{ round: "asc" }, { bracketPosition: "asc" }],
+      select: { round: true, status: true, winnerDecidedBy: true },
+    });
+
+    // 1回戦の実試合は時間枠が実際に過ぎているので NO_SHOW でよい(仕様)。
+    const realRound1 = matches.filter((m) => m.round === 1 && m.winnerDecidedBy !== "BYE");
+    expect(realRound1.every((m) => m.status === "NO_SHOW")).toBe(true);
+
+    // 2回戦は「まだ相手が決まっていない」だけ。検知待ちのまま残ること。
+    const round2 = matches.filter((m) => m.round === 2);
+    expect(round2.length).toBeGreaterThan(0);
+    expect(round2.every((m) => m.status === "SCHEDULED")).toBe(true);
+
+    // そしてこの状態から確認なしで作り直せること(永久ブロックの回帰)。
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: [a.id, b.id, c.id],
+        firstRoundStartAt: ROUND1_START,
+        matchWindowMin: 60,
+      })
+    ).resolves.toMatchObject({ matches: expect.any(Number) });
+  });
+});
+
+describe("締切後に表を作り直しても進行が止まらない", () => {
+  it("勝者を下流へ送った周回では最終集計にしない", async () => {
+    // 検知(detectMatches)は進行(resolveMatchResults)より先に走るので、1周で進むのは
+    // 1ラウンドだけ。締切後にそのまま finalizedAt を立てると、2回戦以降が
+    // 永久に SCHEDULED のまま取り残される。
+    const event = await newPastTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id, c.id],
+      firstRoundStartAt: PAST_ROUND1_START,
+      matchWindowMin: 30,
+      roundIntervalMin: 45,
+    });
+
+    // 1周目: 不戦勝の勝者が2回戦へ送られる = 進行があったので確定しない。
+    await aggregateEvent(event.id);
+    const afterFirst = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(afterFirst.finalizedAt).toBeNull();
+
+    // 2周目: 転送は冪等なので進行が起きない = ここで最終集計になる。
+    await aggregateEvent(event.id);
+    const afterSecond = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(afterSecond.finalizedAt).not.toBeNull();
   });
 });

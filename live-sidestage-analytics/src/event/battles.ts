@@ -7,6 +7,7 @@ import {
   type BattleObservation,
   type MatchCandidate,
 } from "./match-detect";
+import { isByeRow } from "./match-status";
 import type { TimeRange } from "./scoring";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
@@ -74,6 +75,7 @@ type MatchWithSides = {
   scheduledStartAt: Date;
   scheduledEndAt: Date;
   winnerDecidedBy: string | null;
+  rules: unknown;
   sides: {
     id: string;
     sideIndex: number;
@@ -88,6 +90,7 @@ function toCandidate(match: MatchWithSides): MatchCandidate {
     scheduledStartAt: match.scheduledStartAt,
     scheduledEndAt: match.scheduledEndAt,
     sideRoomIds: bySide.map((s) => s.participants.map((p) => p.participant.roomId)),
+    isBye: isByeRow(match.rules),
   };
 }
 
@@ -144,6 +147,8 @@ export async function detectMatches(
       scheduledStartAt: true,
       scheduledEndAt: true,
       winnerDecidedBy: true,
+      // 不戦勝行を検知にも NO_SHOW にも関わらせないために要る(toCandidate)。
+      rules: true,
       sides: {
         select: {
           id: true,

@@ -24,6 +24,27 @@ import { acquireEventLock } from "./event-lock";
  */
 export const MUTATION_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 
+/**
+ * トランザクションがロック待ちで打ち切られたか(Prisma の `P2028`)。
+ *
+ * 集計は最大120秒のトランザクション(`aggregate.ts`)で同じ advisory lock を握るので、
+ * その最中に主催者が結果を触ると上の30秒では待ちきれないことがある。
+ * **500 にせず 503 で「あとでやり直す」と返すため**に判別する。
+ *
+ * `lock_timeout` は入れていない — 全マッチ操作の挙動が変わるうえ、待たされること自体は
+ * 正しい(集計と直列化されている)。ここで変えるのは失敗の伝え方だけ。
+ */
+export function isTransactionTimeout(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  if (code === "P2028") return true;
+  const message = (err as { message?: unknown }).message;
+  return (
+    typeof message === "string" &&
+    /transaction (already closed|api error)|unable to start a transaction/i.test(message)
+  );
+}
+
 export async function reopenAggregation(tx: DbClient, eventId: string): Promise<void> {
   // トランザクションの先頭ですでに取っていれば、これは待たされない。
   await acquireEventLock(tx, eventId);

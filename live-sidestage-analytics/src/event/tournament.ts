@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import type { DbClient } from "./analytics-db";
 import { resolveBracket, roundLabel, stagedRoundLabel } from "./bracket";
 import { parseBracketMethod } from "./bracket-rules";
 import { parseJstLocal } from "./datetime";
 import { acquireEventLock } from "./event-lock";
+import { isByeRow, isStartedMatch } from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 import { resolveEventWindows, type EventWindow } from "./sessions";
 
@@ -21,11 +23,21 @@ export type BracketPlanInput = {
   eventId: string;
   /** シード順(強い順)に並べたエントリー。個人戦なら participantId、チーム戦なら teamId */
   entrantIds: string[];
-  entryMode: "SOLO" | "TEAM";
   /** 1回戦の開始時刻 */
   firstRoundStartAt: Date;
   matchWindowMin?: number;
   roundIntervalMin?: number;
+  /**
+   * 主催者が入力したイベント名。**進行中・確定済みの対戦を含む表を破棄するときだけ要る。**
+   * ロックを取った後の `Event.title` と突き合わせる(後述の `assertConfirmed`)。
+   */
+  confirm?: string;
+  /**
+   * クライアントが見ていた表のマッチID。**渡すと、ロック内の現在の集合と一致しないときに
+   * `BRACKET_CHANGED` で弾く。** 別タブや遅延したリクエストが、主催者の知らない
+   * 新しい表を消すのを止めるため。
+   */
+  expectedMatchIds?: string[];
 };
 
 export class BracketError extends Error {
@@ -36,6 +48,8 @@ export class BracketError extends Error {
       | "ALREADY_STARTED"
       | "OUT_OF_EVENT_WINDOW"
       | "UNKNOWN_ENTRANT"
+      | "CONFIRM_MISMATCH"
+      | "BRACKET_CHANGED"
   ) {
     super(message);
     this.name = "BracketError";
@@ -91,25 +105,27 @@ export function planRoundStarts(input: {
 /**
  * トーナメント表を作る。既存の表があれば作り直す。
  *
- * **1つでも進行済みのマッチがあれば作り直さない。** 検知済みの対戦や確定した勝敗が
- * 消えてしまうため。作り直したい場合は主催者が個別に VOID にしてから実行する。
+ * **進行済みのマッチ(検知済み・確定済み)を含む表は、主催者がイベント名を入力して
+ * 確認したときだけ破棄する**(`confirm`)。何も進行していない表は従来どおり確認なしで
+ * 置き換える — 失われる結果がないので儀式を課す意味がない。
+ *
+ * 破棄と再作成は必ず同じトランザクションで行う。分けると、破棄は成功したが
+ * 作成が(日程不正などで)失敗して、主催者が表を失ったまま取り残される。
  */
 export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
   const {
     eventId,
     entrantIds,
-    entryMode,
     firstRoundStartAt,
     matchWindowMin = DEFAULT_MATCH_WINDOW_MIN,
     roundIntervalMin = DEFAULT_ROUND_INTERVAL_MIN,
+    confirm,
+    expectedMatchIds,
   } = input;
 
   if (entrantIds.length < 2) {
     throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
   }
-
-  // エントリーが実在するか(チーム戦ならチーム、個人戦なら参加者)を確認する。
-  const participantsByEntrant = await resolveEntrantParticipants(eventId, entrantIds, entryMode);
 
   return prisma.$transaction(async (tx) => {
     // **日程を読む前にロックを取る。** 日程の変更と同時に走ると、古い日程で
@@ -119,6 +135,8 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     const event = await tx.event.findUnique({
       where: { id: eventId },
       select: {
+        title: true,
+        entryMode: true,
         startAt: true,
         endAt: true,
         rules: true,
@@ -129,6 +147,16 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       },
     });
     if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
+
+    // **エントリーの解決もロックの内側でやる。** 参加形式(SOLO/TEAM)は主催者が
+    // 変更できるので、外で読むと古い判定のまま新しい表がコミットされうる。
+    const entryMode = event.entryMode === "TEAM" ? "TEAM" : "SOLO";
+    const participantsByEntrant = await resolveEntrantParticipants(
+      tx,
+      eventId,
+      entrantIds,
+      entryMode
+    );
 
     // ブラケット方式はイベントの rules から読む(主催者が作成ウィザードで決めた値)。
     // 表を作るたびに読み直すので、旧方式で作った表を消して別方式で作り直すこともできる。
@@ -150,21 +178,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       );
     }
 
-    const existing = await tx.eventMatch.findMany({
-      where: { eventId },
-      select: { id: true, status: true, winnerDecidedBy: true },
+    await clearBracket(tx, eventId, {
+      eventTitle: event.title,
+      confirm,
+      expectedMatchIds,
     });
-    // 不戦勝(BYE)は表を作った時点でバトルを待たずに自動確定させただけで、
-    // 主催者や実際の対戦が進行したわけではない。作り直しのブロック対象にしない。
-    if (existing.some((m) => m.status !== "SCHEDULED" && m.winnerDecidedBy !== "BYE")) {
-      throw new BracketError(
-        "すでに進行中・確定済みの対戦があるため、表を作り直せません。",
-        "ALREADY_STARTED"
-      );
-    }
-    if (existing.length > 0) {
-      await tx.eventMatch.deleteMany({ where: { eventId } });
-    }
 
     for (const match of bracket.matches) {
       const roundStart = roundStarts[match.round - 1];
@@ -231,8 +249,130 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
   }, MUTATION_TX_OPTIONS);
 }
 
+/**
+ * トーナメント表を破棄する(作り直さない)。
+ *
+ * `createBracket` が永久に成功しない状態 — 参加者が2組未満に減った、日程を縮めて
+ * 全ラウンドが収まらない、メンバー0のチームが混ざった — でも古い表を消せるようにするため、
+ * 破棄だけの経路を分けてある。これがないと公開ページに古い表が残り続ける。
+ *
+ * **明示的な破棄なので、進行状態にかかわらずイベント名の確認を要求する。**
+ */
+export async function destroyBracket(
+  eventId: string,
+  options: { confirm?: string; expectedMatchIds?: string[] } = {}
+): Promise<{ destroyed: number }> {
+  return prisma.$transaction(async (tx) => {
+    await acquireEventLock(tx, eventId);
+
+    const event = await tx.event.findUnique({
+      where: { id: eventId },
+      select: { title: true },
+    });
+    if (!event) throw new BracketError("イベントが見つかりません。", "UNKNOWN_ENTRANT");
+
+    const destroyed = await clearBracket(tx, eventId, {
+      eventTitle: event.title,
+      confirm: options.confirm,
+      expectedMatchIds: options.expectedMatchIds,
+      alwaysConfirm: true,
+    });
+
+    // 表を消したら順位・ライフが変わる。最終集計が済んでいても計算し直させる。
+    // **1件も消さなかったなら呼ばない** — 空撃ちのたびに finalizedAt が外れて、
+    // 確定済みのイベントが再集計に戻ってしまう。
+    if (destroyed > 0) await reopenAggregation(tx, eventId);
+    return { destroyed };
+  }, MUTATION_TX_OPTIONS);
+}
+
+/**
+ * 既存のトーナメント表を消す。**必ず `acquireEventLock` を取ったトランザクションの中から呼ぶ。**
+ *
+ * `EventMatchSide` / `EventMatchSideParticipant` は `onDelete: Cascade` なので一緒に消える。
+ * **`DetectedBattle` は消さない** — `eventId` を持たない共有テーブルで、他イベントも
+ * 参照しうる。次の `detectMatches` が新しい表へ照合し直す。
+ */
+async function clearBracket(
+  tx: DbClient,
+  eventId: string,
+  options: {
+    eventTitle: string;
+    confirm?: string;
+    expectedMatchIds?: string[];
+    /** 進行していなくてもイベント名の確認を要求する(破棄だけの経路) */
+    alwaysConfirm?: boolean;
+  }
+): Promise<number> {
+  const existing = await tx.eventMatch.findMany({
+    where: { eventId },
+    select: { id: true, status: true, winnerDecidedBy: true, rules: true },
+  });
+
+  // クライアントが見ていた表と違うなら、その判断は古い。別タブが作り直した表や、
+  // その後に入った結果を、主催者の知らないうちに消さないための楽観的排他。
+  if (options.expectedMatchIds) {
+    const now = new Set(existing.map((m) => m.id));
+    const expected = new Set(options.expectedMatchIds);
+    const same = now.size === expected.size && [...now].every((id) => expected.has(id));
+    if (!same) {
+      throw new BracketError(
+        "この画面を開いた後にトーナメント表が変わりました。最新の状態を確認してください。",
+        "BRACKET_CHANGED"
+      );
+    }
+  }
+
+  // 不戦勝(BYE)は表を作った時点でバトルを待たずに自動確定させただけで、
+  // 主催者や実際の対戦が進行したわけではない。破棄のブロック対象にしない。
+  const started = existing.some((m) =>
+    isStartedMatch({
+      status: m.status,
+      winnerDecidedBy: m.winnerDecidedBy,
+      isBye: isByeRow(m.rules),
+    })
+  );
+
+  // **確認は「消すものが無い」より先に見る。** ここを後回しにすると、空の表に対して
+  // 確認なしの破棄が 200 で通り、呼び出し側の後始末(reopenAggregation)だけが走る。
+  if (started || options.alwaysConfirm) {
+    assertConfirmed(options.confirm, options.eventTitle, started);
+  }
+
+  if (existing.length === 0) return 0;
+
+  await tx.eventMatch.deleteMany({ where: { eventId } });
+  return existing.length;
+}
+
+/**
+ * 主催者が入力したイベント名を、ロック内で読み直した `Event.title` と突き合わせる。
+ *
+ * **route 層で比較しない。** イベント名は主催者が変更できるので、ロックの外で読むと
+ * 名前の変更と競合したときに「古い名前への確認で、新しい名前のイベントの表を消す」
+ * ことができてしまう。
+ *
+ * なおこれは誤操作を止めるための儀式であって、認可ではない(イベント名は公開ページに
+ * 出るので秘密ではない)。認可の境界は API 側の `requireEventOwner`。
+ */
+function assertConfirmed(confirm: string | undefined, eventTitle: string, started: boolean): void {
+  if (typeof confirm === "string" && confirm.trim() === eventTitle.trim()) return;
+
+  if (confirm === undefined && started) {
+    throw new BracketError(
+      "すでに進行中・確定済みの対戦があります。破棄して作り直すには、イベント名を入力して確認してください。",
+      "ALREADY_STARTED"
+    );
+  }
+  throw new BracketError(
+    "確認のため、イベント名を正確に入力してください。",
+    "CONFIRM_MISMATCH"
+  );
+}
+
 /** エントリーID → そのサイドに入る参加者IDの一覧。 */
 async function resolveEntrantParticipants(
+  tx: DbClient,
   eventId: string,
   entrantIds: string[],
   entryMode: "SOLO" | "TEAM"
@@ -240,7 +380,7 @@ async function resolveEntrantParticipants(
   const map = new Map<string, string[]>();
 
   if (entryMode === "TEAM") {
-    const teams = await prisma.eventTeam.findMany({
+    const teams = await tx.eventTeam.findMany({
       where: { eventId, id: { in: entrantIds } },
       select: { id: true, participants: { where: { status: "ACTIVE" }, select: { id: true } } },
     });
@@ -256,7 +396,7 @@ async function resolveEntrantParticipants(
       map.set(team.id, team.participants.map((p) => p.id));
     }
   } else {
-    const participants = await prisma.eventParticipant.findMany({
+    const participants = await tx.eventParticipant.findMany({
       where: { eventId, id: { in: entrantIds }, status: "ACTIVE" },
       select: { id: true },
     });
