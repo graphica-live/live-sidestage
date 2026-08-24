@@ -96,7 +96,12 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _draft = _draft.copyWith(giftName: selected.name, giftLabel: selected.label);
+      _draft = _draft.copyWith(
+        giftName: selected.name,
+        giftLabel: selected.label,
+        // 画像の無いギフトを選び直したら前の絵は消す。
+        giftImageUrl: selected.imageUrl,
+      );
     });
   }
 
@@ -337,7 +342,7 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
         children: [
           const _SectionHeader('ギフト'),
           ListTile(
-            leading: const Icon(Icons.card_giftcard),
+            leading: GiftThumbnail(_draft.giftImageUrl),
             title: Text(GiftNameJa.display(_draft.giftName, fallback: _draft.displayGiftName)),
             subtitle: _draft.giftName.isEmpty
                 ? const Text('どのギフトでも鳴ります')

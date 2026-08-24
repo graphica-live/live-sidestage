@@ -99,7 +99,7 @@ class _GiftSoundTile extends StatelessWidget {
     final store = context.read<AppConfigStore>();
 
     return ListTile(
-      leading: const Icon(Icons.card_giftcard),
+      leading: GiftThumbnail(gift.giftImageUrl),
       // 保存してあるのは TikTok の英語名。表示だけ辞書で日本語にするので、
       // あとから辞書が増えれば登録済みの設定にも効く。
       title: Text(GiftNameJa.display(gift.giftName, fallback: gift.displayGiftName)),
