@@ -16,13 +16,15 @@ class SoundPlayerPool {
   final List<AudioPlayer> _idle = [];
   bool _disposed = false;
 
-  /// Android の audio focus 設定。
+  /// 効果音の再生設定。編集画面のテスト再生（[SoundPreview]）も同じものを使う。
+  /// 別々に持つと、片方だけ直したときに鳴り方がずれる。
   ///
+  /// Android の audio focus について:
   /// audioplayers の既定は `AndroidAudioFocus.gain` で、再生のたびに
   /// AUDIOFOCUS_GAIN を要求する。そのままだと効果音を鳴らすたびに
   /// TTS 側のプレイヤーがフォーカスを失って止まってしまう。
   /// 効果音は「他の音に重ねて鳴らすもの」なのでフォーカスを取りに行かない。
-  static final AudioContext _context = AudioContext(
+  static final AudioContext playbackContext = AudioContext(
     android: const AudioContextAndroid(
       isSpeakerphoneOn: false,
       stayAwake: true,
@@ -39,7 +41,7 @@ class SoundPlayerPool {
   Future<AudioPlayer> _acquire() async {
     if (_idle.isNotEmpty) return _idle.removeLast();
     final player = AudioPlayer();
-    await player.setAudioContext(_context);
+    await player.setAudioContext(playbackContext);
     await player.setReleaseMode(ReleaseMode.stop);
     return player;
   }

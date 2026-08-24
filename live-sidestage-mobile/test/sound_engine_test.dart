@@ -351,28 +351,4 @@ void main() {
     });
   });
 
-  group('テスト再生', () {
-    test('設定に無いファイルでも鳴らせる', () async {
-      final engine = engineFor(configWith(gifts: const []));
-      engine.testPlayFile('unsaved.mp3', 100);
-      await settle();
-      expect(player.played, ['/sounds/unsaved.mp3']);
-    });
-
-    test('全体音量が掛かる', () async {
-      final engine = engineFor(configWith(gifts: const [], masterVolume: 50));
-      engine.testPlayFile('unsaved.mp3', 50);
-      await settle();
-      expect(player.volumes.single, closeTo(0.25, 0.0001));
-    });
-
-    test('ファイルが無ければエラーを立てる', () async {
-      missing.add('gone.mp3');
-      final engine = engineFor(configWith(gifts: const []));
-      engine.testPlayFile('gone.mp3', 100);
-      await settle();
-      expect(player.played, isEmpty);
-      expect(engine.errorMessage, isNotNull);
-    });
-  });
 }
