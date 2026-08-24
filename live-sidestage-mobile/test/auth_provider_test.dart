@@ -3,12 +3,17 @@
 // Apple には Google の `signInSilently` に相当するものが無いので、
 // **どちらでログインしたか**を覚えていないと、Apple のセッションで
 // Google の無言サインインを走らせてしまう。保存済みセッションの後方互換も含めて固定する。
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:live_sidestage_mobile/core/api_client.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/session_storage.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 AuthSession _session({
   AuthProvider provider = AuthProvider.google,
@@ -26,13 +31,53 @@ AuthSession _session({
 
 class _FakeApi extends LiveAnalyticsApi {
   int googleAuthCalls = 0;
+  int appleAuthCalls = 0;
+  String? lastNonce;
 
   @override
   Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
     googleAuthCalls++;
     return _session();
   }
+
+  @override
+  Future<AuthSession> authenticateWithApple({
+    required String authorizationCode,
+    required String nonce,
+    String? givenName,
+    String? familyName,
+  }) async {
+    appleAuthCalls++;
+    lastNonce = nonce;
+    return _session(provider: AuthProvider.apple);
+  }
 }
+
+AuthorizationCredentialAppleID _credential({required String? state}) =>
+    AuthorizationCredentialAppleID(
+      userIdentifier: null,
+      givenName: '太郎',
+      familyName: '山田',
+      authorizationCode: 'code-1',
+      email: null,
+      identityToken: null,
+      state: state,
+    );
+
+/// Apple の設定が入っているビルドを模した controller。
+SessionController _appleController({
+  required _FakeApi api,
+  required AppleCredentialFetcher appleCredential,
+  AppResumeWatcher? watchAppResume,
+}) =>
+    SessionController(
+      api: api,
+      storage: _FakeStorage(),
+      googleSignIn: _FakeGoogleSignIn(),
+      appleSignInEnabled: true,
+      appleCredential: appleCredential,
+      watchAppResume: watchAppResume ?? (_) => () {},
+    );
 
 class _FakeStorage extends SessionStorage {
   AuthSession? saved;
@@ -176,6 +221,132 @@ void main() {
 
       expect(await controller.signInWithApple(), isFalse);
       expect(controller.errorMessage, contains('利用できません'));
+    });
+
+    test('state が一致したときだけサーバーへ送る', () async {
+      final api = _FakeApi();
+      String? seenNonce;
+      final controller = _appleController(
+        api: api,
+        appleCredential: ({required nonce, required state}) async {
+          seenNonce = nonce;
+          return _credential(state: state);
+        },
+      );
+
+      expect(await controller.signInWithApple(), isTrue);
+      expect(api.appleAuthCalls, 1);
+      // 端末が生成した nonce をそのままサーバーへ渡していること。
+      expect(api.lastNonce, seenNonce);
+      expect(controller.session!.provider, AuthProvider.apple);
+    });
+
+    test('nonce と state は毎回作り直す（使い回さない）', () async {
+      final api = _FakeApi();
+      final seen = <String>{};
+      final controller = _appleController(
+        api: api,
+        appleCredential: ({required nonce, required state}) async {
+          seen.addAll([nonce, state]);
+          return _credential(state: state);
+        },
+      );
+
+      await controller.signInWithApple();
+      await controller.signInWithApple();
+
+      // 2回分の nonce/state が4つとも別物。
+      expect(seen.length, 4);
+    });
+
+    test('state が一致しなければサーバーを呼ばない（他人の認証結果を投げ込まれた場合）', () async {
+      final api = _FakeApi();
+      final controller = _appleController(
+        api: api,
+        appleCredential: ({required nonce, required state}) async {
+          return _credential(state: 'attacker-state');
+        },
+      );
+
+      expect(await controller.signInWithApple(), isFalse);
+      expect(api.appleAuthCalls, 0);
+      expect(controller.session, isNull);
+      expect(controller.errorMessage, contains('照合に失敗'));
+    });
+
+    test('state が欠けていてもサーバーを呼ばない', () async {
+      final api = _FakeApi();
+      final controller = _appleController(
+        api: api,
+        appleCredential: ({required nonce, required state}) async => _credential(state: null),
+      );
+
+      expect(await controller.signInWithApple(), isFalse);
+      expect(api.appleAuthCalls, 0);
+    });
+
+    test('Custom Tab を閉じて戻ってきたらキャンセル扱いにする（スピナーが固まらない）', () {
+      // Android のプラグインは、認証を完了せずタブを閉じられると Future を
+      // 永久に resolve しない。復帰を検知して打ち切れることを固定する。
+      fakeAsync((async) {
+        final api = _FakeApi();
+        late VoidCallback fireResume;
+        final controller = _appleController(
+          api: api,
+          // 解決しない Future = タブを閉じられた状態。
+          appleCredential: ({required nonce, required state}) => Completer<AuthorizationCredentialAppleID>().future,
+          watchAppResume: (onResumed) {
+            fireResume = onResumed;
+            return () {};
+          },
+        );
+
+        bool? result;
+        controller.signInWithApple().then((value) => result = value);
+        async.flushMicrotasks();
+        expect(controller.isLoading, isTrue);
+
+        fireResume();
+        async.elapse(const Duration(seconds: 5));
+
+        expect(result, isFalse);
+        expect(controller.isLoading, isFalse);
+        expect(api.appleAuthCalls, 0);
+        expect(controller.errorMessage, contains('キャンセル'));
+      });
+    });
+
+    test('復帰直後に結果が届く正常系では打ち切らない', () {
+      fakeAsync((async) {
+        final api = _FakeApi();
+        final pending = Completer<AuthorizationCredentialAppleID>();
+        String? issuedState;
+        late VoidCallback fireResume;
+        final controller = _appleController(
+          api: api,
+          appleCredential: ({required nonce, required state}) {
+            issuedState = state;
+            return pending.future;
+          },
+          watchAppResume: (onResumed) {
+            fireResume = onResumed;
+            return () {};
+          },
+        );
+
+        bool? result;
+        controller.signInWithApple().then((value) => result = value);
+        async.flushMicrotasks();
+
+        // 復帰 → 猶予の内側で callback が解決する。
+        fireResume();
+        async.elapse(const Duration(seconds: 1));
+        pending.complete(_credential(state: issuedState));
+        async.elapse(const Duration(seconds: 5));
+
+        expect(result, isTrue);
+        expect(api.appleAuthCalls, 1);
+      });
     });
   });
 }

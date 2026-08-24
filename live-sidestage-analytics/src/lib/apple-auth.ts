@@ -18,6 +18,9 @@ const APPLE_TOKEN_URL = `${APPLE_ISSUER}/auth/token`;
 const JWKS_TTL_MS = 60 * 60 * 1000;
 /// 未知の kid を投げつけられても Apple を叩き続けないためのレート制限。
 const JWKS_REFRESH_INTERVAL_MS = 60 * 1000;
+/// Apple 側の障害中にキャッシュを使い続けてよい上限。これを超えたら
+/// 「鍵が古すぎる」として上流障害を返す（失効した鍵で通し続けないため）。
+const JWKS_MAX_STALE_MS = 24 * 60 * 60 * 1000;
 const JWKS_TIMEOUT_MS = 10_000;
 const JWKS_MAX_KEYS = 20;
 const TOKEN_TIMEOUT_MS = 10_000;
@@ -143,12 +146,16 @@ function resolveClient(
 // authorization code の交換
 // ---------------------------------------------------------------------------
 
-/// code を Apple の token エンドポイントで交換し、id_token を得る。
+/// code を Apple の token エンドポイントで交換し、id_token と**使った client_id** を得る。
 /// code は単回・短命なので、ここを通ったことが「この認証は本物」の根拠になる。
+///
+/// client_id を返すのは、続く [verifyAppleIdToken] で `aud` をその1つに固定するため。
+/// Services ID と Bundle ID の和集合で許してしまうと、片方のクライアント向けに
+/// 発行されたトークンをもう片方の経路で通せる余地が残る。
 export async function exchangeAuthorizationCode(
   config: AppleConfig,
   { code, clientKind }: { code: string; clientKind: AppleClientKind },
-): Promise<string> {
+): Promise<{ idToken: string; clientId: string }> {
   const { clientId, redirectUri } = resolveClient(config, clientKind);
 
   const body = new URLSearchParams({
@@ -174,18 +181,26 @@ export async function exchangeAuthorizationCode(
   const json = (await response.json().catch(() => null)) as { id_token?: unknown; error?: unknown } | null;
 
   if (!response.ok) {
-    // invalid_grant は「codeが期限切れ・使用済み・別クライアント宛」= 利用者側の再試行で直る。
-    // それ以外(invalid_client など)はこちらの設定不備なので上流障害として扱う。
+    // invalid_grant は「code が期限切れ・使用済み・別クライアント宛」。
+    // **同じ code を送り直しても直らない**（単回使用）ので、端末には
+    // 認証をやり直させる。ここで自動リトライしてはいけない。
     if (json?.error === "invalid_grant") {
       throw new AppleAuthError("Apple認証の有効期限が切れました。もう一度お試しください", 401);
+    }
+    // invalid_client は client_secret / Team ID / Key の設定不備。利用者が
+    // やり直しても直らないので、未設定と同じ 503 にして設定側の問題だと分かるようにする。
+    if (json?.error === "invalid_client") {
+      throw new AppleAuthError("Appleサインインの設定に問題があります", 503);
     }
     throw new AppleAuthError("Appleの認証に失敗しました", 502);
   }
 
   if (typeof json?.id_token !== "string") {
+    // タイムアウトや解析失敗と同じく、Apple 側では code が消費済みの可能性がある。
+    // 自動で再交換しないこと。
     throw new AppleAuthError("Appleの応答にIDトークンが含まれていません", 502);
   }
-  return json.id_token;
+  return { idToken: json.id_token, clientId };
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +291,12 @@ async function resolveSigningKey(kid: string): Promise<KeyObject> {
     }
   }
 
+  // 期限切れのキャッシュで凌ぐのは、Apple 側の一時障害でログインを全滅させないため。
+  // ただし無期限に使い続けると、失効した鍵の署名を通し続けることになる。
+  if (cachedKeys && Date.now() - cachedAt >= JWKS_MAX_STALE_MS) {
+    throw new AppleAuthError("Appleの公開鍵を取得できませんでした", 502);
+  }
+
   const stale = cachedKeys?.get(kid);
   if (stale) return stale;
   throw new AppleAuthError("Apple認証トークンの署名鍵が見つかりません", 401);
@@ -285,9 +306,11 @@ async function resolveSigningKey(kid: string): Promise<KeyObject> {
 ///
 /// token エンドポイントから TLS で直接受け取った値だが、署名も含めて検証する
 /// （aud を我々の client_id に固定できるのはここだけで、設定ミスを検知できる）。
+///
+/// [expectedAudience] には **code 交換で実際に使った client_id** を渡す。
 export async function verifyAppleIdToken(
-  config: AppleConfig,
   idToken: string,
+  expectedAudience: string,
 ): Promise<AppleIdTokenClaims> {
   const decoded = jwt.decode(idToken, { complete: true });
   if (!decoded || typeof decoded === "string") {
@@ -306,8 +329,8 @@ export async function verifyAppleIdToken(
       algorithms: ["RS256"],
       issuer: APPLE_ISSUER,
       // Android/web は Services ID、iOS ネイティブは Bundle ID が aud になる。
-      // 両方を許容しておけば、同じバックエンドで iOS 版を受けられる。
-      audience: config.bundleId ? [config.servicesId, config.bundleId] : config.servicesId,
+      // **和集合ではなく、この認証で実際に使った1つ**に固定する。
+      audience: expectedAudience,
     });
     if (typeof verified === "string") throw new Error("unexpected payload");
     payload = verified;

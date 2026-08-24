@@ -54,7 +54,7 @@ function configureApple() {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.MOBILE_JWT_SECRET ||= "test-mobile-secret";
-  exchangeAuthorizationCode.mockResolvedValue("id-token");
+  exchangeAuthorizationCode.mockResolvedValue({ idToken: "id-token", clientId: "com.example.service" });
   verifyAppleIdToken.mockResolvedValue(claims());
   resolveAppleUser.mockResolvedValue({
     id: "u1",
@@ -71,7 +71,7 @@ afterEach(() => {
 describe("POST /api/mobile/auth/apple", () => {
   it("Apple 未設定なら 503 で閉じる（中途半端にユーザーを作らない）", async () => {
     vi.stubEnv("APPLE_SERVICES_ID", "");
-    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }));
+    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "android" }));
 
     expect(response.status).toBe(503);
     expect(resolveAppleUser).not.toHaveBeenCalled();
@@ -80,7 +80,13 @@ describe("POST /api/mobile/auth/apple", () => {
   it("成功すると Google 版と同じ形のセッションを返す", async () => {
     configureApple();
     const response = await POST(
-      request({ authorizationCode: "c1", nonce: "nonce-1", givenName: "太郎", familyName: "山田" }),
+      request({
+        authorizationCode: "c1",
+        nonce: "nonce-1",
+        clientKind: "android",
+        givenName: "太郎",
+        familyName: "山田",
+      }),
     );
     const body = await response.json();
 
@@ -96,7 +102,7 @@ describe("POST /api/mobile/auth/apple", () => {
     configureApple();
     verifyAppleIdToken.mockResolvedValue(claims({ nonce: "someone-elses-nonce" }));
 
-    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }));
+    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "android" }));
 
     expect(response.status).toBe(401);
     expect(resolveAppleUser).not.toHaveBeenCalled();
@@ -106,7 +112,7 @@ describe("POST /api/mobile/auth/apple", () => {
     configureApple();
     verifyAppleIdToken.mockResolvedValue(claims({ nonce: null }));
 
-    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }));
+    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "android" }));
     expect(response.status).toBe(401);
   });
 
@@ -118,13 +124,13 @@ describe("POST /api/mobile/auth/apple", () => {
 
   it("極端に長い入力は受けない", async () => {
     configureApple();
-    const response = await POST(request({ authorizationCode: "c".repeat(5000), nonce: "nonce-1" }));
+    const response = await POST(request({ authorizationCode: "c".repeat(5000), nonce: "nonce-1", clientKind: "android" }));
     expect(response.status).toBe(400);
   });
 
-  it("clientKind を指定しなければ android として扱う", async () => {
+  it("clientKind: android で Services ID の経路を使う", async () => {
     configureApple();
-    await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }));
+    await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "android" }));
     expect(exchangeAuthorizationCode).toHaveBeenCalledWith(expect.anything(), {
       code: "c1",
       clientKind: "android",
@@ -140,11 +146,29 @@ describe("POST /api/mobile/auth/apple", () => {
     });
   });
 
+  it("clientKind が欠けていたり知らない値なら 400（android へ黙って丸めない）", async () => {
+    configureApple();
+    expect((await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }))).status).toBe(400);
+    expect(
+      (await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "web" }))).status,
+    ).toBe(400);
+    expect(exchangeAuthorizationCode).not.toHaveBeenCalled();
+  });
+
+  it("aud は交換に使った client_id で検証する", async () => {
+    configureApple();
+    exchangeAuthorizationCode.mockResolvedValue({ idToken: "tok", clientId: "com.example.app" });
+
+    await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "ios" }));
+
+    expect(verifyAppleIdToken).toHaveBeenCalledWith("tok", "com.example.app");
+  });
+
   it("Apple 側の失敗は AppleAuthError のステータスをそのまま返す", async () => {
     configureApple();
     exchangeAuthorizationCode.mockRejectedValue(new AppleAuthError("上流が落ちています", 502));
 
-    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1" }));
+    const response = await POST(request({ authorizationCode: "c1", nonce: "nonce-1", clientKind: "android" }));
     expect(response.status).toBe(502);
     expect((await response.json()).error).toBe("上流が落ちています");
   });

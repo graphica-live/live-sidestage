@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -20,6 +21,36 @@ typedef AppleCredentialFetcher = Future<AuthorizationCredentialAppleID> Function
   required String state,
 });
 
+/// アプリが前面へ戻ってきたことを知らせる。戻り値は購読の解除。
+typedef AppResumeWatcher = VoidCallback Function(VoidCallback onResumed);
+
+/// Custom Tab から戻ったあと、callback 経由で結果が届くのを待つ猶予。
+/// これを過ぎても未解決なら「ユーザーがタブを閉じた」とみなす。
+const Duration _appleReturnGrace = Duration(seconds: 3);
+
+class _AppResumeObserver with WidgetsBindingObserver {
+  _AppResumeObserver(this.onResumed);
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResumed();
+  }
+}
+
+VoidCallback _watchAppResumeWithBinding(VoidCallback onResumed) {
+  try {
+    final binding = WidgetsBinding.instance;
+    final observer = _AppResumeObserver(onResumed);
+    binding.addObserver(observer);
+    return () => binding.removeObserver(observer);
+  } catch (_) {
+    // バインディングが無い環境（純粋な dart テストなど）では監視しない。
+    return () {};
+  }
+}
+
 class SessionController extends ChangeNotifier {
   /// 依存はテストのためだけに差し替え可能にしてある。既定は本番実装。
   SessionController({
@@ -28,7 +59,11 @@ class SessionController extends ChangeNotifier {
     GoogleSignIn? googleSignIn,
     Future<String?> Function()? silentIdToken,
     AppleCredentialFetcher? appleCredential,
-  })  : _api = api ?? LiveAnalyticsApi(),
+    AppResumeWatcher? watchAppResume,
+    bool? appleSignInEnabled,
+  })  : _watchAppResume = watchAppResume ?? _watchAppResumeWithBinding,
+        _appleSignInEnabled = appleSignInEnabled ?? isAppleSignInConfigured,
+        _api = api ?? LiveAnalyticsApi(),
         _storage = storage ?? SessionStorage(),
         _googleSignIn = googleSignIn ??
             GoogleSignIn(
@@ -47,6 +82,11 @@ class SessionController extends ChangeNotifier {
   late final Future<String?> Function() _silentIdToken;
 
   late final AppleCredentialFetcher _appleCredential;
+
+  final AppResumeWatcher _watchAppResume;
+
+  /// ビルドに Apple の設定が渡っているか。既定は [isAppleSignInConfigured]。
+  final bool _appleSignInEnabled;
 
   /// 進行中のトークン再発行。複数のAPI呼び出しが同時に401になっても
   /// Googleのサインインを多重起動しないよう、同じ Future を共有する。
@@ -117,7 +157,7 @@ class SessionController extends ChangeNotifier {
   /// の3つで、他人の認証結果を流し込まれてログインさせられる経路を塞ぐ。
   Future<bool> signInWithApple() {
     return _run(() async {
-      if (!isAppleSignInConfigured) {
+      if (!_appleSignInEnabled) {
         throw ApiException('Appleサインインはこのビルドでは利用できません。');
       }
 
@@ -126,7 +166,7 @@ class SessionController extends ChangeNotifier {
 
       final AuthorizationCredentialAppleID credential;
       try {
-        credential = await _appleCredential(nonce: nonce, state: state);
+        credential = await _awaitAppleCredential(nonce: nonce, state: state);
       } on SignInWithAppleAuthorizationException catch (e) {
         throw ApiException(_appleSignInMessage(e));
       } on SignInWithAppleException catch (e) {
@@ -147,6 +187,41 @@ class SessionController extends ChangeNotifier {
         givenName: credential.givenName,
         familyName: credential.familyName,
       );
+    });
+  }
+
+  /// Apple の認証結果を待つ。**ユーザーが Custom Tab を閉じた場合に備える。**
+  ///
+  /// `sign_in_with_apple` 8.1.0 の Android 実装は、認証を完了せずにタブを閉じられると
+  /// **Future を永久に resolve しない**（戻ってきたことを知る手段がプラグイン側に無い）。
+  /// そのまま待つと `isLoading` が立ちっぱなしになり、アプリを再起動するまで
+  /// ログインボタンを押せなくなる。
+  ///
+  /// アプリが前面へ戻ったのを検知し、そこから少し待っても結果が来なければ
+  /// キャンセル扱いにする（正常系では戻った直後に callback で解決する）。
+  Future<AuthorizationCredentialAppleID> _awaitAppleCredential({
+    required String nonce,
+    required String state,
+  }) {
+    final credential = _appleCredential(nonce: nonce, state: state);
+    final cancelled = Completer<AuthorizationCredentialAppleID>();
+
+    // 敗者側の結果が未処理例外として報告されないように受け口を用意しておく。
+    credential.then((_) {}, onError: (_) {});
+
+    Timer? grace;
+    final stopWatching = _watchAppResume(() {
+      grace?.cancel();
+      grace = Timer(_appleReturnGrace, () {
+        if (!cancelled.isCompleted) {
+          cancelled.completeError(ApiException('サインインがキャンセルされました'));
+        }
+      });
+    });
+
+    return Future.any([credential, cancelled.future]).whenComplete(() {
+      grace?.cancel();
+      stopWatching();
     });
   }
 

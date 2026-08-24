@@ -47,11 +47,22 @@ export async function POST(req: NextRequest) {
   if (!authorizationCode || !nonce) {
     return NextResponse.json({ error: "authorizationCodeとnonceが必要です" }, { status: 400 });
   }
-  const clientKind: AppleClientKind = body.clientKind === "ios" ? "ios" : "android";
+
+  // どのクライアントで認証したかで client_id と redirect_uri が変わる。
+  // **知らない値を android に丸めない** — 黙って別のクライアント設定で
+  // code を交換しにいくと、原因の分からない invalid_grant になる。
+  if (body.clientKind !== "android" && body.clientKind !== "ios") {
+    return NextResponse.json({ error: "clientKindが不正です" }, { status: 400 });
+  }
+  const clientKind: AppleClientKind = body.clientKind;
 
   try {
-    const idToken = await exchangeAuthorizationCode(config, { code: authorizationCode, clientKind });
-    const claims = await verifyAppleIdToken(config, idToken);
+    const { idToken, clientId } = await exchangeAuthorizationCode(config, {
+      code: authorizationCode,
+      clientKind,
+    });
+    // aud は「交換に使った client_id」ちょうどでなければならない。
+    const claims = await verifyAppleIdToken(idToken, clientId);
 
     // ★ 端末が生成した nonce と一致しなければ、その id_token は
     // この端末が始めた認証の結果ではない（ログインCSRF・使い回し）。

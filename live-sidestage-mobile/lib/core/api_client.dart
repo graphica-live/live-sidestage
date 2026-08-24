@@ -45,7 +45,14 @@ const String appleRedirectUri = String.fromEnvironment(
 );
 
 /// Apple サインインを画面に出してよいか。
-bool get isAppleSignInConfigured => appleServicesId.isNotEmpty;
+///
+/// **Services ID と https の redirect URI が両方揃っていること**を条件にする。
+/// 片方だけでは authorize が必ず失敗するので、押せてしまう状態を作らない。
+bool get isAppleSignInConfigured {
+  if (appleServicesId.isEmpty) return false;
+  final uri = Uri.tryParse(appleRedirectUri);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+}
 
 class ApiException implements Exception {
   final String message;
