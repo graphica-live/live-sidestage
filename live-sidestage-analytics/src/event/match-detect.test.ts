@@ -13,13 +13,15 @@ function match(
   id: string,
   sideRoomIds: string[][],
   start = "2026-09-01T20:00:00+09:00",
-  end = "2026-09-01T21:00:00+09:00"
+  end = "2026-09-01T21:00:00+09:00",
+  isBye = false
 ): MatchCandidate {
   return {
     id,
     scheduledStartAt: T(start),
     scheduledEndAt: T(end),
     sideRoomIds,
+    isBye,
   };
 }
 
@@ -296,6 +298,35 @@ describe("assignBattles", () => {
 
     expect(result).toEqual([]);
   });
+
+  it("出場者が未確定のサイドを持つ枠には割り当てない", () => {
+    // 期待 room の集合は全サイドの和集合なので、[["roomA"], []] は {roomA} になる。
+    // roomA が部外者と戦ったバトルが「完全一致」として載るのを防ぐ。
+    const result = assignBattles({
+      matches: [match("half", [["roomA"], []])],
+      battles: [
+        battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }]),
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("不戦勝行には割り当てない", () => {
+    const result = assignBattles({
+      matches: [
+        match("bye", [["roomA"], ["roomB"]], "2026-09-01T20:00:00+09:00", "2026-09-01T21:00:00+09:00", true),
+      ],
+      battles: [
+        battle("b1", [
+          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
+          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00" },
+        ]),
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
 });
 
 describe("findMissedMatches", () => {
@@ -316,6 +347,34 @@ describe("findMissedMatches", () => {
     const missed = findMissedMatches({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       assigned: new Set(["m1"]),
+      now: T("2026-09-01T21:30:00+09:00"),
+    });
+
+    expect(missed).toEqual([]);
+  });
+
+  it("出場者が未確定のサイドを持つ枠は NO_SHOW にしない", () => {
+    // 上流の勝者がまだ決まっていないだけで、実施されなかったわけではない。
+    // ここを NO_SHOW にすると、1回戦の開始が過去の表は作った直後に全滅する。
+    const missed = findMissedMatches({
+      matches: [
+        match("half", [["roomA"], []]),
+        match("empty", [[], []]),
+        match("ready", [["roomC"], ["roomD"]]),
+      ],
+      assigned: new Set<string>(),
+      now: T("2026-09-01T21:30:00+09:00"),
+    });
+
+    expect(missed).toEqual(["ready"]);
+  });
+
+  it("不戦勝行は NO_SHOW にしない", () => {
+    const missed = findMissedMatches({
+      matches: [
+        match("bye", [["roomA"], ["roomB"]], "2026-09-01T20:00:00+09:00", "2026-09-01T21:00:00+09:00", true),
+      ],
+      assigned: new Set<string>(),
       now: T("2026-09-01T21:30:00+09:00"),
     });
 

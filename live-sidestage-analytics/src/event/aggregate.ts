@@ -166,6 +166,8 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
 
       const now = new Date();
       const finalizedAt = now >= aggregationDeadline(event.endAt) ? now : undefined;
+      /** ブラケットの進行が起きた周回は最終集計にしない(下の resolveMatchResults を参照)。 */
+      let deferFinalize = false;
 
       if (participants.length === 0) {
         // 参加者がいなくなったらスナップショットも空にする(古い順位を残さない)。
@@ -205,12 +207,21 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           });
         }
         await detectMatches(tx as DbClient, { eventId, now });
-        await resolveMatchResults(tx as DbClient, {
+        const results = await resolveMatchResults(tx as DbClient, {
           eventId,
           multipliers: multiplierInputs,
           windows,
           now,
         });
+        // **勝者を下流へ送った周回では最終集計にしない。** 検知(detectMatches)は
+        // 進行(resolveMatchResults)より先に走るので、1周で進むのは1ラウンドだけ。
+        // ここで finalizedAt を立てると、締切後に表を作り直したときに
+        // 「1回戦を確定して2回戦へ送った周回でそのまま打ち切り」になり、
+        // 過去のバトルが残っていても2回戦以降が永久に SCHEDULED のままになる。
+        //
+        // 転送は冪等なので、書き終われば次の周回で advanced が 0 に落ちる
+        // (下流が始まっていて弾かれた枠は blocked に入り、ここには数えない)。
+        if (results.advanced > 0) deferFinalize = true;
         battleRanges = await loadBattleRangesByRoom(tx as DbClient, eventId);
 
         if (event.format === "DEATHMATCH") {
@@ -370,7 +381,11 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
       const elapsedMs = Date.now() - startedAt;
       await tx.event.update({
         where: { id: eventId },
-        data: { lastAggregatedAt: now, aggregateMs: elapsedMs, finalizedAt },
+        data: {
+          lastAggregatedAt: now,
+          aggregateMs: elapsedMs,
+          finalizedAt: deferFinalize ? undefined : finalizedAt,
+        },
       });
 
       return {

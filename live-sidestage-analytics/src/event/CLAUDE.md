@@ -240,16 +240,87 @@ BATTLE 倍率が設定されていなければ分割自体をしない（クエ�
 すでに始まっている（LIVE / DETECTED / NEEDS_REVIEW / FINISHED）場合は書き換えず、
 API 側も 409 で拒否する。
 
-**不戦勝行（`EventMatch.rules.bye === true`）はこの STARTED_STATUSES ブロックの対象外にする。**
+**不戦勝行（`EventMatch.rules.bye === true`）はこの「進行中」ブロックの対象外にする。**
 段階的不戦勝方式（`buildStagedBracket()`、`src/event/bracket.ts`）では相手が実試合の勝者
 （WINNER_OF）である「動的な不戦勝行」が生成時点では未確定（両サイド空）のまま作られる。
 `match-results.ts` の進行処理が、片側に参加者が転送された時点で `FINISHED + winnerDecidedBy:
-"BYE"` へ自動確定する。この行は検知対象にならない（空側があると `assignBattles` が候補から
-外す）ので LIVE/DETECTED/NEEDS_REVIEW には絶対にならず、STARTED_STATUSES ブロックを外しても
+"BYE"` へ自動確定する。この行は検知対象にならない（`isReadyForDetection()` が両サイドの
+出場者を要求する）ので LIVE/DETECTED/NEEDS_REVIEW には絶対にならず、ブロックを外しても
 安全 — むしろ外さないと、上流の勝者が変わった（VOID・手動上書き等）ときにこの行が古い勝者の
 まま固まってしまう。不戦勝行への `confirm`/`draw`/`void`/`reopen` は `[matchId]/route.ts` が
 拒否する（対戦が起きていないので結果操作に意味がなく、`reopen` すると検知対象化して部外者との
 バトルを誤って拾うリスクがある）。`downstreamStarted()` も不戦勝行を透過してさらに下流を見る。
+
+### 検知の対象は `isReadyForDetection()` の1箇所で決める
+
+`src/event/match-status.ts` の純粋関数で、**両サイドの出場者が確定していて不戦勝行でないこと**。
+`assignBattles`（割り当て）と `findMissedMatches`（NO_SHOW 化）の**両方**がこれを使う。
+
+片方だけの判定にすると食い違う。実際に起きていた: `assignBattles` は
+`new Set(sideRoomIds.flat())` の**和集合**を見ていたので、上流の勝者が片方しか決まっていない
+`[["roomA"], []]` の枠が `{roomA}` として候補に残り、**roomA が部外者と戦ったバトルが
+「完全一致」で載っていた**（`isOneOnOne` が false なので自動確定はされず NEEDS_REVIEW 止まり
+だったが、主催者に無関係な対戦が承認待ちで出る）。`findMissedMatches` のほうは
+`scheduledEndAt < now` だけを見ていたので、**まだ相手が決まっていない枠まで NO_SHOW にしていた**。
+
+サイドの空判定に `teamId` は使わない。検知は roomId 集合の一致でしかできないので、
+`teamId` はあるが出場者がいないサイドはそもそも永久に検知されない。
+
+### トーナメント表の破棄と作り直し
+
+**「進行済み」の定義は `src/event/match-status.ts` の `isStartedMatch()` 1箇所。**
+`DISCARDABLE_MATCH_STATUSES`（`SCHEDULED` / `NO_SHOW` / `VOID`）に**無い** status を
+進行済みとみなす **fail closed**。`EventMatch.status` は DB の enum ではなく文字列なので、
+status が増えたときに破壊操作が黙って通らないようにしてある。サーバー・API・
+クライアント（`MatchManager.tsx`）が同じ関数を見る。
+
+`NO_SHOW` と `VOID` を進行済みに数えない理由（どちらも実害が出ていた）:
+
+- `NO_SHOW` は「バトルが**起きなかった**」の記録で、失うデータがない。しかも1回戦の開始を
+  過去に置くと集計の周回で自動的に付く。数えると**表を作った直後に永久ブロック**される
+- `VOID` は主催者が明示的に無効と宣言した行。UI が「作り直すには対戦を無効にすること」と
+  案内しておきながら、無効にすると余計に作り直せなくなるのは仕様矛盾
+
+**確認（`confirm`）はイベント名で、照合は必ず `acquireEventLock` を取った後に
+`Event.title` を読み直して行う。** route 層で比較すると、名前の変更と競合したときに
+古い名前への確認で新しい名前のイベントの表を消せてしまう。なおこれは誤操作を止める儀式で
+あって認可ではない（イベント名は公開ページに出る）。認可の境界は `requireEventOwner`。
+
+**進行済みの対戦を含まない表は確認なしで置き換える。** 失う結果がないのに毎回イベント名を
+打たせるのは摩擦でしかない。`confirm` は「失われる結果があるときの儀式」として定義する。
+
+**`expectedMatchIds`（クライアントが見ていたマッチID）は楽観的排他。** `confirm` は
+「主催者が破棄を意図した」ことしか保証しない。タブAが表V1を見てダイアログを開く →
+タブBがV2を作って結果を確定する → 遅れて届いたタブAのリクエストがロックを取り、
+イベント名は一致するので**V2を消す**、という競合を advisory lock は止められない
+（直列化するだけで、古い判断を拒否しない）。
+
+**破棄と再作成は必ず同一トランザクション。** 分けると、破棄は成功したが作成が
+（`OUT_OF_EVENT_WINDOW` などで）失敗して主催者が表を失ったまま取り残される。
+「破棄だけ」の `destroyBracket()` を別に用意してあるのは、`createBracket` が永久に
+成功しない状態（参加者が2組未満に減った・日程を縮めて全ラウンドが収まらない・
+メンバー0のチームが混ざった）でも古い表を消せるようにするため。
+
+**`DetectedBattle` は消さない。** `eventId` を持たない共有テーブルで、他イベントも
+参照しうる。次の `detectMatches` が新しい表へ照合し直すので、作り直しても同じ時間枠なら
+検知が復活する（意図した挙動）。
+
+**進行が起きた周回では `finalizedAt` を立てない**（`resolveMatchResults` の `summary.advanced`）。
+検知は進行より先に走るので1周で進むのは1ラウンドだけ。締切後に表を作り直すと、
+1回戦を確定して2回戦へ送った周回でそのまま最終集計になり、2回戦以降が永久に `SCHEDULED` で
+残ってしまう。転送は冪等なので次周には `advanced` が 0 に落ちる。
+**下流が始まっていて弾かれた枠（`summary.blocked`）は数えない** — 毎周「転送したい」状態の
+ままなので、数えると `finalizedAt` が永久に立たない。
+
+`ARCHIVED` は `aggregationWindow`（`aggregate.ts`）の対象外なので、作り直しても集計が回らない
+（ダイアログで案内している）。`EventScoreAdjustment.scope=MATCH` と
+`EventContribution.scope=MATCH` は `EventMatch` への FK なしのソフト参照。前者は未使用、
+後者は次の全再集計で入れ替わる（`ARCHIVED` では残る）。破棄時に手で消す必要はない。
+
+**ロック順序は全経路で advisory lock が先。** 破棄側が「ロック → 行削除」なので、
+`[matchId]` API が「行更新 → `reopenAggregation` の中でロック」だと逆順でデッドロックする。
+`[matchId]` の各操作はトランザクション先頭で `acquireEventLock` を取り、対象マッチの読み取り・
+`BYE_ROW` 判定・`downstreamStarted()`・`schedule` の status 判定も**すべてロックの内側**で行う。
 
 **`buildStagedBracket()` が「不戦勝行」と印を付けてよいのは、`nextSlot()` の機械的な座標
 （`floor(position/2)`）で見て、相手側に構造的に誰も来ないことが保証されている場合だけ。**
@@ -349,7 +420,8 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 集計ワーカーは `finalizedAt` が立ったイベントを飛ばす。**確定後に勝敗を覆したり
 対戦を足したりしても、これを消さないと順位・ライフに反映されない。**
 `src/event/reopen-aggregation.ts` を、対戦の追加・削除・承認・確定・引き分け・VOID・
-検知やり直し・時間枠変更・ライフ設定の変更・トーナメント表の作り直しで呼んでいる。
+検知やり直し・時間枠変更・ライフ設定の変更・トーナメント表の作り直し・トーナメント表の破棄で
+呼んでいる。
 新しく結果を変える操作を足すときは、同じトランザクションから必ず呼ぶこと。
 
 ### ライフは全期間再計算

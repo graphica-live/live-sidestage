@@ -7,6 +7,7 @@ import { parseBracketMethod } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { isByeRow } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
 import { resolveEventWindows } from "@/event/sessions";
 import { EventSetupSteps } from "../../EventSetupSteps";
@@ -168,6 +169,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     detectedEndSource: m.detectedEndSource,
     winnerSideId: m.winnerSideId,
     winnerDecidedBy: m.winnerDecidedBy,
+    // rules を丸ごとクライアントへ流さず、要る真偽値だけ渡す。
+    isBye: isByeRow(m.rules),
     sides: m.sides.map((s) => ({
       id: s.id,
       sideIndex: s.sideIndex,
@@ -205,6 +208,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       <div className="mt-6">
         <MatchManager
           eventId={event.id}
+          eventTitle={event.title}
+          eventStatus={event.status}
           format={event.format}
           entryMode={event.entryMode}
           sessions={resolveEventWindows(event).map((w) => ({

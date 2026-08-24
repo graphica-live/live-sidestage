@@ -12,7 +12,9 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
+import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
+import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
 
 /** 開催日程1件。日時は ISO 文字列(サーバーコンポーネントから Date を渡せないため)。 */
 export type SessionRow = {
@@ -68,6 +70,8 @@ export type MatchRow = {
   detectedEndSource: string | null;
   winnerSideId: string | null;
   winnerDecidedBy: string | null;
+  /** 不戦勝行(`EventMatch.rules.bye`)。サーバー側で評価した真偽値だけ受け取る */
+  isBye: boolean;
   sides: MatchSideRow[];
 };
 
@@ -78,8 +82,59 @@ const END_SOURCE_NOTES: Record<string, string> = {
 };
 
 /**
+ * 破棄したときに何が消えるかを数える。**追加のクエリは要らない** — 画面が持っている
+ * 対戦一覧だけで出せる(件数の鮮度はモーダルを開く前の `router.refresh()` が担保する)。
+ */
+function summarizeBracket(matches: MatchRow[]): BracketSummary {
+  const started = matches.filter(isStartedMatch);
+  return {
+    total: matches.length,
+    finished: started.filter((m) => m.status === "FINISHED").length,
+    running: started.filter((m) => m.status !== "FINISHED").length,
+    bye: matches.filter((m) => m.isBye || m.winnerDecidedBy === "BYE").length,
+    // 消える結果の中身。主催者が「本当にこれを捨ててよいか」を判断する材料。
+    finishedLabels: started
+      .filter((m) => m.status === "FINISHED")
+      .map((m) => {
+        const winner = m.sides.find((s) => s.id === m.winnerSideId);
+        return winner ? `${m.roundLabel}: ${winner.label}` : m.roundLabel;
+      }),
+  };
+}
+
+/**
+ * トーナメント表の「1回戦の開始」の初期値。
+ *
+ * 1回戦は開催日程の中で始めないと表を作れない(サーバー側が `OUT_OF_EVENT_WINDOW` で拒否する)
+ * ので、必ず日程の中へ落とす。
+ *
+ * - **開催中の日程がある**: 今。日程の開始時刻をそのまま入れると、表を作った直後の
+ *   集計周回で1回戦が時間枠切れになり NO_SHOW が並ぶ
+ * - **まだ始まっていない**: 最初の未来の日程の頭
+ * - **全部終わっている**: **最初の**日程の頭。終了したイベントの表も作り直せるようにする。
+ *   最後の日程を使うと2回戦以降を置く先が無くなって必ず弾かれる
+ */
+function firstRoundDefault(sessions: SessionRow[]): string {
+  const now = Date.now();
+  if (sessions.length === 0) return toJstInputValue(new Date(now));
+
+  const live = sessions.find(
+    (s) => now >= new Date(s.startAt).getTime() && now < new Date(s.endAt).getTime()
+  );
+  if (live) return toJstInputValue(new Date(now));
+
+  const upcoming = sessions.find((s) => now < new Date(s.startAt).getTime());
+  // **分へ切り上げる。** `<input type="datetime-local">` は分までしか持てないので、
+  // 秒を持つ日程(10:22:02 など)の開始をそのまま入れると切り捨てで日程の外へ出て、
+  // サーバー側が `OUT_OF_EVENT_WINDOW` で弾く。
+  const start = new Date(upcoming?.startAt ?? sessions[0].startAt).getTime();
+  return toJstInputValue(new Date(Math.ceil(start / 60_000) * 60_000));
+}
+
+/**
  * いま対戦を組むならどの日程か。開催中ならその日程、まだなら次の日程、
- * 全部終わっていたら最後の日程。対戦の初期値に使う。
+ * 全部終わっていたら最後の日程。デスマッチの対戦を1件組むときの初期値に使う
+ * (トーナメントは全ラウンドを収める必要があるので `firstRoundDefault` を使う)。
  */
 function currentSession(sessions: SessionRow[]): SessionRow | null {
   if (sessions.length === 0) return null;
@@ -117,6 +172,8 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
 
 export function MatchManager({
   eventId,
+  eventTitle,
+  eventStatus,
   format,
   entryMode,
   sessions,
@@ -127,6 +184,9 @@ export function MatchManager({
   bracketMethod,
 }: {
   eventId: string;
+  /** 表を破棄するときの確認に入力させる文字列 */
+  eventTitle: string;
+  eventStatus: string;
   format: string;
   entryMode: string;
   /** 開催日程(startAt 昇順)。日程を持たないイベントは外枠1件が入る */
@@ -146,14 +206,12 @@ export function MatchManager({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const seedRowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
-  const [startAt, setStartAt] = useState(() =>
-    // 1回戦は日程の中で始めないと表を作れない(サーバー側が拒否する)。
-    toJstInputValue(new Date(sessions[0]?.startAt ?? Date.now()))
-  );
+  const [startAt, setStartAt] = useState(() => firstRoundDefault(sessions));
   const [matchWindowMin, setMatchWindowMin] = useState(30);
   const [roundIntervalMin, setRoundIntervalMin] = useState(45);
   const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [destroyOpen, setDestroyOpen] = useState(false);
 
   const byRound = useMemo(() => {
     const groups = new Map<number, MatchRow[]>();
@@ -165,12 +223,63 @@ export function MatchManager({
     return [...groups.entries()].sort((a, b) => a[0] - b[0]);
   }, [matches]);
 
-  // 不戦勝(BYE)はバトルを待たずに自動確定しただけなので「進行中」に含めない。
-  // 含めると、参加者が2のべき乗でないイベントは表を作った瞬間に作り直せなくなる。
-  const started = matches.some((m) => m.status !== "SCHEDULED" && m.winnerDecidedBy !== "BYE");
+  // 判定はサーバーと同じ述語を使う(`match-status.ts`)。不戦勝・NO_SHOW・VOID は
+  // 「進行済み」に数えない — 数えると、参加者が2のべき乗でないイベントや、
+  // 時間枠を過ぎた表が二度と作り直せなくなる。
+  const started = matches.some(isStartedMatch);
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) ?? null;
 
-  async function send(url: string, body: unknown, method = "PATCH") {
+  const destroySummary = useMemo(() => summarizeBracket(matches), [matches]);
+
+  /**
+   * 表の破棄をともなう作り直し / 破棄だけ。**モーダルを開く前に必ず最新を読み直す。**
+   * event-worker が10秒ごとに status を書き換えるので、画面の件数はすぐ古くなる。
+   * 古い件数のまま「確定3件が消える」と見せて確認させない。
+   *
+   * `keepError` はサーバーに弾かれて開き直すとき。**理由を消さない** — 消すと
+   * 「押したのに何も起きなかった」ようにしか見えない。
+   */
+  function openDestroyDialog(keepError = false) {
+    router.refresh();
+    if (!keepError) setError(null);
+    setDestroyOpen(true);
+  }
+
+  async function submitBracket(confirm?: string) {
+    const ok = await send(
+      `/api/events/${eventId}/matches`,
+      {
+        entrantIds: seed,
+        firstRoundStartAt: startAt,
+        matchWindowMin,
+        roundIntervalMin,
+        ...(confirm === undefined ? {} : { confirm }),
+        // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
+        expectedMatchIds: matches.map((m) => m.id),
+      },
+      "POST",
+      // 確認が要る・表が変わっていた場合はダイアログへ回す(エラー表示で行き止まりにしない)。
+      { onConflict: () => openDestroyDialog(true) }
+    );
+    if (ok) setDestroyOpen(false);
+  }
+
+  async function destroyBracketOnly(confirm: string) {
+    const ok = await send(
+      `/api/events/${eventId}/matches`,
+      { confirm, expectedMatchIds: matches.map((m) => m.id) },
+      "DELETE",
+      { onConflict: () => openDestroyDialog(true) }
+    );
+    if (ok) setDestroyOpen(false);
+  }
+
+  async function send(
+    url: string,
+    body: unknown,
+    method = "PATCH",
+    options: { onConflict?: (code: string | null) => void } = {}
+  ) {
     setBusy(true);
     setError(null);
     const res = await fetch(url, {
@@ -181,6 +290,15 @@ export function MatchManager({
     setBusy(false);
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
+      const code = typeof payload?.code === "string" ? payload.code : null;
+      if (
+        options.onConflict &&
+        (code === "ALREADY_STARTED" || code === "BRACKET_CHANGED" || code === "CONFIRM_MISMATCH")
+      ) {
+        setError(payload?.error ?? null);
+        options.onConflict(code);
+        return false;
+      }
       setError(payload?.error ?? "操作に失敗した。");
       return false;
     }
@@ -274,10 +392,28 @@ export function MatchManager({
 
   return (
     <div className="space-y-6">
-      {error && (
+      {error && !destroyOpen && (
         <p className="rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2 text-sm text-red-300">
           {error}
         </p>
+      )}
+
+      {destroyOpen && (
+        <DestroyBracketDialog
+          eventTitle={eventTitle}
+          eventStatus={eventStatus}
+          summary={destroySummary}
+          canRebuild={seed.length >= 2}
+          requireConfirmText={started}
+          busy={busy}
+          error={error}
+          onClose={() => {
+            setDestroyOpen(false);
+            setError(null);
+          }}
+          onRebuild={(confirm) => void submitBracket(confirm)}
+          onDestroyOnly={(confirm) => void destroyBracketOnly(confirm)}
+        />
       )}
 
       <section className="card space-y-4">
@@ -295,8 +431,9 @@ export function MatchManager({
 
         {started && (
           <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
-            すでに進行中・確定済みの対戦があるため、表は作り直せない。作り直すには
-            該当の対戦を無効にすること。
+            進行中・確定済みの対戦が
+            {destroySummary.finished + destroySummary.running} 件ある。
+            作り直すとその結果は消える。実行するときはイベント名の入力を求める。
           </p>
         )}
 
@@ -388,28 +525,23 @@ export function MatchManager({
           </div>
           <button
             type="button"
-            disabled={busy || seed.length < 2 || started}
+            // **表がある限り常に押せる。** 参加者が2組未満に減っても「破棄だけ」へ
+            // 到達できないと、公開ページに古い表が残ったまま消せなくなる。
+            disabled={busy || (matches.length === 0 && seed.length < 2)}
             onClick={() => {
-              if (
-                matches.length > 0 &&
-                !window.confirm("既存のトーナメント表を破棄して作り直す。よろしいか?")
-              ) {
+              if (matches.length > 0) {
+                openDestroyDialog();
                 return;
               }
-              send(
-                `/api/events/${eventId}/matches`,
-                {
-                  entrantIds: seed,
-                  firstRoundStartAt: startAt,
-                  matchWindowMin,
-                  roundIntervalMin,
-                },
-                "POST"
-              );
+              void submitBracket();
             }}
             className="btn-primary shrink-0"
           >
-            {matches.length > 0 ? "表を作り直す" : "表を作る"}
+            {matches.length === 0
+              ? "表を作る"
+              : started
+                ? "表を破棄して作り直す"
+                : "表を作り直す"}
           </button>
         </div>
         <SessionNote sessions={sessions} />

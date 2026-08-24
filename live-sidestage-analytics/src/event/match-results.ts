@@ -1,6 +1,7 @@
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
 import { MANUAL_DECISIONS } from "./match-detect";
+import { isByeRow, isStartedMatch } from "./match-status";
 import { intersectWindows, type EventWindow } from "./sessions";
 import {
   buildRateSegments,
@@ -18,32 +19,24 @@ import {
 // 進行は増分ではなく**毎回の再構築**。主催者が勝者を変えたり VOID にしたりしたときに、
 // 下流へ流れた古い勝者が残らないようにするため(集計本体と同じ思想)。
 
-/** 下流のマッチがこの状態に入っていたら、上流の結果変更で参加者を書き換えない。 */
-const STARTED_STATUSES = new Set(["LIVE", "DETECTED", "NEEDS_REVIEW", "FINISHED"]);
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * 不戦勝行(`EventMatch.rules.bye === true`)か。tournament.ts が表の生成時に付ける。
- *
- * 段階的不戦勝方式では、相手が実試合の勝者(WINNER_OF)である不戦勝行は生成時点では
- * 確定できず、SCHEDULED のまま作られる。この行は検知対象にならない(空側があると
- * assignBattles が候補から外す)ので、LIVE/DETECTED/NEEDS_REVIEW には絶対にならない —
- * つまり STARTED_STATUSES による書き換えブロックの対象にする必要がなく、
- * 上流の勝者が変わるたびに常に追従させてよい。
- */
-function isByeRow(rules: unknown): boolean {
-  return isPlainObject(rules) && rules.bye === true;
-}
-
 export type MatchResultSummary = {
   finished: number;
   /** 同点で勝者を決められなかったマッチ。主催者の手動確定に回す */
   tied: number;
   /** 上流の結果が変わったが、下流が始まっているため反映できなかったマッチ */
   blocked: number;
+  /**
+   * 下流へ勝者を実際に転送した(サイドの出場者・チームを書き換えた、または不戦勝行を
+   * 自動確定した)件数。
+   *
+   * **`aggregate.ts` はこれが 0 でない周回で `finalizedAt` を立てない。** 検知と進行は
+   * 1周につき1ラウンドしか進まないので、締切後に表を作り直すと「1回戦を確定して
+   * 2回戦へ送った周回でそのまま最終集計になり、2回戦以降が永久に SCHEDULED」になる。
+   *
+   * **`blocked` はここに数えない。** 下流が始まっている枠は毎周「転送したい」状態のまま
+   * なので、数えると `finalizedAt` が永久に立たなくなる。
+   */
+  advanced: number;
 };
 
 type SideRow = {
@@ -94,9 +87,9 @@ export async function resolveMatchResults(
     },
   });
 
-  if (matches.length === 0) return { finished: 0, tied: 0, blocked: 0 };
+  if (matches.length === 0) return { finished: 0, tied: 0, blocked: 0, advanced: 0 };
 
-  const summary: MatchResultSummary = { finished: 0, tied: 0, blocked: 0 };
+  const summary: MatchResultSummary = { finished: 0, tied: 0, blocked: 0, advanced: 0 };
 
   // ------------------------------------------------------------------
   // 1. スコアの確定と勝者の決定
@@ -160,6 +153,8 @@ export async function resolveMatchResults(
       bracketPosition: true,
       status: true,
       winnerSideId: true,
+      // isStartedMatch が旧データの不戦勝行(rules.bye を持たない)を判別するのに要る。
+      winnerDecidedBy: true,
       rules: true,
       sides: {
         orderBy: { sideIndex: "asc" },
@@ -208,7 +203,16 @@ export async function resolveMatchResults(
       // 集計対象が途中で変わってしまうので触らない(主催者に警告を出す)。
       // ただし不戦勝行(targetIsBye)は検知が起きないので LIVE/DETECTED/NEEDS_REVIEW に
       // ならず、FINISHED も自動確定の結果でしかない — 常に上流の勝者へ追従させる。
-      if (!targetIsBye && STARTED_STATUSES.has(target.status)) {
+      if (
+        !targetIsBye &&
+        isStartedMatch({
+          status: target.status,
+          winnerDecidedBy: target.winnerDecidedBy,
+          isBye: targetIsBye,
+        })
+      ) {
+        // ここは advanced に数えない。この枠は毎周「転送したい」状態のままなので、
+        // 数えると finalizedAt が永久に立たなくなる。
         summary.blocked++;
         continue;
       }
@@ -228,13 +232,14 @@ export async function resolveMatchResults(
           data: { teamId: desiredTeam },
         });
       }
+      summary.advanced++;
     }
 
     if (targetIsBye) {
       // 段階的不戦勝方式の不戦勝行。相手側は永久に空(BYE)なので、こちら側に
       // 勝者が来た時点でバトルを待たずに確定し、逆に上流が VOID 等で勝者を失ったら
       // 未確定へ戻す(自動で導出される状態なので、他の行のような「進行中は触らない」
-      // 保護は不要 — 上のガードで STARTED_STATUSES チェック自体を素通りさせている)。
+      // 保護は不要 — 上のガードで進行中チェック自体を素通りさせている)。
       const shouldFinish = desiredParticipants.length > 0;
       const newStatus = shouldFinish ? "FINISHED" : "SCHEDULED";
       const newWinnerSideId = shouldFinish ? targetSide.id : null;
@@ -243,6 +248,7 @@ export async function resolveMatchResults(
           where: { id: target.id },
           data: { status: newStatus, winnerSideId: newWinnerSideId, winnerDecidedBy: shouldFinish ? "BYE" : null },
         });
+        summary.advanced++;
       }
     }
   }

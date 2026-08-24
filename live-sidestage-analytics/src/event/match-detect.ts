@@ -1,3 +1,5 @@
+import { isReadyForDetection } from "./match-status";
+
 // 主催者が組んだ対戦カードと、実際に検知した TikTok バトルの照合。純粋関数のみ。
 //
 // **照合は roomId の集合で行う。** バトルの payload から相手の TikTok ハンドルを取る方法が
@@ -12,6 +14,12 @@ export type MatchCandidate = {
   scheduledEndAt: Date;
   /** サイドごとの参加者 roomId。1vs1 なら [[a],[b]]、2vs2 なら [[a1,a2],[b1,b2]] */
   sideRoomIds: string[][];
+  /**
+   * 不戦勝行(`EventMatch.rules.bye`)。バトルが起きないので検知にも NO_SHOW にも関わらせない。
+   *
+   * optional にしない — 内部型なので、呼び出し側が渡し忘れたら型で気づけるほうがよい。
+   */
+  isBye: boolean;
 };
 
 export type BattleObservation = {
@@ -151,8 +159,11 @@ export function assignBattles(input: {
 
   const pairs: Pair[] = [];
   for (const match of input.matches) {
+    // **両サイドの出場者が確定していない枠は候補にしない。** `expected` は全サイドの
+    // 和集合なので、`[["roomA"], []]` だと `{roomA}` として残り、上流の勝者が片方しか
+    // 決まっていない枠に「その1人が部外者と戦ったバトル」が完全一致で載ってしまう。
+    if (!isReadyForDetection(match)) continue;
     const want = expected.get(match.id)!;
-    if (want.size === 0) continue;
 
     for (const summary of summaries) {
       if (summary.startedAt < match.scheduledStartAt) continue;
@@ -224,6 +235,11 @@ export function assignBattles(input: {
 /**
  * 対戦カードの時間枠を過ぎたのに検知できなかったマッチを返す(NO_SHOW 候補)。
  * 主催者はここから手動で勝者を確定するか、無効にする。
+ *
+ * **検知の対象になっていない枠は NO_SHOW にしない**(`assignBattles` と同じ述語を使う)。
+ * 上流の勝者がまだ決まっていない枠や不戦勝行は「実施されなかった」のではなく
+ * 「まだ出場者が決まっていない」だけで、時間枠を過ぎたからと NO_SHOW にすると、
+ * 1回戦の開始時刻を過去に置いた表が作った直後に全滅する。
  */
 export function findMissedMatches(input: {
   matches: MatchCandidate[];
@@ -231,6 +247,7 @@ export function findMissedMatches(input: {
   now: Date;
 }): string[] {
   return input.matches
+    .filter((m) => isReadyForDetection(m))
     .filter((m) => !input.assigned.has(m.id) && m.scheduledEndAt < input.now)
     .map((m) => m.id);
 }
