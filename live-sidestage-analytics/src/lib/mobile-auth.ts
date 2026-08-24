@@ -6,6 +6,22 @@ export interface MobileTokenPayload {
   streamerId?: string;
 }
 
+/// これより前に発行されたトークンは無効として扱う。
+///
+/// `5a3e97a`（モバイル認証をメール/パスワードから Google へ移行）より前は、
+/// `/api/mobile/auth/register` が**メールの所有確認をせずに** User と Streamer を作り、
+/// この 90 日トークンを発行していた。トークンは stateless で `jti` も失効機構も無いため、
+/// 当時発行されたものは 2026-11 月まで有効なまま残る。
+///
+/// 値は 5a3e97a の**本番デプロイ時刻**（Railway: 2026-08-15T01:31:47Z にデプロイ開始）から
+/// コンテナ切替のぶんを見て切り上げたもの。**コミット時刻ではない**（コミットからデプロイ完了
+/// までの間に発行された旧トークンを取りこぼす）。
+///
+/// これ以降に発行された正規トークンは全て Google / Apple ログイン由来なので、
+/// 弾かれるのは旧 register 由来のトークンだけ。切替直後にログインしていた利用者が
+/// まれに巻き込まれるが、その場合は再ログインで回復する（データは失われない）。
+const LEGACY_TOKEN_CUTOFF_SEC = Math.floor(Date.parse("2026-08-15T02:00:00Z") / 1000);
+
 function getSecret(): string {
   const secret = process.env.MOBILE_JWT_SECRET;
   if (!secret) throw new Error("MOBILE_JWT_SECRET is not set");
@@ -20,8 +36,10 @@ export function verifyMobileToken(token: string): MobileTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getSecret());
     if (typeof decoded === "string") return null;
-    const { userId, streamerId } = decoded as Partial<MobileTokenPayload>;
+    const { userId, streamerId, iat } = decoded as Partial<MobileTokenPayload> & { iat?: number };
     if (!userId) return null;
+    // iat が無いトークンは jwt.sign が付ける前提から外れているので信用しない。
+    if (typeof iat !== "number" || iat < LEGACY_TOKEN_CUTOFF_SEC) return null;
     return { userId, streamerId: streamerId || undefined };
   } catch {
     return null;

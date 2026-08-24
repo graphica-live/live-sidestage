@@ -42,10 +42,31 @@ export async function POST(req: NextRequest) {
   if (account) {
     user = account.user;
   } else {
+    // メール一致で既存 User へ繋いでよいのは **Account を1件も持たない User だけ**。
+    //
+    // この経路は 5a3e97a 以前の「メール/パスワード登録」で作られた User を Google へ
+    // 移行させるために残してある。旧 User は Account を持たないので移行経路は保たれる。
+    //
+    // 一方、既に Account を持つ User（＝現役の OAuth 利用者）へメール一致で繋ぐと、
+    // 同じメールを後から入手できた別人がそのアカウントへ正面からログインできてしまう。
+    // `User.email` は「そのメールの所有者である」ことを証明しておらず
+    // （旧 register / dev-login / Workspace のメール再利用）、リンクの根拠にならない。
+    //
+    // apple の Account だけを持つ User に繋がないことも、ここで同時に担保される
+    // （Google と Apple を統合しない方針。src/lib/apple-account.ts 参照）。
     const existingUser = await prisma.user.findUnique({
       where: { email },
-      include: { streamer: true },
+      include: { streamer: true, accounts: { select: { id: true }, take: 1 } },
     });
+
+    if (existingUser && existingUser.accounts.length > 0) {
+      // ここで新規作成へ倒すと User.email の unique に当たって P2002 になる。
+      // 500 にせず、意図的に拒否していることが分かる形で返す。
+      return NextResponse.json(
+        { error: "このメールアドレスは別のアカウントで使用されています" },
+        { status: 409 },
+      );
+    }
 
     if (existingUser) {
       await prisma.account.create({
