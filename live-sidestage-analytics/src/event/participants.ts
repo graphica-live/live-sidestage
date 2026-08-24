@@ -2,7 +2,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeLeaseWindow } from "@/lib/room-lease";
 import { RoomMonitorError, ensureRoomForEvent, releaseRoomMonitor } from "@/lib/tiktok-room";
-import { MAX_DISPLAY_NAME_LENGTH, MAX_PARTICIPANTS, normalizeTiktokId } from "./validation";
+import {
+  MAX_PARTICIPANTS,
+  type ParticipantPatchInput,
+  normalizeTiktokId,
+  resolveParticipantDisplayName,
+} from "./validation";
 
 // 参加者登録と room 監視要求。`public` 側(TiktokRoom)に副作用が出る唯一の経路なので、
 // 失敗時の後始末までここに閉じ込める。
@@ -44,10 +49,11 @@ export async function registerParticipant(input: {
     throw new ParticipantError("TikTok ID の形式が正しくない。", 400);
   }
 
-  const displayName = (input.displayName ?? "").trim() || tiktokId;
-  if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
-    throw new ParticipantError(`表示名は${MAX_DISPLAY_NAME_LENGTH}文字以内にすること。`, 400);
+  const name = resolveParticipantDisplayName(input.displayName, tiktokId);
+  if (!name.ok) {
+    throw new ParticipantError(name.errors[0], 400);
   }
+  const displayName = name.value;
 
   const event = await prisma.event.findUnique({
     where: { id: input.eventId },
@@ -140,6 +146,66 @@ export async function registerParticipant(input: {
     }
     throw err;
   }
+}
+
+/**
+ * 参加者の表示名・所属チームを更新する。
+ *
+ * `tiktokId` は変えない(= room も lease も動かない)ので、ここには `public` 側の副作用が
+ * 一切ない。表示名は `EventParticipant` にしか無く、順位表・貢献・トーナメント表は
+ * すべて読み取り時に join して解決しているので、**再集計(`reopenAggregation`)も要らない**。
+ *
+ * **検証は全部済ませてから1回の `updateMany` で書く。** 表示名を先に書いてから
+ * チームの検証に落ちると「エラー応答なのに名前だけ変わっている」部分適用になる。
+ * `where` には `eventId` を必ず入れる(参加者を引くときだけでなく書くときも認可の境界を残す)。
+ * 引いた後に削除された場合は `count === 0` で 404 になり、`update()` の P2025 で 500 にならない。
+ */
+export async function updateParticipant(input: {
+  eventId: string;
+  participantId: string;
+  patch: ParticipantPatchInput;
+}): Promise<{ displayName: string }> {
+  const participant = await prisma.eventParticipant.findFirst({
+    where: { id: input.participantId, eventId: input.eventId },
+    select: { id: true, tiktokId: true, displayName: true },
+  });
+  if (!participant) {
+    throw new ParticipantError("参加者が見つからない。", 404);
+  }
+
+  const data: { displayName?: string; teamId?: string | null } = {};
+
+  if (input.patch.displayName !== undefined) {
+    const name = resolveParticipantDisplayName(input.patch.displayName, participant.tiktokId);
+    if (!name.ok) {
+      throw new ParticipantError(name.errors[0], 400);
+    }
+    data.displayName = name.value;
+  }
+
+  if (input.patch.teamId !== undefined) {
+    if (input.patch.teamId !== null) {
+      // 他イベントのチームIDを渡されないよう、必ず eventId 込みで存在確認する。
+      const team = await prisma.eventTeam.findFirst({
+        where: { id: input.patch.teamId, eventId: input.eventId },
+        select: { id: true },
+      });
+      if (!team) {
+        throw new ParticipantError("指定されたチームが見つからない。", 400);
+      }
+    }
+    data.teamId = input.patch.teamId;
+  }
+
+  const updated = await prisma.eventParticipant.updateMany({
+    where: { id: input.participantId, eventId: input.eventId },
+    data,
+  });
+  if (updated.count === 0) {
+    throw new ParticipantError("参加者が見つからない。", 404);
+  }
+
+  return { displayName: data.displayName ?? participant.displayName };
 }
 
 /**

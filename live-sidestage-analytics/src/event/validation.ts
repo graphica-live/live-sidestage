@@ -249,6 +249,80 @@ export function validateTeamCount(count: number): ValidationResult<number> {
   return { ok: true, value: count };
 }
 
+/**
+ * 参加者の表示名を決める。空(未入力・空白のみ・null)なら fallback(TikTok ID)へ丸める。
+ * 登録時も改名時もこの1箇所を通し、規則の二重定義を作らない。
+ *
+ * **fallback は長さ検査の対象外にする。** TikTok ID は64文字まで許すのに表示名の上限は
+ * 60文字なので、fallback まで検査すると 61〜64文字のハンドルを持つ参加者が
+ * 「名前を空にして TikTok ID へ戻す」をできなくなる(登録も通らない)。
+ * 上限は主催者が入力した名前にだけ効かせる。
+ *
+ * `raw` は HTTP 境界から来るので `unknown` で受け、文字列以外は弾く。
+ */
+export function resolveParticipantDisplayName(
+  raw: unknown,
+  fallback: string
+): ValidationResult<string> {
+  if (raw !== undefined && raw !== null && typeof raw !== "string") {
+    return { ok: false, errors: ["表示名の指定が不正です。"] };
+  }
+  const name = (raw ?? "").trim();
+  if (!name) return { ok: true, value: fallback };
+  if (name.length > MAX_DISPLAY_NAME_LENGTH) {
+    return {
+      ok: false,
+      errors: [`表示名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください。`],
+    };
+  }
+  return { ok: true, value: name };
+}
+
+// 参加者の部分更新(PATCH)。**送られてきたキーだけ**を持つ。
+// `undefined` = 触らない、`null` = 明示的に空へ戻す、を型で区別する。
+export type ParticipantPatchInput = {
+  /** 所属チーム。null で未所属へ戻す */
+  teamId?: string | null;
+  /** 表示名。null / 空文字なら TikTok ID へ戻る */
+  displayName?: string | null;
+};
+
+/**
+ * PATCH のリクエストボディを検証する。
+ *
+ * JSON はクライアントが何でも入れられるので、キーの有無と型をここで確定させてから
+ * DB 層へ渡す(`{ displayName: 123 }` を `.trim()` に通して 500 にしない)。
+ * 更新対象が1つも無いボディは拒否する。
+ */
+export function parseParticipantPatch(body: unknown): ValidationResult<ParticipantPatchInput> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, errors: ["リクエストの形式が不正です。"] };
+  }
+
+  const raw = body as Record<string, unknown>;
+  const value: ParticipantPatchInput = {};
+
+  if (raw.teamId !== undefined) {
+    if (raw.teamId !== null && typeof raw.teamId !== "string") {
+      return { ok: false, errors: ["teamId の指定が不正です。"] };
+    }
+    value.teamId = raw.teamId;
+  }
+
+  if (raw.displayName !== undefined) {
+    if (raw.displayName !== null && typeof raw.displayName !== "string") {
+      return { ok: false, errors: ["表示名の指定が不正です。"] };
+    }
+    value.displayName = raw.displayName;
+  }
+
+  if (value.teamId === undefined && value.displayName === undefined) {
+    return { ok: false, errors: ["teamId か displayName のどちらかが必要です。"] };
+  }
+
+  return { ok: true, value };
+}
+
 // TikTok ID の正規化。analytics の normalizeTiktokId(src/lib/tiktok-room.ts)と
 // **同じ規則**にすること。ずれると同じ配信者が別 room 扱いになり、ギフトが分裂する。
 // analytics 側: raw.trim().replace(/^@/, "").toLowerCase() — 先頭の @ は1個だけ除去する。
