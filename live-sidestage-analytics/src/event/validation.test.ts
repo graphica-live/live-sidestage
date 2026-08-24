@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  MAX_DISPLAY_NAME_LENGTH,
   MAX_EVENT_DAYS,
   MAX_TEAMS,
   normalizeTiktokId,
+  parseParticipantPatch,
   resolveEventFormatForUpdate,
+  resolveParticipantDisplayName,
   validateEventInput,
   validateTeamCount,
 } from "./validation";
@@ -184,5 +187,86 @@ describe("normalizeTiktokId", () => {
     expect(normalizeTiktokId("user name")).toBeNull();
     expect(normalizeTiktokId("ユーザー")).toBeNull();
     expect(normalizeTiktokId("")).toBeNull();
+  });
+});
+
+describe("resolveParticipantDisplayName", () => {
+  it("前後の空白を落とす", () => {
+    const result = resolveParticipantDisplayName("  ライバーA  ", "liveuser01");
+    expect(result).toEqual({ ok: true, value: "ライバーA" });
+  });
+
+  it("空・空白のみ・null・undefined は fallback へ丸める", () => {
+    for (const raw of ["", "   ", null, undefined]) {
+      expect(resolveParticipantDisplayName(raw, "liveuser01")).toEqual({
+        ok: true,
+        value: "liveuser01",
+      });
+    }
+  });
+
+  it("上限ちょうどは通し、1文字超えたら弾く", () => {
+    expect(resolveParticipantDisplayName("あ".repeat(MAX_DISPLAY_NAME_LENGTH), "u").ok).toBe(true);
+    expect(resolveParticipantDisplayName("あ".repeat(MAX_DISPLAY_NAME_LENGTH + 1), "u").ok).toBe(
+      false
+    );
+  });
+
+  it("fallback は上限を超えていても通す(TikTok ID は64文字まで許すため)", () => {
+    // 61〜64文字のハンドルを持つ参加者が「名前を空にして TikTok ID へ戻す」をできなくなる。
+    const longHandle = "a".repeat(64);
+    expect(resolveParticipantDisplayName("", longHandle)).toEqual({ ok: true, value: longHandle });
+  });
+
+  it("文字列以外は弾く(HTTP境界から数値やオブジェクトが来ても落とさない)", () => {
+    expect(resolveParticipantDisplayName(123, "u").ok).toBe(false);
+    expect(resolveParticipantDisplayName(["a"], "u").ok).toBe(false);
+    expect(resolveParticipantDisplayName({ a: 1 }, "u").ok).toBe(false);
+  });
+});
+
+describe("parseParticipantPatch", () => {
+  it("teamId だけの従来のリクエストを通す", () => {
+    expect(parseParticipantPatch({ teamId: "team_1" })).toEqual({
+      ok: true,
+      value: { teamId: "team_1" },
+    });
+    expect(parseParticipantPatch({ teamId: null })).toEqual({ ok: true, value: { teamId: null } });
+  });
+
+  it("displayName だけのリクエストを通す", () => {
+    expect(parseParticipantPatch({ displayName: "ライバーA" })).toEqual({
+      ok: true,
+      value: { displayName: "ライバーA" },
+    });
+    expect(parseParticipantPatch({ displayName: "" })).toEqual({
+      ok: true,
+      value: { displayName: "" },
+    });
+  });
+
+  it("両方送られたら両方を拾う", () => {
+    expect(parseParticipantPatch({ teamId: "team_1", displayName: "ライバーA" })).toEqual({
+      ok: true,
+      value: { teamId: "team_1", displayName: "ライバーA" },
+    });
+  });
+
+  it("更新対象が1つも無いボディは弾く", () => {
+    expect(parseParticipantPatch({}).ok).toBe(false);
+    expect(parseParticipantPatch({ teamId: undefined }).ok).toBe(false);
+    expect(parseParticipantPatch({ other: "x" }).ok).toBe(false);
+  });
+
+  it("オブジェクト以外のボディを弾く", () => {
+    expect(parseParticipantPatch(null).ok).toBe(false);
+    expect(parseParticipantPatch("teamId=1").ok).toBe(false);
+    expect(parseParticipantPatch([{ teamId: "team_1" }]).ok).toBe(false);
+  });
+
+  it("型が違う値を弾く", () => {
+    expect(parseParticipantPatch({ teamId: 1 }).ok).toBe(false);
+    expect(parseParticipantPatch({ displayName: 123 }).ok).toBe(false);
+    expect(parseParticipantPatch({ displayName: { a: 1 } }).ok).toBe(false);
   });
 });

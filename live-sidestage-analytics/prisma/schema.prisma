@@ -529,7 +529,7 @@ model EventParticipant {
   tiktokId    String // 正規化済み(小文字・trim・先頭@除去)
   roomId      String // TiktokRoom.id(論理参照)
   teamId      String?
-  displayName String // 表示名スナップショット
+  displayName String // イベント内の表示名。登録時の初期値は TikTok ID で、主催者があとから編集できる
   userId      String? // 会員登録済みならリンク
   status      String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
   joinedAt    DateTime @default(now())
