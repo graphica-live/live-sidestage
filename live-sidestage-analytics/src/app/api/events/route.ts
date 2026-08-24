@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
           ownerUserId: session.user.id,
           status: "SCHEDULED",
           // 外枠(startAt/endAt)と日程は必ず同じトランザクションで書く。
-          sessions: { create: sessions },
+          // **新規作成では id を受け取らない**(更新APIだけが既存の id を持ち回る)。
+          sessions: {
+            create: sessions.map((s) => ({ startAt: s.startAt, endAt: s.endAt, name: s.name })),
+          },
         },
         select: { id: true, slug: true },
       });

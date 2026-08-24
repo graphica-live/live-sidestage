@@ -479,8 +479,12 @@ model EventSession {
   endAt     DateTime
   createdAt DateTime @default(now())
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  matches EventMatch[]
 
+  // EventMatch からの複合FK `(eventId, sessionId)` の参照先。
+  // これがないと「他イベントの日程を指す対戦」が DB 上成立してしまう。
+  @@unique([eventId, id])
   @@index([eventId, startAt])
   @@schema("event")
 }
@@ -567,14 +571,23 @@ model EventMatch {
   bracketPosition Int    @default(0)
   matchType       String @default("1V1") // "1V1" | "2V2"
 
-  scheduledStartAt DateTime // 主催者が指定した時間枠。判定は [start, end) の半開区間
-  scheduledEndAt   DateTime
+  // この対戦をどの開催日程で行うか。**対戦に個別の時間枠は無い**
+  // (日程まるごとが監視・検知の対象。詳細は src/event/CLAUDE.md)。
+  // 既存行の穴埋めは scripts/migrate-match-session.ts が db push の前に済ませる
+  // (db push は「既存データのある非NULL列の追加」を実行できないため)。
+  sessionId String
+  // **旧: 主催者が指定した個別の時間枠。読まない。** 書き込みだけは当面続ける
+  // (割り当てた日程の [startAt, endAt) をそのまま入れる) — ローリング更新や
+  // ロールバックで旧コードが同時に動いても、必須列が null で落ちないようにするため。
+  // 旧世代が完全に消えた後の別リリースで、書き込みごと消す。
+  scheduledStartAt DateTime?
+  scheduledEndAt   DateTime?
   // "SCHEDULED"    まだバトルを検知していない
-  // "LIVE"         検知して進行中
+  // "LIVE"         検知して進行中(終了時刻がまだ確定していない暫定関連を含む)
   // "DETECTED"     検知して終了。集計で勝者を決める段階
-  // "NEEDS_REVIEW" 検知したが自動確定できない(部分一致 / 2vs2)。主催者の承認待ち
+  // "NEEDS_REVIEW" 検知したが自動確定できない(部分一致 / 2vs2 / 候補が複数 / 終了未確定のまま日程終了)。主催者の承認待ち
   // "FINISHED"     勝者が確定した
-  // "NO_SHOW"      時間枠を過ぎても検知できなかった
+  // "NO_SHOW"      日程が終わっても検知できなかった
   // "VOID"         主催者が無効にした
   status String @default("SCHEDULED")
 
@@ -584,20 +597,32 @@ model EventMatch {
   // "exact"  = 観測した room の集合が対戦カードと完全一致した
   // "partial" = 一部の room しか観測できなかった(相手が参加者でない・監視が落ちていた等)
   detectionConfidence String?
-  // 検知した終了時刻の出所。"observed"(終了イベント) / "duration"(設定値から計算) /
-  // "scheduled"(予定終了時刻へのフォールバック)。後から検証できるように残す。
+  // 検知した終了時刻の出所。"observed"(終了イベント) / "duration"(設定値から計算)。
+  // **予定終了時刻へのフォールバック("scheduled")は廃止した** —
+  // 実測できない終了時刻を作ると、その区間ぶんの通常ギフトまでバトル倍率と勝敗に混ざる。
   detectedEndSource   String?
 
   winnerSideId String?
   // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝) / "DRAW"(引き分け)
   winnerDecidedBy String?
+  // 決着時刻。デスマッチのライフはこの順に適用する(life-points.ts)。
+  // 自動検知なら detectedEndAt、主催者が確定したならその時刻。**null は「まだ決着していない」。**
+  // updatedAt を使わない(再集計のたびに動いて適用順が不安定になる)。
+  decidedAt DateTime?
 
   rules Json @default("{}") // 種目別ルールと、判定時の補足情報
 
-  event Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  sides EventMatchSide[]
+  event   Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // **複合FK。** sessionId 単独だと他イベントの日程を指す行が DB 上成立してしまう。
+  //
+  // **onDelete は Restrict。** 対戦がぶら下がった日程を消せなくすることで、
+  // 「日程を全置換する古いコード(または古いイメージ)が動くと表が丸ごと消える」事故を
+  // DB 側で止める。日程の削除は更新APIが 409 で先に弾き、イベントごと消すときは
+  // DELETE が対戦を明示的に消してから Event を消す。
+  session EventSession     @relation(fields: [eventId, sessionId], references: [eventId, id], onDelete: Restrict)
+  sides   EventMatchSide[]
 
-  @@index([eventId, scheduledStartAt])
+  @@index([eventId, sessionId])
   @@index([detectedBattleId])
   @@schema("event")
 }

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 import { acquireEventLock } from "./event-lock";
-import { resolveEventWindows, windowContaining } from "./sessions";
 import type { DbClient } from "./analytics-db";
 
 // デスマッチの対戦カードを1件ずつ組む。
@@ -23,8 +22,7 @@ export class SingleMatchError extends Error {
       | "INVALID_SIDES"
       | "DUPLICATE_SUBJECT"
       | "ELIMINATED"
-      | "OVERLAPPING"
-      | "OUT_OF_EVENT_WINDOW"
+      | "INVALID_SESSION"
       | "UNKNOWN_SUBJECT"
   ) {
     super(message);
@@ -43,12 +41,12 @@ export type SingleMatchInput = {
   eventId: string;
   sideA: SingleMatchSide;
   sideB: SingleMatchSide;
-  scheduledStartAt: Date;
-  scheduledEndAt: Date;
+  /** この対戦を行う開催日程。日程まるごとが検知の対象になる */
+  sessionId: string;
 };
 
 export async function createSingleMatch(input: SingleMatchInput): Promise<{ matchId: string }> {
-  const { eventId, sideA, sideB, scheduledStartAt, scheduledEndAt } = input;
+  const { eventId, sideA, sideB, sessionId } = input;
   const sides = [sideA, sideB];
 
   for (const side of sides) {
@@ -148,12 +146,7 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
       throw new SingleMatchError("脱落した出場者は対戦に組めません。", "ELIMINATED");
     }
 
-    await assertMatchWindow(tx, {
-      eventId,
-      start: scheduledStartAt,
-      end: scheduledEndAt,
-      roomIds: allParticipantIds.map((id) => byId.get(id)!.roomId),
-    });
+    const session = await assertEventSession(tx, eventId, sessionId);
 
     const last = await tx.eventMatch.findFirst({
       where: { eventId },
@@ -168,8 +161,10 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
         bracketPosition: (last?.bracketPosition ?? -1) + 1,
         // **サイドの人数から決める。** チーム戦でもチームの人数ではなく出場人数。
         matchType: sideA.participantIds.length === 2 ? "2V2" : "1V1",
-        scheduledStartAt,
-        scheduledEndAt,
+        sessionId,
+        // 旧列への dual-write(読まない。旧コードとの同居のためだけに入れる)。
+        scheduledStartAt: session.startAt,
+        scheduledEndAt: session.endAt,
         status: "SCHEDULED",
       },
     });
@@ -198,83 +193,29 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
 }
 
 /**
- * 対戦の時間枠を検証する。開催日程のどれか1つに収まっているか、同じ配信者の枠と
- * 重なっていないか。
+ * その日程がこのイベントのものかを確認する。
  *
- * **日程をまたぐ枠は許さない。** 日程の隙間は集計に入らないので、またぐ枠を許すと
- * 勝敗に使えるギフトが枠の一部にしかない状態になる。
+ * 対戦は開催日程まるごとを検知の対象にするので、**日程の中で対戦どうしの時間が重なるのは
+ * 常態**（1回戦と2回戦が同じ日程に並ぶ）。かつて時間枠の重なりを禁止していた検証は、
+ * 個別の時間枠そのものを廃止したのでなくなった。曖昧な検知は `assignBattles` が
+ * 自動確定を諦める（`NEEDS_REVIEW`）ことで受け止める。
  *
- * 枠が重なると、検知したバトルをどちらの対戦に割り当てるべきか決められない
- * （`assignBattles` は候補が複数あるものを割り当てないので、どちらも検知されない
- * まま NO_SHOW になる）。組む時点・動かす時点の両方で止める。
+ * DB 側にも複合FK `(eventId, sessionId)` があるが、それだと違反が Prisma の
+ * 外部キーエラーとして出て主催者に意味が伝わらないので、ここで先に弾く。
  *
  * **必ず書き込みと同じトランザクションから呼ぶこと。**
  */
-export async function assertMatchWindow(
+export async function assertEventSession(
   tx: DbClient,
-  params: {
-    eventId: string;
-    start: Date;
-    end: Date;
-    /** 検証対象の room。省略時は `excludeMatchId` の対戦から引く */
-    roomIds?: string[];
-    /** 重なり判定から除外する対戦（時間枠を動かすときの自分自身） */
-    excludeMatchId?: string;
-  }
-): Promise<void> {
-  const { eventId, start, end, excludeMatchId } = params;
-
-  if (start >= end) {
-    throw new SingleMatchError("終了は開始より後の日時にしてください。", "OUT_OF_EVENT_WINDOW");
-  }
-
-  const event = await tx.event.findUnique({
-    where: { id: eventId },
-    select: {
-      startAt: true,
-      endAt: true,
-      sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
-    },
+  eventId: string,
+  sessionId: string
+): Promise<{ id: string; startAt: Date; endAt: Date }> {
+  const session = await tx.eventSession.findFirst({
+    where: { id: sessionId, eventId },
+    select: { id: true, startAt: true, endAt: true },
   });
-  if (!event) throw new SingleMatchError("イベントが見つかりません。", "UNKNOWN_SUBJECT");
-  if (!windowContaining(resolveEventWindows(event), start, end)) {
-    throw new SingleMatchError(
-      "対戦の時間枠が開催日程の外に出ています。1つの日程に収まる時間にしてください。",
-      "OUT_OF_EVENT_WINDOW"
-    );
+  if (!session) {
+    throw new SingleMatchError("この対戦を行う開催日程を選んでください。", "INVALID_SESSION");
   }
-
-  let roomIds = params.roomIds;
-  if (!roomIds && excludeMatchId) {
-    const sides = await tx.eventMatchSide.findMany({
-      where: { matchId: excludeMatchId },
-      select: { participants: { select: { participant: { select: { roomId: true } } } } },
-    });
-    roomIds = sides.flatMap((s) => s.participants.map((p) => p.participant.roomId));
-  }
-  if (!roomIds || roomIds.length === 0) return;
-
-  const overlapping = await tx.eventMatch.findFirst({
-    where: {
-      eventId,
-      status: { not: "VOID" },
-      ...(excludeMatchId ? { id: { not: excludeMatchId } } : {}),
-      // 半開区間どうしの重なり判定。
-      scheduledStartAt: { lt: end },
-      scheduledEndAt: { gt: start },
-      sides: {
-        some: {
-          participants: { some: { participant: { roomId: { in: roomIds } } } },
-        },
-      },
-    },
-    select: { id: true },
-  });
-
-  if (overlapping) {
-    throw new SingleMatchError(
-      "同じ出場者の対戦がこの時間枠と重なっています。時間をずらしてください。",
-      "OVERLAPPING"
-    );
-  }
+  return session;
 }

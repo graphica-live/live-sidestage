@@ -12,12 +12,14 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
+import { resolveBracket } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
 
 /** 開催日程1件。日時は ISO 文字列(サーバーコンポーネントから Date を渡せないため)。 */
 export type SessionRow = {
+  id: string;
   name: string | null;
   startAt: string;
   endAt: string;
@@ -62,8 +64,10 @@ export type MatchRow = {
   position: number;
   roundLabel: string;
   status: string;
-  scheduledStartAt: string;
-  scheduledEndAt: string;
+  /** この対戦を行う開催日程。対戦に個別の時間枠は無い */
+  sessionId: string;
+  /** 承認待ちの理由(`EventMatch.rules.reviewReason`)。無ければ null */
+  reviewReason: string | null;
   detectedStartAt: string | null;
   detectedEndAt: string | null;
   detectionConfidence: string | null;
@@ -78,8 +82,22 @@ export type MatchRow = {
 const END_SOURCE_NOTES: Record<string, string> = {
   observed: "終了はバトルの終了イベントから取った。",
   duration: "終了イベントを受け取れなかったため、バトルの設定時間から計算した。",
-  scheduled: "終了イベントも設定時間も取れなかったため、予定終了時刻を使った。",
+  // 旧データにだけ残る値。新しい検知はこの出所を作らない(予定終了時刻を捏造しない)。
+  scheduled: "終了を観測できず、旧仕様の予定終了時刻を使っている。結果を確認すること。",
 };
+
+/** 承認待ちの理由。主催者が次に何をすればよいかまで書く。 */
+const REVIEW_REASON_NOTES: Record<string, string> = {
+  PARTIAL: "片側の room しか観測できなかった。相手が本当にこの対戦か確認する。",
+  TEAM_BATTLE: "2vs2 はサイドの組み分けを検証できない。内容を確認して承認する。",
+  AMBIGUOUS:
+    "同じ組み合わせのバトルが日程内に複数ある。どれが公式か決められないので、勝者を手動で確定する。",
+  END_UNKNOWN:
+    "バトルの終了を観測できないまま日程が終わった。区間が確定しないので、勝者を手動で確定する。",
+};
+
+/** 承認できない(区間が確定していない)理由。サーバー側の UNAPPROVABLE_REASONS と揃える。 */
+const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
 
 /**
  * 破棄したときに何が消えるかを数える。**追加のクエリは要らない** — 画面が持っている
@@ -103,67 +121,41 @@ function summarizeBracket(matches: MatchRow[]): BracketSummary {
 }
 
 /**
- * トーナメント表の「1回戦の開始」の初期値。
- *
- * 1回戦は開催日程の中で始めないと表を作れない(サーバー側が `OUT_OF_EVENT_WINDOW` で拒否する)
- * ので、必ず日程の中へ落とす。
- *
- * - **開催中の日程がある**: 今。日程の開始時刻をそのまま入れると、表を作った直後の
- *   集計周回で1回戦が時間枠切れになり NO_SHOW が並ぶ
- * - **まだ始まっていない**: 最初の未来の日程の頭
- * - **全部終わっている**: **最初の**日程の頭。終了したイベントの表も作り直せるようにする。
- *   最後の日程を使うと2回戦以降を置く先が無くなって必ず弾かれる
- */
-function firstRoundDefault(sessions: SessionRow[]): string {
-  const now = Date.now();
-  if (sessions.length === 0) return toJstInputValue(new Date(now));
-
-  const live = sessions.find(
-    (s) => now >= new Date(s.startAt).getTime() && now < new Date(s.endAt).getTime()
-  );
-  if (live) return toJstInputValue(new Date(now));
-
-  const upcoming = sessions.find((s) => now < new Date(s.startAt).getTime());
-  // **分へ切り上げる。** `<input type="datetime-local">` は分までしか持てないので、
-  // 秒を持つ日程(10:22:02 など)の開始をそのまま入れると切り捨てで日程の外へ出て、
-  // サーバー側が `OUT_OF_EVENT_WINDOW` で弾く。
-  const start = new Date(upcoming?.startAt ?? sessions[0].startAt).getTime();
-  return toJstInputValue(new Date(Math.ceil(start / 60_000) * 60_000));
-}
-
-/**
  * いま対戦を組むならどの日程か。開催中ならその日程、まだなら次の日程、
- * 全部終わっていたら最後の日程。デスマッチの対戦を1件組むときの初期値に使う
- * (トーナメントは全ラウンドを収める必要があるので `firstRoundDefault` を使う)。
+ * 全部終わっていたら最後の日程。新しい対戦を組むときの既定値に使う。
  */
 function currentSession(sessions: SessionRow[]): SessionRow | null {
   if (sessions.length === 0) return null;
   const now = Date.now();
-  return (
-    sessions.find((s) => now < new Date(s.endAt).getTime()) ?? sessions[sessions.length - 1]
-  );
+  return sessions.find((s) => now < new Date(s.endAt).getTime()) ?? sessions[sessions.length - 1];
 }
 
-/** 開催日程の一覧。対戦の時間枠がどこに収まるべきかを主催者へ示す。 */
+/** 日程の表示名。名前が無ければ「N日目」。 */
+function sessionLabel(sessions: SessionRow[], sessionId: string | null): string {
+  const index = sessions.findIndex((s) => s.id === sessionId);
+  if (index < 0) return "日程未設定";
+  const session = sessions[index];
+  return session.name || `${index + 1}日目`;
+}
+
+/** 日程の時間帯つきの表示。 */
+function sessionRangeLabel(session: SessionRow, index: number): string {
+  const name = session.name || `${index + 1}日目`;
+  return `${name}: ${formatJst(new Date(session.startAt))} 〜 ${formatJst(new Date(session.endAt))}`;
+}
+
+/** 開催日程の一覧。**日程の中で終了したバトルだけが対象**であることを毎回示す。 */
 function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   if (sessions.length === 0) return null;
-  if (sessions.length === 1) {
-    return (
-      <p className="text-xs text-gray-500">
-        開催日程: {formatJst(new Date(sessions[0].startAt))} 〜{" "}
-        {formatJst(new Date(sessions[0].endAt))}
-      </p>
-    );
-  }
   return (
     <div className="text-xs text-gray-500">
-      <p>開催日程(対戦は1つの日程に収める):</p>
+      <p>
+        開催日程(<strong className="text-amber-300/90">この中で終了したバトルだけ</strong>が
+        対戦として扱われる):
+      </p>
       <ul className="mt-1 space-y-0.5">
         {sessions.map((s, index) => (
-          <li key={index}>
-            {s.name || `${index + 1}日目`}: {formatJst(new Date(s.startAt))} 〜{" "}
-            {formatJst(new Date(s.endAt))}
-          </li>
+          <li key={s.id}>{sessionRangeLabel(s, index)}</li>
         ))}
       </ul>
     </div>
@@ -189,7 +181,7 @@ export function MatchManager({
   eventStatus: string;
   format: string;
   entryMode: string;
-  /** 開催日程(startAt 昇順)。日程を持たないイベントは外枠1件が入る */
+  /** 開催日程(startAt 昇順)。対戦はこのどれかに割り当てる */
   sessions: SessionRow[];
   entrants: EntrantOption[];
   matches: MatchRow[];
@@ -206,12 +198,44 @@ export function MatchManager({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const seedRowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
-  const [startAt, setStartAt] = useState(() => firstRoundDefault(sessions));
-  const [matchWindowMin, setMatchWindowMin] = useState(30);
-  const [roundIntervalMin, setRoundIntervalMin] = useState(45);
+  // ラウンドごとの開催日程。既定は全ラウンドを最初の日程に置く(1日で終わるのが大半)。
+  // ラウンド数は参加者数から決まるので、シード順が変わるたびに作り直す。
+  const [roundSessionIds, setRoundSessionIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
+
+  // ラウンド数はシード順の人数と不戦勝方式から決まる(サーバーと同じ純粋関数を使う)。
+  const roundCount = useMemo(
+    () => (seed.length < 2 ? 0 : resolveBracket(seed, bracketMethod).roundCount),
+    [seed, bracketMethod]
+  );
+
+  /** すでに表があるなら、そのラウンドが今どの日程に置かれているか。 */
+  const currentRoundSessionIds = useMemo(() => {
+    const byRoundNo = new Map<number, string>();
+    for (const match of matches) {
+      if (!byRoundNo.has(match.round)) byRoundNo.set(match.round, match.sessionId);
+    }
+    return byRoundNo;
+  }, [matches]);
+
+  /**
+   * ラウンド順の日程 id。主催者が選び直していないラウンドは
+   * **今の表の割り当て** → 最初の日程 の順で埋める(作り直しで割り当てが勝手に戻らないように)。
+   */
+  const plannedRoundSessionIds = useMemo(
+    () =>
+      Array.from(
+        { length: roundCount },
+        (_, index) =>
+          roundSessionIds[index] ||
+          currentRoundSessionIds.get(index + 1) ||
+          sessions[0]?.id ||
+          ""
+      ),
+    [roundCount, roundSessionIds, currentRoundSessionIds, sessions]
+  );
 
   const byRound = useMemo(() => {
     const groups = new Map<number, MatchRow[]>();
@@ -250,9 +274,7 @@ export function MatchManager({
       `/api/events/${eventId}/matches`,
       {
         entrantIds: seed,
-        firstRoundStartAt: startAt,
-        matchWindowMin,
-        roundIntervalMin,
+        roundSessionIds: plannedRoundSessionIds,
         ...(confirm === undefined ? {} : { confirm }),
         // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
         expectedMatchIds: matches.map((m) => m.id),
@@ -372,6 +394,7 @@ export function MatchManager({
                 eventId={eventId}
                 match={match}
                 format={format}
+                sessions={sessions}
                 busy={busy}
                 onSend={send}
               />
@@ -482,47 +505,42 @@ export function MatchManager({
           })}
         </ol>
 
+        {/* 日程が複数あるときだけラウンドの振り分けを見せる。1日開催なら選ぶものがない。 */}
+        {sessions.length > 1 && roundCount > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {Array.from({ length: roundCount }, (_, index) => (
+              <div key={index}>
+                <label htmlFor={`round-session-${index}`} className="label">
+                  {index + 1}回戦の日程
+                </label>
+                <select
+                  id={`round-session-${index}`}
+                  className="input-field"
+                  value={plannedRoundSessionIds[index] ?? ""}
+                  onChange={(e) => {
+                    const next = [...plannedRoundSessionIds];
+                    next[index] = e.target.value;
+                    // 後のラウンドが前より early にならないよう、以降を引きずって揃える。
+                    const picked = sessions.findIndex((s) => s.id === e.target.value);
+                    for (let i = index + 1; i < next.length; i++) {
+                      const current = sessions.findIndex((s) => s.id === next[i]);
+                      if (current < picked) next[i] = e.target.value;
+                    }
+                    setRoundSessionIds(next);
+                  }}
+                >
+                  {sessions.map((session, i) => (
+                    <option key={session.id} value={session.id}>
+                      {sessionRangeLabel(session, i)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="startAt" className="label">
-              1回戦の開始
-            </label>
-            <input
-              id="startAt"
-              type="datetime-local"
-              value={startAt}
-              onChange={(e) => setStartAt(e.target.value)}
-              className="input-field"
-            />
-          </div>
-          <div>
-            <label htmlFor="matchWindow" className="label">
-              1試合の枠(分)
-            </label>
-            <input
-              id="matchWindow"
-              type="number"
-              min={5}
-              max={600}
-              value={matchWindowMin}
-              onChange={(e) => setMatchWindowMin(Number(e.target.value))}
-              className="input-field w-28"
-            />
-          </div>
-          <div>
-            <label htmlFor="roundInterval" className="label">
-              ラウンド間隔(分)
-            </label>
-            <input
-              id="roundInterval"
-              type="number"
-              min={5}
-              max={1440}
-              value={roundIntervalMin}
-              onChange={(e) => setRoundIntervalMin(Number(e.target.value))}
-              className="input-field w-28"
-            />
-          </div>
           <button
             type="button"
             // **表がある限り常に押せる。** 参加者が2組未満に減っても「破棄だけ」へ
@@ -545,11 +563,10 @@ export function MatchManager({
           </button>
         </div>
         <SessionNote sessions={sessions} />
-        {sessions.length > 1 && (
-          <p className="text-xs text-gray-500">
-            ラウンドの枠が日程からはみ出す場合は、次の日程の開始時刻へ送る。
-          </p>
-        )}
+        <p className="text-xs text-gray-500">
+          対戦ごとの開始・終了時刻は設定しない。割り当てた日程の中で終了したバトルを
+          組み合わせで照合する。
+        </p>
       </section>
 
       {byRound.length === 0 ? (
@@ -591,6 +608,7 @@ export function MatchManager({
                     eventId={eventId}
                     match={match}
                     format={format}
+                    sessions={sessions}
                     busy={busy}
                     onSend={send}
                   />
@@ -625,6 +643,7 @@ export function MatchManager({
               eventId={eventId}
               match={selectedMatch}
               format={format}
+              sessions={sessions}
               busy={busy}
               onSend={send}
             />
@@ -824,14 +843,8 @@ function SingleMatchBuilder({
   const [sideB, setSideB] = useState("");
   const [membersA, setMembersA] = useState<string[]>([]);
   const [membersB, setMembersB] = useState<string[]>([]);
-  const [start, setStart] = useState(() => {
-    // 日程の外に枠を作るとサーバー側が拒否する。開催中でなければ日程の開始を初期値にする。
-    const session = currentSession(sessions);
-    if (!session) return toJstInputValue(new Date());
-    const from = new Date(session.startAt);
-    return toJstInputValue(from.getTime() > Date.now() ? from : new Date());
-  });
-  const [windowMin, setWindowMin] = useState(30);
+  // 対戦は個別の時間枠を持たない。どの開催日程で行うかだけを選ぶ。
+  const [sessionId, setSessionId] = useState(() => currentSession(sessions)?.id ?? "");
 
   // 脱落した出場者は組めない(API 側でも弾く)。
   const selectable = entrants.filter(
@@ -865,16 +878,13 @@ function SingleMatchBuilder({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!ready) return;
-    const startDate = new Date(start);
-    const end = new Date(startDate.getTime() + windowMin * 60_000);
 
     const ok = await onSend(
       `/api/events/${eventId}/matches/single`,
       {
         sideA: { teamId: isTeam ? sideA : null, participantIds: membersA },
         sideB: { teamId: isTeam ? sideB : null, participantIds: membersB },
-        scheduledStartAt: start,
-        scheduledEndAt: toJstInputValue(end),
+        sessionId,
       },
       "POST"
     );
@@ -971,34 +981,29 @@ function SingleMatchBuilder({
       )}
 
       <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label htmlFor="dmStart" className="label">
-            開始
+        <div className="min-w-[16rem] flex-1">
+          <label htmlFor="dmSession" className="label">
+            開催日程
           </label>
-          <input
-            id="dmStart"
-            type="datetime-local"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            required
+          <select
+            id="dmSession"
             className="input-field"
-          />
+            value={sessionId}
+            onChange={(e) => setSessionId(e.target.value)}
+            required
+          >
+            {sessions.map((session, index) => (
+              <option key={session.id} value={session.id}>
+                {sessionRangeLabel(session, index)}
+              </option>
+            ))}
+          </select>
         </div>
-        <div>
-          <label htmlFor="dmWindow" className="label">
-            枠(分)
-          </label>
-          <input
-            id="dmWindow"
-            type="number"
-            min={5}
-            max={600}
-            value={windowMin}
-            onChange={(e) => setWindowMin(Number(e.target.value))}
-            className="input-field w-28"
-          />
-        </div>
-        <button type="submit" disabled={busy || !ready} className="btn-primary shrink-0">
+        <button
+          type="submit"
+          disabled={busy || !ready || !sessionId}
+          className="btn-primary shrink-0"
+        >
           対戦を追加
         </button>
       </div>
@@ -1012,25 +1017,28 @@ function MatchCard({
   eventId,
   match,
   format,
+  sessions,
   busy,
   onSend,
 }: {
   eventId: string;
   match: MatchRow;
   format: string;
+  /** 開催日程。カードの表示と、割り当ての変更に使う */
+  sessions: SessionRow[];
   busy: boolean;
   onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [start, setStart] = useState(() => toJstInputValue(new Date(match.scheduledStartAt)));
-  const [end, setEnd] = useState(() => toJstInputValue(new Date(match.scheduledEndAt)));
+  const [sessionId, setSessionId] = useState(match.sessionId);
 
   const url = `/api/events/${eventId}/matches/${match.id}`;
   const decided = match.status === "FINISHED";
-  // 検知・確定した後は時間枠を動かせない(API 側でも 409 で拒否する)。
-  // デスマッチのライフは決着時刻の順に適用するので、確定後に枠を動かすと
-  // 過去の対戦順が変わって脱落の結果まで変わってしまう。
+  // 検知・確定した後は日程を動かせない(API 側でも 409 で拒否する)。
+  // 日程は検知の対象区間そのもので、動かすと確定済みの検知が区間の外に出る。
   const reschedulable = match.status === "SCHEDULED" || match.status === "NO_SHOW";
+  // 区間が確定していない検知は承認させない(サーバー側も 409 で拒否する)。
+  const unapprovable = !!match.reviewReason && UNAPPROVABLE_REASONS.has(match.reviewReason);
 
   return (
     <div className="card space-y-3">
@@ -1047,54 +1055,43 @@ function MatchCard({
             {WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy] ?? match.winnerDecidedBy}
           </span>
         )}
-        <span className="text-xs text-gray-500">
-          {formatJst(new Date(match.scheduledStartAt))} 〜{" "}
-          {formatJst(new Date(match.scheduledEndAt))}
-        </span>
-        {reschedulable ? (
+        <span className="text-xs text-gray-500">{sessionLabel(sessions, match.sessionId)}</span>
+        {reschedulable && sessions.length > 1 ? (
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
             className="ml-auto text-xs text-gray-400 hover:text-white"
           >
-            {editing ? "閉じる" : "時間枠を変更"}
+            {editing ? "閉じる" : "日程を変更"}
           </button>
-        ) : (
+        ) : !reschedulable ? (
           <span className="ml-auto text-xs text-gray-600">
-            時間枠の変更には検知のやり直しが要る
+            日程の変更には検知のやり直しが要る
           </span>
-        )}
+        ) : null}
       </div>
 
       {editing && reschedulable && (
         <div className="flex flex-wrap items-end gap-2 rounded-lg bg-white/5 p-3">
-          <div>
-            <label className="label">開始</label>
-            <input
-              type="datetime-local"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
+          <div className="min-w-[14rem] flex-1">
+            <label className="label">開催日程</label>
+            <select
               className="input-field"
-            />
-          </div>
-          <div>
-            <label className="label">終了</label>
-            <input
-              type="datetime-local"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="input-field"
-            />
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+            >
+              {sessions.map((session, index) => (
+                <option key={session.id} value={session.id}>
+                  {sessionRangeLabel(session, index)}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="button"
             disabled={busy}
             onClick={async () => {
-              const ok = await onSend(url, {
-                action: "schedule",
-                scheduledStartAt: start,
-                scheduledEndAt: end,
-              });
+              const ok = await onSend(url, { action: "assignSession", sessionId });
               if (ok) setEditing(false);
             }}
             className="btn-secondary"
@@ -1141,9 +1138,10 @@ function MatchCard({
 
       {match.status === "NEEDS_REVIEW" && (
         <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
-          {match.detectionConfidence
-            ? CONFIDENCE_NOTES[match.detectionConfidence]
-            : "検知した組み合わせを自動では確定できない。"}
+          {(match.reviewReason && REVIEW_REASON_NOTES[match.reviewReason]) ??
+            (match.detectionConfidence
+              ? CONFIDENCE_NOTES[match.detectionConfidence]
+              : "検知した組み合わせを自動では確定できない。")}
           {match.sides.length > 2 || match.sides.some((s) => s.label.includes(" / "))
             ? " 2vs2 はどちらの組が同じサイドだったかを payload から確認できないため、必ず目視で確認すること。"
             : ""}
@@ -1151,7 +1149,7 @@ function MatchCard({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {match.status === "NEEDS_REVIEW" && (
+        {match.status === "NEEDS_REVIEW" && !unapprovable && (
           <button
             type="button"
             disabled={busy}

@@ -44,7 +44,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
     teamPreset: event.teamPreset as TeamPreset,
     visibility: event.visibility as Visibility,
     // 日程を持たないイベント(この機能より前に作られたもの)は外枠を1日程として出す。
+    // **id を落とさない。** 更新APIはこれで差分更新するので、落とすと日程が作り直しになり、
+    // 対戦がぶら下がっていると保存できなくなる。
     sessions: resolveEventWindows(event).map((w) => ({
+      ...(w.id ? { id: w.id } : {}),
       name: w.name ?? "",
       startAt: toJstInputValue(w.start),
       endAt: toJstInputValue(w.end),

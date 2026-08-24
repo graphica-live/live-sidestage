@@ -1,4 +1,3 @@
-import { formatJst } from "@/event/datetime";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import {
   formatNumber,
@@ -284,7 +283,8 @@ function MatchCard({
           mirror ? "flex-row-reverse" : ""
         }`}
       >
-        <span className="shrink-0 font-mono">{formatJst(new Date(match.scheduledStartAt))}</span>
+        {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。 */}
+        <span className="shrink-0 truncate">{match.sessionLabel}</span>
         <span
           className={`truncate font-semibold ${isLive ? "text-green-400" : decided ? "text-brand" : ""}`}
         >

@@ -18,7 +18,8 @@ const DAY2 = { start: at("2026-09-02T13:00:00.000Z"), end: at("2026-09-02T14:00:
 describe("resolveEventWindows", () => {
   it("日程を持たないイベントは外枠を1日程として扱う", () => {
     const windows = resolveEventWindows({ startAt: DAY1.start, endAt: DAY2.end, sessions: [] });
-    expect(windows).toEqual([{ start: DAY1.start, end: DAY2.end, name: null }]);
+    // 実体の日程が無いので id は null(対戦の割り当て先には使えない)。
+    expect(windows).toEqual([{ id: null, start: DAY1.start, end: DAY2.end, name: null }]);
   });
 
   it("sessionsが未指定(select漏れ)でも外枠へ落ちる", () => {
@@ -112,12 +113,32 @@ describe("parseSessionRequest", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("id や eventId は読まない(クライアントに決めさせない)", () => {
+  // id は「既存のどの日程を更新するか」に使うので読む。**それがこのイベントの日程か**は
+  // 更新API がロックの内側で突き合わせる(ここでは判定できない)。eventId は読まない。
+  it("id は読み、eventId は読まない", () => {
     const result = parseSessionRequest([
       { id: "ses_1", eventId: "evt_other", startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" },
     ]);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(Object.keys(result.value[0]).sort()).toEqual(["endAt", "name", "startAt"]);
+    if (result.ok) {
+      expect(Object.keys(result.value[0]).sort()).toEqual(["endAt", "id", "name", "startAt"]);
+      expect(result.value[0].id).toBe("ses_1");
+    }
+  });
+
+  it("id の型が不正な行は弾く", () => {
+    const result = parseSessionRequest([
+      { id: 123, startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" },
+    ]);
+    expect(result.ok).toBe(false);
+  });
+
+  it("同じ id を2回送ってきたら弾く(片方が黙って消えるため)", () => {
+    const result = normalizeSessionInputs([
+      { id: "ses_1", startAt: at("2026-09-01T13:00:00.000Z"), endAt: at("2026-09-01T14:00:00.000Z") },
+      { id: "ses_1", startAt: at("2026-09-02T13:00:00.000Z"), endAt: at("2026-09-02T14:00:00.000Z") },
+    ]);
+    expect(result.ok).toBe(false);
   });
 });
 

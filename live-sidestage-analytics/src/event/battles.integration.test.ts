@@ -87,6 +87,8 @@ async function newTournament() {
       status: "RUNNING",
       startAt: START,
       endAt: END,
+      // 対戦は開催日程へ割り当てる。外枠と同じ区間を1件だけ持たせる。
+      sessions: { create: [{ startAt: START, endAt: END }] },
     },
     select: { id: true },
   });
@@ -106,11 +108,25 @@ async function newPastTournament() {
       status: "FINISHED",
       startAt: PAST_START,
       endAt: PAST_END,
+      sessions: { create: [{ startAt: PAST_START, endAt: PAST_END }] },
     },
     select: { id: true },
   });
   createdEventIds.push(event.id);
   return event;
+}
+
+/**
+ * イベントの日程を過去の1時間へ縮める。**NO_SHOW は日程が終わって初めて付く**ので、
+ * 「検知できないまま終わった」状態を作るのに要る。外枠(startAt/endAt)は動かさない
+ * (集計対象・締切の判定は外枠で決まるため、締切前のまま何度でも再集計させたい)。
+ */
+async function endSessionInThePast(eventId: string) {
+  const past = new Date(NOW - 2 * 86_400_000);
+  await prisma.eventSession.updateMany({
+    where: { eventId },
+    data: { startAt: past, endAt: new Date(past.getTime() + 3_600_000) },
+  });
 }
 
 async function eventTitle(eventId: string): Promise<string> {
@@ -172,9 +188,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id, d.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
-      roundIntervalMin: 120,
     });
 
     // 第1シード(a)と第4シード(d)が1回戦。実際にバトルが起きたことにする。
@@ -226,8 +239,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     const battleId = `${PREFIX}_p1_${uniqueSuffix()}`;
@@ -262,7 +273,7 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(approved?.detectionConfidence).toBe("partial");
   });
 
-  it("時間枠を過ぎても検知できなければ未実施になる", async () => {
+  it("日程が終わっても検知できなければ未実施になる", async () => {
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -270,15 +281,146 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      // すでに過ぎた時間枠
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
+    // 割り当て先の日程を過去にする(= 検知できないまま終わった)。
+    await endSessionInThePast(event.id);
 
     await aggregateEvent(event.id);
 
     const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
     expect(match?.status).toBe("NO_SHOW");
+  });
+
+  it("日程の外で終わったバトルはどのカードにも付かない", async () => {
+    // 日程の終わりをまたいで終わったバトルは対戦として扱わない(主催者への案内どおり)。
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const sessionEnd = new Date(NOW - 86_400_000);
+    await prisma.eventSession.updateMany({
+      where: { eventId: event.id },
+      data: { startAt: new Date(sessionEnd.getTime() - 3_600_000), endAt: sessionEnd },
+    });
+
+    // 日程の終わり5分前に始まり、終わった時にはもう日程の外。
+    const battleId = `${PREFIX}_out_${uniqueSuffix()}`;
+    const battleStart = new Date(sessionEnd.getTime() - 5 * 60_000);
+    const battleEnd = new Date(sessionEnd.getTime() + 5 * 60_000);
+    await insertBattle({ roomId: a.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
+    await insertBattle({ roomId: b.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
+    expect(match?.detectedBattleId).toBeNull();
+    // 日程は終わっているので未実施として残る(主催者が手で確定する)。
+    expect(match?.status).toBe("NO_SHOW");
+  });
+
+  it("終了を観測できていないバトルは暫定関連(LIVE)にとどめ、勝敗を出さない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const battleId = `${PREFIX}_open_${uniqueSuffix()}`;
+    await insertBattle({ roomId: a.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
+    await insertBattle({ roomId: b.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
+    expect(match?.status).toBe("LIVE");
+    expect(match?.detectedBattleId).toBe(battleId);
+    // **終了時刻を捏造しない。** 決着していないので勝者もライフ用の時刻も出さない。
+    expect(match?.detectedEndAt).toBeNull();
+    expect(match?.detectedEndSource).toBeNull();
+    expect(match?.decidedAt).toBeNull();
+    expect(match?.winnerSideId).toBeNull();
+  });
+
+  it("終了未確定のまま日程が終わったら要確認へ落とす", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const sessionEnd = new Date(NOW - 86_400_000);
+    await prisma.eventSession.updateMany({
+      where: { eventId: event.id },
+      data: { startAt: new Date(sessionEnd.getTime() - 3_600_000), endAt: sessionEnd },
+    });
+
+    const battleId = `${PREFIX}_openend_${uniqueSuffix()}`;
+    const battleStart = new Date(sessionEnd.getTime() - 30 * 60_000);
+    await insertBattle({ roomId: a.roomId, battleId, startedAt: battleStart, endedAt: null });
+    await insertBattle({ roomId: b.roomId, battleId, startedAt: battleStart, endedAt: null });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
+    expect(match?.status).toBe("NEEDS_REVIEW");
+    expect((match?.rules as { reviewReason?: string })?.reviewReason).toBe("END_UNKNOWN");
+    expect(match?.detectedEndAt).toBeNull();
+  });
+
+  it("同じ組み合わせのバトルが日程内に複数あれば自動確定しない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    for (const offset of [0, 60 * 60_000]) {
+      const battleId = `${PREFIX}_dup_${uniqueSuffix()}`;
+      const start = new Date(BATTLE_START.getTime() + offset);
+      const end = new Date(BATTLE_END.getTime() + offset);
+      await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
+      await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
+    }
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
+    expect(match?.status).toBe("NEEDS_REVIEW");
+    expect((match?.rules as { reviewReason?: string })?.reviewReason).toBe("AMBIGUOUS");
+    expect(match?.winnerSideId).toBeNull();
+  });
+
+  it("暫定関連は候補から外れたら解除される", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const battleId = `${PREFIX}_retract_${uniqueSuffix()}`;
+    await insertBattle({ roomId: a.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
+    await insertBattle({ roomId: b.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
+    await aggregateEvent(event.id);
+    expect(
+      (await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } }))?.status
+    ).toBe("LIVE");
+
+    // 実際の終了が判明し、それが日程の外だった。
+    const outside = new Date(END.getTime() + 3_600_000);
+    await prisma.detectedBattle.updateMany({ where: { battleId }, data: { endedAt: outside } });
+    await prisma.$executeRaw`
+      UPDATE public.tiktok_battles SET "endedAt" = ${outside} WHERE "battleId" = ${battleId}
+    `;
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
+    expect(match?.detectedBattleId).toBeNull();
+    expect(match?.status).toBe("SCHEDULED");
   });
 
   it("BATTLE倍率はバトル中の参加者にだけかかる", async () => {
@@ -291,8 +433,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await prisma.eventMultiplier.create({
       data: { eventId: event.id, kind: "BATTLE", factor: "2.00" },
@@ -334,9 +474,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
-      roundIntervalMin: 120,
     });
 
     // 3人 → 4枠。第1シード(a)が不戦勝。
@@ -368,8 +505,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     const battleId = `${PREFIX}_t1_${uniqueSuffix()}`;
@@ -397,8 +532,6 @@ describe("バトルの取り込みと対戦の確定", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     const battleId = `${PREFIX}_d1_${uniqueSuffix()}`;
@@ -440,8 +573,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     const byeMatch = await prisma.eventMatch.findFirst({
@@ -454,8 +585,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id, c.id].reverse(),
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
       })
     ).resolves.toMatchObject({ matches: expect.any(Number) });
   });
@@ -468,8 +597,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     const match = await prisma.eventMatch.findFirstOrThrow({
@@ -485,8 +612,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
       })
     ).rejects.toMatchObject({ code: "ALREADY_STARTED" });
   });
@@ -501,8 +626,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await prisma.eventMatch.updateMany({
       where: { eventId: event.id },
@@ -513,8 +636,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
       })
     ).resolves.toMatchObject({ matches: 1 });
   });
@@ -529,8 +650,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await prisma.eventMatch.updateMany({
       where: { eventId: event.id },
@@ -541,8 +660,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
       })
     ).resolves.toMatchObject({ matches: 1 });
   });
@@ -556,8 +673,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     const before = await finishFirstMatch(event.id);
     await prisma.event.update({
@@ -569,8 +684,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
         confirm: title,
       })
     ).resolves.toMatchObject({ matches: 1 });
@@ -598,8 +711,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     const kept = await finishFirstMatch(event.id);
 
@@ -607,8 +718,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
         confirm: "まったく違うイベント名",
       })
     ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
@@ -628,8 +737,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await finishFirstMatch(event.id);
     await prisma.event.update({
@@ -641,8 +748,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
         confirm: oldTitle,
       })
     ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
@@ -658,8 +763,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     const staleIds = (
       await prisma.eventMatch.findMany({ where: { eventId: event.id }, select: { id: true } })
@@ -669,8 +772,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [b.id, a.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     const current = await prisma.eventMatch.findMany({
       where: { eventId: event.id },
@@ -681,8 +782,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
         confirm: title,
         expectedMatchIds: staleIds,
       })
@@ -695,7 +794,7 @@ describe("トーナメント表の作り直し", () => {
     expect(after.map((m) => m.id).sort()).toEqual(current.map((m) => m.id).sort());
   });
 
-  it("作り直しが日程不正で失敗したら、既存の表と結果はそのまま残る", async () => {
+  it("作り直しが日程の指定不正で失敗したら、既存の表と結果はそのまま残る", async () => {
     const event = await newTournament();
     const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
@@ -704,8 +803,6 @@ describe("トーナメント表の作り直し", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     const kept = await finishFirstMatch(event.id);
     await prisma.event.update({
@@ -717,12 +814,11 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        // 開催期間の外。planRoundStarts が通らない。
-        firstRoundStartAt: new Date(END.getTime() + 86_400_000),
-        matchWindowMin: 60,
+        // このイベントに無い日程。planRoundSessions が通らない。
+        roundSessionIds: ["not-a-session-of-this-event"],
         confirm: title,
       })
-    ).rejects.toMatchObject({ code: "OUT_OF_EVENT_WINDOW" });
+    ).rejects.toMatchObject({ code: "INVALID_SESSION" });
 
     // 破棄と再作成は同じトランザクション。片方だけ通って表を失うことはない。
     const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
@@ -745,8 +841,6 @@ describe("トーナメント表の破棄", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await finishFirstMatch(event.id);
     await prisma.event.update({
@@ -778,8 +872,6 @@ describe("トーナメント表の破棄", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
 
     await expect(destroyBracket(event.id, {})).rejects.toMatchObject({
@@ -819,8 +911,6 @@ describe("トーナメント表の破棄", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
     await prisma.eventParticipant.update({
       where: { id: b.id },
@@ -834,9 +924,9 @@ describe("トーナメント表の破棄", () => {
   });
 });
 
-describe("時間枠を過ぎた表が永久にブロックされない", () => {
+describe("日程が終わった表が永久にブロックされない", () => {
   it("出場者が未確定の枠は NO_SHOW にならず、そのまま作り直せる", async () => {
-    // 1回戦の開始が過去(= 時間枠切れ)の表を作り、集計を1周させる。
+    // 日程が終わった表を作り、集計を1周させる。
     // 以前はこの周回で2回戦以降まで NO_SHOW になり、以後その表は
     // 「進行済み」と判定されて二度と作り直せなくなっていた。
     const event = await newTournament();
@@ -847,9 +937,8 @@ describe("時間枠を過ぎた表が永久にブロックされない", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      firstRoundStartAt: ROUND1_START,
-      matchWindowMin: 60,
     });
+    await endSessionInThePast(event.id);
 
     await aggregateEvent(event.id);
 
@@ -859,7 +948,7 @@ describe("時間枠を過ぎた表が永久にブロックされない", () => {
       select: { round: true, status: true, winnerDecidedBy: true },
     });
 
-    // 1回戦の実試合は時間枠が実際に過ぎているので NO_SHOW でよい(仕様)。
+    // 1回戦の実試合は日程が実際に終わっているので NO_SHOW でよい(仕様)。
     const realRound1 = matches.filter((m) => m.round === 1 && m.winnerDecidedBy !== "BYE");
     expect(realRound1.every((m) => m.status === "NO_SHOW")).toBe(true);
 
@@ -873,8 +962,6 @@ describe("時間枠を過ぎた表が永久にブロックされない", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id, c.id],
-        firstRoundStartAt: ROUND1_START,
-        matchWindowMin: 60,
       })
     ).resolves.toMatchObject({ matches: expect.any(Number) });
   });
@@ -893,9 +980,6 @@ describe("締切後に表を作り直しても進行が止まらない", () => {
     await createBracket({
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
-      firstRoundStartAt: PAST_ROUND1_START,
-      matchWindowMin: 30,
-      roundIntervalMin: 45,
     });
 
     // 1周目: 不戦勝の勝者が2回戦へ送られる = 進行があったので確定しない。

@@ -127,7 +127,8 @@ export type BracketMatchDto = {
   position: number;
   roundLabel: string;
   status: string;
-  scheduledStartAt: string;
+  /** この対戦を行う開催日程の表示名(「1日目」「予選」など)。対戦に個別の時刻は無い */
+  sessionLabel: string;
   detectedStartAt: string | null;
   winnerDecidedBy: string | null;
   sides: BracketSideDto[];
@@ -153,7 +154,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
       round: true,
       bracketPosition: true,
       status: true,
-      scheduledStartAt: true,
+      sessionId: true,
       detectedStartAt: true,
       detectedBattleId: true,
       detectionConfidence: true,
@@ -176,6 +177,16 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
   });
 
   if (matches.length === 0) return null;
+
+  // 日程の表示名。名前が無ければ「N日目」。対戦カードは時刻ではなくこれを出す。
+  const sessions = await prisma.eventSession.findMany({
+    where: { eventId },
+    orderBy: { startAt: "asc" },
+    select: { id: true, name: true },
+  });
+  const sessionLabels = new Map(
+    sessions.map((s, index) => [s.id, s.name || `${index + 1}日目`] as const)
+  );
 
   // TikTok 側のバトルスコア。公開側は誤解のコストが大きいので exact 検知のマッチだけに出す。
   // roomId は帰属の突き合わせにだけ使い、DTO には出さない。
@@ -203,7 +214,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           ? (m.rules as { roundLabel: string }).roundLabel
           : `${m.round}回戦`,
       status: m.status === "NEEDS_REVIEW" ? "LIVE" : m.status,
-      scheduledStartAt: m.scheduledStartAt.toISOString(),
+      sessionLabel: sessionLabels.get(m.sessionId) ?? "",
       detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
       winnerDecidedBy: m.winnerDecidedBy,
       sides: m.sides.map((s) => {

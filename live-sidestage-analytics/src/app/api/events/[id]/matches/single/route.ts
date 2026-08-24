@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { parseJstLocal } from "@/event/datetime";
 import {
   SingleMatchError,
   createSingleMatch,
@@ -54,15 +53,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = (await req.json().catch(() => null)) as {
     sideA?: unknown;
     sideB?: unknown;
-    scheduledStartAt?: unknown;
-    scheduledEndAt?: unknown;
+    sessionId?: unknown;
   } | null;
 
-  const start =
-    typeof body?.scheduledStartAt === "string" ? parseJstLocal(body.scheduledStartAt) : null;
-  const end = typeof body?.scheduledEndAt === "string" ? parseJstLocal(body.scheduledEndAt) : null;
-  if (!start || !end) {
-    return NextResponse.json({ error: "開始と終了の日時を入力してください。" }, { status: 400 });
+  // 対戦は個別の時間枠を持たない。どの開催日程で行うかだけを決める
+  // (その日程まるごとがバトル検知の対象になる)。
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
+  if (!sessionId) {
+    return NextResponse.json({ error: "開催日程を選んでください。" }, { status: 400 });
   }
 
   try {
@@ -70,16 +68,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       eventId: params.id,
       sideA: parseSide(body?.sideA),
       sideB: parseSide(body?.sideB),
-      scheduledStartAt: start,
-      scheduledEndAt: end,
+      sessionId,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof SingleMatchError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.code === "OVERLAPPING" ? 409 : 400 }
-      );
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     }
     throw err;
   }

@@ -25,6 +25,7 @@ export function SessionsField({
     const last = sessions[sessions.length - 1];
     onChange([
       ...sessions,
+      // 新規行は id を持たない(サーバー側で新しい日程として作られる)。
       { name: "", startAt: nextDay(last?.startAt ?? ""), endAt: nextDay(last?.endAt ?? "") },
     ]);
   };
@@ -33,6 +34,20 @@ export function SessionsField({
 
   return (
     <div>
+      {/* 日程の終了時刻はバトルの検知条件そのもの。ここを短く切ると、延長したバトルが
+          丸ごと集計から落ちる。表示位置・強調はこの警告のためだけに他より強くしてある。 */}
+      <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+        <p className="text-sm font-bold text-amber-300">
+          ⚠️ 日程の中で<span className="underline">終了した</span>バトルだけが対戦として扱われる
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+          日程の終了時刻をまたいで終わったバトルは、対戦カードに割り当てられない
+          （勝敗の自動判定とバトル倍率の対象から外れる。日程内のギフト自体は順位に入る）。
+          進行の遅れやバトルの延長を見込んで、<strong>終了時刻は余裕をもって（最後のバトル予定より
+          30分〜1時間ほど後ろに）</strong>設定する。
+        </p>
+      </div>
+
       <p className="mb-2 text-xs text-gray-500">
         日を分けて開催するときは日程を足す(例: 1日目に予選、2日目に決勝)。
         <strong className="text-gray-400">日程と日程の間のギフトは集計に入らない。</strong>

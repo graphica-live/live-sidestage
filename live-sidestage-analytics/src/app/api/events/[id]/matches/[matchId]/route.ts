@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { parseJstLocal } from "@/event/datetime";
 import { nextSlot } from "@/event/bracket";
 import { acquireEventLock } from "@/event/event-lock";
-import { isByeRow, isStartedMatch } from "@/event/match-status";
+import { isByeRow, isPlainObject, isStartedMatch } from "@/event/match-status";
 import {
   isTransactionTimeout,
   MUTATION_TX_OPTIONS,
   reopenAggregation,
 } from "@/event/reopen-aggregation";
-import { assertMatchWindow, SingleMatchError } from "@/event/single-match";
+import { assertEventSession, SingleMatchError } from "@/event/single-match";
 import type { DbClient } from "@/event/analytics-db";
 
 /** 結果を変えるトランザクション。集計とのロック待ちがあるので既定より長く待つ。 */
@@ -32,10 +32,32 @@ function inTx<T>(fn: (tx: DbClient) => Promise<T>): Promise<T> {
 // ロックを先に取る順序は破棄側(tournament.ts)と揃っていないとデッドロックする
 // (あちらは「ロック → 行削除」、こちらが「行更新 → ロック」だと逆順になる)。
 
-/** 時間枠を動かせる状態。検知・確定した後は動かさせない(下の理由を参照)。 */
+/** 日程を動かせる状態。検知・確定した後は動かさせない(下の理由を参照)。 */
 const RESCHEDULABLE = new Set(["SCHEDULED", "NO_SHOW"]);
 
-type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "schedule";
+/**
+ * 承認(`approve`)を許さない検知理由。
+ *
+ * - `AMBIGUOUS`: 同じ組み合わせの候補が複数あり、どのバトルか決められない
+ * - `END_UNKNOWN`: 終了を観測できないまま日程が終わった(区間が確定していない)
+ *
+ * どちらも「区間が正しい」という前提が無いので、集計に載せてはいけない。
+ */
+const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
+
+function reviewReasonOf(rules: unknown): string {
+  if (!isPlainObject(rules)) return "";
+  return typeof rules.reviewReason === "string" ? rules.reviewReason : "";
+}
+
+/** 承認・確定・無効化のあとに承認待ちの理由を消す(古い理由をカードに残さない)。 */
+function clearReviewReason(rules: unknown): Prisma.InputJsonObject {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  delete base.reviewReason;
+  return base as Prisma.InputJsonObject;
+}
+
+type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "assignSession";
 
 /** ロック内の検証で弾いたときの応答。トランザクションからはこれを返して外で JSON にする。 */
 type Failure = { error: string; code?: string; status: number };
@@ -52,8 +74,7 @@ export async function PATCH(
   const body = (await req.json().catch(() => null)) as {
     action?: unknown;
     winnerSideId?: unknown;
-    scheduledStartAt?: unknown;
-    scheduledEndAt?: unknown;
+    sessionId?: unknown;
   } | null;
 
   const action = body?.action as Action | undefined;
@@ -61,16 +82,11 @@ export async function PATCH(
     return NextResponse.json({ error: "action を指定してください。" }, { status: 400 });
   }
 
-  // 時刻のパースだけは DB を要らないので先に済ませる(不正な入力でロックを取らない)。
-  const start =
-    typeof body?.scheduledStartAt === "string" ? parseJstLocal(body.scheduledStartAt) : null;
-  const end =
-    typeof body?.scheduledEndAt === "string" ? parseJstLocal(body.scheduledEndAt) : null;
-  if (action === "schedule" && (!start || !end || start >= end)) {
-    return NextResponse.json(
-      { error: "開始日時と、それより後の終了日時を入力してください。" },
-      { status: 400 }
-    );
+  // 形式の確認だけは DB を要らないので先に済ませる(不正な入力でロックを取らない)。
+  // **この日程がこのイベントのものか**は、ロックの内側で `assertEventSession` が見る。
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
+  if (action === "assignSession" && !sessionId) {
+    return NextResponse.json({ error: "開催日程を選んでください。" }, { status: 400 });
   }
 
   let failure: Failure | null = null;
@@ -87,6 +103,8 @@ export async function PATCH(
           bracketPosition: true,
           status: true,
           winnerSideId: true,
+          winnerDecidedBy: true,
+          decidedAt: true,
           rules: true,
           sides: { select: { id: true, sideIndex: true } },
         },
@@ -120,9 +138,21 @@ export async function PATCH(
           if (match.status !== "NEEDS_REVIEW") {
             return { error: "承認待ちの対戦ではありません。", status: 400 };
           }
+          // **候補を特定できていない検知は承認させない。** 承認するとその区間の
+          // ギフトがそのまま勝敗とバトル倍率になるが、どのバトルか決まっていない
+          // (同じ組み合わせが複数ある / 終了を観測できていない)。
+          // 主催者は勝者を手動で確定する(その経路は検知を捨てる)。
+          if (UNAPPROVABLE_REASONS.has(reviewReasonOf(match.rules))) {
+            return {
+              error:
+                "どのバトルか特定できていないため承認できません。勝者を手動で確定してください。",
+              code: "AMBIGUOUS_DETECTION",
+              status: 409,
+            };
+          }
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: { status: "DETECTED" },
+            data: { status: "DETECTED", rules: clearReviewReason(match.rules) },
           });
           break;
         }
@@ -132,9 +162,30 @@ export async function PATCH(
           if (!winnerSideId || !match.sides.some((s) => s.id === winnerSideId)) {
             return { error: "この対戦のサイドを勝者に指定してください。", status: 400 };
           }
+          // **特定できていない検知は捨ててから確定する。** 残したままだと、
+          // 別のバトルかもしれない区間にバトル倍率が乗り、スコア表示も食い違う。
+          const dropDetection = UNAPPROVABLE_REASONS.has(reviewReasonOf(match.rules));
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: { status: "FINISHED", winnerSideId, winnerDecidedBy: "MANUAL" },
+            // 決着時刻を残す。デスマッチのライフはこの順に適用するので、
+            // 検知できていない対戦でも「いつ決まったか」が要る。
+            // **すでに確定済みなら動かさない**(同じ操作の再送でライフの順序を変えない)。
+            data: {
+              status: "FINISHED",
+              winnerSideId,
+              winnerDecidedBy: "MANUAL",
+              decidedAt: match.decidedAt ?? new Date(),
+              rules: clearReviewReason(match.rules),
+              ...(dropDetection
+                ? {
+                    detectedBattleId: null,
+                    detectedStartAt: null,
+                    detectedEndAt: null,
+                    detectionConfidence: null,
+                    detectedEndSource: null,
+                  }
+                : {}),
+            },
           });
           break;
         }
@@ -151,7 +202,13 @@ export async function PATCH(
           }
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: { status: "FINISHED", winnerSideId: null, winnerDecidedBy: "DRAW" },
+            data: {
+              status: "FINISHED",
+              winnerSideId: null,
+              winnerDecidedBy: "DRAW",
+              decidedAt: match.decidedAt ?? new Date(),
+              rules: clearReviewReason(match.rules),
+            },
           });
           break;
         }
@@ -159,7 +216,13 @@ export async function PATCH(
         case "void": {
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: { status: "VOID", winnerSideId: null, winnerDecidedBy: null },
+            data: {
+              status: "VOID",
+              winnerSideId: null,
+              winnerDecidedBy: null,
+              decidedAt: null,
+              rules: clearReviewReason(match.rules),
+            },
           });
           // 集計済みのスコアも消す。無効にした対戦の数字が残っていると
           // 「もう結果が出ている」と読めてしまう。
@@ -183,6 +246,8 @@ export async function PATCH(
               detectedEndAt: null,
               detectionConfidence: null,
               detectedEndSource: null,
+              decidedAt: null,
+              rules: clearReviewReason(match.rules),
             },
           });
           await tx.eventMatchSide.updateMany({
@@ -192,32 +257,30 @@ export async function PATCH(
           break;
         }
 
-        case "schedule": {
-          // **検知・確定した後は時間枠を動かせない。**
-          // デスマッチのライフは決着時刻の順に適用し、その時刻は
-          // `detectedEndAt ?? scheduledEndAt` なので、確定後に枠を動かすと
+        case "assignSession": {
+          // **検知・確定した後は日程を動かせない。**
+          // 日程はバトル検知の対象区間そのもので、動かすと確定済みの検知が
+          // その区間の外に出る。デスマッチのライフは決着時刻の順に適用するので、
           // 過去の対戦順が変わって脱落の結果まで変わってしまう。
           // 動かしたい場合は先に「検知をやり直す」で SCHEDULED へ戻す。
           if (!RESCHEDULABLE.has(match.status)) {
             return {
-              error:
-                "検知・確定した対戦の時間枠は変更できません。先に検知をやり直してください。",
+              error: "検知・確定した対戦の日程は変更できません。先に検知をやり直してください。",
               code: "NOT_RESCHEDULABLE",
               status: 409,
             };
           }
-          // 追加時と同じ検証を通す(開催日程の中・同じ出場者の枠が重ならない)。
-          // 日程を読むのもロックの内側なので、日程の変更と同時に走っても
-          // 古い日程で通した枠が外に取り残されることはない。
-          await assertMatchWindow(tx, {
-            eventId: params.id,
-            start: start!,
-            end: end!,
-            excludeMatchId: match.id,
-          });
+          // 日程を読むのもロックの内側。日程の変更と同時に走っても、
+          // 消された日程へ割り当てたままコミットされることはない。
+          const session = await assertEventSession(tx, params.id, sessionId);
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: { scheduledStartAt: start!, scheduledEndAt: end! },
+            data: {
+              sessionId,
+              // 旧列への dual-write(読まない。旧コードとの同居のためだけに入れる)。
+              scheduledStartAt: session.startAt,
+              scheduledEndAt: session.endAt,
+            },
           });
           break;
         }
@@ -231,10 +294,7 @@ export async function PATCH(
     });
   } catch (err) {
     if (err instanceof SingleMatchError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.code === "OVERLAPPING" ? 409 : 400 }
-      );
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     }
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;

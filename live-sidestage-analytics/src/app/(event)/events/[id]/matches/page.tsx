@@ -9,7 +9,6 @@ import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score"
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { isByeRow } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
-import { resolveEventWindows } from "@/event/sessions";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
 
@@ -30,7 +29,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       endAt: true,
       sessions: {
         orderBy: { startAt: "asc" },
-        select: { startAt: true, endAt: true, name: true },
+        // **id まで渡す。** 対戦の割り当て先を選ばせるので、表示だけでは足りない。
+        select: { id: true, startAt: true, endAt: true, name: true },
       },
     },
   });
@@ -46,8 +46,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         round: true,
         bracketPosition: true,
         status: true,
-        scheduledStartAt: true,
-        scheduledEndAt: true,
+        sessionId: true,
         detectedStartAt: true,
         detectedEndAt: true,
         detectionConfidence: true,
@@ -161,8 +160,12 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         ? ((m.rules as { roundLabel: string }).roundLabel)
         : `${m.round}回戦`,
     status: m.status,
-    scheduledStartAt: m.scheduledStartAt.toISOString(),
-    scheduledEndAt: m.scheduledEndAt.toISOString(),
+    sessionId: m.sessionId,
+    // 承認待ちの理由(候補が複数・終了未確定など)。カードに出して操作を選ばせる。
+    reviewReason:
+      typeof (m.rules as { reviewReason?: unknown } | null)?.reviewReason === "string"
+        ? ((m.rules as { reviewReason: string }).reviewReason)
+        : null,
     detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
     detectedEndAt: m.detectedEndAt?.toISOString() ?? null,
     detectionConfidence: m.detectionConfidence,
@@ -196,7 +199,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       </Link>
       <h1 className="mt-2 text-2xl font-bold">対戦管理</h1>
       <p className="mt-1 text-sm text-gray-400">
-        主催者が組んだ時間枠と組み合わせに対して、実際の TikTok バトルを自動で照合する。
+        対戦は開催日程に割り当てる。その日程の中で<strong>終了した</strong> TikTok バトルを
+        組み合わせで自動照合する。
       </p>
 
       {event.format === "TOURNAMENT" && (
@@ -212,10 +216,11 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           eventStatus={event.status}
           format={event.format}
           entryMode={event.entryMode}
-          sessions={resolveEventWindows(event).map((w) => ({
-            name: w.name,
-            startAt: w.start.toISOString(),
-            endAt: w.end.toISOString(),
+          sessions={event.sessions.map((s) => ({
+            id: s.id,
+            name: s.name,
+            startAt: s.startAt.toISOString(),
+            endAt: s.endAt.toISOString(),
           }))}
           entrants={entrants}
           matches={rows}

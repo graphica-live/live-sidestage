@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/event/authz";
-import { formatJstRange } from "@/event/datetime";
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
 import { deleteCoverObject } from "@/lib/media-storage";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
-import { parseSessionRequest, windowContaining } from "@/event/sessions";
+import { parseSessionRequest } from "@/event/sessions";
+import { applySessionDiff, SessionUpdateError } from "@/event/session-update";
 import {
   EVENT_STATUSES,
   resolveEventFormatForUpdate,
@@ -90,7 +90,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       format: true,
       prizeText: true,
       noticeText: true,
-      sessions: { orderBy: { startAt: "asc" }, select: { startAt: true, endAt: true, name: true } },
+      sessions: {
+        orderBy: { startAt: "asc" },
+        select: { id: true, startAt: true, endAt: true, name: true },
+      },
     },
   });
   if (!before) {
@@ -145,11 +148,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ errors: validated.errors }, { status: 400 });
   }
 
-  // matchRules は rules(JSON) の一名前空間なので、実際にリクエストが送ってきたときだけ
-  // マージ書き込みする(未送信なら rules 列自体に触らない)。
+  // matchRules と bracketMethod は rules(JSON) の名前空間なので、実際にリクエストが
+  // 送ってきたときだけマージ書き込みする(未送信なら rules 列自体に触らない)。
+  //
+  // **`bracketMethod` を `event` に残さないこと。** `Event` に同名の列は無いので、
+  // そのまま `event.update()` へ渡すと Prisma が `Unknown argument` で落ちる
+  // (イベント設定の保存が丸ごと 500 になっていた)。
   const matchRulesProvided = body.matchRules !== undefined;
-  const { sessions, matchRules, ...event } = validated.value;
-  const windows = sessions.map((s) => ({ start: s.startAt, end: s.endAt, name: s.name }));
+  const bracketMethodProvided = body.bracketMethod !== undefined;
+  const { sessions, matchRules, bracketMethod, ...event } = validated.value;
 
   let updated;
   try {
@@ -160,30 +167,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // 先頭で取るので、古い日程で通した枠が後からコミットされることはない。
       await reopenAggregation(tx, params.id);
 
-      // 日程の外に取り残される対戦がないか確かめる。**勝手に VOID にも移動もしない** —
-      // 主催者に、先に対戦の時間を直させる。
-      const matches = await tx.eventMatch.findMany({
-        where: { eventId: params.id, status: { not: "VOID" } },
-        orderBy: { scheduledStartAt: "asc" },
-        select: { scheduledStartAt: true, scheduledEndAt: true },
-      });
-      const stray = matches.filter(
-        (m) => !windowContaining(windows, m.scheduledStartAt, m.scheduledEndAt)
-      );
-      if (stray.length > 0) {
-        throw new StrayMatchError(stray.length, stray[0].scheduledStartAt, stray[0].scheduledEndAt);
-      }
-
-      // 日程は全置換する。差分更新にすると順序と重なりの検証をやり直す羽目になる。
-      await tx.eventSession.deleteMany({ where: { eventId: params.id } });
-      await tx.eventSession.createMany({
-        data: sessions.map((s) => ({ eventId: params.id, ...s })),
-      });
+      // **日程は差分更新する。** 対戦が `sessionId` で日程を参照しているので、
+      // 全置換(delete → create)すると id が変わって割り当てが壊れる。
+      // 検証も含めてロックの内側(このトランザクション)で完結させる。
+      await applySessionDiff(tx, params.id, sessions);
 
       // rules はロック取得後にここで読み直してからマージする(デスマッチ専用ブランチと
       // 同時に走っても、どちらか片方の名前空間が古いスナップショットで消されないように)。
       let rulesPatch: Prisma.InputJsonValue | undefined;
-      if (matchRulesProvided) {
+      if (matchRulesProvided || bracketMethodProvided) {
         const current = await tx.event.findUnique({
           where: { id: params.id },
           select: { rules: true },
@@ -192,7 +184,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
             ? (current.rules as Prisma.JsonObject)
             : {};
-        rulesPatch = { ...(existing as Prisma.InputJsonObject), matchRules };
+        rulesPatch = {
+          ...(existing as Prisma.InputJsonObject),
+          ...(matchRulesProvided ? { matchRules } : {}),
+          ...(bracketMethodProvided ? { bracket: { method: bracketMethod } } : {}),
+        };
       }
 
       return tx.event.update({
@@ -202,10 +198,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
     }, MUTATION_TX_OPTIONS);
   } catch (err) {
-    if (err instanceof StrayMatchError) {
+    if (err instanceof SessionUpdateError) {
       return NextResponse.json(
-        { errors: [err.message], code: "MATCH_OUT_OF_SESSION" },
-        { status: 409 }
+        { errors: [err.message], code: err.code },
+        { status: err.status }
       );
     }
     throw err;
@@ -217,17 +213,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   return NextResponse.json(updated);
-}
-
-/** 新しい日程に収まらない対戦が残っている。 */
-class StrayMatchError extends Error {
-  constructor(count: number, start: Date, end: Date) {
-    super(
-      `対戦の時間枠が新しい開催日程の外に出ます(${count}件。最初は ${formatJstRange(start, end)})。` +
-        "先に対戦の時間を変更するか、日程を見直してください。"
-    );
-    this.name = "StrayMatchError";
-  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -245,7 +230,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     select: { coverImageKey: true },
   });
 
-  await prisma.event.delete({ where: { id: params.id } });
+  // **対戦を先に消す。** 日程への外部キーが Restrict なので、Event の cascade だけに
+  // 任せると「日程を先に消しにいって対戦が邪魔をする」順序で落ちうる。
+  await prisma.$transaction([
+    prisma.eventMatch.deleteMany({ where: { eventId: params.id } }),
+    prisma.event.delete({ where: { id: params.id } }),
+  ]);
 
   // ベストエフォート。バケット側の削除に失敗してもイベント削除自体は完了させる。
   if (existing?.coverImageKey) {

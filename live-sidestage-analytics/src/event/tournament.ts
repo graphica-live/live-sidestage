@@ -2,31 +2,29 @@ import { prisma } from "@/lib/prisma";
 import type { DbClient } from "./analytics-db";
 import { resolveBracket, roundLabel, stagedRoundLabel } from "./bracket";
 import { parseBracketMethod } from "./bracket-rules";
-import { parseJstLocal } from "./datetime";
 import { acquireEventLock } from "./event-lock";
 import { isByeRow, isStartedMatch } from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
-import { resolveEventWindows, type EventWindow } from "./sessions";
 
 // トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
 //
 // 進行(勝者を次のラウンドへ送る)は match-results.ts が集計のたびに作り直すので、
 // ここでやるのは枠を用意することと、不戦勝を確定させることだけ。
-
-/** 1試合の既定の長さ。TikTok のバトルは5分が標準。前後の余裕を含めて枠を取る。 */
-export const DEFAULT_MATCH_WINDOW_MIN = 30;
-
-/** ラウンド間の既定の間隔。 */
-export const DEFAULT_ROUND_INTERVAL_MIN = 45;
+//
+// **対戦に個別の時間枠は持たせない。** ラウンドごとに「どの開催日程で行うか」だけを決める
+// (バトルの検知はその日程まるごとが対象)。1回戦の開始時刻・試合枠・ラウンド間隔から
+// 予定表を組む方式は廃止した — 主催者が事前に総所要時間を見積もれないと表すら作れず、
+// 進行が押すたびに枠を引き直す必要があったため。
 
 export type BracketPlanInput = {
   eventId: string;
   /** シード順(強い順)に並べたエントリー。個人戦なら participantId、チーム戦なら teamId */
   entrantIds: string[];
-  /** 1回戦の開始時刻 */
-  firstRoundStartAt: Date;
-  matchWindowMin?: number;
-  roundIntervalMin?: number;
+  /**
+   * ラウンド順(1回戦から)に、そのラウンドを行う開催日程の id。
+   * 省略・空なら全ラウンドを最初の日程に置く。
+   */
+  roundSessionIds?: string[];
   /**
    * 主催者が入力したイベント名。**進行中・確定済みの対戦を含む表を破棄するときだけ要る。**
    * ロックを取った後の `Event.title` と突き合わせる(後述の `assertConfirmed`)。
@@ -46,7 +44,7 @@ export class BracketError extends Error {
     readonly code:
       | "TOO_FEW_ENTRANTS"
       | "ALREADY_STARTED"
-      | "OUT_OF_EVENT_WINDOW"
+      | "INVALID_SESSION"
       | "UNKNOWN_ENTRANT"
       | "CONFIRM_MISMATCH"
       | "BRACKET_CHANGED"
@@ -57,49 +55,49 @@ export class BracketError extends Error {
 }
 
 /**
- * 各ラウンドの開始時刻を決める。開催日程をまたぐときは次の日程の頭へ送る。
+ * 各ラウンドを行う日程を決める。
  *
- * - **1回戦は指定された時刻から動かさない。** どの日程にも収まらなければ null を返し、
- *   主催者に直させる(黙って別の日へ動かすと、意図しない日程で表ができてしまう)
- * - 2回戦以降は `roundIntervalMin` 間隔。枠(`matchWindowMin`)がその日程からはみ出すなら
- *   次の日程の開始時刻へ送る。これで「1日目に予選、2日目に決勝」が組める
- * - 日程を使い切っても置ききれなければ null
+ * - 指定が無ければ全ラウンドを最初の日程に置く(1日で終わるイベントが大半)
+ * - 指定があるなら、ラウンド数ぶん揃っていて、すべてこのイベントの日程で、
+ *   **後のラウンドが前のラウンドより前の日程にならない**こと
+ *   (2回戦の日程を1回戦より前に置くと、勝者が決まる前の時間帯で検知することになる)
  */
-export function planRoundStarts(input: {
-  windows: EventWindow[];
-  firstRoundStartAt: Date;
+export function planRoundSessions(input: {
+  sessions: { id: string; startAt: Date }[];
   roundCount: number;
-  matchWindowMin: number;
-  roundIntervalMin: number;
-}): Date[] | null {
-  const { windows, firstRoundStartAt, roundCount, matchWindowMin, roundIntervalMin } = input;
-  const windowMs = matchWindowMin * 60_000;
-  const intervalMs = roundIntervalMin * 60_000;
-
-  let index = windows.findIndex(
-    (w) =>
-      firstRoundStartAt >= w.start && firstRoundStartAt.getTime() + windowMs <= w.end.getTime()
-  );
-  if (index < 0) return null;
-
-  const starts = [firstRoundStartAt];
-  let cursor = firstRoundStartAt.getTime() + intervalMs;
-
-  for (let round = 2; round <= roundCount; round++) {
-    while (index < windows.length) {
-      const w = windows[index];
-      if (cursor < w.start.getTime()) cursor = w.start.getTime();
-      if (cursor + windowMs <= w.end.getTime()) break;
-      index++;
-      if (index < windows.length) cursor = windows[index].start.getTime();
-    }
-    if (index >= windows.length) return null;
-
-    starts.push(new Date(cursor));
-    cursor += intervalMs;
+  requested?: string[];
+}): { ok: true; value: string[] } | { ok: false; error: string } {
+  const { sessions, roundCount, requested } = input;
+  if (sessions.length === 0) {
+    return { ok: false, error: "先に開催日程を登録してください。" };
   }
 
-  return starts;
+  const ordered = [...sessions].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  if (!requested || requested.length === 0) {
+    return { ok: true, value: Array.from({ length: roundCount }, () => ordered[0].id) };
+  }
+
+  if (requested.length !== roundCount) {
+    return { ok: false, error: `ラウンドは${roundCount}つあります。すべての日程を選んでください。` };
+  }
+
+  const orderById = new Map(ordered.map((s, index) => [s.id, index]));
+  let previous = -1;
+  for (const [round, sessionId] of requested.entries()) {
+    const index = orderById.get(sessionId);
+    if (index === undefined) {
+      return { ok: false, error: "このイベントに存在しない開催日程が指定されています。" };
+    }
+    if (index < previous) {
+      return {
+        ok: false,
+        error: `${round + 1}回戦の日程が前のラウンドより前になっています。`,
+      };
+    }
+    previous = index;
+  }
+
+  return { ok: true, value: [...requested] };
 }
 
 /**
@@ -113,15 +111,7 @@ export function planRoundStarts(input: {
  * 作成が(日程不正などで)失敗して、主催者が表を失ったまま取り残される。
  */
 export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
-  const {
-    eventId,
-    entrantIds,
-    firstRoundStartAt,
-    matchWindowMin = DEFAULT_MATCH_WINDOW_MIN,
-    roundIntervalMin = DEFAULT_ROUND_INTERVAL_MIN,
-    confirm,
-    expectedMatchIds,
-  } = input;
+  const { eventId, entrantIds, roundSessionIds, confirm, expectedMatchIds } = input;
 
   if (entrantIds.length < 2) {
     throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
@@ -137,12 +127,10 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       select: {
         title: true,
         entryMode: true,
-        startAt: true,
-        endAt: true,
         rules: true,
         sessions: {
           orderBy: { startAt: "asc" },
-          select: { startAt: true, endAt: true, name: true },
+          select: { id: true, startAt: true, endAt: true },
         },
       },
     });
@@ -164,18 +152,13 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     const bracket = resolveBracket(entrantIds, method);
     const label = method === "STAGED_BYE" ? stagedRoundLabel : roundLabel;
 
-    const roundStarts = planRoundStarts({
-      windows: resolveEventWindows(event),
-      firstRoundStartAt,
+    const roundSessions = planRoundSessions({
+      sessions: event.sessions,
       roundCount: bracket.roundCount,
-      matchWindowMin,
-      roundIntervalMin,
+      requested: roundSessionIds,
     });
-    if (!roundStarts) {
-      throw new BracketError(
-        "全ラウンドが開催日程に収まりません。1回戦の開始時刻・間隔・日程を見直してください。",
-        "OUT_OF_EVENT_WINDOW"
-      );
+    if (!roundSessions.ok) {
+      throw new BracketError(roundSessions.error, "INVALID_SESSION");
     }
 
     await clearBracket(tx, eventId, {
@@ -184,8 +167,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       expectedMatchIds,
     });
 
+    const sessionById = new Map(event.sessions.map((s) => [s.id, s]));
+
     for (const match of bracket.matches) {
-      const roundStart = roundStarts[match.round - 1];
+      const sessionId = roundSessions.value[match.round - 1];
+      const session = sessionById.get(sessionId)!;
       // 片方が BYE の行は「不戦勝行」として印を残す。静的(相手が確定済みの ENTRANT)・
       // 動的(段階的方式で、相手がまだ勝者未確定の WINNER_OF)のどちらも該当する。
       // match-results.ts の進行処理と [matchId] API の操作ガードがこの印を見る
@@ -197,8 +183,11 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
           round: match.round,
           bracketPosition: match.position,
           matchType: "1V1",
-          scheduledStartAt: roundStart,
-          scheduledEndAt: new Date(roundStart.getTime() + matchWindowMin * 60_000),
+          sessionId,
+          // **旧列への dual-write。** 読むのは日程だけだが、ローリング更新やロールバックで
+          // 旧コードが同時に動いても必須列が null にならないよう、日程の窓を入れておく。
+          scheduledStartAt: session.startAt,
+          scheduledEndAt: session.endAt,
           status: "SCHEDULED",
           rules: {
             roundLabel: label(match.round, bracket.roundCount),
@@ -446,9 +435,4 @@ export async function defaultSeedOrder(
     select: { id: true },
   });
   return participants.map((p) => p.id);
-}
-
-/** `<input type="datetime-local">` の値からトーナメント開始時刻を作る(JST固定)。 */
-export function parseBracketStart(value: string): Date | null {
-  return parseJstLocal(value);
 }

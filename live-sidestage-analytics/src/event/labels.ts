@@ -9,7 +9,7 @@ export const FORMAT_LABELS: Record<EventFormat, string> = {
 };
 
 export const FORMAT_DESCRIPTIONS: Record<EventFormat, string> = {
-  TOURNAMENT: "対戦カードと時間枠を組み、実際のバトルを自動検知して勝敗を決める",
+  TOURNAMENT: "対戦カードを開催日程に割り当て、実際のバトルを自動検知して勝敗を決める",
   DIAMOND_RACE: "イベント期間中の獲得ダイヤを競う",
   DEATHMATCH: "ライフポイント制。マッチ結果に応じてライフが増減する",
 };

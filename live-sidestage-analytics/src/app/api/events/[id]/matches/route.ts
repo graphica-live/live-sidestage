@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { parseJstLocal } from "@/event/datetime";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
 import { BracketError, createBracket, destroyBracket } from "@/event/tournament";
 
@@ -69,9 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = (await req.json().catch(() => null)) as {
     entrantIds?: unknown;
-    firstRoundStartAt?: unknown;
-    matchWindowMin?: unknown;
-    roundIntervalMin?: unknown;
+    roundSessionIds?: unknown;
     confirm?: unknown;
     expectedMatchIds?: unknown;
   } | null;
@@ -89,24 +86,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "同じエントリーが重複しています。" }, { status: 400 });
   }
 
-  const startAt =
-    typeof body?.firstRoundStartAt === "string" ? parseJstLocal(body.firstRoundStartAt) : null;
-  if (!startAt) {
-    return NextResponse.json({ error: "1回戦の開始日時を入力してください。" }, { status: 400 });
-  }
-
-  const positiveInt = (value: unknown, fallback: number) => {
-    const n = Number(value);
-    return Number.isFinite(n) && n > 0 && n <= 24 * 60 ? Math.round(n) : fallback;
-  };
+  // ラウンドごとの開催日程。**中身の妥当性(このイベントの日程か、順番が逆行しないか)は
+  // ロックを取った後の `createBracket` が見る。** ここは型だけ確かめる。
+  const roundSessionIds = Array.isArray(body?.roundSessionIds)
+    ? body!.roundSessionIds.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : undefined;
 
   try {
     const result = await createBracket({
       eventId: params.id,
       entrantIds,
-      firstRoundStartAt: startAt,
-      matchWindowMin: positiveInt(body?.matchWindowMin, 30),
-      roundIntervalMin: positiveInt(body?.roundIntervalMin, 45),
+      roundSessionIds,
       ...readConfirmation(body),
     });
     return NextResponse.json(result, { status: 201 });
@@ -120,8 +110,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 /**
  * トーナメント表を破棄する(作り直さない)。
  *
- * 参加者が2組未満に減った・日程を縮めて全ラウンドが収まらない等、`POST` が永久に
- * 成功しない状態でも古い表を消せるようにするための経路。**イベント名の入力が必須。**
+ * 参加者が2組未満に減った・メンバー0のチームが混ざった等、`POST` が永久に成功しない
+ * 状態でも古い表を消せるようにするための経路。**イベント名の入力が必須。**
  *
  * デスマッチには使わせない。個別に組んだ対戦まで巻き込むうえ、あちらには
  * `DELETE /matches/:matchId` がある。

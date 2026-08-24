@@ -73,6 +73,9 @@ export async function resolveMatchResults(
       detectedEndAt: true,
       winnerSideId: true,
       winnerDecidedBy: true,
+      // 勝敗に数えるギフトは**この対戦を行う日程の中だけ**。イベントの全日程と
+      // 交差させると、別の日程にはみ出したバトルのギフトまで勝敗に効く。
+      session: { select: { startAt: true, endAt: true, name: true } },
       sides: {
         orderBy: { sideIndex: "asc" },
         select: {
@@ -106,7 +109,17 @@ export async function resolveMatchResults(
       sides: match.sides as SideRow[],
       start: match.detectedStartAt,
       end: match.detectedEndAt,
-      windows: params.windows,
+      // 日程が付いていない対戦(移行前のデータ)だけ、従来どおり全日程と交差させる。
+      windows: match.session
+        ? [
+            {
+              id: null,
+              start: match.session.startAt,
+              end: match.session.endAt,
+              name: match.session.name,
+            },
+          ]
+        : params.windows,
       multipliers: params.multipliers,
     });
 
