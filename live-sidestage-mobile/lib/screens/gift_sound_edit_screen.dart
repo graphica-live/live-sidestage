@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/app_config_store.dart';
@@ -865,6 +866,26 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
     super.dispose();
   }
 
+  /// 配布元サイトを外部ブラウザで開く。
+  ///
+  /// アプリ内の検索は検索結果ページから拾えた分しか出せず、カテゴリ一覧・試聴・
+  /// 利用条件はサイト側にしか無い。入力中のキーワードがあればその検索結果へ直接飛ばす。
+  Future<void> _openSite() async {
+    final uri = SoundLibrary.sitePageUri(widget.source, query: _controller.text);
+    var opened = false;
+    try {
+      // ブラウザへ渡す。アプリ内 WebView にはしない(サイト側のログインや
+      // ダウンロードをアプリが抱え込む必要はない)。
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$uri を開けませんでした。')),
+    );
+  }
+
   Future<void> _search() async {
     final query = _controller.text.trim();
     if (query.isEmpty) return;
@@ -893,13 +914,14 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final results = _results;
+    final siteHost = SoundLibrary.sitePageUri(widget.source).host;
 
     return Scaffold(
       appBar: AppBar(title: Text(_sourceLabel(widget.source))),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
                 Expanded(
@@ -913,6 +935,17 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
                 const SizedBox(width: 8),
                 FilledButton(onPressed: _searching ? null : _search, child: const Text('検索')),
               ],
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 16, 8),
+              child: TextButton.icon(
+                onPressed: _openSite,
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: Text('$siteHost を開く'),
+              ),
             ),
           ),
           if (_searching) const LinearProgressIndicator(),

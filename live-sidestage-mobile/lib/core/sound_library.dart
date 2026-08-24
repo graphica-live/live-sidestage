@@ -149,10 +149,29 @@ class SoundLibrary {
     );
   }
 
+  /// 配布元サイトのページ URL。[query] が空ならトップ、あればサイト内検索の結果ページ。
+  ///
+  /// アプリ内の検索は検索結果 HTML から拾えた分しか出せない(カテゴリ一覧・試聴・
+  /// 利用規約はサイト側にしか無い)ので、検索画面からブラウザで開く導線に使う。
+  /// 検索リクエスト側の URL もここへ寄せて、両者が別のページを指す状態を作らない。
+  static Uri sitePageUri(SoundSourceKind source, {String query = ''}) {
+    final trimmed = query.trim();
+    return switch (source) {
+      SoundSourceKind.soundEffectLab => trimmed.isEmpty
+          ? Uri.https(soundEffectLabHost, '/')
+          : Uri.https(soundEffectLabHost, '/sound/search.php', {'s': trimmed}),
+      SoundSourceKind.myInstants => trimmed.isEmpty
+          ? Uri.https(myInstantsHost, '/')
+          : Uri.https(myInstantsHost, '/en/search/', {'name': trimmed}),
+      SoundSourceKind.local =>
+        throw ArgumentError.value(source, 'source', '端末内の音源に配布元サイトは無い'),
+    };
+  }
+
   Future<List<RemoteSound>> searchSoundEffectLab(String query) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return Future.value(const []);
-    final uri = Uri.https(soundEffectLabHost, '/sound/search.php', {'s': trimmed});
+    final uri = sitePageUri(SoundSourceKind.soundEffectLab, query: trimmed);
     return _search(
       uri: uri,
       headers: const {
@@ -170,7 +189,7 @@ class SoundLibrary {
   Future<List<RemoteSound>> searchMyInstants(String query) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return Future.value(const []);
-    final uri = Uri.https(myInstantsHost, '/en/search/', {'name': trimmed});
+    final uri = sitePageUri(SoundSourceKind.myInstants, query: trimmed);
     return _search(
       uri: uri,
       headers: const {'User-Agent': 'Mozilla/5.0 (LiveSidestage)'},
