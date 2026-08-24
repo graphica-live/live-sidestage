@@ -57,6 +57,10 @@ dependencies:
   # 10.3.x は KGP を無条件適用し compileSdk もアプリ側へ追従するので影響を受けない。
   # 10.3.11 は pub 上で retracted 済みなので 10.3.10 を上限にする。
   file_picker: 10.3.10
+  # 効果音ラボ / MyInstants の検索画面から、元サイトを外部ブラウザで開くためだけに使う。
+  # Android 11 以降は AndroidManifest の <queries> に https の VIEW intent が無いと
+  # 起動先を解決できないので、そちらもセットで必要。
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
