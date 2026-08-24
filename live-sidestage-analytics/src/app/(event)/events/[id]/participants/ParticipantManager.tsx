@@ -65,6 +65,12 @@ export function ParticipantManager({
           : `@${body.tiktokId} を登録した。すでに監視中の配信者なので、既存の受信データをそのまま使う。`,
       },
     ];
+    if (body.existence === "UNVERIFIED") {
+      next.push({
+        kind: "warn",
+        text: "TikTok からの応答が得られず、このアカウントが実在するか確認できなかった。ID が正しいか見直すこと。",
+      });
+    }
     if (body.leaseClamped) {
       next.push({
         kind: "warn",

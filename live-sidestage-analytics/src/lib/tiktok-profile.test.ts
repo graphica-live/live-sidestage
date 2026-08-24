@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedAvatarUrl, parseProfileResponse } from "./tiktok-profile";
+import {
+  USER_NOT_FOUND_STATUS_CODE,
+  classifyAccountExistence,
+  isAllowedAvatarUrl,
+  parseProfileResponse,
+} from "./tiktok-profile";
 
 // 実際のレスポンス(2026-08 時点、https://www.tiktok.com/api-live/user/room/)を縮めたもの。
 const REAL_AVATAR =
@@ -125,5 +130,89 @@ describe("parseProfileResponse", () => {
     expect(parseProfileResponse({})).toBeNull();
     expect(parseProfileResponse({ statusCode: 0, data: {} })).toBeNull();
     expect(parseProfileResponse({ statusCode: 0, data: { user: null } })).toBeNull();
+  });
+});
+
+describe("classifyAccountExistence", () => {
+  it("実在するアカウントを EXISTS にする(実測の形)", () => {
+    // 2026-08-24 に @tiktok を引いた応答を縮めたもの。
+    const body = {
+      statusCode: 0,
+      message: "",
+      data: { user: { uniqueId: "tiktok", id: "107955", nickname: "TikTok" } },
+    };
+    expect(classifyAccountExistence(body, "tiktok")).toBe("EXISTS");
+  });
+
+  it("アイコンが取れなくても EXISTS にする", () => {
+    // 実在確認は avatar と無関係。CDN のホストが変わっても壊れてはいけない。
+    const body = { statusCode: 0, data: { user: { uniqueId: "someone" } } };
+    expect(classifyAccountExistence(body, "someone")).toBe("EXISTS");
+  });
+
+  it("存在しないアカウントを MISSING にする(実測の形)", () => {
+    // 2026-08-24 に存在しないハンドルを引いた応答。
+    const body = { statusCode: USER_NOT_FOUND_STATUS_CODE, message: "user_not_found", data: null };
+    expect(classifyAccountExistence(body, "zzq_notexist_9c8f7e6d5a4b3")).toBe("MISSING");
+    expect(USER_NOT_FOUND_STATUS_CODE).toBe(19881007);
+  });
+
+  it("statusCode が変わっても message が user_not_found なら MISSING にする", () => {
+    expect(classifyAccountExistence({ statusCode: 12345, message: "user_not_found" }, "x")).toBe(
+      "MISSING"
+    );
+  });
+
+  it("**未知の非 0 statusCode は MISSING にしない**", () => {
+    // レート制限・bot 判定・地域ブロックで実在アカウントを一斉に弾かないための肝。
+    for (const statusCode of [10221, 2, 100, -1, 19881008]) {
+      expect(classifyAccountExistence({ statusCode, message: "something else" }, "x")).toBe(
+        "UNVERIFIED"
+      );
+    }
+  });
+
+  it("別人のレスポンスは判定不能にする", () => {
+    const body = { statusCode: 0, data: { user: { uniqueId: "someone_else" } } };
+    expect(classifyAccountExistence(body, "target_user")).toBe("UNVERIFIED");
+  });
+
+  it("uniqueId の大文字小文字は区別しない", () => {
+    const body = { statusCode: 0, data: { user: { uniqueId: "Target_User" } } };
+    expect(classifyAccountExistence(body, "target_user")).toBe("EXISTS");
+  });
+
+  it("uniqueId がレスポンスに無ければ照合しない(parseProfileResponse と同じ方針)", () => {
+    expect(classifyAccountExistence({ statusCode: 0, data: { user: { id: "1" } } }, "x")).toBe(
+      "EXISTS"
+    );
+  });
+
+  it("矛盾した応答では拒否側へ倒さない", () => {
+    // statusCode 0(成功)なのに message が user_not_found。実在を返しているほうを信じる。
+    expect(
+      classifyAccountExistence(
+        { statusCode: 0, message: "user_not_found", data: { user: { uniqueId: "x" } } },
+        "x"
+      )
+    ).toBe("EXISTS");
+
+    // 「いない」と言いながら user を返している。判定不能にする。
+    expect(
+      classifyAccountExistence(
+        {
+          statusCode: USER_NOT_FOUND_STATUS_CODE,
+          message: "user_not_found",
+          data: { user: { uniqueId: "x" } },
+        },
+        "x"
+      )
+    ).toBe("UNVERIFIED");
+  });
+
+  it("想定外の形はすべて判定不能にする", () => {
+    for (const body of [null, undefined, "<html>", 123, {}, { statusCode: 0 }, { statusCode: 0, data: {} }, { statusCode: 0, data: { user: null } }]) {
+      expect(classifyAccountExistence(body, "x")).toBe("UNVERIFIED");
+    }
   });
 });

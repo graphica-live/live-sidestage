@@ -14,6 +14,25 @@
 // 同じレスポンスの `data.user.id` は TikTok の数値 userId で、こちらは**不変**なので
 // TiktokRoom.hostUserId へ保存する(src/lib/tiktok-host-id.ts)。avatar URL とは扱いが逆になる。
 
+/**
+ * `data.user` が無く「そのハンドルのユーザーがいない」ことを TikTok が明示するときの `statusCode`。
+ *
+ * 実測(2026-08-24、このエンドポイントを直接叩いて確認):
+ *
+ * | ハンドル | statusCode | message | data |
+ * | --- | --- | --- | --- |
+ * | `tiktok`(実在) | `0` | `""` | `user` あり |
+ * | `zzq_notexist_9c8f7e6d5a4b3` | `19881007` | `"user_not_found"` | `null` |
+ *
+ * **「いない」には専用のコードがある**ことが重要で、レート制限・bot 判定・地域ブロックは
+ * これとは別の値になる。したがって「実在しないから登録を拒否する」判断は、非 0 全部ではなく
+ * **このコードだけ**を根拠にする(`classifyAccountExistence`)。
+ */
+export const USER_NOT_FOUND_STATUS_CODE = 19881007;
+
+/** `message` 側の同じシグナル。statusCode が変わってもこちらで拾えるようにしておく。 */
+const USER_NOT_FOUND_MESSAGE = "user_not_found";
+
 /** 取得できたプロフィール。avatarUrl は検証済みの https URL。 */
 export type TiktokProfile = {
   avatarUrl: string;
@@ -161,12 +180,18 @@ export function parseProfileResponse(
 }
 
 /**
- * 配信者のプロフィールを引く。**失敗しても例外を投げない。**
+ * `api-live/user/room/` を1回叩いて、本体か失敗理由かを返す。
  *
- * 呼び出し元にとってアイコンは付随情報でしかなく、TikTok 側の仕様変更やレート制限で
- * 本来の処理を止めてはならない。
+ * プロフィール取得(`fetchTiktokProfile`)と実在確認(`checkAccountExistence`)で
+ * ヘッダ・リダイレクト方針・タイムアウトの扱いを揃えるために切り出してある。
+ * **例外は投げない。**
  */
-export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfileResult> {
+type UserRoomResponse =
+  | { kind: "json"; body: unknown }
+  | { kind: "rate-limited" }
+  | { kind: "error" };
+
+async function requestUserRoom(tiktokId: string, timeoutMs: number): Promise<UserRoomResponse> {
   const url = `${ENDPOINT}?aid=1988&sourceType=54&uniqueId=${encodeURIComponent(tiktokId)}`;
 
   let response: Response;
@@ -181,23 +206,111 @@ export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfil
       },
       // 想定外のリダイレクト(ログイン画面・地域ブロック)を追いかけない。
       redirect: "error",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     // タイムアウト・ネットワークエラー・リダイレクト。
-    return { ok: false, reason: "ERROR" };
+    return { kind: "error" };
   }
 
-  if (response.status === 429) return { ok: false, reason: "RATE_LIMITED" };
-  if (!response.ok) return { ok: false, reason: "ERROR" };
+  if (response.status === 429) return { kind: "rate-limited" };
+  if (!response.ok) return { kind: "error" };
 
-  let body: unknown;
   try {
-    body = await response.json();
+    return { kind: "json", body: await response.json() };
   } catch {
-    return { ok: false, reason: "ERROR" };
+    return { kind: "error" };
+  }
+}
+
+/**
+ * アカウントが実在するか。**アイコンが取れるかとは独立に判定する。**
+ *
+ * - `EXISTS` … TikTok が `data.user` を返した
+ * - `MISSING` … TikTok が「そのユーザーはいない」と明示した(`USER_NOT_FOUND_STATUS_CODE`)
+ * - `UNVERIFIED` … 判定できなかった(レート制限・障害・想定外の形・別人のレスポンス)
+ */
+export type AccountExistence = "EXISTS" | "MISSING" | "UNVERIFIED";
+
+/**
+ * レスポンス本体から実在を判定する。純粋関数。
+ *
+ * **非 0 の `statusCode` をまとめて「いない」にしない。** レート制限や bot 判定で
+ * 実在アカウントが一斉に弾かれると、イベントの参加者登録がまるごと止まる。
+ * 拒否の根拠にしてよいのは TikTok が明示した `user_not_found` だけで、
+ * それ以外は**判定不能**として扱う(呼び出し側が通す)。
+ *
+ * `expectedUniqueId` が一致しないレスポンスも「別人を掴んでいる」ので判定不能にする
+ * (`parseProfileResponse` と同じく、`uniqueId` がそもそも入っていなければ照合しない)。
+ */
+export function classifyAccountExistence(
+  body: unknown,
+  expectedUniqueId: string
+): AccountExistence {
+  if (typeof body !== "object" || body === null) return "UNVERIFIED";
+
+  const root = body as { statusCode?: unknown; message?: unknown; data?: unknown };
+  const user = readUser(root.data);
+
+  // 成功応答。**ここでは絶対に MISSING を返さない** — `message` が矛盾していても
+  // 拒否側へ倒さない(判定の優先順位を決めておかないと、矛盾した応答で実在アカウントを弾く)。
+  if (root.statusCode === 0) {
+    if (user === null) return "UNVERIFIED";
+
+    const uniqueId = (user as { uniqueId?: unknown }).uniqueId;
+    if (typeof uniqueId === "string" && uniqueId.toLowerCase() !== expectedUniqueId.toLowerCase()) {
+      return "UNVERIFIED";
+    }
+    return "EXISTS";
   }
 
+  // 非 0。「そのユーザーはいない」と明示されたときだけ拒否する。
+  const saysNotFound =
+    root.statusCode === USER_NOT_FOUND_STATUS_CODE ||
+    (typeof root.message === "string" && root.message === USER_NOT_FOUND_MESSAGE);
+  if (!saysNotFound) return "UNVERIFIED";
+
+  // 「いない」と言いながら user を返すのは矛盾している。ここも拒否側へ倒さない。
+  if (user !== null) return "UNVERIFIED";
+
+  return "MISSING";
+}
+
+/** `data.user` をオブジェクトとして取り出す。取れなければ null。 */
+function readUser(data: unknown): object | null {
+  if (typeof data !== "object" || data === null) return null;
+  const user = (data as { user?: unknown }).user;
+  if (typeof user !== "object" || user === null) return null;
+  return user;
+}
+
+/**
+ * アカウントの実在だけを確認する。**失敗しても例外を投げない。**
+ *
+ * 呼び出しの間引き(キャッシュ・同時実行上限・サーキットブレーカ)は
+ * `src/lib/tiktok-existence.ts` が持つ。ここは1回の問い合わせと判定だけ。
+ */
+export async function checkAccountExistence(
+  tiktokId: string,
+  options: { timeoutMs?: number } = {}
+): Promise<AccountExistence> {
+  const response = await requestUserRoom(tiktokId, options.timeoutMs ?? TIMEOUT_MS);
+  if (response.kind !== "json") return "UNVERIFIED";
+  return classifyAccountExistence(response.body, tiktokId);
+}
+
+/**
+ * 配信者のプロフィールを引く。**失敗しても例外を投げない。**
+ *
+ * 呼び出し元にとってアイコンは付随情報でしかなく、TikTok 側の仕様変更やレート制限で
+ * 本来の処理を止めてはならない。
+ */
+export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfileResult> {
+  const response = await requestUserRoom(tiktokId, TIMEOUT_MS);
+  if (response.kind === "rate-limited") return { ok: false, reason: "RATE_LIMITED" };
+  if (response.kind === "error") return { ok: false, reason: "ERROR" };
+
+  const body = response.body;
   const profile = parseProfileResponse(body, tiktokId);
   if (profile) return { ok: true, profile };
 
