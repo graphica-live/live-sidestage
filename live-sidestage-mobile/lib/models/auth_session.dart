@@ -19,12 +19,30 @@ class StreamerInfo {
       );
 }
 
+/// どの認証プロバイダでこのセッションを取ったか。
+///
+/// サーバーは返さない（端末はどちらのエンドポイントを叩いたか知っている）。
+/// 保持しているのは **ログアウトと無言リフレッシュの分岐に要る**ため。
+/// Google には `signInSilently` があるが Apple には相当するものが無い。
+enum AuthProvider {
+  google,
+  apple;
+
+  static AuthProvider? tryParse(String? value) {
+    for (final provider in AuthProvider.values) {
+      if (provider.name == value) return provider;
+    }
+    return null;
+  }
+}
+
 class AuthSession {
   final String token;
   final String userId;
   final String userName;
   final String userEmail;
   final bool onboardingRequired;
+  final AuthProvider provider;
   final StreamerInfo? streamer;
 
   AuthSession({
@@ -33,10 +51,11 @@ class AuthSession {
     required this.userName,
     required this.userEmail,
     required this.onboardingRequired,
+    required this.provider,
     this.streamer,
   });
 
-  factory AuthSession.fromJson(Map<String, dynamic> json) {
+  factory AuthSession.fromJson(Map<String, dynamic> json, {required AuthProvider provider}) {
     final user = json['user'] as Map<String, dynamic>;
     final streamerJson = json['streamer'] as Map<String, dynamic>?;
     return AuthSession(
@@ -45,6 +64,7 @@ class AuthSession {
       userName: user['name'] as String? ?? '',
       userEmail: user['email'] as String? ?? '',
       onboardingRequired: json['onboardingRequired'] as bool? ?? streamerJson == null,
+      provider: provider,
       streamer: streamerJson != null ? StreamerInfo.fromJson(streamerJson) : null,
     );
   }
@@ -56,6 +76,7 @@ class AuthSession {
       userName: userName,
       userEmail: userEmail,
       onboardingRequired: false,
+      provider: provider,
       streamer: streamer,
     );
   }
@@ -66,6 +87,7 @@ class AuthSession {
         'userName': userName,
         'userEmail': userEmail,
         'onboardingRequired': onboardingRequired.toString(),
+        'provider': provider.name,
         if (streamer != null) 'streamerId': streamer!.id,
         if (streamer != null) 'tiktokId': streamer!.tiktokId,
         if (streamer != null) 'apiKey': streamer!.apiKey,
@@ -74,12 +96,24 @@ class AuthSession {
 
   factory AuthSession.fromStorageMap(Map<String, String> map) {
     final hasStreamer = map.containsKey('streamerId');
+    // provider の追加より前に入れた端末には保存されていない。そのころは
+    // Google しか無かったので、欠落は google とみなす（ここを必須キーに
+    // すると、更新した瞬間に既存ユーザーのセッションが全部消える）。
+    // 一方、知らない値が入っているのは保存データの破損なので読み込まない。
+    final provider = map.containsKey('provider')
+        ? AuthProvider.tryParse(map['provider'])
+        : AuthProvider.google;
+    if (provider == null) {
+      throw const FormatException('保存されたセッションの認証プロバイダが不正です');
+    }
+
     return AuthSession(
       token: map['token']!,
       userId: map['userId']!,
       userName: map['userName']!,
       userEmail: map['userEmail']!,
       onboardingRequired: map['onboardingRequired'] == 'true',
+      provider: provider,
       streamer: hasStreamer
           ? StreamerInfo(
               id: map['streamerId']!,

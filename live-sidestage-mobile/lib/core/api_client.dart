@@ -21,6 +21,39 @@ const String liveAnalyticsBaseUrl = String.fromEnvironment(
 const String googleServerClientId =
     '515259769901-5ek9vjrlflpldj01eqo6dop7iu7v8l7f.apps.googleusercontent.com';
 
+/// Apple Developer Portal の **Services ID**（Bundle ID ではない）。
+///
+/// Android にはネイティブの Apple 認証が無く、Custom Tab で web フローを回すため
+/// client_id は Services ID になる。バックエンドの `APPLE_SERVICES_ID` と同じ値でないと
+/// `aud` の検証に必ず落ちる。
+///
+/// **空のままだとログイン画面に Apple のボタンを出さない。** Apple 側の設定が
+/// 済むまでは押しても必ず失敗するので、ビルド時に値を渡すことを有効化の条件にしている。
+///
+/// ```
+/// flutter build apk --release \
+///   --dart-define=APPLE_SERVICES_ID=com.liveanalytics.live-sidestage.signin \
+///   --dart-define=APPLE_REDIRECT_URI=https://HOST/api/mobile/auth/apple/callback
+/// ```
+const String appleServicesId = String.fromEnvironment('APPLE_SERVICES_ID');
+
+/// Apple Developer Portal に Return URL として登録した URL と**完全一致**させる。
+/// バックエンドの `APPLE_REDIRECT_URI` とも一致していないと code 交換が invalid_grant になる。
+const String appleRedirectUri = String.fromEnvironment(
+  'APPLE_REDIRECT_URI',
+  defaultValue: '$liveAnalyticsBaseUrl/api/mobile/auth/apple/callback',
+);
+
+/// Apple サインインを画面に出してよいか。
+///
+/// **Services ID と https の redirect URI が両方揃っていること**を条件にする。
+/// 片方だけでは authorize が必ず失敗するので、押せてしまう状態を作らない。
+bool get isAppleSignInConfigured {
+  if (appleServicesId.isEmpty) return false;
+  final uri = Uri.tryParse(appleRedirectUri);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+}
+
 class ApiException implements Exception {
   final String message;
 
@@ -132,7 +165,33 @@ class GiftCandidate {
 class LiveAnalyticsApi {
   Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
     final data = await _post('/api/mobile/auth/google', {'idToken': idToken});
-    return AuthSession.fromJson(data);
+    return AuthSession.fromJson(data, provider: AuthProvider.google);
+  }
+
+  /// Apple サインイン。**idToken ではなく authorizationCode を送る。**
+  ///
+  /// Android は Custom Tab の web フローなので、端末が受け取った応答は
+  /// exported Activity 経由で第三者が差し込めてしまう。単回・短命な code を
+  /// サーバーが Apple と交換して初めて認証が成立する。[nonce] は authorize 時に
+  /// 端末が生成した値で、サーバーが id_token のクレームと完全一致を確認する。
+  ///
+  /// [givenName] / [familyName] は **初回認可のときしか Apple から返らない**。
+  Future<AuthSession> authenticateWithApple({
+    required String authorizationCode,
+    required String nonce,
+    String? givenName,
+    String? familyName,
+  }) async {
+    final data = await _post('/api/mobile/auth/apple', {
+      'authorizationCode': authorizationCode,
+      'nonce': nonce,
+      // 現状 Android のみ。iOS 版を出すときはここを 'ios' にする
+      // （サーバーは client_id を Bundle ID に切り替え、redirect_uri を送らなくなる）。
+      'clientKind': 'android',
+      'givenName': ?givenName,
+      'familyName': ?familyName,
+    });
+    return AuthSession.fromJson(data, provider: AuthProvider.apple);
   }
 
   Future<(String token, StreamerInfo streamer)> registerStreamer({

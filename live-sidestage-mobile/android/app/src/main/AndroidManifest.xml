@@ -44,6 +44,29 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!--
+          Sign in with Apple の戻り先。
+          Android にはネイティブの Apple 認証が無いので Custom Tab で Apple のページを開き、
+          Apple → 自前サーバーの中継(/api/mobile/auth/apple/callback) → このスキーム
+          という順で戻ってくる。scheme / path は sign_in_with_apple パッケージの規定値で、
+          サーバー側が組み立てる intent URI
+          (intent://callback?...#Intent;package=...;scheme=signinwithapple;end) と対になっている。
+
+          exported="true" が要る(ブラウザからの遷移を受けるため)。裏を返すと
+          **他のアプリからも叩ける**ので、認証結果は端末側で state を、サーバー側で
+          nonce と authorization code を検証している。
+        -->
+        <activity
+            android:name="com.aboutyou.dart_packages.sign_in_with_apple.SignInWithAppleCallback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="signinwithapple" />
+                <data android:path="callback" />
+            </intent-filter>
+        </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
