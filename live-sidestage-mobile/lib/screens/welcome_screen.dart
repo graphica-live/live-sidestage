@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
+import '../core/api_client.dart';
 import '../core/session_controller.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -8,6 +10,10 @@ class WelcomeScreen extends StatelessWidget {
 
   Future<void> _signIn(SessionController controller) async {
     await controller.signInWithGoogle();
+  }
+
+  Future<void> _signInWithApple(SessionController controller) async {
+    await controller.signInWithApple();
   }
 
   @override
@@ -54,6 +60,21 @@ class WelcomeScreen extends StatelessWidget {
                         : const Text('Googleでログイン'),
                   ),
                 ),
+                // Apple 側の設定(Services ID)がビルドに渡っていなければ出さない。
+                // 未設定のまま押させると必ず失敗するため。
+                if (isAppleSignInConfigured) ...[
+                  const SizedBox(height: 12),
+                  // Apple の表示要件に沿うため、独自ボタンではなくパッケージ提供の
+                  // ものを使う（ロゴ・配色・角丸・文言の規定がある）。
+                  SignInWithAppleButton(
+                    text: 'Appleでサインイン',
+                    height: 48,
+                    onPressed: () {
+                      if (controller.isLoading) return;
+                      _signInWithApple(controller);
+                    },
+                  ),
+                ],
               ],
             ),
           ),

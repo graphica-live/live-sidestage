@@ -40,6 +40,10 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   provider: ^6.1.2
   google_sign_in: ^6.2.2
+  # Android にはネイティブの Apple 認証が無いので Custom Tab の web フローになる。
+  # AndroidManifest への SignInWithAppleCallback Activity 追加と、MainActivity が
+  # singleTask / singleTop であることが前提（このアプリは singleTop）。
+  sign_in_with_apple: ^8.1.0
   voicevox_core: ^1.0.0
   audioplayers: ^6.0.0
   path_provider: ^2.1.5

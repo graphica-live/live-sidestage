@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
-import { signMobileToken } from "@/lib/mobile-auth";
+import { mobileAuthResponseBody } from "@/lib/mobile-oauth";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -65,19 +65,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const token = signMobileToken({ userId: user.id, streamerId: user.streamer?.id });
-
-  return NextResponse.json({
-    token,
-    user: { id: user.id, name: user.name, email: user.email },
-    streamer: user.streamer
-      ? {
-          id: user.streamer.id,
-          tiktokId: user.streamer.tiktokId,
-          verified: user.streamer.verified,
-          apiKey: user.streamer.apiKey,
-        }
-      : null,
-    onboardingRequired: !user.streamer,
-  });
+  // レスポンスの形は Apple 版(`../apple/route.ts`)と共通にしてある。
+  // 端末の AuthSession.fromJson は1つしかないので、ここが食い違うと片方が壊れる。
+  return NextResponse.json(mobileAuthResponseBody(user));
 }

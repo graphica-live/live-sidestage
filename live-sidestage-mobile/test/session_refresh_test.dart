@@ -31,6 +31,7 @@ class _FakeApi extends LiveAnalyticsApi {
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: false,
+      provider: AuthProvider.google,
       streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
     );
   }
@@ -72,12 +73,17 @@ class _FakeStorage extends SessionStorage {
   }
 }
 
-AuthSession _expiredSession({String userId = 'u1'}) => AuthSession(
+AuthSession _expiredSession({
+  String userId = 'u1',
+  AuthProvider provider = AuthProvider.google,
+}) =>
+    AuthSession(
       token: 'expired',
       userId: userId,
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: false,
+      provider: provider,
       streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
     );
 

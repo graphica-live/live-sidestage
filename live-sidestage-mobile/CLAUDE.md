@@ -135,6 +135,8 @@ flutter build apk --release
 - 本番バックエンド URL は `lib/core/api_client.dart` にハードコード（`https://liveanalytics-production.up.railway.app`）
 - 認証フロー: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - Google サインインは **パッケージ名 + 署名 SHA-1 の組**を Google Cloud Console に Android OAuth クライアントとして登録しないと必ず `DEVELOPER_ERROR`(code 10) になる。`applicationId` を変えたら再登録が必要。手順は [README.md](README.md)
+- Apple サインインは Android にネイティブ実装が無いので **Custom Tab の web フロー**。client_id は Bundle ID ではなく **Services ID** で、Apple の `form_post` を受けて `intent://` へ中継する `/api/mobile/auth/apple/callback` が要る。**id_token ではなく authorizationCode をサーバーへ送る**（受け口の `SignInWithAppleCallback` Activity は exported なので他アプリからも叩け、id_token 単体では他人の応答を差し込まれる）。端末は `state` を、サーバーは code 交換と `nonce` の完全一致を検証する。`--dart-define=APPLE_SERVICES_ID=...` を渡していないビルドではボタン自体を出さない。手順は [README.md](README.md)
+- `AuthSession.provider` は **どちらでログインしたかの記録**で、無言リフレッシュとログアウトの分岐に使う。Apple には `signInSilently` 相当が無いので、JWT が失効したら手動の再ログインになる。保存済みセッションでは `provider` を**必須キーにしない**（既存インストールのセッションが消える）
 - VOICEVOX モデルと OpenJTalk 辞書は `assets/` に同梱（サイズ大）
 - ギフト名の日本語表示は `lib/core/gift_name_ja.dart` が `assets/gift_names/gift_names_ja.json` を参照する。この JSON はモノレポ `shared/gift-names/` からの生成物なので直接編集しない（詳細は [../shared/gift-names/README.md](../shared/gift-names/README.md)）
 - このリポジトリは統合前の git remote を持たないローカル専用リポジトリだった。モノレポが唯一のリモートバックアップ

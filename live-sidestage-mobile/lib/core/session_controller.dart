@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../models/auth_session.dart';
 import 'api_client.dart';
@@ -10,6 +14,12 @@ import 'session_storage.dart';
 /// Google Cloud ConsoleのAndroid OAuthクライアント登録に使う値。
 const String androidPackageName = 'com.liveanalytics.live_sidestage_mobile';
 
+/// Apple へ渡す nonce / state。
+typedef AppleCredentialFetcher = Future<AuthorizationCredentialAppleID> Function({
+  required String nonce,
+  required String state,
+});
+
 class SessionController extends ChangeNotifier {
   /// 依存はテストのためだけに差し替え可能にしてある。既定は本番実装。
   SessionController({
@@ -17,6 +27,7 @@ class SessionController extends ChangeNotifier {
     SessionStorage? storage,
     GoogleSignIn? googleSignIn,
     Future<String?> Function()? silentIdToken,
+    AppleCredentialFetcher? appleCredential,
   })  : _api = api ?? LiveAnalyticsApi(),
         _storage = storage ?? SessionStorage(),
         _googleSignIn = googleSignIn ??
@@ -25,6 +36,7 @@ class SessionController extends ChangeNotifier {
               scopes: ['email'],
             ) {
     _silentIdToken = silentIdToken ?? _silentIdTokenFromGoogle;
+    _appleCredential = appleCredential ?? _appleCredentialFromApple;
   }
 
   final LiveAnalyticsApi _api;
@@ -33,6 +45,8 @@ class SessionController extends ChangeNotifier {
 
   /// 無言でGoogleのidTokenを取り直す。取れなければ null（＝手動の再ログインが要る）。
   late final Future<String?> Function() _silentIdToken;
+
+  late final AppleCredentialFetcher _appleCredential;
 
   /// 進行中のトークン再発行。複数のAPI呼び出しが同時に401になっても
   /// Googleのサインインを多重起動しないよう、同じ Future を共有する。
@@ -90,6 +104,93 @@ class SessionController extends ChangeNotifier {
     return 'Googleサインインに失敗しました(${e.code})。';
   }
 
+  /// Apple サインイン。
+  ///
+  /// Android にはネイティブの Apple 認証が無いので Custom Tab で web フローを回す。
+  /// Apple → 自前サーバーの中継エンドポイント → `signinwithapple://callback` と戻り、
+  /// **その受け口の Activity は exported なので他アプリからも叩ける**。そのため
+  ///
+  ///   - `state`: この端末が始めた認証かを端末側で照合する（下）
+  ///   - `nonce`: サーバーが id_token のクレームと完全一致を確認する
+  ///   - `authorizationCode`: サーバーが Apple と交換する。単回・短命
+  ///
+  /// の3つで、他人の認証結果を流し込まれてログインさせられる経路を塞ぐ。
+  Future<bool> signInWithApple() {
+    return _run(() async {
+      if (!isAppleSignInConfigured) {
+        throw ApiException('Appleサインインはこのビルドでは利用できません。');
+      }
+
+      final nonce = _randomToken();
+      final state = _randomToken();
+
+      final AuthorizationCredentialAppleID credential;
+      try {
+        credential = await _appleCredential(nonce: nonce, state: state);
+      } on SignInWithAppleAuthorizationException catch (e) {
+        throw ApiException(_appleSignInMessage(e));
+      } on SignInWithAppleException catch (e) {
+        throw ApiException('Appleサインインに失敗しました($e)。');
+      }
+
+      // パッケージは state を返すだけで照合しない。ここで突き合わせないと
+      // 攻撃者が自分の Apple 応答を投げ込んで、被害者を攻撃者のアカウントへ
+      // ログインさせられる（その後 TikTok ID を登録させて覗く）。
+      if (credential.state != state) {
+        throw ApiException('Apple認証の照合に失敗しました。もう一度お試しください。');
+      }
+
+      return _api.authenticateWithApple(
+        authorizationCode: credential.authorizationCode,
+        nonce: nonce,
+        // 氏名は初回認可のときしか返らない。
+        givenName: credential.givenName,
+        familyName: credential.familyName,
+      );
+    });
+  }
+
+  Future<AuthorizationCredentialAppleID> _appleCredentialFromApple({
+    required String nonce,
+    required String state,
+  }) {
+    return SignInWithApple.getAppleIDCredential(
+      scopes: const [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+      nonce: nonce,
+      state: state,
+      // Android では必須。clientId は Bundle ID ではなく Services ID。
+      webAuthenticationOptions: WebAuthenticationOptions(
+        clientId: appleServicesId,
+        redirectUri: Uri.parse(appleRedirectUri),
+      ),
+    );
+  }
+
+  String _appleSignInMessage(SignInWithAppleAuthorizationException e) {
+    switch (e.code) {
+      case AuthorizationErrorCode.canceled:
+        return 'サインインがキャンセルされました';
+      case AuthorizationErrorCode.notHandled:
+      case AuthorizationErrorCode.notInteractive:
+        return 'Appleサインインを開始できませんでした。もう一度お試しください。';
+      case AuthorizationErrorCode.invalidResponse:
+        return 'Appleからの応答が不正でした。もう一度お試しください。';
+      default:
+        return 'Appleサインインに失敗しました(${e.code.name})。';
+    }
+  }
+
+  /// nonce / state 用の 256bit 乱数。推測されると上の照合が意味を失うので
+  /// 必ず [Random.secure] を使う。
+  static String _randomToken() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
   Future<bool> completeOnboarding({required String tiktokId}) {
     final current = session;
     if (current == null) return Future.value(false);
@@ -142,6 +243,9 @@ class SessionController extends ChangeNotifier {
   Future<String?> _doRefresh() async {
     final current = session;
     if (current == null) return null;
+    // Apple には signInSilently 相当が無い（無言で取り直すと Custom Tab が
+    // 勝手に開く）。失効したら手動の再ログインに委ねる。セッションは壊さない。
+    if (current.provider != AuthProvider.google) return null;
 
     try {
       final idToken = await _silentIdToken();
@@ -196,11 +300,17 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final provider = session?.provider;
     await _storage.clear();
-    try {
-      await _googleSignIn.signOut();
-    } catch (_) {
-      // ignore — ローカルセッションは既にクリア済み
+    // Apple でログインしていたなら Google 側には何も残っていない。
+    // Apple には端末側のサインアウト API が無い（ブラウザのセッションは
+    // Apple 側の管理）ので、ローカルの破棄だけで完結する。
+    if (provider != AuthProvider.apple) {
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {
+        // ignore — ローカルセッションは既にクリア済み
+      }
     }
     session = null;
     notifyListeners();
