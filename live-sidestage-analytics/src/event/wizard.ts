@@ -111,6 +111,35 @@ export function nextDay(value: string): string {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+const LOCAL_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/;
+
+/**
+ * 開始を動かしたときに、取り残された終了を開始より後へ引き直す。
+ *
+ * 日程は「22:00 〜 翌 00:00」のように日をまたぐのが普通なので、開始の日付だけを
+ * 1日ずらすと終了が**開始と同じ日の 00:00**になり、「終了日時を開始日時より後に
+ * してください」で弾かれる。終了の**時刻はそのまま**に、開始より後になる最初の日付へ
+ * 置き直す(終了の時刻が開始の時刻以下なら翌日 — 00:00 は必ず翌日になる)。
+ *
+ * すでに開始より後にある終了には触らない。数日にまたがる日程
+ * (9/1 22:00 〜 9/3 01:00 など)を、開始を少し動かしただけで勝手に縮めないため。
+ *
+ * 日付の計算を `nextDay()` に寄せて `Date` を経由しないのも同じ理由
+ * (ブラウザのタイムゾーンで解釈させない)。
+ */
+export function alignEndAt(startAt: string, endAt: string): string {
+  const start = LOCAL_DATETIME.exec(startAt);
+  const end = LOCAL_DATETIME.exec(endAt);
+  if (!start || !end) return endAt;
+  // "YYYY-MM-DDTHH:mm" は固定長でゼロ埋めなので、辞書順の比較がそのまま前後になる。
+  if (endAt > startAt) return endAt;
+
+  const [, startDate, startTime] = start;
+  const [, , endTime] = end;
+  const sameDay = `${startDate}T${endTime}`;
+  return endTime > startTime ? sameDay : nextDay(sameDay);
+}
+
 /**
  * その手順で決める項目だけを検証する。空配列なら次へ進んでよい。
  *

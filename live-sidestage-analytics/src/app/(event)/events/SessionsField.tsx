@@ -1,7 +1,7 @@
 "use client";
 
 import { MAX_EVENT_SESSIONS, MAX_SESSION_NAME_LENGTH } from "@/event/validation";
-import { nextDay, type SessionFormValue } from "@/event/wizard";
+import { alignEndAt, nextDay, type SessionFormValue } from "@/event/wizard";
 
 /**
  * 開催日程の入力欄。作成ウィザードと設定フォームで同じものを使う。
@@ -20,13 +20,24 @@ export function SessionsField({
   const setSession = (index: number, patch: Partial<SessionFormValue>) =>
     onChange(sessions.map((s, i) => (i === index ? { ...s, ...patch } : s)));
 
+  /**
+   * 開始を変えたら、置いていかれた終了も引き直す。
+   *
+   * 「22:00 〜 翌 00:00」の日程で開始の日付だけを翌日にすると、終了が開始と同じ日の
+   * 00:00 に残って「終了日時を開始日時より後にしてください」で弾かれる。終了が
+   * すでに開始より後なら `alignEndAt` は何もしないので、手で入れた終了は壊さない。
+   */
+  const setStartAt = (index: number, startAt: string) =>
+    setSession(index, { startAt, endAt: alignEndAt(startAt, sessions[index].endAt) });
+
   const addSession = () => {
     // 直前の日程の翌日・同じ時間帯を初期値にする(「1日目 22時 / 2日目 22時」が多い)。
     const last = sessions[sessions.length - 1];
+    const startAt = nextDay(last?.startAt ?? "");
     onChange([
       ...sessions,
       // 新規行は id を持たない(サーバー側で新しい日程として作られる)。
-      { name: "", startAt: nextDay(last?.startAt ?? ""), endAt: nextDay(last?.endAt ?? "") },
+      { name: "", startAt, endAt: alignEndAt(startAt, nextDay(last?.endAt ?? "")) },
     ]);
   };
 
@@ -79,7 +90,7 @@ export function SessionsField({
                   type="datetime-local"
                   className="input-field"
                   value={session.startAt}
-                  onChange={(e) => setSession(index, { startAt: e.target.value })}
+                  onChange={(e) => setStartAt(index, e.target.value)}
                 />
               </div>
               <div>

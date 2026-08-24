@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { MATCH_RULES_DEFAULT } from "./match-rules";
 import {
+  alignEndAt,
   nextDay,
   validateWizardDraft,
   validateWizardStep,
@@ -175,5 +176,37 @@ describe("nextDay", () => {
 
   it("形式が違えばそのまま返す", () => {
     expect(nextDay("")).toBe("");
+  });
+});
+
+describe("alignEndAt", () => {
+  it("開始と同じ日の00:00になった終了を翌日へ送る", () => {
+    // 「22:00 〜 翌 00:00」の日程で、開始の日付だけを1日進めた状態。
+    expect(alignEndAt("2026-09-02T22:00", "2026-09-02T00:00")).toBe("2026-09-03T00:00");
+  });
+
+  it("開始より後の終了には触らない", () => {
+    expect(alignEndAt("2026-09-01T22:00", "2026-09-01T23:00")).toBe("2026-09-01T23:00");
+  });
+
+  it("数日にまたがる日程を縮めない", () => {
+    expect(alignEndAt("2026-09-01T23:00", "2026-09-03T01:00")).toBe("2026-09-03T01:00");
+  });
+
+  it("開始より前に取り残された終了は開始の日へ引き直す", () => {
+    expect(alignEndAt("2026-09-05T20:00", "2026-09-01T23:00")).toBe("2026-09-05T23:00");
+  });
+
+  it("終了の時刻が開始と同じなら翌日にする(0分の日程を作らない)", () => {
+    expect(alignEndAt("2026-09-01T22:00", "2026-08-30T22:00")).toBe("2026-09-02T22:00");
+  });
+
+  it("月をまたぐ", () => {
+    expect(alignEndAt("2026-09-30T22:00", "2026-09-30T00:00")).toBe("2026-10-01T00:00");
+  });
+
+  it("形式が違えばそのまま返す(入力途中の値を書き換えない)", () => {
+    expect(alignEndAt("", "2026-09-01T23:00")).toBe("2026-09-01T23:00");
+    expect(alignEndAt("2026-09-01T22:00", "")).toBe("");
   });
 });
