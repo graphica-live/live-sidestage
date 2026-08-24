@@ -215,13 +215,6 @@ class CommentSpeechTaskHandler extends TaskHandler {
         // 古い・同じ revision でも必ず現在の revision を返す。返さないと
         // UI 側が「反映待ち」のまま止まり、音源ファイルの削除も進まない。
         FlutterForegroundTask.sendDataToMain({'type': 'configAck', 'revision': _config.revision});
-      case 'testPlaySound':
-        // まだ設定に入っていない音源も鳴らせるよう、ファイル名を直接受け取る。
-        // 設定経由ではないぶん検証はこちら側でも行う（resolvePathSync も再検証する）。
-        final fileName = data['fileName'];
-        final volume = data['volume'];
-        if (fileName is! String || !SoundLibrary.isSafeFileName(fileName)) return;
-        _soundEngine?.testPlayFile(fileName, volume is int ? volume.clamp(0, 100) : 100);
     }
   }
 

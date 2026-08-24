@@ -191,18 +191,6 @@ class SoundEngine extends ChangeNotifier {
     return true;
   }
 
-  /// 編集画面の「テスト再生」用。まだ設定に入っていない音源も鳴らせるよう、
-  /// 保存済みの [GiftSound] ではなくファイル名と音量を直接受け取る。
-  void testPlayFile(String fileName, int volume) {
-    final path = resolvePath(fileName);
-    if (path == null) {
-      errorMessage = '音源ファイルが見つかりませんでした。';
-      notifyListeners();
-      return;
-    }
-    _enqueue(_PlaybackItem(path, (volume / 100.0) * (_config.sound.masterVolume / 100.0)));
-  }
-
   // ── 再生スケジューリング ────────────────────────────────────────────────────
 
   void _enqueue(_PlaybackItem item) {

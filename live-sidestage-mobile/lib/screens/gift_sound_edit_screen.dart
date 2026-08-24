@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
@@ -10,6 +9,7 @@ import '../core/app_config_store.dart';
 import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
 import '../core/sound_library.dart';
+import '../core/sound_preview.dart';
 import '../models/app_config.dart';
 
 /// 「ギフトを選んで、音を選ぶ」だけの編集画面。
@@ -43,6 +43,9 @@ class GiftSoundEditScreen extends StatefulWidget {
 class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   final SoundLibrary _library = SoundLibrary();
 
+  /// テスト再生はサービス（「開始」）に依存せず、この画面の中で鳴らす。
+  late final SoundPreview _preview = SoundPreview(library: _library);
+
   late GiftSound _draft;
 
   /// 編集開始時点で参照していたファイル名。差し替えたら保存後に消す。
@@ -75,6 +78,8 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
 
   @override
   void dispose() {
+    // 先に止める。下で消すファイルを鳴らしている可能性がある。
+    unawaited(_preview.dispose());
     // 保存されなかった取り込みファイルを片付ける。dispose 後に await できないので
     // 完了は待たない（失敗しても次回起動時の掃除で回収される）。
     for (final fileName in _ownedFileNames) {
@@ -178,6 +183,10 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
       }
       // 選び直した場合、直前に取り込んだファイルはもう誰も参照しないので消す。
       // 編集開始時から存在する _originalFileName はここでは消さない（保存後）。
+      // テスト再生を止める。鳴っているのはこれから消すファイルかもしれない。
+      // 完了は待たない（待つと setState までの間に画面が消えうる）。停止要求は同期的に
+      // 効くので、この後に前の音源が鳴り始めることはない。
+      unawaited(_preview.stop());
       final stale = List<String>.from(_ownedFileNames);
       _ownedFileNames
         ..clear()
@@ -212,16 +221,15 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
       messenger.showSnackBar(const SnackBar(content: Text('音が選ばれていません')));
       return;
     }
-    if (!await FlutterForegroundTask.isRunningService) {
-      messenger.showSnackBar(const SnackBar(content: Text('「開始」してからテストしてください')));
-      return;
-    }
+    // 「開始」していなくても鳴らせるよう、サービスへ送らずこの画面で鳴らす。
     // 未保存の音源も鳴らせるよう、設定を経由せずファイル名を直接渡す。
-    FlutterForegroundTask.sendDataToTask({
-      'command': 'testPlaySound',
-      'fileName': _draft.fileName,
-      'volume': _draft.volume,
-    });
+    final error = await _preview.play(
+      fileName: _draft.fileName,
+      volume: _draft.volume,
+      masterVolume: context.read<AppConfigStore>().sound.masterVolume,
+    );
+    if (error == null || !mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(error)));
   }
 
   // ── 保存・削除 ──────────────────────────────────────────────────────────────
