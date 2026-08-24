@@ -66,6 +66,12 @@ dev_dependencies:
   # flutter_test の推移的依存だが、直接 import するので明示する。
   fake_async: ^1.3.1
 
+  # AppConfigStore の検証用。flutter_foreground_task の推移的依存だが、
+  # 保存先(SharedPreferences)のモックと、サービス稼働状態を差し替えるための
+  # プラットフォーム実装をテストから直接触るので明示する。
+  shared_preferences: ^2.3.2
+  plugin_platform_interface: ^2.1.8
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your

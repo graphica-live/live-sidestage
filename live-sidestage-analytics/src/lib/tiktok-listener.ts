@@ -8,10 +8,21 @@ import {
   emitChatComment,
   emitChatFollow,
   emitChatGift,
+  emitChatListener,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
+  type ChatListenerInput,
 } from "./chat-feed";
+import {
+  factsForReconnect,
+  FACTS_CONNECTED,
+  FACTS_CONNECTING,
+  FACTS_IDLE,
+  type ListenerActivity,
+  type ListenerFacts,
+  type ListenerHealth,
+} from "./listener-state";
 import { getEulerSignApiKey } from "./settings";
 import type { GiftCatalogSource } from "./tiktok-gift-catalog";
 import {
@@ -35,6 +46,67 @@ interface ListenerState {
   status: ListenerStatus;
   message: string;
   updatedAt: string;
+  // 表示用に正規化した2軸。src/lib/listener-state.ts 参照。
+  activity: ListenerActivity;
+  health: ListenerHealth;
+  /** scheduleReconnect() の reason。問い合わせ時の切り分け用。 */
+  reason: string | null;
+  /** この状態を書いたときの fencing revision。push の順序判定にも使う。 */
+  revision: bigint;
+}
+
+// revision は epoch(DB採番の世代) * STRIDE + プロセス内連番。
+// STRIDE がプロセス内の書き込み数の上限になる。1プロセスで100万回の状態遷移は
+// 現実的に起きない(オフライン配信者でも30秒に1回、1年で約100万回)が、
+// 溢れても壊れないよう nextListenerRevision() で頭打ちにする。
+const LISTENER_REVISION_STRIDE = 1_000_000n;
+
+let listenerEpoch: bigint | null = null;
+let listenerEpochPromise: Promise<bigint> | null = null;
+let listenerRevisionSeq = 0n;
+
+// プロセス起動時にDBから世代を採番する。**後から起動したプロセスほど必ず大きい値**に
+// なることだけが要件で、壁時計には依存しない(複数コンテナ間のNTPずれで順序が壊れない)。
+async function ensureListenerEpoch(): Promise<bigint> {
+  if (listenerEpoch !== null) return listenerEpoch;
+  if (!listenerEpochPromise) {
+    listenerEpochPromise = prisma.listenerEpoch
+      .create({
+        data: {
+          role: isWorkerProcess ? "worker" : "web",
+          workerIndex: Number.isInteger(Number(process.env.WORKER_INDEX))
+            ? Number(process.env.WORKER_INDEX)
+            : null,
+        },
+        select: { id: true },
+      })
+      .then((row) => {
+        listenerEpoch = BigInt(row.id);
+        return listenerEpoch;
+      })
+      .catch((err) => {
+        // 採番できない = DBに届いていない。状態の永続化もどうせ失敗するので、
+        // ここで例外にせず 0 世代として続行する(fencing は効かなくなるが、
+        // 「DBが死んでいるのでlistenerも起動できない」という別の失敗が先に出る)。
+        console.error("[listener] ListenerEpoch の採番に失敗しました:", err);
+        listenerEpoch = 0n;
+        return listenerEpoch;
+      });
+  }
+  return listenerEpochPromise;
+}
+
+async function nextListenerRevision(): Promise<bigint> {
+  const epoch = await ensureListenerEpoch();
+  if (listenerRevisionSeq < LISTENER_REVISION_STRIDE - 1n) listenerRevisionSeq++;
+  return epoch * LISTENER_REVISION_STRIDE + listenerRevisionSeq;
+}
+
+/** テスト用。プロセスローカルな世代・連番を初期化する。 */
+export function __resetListenerEpochForTest(epoch: bigint | null = null): void {
+  listenerEpoch = epoch;
+  listenerEpochPromise = epoch === null ? null : Promise.resolve(epoch);
+  listenerRevisionSeq = 0n;
 }
 
 interface ListenerInstance {
@@ -405,6 +477,106 @@ async function notifyChatFollow(streamerIds: string[], follow: Omit<ChatFollowIn
   await forwardToWeb({ streamerIds, chatFollowEvent: follow });
 }
 
+// ── listener状態の転送 ────────────────────────────────────────────────────────
+//
+// **ギフト用の forwardToWeb には載せない。** あちらは同時4・待ち行列256で、溢れたら
+// 捨てて replay しない設計(ギフトは「その瞬間に鳴らせなければ意味がない」ため)。
+// 状態通知を同じ扱いにすると、落ちた瞬間から次の状態変化まで端末が古い表示のまま残る。
+// しかも溢れるのはギフトが大量に流れているとき = ちょうど「配信中」へ遷移した瞬間。
+//
+// 代わりに **部屋ごとに最新の1件だけを保持する coalescing キュー**を持つ。
+// 途中の状態は捨ててよい(最終的に正しい状態へ収束すればよい)ので、キューは伸びない。
+
+const LISTENER_NOTIFY_TIMEOUT_MS = 5000;
+const LISTENER_NOTIFY_MAX_ATTEMPTS = 3;
+const LISTENER_NOTIFY_RETRY_DELAY_MS = 1000;
+
+interface PendingListenerNotify {
+  streamerIds: string[];
+  event: Omit<ChatListenerInput, "streamerId">;
+}
+
+// roomId -> 送信待ちの最新1件。同じ部屋の新しい状態が来たら上書きする。
+const listenerNotifyQueue = new Map<string, PendingListenerNotify>();
+let listenerNotifyRunning = false;
+
+function notifyListenerState(inst: ListenerInstance, revision: bigint) {
+  const streamerIds = Array.from(inst.subscriberIds);
+  if (streamerIds.length === 0) return;
+
+  enqueueListenerNotify(inst.state.roomId, {
+    streamerIds,
+    event: {
+      roomId: inst.state.roomId,
+      revision: revision.toString(),
+      status: inst.state.status,
+      activity: inst.state.activity,
+      health: inst.state.health,
+      reason: inst.state.reason,
+      message: inst.state.message,
+      updatedAt: inst.state.updatedAt,
+    },
+  });
+}
+
+function enqueueListenerNotify(roomId: string, pending: PendingListenerNotify) {
+  listenerNotifyQueue.set(roomId, pending);
+  void drainListenerNotifyQueue();
+}
+
+async function drainListenerNotifyQueue(): Promise<void> {
+  if (listenerNotifyRunning) return;
+  listenerNotifyRunning = true;
+  try {
+    while (listenerNotifyQueue.size > 0) {
+      const [roomId, pending] = listenerNotifyQueue.entries().next().value as [
+        string,
+        PendingListenerNotify,
+      ];
+      listenerNotifyQueue.delete(roomId);
+      await deliverListenerNotify(pending);
+    }
+  } finally {
+    listenerNotifyRunning = false;
+  }
+}
+
+async function deliverListenerNotify(pending: PendingListenerNotify): Promise<void> {
+  if (!isWorkerProcess) {
+    for (const streamerId of pending.streamerIds) {
+      await emitChatListener({ streamerId, ...pending.event }).catch((err) =>
+        console.error("[listener] chat emit error:", err)
+      );
+    }
+    return;
+  }
+
+  // ギフトと違い、状態は「落としたら次の変化まで戻らない」ので有限回だけ再送する。
+  for (let attempt = 1; attempt <= LISTENER_NOTIFY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+        },
+        body: JSON.stringify({ streamerIds: pending.streamerIds, listenerEvent: pending.event }),
+        signal: AbortSignal.timeout(LISTENER_NOTIFY_TIMEOUT_MS),
+      });
+      if (res.ok) return;
+      // 旧Webは未知のbodyでも 200 を返す(どの分岐にも入らないだけ)。つまりここへ
+      // 来るのは実際の失敗だけ。ただし旧Webへ送っても静かに落ちることは避けられないので、
+      // 端末側は定期リコンサイル(HTTP)で必ず収束させる。
+      console.error("[listener] state notify failed:", res.status, await res.text().catch(() => ""));
+    } catch (err) {
+      console.error("[listener] state notify error:", err);
+    }
+    if (attempt < LISTENER_NOTIFY_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, LISTENER_NOTIFY_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
 function isUserOfflineError(error: unknown): boolean {
   const candidates = [
     error,
@@ -484,14 +656,28 @@ function parseSignatureRateLimitError(error: unknown): {
 //    意図的に何もリセットしない。デプロイのたびに全部屋のクロックが巻き戻るのを避けるため。
 // exportはtiktok-listener.unhealthy.integration.test.ts用(実際の再接続ループ/モック接続を
 // 経由せず、CASE式の挙動そのものを直接検証するため)。呼び出し元は本ファイル内のみ。
-export async function persistState(roomId: string, status: ListenerStatus, message: string) {
+export async function persistState(
+  roomId: string,
+  status: ListenerStatus,
+  message: string,
+  facts?: ListenerFacts,
+  reason?: string | null,
+  revision?: bigint
+) {
   const now = new Date();
+  const rev = revision ?? (await nextListenerRevision());
+  const activity = facts?.activity ?? null;
+  const health = facts?.health ?? null;
   try {
     await prisma.$executeRaw`
       UPDATE public."TiktokRoom"
       SET "listenerStatus" = ${status},
           "listenerMessage" = ${message},
           "listenerUpdatedAt" = ${now},
+          "listenerActivity" = ${activity},
+          "listenerHealth" = ${health},
+          "listenerReason" = ${reason ?? null},
+          "listenerRevision" = ${rev},
           "unhealthySince" = CASE
             WHEN ${status} IN ('retrying', 'error') THEN COALESCE("unhealthySince", ${now})
             WHEN ${status} = 'connected' THEN NULL
@@ -500,6 +686,11 @@ export async function persistState(roomId: string, status: ListenerStatus, messa
           "notFoundStreak" = CASE WHEN ${status} = 'connected' THEN 0 ELSE "notFoundStreak" END,
           "notFoundFirstAt" = CASE WHEN ${status} = 'connected' THEN NULL ELSE "notFoundFirstAt" END
       WHERE "id" = ${roomId}
+        -- fencing: 自分より新しい書き込みがすでに入っていたら何もしない。
+        -- persistState は await されないので同一プロセス内でも着弾順が入れ替わるし、
+        -- デプロイ中は新旧Workerが同じ部屋へ並走する(旧の "idle" が新の "connected" の
+        -- 後に届きうる)。壁時計はコンテナ間で単調でないので世代付き revision で比較する。
+        AND ("listenerRevision" IS NULL OR "listenerRevision" < ${rev})
     `;
   } catch (err) {
     console.error("[listener] persistState error:", err);
@@ -509,18 +700,25 @@ export async function persistState(roomId: string, status: ListenerStatus, messa
 function updateState(
   inst: ListenerInstance,
   status: ListenerStatus,
-  message: string
+  message: string,
+  facts: ListenerFacts,
+  reason?: string | null
 ) {
   inst.state.status = status;
   inst.state.message = message;
   inst.state.updatedAt = new Date().toISOString();
+  inst.state.activity = facts.activity;
+  inst.state.health = facts.health;
+  inst.state.reason = reason ?? null;
 
   // Manage heartbeat interval
   if (status === "connected") {
     inst.lastEventAt = Date.now();
     if (!inst.heartbeatInterval) {
       inst.heartbeatInterval = setInterval(() => {
-        persistState(inst.state.roomId, "connected", inst.state.message);
+        // heartbeat は「まだ繋がっている」ことの更新なので facts も同じものを書く。
+        // 書かないと listenerUpdatedAt だけ新しくなって activity が空の行が残る。
+        void persistState(inst.state.roomId, "connected", inst.state.message, FACTS_CONNECTED, null);
       }, 30_000);
     }
   } else {
@@ -530,7 +728,22 @@ function updateState(
     }
   }
 
-  persistState(inst.state.roomId, status, message);
+  void persistStateAndNotify(inst, status, message, facts, reason ?? null);
+}
+
+// 永続化と購読者への push を1つの revision で揃える。
+// push が先に着いて DB が後から古い値で上書きされる、という食い違いを作らない。
+async function persistStateAndNotify(
+  inst: ListenerInstance,
+  status: ListenerStatus,
+  message: string,
+  facts: ListenerFacts,
+  reason: string | null
+) {
+  const revision = await nextListenerRevision();
+  inst.state.revision = revision;
+  await persistState(inst.state.roomId, status, message, facts, reason, revision);
+  notifyListenerState(inst, revision);
 }
 
 function jstDateKey(date: Date = new Date()): string {
@@ -1254,14 +1467,14 @@ async function connectAndAttach(
     (conn.clientParams as Record<string, string>).cursor = "";
   }
 
-  updateState(inst, "connecting", "接続中...");
+  updateState(inst, "connecting", FACTS_CONNECTING.message, FACTS_CONNECTING, null);
 
   try {
     await conn.connect();
-    updateState(inst, "connected", "接続済み");
+    updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
   } catch (err) {
     if (isAlreadyConnectedError(err)) {
-      updateState(inst, "connected", "接続済み");
+      updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
       return;
     }
     if (!isUserOfflineError(err)) {
@@ -1286,22 +1499,22 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
   if (!inst || inst.stopped) return;
   if (inst.reconnectTimer) return;
 
-  let delay: number;
-  let message: string;
+  const delay =
+    reason === "rate_limited"
+      ? Math.min(
+          RATE_LIMIT_MAX_DELAY_MS,
+          Math.max(RATE_LIMIT_MIN_DELAY_MS, retryAfterMs ?? RATE_LIMIT_FALLBACK_DELAY_MS)
+        )
+      : reason === "user_offline"
+        ? OFFLINE_RECONNECT_DELAY_MS
+        : RECONNECT_DELAY_MS;
 
-  if (reason === "rate_limited") {
-    delay = Math.min(
-      RATE_LIMIT_MAX_DELAY_MS,
-      Math.max(RATE_LIMIT_MIN_DELAY_MS, retryAfterMs ?? RATE_LIMIT_FALLBACK_DELAY_MS)
-    );
-    const minutes = Math.ceil(delay / 60_000);
-    message = `配信認証の混雑により接続を待機中です。約${minutes}分後に自動で再接続します`;
-  } else {
-    delay = reason === "user_offline" ? OFFLINE_RECONNECT_DELAY_MS : RECONNECT_DELAY_MS;
-    message = `再接続待機中... (${reason})`;
-  }
+  // メッセージは**そのままユーザーへ出す**。以前の `再接続待機中... (connect_failed)` は
+  // 開発者向けで、モバイルのステータス欄に出しても何も伝わらなかった。
+  // reason コード自体は listenerReason に別途保存するので文面から消してよい。
+  const facts = factsForReconnect(reason, delay);
 
-  updateState(inst, "retrying", message);
+  updateState(inst, "retrying", facts.message, facts, reason);
 
   inst.reconnectTimer = setTimeout(async () => {
     inst.reconnectTimer = null;
@@ -1316,7 +1529,7 @@ export async function startListener(
 ) {
   const existing = listeners.get(roomId);
   if (existing && !existing.stopped) {
-    existing.subscriberIds = new Set(subscriberIds);
+    applySubscribers(existing, subscriberIds);
     if (
       existing.state.status === "connected" ||
       existing.state.status === "connecting"
@@ -1326,7 +1539,7 @@ export async function startListener(
   }
 
   if (existing) {
-    await stopListener(roomId);
+    await stopListener(roomId, "restart");
   }
 
   const inst: ListenerInstance = {
@@ -1336,6 +1549,10 @@ export async function startListener(
       status: "idle",
       message: "起動中",
       updatedAt: new Date().toISOString(),
+      activity: "unknown",
+      health: "connecting",
+      reason: null,
+      revision: 0n,
     },
     connection: null,
     connectPromise: null,
@@ -1361,7 +1578,20 @@ export async function startListener(
   return inst.state;
 }
 
-export async function stopListener(roomId: string) {
+/**
+ * listener を止める理由。**"shutdown" では状態を永続化しない。**
+ *
+ * デプロイのグレースフルシャットダウンは全部屋に対して走るので、"idle" を書くと
+ * 新Workerがすでに書いた "connected" を旧Workerが後から潰しうる(fencing で弾けるが、
+ * そもそも書く意味がない)。プロセスが降りるだけで、その部屋の監視自体は
+ * 新Workerが引き継ぐ。listenerUpdatedAt が更新されなくなるので、鮮度判定
+ * (LISTENER_STALE_MS)が自然に「今の状態は分からない」へ倒してくれる。
+ *
+ * "unwatched"(購読者がいなくなった/担当替え)は本当に監視をやめるので "idle" を書く。
+ */
+export type StopListenerCause = "unwatched" | "shutdown" | "restart";
+
+export async function stopListener(roomId: string, cause: StopListenerCause = "unwatched") {
   const inst = listeners.get(roomId);
   if (!inst) return;
 
@@ -1377,7 +1607,9 @@ export async function stopListener(roomId: string) {
     inst.reconnectTimer = null;
   }
 
-  persistState(inst.state.roomId, "idle", "停止中");
+  if (cause === "unwatched") {
+    void persistStateAndNotify(inst, "idle", FACTS_IDLE.message, FACTS_IDLE, null);
+  }
 
   if (inst.connection) {
     inst.connection.removeAllListeners?.();
@@ -1387,6 +1619,33 @@ export async function stopListener(roomId: string) {
   }
 
   listeners.delete(roomId);
+}
+
+/**
+ * 購読者集合を差し替え、**新しく増えた購読者にだけ現在の状態を送る。**
+ *
+ * 集合を差し替えるだけだと、接続後に登録したユーザーは次の状態遷移まで何も受け取れない
+ * (heartbeat は persistState を呼ぶだけで updateState を通らない)。配信が安定していると
+ * 遷移は何時間も起きないので、端末は延々「配信開始待ち」のままになる。
+ */
+function applySubscribers(inst: ListenerInstance, subscriberIds: string[]) {
+  const added = subscriberIds.filter((id) => !inst.subscriberIds.has(id));
+  inst.subscriberIds = new Set(subscriberIds);
+  if (added.length === 0 || inst.state.revision === 0n) return;
+
+  enqueueListenerNotify(`${inst.state.roomId}:snapshot`, {
+    streamerIds: added,
+    event: {
+      roomId: inst.state.roomId,
+      revision: inst.state.revision.toString(),
+      status: inst.state.status,
+      activity: inst.state.activity,
+      health: inst.state.health,
+      reason: inst.state.reason,
+      message: inst.state.message,
+      updatedAt: inst.state.updatedAt,
+    },
+  });
 }
 
 export function getListenerStatus(roomId: string): ListenerState | null {
@@ -1548,7 +1807,10 @@ export async function resolveGiftCatalogSource(): Promise<GiftCatalogSource | nu
 export async function stopAllListeners() {
   const roomIds = Array.from(listeners.keys());
   console.log(`[listener] stopAllListeners: disconnecting ${roomIds.length} room(s)`);
-  await Promise.all(roomIds.map((id) => stopListener(id)));
+  // "shutdown" なので listener 状態は書かない。プロセスが降りるだけで、その部屋は
+  // 新Workerが引き継ぐ。ここで "idle" を全部屋へ書くと、すでに接続を終えた新Workerの
+  // "connected" を後追いで潰しにいくことになる。
+  await Promise.all(roomIds.map((id) => stopListener(id, "shutdown")));
 }
 
 // 60秒間隔で呼ばれるreconcileループ。以下をすべてここで一貫処理する:
@@ -1564,7 +1826,7 @@ export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
   for (const r of rooms) {
     const existing = listeners.get(r.id);
     if (existing) {
-      existing.subscriberIds = new Set(r.subscriberIds);
+      applySubscribers(existing, r.subscriberIds);
       continue;
     }
     console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokId}`);

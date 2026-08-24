@@ -6,6 +6,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/app_config.dart';
 import '../models/comment.dart';
+import '../models/listener_status.dart';
+import 'api_client.dart';
 import 'app_config_store.dart';
 import 'comment_feed.dart';
 import 'sound_engine.dart';
@@ -26,6 +28,42 @@ class CommentSpeechTaskHandler extends TaskHandler {
   SoundEngine? _soundEngine;
   Directory? _soundsDir;
   AppConfig _config = const AppConfig();
+
+  // ── TikTok側の配信状態 ─────────────────────────────────────────────────────
+  //
+  // 取得経路は2つ。**socket の push を主、HTTP を保険にする。**
+  //   - push: `chat:listener`。状態が変わった瞬間に届く
+  //   - poll: `GET /api/mobile/listener-status`。push は Worker crash や Web 障害で
+  //           落ちうるので、定期的に取り直して必ず収束させる
+  //
+  // どちらも `(roomId, revision)` で新旧を判定する。**壁時計は比較しない。**
+  final LiveAnalyticsApi _api = LiveAnalyticsApi();
+  String? _apiKey;
+  ListenerStatus? _listener;
+
+  StreamSubscription<ListenerStatus>? _listenerSub;
+  StreamSubscription<void>? _connectedSub;
+  Timer? _reconcileTimer;
+
+  /// 進行中/予約済みのリコンサイルを識別する。onDestroy 後に返ってきた応答を捨て、
+  /// 古い世代がタイマーを張り直すのも防ぐ。
+  int _reconcileGeneration = 0;
+  bool _reconcileInFlight = false;
+
+  /// サーバーがこのAPIを持っていない(旧サーバー)。push だけで動かす。
+  bool _reconcileUnsupported = false;
+
+  /// 直近にコメント/ギフト/フォローを受け取った時刻。
+  ///
+  /// **単調時計を使う。** 端末の時刻設定変更やNTP補正で巻き戻ると、
+  /// 「直近にイベントが来た」の判定が壊れる。
+  final Stopwatch _sinceLastEvent = Stopwatch();
+
+  static const Duration _reconcileInterval = Duration(minutes: 5);
+  static const Duration _reconcileRetryInterval = Duration(seconds: 30);
+
+  /// この時間内にイベントを受け取っていれば、サーバーの状態がどうであれ配信中とみなす。
+  static const Duration _recentEventWindow = Duration(seconds: 60);
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -65,14 +103,30 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _speechQueue.listenTo(_commentFeed);
     engine.listenTo(_commentFeed);
 
+    // 配信中の判定は最終的にサーバーが持つが、**イベントが1件でも届いていれば
+    // それ自体が配信中の証拠**なので、push/poll を待たずに反映する。
+    _commentFeed.onComment.listen((_) => _markEventReceived());
+    _commentFeed.onGift.listen((_) => _markEventReceived());
+    _commentFeed.onFollow.listen((_) => _markEventReceived());
+
+    _listenerSub = _commentFeed.onListener.listen(_applyListener);
+    // socket が張り直るたびに取り直す。切れている間の push は受け取れていない。
+    _connectedSub = _commentFeed.onConnected.listen((_) => _scheduleReconcile(Duration.zero));
+
     final apiKey = await FlutterForegroundTask.getData<String>(key: 'apiKey');
+    _apiKey = apiKey;
     if (apiKey != null) {
       _commentFeed.connect(apiKey);
     }
 
+    // **socket 接続より後、かつ await しない。** HTTPのタイムアウトは20秒あるので、
+    // ここで待つとコメント受信の開始がそのぶん遅れる。
+    _scheduleReconcile(Duration.zero);
+
     _pushStatus();
     _pushSpeechState();
     _pushSoundState();
+    _pushListenerState();
   }
 
   @override
@@ -80,6 +134,68 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _pushStatus();
     _pushSpeechState();
     _pushSoundState();
+    _pushListenerState();
+  }
+
+  // ── TikTok側の配信状態 ─────────────────────────────────────────────────────
+
+  void _markEventReceived() {
+    _sinceLastEvent
+      ..reset()
+      ..start();
+    _pushListenerState();
+  }
+
+  bool get _hasRecentEvent =>
+      _sinceLastEvent.isRunning && _sinceLastEvent.elapsed < _recentEventWindow;
+
+  /// push / poll のどちらから来た観測も、ここで**古ければ捨てる**。
+  void _applyListener(ListenerStatus next) {
+    final current = _listener;
+    if (current != null && !current.isSupersededBy(next)) return;
+    _listener = next;
+    _pushListenerState();
+  }
+
+  void _scheduleReconcile(Duration delay) {
+    if (_reconcileUnsupported) return;
+    _reconcileTimer?.cancel();
+    final generation = _reconcileGeneration;
+    _reconcileTimer = Timer(delay, () {
+      // onDestroy 後や、別の世代がすでに走り始めている場合は何もしない。
+      if (generation != _reconcileGeneration) return;
+      unawaited(_reconcile(generation));
+    });
+  }
+
+  /// **single-flight。** 5分間隔に対してHTTPのタイムアウトは20秒だが、
+  /// socket 再接続が続くと短い間隔で重ねて呼ばれうる。
+  Future<void> _reconcile(int generation) async {
+    if (_reconcileInFlight) return;
+    final apiKey = _apiKey;
+    if (apiKey == null) return;
+
+    _reconcileInFlight = true;
+    var nextDelay = _reconcileInterval;
+    try {
+      final status = await _api.fetchListenerStatus(apiKey: apiKey);
+      if (generation != _reconcileGeneration) return;
+      if (status != null) _applyListener(status);
+    } on ApiException catch (e) {
+      if (generation != _reconcileGeneration) return;
+      if (e.statusCode == 404 || e.statusCode == 405) {
+        // 旧サーバー。叩き続けても意味がないので止める。push だけで動かす。
+        debugPrint('[listener] サーバーが listener-status を持っていないため取得を停止します');
+        _reconcileUnsupported = true;
+        return;
+      }
+      // 一時的な失敗。前回値は保持したまま、短い間隔で再試行する。
+      debugPrint('[listener] 状態の取得に失敗: $e');
+      nextDelay = _reconcileRetryInterval;
+    } finally {
+      _reconcileInFlight = false;
+      if (generation == _reconcileGeneration) _scheduleReconcile(nextDelay);
+    }
   }
 
   @override
@@ -129,11 +245,32 @@ class CommentSpeechTaskHandler extends TaskHandler {
       // 起きたときに黙って止まると「いつの間にか鳴らなくなっていた」になるため通知する。
       FlutterForegroundTask.sendDataToMain({'type': 'serviceTimeout'});
     }
+    // 世代を進めてから止める。進行中のHTTPが後から返ってきても適用されず、
+    // タイマーの張り直しも起きない。
+    _reconcileGeneration++;
+    _reconcileTimer?.cancel();
+    _reconcileTimer = null;
+    await _listenerSub?.cancel();
+    await _connectedSub?.cancel();
+
     _commentFeed.disconnect();
     _speechQueue.dispose();
     _soundEngine?.dispose();
     await _soundPlayers.dispose();
     _soundLibrary.dispose();
+  }
+
+  void _pushListenerState() {
+    final listener = _listener;
+    // イベントが届いている間は、サーバーの観測より現実を優先する。
+    // push が落ちていても、あるいは古い error が残っていても、実際に鳴っている以上は配信中。
+    final recent = _hasRecentEvent;
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'listener',
+      'live': recent || (listener?.live ?? false),
+      'status': listener?.activity,
+      'problem': recent ? null : listener?.problem,
+    });
   }
 
   void _pushStatus() {

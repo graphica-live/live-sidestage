@@ -104,6 +104,30 @@ model TiktokRoom {
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
+
+  // --- 表示用に正規化した接続状態 ---
+  //
+  // listenerStatus は「配信しているか」と「接続が健全か」を1つの文字列に混ぜている。
+  // 特に retrying は オフライン / 接続失敗 / 署名APIのレート制限 のすべてに使われ、
+  // updateState(..., "error") は一度も呼ばれない。この2軸に分けないと
+  // 「配信開始待ち」と「TikTok側の障害」を区別して出せない。
+  //
+  // **listenerStatus の意味は変えない。** tiktok-room-cleanup.ts の候補抽出
+  // (listenerStatus IN ('retrying','error')) をはじめ既存の消費者がそのまま動く。
+  // これらは追加の列で、書き込みは persistState() に一本化する。
+  listenerActivity  String?   // "live" | "offline" | "unknown"
+  listenerHealth    String?   // "ok" | "connecting" | "error"
+  listenerReason    String?   // scheduleReconnect() の reason。問い合わせ時の切り分け用
+
+  // 書き込み順序の正本。**単調増加で、これより小さい値の書き込みは棄却する**(fencing)。
+  //
+  // persistState() は await されず順序保証もないので、同一プロセス内でも
+  // 「古い connected heartbeat が retrying の後に着弾する」ことがある。さらにデプロイ中は
+  // 新旧Workerが同じ部屋へ並走し、旧Workerのshutdownが書く idle が新Workerの connected に
+  // 勝ちうる。壁時計は複数コンテナ間で単調ではないので、DB採番の世代(ListenerEpoch)を使う。
+  //
+  // 値は epoch * LISTENER_REVISION_STRIDE + プロセス内連番。
+  listenerRevision  BigInt?
   // イベント(event スキーマ側)が期限付きで監視を要求している場合の期限。
   // これが未来の間は、Streamerが1人もいなくてもWorkerが接続を維持する(getMyRooms参照)。
   // 期限切れ後は次のreconcileで切断されるが、受信済みのGiftはそのまま残る。
@@ -143,6 +167,23 @@ model TiktokRoom {
   @@index([workerId, monitorUntil])
   // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
   @@index([listenerStatus, unhealthySince])
+  @@schema("public")
+}
+
+// listener状態の書き込みをフェンスするための世代番号。
+//
+// プロセス起動時に1行 insert し、採番された id をそのプロセスの世代として使う。
+// **後から起動したプロセスほど必ず大きい値になる**ことだけが要件で、壁時計に依存しない
+// (複数コンテナ間でNTPずれがあっても順序が壊れない)。
+//
+// 1デプロイあたりWorker数ぶんしか増えないので、行数は年に数百のオーダー。
+model ListenerEpoch {
+  id          Int      @id @default(autoincrement())
+  // どのプロセスが取った世代か。障害時の追跡用で、判定には使わない。
+  role        String? // "worker" | "web"
+  workerIndex Int?
+  startedAt   DateTime @default(now())
+
   @@schema("public")
 }
 

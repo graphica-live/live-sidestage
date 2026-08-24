@@ -25,13 +25,9 @@ class SettingsTab extends StatelessWidget {
 
     return ListView(
       children: [
+        // 読み上げ・効果音の ON/OFF は各タブの「開始/停止」ボタンが持つ。
+        // ここに同じトグルを置くと二重になり、どちらが接続を制御しているのか分からなくなる。
         const _SectionHeader('読み上げ'),
-        SwitchListTile(
-          title: const Text('コメントを読み上げる'),
-          subtitle: const Text('OFFにするとVOICEVOXの初期化も行いません'),
-          value: store.config.ttsEnabled,
-          onChanged: (value) => store.setTtsEnabled(value),
-        ),
         SwitchListTile(
           title: const Text('ランダムボイス'),
           subtitle: const Text('コメント投稿者ごとに声を割り当てます'),
@@ -47,12 +43,6 @@ class SettingsTab extends StatelessWidget {
             label: '${store.config.ttsVolume}',
             onChanged: store.config.ttsEnabled ? (value) => store.setTtsVolume(value.round()) : null,
           ),
-        ),
-        const _SectionHeader('効果音'),
-        SwitchListTile(
-          title: const Text('効果音を鳴らす'),
-          value: store.sound.enabled,
-          onChanged: (value) => store.updateSound((c) => c.copyWith(enabled: value)),
         ),
         const _SectionHeader('アカウント'),
         ListTile(

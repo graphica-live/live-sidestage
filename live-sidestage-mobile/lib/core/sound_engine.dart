@@ -113,8 +113,15 @@ class SoundEngine extends ChangeNotifier {
       );
 
   void applyConfig(AppConfig config) {
+    final wasEnabled = _config.sound.enabled;
     _config = config;
-    if (!config.sound.enabled) _queue.clear();
+    if (!config.sound.enabled) {
+      _queue.clear();
+    } else if (!wasEnabled) {
+      // 有効化し直したら過去のエラーは持ち越さない。UI 側でエラーは
+      // ステータス表示の最優先なので、消さないと一度の失敗で永久に赤くなる。
+      errorMessage = null;
+    }
     notifyListeners();
   }
 
@@ -219,6 +226,12 @@ class SoundEngine extends ChangeNotifier {
   Future<void> _playOne(_PlaybackItem item) async {
     try {
       await play(item.filePath, item.volume);
+      // 1件でも鳴れば直前のエラーは解消している。残すとステータス表示が
+      // 永久に「エラー」のままになる。
+      if (errorMessage != null) {
+        errorMessage = null;
+        notifyListeners();
+      }
     } catch (e) {
       errorMessage = '再生に失敗しました: $e';
       notifyListeners();

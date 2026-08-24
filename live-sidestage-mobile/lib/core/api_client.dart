@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/auth_session.dart';
+import '../models/listener_status.dart';
 
 /// バックエンドのベースURL。既定は Railway 本番。
 ///
@@ -232,6 +233,17 @@ class LiveAnalyticsApi {
     return gifts.map(GiftCandidate.tryParse).whereType<GiftCandidate>().toList();
   }
 
+  /// TikTok Live 接続の状態。socket の `chat:listener` が落ちても収束させるための保険。
+  ///
+  /// 背景 Isolate から呼ぶので **JWT ではなく apiKey** で認証する
+  /// （背景側は apiKey しか持っていない）。部屋が未割り当てなら null を返す。
+  Future<ListenerStatus?> fetchListenerStatus({required String apiKey}) async {
+    final data = await _send('GET', '/api/mobile/listener-status', null, apiKey: apiKey);
+    final listener = data['listener'];
+    if (listener is! Map) return null;
+    return ListenerStatus.tryParse(Map<String, dynamic>.from(listener));
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }
@@ -241,6 +253,7 @@ class LiveAnalyticsApi {
     String path,
     Map<String, String>? body, {
     String? token,
+    String? apiKey,
   }) async {
     final http.Response response;
     try {
@@ -248,6 +261,7 @@ class LiveAnalyticsApi {
       final headers = {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
+        'x-api-key': ?apiKey,
       };
       final encodedBody = body == null ? null : jsonEncode(body);
       final request = switch (method) {
