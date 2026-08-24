@@ -238,6 +238,24 @@ analytics ブランドの `/login` ではなく `/event/login`（「LIVE Sidesta
 主催者が参加者の TikTok ID を登録すると、その配信者の TikTok Live を**イベント終了+24時間**まで
 監視するよう `TiktokRoom.monitorUntil` を立てる(`src/lib/tiktok-room.ts` の `ensureRoomForEvent()`)。
 
+### 実在しない ID は登録できない
+
+登録の前に TikTok へ1回だけ問い合わせ、そのハンドルのアカウントが実在するか確かめる
+(`src/lib/tiktok-existence.ts`)。打ち間違いをそのまま登録すると、誰も配信しない room を
+イベント終了まで監視し続けたうえに、主催者は開催中まで気づけないため。
+
+- TikTok が「そのユーザーはいない」と明示したときだけ **400 で弾く**。実測では
+  `statusCode: 19881007` / `message: "user_not_found"` が返る
+- **判定できなかったときは登録を通す(fail-open)。** レート制限・障害・想定外の応答で
+  イベントの参加者登録がまるごと止まるほうが被害が大きい。この場合は登録画面に
+  「実在を確認できなかった」と警告を出す
+- 結果はキャッシュし(実在6時間 / 不在5分)、同時に外へ出す本数は2本まで。
+  判定不能が続くとしばらく問い合わせを止める
+- `EVENT_PARTICIPANT_EXISTENCE_CHECK=0` で確認自体を止められる
+
+**改名は打ち間違いと区別できない。** TikTok 側で逆引きできないため、ハンドルを変えた
+配信者を登録しようとすると弾かれる。新しいハンドルで登録すること。
+
 - 既にその配信者の room があれば**再利用**する。同じ配信者のギフトが分裂しないため
 - なければ room を新規作成する。この room は会員登録(`Streamer`)を持たないが、
   `monitorUntil` が未来の間だけ Worker の担当に含まれる（`getMyRooms()` の `OR` 条件）
@@ -249,6 +267,10 @@ analytics ブランドの `/login` ではなく `/event/login`（「LIVE Sidesta
 **未解放の `EventRoomLease` が他イベントに残っている間は解除しない**
 (`src/event/participants.ts` の `releaseIfUnused()`)。確保のときは
 `max(既存, 要求)` で更新するため、他イベントの期間を縮めることはない。
+
+登録が途中で失敗したときの後始末だけは `releaseIfNoLeaseRemains()` を使い、**自分のイベントの
+lease も数える**。同じ ID を並行登録して片方が一意制約で落ちたとき、他イベントだけを見ていると
+勝った側の監視まで止めてしまうため。
 
 サーバー側の上限:
 

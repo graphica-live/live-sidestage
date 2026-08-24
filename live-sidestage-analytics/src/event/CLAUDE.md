@@ -64,8 +64,42 @@ access/refresh token は、イベント機能には一切必要ない。
 解除は必ず `src/event/participants.ts` の `releaseIfUnused()` を通すこと
 (未解放の `EventRoomLease` が他イベントに残っていれば解除しない)。
 
+**ただし登録の補償経路（`registerParticipant` の catch）だけは `releaseIfNoLeaseRemains()` を使う。**
+こちらは**自分のイベントの lease も数える**。同じ ID を並行登録して片方が一意制約で落ちると、
+`releaseIfUnused()` では勝った側の lease を数えないまま `monitorUntil` を消してしまい、
+**登録は成功しているのに監視されない**状態になる（`participants.integration.test.ts` が固定）。
+逆に `releaseEventLeases()` を全イベント数える版にしてはいけない — あちらは lease を解放せずに
+呼ぶので、永久に解除されなくなる。
+
+**未解決（既知の穴）**: `ensureRoomForEvent()` で `monitorUntil` を立ててから lease を
+commit するまでの間に、別の解除経路が「lease 0件」と数えて `monitorUntil` を消せる。
+`count` → `releaseRoomMonitor` 自体も原子的ではない。`removeParticipant` にも同種の穴があり、
+参加者を外した直後に同じ ID を再登録すると、後から走る解除が新しい登録の監視を止めうる。
+根治には room 単位のロックか、「未解放 lease の最大期限から `monitorUntil` を再計算する」
+統一プロトコルが要る。**新しい解除経路を足すときにこの穴を広げないこと。**
+
 期限は `ensureRoomForEvent()` が `max(既存, 要求)` で更新するので、**確保するときは**
 他イベントの期間を縮める心配はいらない。
+
+### 5.5. 実在しない TikTok ID を弾く判断を「非 0 の statusCode」に広げない
+
+参加者登録は `api-live/user/room/` を1回引いて、実在しないハンドルを 400 で弾く
+（`src/lib/tiktok-existence.ts` → `classifyAccountExistence()`）。守ること:
+
+- **拒否の根拠は `USER_NOT_FOUND_STATUS_CODE`（`19881007`）と `message: "user_not_found"` だけ。**
+  実測（2026-08-24）で、実在は `statusCode: 0`、不存在は専用コードを返すことを確認している。
+  非 0 をまとめて「いない」にすると、**レート制限や bot 判定で実在アカウントが一斉に弾かれ、
+  イベントの参加者登録がまるごと止まる**（`tiktok-room-cleanup.ts` が同じシグナルに
+  3回・3日・異常率のガードを積んでいるのはこのため）
+- **判定できなければ通す（fail-open）。** 実在確認は打ち間違いの救済であって参加資格の審査ではない。
+  結果は `RegisterResult.existence` で返し、`UNVERIFIED` なら UI が警告を出す
+- **avatar を実在の根拠にしない。** `parseProfileResponse()` は avatar URL の検証に落ちると
+  null を返すので、CDN のホストが変わると実在確認まで壊れる。`classifyAccountExistence()` は
+  `data.user` しか見ない
+- 呼び出しの間引き（キャッシュ・in-flight 集約・同時実行上限2・サーキットブレーカ）を外さない。
+  `fetchTiktokProfile()` はプロキシなしの単一データセンターIPで、avatar キャッシュ・
+  `hostUserId` 補完・room cleanup と**同じ枠を共用している**
+- 止めたくなったら `EVENT_PARTICIPANT_EXISTENCE_CHECK=0`
 
 ### 6. `ensureRoomForEvent()` の上限と検証を外さない
 
@@ -407,6 +441,11 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 
 **参加者登録（`registerParticipant`）から TikTok へ問い合わせを足さない。** 主催者の
 登録リクエストが外部サービスの応答時間に引きずられる。アイコンは付随情報でしかない。
+
+**例外は実在確認（`src/lib/tiktok-existence.ts`）だけ。** これは付随情報ではなく登録の
+要件そのもの（打ち間違いを登録すると、誰も配信しない room を監視し続けたうえに主催者は
+開催中まで気づけない）なので、1回だけ問い合わせる。**この例外を他へ広げないこと** —
+アイコンと `hostUserId` は従来どおり登録経路から引かない。次節の規則も参照。
 
 同じ `api-live/user/room/` から取れる `data.user.id`（数値 userId）は**逆に不変**なので
 `TiktokRoom.hostUserId` に保存してよい（バトルスコアの帰属に要る）。ただし取得タイミングは

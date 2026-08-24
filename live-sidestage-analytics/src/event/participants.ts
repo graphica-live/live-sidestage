@@ -1,6 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeLeaseWindow } from "@/lib/room-lease";
+import {
+  type ExistenceChecker,
+  existenceChecker,
+  isExistenceCheckDisabled,
+} from "@/lib/tiktok-existence";
 import { RoomMonitorError, ensureRoomForEvent, releaseRoomMonitor } from "@/lib/tiktok-room";
 import { MAX_DISPLAY_NAME_LENGTH, MAX_PARTICIPANTS, normalizeTiktokId } from "./validation";
 
@@ -17,6 +22,15 @@ export class ParticipantError extends Error {
   }
 }
 
+/**
+ * TikTok 側でアカウントの実在を確認できたか。
+ *
+ * - `VERIFIED` … 実在を確認した
+ * - `UNVERIFIED` … 確認できなかった(TikTok の障害・レート制限・想定外の応答)。**登録は通す**
+ * - `DISABLED` … 確認自体を止めている(`EVENT_PARTICIPANT_EXISTENCE_CHECK=0`)
+ */
+export type ExistenceOutcome = "VERIFIED" | "UNVERIFIED" | "DISABLED";
+
 export type RegisterResult = {
   participantId: string;
   tiktokId: string;
@@ -25,6 +39,8 @@ export type RegisterResult = {
   createdRoom: boolean;
   /** 監視期限を切り詰めたか。true なら期限前に再登録が要る */
   leaseClamped: boolean;
+  /** 実在確認の結果。`UNVERIFIED` なら主催者へ「確認できなかった」と出す */
+  existence: ExistenceOutcome;
 };
 
 /**
@@ -32,13 +48,20 @@ export type RegisterResult = {
  *
  * analytics 側に room がなければ作らせ、イベント終了+猶予まで配信開始監視を要求する。
  * 既存 room があればそれを再利用する(同じ配信者のギフトが分裂しないように)。
+ *
+ * **TikTok 上に実在しないハンドルは弾く。** 打ち間違いをそのまま登録すると、誰も配信しない
+ * room を監視し続けたうえに、主催者は開催中まで気づけない。ただし判定できなかったときは
+ * 通す(fail-open) — TikTok 側の障害でイベントの参加者登録が止まるほうが被害が大きい。
  */
-export async function registerParticipant(input: {
-  eventId: string;
-  rawTiktokId: string;
-  displayName?: string | null;
-  teamId?: string | null;
-}): Promise<RegisterResult> {
+export async function registerParticipant(
+  input: {
+    eventId: string;
+    rawTiktokId: string;
+    displayName?: string | null;
+    teamId?: string | null;
+  },
+  deps: { checker?: ExistenceChecker; existenceDisabled?: boolean } = {}
+): Promise<RegisterResult> {
   const tiktokId = normalizeTiktokId(input.rawTiktokId);
   if (!tiktokId) {
     throw new ParticipantError("TikTok ID の形式が正しくない。", 400);
@@ -76,6 +99,16 @@ export async function registerParticipant(input: {
     if (!team) {
       throw new ParticipantError("指定されたチームが見つからない。", 400);
     }
+  }
+
+  // TikTok への問い合わせは、ローカルで弾ける検証を全部通してから1回だけ行う。
+  // (重複・上限・チーム不正で落ちる登録では外へ出さない)
+  const existence = await resolveExistence(tiktokId, deps);
+  if (existence === "MISSING") {
+    throw new ParticipantError(
+      "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。",
+      400
+    );
   }
 
   const lease = computeLeaseWindow(event.endAt);
@@ -127,10 +160,14 @@ export async function registerParticipant(input: {
       roomId: leased.roomId,
       createdRoom: leased.created,
       leaseClamped: lease.clamped,
+      existence: existence === "EXISTS" ? "VERIFIED" : existence === "DISABLED" ? "DISABLED" : "UNVERIFIED",
     };
   } catch (err) {
-    // event スキーマ側の書き込みが失敗したら、確保した監視要求を戻す(他が使っていなければ)。
-    await releaseIfUnused(input.eventId, leased.roomId).catch((e) =>
+    // event スキーマ側の書き込みが失敗したら、確保した監視要求を戻す。
+    // **ここでは自分のイベントの lease も数える**(`releaseIfUnused` ではなく)。
+    // 同じ ID を並行登録して片方が一意制約で落ちた場合、勝った側の lease が残っている。
+    // 自分のイベントを除いて数えると、登録に成功した参加者の監視をこの補償が止めてしまう。
+    await releaseIfNoLeaseRemains(leased.roomId).catch((e) =>
       console.error("[participants] 補償の解放に失敗:", e)
     );
 
@@ -140,6 +177,47 @@ export async function registerParticipant(input: {
     }
     throw err;
   }
+}
+
+/**
+ * TikTok にアカウントが実在するか確かめる。**例外は投げない。**
+ *
+ * 間引き(キャッシュ・同時実行上限・サーキットブレーカ)は `tiktok-existence.ts` が持つ。
+ * ここは kill switch の解釈だけ。
+ */
+async function resolveExistence(
+  tiktokId: string,
+  deps: { checker?: ExistenceChecker; existenceDisabled?: boolean }
+): Promise<"EXISTS" | "MISSING" | "UNVERIFIED" | "DISABLED"> {
+  const disabled = deps.existenceDisabled ?? isExistenceCheckDisabled();
+  if (disabled) return "DISABLED";
+
+  const checker = deps.checker ?? existenceChecker;
+  try {
+    return await checker.check(tiktokId);
+  } catch (err) {
+    // checker は例外を投げない契約だが、投げても登録は止めない(fail-open)。
+    console.error(`[participants] @${tiktokId} の実在確認に失敗:`, err);
+    return "UNVERIFIED";
+  }
+}
+
+/**
+ * この room を確保している未解放の lease が**どのイベントにも**残っていなければ、
+ * 監視要求を解除する。
+ *
+ * `releaseIfUnused()` との違いは、自分のイベントの lease も数えることだけ。
+ * 登録の補償経路専用 — 補償が走る時点で自分のイベントに未解放 lease が残っているなら、
+ * それは並行登録の勝者が作ったものなので、解除してはいけない
+ * (以前からある lease なら重複チェックが 409 で先に落としている)。
+ */
+async function releaseIfNoLeaseRemains(roomId: string): Promise<void> {
+  const remaining = await prisma.eventRoomLease.count({
+    where: { roomId, releasedAt: null },
+  });
+  if (remaining > 0) return;
+
+  await releaseRoomMonitor(roomId);
 }
 
 /**
