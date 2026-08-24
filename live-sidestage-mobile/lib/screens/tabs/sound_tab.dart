@@ -2,16 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_config_store.dart';
+import '../../core/feature_status.dart';
 import '../../core/gift_name_ja.dart';
 import '../../models/app_config.dart';
 import '../gift_sound_edit_screen.dart';
 import '../home_screen.dart' show SoundState;
+import '../widgets/feature_status_bar.dart';
 
 /// 「ギフト → 音」の一覧。カテゴリ・トリガー・音源ライブラリという中間概念は無い。
 class SoundTab extends StatelessWidget {
-  const SoundTab({super.key, required this.sound});
+  const SoundTab({
+    super.key,
+    required this.sound,
+    required this.status,
+    required this.errors,
+    required this.notice,
+    required this.started,
+    required this.busy,
+    required this.onToggle,
+  });
 
   final SoundState sound;
+  final FeatureStatus status;
+  final List<(String, String)> errors;
+
+  /// TikTok 側の事情（レート制限・再接続待ちなど）。エラーではないので赤くしない。
+  final String? notice;
+
+  /// この機能が開始済みか（= 有効かつサービス稼働中）。
+  final bool started;
+  final bool busy;
+  final ValueChanged<bool> onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -22,17 +43,16 @@ class SoundTab extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
-          SwitchListTile(
-            title: const Text('効果音を鳴らす'),
-            subtitle: sound.lastGiftName != null
-                // 受信した英語名がそのまま入っている。一覧のタイトルと表記が
-                // 揃っていないと同じギフトだと分からないので、ここも辞書を通す。
-                ? Text('直近: ${GiftNameJa.display(sound.lastGiftName!)}',
-                    style: const TextStyle(fontSize: 12))
-                : null,
-            value: config.enabled,
-            onChanged: (value) => store.updateSound((c) => c.copyWith(enabled: value)),
-          ),
+          FeatureStatusBar(status: status, errors: errors, notice: notice),
+          FeatureStartButton(started: started, busy: busy, onToggle: onToggle),
+          if (sound.lastGiftName != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              // 受信した英語名がそのまま入っている。一覧のタイトルと表記が
+              // 揃っていないと同じギフトだと分からないので、ここも辞書を通す。
+              child: Text('直近: ${GiftNameJa.display(sound.lastGiftName!)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
           ListTile(
             title: const Text('全体の音量'),
             subtitle: Slider(
@@ -49,14 +69,6 @@ class SoundTab extends StatelessWidget {
             ),
             trailing: Text('${config.masterVolume}'),
           ),
-          if (sound.errorMessage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                sound.errorMessage!,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ),
           if (sound.overflowCount > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

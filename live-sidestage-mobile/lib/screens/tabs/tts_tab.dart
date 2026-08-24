@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_config_store.dart';
+import '../../core/feature_status.dart';
 import '../../models/comment.dart';
 import '../home_screen.dart' show SpeechState;
+import '../widgets/feature_status_bar.dart';
 
 /// 受信コメントの一覧と読み上げ状態。
 class TtsTab extends StatelessWidget {
@@ -12,7 +14,12 @@ class TtsTab extends StatelessWidget {
     required this.comments,
     required this.scrollController,
     required this.speech,
-    required this.serviceRunning,
+    required this.status,
+    required this.errors,
+    required this.notice,
+    required this.started,
+    required this.busy,
+    required this.onToggle,
     required this.roomSwitching,
     required this.switchingToTiktokId,
   });
@@ -20,7 +27,17 @@ class TtsTab extends StatelessWidget {
   final List<Comment> comments;
   final ScrollController scrollController;
   final SpeechState speech;
-  final bool serviceRunning;
+  final FeatureStatus status;
+  final List<(String, String)> errors;
+
+  /// TikTok 側の事情（レート制限・再接続待ちなど）。エラーではないので赤くしない。
+  final String? notice;
+
+  /// この機能が開始済みか（= 有効かつサービス稼働中）。
+  final bool started;
+  final bool busy;
+  final ValueChanged<bool> onToggle;
+
   final bool roomSwitching;
   final String? switchingToTiktokId;
 
@@ -32,16 +49,31 @@ class TtsTab extends StatelessWidget {
 
     return Column(
       children: [
+        FeatureStatusBar(status: status, errors: errors, notice: notice),
+        FeatureStartButton(started: started, busy: busy, onToggle: onToggle),
+        if (started && !speech.initialized && speech.errorMessage == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+          ),
+        if (started && speech.nowSpeakingCharacterName != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'VOICEVOX:${speech.nowSpeakingCharacterName}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             children: [
-              const Text('読み上げ', style: TextStyle(fontSize: 13)),
-              Switch(
-                value: ttsEnabled,
-                onChanged: (value) => store.setTtsEnabled(value),
-              ),
-              const SizedBox(width: 8),
               const Text('ランダムボイス', style: TextStyle(fontSize: 13)),
               Switch(
                 value: store.config.randomVoice,
@@ -78,29 +110,6 @@ class TtsTab extends StatelessWidget {
             ],
           ),
         ),
-        if (serviceRunning && ttsEnabled)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                if (!speech.initialized && speech.errorMessage == null)
-                  const Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                if (speech.nowSpeakingCharacterName != null)
-                  Text(
-                    'VOICEVOX:${speech.nowSpeakingCharacterName}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                if (speech.errorMessage != null)
-                  Expanded(
-                    child: Text(
-                      speech.errorMessage!,
-                      style: const TextStyle(fontSize: 11, color: Colors.red),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-            ),
-          ),
         Expanded(
           child: comments.isEmpty
               ? Center(

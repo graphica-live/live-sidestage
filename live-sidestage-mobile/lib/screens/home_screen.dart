@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../core/app_config_store.dart';
 import '../core/comment_feed.dart' show SocketStatus;
+import '../core/feature_status.dart';
 import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
 import '../models/comment.dart';
@@ -53,6 +54,24 @@ class SoundState {
   });
 }
 
+/// 背景Isolateから届く「TikTok側の配信状態」。
+///
+/// LIVE Sidestage Analytics の Worker が保持している TikTok Live 接続の状態で、
+/// アプリ ↔ サーバー間の socket 接続とは別物。socket が繋がっていても
+/// 配信者が配信を始めていなければ [live] は false になる。
+class ListenerState {
+  /// TikTok Live に接続できている(= 配信中)。
+  final bool live;
+
+  /// サーバー側の生の listenerStatus。診断用。
+  final String? status;
+
+  /// 接続エラーの内容。エラーでなければ null。
+  final String? problem;
+
+  const ListenerState({this.live = false, this.status, this.problem});
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -74,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   SpeechState _speech = const SpeechState();
   SoundState _sound = const SoundState();
+  ListenerState _listener = const ListenerState();
 
   // TikTok ID変更後、LIVE Sidestage Analytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
   // サーバーは60秒間隔のreconcileループでしか部屋の切り替えを反映しないため、
@@ -91,19 +111,86 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
   }
 
+  // ── サービスの状態と設定フラグの同期 ────────────────────────────────────────
+
+  /// **不変条件: `serviceRunning == (ttsEnabled || soundEnabled)`。**
+  ///
+  /// サービスが止まっているなら、どの機能も動いていない。保存値を実態へ合わせておかないと
+  /// 「停止中なのに保存値は両方ON」という状態が残り、そこから片方だけ開始したつもりでも
+  /// もう片方まで一緒に起動する。[AppConfig] の既定値が両方 true なので、初回起動の
+  /// 既存ユーザーもここで正規化される。
   Future<void> _syncRunningStatus() async {
+    final store = context.read<AppConfigStore>();
     final running = await FlutterForegroundTask.isRunningService;
     if (!mounted) return;
     setState(() => _serviceRunning = running);
+    if (!running) {
+      await store.setFeatureMask(tts: false, sound: false);
+    }
+  }
+
+  /// 開始/停止ボタンの実体。**設定の保存とサービス遷移を1本の直列処理にまとめる。**
+  ///
+  /// `_serviceBusy` は最初の await より前に立てる。保存を待っている隙にもう一方のタブから
+  /// 操作されると、両方が「サービスは止まっている」と判断して二重に起動しうる。
+  Future<void> _toggleFeature({required bool isTts, required bool enable}) async {
+    if (_serviceBusy) return;
+    setState(() => _serviceBusy = true);
+
+    // context は最初の await より前に読んでおく。await をまたいで触ると、
+    // 画面が破棄されたあとに参照しうる。
+    final store = context.read<AppConfigStore>();
+    final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
+
+    try {
+      final running = await FlutterForegroundTask.isRunningService;
+
+      if (enable) {
+        if (!running) {
+          // 停止中からの開始。**押した機能だけ**を有効にする。
+          await store.setFeatureMask(tts: isTts, sound: !isTts);
+          final started = await _startService(apiKey: apiKey, store: store);
+          if (!started) {
+            await store.setFeatureMask(tts: false, sound: false);
+          }
+        } else {
+          await store.setFeatureMask(
+            tts: isTts || store.config.ttsEnabled,
+            sound: !isTts || store.sound.enabled,
+          );
+          await _refreshNotification(store);
+        }
+      } else {
+        final otherEnabled = isTts ? store.sound.enabled : store.config.ttsEnabled;
+        if (otherEnabled) {
+          await store.setFeatureMask(
+            tts: isTts ? false : store.config.ttsEnabled,
+            sound: isTts ? store.sound.enabled : false,
+          );
+          await _refreshNotification(store);
+        } else {
+          // 最後の機能を止める。**先にサービスを止めてから保存する。**
+          // 逆順にすると AppConfigStore が「稼働中」と判断して背景へ applyConfig を送り、
+          // ACK を待つ状態に入る。その直後にサービスを壊すと ACK が返らず、
+          // syncPending が永久に残って音源ファイルの削除もブロックされる。
+          await _stopService();
+          await store.setFeatureMask(tts: false, sound: false);
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _serviceBusy = false);
+      // ローカル変数ではなく実状態を採り直す。
+      await _syncRunningStatus();
+    }
   }
 
   // 稼働中はForeground Serviceで画面オフ/バックグラウンドでも継続する。
   // 停止中はサービスを完全に止め、アプリがタスクKillされても問題ない状態にする。
-  Future<void> _startService() async {
-    final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
-    if (apiKey == null) return;
-
-    setState(() => _serviceBusy = true);
+  Future<bool> _startService({required String? apiKey, required AppConfigStore store}) async {
+    if (apiKey == null) {
+      _showMessage('TikTokアカウントの登録が完了していないため開始できません。');
+      return false;
+    }
 
     if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
@@ -129,26 +216,35 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (!await FlutterForegroundTask.isRunningService) {
-      // dataSync は付けない。Android 15 以降 24時間あたり6時間でタイムアウトし、
-      // 長時間の配信待受が途中で止まるため（AndroidManifest.xml のコメント参照）。
-      await FlutterForegroundTask.startService(
-        serviceTypes: [ForegroundServiceTypes.mediaPlayback],
-        notificationTitle: 'Live Sidestage',
-        notificationText: _notificationText(),
-        callback: startCallback,
-      );
-    }
+    if (await FlutterForegroundTask.isRunningService) return true;
 
-    if (!mounted) return;
-    setState(() {
-      _serviceRunning = true;
-      _serviceBusy = false;
-    });
+    // dataSync は付けない。Android 15 以降 24時間あたり6時間でタイムアウトし、
+    // 長時間の配信待受が途中で止まるため（AndroidManifest.xml のコメント参照）。
+    final result = await FlutterForegroundTask.startService(
+      serviceTypes: [ForegroundServiceTypes.mediaPlayback],
+      notificationTitle: 'Live Sidestage',
+      notificationText: _notificationText(store),
+      callback: startCallback,
+    );
+
+    // 結果を見ずに稼働中扱いすると、通知権限を拒否された端末などで
+    // 「開始したのに何も起きない」状態のまま UI だけ動いてしまう。
+    if (result is ServiceRequestFailure) {
+      _showMessage('バックグラウンド動作を開始できませんでした: ${result.error}');
+      return false;
+    }
+    return true;
   }
 
-  String _notificationText() {
-    final config = context.read<AppConfigStore>().config;
+  /// 稼働中に有効な機能が変わったときの通知文の追従。
+  /// [_notificationText] は startService 時にしか評価されないため、これが無いと古いまま残る。
+  Future<void> _refreshNotification(AppConfigStore store) async {
+    if (!await FlutterForegroundTask.isRunningService) return;
+    await FlutterForegroundTask.updateService(notificationText: _notificationText(store));
+  }
+
+  String _notificationText(AppConfigStore store) {
+    final config = store.config;
     final tts = config.ttsEnabled;
     final sound = config.sound.enabled;
     if (tts && sound) return 'コメント読み上げと効果音が動作中です';
@@ -158,21 +254,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _stopService() async {
-    setState(() => _serviceBusy = true);
     await FlutterForegroundTask.stopService();
     if (!mounted) return;
     setState(() {
       _serviceRunning = false;
-      _serviceBusy = false;
       _status = SocketStatus.disconnected;
       _connectionError = null;
       _speech = const SpeechState();
       _sound = const SoundState();
+      _listener = const ListenerState();
     });
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+    );
   }
 
   Future<void> changeTiktokId() async {
     final controller = context.read<SessionController>();
+    final store = context.read<AppConfigStore>();
     final newId = await showDialog<String>(
       context: context,
       builder: (context) => _ChangeTiktokIdDialog(
@@ -182,8 +285,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (newId == null || newId.isEmpty) return;
     if (!mounted) return;
 
+    // 部屋が変わるので接続を張り直す必要がある。停止経路と同じ後始末をして、
+    // ユーザーに「開始」を押し直してもらう。
     if (_serviceRunning) {
       await _stopService();
+      await store.setFeatureMask(tts: false, sound: false);
       if (!mounted) return;
     }
 
@@ -192,9 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ok) {
       _beginRoomSwitchGrace(newId);
     } else if (controller.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(controller.errorMessage!)),
-      );
+      _showMessage(controller.errorMessage!);
     }
   }
 
@@ -269,11 +373,21 @@ class _HomeScreenState extends State<HomeScreen> {
             errorMessage: map['errorMessage'] as String?,
           );
         });
+      case 'listener':
+        setState(() {
+          _listener = ListenerState(
+            live: map['live'] as bool? ?? false,
+            status: map['status'] as String?,
+            problem: map['problem'] as String?,
+          );
+        });
       case 'configAck':
         final revision = map['revision'];
         if (revision is int) context.read<AppConfigStore>().onAck(revision);
       case 'serviceTimeout':
         setState(() => _serviceRunning = false);
+        // 保存値も実態へ合わせる（不変条件の維持）。
+        unawaited(context.read<AppConfigStore>().setFeatureMask(tts: false, sound: false));
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Androidの制限によりバックグラウンド動作が停止しました。もう一度「開始」を押してください。'),
@@ -312,66 +426,55 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  String _statusLabel(SocketStatus status) {
-    switch (status) {
-      case SocketStatus.connecting:
-        return '接続中…';
-      case SocketStatus.connected:
-        return '接続中（コメント受信可能）';
-      case SocketStatus.disconnected:
-        return '切断されています';
-      case SocketStatus.error:
-        return 'エラー';
-    }
+  // ── タブへ渡すステータス ────────────────────────────────────────────────────
+
+  /// 表示するエラーを (ラベル, 本文) で列挙する。
+  ///
+  /// 1本に合成せず全部並べる。ユーザーがスクリーンショットで問い合わせるための情報なので、
+  /// 先頭のエラーで後続を隠さない。
+  ///
+  /// **TikTok 側の事情はここに入れない。** レート制限や再接続待ちは配信者から見れば
+  /// 「配信開始待ち」の理由でしかなく、赤くすると自分のアプリが壊れたと誤解する。
+  /// あちらは [_noticeFor] で補足として出す。
+  List<(String, String)> _errorsFor({required bool isTts}) {
+    final errors = <(String, String)>[];
+    final connectionError = _connectionError;
+    if (connectionError != null) errors.add(('接続', connectionError));
+
+    final featureError = isTts ? _speech.errorMessage : _sound.errorMessage;
+    if (featureError != null) errors.add((isTts ? '読み上げ' : '効果音', featureError));
+
+    return errors;
   }
 
-  Color _statusColor(SocketStatus status) {
-    switch (status) {
-      case SocketStatus.connected:
-        return Colors.green;
-      case SocketStatus.connecting:
-        return Colors.orange;
-      case SocketStatus.disconnected:
-        return Colors.grey;
-      case SocketStatus.error:
-        return Colors.red;
-    }
+  /// TikTok 側で何が起きているかの補足。サーバーが listenerMessage に日本語で書いている。
+  /// 開始していない機能には出さない（止めているのだから状況を出す意味がない）。
+  String? _noticeFor({required bool enabled}) {
+    if (!enabled || !_serviceRunning) return null;
+    return _listener.problem;
+  }
+
+  FeatureStatus _statusFor({required bool isTts, required bool enabled}) {
+    return resolveFeatureStatus(
+      enabled: enabled,
+      serviceRunning: _serviceRunning,
+      socket: _status,
+      live: _listener.live,
+      hasError: _errorsFor(isTts: isTts).isNotEmpty,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>().session;
+    final store = context.watch<AppConfigStore>();
+    final ttsEnabled = store.config.ttsEnabled;
+    final soundEnabled = store.sound.enabled;
 
     return Scaffold(
       appBar: AppBar(title: Text('@${session?.streamer?.tiktokId ?? ''}')),
       body: Column(
         children: [
-          _ConnectionStatusBar(
-            label: _statusLabel(_status),
-            color: _statusColor(_status),
-            errorMessage: _connectionError,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _serviceBusy ? null : (_serviceRunning ? _stopService : _startService),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _serviceRunning ? Colors.red : null,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: _serviceBusy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : Icon(_serviceRunning ? Icons.stop : Icons.play_arrow),
-                label: Text(_serviceRunning ? '停止' : '開始'),
-              ),
-            ),
-          ),
           if (_roomSwitching)
             _RoomSwitchBanner(remainingSeconds: _roomSwitchRemainingSeconds),
           Expanded(
@@ -383,11 +486,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   comments: _comments,
                   scrollController: _scrollController,
                   speech: _speech,
-                  serviceRunning: _serviceRunning,
+                  status: _statusFor(isTts: true, enabled: ttsEnabled),
+                  errors: _errorsFor(isTts: true),
+                  notice: _noticeFor(enabled: ttsEnabled),
+                  started: ttsEnabled && _serviceRunning,
+                  busy: _serviceBusy,
+                  onToggle: (enable) => _toggleFeature(isTts: true, enable: enable),
                   roomSwitching: _roomSwitching,
                   switchingToTiktokId: _switchingToTiktokId,
                 ),
-                SoundTab(sound: _sound),
+                SoundTab(
+                  sound: _sound,
+                  status: _statusFor(isTts: false, enabled: soundEnabled),
+                  errors: _errorsFor(isTts: false),
+                  notice: _noticeFor(enabled: soundEnabled),
+                  started: soundEnabled && _serviceRunning,
+                  busy: _serviceBusy,
+                  onToggle: (enable) => _toggleFeature(isTts: false, enable: enable),
+                ),
                 SettingsTab(
                   speech: _speech,
                   onChangeTiktokId: changeTiktokId,
@@ -416,41 +532,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _roomSwitchTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
-  }
-}
-
-/// ホーム画面上部に常駐する接続状態バー。
-class _ConnectionStatusBar extends StatelessWidget {
-  const _ConnectionStatusBar({required this.label, required this.color, this.errorMessage});
-
-  final String label;
-  final Color color;
-  final String? errorMessage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: color.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 10, color: color),
-          const SizedBox(width: 8),
-          Text(label),
-          if (errorMessage != null) ...[
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                errorMessage!,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 

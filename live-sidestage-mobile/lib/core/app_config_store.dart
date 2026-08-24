@@ -69,6 +69,18 @@ class AppConfigStore extends ChangeNotifier {
 
   Future<void> setTtsEnabled(bool value) => _mutate((c) => c.bumped(ttsEnabled: value));
 
+  /// 読み上げと効果音の有効状態を **1回の revision で** まとめて書く。
+  ///
+  /// 別々に保存すると、その間に中間状態が背景 Isolate へ送られてしまう。
+  /// 具体的には「サービス停止中に読み上げだけ開始」を `setTtsEnabled(true)` で
+  /// 表現できない — [AppConfig] の既定値は効果音も true なので、その1手だけで
+  /// 両方が有効な設定が保存され、効果音まで一緒に起動する。
+  Future<void> setFeatureMask({required bool tts, required bool sound}) {
+    return _mutate((c) => c.ttsEnabled == tts && c.sound.enabled == sound
+        ? null
+        : c.bumped(ttsEnabled: tts, sound: c.sound.copyWith(enabled: sound)));
+  }
+
   Future<void> setRandomVoice(bool value) => _mutate((c) => c.bumped(randomVoice: value));
 
   Future<void> setTtsVolume(int value) {

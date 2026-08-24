@@ -79,6 +79,32 @@ export interface ChatFollowPayload extends ChatFollowInput {
   schemaVersion: number;
 }
 
+/**
+ * Worker が持っている TikTok Live 接続の状態。モバイルの「配信中 / 配信開始待ち」表示用。
+ *
+ * コメント・ギフトと違い**状態通知**なので dedup しない(重複しても冪等)。代わりに
+ * 順序が要る。端末は `(roomId, revision)` で新旧を判定し、壁時計を比較しない。
+ *
+ * - `roomId`: TikTok ID を変更した直後の最大60秒間、旧 room の Worker が同じ
+ *   `chat:{streamerId}` へ送れてしまう。端末が旧 room の状態を採らないための識別子
+ * - `revision`: JSON に bigint を載せられないので10進文字列。単調増加(fencing と同じ値)
+ */
+export interface ChatListenerInput {
+  streamerId: string;
+  roomId: string;
+  revision: string;
+  status: string;
+  activity: string;
+  health: string;
+  reason: string | null;
+  message: string;
+  updatedAt: string;
+}
+
+export interface ChatListenerPayload extends ChatListenerInput {
+  schemaVersion: number;
+}
+
 interface ChatDedupState {
   ids: Set<string>;
   order: string[];
@@ -293,6 +319,17 @@ export async function emitChatGift(input: ChatGiftInput): Promise<boolean> {
   };
 
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:gift", payload);
+  return true;
+}
+
+/**
+ * listener の状態を配信する。**dedup しない** — 状態通知なので重複しても冪等で、
+ * むしろ「後から購読した端末へ現在値を送り直す」ために同じ値の再送が要る。
+ */
+export async function emitChatListener(input: ChatListenerInput): Promise<boolean> {
+  if (!isIoReady()) return false;
+  const payload: ChatListenerPayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
+  g.__io?.to(`chat:${input.streamerId}`).emit("chat:listener", payload);
   return true;
 }
 

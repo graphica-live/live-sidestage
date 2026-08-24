@@ -5,9 +5,11 @@ import {
   emitChatComment,
   emitChatFollow,
   emitChatGift,
+  emitChatListener,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
+  type ChatListenerInput,
 } from "@/lib/chat-feed";
 
 // Worker(worker.js)からWeb(server.js/global.__io)へgift/chatイベントを転送するための内部API。
@@ -96,6 +98,33 @@ function parseFollowEvent(value: unknown): Omit<ChatFollowInput, "streamerId"> |
   };
 }
 
+function parseListenerEvent(value: unknown): Omit<ChatListenerInput, "streamerId"> | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+
+  if (!isNonEmptyString(v.roomId)) return null;
+  // revision は bigint を JSON に載せられないので10進文字列。端末はこれで新旧を判定するので、
+  // 形式が違うものは通さない(壊れた値を通すと順序判定が壊れる)。
+  if (!isNonEmptyString(v.revision) || !/^\d{1,30}$/.test(v.revision)) return null;
+  if (!isNonEmptyString(v.status)) return null;
+  if (!isNonEmptyString(v.activity)) return null;
+  if (!isNonEmptyString(v.health)) return null;
+  if (!isOptionalString(v.reason)) return null;
+  if (typeof v.message !== "string" || v.message.length > MAX_STRING_LENGTH) return null;
+  if (!isNonEmptyString(v.updatedAt)) return null;
+
+  return {
+    roomId: v.roomId,
+    revision: v.revision,
+    status: v.status,
+    activity: v.activity,
+    health: v.health,
+    reason: v.reason,
+    message: v.message,
+    updatedAt: v.updatedAt,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const secret = process.env.INTERNAL_API_SECRET;
   const provided = req.headers.get("x-internal-secret");
@@ -111,6 +140,7 @@ export async function POST(req: NextRequest) {
     chatEvent?: ChatCommentPayload;
     chatGiftEvent?: unknown;
     chatFollowEvent?: unknown;
+    listenerEvent?: unknown;
   } | null;
 
   if (!body) {
@@ -161,6 +191,24 @@ export async function POST(req: NextRequest) {
     for (const streamerId of streamerIds) {
       const delivered = await emitChatFollow({ streamerId, ...follow }).catch((err) => {
         console.error("[internal/gift-event] follow emit error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    }
+  }
+
+  // listener の接続状態(モバイルの「配信中 / 配信開始待ち」表示用)。
+  // ギフト/フォローと違い dedup しない — 後から購読した端末へ現在値を送り直すために
+  // 同じ値の再送が要る。
+  if (body.listenerEvent !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    const listener = parseListenerEvent(body.listenerEvent);
+    if (!streamerIds || !listener) {
+      return NextResponse.json({ error: "Invalid listenerEvent" }, { status: 400 });
+    }
+    for (const streamerId of streamerIds) {
+      const delivered = await emitChatListener({ streamerId, ...listener }).catch((err) => {
+        console.error("[internal/gift-event] listener emit error:", err);
         return true;
       });
       if (!delivered) return ioUnavailable();

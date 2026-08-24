@@ -61,6 +61,7 @@ class SpeechQueueController extends ChangeNotifier {
       await _engine.initialize();
       _voicePool = VoicePool(_engine.voices)..randomEnabled = _desiredRandomVoice;
       initialized = true;
+      errorMessage = null;
     } catch (e) {
       errorMessage = 'VOICEVOXの初期化に失敗しました: $e';
     }
@@ -77,7 +78,13 @@ class SpeechQueueController extends ChangeNotifier {
   void setEnabled(bool value) {
     if (enabled == value) return;
     enabled = value;
-    if (!enabled) _queue.clear();
+    if (!enabled) {
+      _queue.clear();
+    } else {
+      // 有効化し直したら過去のエラーは持ち越さない。UI 側でエラーは
+      // ステータス表示の最優先なので、消さないと一度の失敗で永久に赤くなる。
+      errorMessage = null;
+    }
     notifyListeners();
   }
 
@@ -145,6 +152,12 @@ class SpeechQueueController extends ChangeNotifier {
       await _player.setVolume(_volume / 100.0);
       await _player.play(DeviceFileSource(file.path));
       await completer.future;
+      // 1件でも最後まで鳴れば直前のエラーは解消している。残すと
+      // ステータス表示が永久に「エラー」のままになる。
+      if (errorMessage != null) {
+        errorMessage = null;
+        notifyListeners();
+      }
     } catch (e) {
       errorMessage = '再生に失敗しました: $e';
       notifyListeners();

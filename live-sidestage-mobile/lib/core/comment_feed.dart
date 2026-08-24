@@ -6,6 +6,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/comment.dart';
 import '../models/follow_event.dart';
 import '../models/gift_event.dart';
+import '../models/listener_status.dart';
 import 'api_client.dart' show liveAnalyticsBaseUrl;
 
 enum SocketStatus { disconnected, connecting, connected, error }
@@ -27,10 +28,21 @@ class CommentFeed extends ChangeNotifier {
   final StreamController<Comment> _commentController = StreamController<Comment>.broadcast();
   final StreamController<GiftEvent> _giftController = StreamController<GiftEvent>.broadcast();
   final StreamController<FollowEvent> _followController = StreamController<FollowEvent>.broadcast();
+  final StreamController<ListenerStatus> _listenerController =
+      StreamController<ListenerStatus>.broadcast();
 
   Stream<Comment> get onComment => _commentController.stream;
   Stream<GiftEvent> get onGift => _giftController.stream;
   Stream<FollowEvent> get onFollow => _followController.stream;
+  Stream<ListenerStatus> get onListener => _listenerController.stream;
+
+  /// socket が繋がった（張り直した）タイミング。
+  ///
+  /// 接続直後は listener の現在値を持っていない。サーバーは接続時にスナップショットを
+  /// 送らない（状態変化のときだけ push する）ので、**繋がったら端末側から取りに行く**。
+  final StreamController<void> _connectedController = StreamController<void>.broadcast();
+
+  Stream<void> get onConnected => _connectedController.stream;
 
   void connect(String apiKey) {
     disconnect();
@@ -52,6 +64,9 @@ class CommentFeed extends ChangeNotifier {
       status = SocketStatus.connected;
       errorMessage = null;
       notifyListeners();
+      // 再接続のたびに発火する。切れている間の状態変化は push で受け取れていないので、
+      // ここを合図に listener 状態を取り直す。
+      _connectedController.add(null);
     });
 
     socket.on('chat:comment', (data) {
@@ -74,6 +89,11 @@ class CommentFeed extends ChangeNotifier {
     socket.on('chat:follow', (data) {
       final follow = _decode(data, FollowEvent.tryParse);
       if (follow != null) _followController.add(follow);
+    });
+
+    socket.on('chat:listener', (data) {
+      final listener = _decode(data, ListenerStatus.tryParse);
+      if (listener != null) _listenerController.add(listener);
     });
 
     socket.onDisconnect((_) {
@@ -152,6 +172,8 @@ class CommentFeed extends ChangeNotifier {
     _commentController.close();
     _giftController.close();
     _followController.close();
+    _listenerController.close();
+    _connectedController.close();
     super.dispose();
   }
 }
