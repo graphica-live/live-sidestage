@@ -28,6 +28,13 @@ import {
 
 /** 1つの開催日程。日時は `<input type="datetime-local">` の値 = JST の "YYYY-MM-DDTHH:mm"。 */
 export type SessionFormValue = {
+  /**
+   * 既存の日程を編集しているならその id。新規に足した行は undefined。
+   *
+   * **更新APIはこれで差分更新する。** 落とすと「全部消して作り直す」扱いになり、
+   * 対戦がぶら下がっている日程を消せず 409 になる(対戦は日程を参照している)。
+   */
+  id?: string;
   name: string;
   startAt: string;
   endAt: string;
@@ -79,7 +86,9 @@ export const WIZARD_STEP_HINTS: Record<WizardStep, string> = {
   format: "何を競うイベントか。作成すると変更できない。",
   title: "公開ページに出る名前。あとから変更できる。",
   entry: "1人ずつ競うか、チームでまとめて競うか。",
-  sessions: "ギフトを集計する時間帯。この時間だけ配信者を監視対象にする。日を分けて開催するなら日程を足す。",
+  sessions:
+    "ギフトを集計する時間帯。この時間だけ配信者を監視対象にする。" +
+    "対戦はこの日程に割り当て、日程の中で終了したバトルだけが対戦として扱われるので、終了時刻は余裕をもって。",
   matchRules: "対戦で使う装備と、違反があったときの扱い。公開ページに表示される。",
   prize: "優勝者に贈るもの。公開ページに表示される。空でもよい。",
   notice: "参加者・視聴者向けの注意事項とFAQ。テンプレートを自由に編集できる。",

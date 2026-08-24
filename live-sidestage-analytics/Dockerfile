@@ -10,4 +10,4 @@ RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" npx prisma gene
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-shared-tiktok-room.ts && npx prisma db push --accept-data-loss && node server.js"]
+CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-shared-tiktok-room.ts && npx tsx scripts/migrate-match-session.ts && npx prisma db push --accept-data-loss && node server.js"]

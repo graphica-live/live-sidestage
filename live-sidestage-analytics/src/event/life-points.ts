@@ -115,7 +115,7 @@ async function loadLifeEvents(
       winnerSideId: true,
       winnerDecidedBy: true,
       detectedEndAt: true,
-      scheduledEndAt: true,
+      decidedAt: true,
       sides: {
         select: {
           id: true,
@@ -151,10 +151,16 @@ async function loadLifeEvents(
 
     if (results.length === 0) continue;
 
+    // 決着時刻。updatedAt は再集計のたびに動いて順序が不安定になるので使わない。
+    // 自動検知なら実測の終了時刻、主催者が確定したならその時刻(`decidedAt`)。
+    // **対戦は予定時刻を持たない**ので、どちらも無い行は順番を決められない。
+    // 適用順に依存する脱落判定を壊さないよう、ここで落とす(通常は起きない)。
+    const decidedAt = match.detectedEndAt ?? match.decidedAt;
+    if (!decidedAt) continue;
+
     events.push({
       matchId: match.id,
-      // 決着時刻。updatedAt は再集計のたびに動いて順序が不安定になるので使わない。
-      decidedAt: match.detectedEndAt ?? match.scheduledEndAt,
+      decidedAt,
       results,
     });
   }

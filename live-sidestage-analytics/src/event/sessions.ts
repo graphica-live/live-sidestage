@@ -21,10 +21,24 @@ export const MAX_SESSION_NAME_LENGTH = 40;
  */
 export const MAX_EVENT_DAYS = 90;
 
-export type EventWindow = { start: Date; end: Date; name: string | null };
+export type EventWindow = {
+  /** 日程の id。日程を持たない旧イベントのフォールバックでは null */
+  id?: string | null;
+  start: Date;
+  end: Date;
+  name: string | null;
+};
 
-export type SessionInput = { startAt: Date; endAt: Date; name?: string | null };
-export type NormalizedSession = { startAt: Date; endAt: Date; name: string | null };
+// 日程は `EventMatch.sessionId` から参照されるので、更新は**差分**で行う(全置換にすると
+// id が変わって対戦の割り当てが消える)。そのため入力は既存の id を持ち回る。
+export type SessionInput = { id?: string | null; startAt: Date; endAt: Date; name?: string | null };
+export type NormalizedSession = {
+  /** 既存の日程を更新するなら その id。新規なら null */
+  id: string | null;
+  startAt: Date;
+  endAt: Date;
+  name: string | null;
+};
 
 export type SessionValidation =
   | { ok: true; value: NormalizedSession[]; startAt: Date; endAt: Date }
@@ -39,15 +53,15 @@ export type SessionValidation =
 export function resolveEventWindows(event: {
   startAt: Date;
   endAt: Date;
-  sessions?: { startAt: Date; endAt: Date; name?: string | null }[] | null;
+  sessions?: { id?: string; startAt: Date; endAt: Date; name?: string | null }[] | null;
 }): EventWindow[] {
   const sessions = event.sessions ?? [];
   if (sessions.length === 0) {
-    return [{ start: event.startAt, end: event.endAt, name: null }];
+    return [{ id: null, start: event.startAt, end: event.endAt, name: null }];
   }
   return [...sessions]
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
-    .map((s) => ({ start: s.startAt, end: s.endAt, name: s.name ?? null }));
+    .map((s) => ({ id: s.id ?? null, start: s.startAt, end: s.endAt, name: s.name ?? null }));
 }
 
 /**
@@ -94,10 +108,16 @@ export function normalizeSessionInputs(raw: SessionInput[]): SessionValidation {
       continue;
     }
 
-    sessions.push({ startAt, endAt, name: name || null });
+    sessions.push({ id: entry.id ?? null, startAt, endAt, name: name || null });
   }
 
   if (errors.length > 0) return { ok: false, errors };
+
+  // 同じ日程を2回送ってきたら、片方が黙って消える(差分更新の削除扱いになる)ので弾く。
+  const ids = sessions.map((s) => s.id).filter((id): id is string => !!id);
+  if (new Set(ids).size !== ids.length) {
+    return { ok: false, errors: ["同じ開催日程が重複して指定されています。"] };
+  }
 
   sessions.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
 
@@ -157,8 +177,19 @@ export function parseSessionRequest(
       errors.push(`${label}の名前の指定が不正です。`);
       continue;
     }
+    // id は「既存のどの日程を更新するか」だけに使う。**それがこのイベントの日程かどうかは
+    // ここでは分からない**ので、呼び出し側(更新API)が必ず eventId で突き合わせる。
+    if (row.id != null && typeof row.id !== "string") {
+      errors.push(`${label}の指定が不正です。`);
+      continue;
+    }
 
-    value.push({ startAt, endAt, name: typeof row.name === "string" ? row.name : null });
+    value.push({
+      id: typeof row.id === "string" && row.id ? row.id : null,
+      startAt,
+      endAt,
+      name: typeof row.name === "string" ? row.name : null,
+    });
   }
 
   if (errors.length > 0) return { ok: false, errors };

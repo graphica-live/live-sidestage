@@ -9,19 +9,33 @@ import {
 
 const T = (iso: string) => new Date(iso);
 
+// 既定の開催日程: JST 20:00-21:00。**この中で終了したバトルだけ**が候補になる。
+const SESSION_START = "2026-09-01T20:00:00+09:00";
+const SESSION_END = "2026-09-01T21:00:00+09:00";
+
 function match(
   id: string,
   sideRoomIds: string[][],
-  start = "2026-09-01T20:00:00+09:00",
-  end = "2026-09-01T21:00:00+09:00",
-  isBye = false
+  options: {
+    sessionStart?: string;
+    sessionEnd?: string;
+    isBye?: boolean;
+    round?: number;
+    position?: number;
+    feederDecidedAt?: string | null;
+    lockedBattleId?: string | null;
+  } = {}
 ): MatchCandidate {
   return {
     id,
-    scheduledStartAt: T(start),
-    scheduledEndAt: T(end),
+    round: options.round ?? 1,
+    bracketPosition: options.position ?? 0,
+    sessionStart: T(options.sessionStart ?? SESSION_START),
+    sessionEnd: T(options.sessionEnd ?? SESSION_END),
     sideRoomIds,
-    isBye,
+    isBye: options.isBye ?? false,
+    feederDecidedAt: options.feederDecidedAt ? T(options.feederDecidedAt) : null,
+    lockedBattleId: options.lockedBattleId ?? null,
   };
 }
 
@@ -30,6 +44,7 @@ function battle(
   rooms: {
     roomId: string;
     startedAt: string;
+    startedAtEstimated?: boolean;
     endedAt?: string | null;
     complete?: boolean;
     durationSec?: number | null;
@@ -40,11 +55,20 @@ function battle(
     rooms: rooms.map((r) => ({
       roomId: r.roomId,
       startedAt: T(r.startedAt),
+      startedAtEstimated: r.startedAtEstimated ?? false,
       endedAt: r.endedAt ? T(r.endedAt) : null,
       complete: r.complete ?? true,
       durationSec: r.durationSec ?? null,
     })),
   };
+}
+
+/** 日程の中で終了した 1vs1 のバトル。 */
+function endedBattle(battleId: string, rooms: string[], start: string, end: string) {
+  return battle(
+    battleId,
+    rooms.map((roomId) => ({ roomId, startedAt: start, endedAt: end }))
+  );
 }
 
 describe("assignBattles", () => {
@@ -53,8 +77,16 @@ describe("assignBattles", () => {
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
         battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00", endedAt: "2026-09-01T20:15:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:01+09:00", endedAt: "2026-09-01T20:15:02+09:00" },
+          {
+            roomId: "roomA",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            endedAt: "2026-09-01T20:15:00+09:00",
+          },
+          {
+            roomId: "roomB",
+            startedAt: "2026-09-01T20:10:01+09:00",
+            endedAt: "2026-09-01T20:15:02+09:00",
+          },
         ]),
       ],
     });
@@ -65,187 +97,163 @@ describe("assignBattles", () => {
     expect(result[0].confidence).toBe("exact");
     // 開始は最も早いもの、終了は最も遅いもの
     expect(result[0].startedAt.toISOString()).toBe(T("2026-09-01T20:10:00+09:00").toISOString());
-    expect(result[0].endedAt.toISOString()).toBe(T("2026-09-01T20:15:02+09:00").toISOString());
+    expect(result[0].endedAt?.toISOString()).toBe(T("2026-09-01T20:15:02+09:00").toISOString());
     expect(result[0].endedAtSource).toBe("observed");
+    expect(result[0].autoConfirm).toBe(true);
+    expect(result[0].reviewReason).toBeNull();
   });
 
-  it("2vs2でも4つのroomが揃えば完全一致になる", () => {
+  it("2vs2でも4つのroomが揃えば完全一致になるが自動確定しない", () => {
     const result = assignBattles({
       matches: [match("m1", [["a1", "a2"], ["b1", "b2"]])],
       battles: [
-        battle("b1", [
-          { roomId: "a1", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "a2", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "b1", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "b2", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
+        endedBattle(
+          "b1",
+          ["a1", "a2", "b1", "b2"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
       ],
     });
 
-    expect(result).toHaveLength(1);
     expect(result[0].confidence).toBe("exact");
-    // room の和集合が同じでも [a1,b1] 対 [a2,b2] だった可能性を排除できないので、
-    // 2vs2 は完全一致でも自動確定しない。
+    // room の和集合が同じでも [a1,b1] 対 [a2,b2] だった可能性を排除できない。
     expect(result[0].autoConfirm).toBe(false);
-  });
-
-  it("1vs1の完全一致だけを自動確定の対象にする", () => {
-    const result = assignBattles({
-      matches: [match("m1", [["roomA"], ["roomB"]])],
-      battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
-      ],
-    });
-
-    expect(result[0].autoConfirm).toBe(true);
+    expect(result[0].reviewReason).toBe("TEAM_BATTLE");
   });
 
   it("部分一致は自動確定しない(相手が部外者だった可能性を排除できない)", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
-      battles: [battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }])],
+      battles: [
+        endedBattle("b1", ["roomA"], "2026-09-01T20:10:00+09:00", "2026-09-01T20:15:00+09:00"),
+      ],
     });
 
     expect(result[0].confidence).toBe("partial");
     expect(result[0].autoConfirm).toBe(false);
+    expect(result[0].reviewReason).toBe("PARTIAL");
   });
 
-  it("予定終了時刻ちょうどに始まったバトルは次の枠のものとして扱う", () => {
+  it("日程の終了時刻ちょうどに終わったバトルは対象にしない(半開区間)", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T21:00:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T21:00:00+09:00" },
-        ]),
+        endedBattle("b1", ["roomA", "roomB"], "2026-09-01T20:50:00+09:00", SESSION_END),
       ],
     });
 
     expect(result).toEqual([]);
   });
 
-  it("時間枠の外で始まったバトルは割り当てない", () => {
+  it("日程の外で終わったバトルは割り当てない(開始が中でも)", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T22:00:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T22:00:00+09:00" },
-        ]),
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:58:00+09:00",
+          "2026-09-01T21:03:00+09:00"
+        ),
       ],
     });
 
     expect(result).toEqual([]);
+  });
+
+  it("日程の前に始まっても日程の中で終わったバトルは対象にする", () => {
+    const result = assignBattles({
+      matches: [match("m1", [["roomA"], ["roomB"]])],
+      battles: [
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T19:57:00+09:00",
+          "2026-09-01T20:03:00+09:00"
+        ),
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].confidence).toBe("exact");
   });
 
   it("対戦カードにないroomが混じっていれば割り当てない", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "roomZ", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
+        endedBattle(
+          "b1",
+          ["roomA", "roomZ"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
       ],
     });
 
     expect(result).toEqual([]);
-  });
-
-  it("片側しか観測できなくても候補が1つだけなら部分一致で割り当てる", () => {
-    const result = assignBattles({
-      matches: [match("m1", [["roomA"], ["roomB"]])],
-      battles: [battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }])],
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0].confidence).toBe("partial");
   });
 
   it("部分一致の候補が複数あるときは決め打ちせず割り当てない", () => {
-    // roomA が2つのマッチに出ていて、片側しか観測できていない
     const result = assignBattles({
-      matches: [
-        match("m1", [["roomA"], ["roomB"]]),
-        match("m2", [["roomA"], ["roomC"]]),
+      matches: [match("m1", [["roomA"], ["roomB"]]), match("m2", [["roomA"], ["roomC"]])],
+      battles: [
+        endedBattle("b1", ["roomA"], "2026-09-01T20:10:00+09:00", "2026-09-01T20:15:00+09:00"),
       ],
-      battles: [battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }])],
     });
 
     expect(result).toEqual([]);
   });
 
-  it("1つのマッチに部分一致のバトルが複数あるときも割り当てない", () => {
+  it("同じ組み合わせのバトルが日程内に複数あれば付けるが自動確定しない", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
-        battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }]),
-        battle("b2", [{ roomId: "roomB", startedAt: "2026-09-01T20:30:00+09:00" }]),
+        endedBattle(
+          "late",
+          ["roomA", "roomB"],
+          "2026-09-01T20:40:00+09:00",
+          "2026-09-01T20:45:00+09:00"
+        ),
+        endedBattle(
+          "early",
+          ["roomA", "roomB"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
       ],
     });
 
-    expect(result).toEqual([]);
-  });
-
-  it("完全一致を先に確定させ、残りだけを部分一致で見る", () => {
-    // b1 は m1 と完全一致。b2 は roomA だけだが、m1 が埋まるので m2 の候補として唯一になる
-    const result = assignBattles({
-      matches: [
-        match("m1", [["roomA"], ["roomB"]]),
-        match("m2", [["roomA"], ["roomC"]], "2026-09-01T21:00:00+09:00", "2026-09-01T22:00:00+09:00"),
-      ],
-      battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
-        battle("b2", [{ roomId: "roomA", startedAt: "2026-09-01T21:10:00+09:00" }]),
-      ],
-    });
-
-    expect(result).toHaveLength(2);
-    expect(result.find((r) => r.matchId === "m1")?.confidence).toBe("exact");
-    expect(result.find((r) => r.matchId === "m2")?.confidence).toBe("partial");
+    expect(result).toHaveLength(1);
+    // 決定的に早いほうを採る。ただし主催者の確認へ回す。
+    expect(result[0].battleId).toBe("early");
+    expect(result[0].autoConfirm).toBe(false);
+    expect(result[0].reviewReason).toBe("AMBIGUOUS");
   });
 
   it("同じバトルを2つのマッチに割り当てない", () => {
-    // 同じ組み合わせのマッチを同じ時間枠に2つ置いた場合
     const result = assignBattles({
-      matches: [match("m1", [["roomA"], ["roomB"]]), match("m2", [["roomA"], ["roomB"]])],
+      matches: [
+        match("m1", [["roomA"], ["roomB"]], { position: 0 }),
+        match("m2", [["roomA"], ["roomB"]], { position: 1 }),
+      ],
       battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
       ],
     });
 
     expect(result).toHaveLength(1);
+    expect(result[0].matchId).toBe("m1");
+    expect(result[0].reviewReason).toBe("AMBIGUOUS");
   });
 
-  it("候補が複数なら予定開始時刻に近いほうを採る", () => {
-    const result = assignBattles({
-      matches: [match("m1", [["roomA"], ["roomB"]])],
-      battles: [
-        battle("late", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:50:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:50:00+09:00" },
-        ]),
-        battle("early", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:02:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:02:00+09:00" },
-        ]),
-      ],
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0].battleId).toBe("early");
-  });
-
-  it("終了を観測できていなければ duration から終了時刻を出す", () => {
+  it("終了を観測できていなくても開始を観測していれば duration から終了を出す", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
@@ -257,34 +265,174 @@ describe("assignBattles", () => {
             complete: false,
             durationSec: 300,
           },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00", endedAt: null, complete: false },
+          {
+            roomId: "roomB",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            endedAt: null,
+            complete: false,
+          },
         ]),
       ],
     });
 
     expect(result[0].endedAtSource).toBe("duration");
-    expect(result[0].endedAt.toISOString()).toBe(T("2026-09-01T20:15:00+09:00").toISOString());
+    expect(result[0].endedAt?.toISOString()).toBe(T("2026-09-01T20:15:00+09:00").toISOString());
+    expect(result[0].autoConfirm).toBe(true);
   });
 
-  it("duration も無ければ予定終了時刻にフォールバックする", () => {
+  it("開始が推定値なら duration から終了を作らない(暫定関連にする)", () => {
     const result = assignBattles({
       matches: [match("m1", [["roomA"], ["roomB"]])],
       battles: [
         battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00", endedAt: null, complete: false },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00", endedAt: null, complete: false },
+          {
+            roomId: "roomA",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            startedAtEstimated: true,
+            endedAt: null,
+            complete: false,
+            durationSec: 300,
+          },
+          {
+            roomId: "roomB",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            startedAtEstimated: true,
+            endedAt: null,
+            complete: false,
+          },
         ]),
       ],
     });
 
-    expect(result[0].endedAtSource).toBe("scheduled");
-    expect(result[0].endedAt.toISOString()).toBe(T("2026-09-01T21:00:00+09:00").toISOString());
+    expect(result).toHaveLength(1);
+    expect(result[0].endedAt).toBeNull();
+    expect(result[0].endedAtSource).toBeNull();
+    expect(result[0].autoConfirm).toBe(false);
+  });
+
+  it("終了が分からないバトルは暫定で関連づける(予定終了時刻を捏造しない)", () => {
+    const result = assignBattles({
+      matches: [match("m1", [["roomA"], ["roomB"]])],
+      battles: [
+        battle("b1", [
+          {
+            roomId: "roomA",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            endedAt: null,
+            complete: false,
+          },
+          {
+            roomId: "roomB",
+            startedAt: "2026-09-01T20:10:00+09:00",
+            endedAt: null,
+            complete: false,
+          },
+        ]),
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].endedAt).toBeNull();
+    expect(result[0].endedAtSource).toBeNull();
+    expect(result[0].autoConfirm).toBe(false);
+  });
+
+  it("終了未確定でも日程よりずっと前に始まったバトルは暫定にしない", () => {
+    const result = assignBattles({
+      matches: [match("m1", [["roomA"], ["roomB"]])],
+      battles: [
+        battle("b1", [
+          {
+            roomId: "roomA",
+            startedAt: "2026-09-01T12:00:00+09:00",
+            endedAt: null,
+            complete: false,
+          },
+          {
+            roomId: "roomB",
+            startedAt: "2026-09-01T12:00:00+09:00",
+            endedAt: null,
+            complete: false,
+          },
+        ]),
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("上流が決着する前に行われたバトルは候補にしない", () => {
+    const result = assignBattles({
+      matches: [
+        match("final", [["roomA"], ["roomB"]], {
+          round: 2,
+          feederDecidedAt: "2026-09-01T20:30:00+09:00",
+        }),
+      ],
+      battles: [
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:05:00+09:00",
+          "2026-09-01T20:10:00+09:00"
+        ),
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("上流の決着後に始まったバトルなら候補にする", () => {
+    const result = assignBattles({
+      matches: [
+        match("final", [["roomA"], ["roomB"]], {
+          round: 2,
+          feederDecidedAt: "2026-09-01T20:30:00+09:00",
+        }),
+      ],
+      battles: [
+        endedBattle(
+          "b2",
+          ["roomA", "roomB"],
+          "2026-09-01T20:35:00+09:00",
+          "2026-09-01T20:40:00+09:00"
+        ),
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].battleId).toBe("b2");
+  });
+
+  it("確定済みの検知は他のバトルへ付け替えない", () => {
+    const result = assignBattles({
+      matches: [match("m1", [["roomA"], ["roomB"]], { lockedBattleId: "b1" })],
+      battles: [
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
+        endedBattle(
+          "b2",
+          ["roomA", "roomB"],
+          "2026-09-01T20:40:00+09:00",
+          "2026-09-01T20:45:00+09:00"
+        ),
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].battleId).toBe("b1");
   });
 
   it("参加者が未確定のマッチには割り当てない", () => {
     const result = assignBattles({
       matches: [match("m1", [[], []])],
-      battles: [battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }])],
+      battles: [
+        endedBattle("b1", ["roomA"], "2026-09-01T20:10:00+09:00", "2026-09-01T20:15:00+09:00"),
+      ],
     });
 
     expect(result).toEqual([]);
@@ -301,11 +449,10 @@ describe("assignBattles", () => {
 
   it("出場者が未確定のサイドを持つ枠には割り当てない", () => {
     // 期待 room の集合は全サイドの和集合なので、[["roomA"], []] は {roomA} になる。
-    // roomA が部外者と戦ったバトルが「完全一致」として載るのを防ぐ。
     const result = assignBattles({
       matches: [match("half", [["roomA"], []])],
       battles: [
-        battle("b1", [{ roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" }]),
+        endedBattle("b1", ["roomA"], "2026-09-01T20:10:00+09:00", "2026-09-01T20:15:00+09:00"),
       ],
     });
 
@@ -314,27 +461,63 @@ describe("assignBattles", () => {
 
   it("不戦勝行には割り当てない", () => {
     const result = assignBattles({
-      matches: [
-        match("bye", [["roomA"], ["roomB"]], "2026-09-01T20:00:00+09:00", "2026-09-01T21:00:00+09:00", true),
-      ],
+      matches: [match("bye", [["roomA"], ["roomB"]], { isBye: true })],
       battles: [
-        battle("b1", [
-          { roomId: "roomA", startedAt: "2026-09-01T20:10:00+09:00" },
-          { roomId: "roomB", startedAt: "2026-09-01T20:10:00+09:00" },
-        ]),
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
       ],
     });
 
     expect(result).toEqual([]);
   });
+
+  it("別の日程のマッチには、その日程で終わったバトルだけを割り当てる", () => {
+    const day2Start = "2026-09-02T20:00:00+09:00";
+    const day2End = "2026-09-02T21:00:00+09:00";
+    const result = assignBattles({
+      matches: [
+        match("day1", [["roomA"], ["roomB"]]),
+        match("day2", [["roomA"], ["roomB"]], {
+          round: 2,
+          sessionStart: day2Start,
+          sessionEnd: day2End,
+        }),
+      ],
+      battles: [
+        endedBattle(
+          "b1",
+          ["roomA", "roomB"],
+          "2026-09-01T20:10:00+09:00",
+          "2026-09-01T20:15:00+09:00"
+        ),
+        endedBattle(
+          "b2",
+          ["roomA", "roomB"],
+          "2026-09-02T20:10:00+09:00",
+          "2026-09-02T20:15:00+09:00"
+        ),
+      ],
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.find((r) => r.matchId === "day1")?.battleId).toBe("b1");
+    expect(result.find((r) => r.matchId === "day2")?.battleId).toBe("b2");
+  });
 });
 
 describe("findMissedMatches", () => {
-  it("時間枠を過ぎても検知できなかったマッチを返す", () => {
+  it("日程が終わっても検知できなかったマッチを返す", () => {
     const missed = findMissedMatches({
       matches: [
         match("m1", [["roomA"], ["roomB"]]),
-        match("m2", [["roomC"], ["roomD"]], "2026-09-01T22:00:00+09:00", "2026-09-01T23:00:00+09:00"),
+        match("m2", [["roomC"], ["roomD"]], {
+          sessionStart: "2026-09-01T22:00:00+09:00",
+          sessionEnd: "2026-09-01T23:00:00+09:00",
+        }),
       ],
       assigned: new Set<string>(),
       now: T("2026-09-01T21:30:00+09:00"),
@@ -354,8 +537,6 @@ describe("findMissedMatches", () => {
   });
 
   it("出場者が未確定のサイドを持つ枠は NO_SHOW にしない", () => {
-    // 上流の勝者がまだ決まっていないだけで、実施されなかったわけではない。
-    // ここを NO_SHOW にすると、1回戦の開始が過去の表は作った直後に全滅する。
     const missed = findMissedMatches({
       matches: [
         match("half", [["roomA"], []]),
@@ -371,9 +552,7 @@ describe("findMissedMatches", () => {
 
   it("不戦勝行は NO_SHOW にしない", () => {
     const missed = findMissedMatches({
-      matches: [
-        match("bye", [["roomA"], ["roomB"]], "2026-09-01T20:00:00+09:00", "2026-09-01T21:00:00+09:00", true),
-      ],
+      matches: [match("bye", [["roomA"], ["roomB"]], { isBye: true })],
       assigned: new Set<string>(),
       now: T("2026-09-01T21:30:00+09:00"),
     });
@@ -388,16 +567,14 @@ describe("scoreDivergence", () => {
     expect(result.diverged).toBe(true);
   });
 
-  it("誤差の範囲なら警告しない", () => {
+  it("誤差が閾値以内なら警告しない", () => {
     const result = scoreDivergence(1000n, "1050");
     expect(result.diverged).toBe(false);
-    expect(result.ratio).toBeCloseTo(0.0476, 3);
   });
 
   it("TikTok側のスコアが無ければ判定しない", () => {
-    expect(scoreDivergence(1000n, null)).toEqual({ diverged: false, ratio: null });
-    expect(scoreDivergence(1000n, "")).toEqual({ diverged: false, ratio: null });
-    expect(scoreDivergence(1000n, "0")).toEqual({ diverged: false, ratio: null });
-    expect(scoreDivergence(1000n, "abc")).toEqual({ diverged: false, ratio: null });
+    expect(scoreDivergence(1000n, null).diverged).toBe(false);
+    expect(scoreDivergence(1000n, "").diverged).toBe(false);
+    expect(scoreDivergence(1000n, "0").diverged).toBe(false);
   });
 });

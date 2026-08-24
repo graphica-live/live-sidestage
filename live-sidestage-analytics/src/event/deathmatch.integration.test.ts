@@ -4,7 +4,7 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { aggregateEvent } from "./aggregate";
-import { assertMatchWindow, createSingleMatch, SingleMatchError } from "./single-match";
+import { assertEventSession, createSingleMatch, SingleMatchError } from "./single-match";
 
 const PREFIX = "itest_dm";
 const NOW = Date.now();
@@ -75,11 +75,28 @@ async function newDeathmatch(rules?: Record<string, number>, entryMode: "SOLO" |
       startAt: START,
       endAt: END,
       rules: rules ? { deathmatch: rules } : {},
+      // 対戦は開催日程へ割り当てる。旧テストが時間枠で分けていた2つの対戦を、
+      // 2つの日程(SLOT1 / SLOT2 の各1時間)で分ける。
+      sessions: {
+        create: [
+          { name: "1日目", startAt: SLOT1, endAt: new Date(SLOT1.getTime() + 3_600_000) },
+          { name: "2日目", startAt: SLOT2, endAt: new Date(SLOT2.getTime() + 3_600_000) },
+        ],
+      },
     },
     select: { id: true },
   });
   createdEventIds.push(event.id);
   return event;
+}
+
+/** その時刻を含む開催日程の id。対戦はこの日程へ割り当てる。 */
+async function sessionAt(eventId: string, when: Date): Promise<string> {
+  const session = await prisma.eventSession.findFirstOrThrow({
+    where: { eventId, startAt: { lte: when }, endAt: { gt: when } },
+    select: { id: true },
+  });
+  return session.id;
 }
 
 async function newTeam(eventId: string, name: string) {
@@ -112,8 +129,7 @@ async function playMatch(params: {
     eventId: params.eventId,
     sideA: { participantIds: [params.a.id] },
     sideB: { participantIds: [params.b.id] },
-    scheduledStartAt: params.slot,
-    scheduledEndAt: new Date(params.slot.getTime() + 60 * 60_000),
+    sessionId: await sessionAt(params.eventId, params.slot),
   });
 
   const battleId = `${PREFIX}_b_${uniqueSuffix()}`;
@@ -207,8 +223,7 @@ describe("デスマッチのライフ", () => {
         eventId: event.id,
         sideA: { participantIds: [a.id] },
         sideB: { participantIds: [b.id] },
-        scheduledStartAt: SLOT2,
-        scheduledEndAt: new Date(SLOT2.getTime() + 3_600_000),
+        sessionId: await sessionAt(event.id, SLOT2),
       })
     ).rejects.toMatchObject({ code: "ELIMINATED" });
   });
@@ -342,7 +357,9 @@ describe("デスマッチのライフ", () => {
 });
 
 describe("createSingleMatch", () => {
-  it("同じ出場者の時間枠が重なる対戦は組めない", async () => {
+  it("同じ日程に同じ出場者の対戦を複数組める", async () => {
+    // 対戦に個別の時間枠が無くなったので、同じ日程で同じ人が何度も戦うのが常態。
+    // 曖昧な検知は assignBattles が自動確定を諦めることで受け止める。
     const event = await newDeathmatch();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -352,41 +369,37 @@ describe("createSingleMatch", () => {
       eventId: event.id,
       sideA: { participantIds: [a.id] },
       sideB: { participantIds: [b.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
-    });
-
-    await expect(
-      createSingleMatch({
-        eventId: event.id,
-        sideA: { participantIds: [a.id] },
-        sideB: { participantIds: [c.id] },
-        scheduledStartAt: new Date(SLOT1.getTime() + 30 * 60_000),
-        scheduledEndAt: new Date(SLOT1.getTime() + 90 * 60_000),
-      })
-    ).rejects.toMatchObject({ code: "OVERLAPPING" });
-  });
-
-  it("枠が重ならなければ同じ出場者でも組める", async () => {
-    const event = await newDeathmatch();
-    const a = await newParticipant(event.id, "a");
-    const b = await newParticipant(event.id, "b");
-    const c = await newParticipant(event.id, "c");
-
-    await createSingleMatch({
-      eventId: event.id,
-      sideA: { participantIds: [a.id] },
-      sideB: { participantIds: [b.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+      sessionId: await sessionAt(event.id, SLOT1),
     });
 
     const second = await createSingleMatch({
       eventId: event.id,
       sideA: { participantIds: [a.id] },
       sideB: { participantIds: [c.id] },
-      scheduledStartAt: SLOT2,
-      scheduledEndAt: new Date(SLOT2.getTime() + 3_600_000),
+      sessionId: await sessionAt(event.id, SLOT1),
+    });
+
+    expect(second.matchId).toBeTruthy();
+  });
+
+  it("別の日程にも同じ出場者で組める", async () => {
+    const event = await newDeathmatch();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    await createSingleMatch({
+      eventId: event.id,
+      sideA: { participantIds: [a.id] },
+      sideB: { participantIds: [b.id] },
+      sessionId: await sessionAt(event.id, SLOT1),
+    });
+
+    const second = await createSingleMatch({
+      eventId: event.id,
+      sideA: { participantIds: [a.id] },
+      sideB: { participantIds: [c.id] },
+      sessionId: await sessionAt(event.id, SLOT2),
     });
 
     expect(second.matchId).toBeTruthy();
@@ -401,14 +414,14 @@ describe("createSingleMatch", () => {
         eventId: event.id,
         sideA: { participantIds: [a.id] },
         sideB: { participantIds: [a.id] },
-        scheduledStartAt: SLOT1,
-        scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+        sessionId: await sessionAt(event.id, SLOT1),
       })
     ).rejects.toBeInstanceOf(SingleMatchError);
   });
 
-  it("イベント期間の外には組めない", async () => {
+  it("他のイベントの日程には組めない", async () => {
     const event = await newDeathmatch();
+    const other = await newDeathmatch();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
 
@@ -417,10 +430,9 @@ describe("createSingleMatch", () => {
         eventId: event.id,
         sideA: { participantIds: [a.id] },
         sideB: { participantIds: [b.id] },
-        scheduledStartAt: new Date(END.getTime() + 3_600_000),
-        scheduledEndAt: new Date(END.getTime() + 7_200_000),
+        sessionId: await sessionAt(other.id, SLOT1),
       })
-    ).rejects.toMatchObject({ code: "OUT_OF_EVENT_WINDOW" });
+    ).rejects.toMatchObject({ code: "INVALID_SESSION" });
   });
 
   it("他のイベントの参加者は組めない", async () => {
@@ -434,8 +446,7 @@ describe("createSingleMatch", () => {
         eventId: event.id,
         sideA: { participantIds: [a.id] },
         sideB: { participantIds: [stranger.id] },
-        scheduledStartAt: SLOT1,
-        scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+        sessionId: await sessionAt(event.id, SLOT1),
       })
     ).rejects.toMatchObject({ code: "UNKNOWN_SUBJECT" });
   });
@@ -451,8 +462,7 @@ describe("createSingleMatch", () => {
       eventId: event.id,
       sideA: { participantIds: [a.id] },
       sideB: { participantIds: [b.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+      sessionId: await sessionAt(event.id, SLOT1),
     });
 
     const after = await prisma.event.findUnique({
@@ -477,8 +487,7 @@ describe("createSingleMatch（チーム戦）", () => {
       eventId: event.id,
       sideA: { teamId: teamA.id, participantIds: [a1.id] },
       sideB: { teamId: teamB.id, participantIds: [b1.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+      sessionId: await sessionAt(event.id, SLOT1),
     });
 
     const match = await prisma.eventMatch.findUnique({
@@ -512,8 +521,7 @@ describe("createSingleMatch（チーム戦）", () => {
       eventId: event.id,
       sideA: { teamId: teamA.id, participantIds: [a1.id, a2.id] },
       sideB: { teamId: teamB.id, participantIds: [b1.id, b2.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+      sessionId: await sessionAt(event.id, SLOT1),
     });
 
     const match = await prisma.eventMatch.findUnique({
@@ -536,8 +544,7 @@ describe("createSingleMatch（チーム戦）", () => {
         // b1 は teamB の所属。teamA のサイドには入れられない。
         sideA: { teamId: teamA.id, participantIds: [b1.id] },
         sideB: { teamId: teamB.id, participantIds: [a1.id] },
-        scheduledStartAt: SLOT1,
-        scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+        sessionId: await sessionAt(event.id, SLOT1),
       })
     ).rejects.toMatchObject({ code: "UNKNOWN_SUBJECT" });
   });
@@ -554,72 +561,29 @@ describe("createSingleMatch（チーム戦）", () => {
         eventId: event.id,
         sideA: { participantIds: [a1.id] },
         sideB: { teamId: teamB.id, participantIds: [b1.id] },
-        scheduledStartAt: SLOT1,
-        scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
+        sessionId: await sessionAt(event.id, SLOT1),
       })
     ).rejects.toMatchObject({ code: "INVALID_SIDES" });
   });
 });
 
-describe("assertMatchWindow", () => {
-  it("時間枠を動かすとき自分自身は重なり判定から外す", async () => {
+describe("assertEventSession", () => {
+  it("このイベントの日程なら通る", async () => {
     const event = await newDeathmatch();
-    const a = await newParticipant(event.id, "a");
-    const b = await newParticipant(event.id, "b");
+    const sessionId = await sessionAt(event.id, SLOT1);
 
-    const { matchId } = await createSingleMatch({
-      eventId: event.id,
-      sideA: { participantIds: [a.id] },
-      sideB: { participantIds: [b.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
-    });
-
-    // 自分自身と重なる位置へ動かしても通る。
     await expect(
-      prisma.$transaction((tx) =>
-        assertMatchWindow(tx, {
-          eventId: event.id,
-          start: new Date(SLOT1.getTime() + 30 * 60_000),
-          end: new Date(SLOT1.getTime() + 90 * 60_000),
-          excludeMatchId: matchId,
-        })
-      )
-    ).resolves.toBeUndefined();
+      prisma.$transaction((tx) => assertEventSession(tx, event.id, sessionId))
+    ).resolves.toMatchObject({ id: sessionId });
   });
 
-  it("他の対戦と重なる位置へは動かせない", async () => {
+  it("他のイベントの日程は拒否する", async () => {
     const event = await newDeathmatch();
-    const a = await newParticipant(event.id, "a");
-    const b = await newParticipant(event.id, "b");
-    const c = await newParticipant(event.id, "c");
-
-    const first = await createSingleMatch({
-      eventId: event.id,
-      sideA: { participantIds: [a.id] },
-      sideB: { participantIds: [b.id] },
-      scheduledStartAt: SLOT1,
-      scheduledEndAt: new Date(SLOT1.getTime() + 3_600_000),
-    });
-    const second = await createSingleMatch({
-      eventId: event.id,
-      sideA: { participantIds: [a.id] },
-      sideB: { participantIds: [c.id] },
-      scheduledStartAt: SLOT2,
-      scheduledEndAt: new Date(SLOT2.getTime() + 3_600_000),
-    });
+    const other = await newDeathmatch();
+    const foreign = await sessionAt(other.id, SLOT1);
 
     await expect(
-      prisma.$transaction((tx) =>
-        assertMatchWindow(tx, {
-          eventId: event.id,
-          start: SLOT1,
-          end: new Date(SLOT1.getTime() + 3_600_000),
-          excludeMatchId: second.matchId,
-        })
-      )
-    ).rejects.toMatchObject({ code: "OVERLAPPING" });
-
-    expect(first.matchId).toBeTruthy();
+      prisma.$transaction((tx) => assertEventSession(tx, event.id, foreign))
+    ).rejects.toMatchObject({ code: "INVALID_SESSION" });
   });
 });
