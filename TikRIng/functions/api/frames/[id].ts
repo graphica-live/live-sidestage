@@ -134,30 +134,18 @@ async function incrementFrameGoodCount(context: EventContext<Env, string, unknow
     .run();
 }
 
-function scheduleExpiredFrameCleanup(context: EventContext<Env, string, unknown>, frame: ResolvedFrame) {
-  context.waitUntil(
-    (async () => {
-      try {
-        await context.env.FRAMES_BUCKET.delete(frame.imageKey);
-        if (frame.openingMaskKey) {
-          await context.env.FRAMES_BUCKET.delete(frame.openingMaskKey);
-        }
-        await context.env.FRAMES_BUCKET.delete(`previews/${frame.frameId}.png`);
-      } catch (err) {
-        console.error('Failed to delete R2 object for expired frame:', err);
-        return;
-      }
-      try {
-        await context.env.DB.prepare('DELETE FROM frame_wears WHERE frame_id = ?').bind(frame.frameId).run();
-        await context.env.DB.prepare('DELETE FROM frame_goods WHERE frame_id = ?').bind(frame.frameId).run();
-        await context.env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(frame.frameId).run();
-        await context.env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(frame.frameId).run();
-      } catch (err) {
-        console.error('Failed to delete DB rows for expired frame:', err);
-      }
-    })()
-  );
-}
+// 期限切れフレームの物理削除はここでは行わない。
+//
+// 以前は GET / POST から waitUntil() で R2 → D1 の順に削除していたが、次の2つの問題があった。
+//   1. R2 を先に消すうえ、FK を持つ frame_views / frame_view_events / frame_wear_events を
+//      消していなかったため、一度でも閲覧されたフレームは D1 の DELETE が FK 違反で失敗し、
+//      「画像だけ消えて DB 行が残る」状態になっていた（R2 の削除は不可逆）
+//   2. cleanup.ts が持つ top10 保護（ever_top10）が無く、保全対象のフレームでも
+//      期限切れ後に誰かが URL を開いた瞬間に画像が消えていた
+//
+// 読み取り API が破壊的削除を起こすべきではないので、実削除は日次 cleanup
+// （functions/api/admin/cleanup.ts、GitHub Actions の tikring-cleanup.yml が叩く）へ一本化した。
+// ここでは 410 を返すだけにする。
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   try {
@@ -173,7 +161,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
 
     if (frame.expiresAt !== null && Date.now() > frame.expiresAt) {
-      scheduleExpiredFrameCleanup(context, frame);
       return new Response('URL has expired', {
         status: 410,
         headers: {
@@ -312,7 +299,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     if (frame.expiresAt !== null && Date.now() > frame.expiresAt) {
-      scheduleExpiredFrameCleanup(context, frame);
       return json({ error: 'EXPIRED' }, 410);
     }
 

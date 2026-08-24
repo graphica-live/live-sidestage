@@ -314,31 +314,12 @@ export default {
     return applyCacheHeaders(request, maybeRewriteListenerHtml(request, response));
   },
 
-  async scheduled(event, env, ctx) {
-    const token = env.CLEANUP_TOKEN;
-    if (!token) return;
-
-    const nowMs = Date.now();
-    const rows = await env.DB.prepare(
-      'SELECT id, image_key FROM frames WHERE expires_at IS NOT NULL AND expires_at < ? ORDER BY expires_at ASC LIMIT 500'
-    )
-      .bind(nowMs)
-      .all();
-
-    const expired = rows.results ?? [];
-    for (const row of expired) {
-      try {
-        await env.FRAMES_BUCKET.delete(row.image_key);
-        await env.FRAMES_BUCKET.delete(`previews/${row.id}.png`);
-      } catch {
-        continue;
-      }
-      try {
-        await env.DB.prepare('DELETE FROM share_urls WHERE frame_id = ?').bind(row.id).run();
-        await env.DB.prepare('DELETE FROM frames WHERE id = ?').bind(row.id).run();
-      } catch {
-        // best-effort
-      }
-    }
-  },
+  // scheduled() ハンドラは持たない。
+  //
+  // 以前ここに3つ目の期限切れ削除実装があったが、
+  //   - wrangler.toml に [triggers] crons が無く、そもそも Pages は cron トリガ非対応
+  //     （日次 cleanup は GitHub Actions の tikring-cleanup.yml が HTTP で叩いている）
+  //   - top10 保護が無く、frame_wears / frame_goods / frame_views / *_events も消していない
+  //     （FK 違反で frames の DELETE が失敗し、R2 だけ消えて DB 行が残る）
+  // という状態だったので削除した。期限切れ削除は functions/api/admin/cleanup.ts に一本化してある。
 };
