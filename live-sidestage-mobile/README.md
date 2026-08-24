@@ -87,9 +87,15 @@ flutter build apk --release \
 
 ### 既存 Google ユーザーとの関係
 
-Apple 側で「メールを共有」を選び、そのメールが **Google でログイン済みのアカウントと一致する場合だけ**
-既存アカウントに Apple が追加される。「メールを非公開」を選ぶと Apple が渡してくるのは転送用の
-別アドレスなので、**別アカウントとして新規作成される**（同じ人でも配信設定は引き継がれない）。
+**Google と Apple は常に別アカウントになる。** メールが同じでも統合しない。
+
+同じ人が両方でログインすると、配信設定・TikTok ID・apiKey はそれぞれ独立する。
+Apple で入り直した場合は TikTok ID の登録からやり直しになる（同じ TikTok ID を入れれば
+ギフトデータ自体は同じものを見る。接続は `TiktokRoom` 単位で共有されるため）。
+
+意図せず片方の設定へ吸着させないための方針。詳細と、この分離がどこまで保証されるかは
+[live-sidestage-analytics/src/lib/apple-account.ts](../live-sidestage-analytics/src/lib/apple-account.ts) の
+冒頭コメントにある。
 
 Flutter開発が初めての場合は以下を参照:
 

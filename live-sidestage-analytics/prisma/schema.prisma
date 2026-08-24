@@ -53,6 +53,18 @@ model Account {
   id_token          String? @db.Text
   session_state     String?
 
+  // プロバイダが申告したメール。**表示・運用のためだけに持つ**。
+  //
+  // アカウントのリンク判定に使ってはいけない(それは User.email の役割)。
+  // Apple 経由の User は「Google と統合されない」ために User.email を持たないので、
+  // 画面に出すメールはここから取る。詳細は src/lib/apple-account.ts
+  //
+  // 列名を email にしないのは、PrismaAdapter が渡された data を絞らず
+  // account.create({ data }) へ素通しするため。将来プロバイダが email を含む
+  // account オブジェクトを返したときに、意図せずここへ書かれるのを避ける。
+  // unique も付けない(付けると同じメールで別プロバイダにログインできなくなる)。
+  providerEmail     String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_config_store.dart';
 import '../../core/session_controller.dart';
+import '../../models/auth_session.dart';
 import '../home_screen.dart' show SpeechState;
 
 class SettingsTab extends StatelessWidget {
@@ -64,7 +65,11 @@ class SettingsTab extends StatelessWidget {
         if (session != null && session.userEmail.isNotEmpty)
           ListTile(
             leading: const Icon(Icons.account_circle_outlined),
-            title: const Text('Googleアカウント'),
+            // どちらでログインしたかは session が持っている。決め打ちにすると
+            // Apple で入っている人に嘘を表示することになる。
+            title: Text(
+              session.provider == AuthProvider.apple ? 'Appleアカウント' : 'Googleアカウント',
+            ),
             subtitle: Text(session.userEmail),
           ),
         ListTile(
