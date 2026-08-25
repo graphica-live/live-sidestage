@@ -291,11 +291,16 @@ function MatchCardOrEmpty({
       ? match.sides.find((s) => s.id === match.winnerSideId)
       : undefined;
 
+  // バトルの開始を検知した枠。公開ページの表と同じ赤い発光にする(.live-glow は globals.css)。
+  const isLive = match.status === "LIVE";
+
   return (
     <button
       type="button"
       onClick={() => onSelect(match.id)}
-      className={`card flex ${CARD_H} w-full flex-col justify-between overflow-hidden p-2 text-left transition hover:border-brand/40`}
+      className={`card flex ${CARD_H} w-full flex-col justify-between overflow-hidden p-2 text-left transition ${
+        isLive ? "live-glow border-red-500/70 hover:border-red-400" : "hover:border-brand/40"
+      }`}
     >
       <div
         className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${

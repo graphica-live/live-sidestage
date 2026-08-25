@@ -54,4 +54,37 @@ body {
   .label {
     @apply block text-xs font-medium text-gray-400 mb-1.5;
   }
+
+  /* バトル中(EventMatch.status = "LIVE")の対戦カード。管理画面(トーナメント表・対戦一覧)と
+     公開ページのトーナメント表で同じ見え方にする。
+
+     光らせるのに box-shadow ではなく filter: drop-shadow を使うのは、公開側のカードが
+     clip-path で角を切り落としているから(clip-path は box-shadow ごと切り落とすが、
+     drop-shadow は切り落とされた形に沿って影を落とす)。同じ要素に filter と clip-path を
+     書くと filter が先に適用されてやはり切られるので、公開側は clip-path を持たない
+     ラッパへ当てる。
+
+     動かすのは影だけ。カード自体に animate-pulse を当てると中の文字まで点滅して読めなくなる。
+     影はレイアウトに効かないので、トーナメント表の幾何(カード高さが全部同じであること)も
+     壊さない。 */
+  .live-glow {
+    animation: live-glow-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes live-glow-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.55));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.95));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-glow {
+    animation: none;
+    filter: drop-shadow(0 0 7px rgba(239, 68, 68, 0.8));
+  }
 }
