@@ -52,16 +52,36 @@ const JST_PARTS_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  second: "2-digit",
   hour12: false,
 });
 
-/** JST の年月日時分を2桁ゼロ埋めで取り出す。ロケール依存の区切り文字を持ち込まない。 */
+/** JST の年月日時分秒を2桁ゼロ埋めで取り出す。ロケール依存の区切り文字を持ち込まない。 */
 function jstParts(date: Date) {
   const parts = JST_PARTS_FORMATTER.formatToParts(date);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   // en-CA の hour は 24 時を "24" で返すことがある(hour12: false の既知の挙動)。
   const hour = get("hour") === "24" ? "00" : get("hour");
-  return { year: get("year"), month: get("month"), day: get("day"), hour, minute: get("minute") };
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour,
+    minute: get("minute"),
+    second: get("second"),
+  };
+}
+
+/**
+ * 秒まで出す JST 表示("2026/08/25 23:41:38")。
+ *
+ * クライアントコンポーネントで `toLocaleString()` を使うと、サーバー(Railway は UTC)と
+ * ブラウザ(JST)で違う文字列になり React のハイドレーションが不一致になる。
+ * 表示時刻はタイムゾーンを固定してこの関数を通すこと。
+ */
+export function formatJstStamp(date: Date): string {
+  const p = jstParts(date);
+  return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}:${p.second}`;
 }
 
 // <input type="datetime-local"> の初期値用に JST の "YYYY-MM-DDTHH:mm" を作る。

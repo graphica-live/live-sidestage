@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatJstStamp } from "@/event/datetime";
 import { FORMAT_PENDING_NOTES, STANDING_HEADINGS } from "@/event/labels";
 import type {
   ContributionDto,
@@ -141,7 +142,9 @@ export function EventResults({
 
       {snapshot.lastAggregatedAt && (
         <p className="mt-3 text-xs text-gray-600">
-          最終集計: {new Date(snapshot.lastAggregatedAt).toLocaleString("ja-JP")}
+          {/* toLocaleString はサーバー(UTC)とブラウザ(JST)で結果が変わり、
+              SSR したこの行がハイドレーション不一致になる。JST 固定で出す。 */}
+          最終集計: {formatJstStamp(new Date(snapshot.lastAggregatedAt))}
           {status === "RUNNING" && "(10秒ごとに更新)"}
         </p>
       )}
