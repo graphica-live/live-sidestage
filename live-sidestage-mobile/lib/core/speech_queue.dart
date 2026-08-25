@@ -27,6 +27,13 @@ class SpeechQueueController extends ChangeNotifier {
   String? errorMessage;
   String? nowSpeakingCharacterName;
 
+  /// 読み上げ待ちが尽きてからクレジット表記を消すまでの猶予。
+  /// 再生完了と同時に消すと、コメントが途切れがちな配信では表記が一瞬で
+  /// 消えてしまい、VOICEVOX のクレジット表示として成立しない。
+  static const Duration _characterNameLinger = Duration(seconds: 5);
+
+  Timer? _clearCharacterNameTimer;
+
   // VoicePoolはinitialize()完了まで存在しないので、それまでの設定値をここに保持する。
   // 以前はpoolがnullのときsetterが何もせず、初期化前に設定した値が捨てられていた
   // (TTSを後からONにする遅延初期化でも同じ経路を通る)。
@@ -126,14 +133,32 @@ class SpeechQueueController extends ChangeNotifier {
         prefetched = null;
       }
 
-      nowSpeakingCharacterName = pool.characterNameForStyleId(styleId);
-      notifyListeners();
+      _setNowSpeakingCharacterName(pool.characterNameForStyleId(styleId));
       await _play(wav);
     }
 
-    nowSpeakingCharacterName = null;
-    notifyListeners();
+    _scheduleCharacterNameClear();
     _processing = false;
+  }
+
+  void _setNowSpeakingCharacterName(String? name) {
+    _clearCharacterNameTimer?.cancel();
+    _clearCharacterNameTimer = null;
+    nowSpeakingCharacterName = name;
+    notifyListeners();
+  }
+
+  /// 次に読むコメントが無くなったときだけ、猶予を置いてから表記を消す。
+  /// 猶予中に次のコメントが届けば [_setNowSpeakingCharacterName] が
+  /// タイマーを畳んで新しい名前へ差し替えるので、表記は途切れない。
+  void _scheduleCharacterNameClear() {
+    if (nowSpeakingCharacterName == null) return;
+    _clearCharacterNameTimer?.cancel();
+    _clearCharacterNameTimer = Timer(_characterNameLinger, () {
+      _clearCharacterNameTimer = null;
+      nowSpeakingCharacterName = null;
+      notifyListeners();
+    });
   }
 
   Future<void> _play(Uint8List wav) async {
@@ -168,6 +193,7 @@ class SpeechQueueController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _clearCharacterNameTimer?.cancel();
     _subscription?.cancel();
     _player.dispose();
     _engine.dispose();

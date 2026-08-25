@@ -9,6 +9,7 @@ import '../core/api_client.dart';
 import '../core/app_config_store.dart';
 import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
+import '../core/sound_file_cleanup.dart';
 import '../core/sound_library.dart';
 import '../core/sound_preview.dart';
 import '../models/app_config.dart';
@@ -16,6 +17,9 @@ import '../models/app_config.dart';
 /// 「ギフトを選んで、音を選ぶ」だけの編集画面。
 ///
 /// [giftSoundId] を渡すと編集、渡さないと新規作成。
+///
+/// [setId] は**画面を開いたときのセット**を指す。「現在選択中のセット」を都度読み直しては
+/// いけない — 編集中に選択が変わると、別のセットへ保存してしまう。
 ///
 /// ## 音源ファイルのライフサイクル
 ///
@@ -28,12 +32,15 @@ import '../models/app_config.dart';
 /// - 保存成功: 採用した1件を残し、それ以外（差し替え前の旧ファイル含む）を消す
 /// - 保存失敗: 作ったファイルを全部消す（設定は変わっていない）
 ///
-/// 旧ファイルの削除は**設定の永続化と背景 Isolate への反映が済んでから**行う。
-/// 反映前に消すと、背景がまだ古い設定を持っていて再生中・キュー保持中の
-/// ファイルを消すことになる。反映を確認できなければ消さず、次回起動時の
-/// 掃除（[SoundLibrary.pruneOrphans]）に委ねる。
+/// **設定に入ったファイルの削除は [deleteUnreferencedSoundFiles] に任せる。**
+/// セット複製で1つの実ファイルを複数の [GiftSound] が参照しうるので、この行から
+/// 外れただけでは消してよいと判断できない。まだ設定へ入っていない取り込みファイル
+/// （[_ownedFileNames]）だけは他から参照されようがないので直接消してよい。
 class GiftSoundEditScreen extends StatefulWidget {
-  const GiftSoundEditScreen({super.key, this.giftSoundId});
+  const GiftSoundEditScreen({super.key, required this.setId, this.giftSoundId});
+
+  /// 編集対象のセット。画面を開いた時点で固定する。
+  final String setId;
 
   final String? giftSoundId;
 
@@ -63,17 +70,14 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   void initState() {
     super.initState();
     final config = context.read<AppConfigStore>().sound;
+    // 対象セット内だけを探す。セットごと消えていれば「削除されています」を出す。
+    final set = config.sets.where((s) => s.id == widget.setId).firstOrNull;
     final existing = widget.giftSoundId == null
         ? null
-        : config.gifts.where((g) => g.id == widget.giftSoundId).firstOrNull;
+        : set?.gifts.where((g) => g.id == widget.giftSoundId).firstOrNull;
 
-    _exists = existing != null || widget.giftSoundId == null;
-    _draft = existing ??
-        GiftSound(
-          id: 'gs_${DateTime.now().microsecondsSinceEpoch}',
-          giftName: '',
-          fileName: '',
-        );
+    _exists = set != null && (existing != null || widget.giftSoundId == null);
+    _draft = existing ?? GiftSound(id: GiftSound.newId(), giftName: '', fileName: '');
     _originalFileName = existing?.fileName;
   }
 
@@ -163,6 +167,11 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   }
 
   Future<void> _importRemote(SoundSourceKind source) async {
+    // 検索画面でも試聴するので、この画面で鳴っている音は先に止める。
+    // 画面を重ねただけでは止まらない。
+    await _preview.stop();
+    if (!mounted) return;
+
     final picked = await Navigator.of(context).push<RemoteSound>(
       MaterialPageRoute(builder: (_) => _RemoteSearchScreen(library: _library, source: source)),
     );
@@ -245,14 +254,14 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
 
     final next = _draft;
     try {
-      await store.updateSound((c) {
-        final exists = c.gifts.any((g) => g.id == next.id);
-        return c.copyWith(
-          gifts: exists
-              ? [for (final g in c.gifts) g.id == next.id ? next : g]
-              : [...c.gifts, next],
-        );
-      });
+      // 画面を開いたときのセットへ書く。updateSet はセットが消えていれば投げるので、
+      // 別のセットへ紛れ込むことはない。
+      await store.updateSound((c) => c.updateSet(widget.setId, (gifts) {
+            final exists = gifts.any((g) => g.id == next.id);
+            return exists
+                ? [for (final g in gifts) g.id == next.id ? next : g]
+                : [...gifts, next];
+          }));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -265,14 +274,11 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     // 保存できたので、採用したファイルはもうこの画面の所有物ではない。
     _ownedFileNames.remove(next.fileName);
 
-    // 差し替えた旧ファイルは、背景 Isolate が新しい設定を読み終えてから消す。
+    // 差し替えた旧ファイルは、**他のセットから参照されていなければ**消す。
+    // セット複製で同じファイルを共有していることがあるので、単純に消してはいけない。
     final replaced = _originalFileName;
     if (replaced != null && replaced != next.fileName) {
-      final synced = await store.waitForSync();
-      if (synced) {
-        unawaited(_library.deleteFile(replaced));
-      }
-      // 同期を確認できなければ消さない。次回起動時の掃除で回収する。
+      unawaited(deleteUnreferencedSoundFiles(store, _library, [replaced]));
     }
     _originalFileName = next.fileName;
 
@@ -307,17 +313,19 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     final navigator = Navigator.of(context);
     final removedFileName = _draft.fileName;
 
-    await store.updateSound(
-      (c) => c.copyWith(gifts: c.gifts.where((g) => g.id != _draft.id).toList()),
-    );
+    try {
+      await store.updateSound(
+        (c) => c.updateSet(widget.setId, (gifts) => gifts.where((g) => g.id != _draft.id).toList()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '削除に失敗しました: $e');
+      return;
+    }
 
     // まず設定から参照を外し、背景 Isolate が反映し終えてから実ファイルを消す。
     // 逆順にすると、再生中のファイルを消してしまう可能性がある。
-    final synced = await store.waitForSync();
-    final stillReferenced = store.sound.gifts.any((g) => g.fileName == removedFileName);
-    if (synced && !stillReferenced) {
-      unawaited(_library.deleteFile(removedFileName));
-    }
+    await deleteUnreferencedSoundFiles(store, _library, [removedFileName]);
     _originalFileName = null;
 
     if (!mounted) return;
@@ -335,7 +343,8 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.giftSoundId == null ? '追加' : '編集'),
+        // 入口のボタン（サウンドタブの「音を追加」）と同じ名前にする。
+        title: Text(widget.giftSoundId == null ? '音を追加' : '編集'),
         actions: [
           if (widget.giftSoundId != null)
             IconButton(
@@ -856,14 +865,54 @@ class _RemoteSearchScreen extends StatefulWidget {
 class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   final TextEditingController _controller = TextEditingController();
 
+  /// 試聴はこの画面の中で完結させる。編集画面の [SoundPreview] とは別インスタンスで、
+  /// この画面を閉じたら止まる。`library` は編集画面の所有物なのでここでは dispose しない。
+  late final SoundPreview _preview = SoundPreview(library: widget.library);
+
   List<RemoteSound>? _results;
   bool _searching = false;
   String? _error;
 
+  /// 取得中の1件。行の index ではなく実体で持つ（検索し直すと index はずれる）。
+  RemoteSound? _preparing;
+
+  /// 試聴要求の世代。[SoundPreview] 側の世代は「古い音を鳴らさない」ためのもので、
+  /// この画面の表示は守らない。await から戻ったとき自分がまだ最新か判定する。
+  int _previewRequest = 0;
+
+  /// 検索と試聴は同時に走らせない。片方だけ止めても、
+  /// 「検索中に古い行の試聴を押す」で結果に無い音が鳴る。
+  bool get _busy => _searching || _preparing != null;
+
   @override
   void dispose() {
     _controller.dispose();
+    // 完了は待てない。停止要求は同期的に効くので、この後に鳴り始めることはない。
+    unawaited(_preview.dispose());
     super.dispose();
+  }
+
+  /// 検索結果を取り込まずに鳴らす。
+  ///
+  /// 取得している間は**全部の行の**再生ボタンを止める。連打を許すと、鳴らさずに捨てる
+  /// だけのダウンロードが端末の回線と配布元サイトへ積み上がる。
+  Future<void> _playPreview(RemoteSound sound) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final masterVolume = context.read<AppConfigStore>().sound.masterVolume;
+
+    final request = ++_previewRequest;
+    setState(() => _preparing = sound);
+
+    final error = await _preview.playRemote(
+      sound: sound,
+      source: widget.source,
+      masterVolume: masterVolume,
+    );
+
+    // 検索し直した / 別の音を押した後なら、この結果はもう表示先が無い。
+    if (!mounted || request != _previewRequest) return;
+    setState(() => _preparing = null);
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
   }
 
   /// 配布元サイトを外部ブラウザで開く。
@@ -887,11 +936,20 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   }
 
   Future<void> _search() async {
+    // 検索ボタンは押せない状態でも、キーボードの確定（onSubmitted）は飛んでくる。
+    // 走らせると新旧の結果が入れ替わりうる。
+    if (_busy) return;
     final query = _controller.text.trim();
     if (query.isEmpty) return;
+
+    // 結果が入れ替わると、試聴中の行はもう表示に残らない。
+    _previewRequest++;
+    unawaited(_preview.stop());
+
     setState(() {
       _searching = true;
       _error = null;
+      _preparing = null;
     });
     try {
       final results = widget.source == SoundSourceKind.soundEffectLab
@@ -906,6 +964,9 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
       if (!mounted) return;
       setState(() {
         _error = '$e';
+        // 直前の検索結果を残すと、エラー文と噛み合わない一覧が
+        // 新しいキーワードの結果に見えてしまう。
+        _results = null;
         _searching = false;
       });
     }
@@ -928,12 +989,19 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
                   child: TextField(
                     controller: _controller,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: 'キーワード'),
+                    decoration: InputDecoration(
+                      labelText: 'キーワード',
+                      // MyInstants は短いキーワードをサイト側が0件で返す。
+                      // 押してから怒られるより先に出しておく。
+                      helperText: widget.source == SoundSourceKind.myInstants
+                          ? '${SoundLibrary.myInstantsMinQueryLength}文字以上'
+                          : null,
+                    ),
                     onSubmitted: (_) => _search(),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _searching ? null : _search, child: const Text('検索')),
+                FilledButton(onPressed: _busy ? null : _search, child: const Text('検索')),
               ],
             ),
           ),
@@ -963,12 +1031,41 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
             Expanded(
               child: ListView.builder(
                 itemCount: results.length,
-                itemBuilder: (_, index) => ListTile(
-                  dense: true,
-                  title: Text(results[index].name),
-                  trailing: const Icon(Icons.download),
-                  onTap: () => Navigator.of(context).pop(results[index]),
-                ),
+                itemBuilder: (_, index) {
+                  final sound = results[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(sound.name),
+                    // 行そのものは従来どおり「取り込む」。試聴はその左のボタンだけで、
+                    // 押しても取り込まない。
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 40,
+                          child: identical(_preparing, sound)
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.play_arrow),
+                                  tooltip: '試聴',
+                                  padding: EdgeInsets.zero,
+                                  onPressed: _busy ? null : () => _playPreview(sound),
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.download),
+                      ],
+                    ),
+                    onTap: () {
+                      // 取り込みは編集画面が行う。鳴っている試聴は閉じる前に止める。
+                      unawaited(_preview.stop());
+                      Navigator.of(context).pop(sound);
+                    },
+                  );
+                },
               ),
             ),
         ],

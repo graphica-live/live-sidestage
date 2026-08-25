@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --- | --- | --- | --- | --- |
 | [live-sidestage-analytics](live-sidestage-analytics/CLAUDE.md) | LIVE Sidestage Analytics（イベント運営機能を含む） | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
 | [live-sidestage-desktop](live-sidestage-desktop/CLAUDE.md) | TikEffect | `tikeffect` | `graphica-live/TikEffect` | `main` |
-| [live-sidestage-mobile](live-sidestage-mobile/CLAUDE.md) | Live Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
+| [live-sidestage-mobile](live-sidestage-mobile/CLAUDE.md) | LIVE Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
 | [TikCaption](TikCaption/CLAUDE.md) | TikCaption | `tikcaption` | `graphica-live/TikCaption` | `master` |
 | [TikRIng](TikRIng/CLAUDE.md) | TikRing | `profileimagefitservice` | `graphica-live/frame` | `main` |
 

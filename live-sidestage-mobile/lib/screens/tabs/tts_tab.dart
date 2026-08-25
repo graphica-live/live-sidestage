@@ -50,7 +50,13 @@ class TtsTab extends StatelessWidget {
     return Column(
       children: [
         FeatureStatusBar(status: status, errors: errors, notice: notice),
-        FeatureStartButton(started: started, busy: busy, onToggle: onToggle),
+        if (store.configFromFutureVersion) const ConfigTooNewBanner(),
+        FeatureStartButton(
+          started: started,
+          busy: busy,
+          blocked: store.configFromFutureVersion,
+          onToggle: onToggle,
+        ),
         if (started && !speech.initialized && speech.errorMessage == null)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),

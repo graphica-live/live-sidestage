@@ -34,6 +34,14 @@ class AppConfigStore extends ChangeNotifier {
   /// ファイルが不要とは限らない）。
   bool _configReadable = false;
 
+  /// 保存済み設定がこのアプリより新しいスキーマだった。
+  ///
+  /// **このとき一切保存しない。** 新しいアプリで作った設定を古い形式で上書きすると、
+  /// 次のサービス起動で `pruneOrphans` が音源の実ファイルまで消してしまう。
+  /// [configReadable] が false になる理由のうち、壊れたJSONは上書きで復旧させたいので、
+  /// 2つの理由を分けて持つ。
+  bool _configFromFutureVersion = false;
+
   /// 背景へ送ったが ACK が返ってきていない revision。null なら同期済み。
   int? _pendingRevision;
 
@@ -46,6 +54,12 @@ class AppConfigStore extends ChangeNotifier {
   bool get configReadable => _configReadable;
   SoundConfig get sound => _config.sound;
 
+  /// このアプリより新しいバージョンで作られた設定を読んだ状態。
+  ///
+  /// UI はこのとき「アプリを更新してください」を出し、**開始させない**。
+  /// サービスを起動しなければ背景 Isolate の孤児ファイル掃除も走らない。
+  bool get configFromFutureVersion => _configFromFutureVersion;
+
   /// 背景 Isolate への反映待ちかどうか。UI で「反映待ち」を出す用。
   bool get syncPending => _pendingRevision != null;
 
@@ -53,6 +67,7 @@ class AppConfigStore extends ChangeNotifier {
     final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
     final decoded = AppConfig.tryDecode(raw);
     _configReadable = decoded != null || raw == null || raw.isEmpty;
+    _configFromFutureVersion = AppConfig.isFutureVersion(raw);
     _config = decoded ?? const AppConfig();
     _loaded = true;
     notifyListeners();
@@ -117,6 +132,10 @@ class AppConfigStore extends ChangeNotifier {
   }
 
   Future<void> _applyMutation(AppConfig? Function(AppConfig current) transform) async {
+    // 未来バージョンの設定は読めていないだけで、正しい内容が保存されている。
+    // 既定値ベースの設定で潰すと、次のサービス起動で音源の実ファイルまで失われる。
+    if (_configFromFutureVersion) return;
+
     final next = transform(_config);
     if (next == null) return;
 

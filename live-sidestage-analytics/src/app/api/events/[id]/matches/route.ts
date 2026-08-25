@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
+import { MAX_BRACKET_SIZE } from "@/event/bracket";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
 import { BracketError, createBracket, destroyBracket } from "@/event/tournament";
 
@@ -27,6 +28,37 @@ function bracketErrorResponse(err: BracketError) {
   const status =
     err.code === "ALREADY_STARTED" || err.code === "BRACKET_CHANGED" ? 409 : 400;
   return NextResponse.json({ error: err.message, code: err.code }, { status });
+}
+
+/**
+ * 手動配置(1回戦の枠に置いたエントリー)を取り出す。**位置そのものが意味を持つので、
+ * 不正な要素を `.filter()` で間引かない** — 間引くと主催者が置いた場所とずれた表が
+ * 黙って作られる。1つでもおかしければ配列ごと拒否する。
+ *
+ * 中身の妥当性(枠数と配置数の対応・重複・実在するエントリーか)はロックの内側で見る。
+ * ここで確かめるのは型と長さだけ。
+ */
+function readPlacement(
+  value: unknown
+): { ok: true; value: (string | null)[] } | { ok: false; error: string } {
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "配置の形式が不正です。" };
+  }
+  if (value.length > MAX_BRACKET_SIZE) {
+    return { ok: false, error: `トーナメント表の枠は${MAX_BRACKET_SIZE}までです。` };
+  }
+  const slots: (string | null)[] = [];
+  for (const slot of value) {
+    if (slot === null) {
+      slots.push(null);
+      continue;
+    }
+    if (typeof slot !== "string" || slot.length === 0 || slot.length > 64) {
+      return { ok: false, error: "配置の形式が不正です。" };
+    }
+    slots.push(slot);
+  }
+  return { ok: true, value: slots };
 }
 
 /** 集計とのロック待ちで打ち切られたときの応答。主催者にやり直させる。 */
@@ -68,22 +100,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = (await req.json().catch(() => null)) as {
     entrantIds?: unknown;
+    placement?: unknown;
     roundSessionIds?: unknown;
     confirm?: unknown;
     expectedMatchIds?: unknown;
   } | null;
 
-  const entrantIds = Array.isArray(body?.entrantIds)
-    ? body!.entrantIds.filter((v): v is string => typeof v === "string" && v.length > 0)
-    : [];
-  if (entrantIds.length < 2) {
+  // **シード順(`entrantIds`)と手動配置(`placement`)は排他。** 両方来たときにどちらかを
+  // 優先すると、片方の意図が黙って捨てられる。
+  const hasEntrantIds = body?.entrantIds !== undefined;
+  const hasPlacement = body?.placement !== undefined;
+  if (hasEntrantIds === hasPlacement) {
     return NextResponse.json(
-      { error: "トーナメント表を作るには2組以上の参加が必要です。" },
+      { error: "シード順と手動配置はどちらか一方だけを指定してください。" },
       { status: 400 }
     );
-  }
-  if (new Set(entrantIds).size !== entrantIds.length) {
-    return NextResponse.json({ error: "同じエントリーが重複しています。" }, { status: 400 });
   }
 
   // ラウンドごとの開催日程。**中身の妥当性(このイベントの日程か、順番が逆行しないか)は
@@ -92,10 +123,33 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     ? body!.roundSessionIds.filter((v): v is string => typeof v === "string" && v.length > 0)
     : undefined;
 
+  let source: { entrantIds: string[] } | { placement: (string | null)[] };
+  if (hasPlacement) {
+    const placement = readPlacement(body!.placement);
+    if (!placement.ok) {
+      return NextResponse.json({ error: placement.error }, { status: 400 });
+    }
+    source = { placement: placement.value };
+  } else {
+    const entrantIds = Array.isArray(body?.entrantIds)
+      ? body!.entrantIds.filter((v): v is string => typeof v === "string" && v.length > 0)
+      : [];
+    if (entrantIds.length < 2) {
+      return NextResponse.json(
+        { error: "トーナメント表を作るには2組以上の参加が必要です。" },
+        { status: 400 }
+      );
+    }
+    if (new Set(entrantIds).size !== entrantIds.length) {
+      return NextResponse.json({ error: "同じエントリーが重複しています。" }, { status: 400 });
+    }
+    source = { entrantIds };
+  }
+
   try {
     const result = await createBracket({
       eventId: params.id,
-      entrantIds,
+      ...source,
       roundSessionIds,
       ...readConfirmation(body),
     });

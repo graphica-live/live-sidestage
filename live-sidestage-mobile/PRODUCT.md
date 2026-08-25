@@ -16,7 +16,7 @@ TikTok Liveのコメントとギフトをリアルタイムで取得し、コメ
 
 ## Positioning
 
-既存バックエンド「LIVE Sidestage Analytics」(Railway本番運用)の公式モバイルクライアント。「Live Sidestageへの登録＝LIVE Sidestage Analyticsの登録」という一体運用が前提。オンデバイスVOICEVOX(`voicevox_core`をdart:ffiで組み込み)による読み上げと、画面オフ/バックグラウンドでも途切れないForeground Service常駐が中核の差別化ポイント。
+既存バックエンド「LIVE Sidestage Analytics」(Railway本番運用)の公式モバイルクライアント。「LIVE Sidestageへの登録＝LIVE Sidestage Analyticsの登録」という一体運用が前提。オンデバイスVOICEVOX(`voicevox_core`をdart:ffiで組み込み)による読み上げと、画面オフ/バックグラウンドでも途切れないForeground Service常駐が中核の差別化ポイント。
 
 ## Operating Context
 
@@ -42,11 +42,11 @@ TikTok Liveのコメントとギフトをリアルタイムで取得し、コメ
 - 効果音の配信はbest-effort。サーバー側のコンボ状態が失われた場合は過少に鳴る(多重再生を避ける方を優先している)。
 - 設定タブは読み上げON/OFF・ランダムボイス・効果音ON/OFF・TikTok ID変更・ログアウトまで。話者選択・話速/音高・コメントフィルタは未実装。
 - 連打制御(rapid fire)、ユーザーIDのファイル一括指定、強制割り込み再生はdesktopにあるが本アプリでは未実装。
-- バックエンドはLIVE Sidestage Analytics(Railway本番)。Live Sidestage単独のアカウント・データ基盤は持たない。
+- バックエンドはLIVE Sidestage Analytics(Railway本番)。LIVE Sidestage単独のアカウント・データ基盤は持たない。
 
 ## Brand Commitments
 
-アプリ名は「Live Sidestage」。PC・Webサービスと共通のブランド名であり、モバイル版の内部識別子は `live_sidestage_mobile`(Androidパッケージは `com.liveanalytics.live_sidestage_mobile`)とする。LIVE Sidestage Analyticsエコシステムの一部としての位置づけを維持し、独立ブランドとして切り離さない。
+アプリ名は「LIVE Sidestage」。PC・Webサービスと共通のブランド名であり、モバイル版の内部識別子は `live_sidestage_mobile`(Androidパッケージは `com.liveanalytics.live_sidestage_mobile`)とする。LIVE Sidestage Analyticsエコシステムの一部としての位置づけを維持し、独立ブランドとして切り離さない。
 
 ## Evidence on Hand
 
