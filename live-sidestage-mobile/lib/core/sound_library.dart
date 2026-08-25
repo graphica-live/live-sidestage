@@ -403,14 +403,14 @@ class SoundLibrary {
 
       if (response.isRedirect || (response.statusCode >= 300 && response.statusCode < 400)) {
         final location = response.headers['location'];
-        await response.stream.drain<void>();
+        await _discardBody(response);
         if (location == null) throw SoundLibraryException('リダイレクト先が不正です。');
         current = current.resolve(location);
         continue;
       }
 
       if (response.statusCode >= 400) {
-        await response.stream.drain<void>();
+        await _discardBody(response);
         throw SoundLibraryException('音声のダウンロードに失敗しました (HTTP ${response.statusCode})');
       }
 
@@ -418,7 +418,7 @@ class SoundLibrary {
       // chunked では Content-Length が無いので、読みながら打ち切る必要がある。
       final declared = response.contentLength;
       if (declared != null && declared > maxBytes) {
-        await response.stream.drain<void>();
+        await _discardBody(response);
         throw SoundLibraryException('音声ファイルが大きすぎます（上限 ${maxBytes ~/ (1024 * 1024)}MB）。');
       }
 
@@ -433,6 +433,16 @@ class SoundLibrary {
     }
 
     throw SoundLibraryException('リダイレクトが多すぎます。');
+  }
+
+  /// 使わない body を捨てる。**待ち切らない** — 相手がいつまでも閉じない場合に、
+  /// リダイレクトやエラー応答の後始末で処理全体が止まってしまう。
+  Future<void> _discardBody(http.StreamedResponse response) async {
+    try {
+      await response.stream.drain<void>().timeout(requestTimeout);
+    } catch (_) {
+      // 捨てるだけなので失敗しても構わない。
+    }
   }
 
   Uri _parseAndVerify(String raw, String allowedHost) {

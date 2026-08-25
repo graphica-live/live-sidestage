@@ -876,6 +876,10 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   /// この画面の表示は守らない。await から戻ったとき自分がまだ最新か判定する。
   int _previewRequest = 0;
 
+  /// 検索と試聴は同時に走らせない。片方だけ止めても、
+  /// 「検索中に古い行の試聴を押す」で結果に無い音が鳴る。
+  bool get _busy => _searching || _preparing != null;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -928,9 +932,9 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   }
 
   Future<void> _search() async {
-    // 検索ボタンは検索中に押せないが、キーボードの確定（onSubmitted）は飛んでくる。
+    // 検索ボタンは押せない状態でも、キーボードの確定（onSubmitted）は飛んでくる。
     // 走らせると新旧の結果が入れ替わりうる。
-    if (_searching) return;
+    if (_busy) return;
     final query = _controller.text.trim();
     if (query.isEmpty) return;
 
@@ -983,7 +987,7 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _searching ? null : _search, child: const Text('検索')),
+                FilledButton(onPressed: _busy ? null : _search, child: const Text('検索')),
               ],
             ),
           ),
@@ -1034,8 +1038,7 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
                                   icon: const Icon(Icons.play_arrow),
                                   tooltip: '試聴',
                                   padding: EdgeInsets.zero,
-                                  onPressed:
-                                      _preparing == null ? () => _playPreview(sound) : null,
+                                  onPressed: _busy ? null : () => _playPreview(sound),
                                 ),
                         ),
                         const SizedBox(width: 4),

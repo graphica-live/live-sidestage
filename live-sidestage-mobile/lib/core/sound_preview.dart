@@ -31,14 +31,29 @@ class AudioPlayerPreview implements PreviewPlayer {
   Future<AudioPlayer>? _player;
   bool _disposed = false;
 
-  Future<AudioPlayer> _ensurePlayer() {
-    return _player ??= () async {
-      final player = AudioPlayer();
-      // 効果音と同じ設定で鳴らす。ここがずれると「テストでは鳴ったのに本番で鳴らない」になる。
-      await player.setAudioContext(SoundPlayerPool.playbackContext);
-      await player.setReleaseMode(ReleaseMode.stop);
-      return player;
-    }();
+  Future<AudioPlayer> _ensurePlayer() async {
+    final existing = _player;
+    if (existing != null) return existing;
+
+    final player = AudioPlayer();
+    final pending = _configure(player);
+    _player = pending;
+    try {
+      return await pending;
+    } catch (_) {
+      // 失敗した Future を持ち続けると、以降この画面では二度と鳴らせなくなる。
+      // 作りかけのプレイヤーごと捨てて、次の要求で作り直せるようにする。
+      if (identical(_player, pending)) _player = null;
+      await player.dispose().catchError((_) {});
+      rethrow;
+    }
+  }
+
+  Future<AudioPlayer> _configure(AudioPlayer player) async {
+    // 効果音と同じ設定で鳴らす。ここがずれると「テストでは鳴ったのに本番で鳴らない」になる。
+    await player.setAudioContext(SoundPlayerPool.playbackContext);
+    await player.setReleaseMode(ReleaseMode.stop);
+    return player;
   }
 
   @override
@@ -57,11 +72,18 @@ class AudioPlayerPreview implements PreviewPlayer {
     await player.play(source);
   }
 
+  // 停止と破棄は best-effort。プレイヤーを用意できていなければ止める音も無いので、
+  // ここで投げると「鳴らせなかった」だけでなく、呼び出し側（画面遷移や dispose）まで
+  // 巻き込んで壊れる。
   @override
   Future<void> stop() async {
     final pending = _player;
     if (pending == null) return;
-    await (await pending).stop();
+    try {
+      await (await pending).stop();
+    } catch (_) {
+      // 鳴っていないのと同じ。
+    }
   }
 
   @override
@@ -70,9 +92,13 @@ class AudioPlayerPreview implements PreviewPlayer {
     final pending = _player;
     _player = null;
     if (pending == null) return;
-    final player = await pending;
-    await player.stop();
-    await player.dispose();
+    try {
+      final player = await pending;
+      await player.stop();
+      await player.dispose();
+    } catch (_) {
+      // 用意に失敗したプレイヤーは _ensurePlayer が始末している。
+    }
   }
 }
 
@@ -104,6 +130,9 @@ class SoundPreview {
   /// 再生要求ごとに進める。await から戻ったときに、自分がまだ最新の要求か判定する。
   int _generation = 0;
 
+  /// 最後に鳴らし始めた要求の世代。[_afterPlay] が「止めてよい音か」を見るのに使う。
+  int _playingGeneration = 0;
+
   /// 鳴らす。表示すべきエラーがあればそのメッセージを、無ければ null を返す。
   ///
   /// 画面を離れた後や、より新しい要求に追い越された場合も null を返す（もう表示先が無い）。
@@ -130,8 +159,7 @@ class SoundPreview {
       if (_isStale(generation)) return null;
 
       await player.play(path, (volume / 100.0) * (masterVolume / 100.0));
-      // 鳴らし始めるまでの間に画面を離れていたら、鳴らしっぱなしにしない。
-      if (_isStale(generation)) await player.stop();
+      await _afterPlay(generation);
       return null;
     } catch (e) {
       if (_isStale(generation)) return null;
@@ -164,8 +192,7 @@ class SoundPreview {
       if (_isStale(generation)) return null;
 
       await player.playBytes(bytes, masterVolume / 100.0);
-      // 鳴らし始めるまでの間に画面を離れていたら、鳴らしっぱなしにしない。
-      if (_isStale(generation)) await player.stop();
+      await _afterPlay(generation);
       return null;
     } on SoundLibraryException catch (e) {
       // 通信失敗・許可外ホスト・サイズ超過。そのまま出せる日本語になっている。
@@ -174,6 +201,19 @@ class SoundPreview {
       if (_isStale(generation)) return null;
       return '再生に失敗しました: $e';
     }
+  }
+
+  /// 鳴らし始めた直後の後始末。
+  ///
+  /// 鳴り始めるまでの間に画面を離れた・別の音を押されたなら、鳴らしっぱなしにしない。
+  /// ただし**自分より後に鳴り始めた音があれば触らない** — プレイヤーは1つしか無いので、
+  /// 追い越された側が無条件に止めると、最新の音を消してしまう。
+  Future<void> _afterPlay(int generation) async {
+    if (!_isStale(generation)) {
+      _playingGeneration = generation;
+      return;
+    }
+    if (_playingGeneration < generation) await player.stop();
   }
 
   /// 鳴っている音を止める。音源を差し替えたときなど。

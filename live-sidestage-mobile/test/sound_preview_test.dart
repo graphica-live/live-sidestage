@@ -17,8 +17,15 @@ class FakePreviewPlayer implements PreviewPlayer {
   int stopCount = 0;
   bool disposed = false;
 
+  /// 呼ばれた順の記録。`stop` と `play` の前後関係を見るため。
+  final List<String> events = [];
+
   /// 設定すると [stop] がこれを待つ。await 中に画面が閉じる状況を作るため。
   Completer<void>? stopGate;
+
+  /// 設定すると **次の1回だけ** [playBytes] がこれを待つ。
+  /// 再生開始の完了順が入れ替わる状況を作るため。
+  Completer<void>? playGate;
 
   /// 設定すると [play] がこの例外を投げる。
   Object? playError;
@@ -29,19 +36,25 @@ class FakePreviewPlayer implements PreviewPlayer {
     if (error != null) throw error;
     played.add(filePath);
     volumes.add(volume);
+    events.add('play');
   }
 
   @override
   Future<void> playBytes(Uint8List bytes, double volume) async {
     final error = playError;
     if (error != null) throw error;
+    final gate = playGate;
+    playGate = null;
+    if (gate != null) await gate.future;
     playedBytes.add(bytes);
     volumes.add(volume);
+    events.add('play');
   }
 
   @override
   Future<void> stop() async {
     stopCount++;
+    events.add('stop');
     final gate = stopGate;
     if (gate != null) await gate.future;
   }
@@ -302,6 +315,25 @@ void main() {
 
       expect(await pending, isNull);
       expect(player.playedBytes, isEmpty);
+    });
+
+    test('追い越された要求は、後から鳴り始めた音を止めない', () async {
+      final preview = previewWith(
+        MockClient((_) async => http.Response.bytes(Uint8List.fromList([1]), 200)),
+      );
+      // 1件目の再生開始を止めておき、2件目に追い越させる。
+      final firstPlay = Completer<void>();
+      player.playGate = firstPlay;
+
+      final pending = playLab(preview);
+      await pumpEventQueue();
+      await playLab(preview);
+      firstPlay.complete();
+      await pending;
+
+      // 止めるのは各再生の直前だけ。追い越された側が後から止めると、
+      // 鳴っているのは最新の音なのでそれを消してしまう。
+      expect(player.events, ['stop', 'stop', 'play', 'play']);
     });
 
     test('画面を離れた後は鳴らさない', () async {
