@@ -32,9 +32,13 @@ import { BracketScroller } from "./BracketScroller";
 // カードの角は右下(mirror時は左下)を斜めに切り落とす(CARD_CLIP)。中央へ向かって
 // 刃が入っているように見えるのが狙いで、これがこの表全体で唯一のシェイプ言語。
 //
-// **カードの主役はアイコンと名前で、そのために高さを配分している。** サイド枠・名前枠は
-// px 固定で、名前の文字サイズだけが長さに応じて変わる(`fitBracketName`)。行数が変わっても
-// 枠の高さは動かないので、上の幾何の前提(カード高さが全部同じ)は保たれる。
+// **カードの主役はライバーの顔である。** アイコンは枠の中に納まる小さな丸ではなく、
+// サイド枠(SIDE_H)を丸ごと埋める背景として敷き、枠から上下へはみ出したぶんは枠の
+// overflow-hidden が切り落とす。名前はその上へグラデーションごしに重ねる。
+// **枠を広げてはいけない** — 顔を大きくするために枠の寸法を触ると上の幾何が崩れる。
+// サイド枠・名前枠は px 固定で、名前の文字サイズだけが長さに応じて変わる
+// (`fitBracketName`)。行数が変わっても枠の高さは動かないので、上の幾何の前提
+// (カード高さが全部同じ)は保たれる。
 
 /** カード幅。ラウンド見出しの列と揃えるため、見出し側にも同じ幅を使う。 */
 const CARD_W = "w-40 sm:w-44";
@@ -45,7 +49,7 @@ const CONN_W = "w-5";
  * 内訳は p-2.5(20) + 見出し行(約15) + サイド枠2つ(92×2) + サイドの間隔(12)。
  */
 const CARD_H = "h-[232px]";
-/** サイド枠の高さ。py-1(8) + アイコン(44) + gap-1(4) + 名前枠(36)。 */
+/** サイド枠の高さ。アイコンを全面に敷き、名前枠(NAME_BOX_H)をその上へ重ねる。 */
 const SIDE_H = "h-[92px]";
 /** 名前枠の高さ。1行(最大22px)でも2行(最大16px)でもこの高さに収まる。 */
 const NAME_BOX_H = "h-[36px]";
@@ -55,7 +59,7 @@ const NAME_BOX_H = "h-[36px]";
  * **名前の枠だけでなく倍率も揃える**こと — `fitBracketName` の第2引数に同じ値を渡す。
  */
 const CHAMPION_SCALE = 1.2;
-/** 優勝バナーの枠。py-2.5(20) + アイコン(48) + gap-1(4) + 名前枠(44)。未確定の枠も同じ高さにする。 */
+/** 優勝バナーの枠。サイド枠と同じ組み方(アイコンを全面、名前を下へ重ねる)。未確定の枠も同じ高さにする。 */
 const CHAMPION_BOX_H = "h-[116px]";
 /** 優勝の名前枠。1行(最大26.4px)でも2行(最大19.2px)でも収まる。 */
 const CHAMPION_NAME_BOX_H = "h-[44px]";
@@ -241,7 +245,7 @@ function StraightConnector() {
 }
 
 /**
- * 決勝の上に出る優勝バナー。**対戦カードと同じ組み方(アイコンの上、名前の下)を
+ * 決勝の上に出る優勝バナー。**対戦カードと同じ組み方(アイコンを全面、名前を下へ重ねる)を
  * 1.2倍(CHAMPION_SCALE)した枠**で、表の頂点であることをサイズで示す。
  *
  * 未確定の枠も同じ高さにしてある。優勝が決まった瞬間にバナーの高さが変わると、
@@ -249,6 +253,7 @@ function StraightConnector() {
  */
 function Champion({ final }: { final: BracketMatchDto | undefined }) {
   const winner = final?.sides.find((s) => s.isWinner) ?? null;
+  const hasAvatar = (winner?.entrants.length ?? 0) > 0;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -258,10 +263,25 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
       </span>
       {winner?.name ? (
         <div
-          className={`motion-safe:animate-pulse flex ${CHAMPION_BOX_H} w-full flex-col items-center justify-center gap-1 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2.5 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
+          className={`motion-safe:animate-pulse relative flex ${CHAMPION_BOX_H} w-full flex-col overflow-hidden border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 text-center shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP} ${
+            hasAvatar ? "justify-end" : "justify-center"
+          }`}
         >
           <EntrantAvatars entrants={winner.entrants} size="champion" />
-          <FitName name={winner.name} boxH={CHAMPION_NAME_BOX_H} scale={CHAMPION_SCALE} />
+          {/* アイコンが枠を覆うと優勝枠のブランド色が消えるので、上から薄く戻す。 */}
+          {hasAvatar && (
+            <span
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-brand/30 to-brand/5"
+              aria-hidden
+            />
+          )}
+          <div
+            className={`relative z-10 px-2 ${
+              hasAvatar ? "bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-3" : ""
+            }`}
+          >
+            <FitName name={winner.name} boxH={CHAMPION_NAME_BOX_H} scale={CHAMPION_SCALE} />
+          </div>
         </div>
       ) : (
         <div
@@ -383,33 +403,50 @@ function MatchCard({
 }
 
 /**
- * アイコンを上、名前を下に縦積みして横幅を節約する。**枠の高さ(SIDE_H)と
+ * アイコンを枠いっぱいに敷き、名前をその下端へ重ねる。**枠の高さ(SIDE_H)と
  * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
  * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
  *
  * 名前は名前枠の中で上下中央に置く。1行と2行が隣り合っても、視線の高さが揃う。
+ * **`overflow-hidden` が要る** — 枠より大きいアイコンのはみ出しをここで切る。付け忘れると
+ * 上下のサイドへ顔が侵食する(親カードの overflow-hidden はカードの外しか切らない)。
+ *
+ * 出場者がまだ居ない枠にはアイコンを敷かない。敷くものが無いところへ下地だけ広げると、
+ * 勝者の色(bg-brand/10)が塗り潰されて勝敗が読めなくなる。
  *
  * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
- * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンを大きくして
- * 横幅を食うようになったぶん、重なっても読めるよう背景を敷いている。
+ * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンの上に乗るので、
+ * 読めるよう背景を敷いている。
  */
 function SideRow({ side }: { side: BracketSideDto }) {
+  const hasAvatar = side.entrants.length > 0;
+  const frame = `relative flex ${SIDE_H} flex-col overflow-hidden text-center ${
+    side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
+  }`;
+
+  if (!side.name) {
+    return (
+      <div className={`${frame} items-center justify-center`}>
+        <span className="text-xs text-gray-600">未確定</span>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`relative flex ${SIDE_H} flex-col items-center justify-center gap-1 px-1.5 py-1 text-center ${
-        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
-      }`}
-    >
+    <div className={`${frame} ${hasAvatar ? "justify-end" : "justify-center"}`}>
       <EntrantAvatars entrants={side.entrants} size="card" />
 
-      {side.name ? (
+      {/* 名前はアイコンの上に重なるので、下から黒を差して読めるようにする。 */}
+      <div
+        className={`relative z-10 px-1.5 ${
+          hasAvatar ? "bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-3" : ""
+        }`}
+      >
         <FitName name={side.name} boxH={NAME_BOX_H} />
-      ) : (
-        <span className={`flex ${NAME_BOX_H} items-center text-xs text-gray-600`}>未確定</span>
-      )}
+      </div>
 
       {side.tiktokScore !== null && (
-        <span className="absolute right-1 top-1 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
+        <span className="absolute right-1 top-1 z-20 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
           {formatNumber(side.tiktokScore)}
         </span>
       )}
@@ -418,7 +455,15 @@ function SideRow({ side }: { side: BracketSideDto }) {
 }
 
 /**
- * ライバーのアイコン。チーム戦は出場メンバー分あるので2つまで重ねて出し、残りは +N で表す。
+ * ライバーのアイコン。**枠(サイド枠・優勝バナー)を埋める背景レイヤーとして絶対配置する。**
+ *
+ * 1人なら枠を丸ごと覆う。アイコンは正方形なので枠の幅に合わせると縦がはみ出し、
+ * `object-cover` が上下を切り落とす。**中央ではなく上寄りで切る**(`object-[50%_30%]`) —
+ * 枠の下半分は名前が覆うので、中央で切ると顔が名前の裏に来る。
+ *
+ * チーム戦は出場メンバー分あるので2つまで重ねて出し、残りは +N で表す。**こちらは丸のまま
+ * 並べる**(枠を覆うのは1人のときだけ)。並べる数だけ直径を落とすのは、枠の幅が決まっていて、
+ * 1人のときの大きさのまま並べると顔が枠の左右へ逃げて全員見えなくなるため。
  *
  * src はいつでも `/api/public/avatar/<participantId>`。**取得に失敗した場合も API 側が
  * プレースホルダ画像を返す**ので、ここで欠損や読み込み失敗を扱う必要がない
@@ -433,19 +478,45 @@ function EntrantAvatars({
   size: "card" | "champion";
 }) {
   const champion = size === "champion";
-  const box = champion ? "h-12 w-12" : "h-11 w-11";
-  const px = champion ? 48 : 44;
-  const overlap = champion ? "-space-x-2.5" : "-space-x-2";
-  const restText = champion ? "text-xs" : "text-[11px]";
   const shown = entrants.slice(0, 2);
   const rest = entrants.length - shown.length;
+  // 実際に横へ並ぶ数(+N のバッジも1つと数える)。
+  const count = shown.length + (rest > 0 ? 1 : 0);
 
-  if (entrants.length === 0) {
-    return <span className={`${box} shrink-0 rounded-full bg-white/5`} aria-hidden />;
+  if (count === 0) return null;
+
+  if (count === 1) {
+    const only = shown[0];
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`/api/public/avatar/${only.participantId}`}
+        alt=""
+        title={only.displayName}
+        width={champion ? 176 : 156}
+        height={champion ? 176 : 156}
+        className="absolute inset-0 h-full w-full bg-white/5 object-cover object-[50%_30%]"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+      />
+    );
   }
 
+  const box =
+    count === 2
+      ? champion
+        ? "h-[76px] w-[76px]"
+        : "h-[68px] w-[68px]"
+      : champion
+        ? "h-[58px] w-[58px]"
+        : "h-[52px] w-[52px]";
+  const px = count === 2 ? (champion ? 76 : 68) : champion ? 58 : 52;
+  const overlap = count === 2 ? "-space-x-3" : "-space-x-2";
+  const restText = champion ? "text-xs" : "text-[11px]";
+
   return (
-    <span className={`flex shrink-0 items-center ${overlap}`}>
+    <span className={`absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center ${overlap}`}>
       {shown.map((e) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -455,7 +526,7 @@ function EntrantAvatars({
           title={e.displayName}
           width={px}
           height={px}
-          className={`${box} rounded-full border border-panel bg-white/5 object-cover`}
+          className={`${box} shrink-0 rounded-full border border-panel bg-white/5 object-cover`}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -463,7 +534,7 @@ function EntrantAvatars({
       ))}
       {rest > 0 && (
         <span
-          className={`${box} flex items-center justify-center rounded-full border border-panel bg-white/10 font-mono ${restText} text-gray-300`}
+          className={`${box} flex shrink-0 items-center justify-center rounded-full border border-panel bg-white/10 font-mono ${restText} text-gray-300`}
           title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
         >
           +{rest}
