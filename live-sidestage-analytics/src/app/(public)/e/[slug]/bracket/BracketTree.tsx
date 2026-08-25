@@ -50,6 +50,16 @@ const SIDE_H = "h-[92px]";
 /** 名前枠の高さ。1行(最大22px)でも2行(最大16px)でもこの高さに収まる。 */
 const NAME_BOX_H = "h-[36px]";
 
+/**
+ * 優勝バナーは対戦カードを 1.2 倍した枠で組む(表の頂点なので一回り大きい)。
+ * **名前の枠だけでなく倍率も揃える**こと — `fitBracketName` の第2引数に同じ値を渡す。
+ */
+const CHAMPION_SCALE = 1.2;
+/** 優勝バナーの枠。py-2.5(20) + アイコン(48) + gap-1(4) + 名前枠(44)。未確定の枠も同じ高さにする。 */
+const CHAMPION_BOX_H = "h-[116px]";
+/** 優勝の名前枠。1行(最大26.4px)でも2行(最大19.2px)でも収まる。 */
+const CHAMPION_NAME_BOX_H = "h-[44px]";
+
 type MatchIndex = Map<string, BracketMatchDto>;
 
 function key(round: number, position: number): string {
@@ -74,8 +84,8 @@ export function BracketTree({
       <div className="min-w-max">
         <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん。 */}
-        <div className="flex items-center pt-24">
+        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。 */}
+        <div className="flex items-center pt-40">
           {hasWings && <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} />}
           {hasWings && <StraightConnector />}
 
@@ -224,24 +234,33 @@ function StraightConnector() {
   );
 }
 
+/**
+ * 決勝の上に出る優勝バナー。**対戦カードと同じ組み方(アイコンの上、名前の下)を
+ * 1.2倍(CHAMPION_SCALE)した枠**で、表の頂点であることをサイズで示す。
+ *
+ * 未確定の枠も同じ高さにしてある。優勝が決まった瞬間にバナーの高さが変わると、
+ * 絶対配置の基準(決勝カードの上端)から上へ伸び縮みして表全体が跳ねて見えるため。
+ */
 function Champion({ final }: { final: BracketMatchDto | undefined }) {
   const winner = final?.sides.find((s) => s.isWinner) ?? null;
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="flex items-center gap-1 text-[10px] font-black tracking-[0.25em] text-brand">
+      <span className="flex items-center gap-1.5 text-xs font-black tracking-[0.25em] text-brand">
         <TrophyIcon />
         優勝
       </span>
-      {winner ? (
+      {winner?.name ? (
         <div
-          className={`motion-safe:animate-pulse flex w-full items-center justify-center gap-1.5 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
+          className={`motion-safe:animate-pulse flex ${CHAMPION_BOX_H} w-full flex-col items-center justify-center gap-1 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2.5 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
         >
-          <EntrantAvatars entrants={winner.entrants} size="md" />
-          <span className="min-w-0 truncate text-sm font-bold text-white">{winner.name}</span>
+          <EntrantAvatars entrants={winner.entrants} size="champion" />
+          <FitName name={winner.name} boxH={CHAMPION_NAME_BOX_H} scale={CHAMPION_SCALE} />
         </div>
       ) : (
-        <div className={`w-full border border-dashed border-brand/40 px-2 py-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}>
+        <div
+          className={`flex ${CHAMPION_BOX_H} w-full items-center justify-center border border-dashed border-brand/40 px-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}
+        >
           未確定
         </div>
       )}
@@ -251,9 +270,31 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
 
 function TrophyIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={11} height={11} fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 24 24" width={13} height={13} fill="currentColor" aria-hidden>
       <path d="M6 2h12v2h3v3a4 4 0 0 1-4 4h-.35A6.02 6.02 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1A6.02 6.02 0 0 1 7.35 11H7a4 4 0 0 1-4-4V4h3V2Zm0 4H5v1a2 2 0 0 0 2 2V6Zm12 0v3a2 2 0 0 0 2-2V6h-2Z" />
     </svg>
+  );
+}
+
+/**
+ * 名前を枠いっぱいまで拡げ、枠の中で上下中央に置く。枠の高さは固定で、
+ * 1行に収まらない長さなら2行に折る(`fitBracketName`)。**枠の高さと `scale` は
+ * 必ず対で渡すこと** — 片方だけ変えると2行目が枠からはみ出す。
+ */
+function FitName({ name, boxH, scale }: { name: string; boxH: string; scale?: number }) {
+  const fit = fitBracketName(name, scale);
+
+  return (
+    <span className={`flex ${boxH} w-full items-center justify-center overflow-hidden`}>
+      <span
+        style={{ fontSize: `${fit.fontSizePx}px`, lineHeight: fit.lines === 2 ? 1.05 : 1.15 }}
+        className={`w-full font-bold text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] ${
+          fit.lines === 2 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate"
+        }`}
+      >
+        {name}
+      </span>
+    </span>
   );
 }
 
@@ -339,30 +380,19 @@ function MatchCard({
  * 横幅を食うようになったぶん、重なっても読めるよう背景を敷いている。
  */
 function SideRow({ side }: { side: BracketSideDto }) {
-  const fit = side.name ? fitBracketName(side.name) : null;
-
   return (
     <div
       className={`relative flex ${SIDE_H} flex-col items-center justify-center gap-1 px-1.5 py-1 text-center ${
         side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
       }`}
     >
-      <EntrantAvatars entrants={side.entrants} size="lg" />
+      <EntrantAvatars entrants={side.entrants} size="card" />
 
-      <span className={`flex ${NAME_BOX_H} w-full items-center justify-center overflow-hidden`}>
-        {side.name && fit ? (
-          <span
-            style={{ fontSize: `${fit.fontSizePx}px`, lineHeight: fit.lines === 2 ? 1.05 : 1.15 }}
-            className={`w-full font-bold text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] ${
-              fit.lines === 2 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate"
-            }`}
-          >
-            {side.name}
-          </span>
-        ) : (
-          <span className="text-xs text-gray-600">未確定</span>
-        )}
-      </span>
+      {side.name ? (
+        <FitName name={side.name} boxH={NAME_BOX_H} />
+      ) : (
+        <span className={`flex ${NAME_BOX_H} items-center text-xs text-gray-600`}>未確定</span>
+      )}
 
       {side.tiktokScore !== null && (
         <span className="absolute right-1 top-1 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
@@ -385,14 +415,14 @@ function EntrantAvatars({
   size,
 }: {
   entrants: BracketEntrantDto[];
-  /** lg = 対戦カードの中(主役)、md = 決勝の上の「優勝」バナー。 */
-  size: "lg" | "md";
+  /** card = 対戦カードの中、champion = 決勝の上の「優勝」バナー(一回り大きい)。 */
+  size: "card" | "champion";
 }) {
-  const lg = size === "lg";
-  const box = lg ? "h-11 w-11" : "h-7 w-7";
-  const px = lg ? 44 : 28;
-  const overlap = lg ? "-space-x-2" : "-space-x-1.5";
-  const restText = lg ? "text-[11px]" : "text-[9px]";
+  const champion = size === "champion";
+  const box = champion ? "h-12 w-12" : "h-11 w-11";
+  const px = champion ? 48 : 44;
+  const overlap = champion ? "-space-x-2.5" : "-space-x-2";
+  const restText = champion ? "text-xs" : "text-[11px]";
   const shown = entrants.slice(0, 2);
   const rest = entrants.length - shown.length;
 

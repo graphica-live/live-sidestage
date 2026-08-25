@@ -70,22 +70,33 @@ export function nameWidthUnits(name: string): number {
   return units;
 }
 
-/** 名前をカード幅いっぱいまで拡げるための文字サイズと行数を返す。 */
-export function fitBracketName(name: string): BracketNameFit {
-  const units = nameWidthUnits(name);
-  if (units <= 0) return { fontSizePx: MAX_ONE_LINE_PX, lines: 1 };
+/**
+ * 名前を枠幅いっぱいまで拡げるための文字サイズと行数を返す。
+ *
+ * `scale` は**枠ごと拡大する倍率**。幅も上限も下限も同じ倍率で動くので、
+ * 「カードより一回り大きい枠」(優勝バナー)でも折り返しの判断が変わらない。
+ * 呼び出し側は枠の幅と高さを同じ倍率で用意すること。
+ */
+export function fitBracketName(name: string, scale = 1): BracketNameFit {
+  const boxWidth = NAME_BOX_W * scale;
+  const maxOneLine = MAX_ONE_LINE_PX * scale;
 
-  const oneLine = NAME_BOX_W / units;
-  if (oneLine >= ONE_LINE_FLOOR_PX) {
-    return { fontSizePx: round(Math.min(MAX_ONE_LINE_PX, oneLine)), lines: 1 };
+  const units = nameWidthUnits(name);
+  if (units <= 0) return { fontSizePx: round(maxOneLine), lines: 1 };
+
+  const oneLine = boxWidth / units;
+  if (oneLine >= ONE_LINE_FLOOR_PX * scale) {
+    return { fontSizePx: round(Math.min(maxOneLine, oneLine)), lines: 1 };
   }
 
   // 2行に折れば1行あたりの幅は半分で済む。端数は切り上げる(奇数長のとき、
   // 文字数の多い側の行がはみ出さないように)。
   const perLine = Math.ceil(units / 2);
-  const twoLines = NAME_BOX_W / perLine;
+  const twoLines = boxWidth / perLine;
   return {
-    fontSizePx: round(Math.min(MAX_TWO_LINE_PX, Math.max(MIN_FONT_PX, twoLines))),
+    fontSizePx: round(
+      Math.min(MAX_TWO_LINE_PX * scale, Math.max(MIN_FONT_PX * scale, twoLines))
+    ),
     lines: 2,
   };
 }

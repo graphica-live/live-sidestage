@@ -58,6 +58,16 @@ describe("fitBracketName", () => {
     expect(fit).toEqual({ fontSizePx: 9, lines: 2 });
   });
 
+  it("scale を渡すと枠ごと拡大され、折り返しの判断は変わらない", () => {
+    const short = fitBracketName("あいう", 1.2);
+    expect(short).toEqual({ fontSizePx: 26.4, lines: 1 });
+
+    // 等倍で2行に折れる名前は、拡大しても2行のまま(上限だけが上がる)。
+    const long = fitBracketName("streamer_kenta_1234", 1.2);
+    expect(long.lines).toBe(2);
+    expect(long.fontSizePx).toBe(19.2);
+  });
+
   it("空文字でも例外にせず上限サイズを返す", () => {
     expect(fitBracketName("")).toEqual({ fontSizePx: 22, lines: 1 });
     expect(fitBracketName("   ")).toEqual({ fontSizePx: 22, lines: 1 });
