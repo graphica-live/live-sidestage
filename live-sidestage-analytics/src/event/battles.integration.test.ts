@@ -6,6 +6,14 @@ import { prisma } from "@/lib/prisma";
 import { aggregateEvent } from "./aggregate";
 import { createBracket, destroyBracket } from "./tournament";
 
+// **このファイルに `vi.mock()` を足さないこと。** route handler を直接叩くために
+// `vi.mock("next-auth")` を置いたところ、**同じ vitest ワーカープロセスに相乗りした
+// 別のテストファイルまでモックが漏れて**、`src/app/api/mobile/listener-status` と
+// `src/lib/tiktok-room-cleanup` の integration テストが数回に1回落ちるようになった
+// (モックを外すと安定して通る)。
+//
+// 進行(`advanceBracket`)そのものの検証は DB を使わない `advance-bracket.test.ts` にある。
+
 const PREFIX = "itest_battle";
 // 検知の判定は現在時刻との前後関係で決まるので、固定日付ではなく now からの相対で組む。
 // (開始は過去・終了は未来 = 開催中。締切前なので finalizedAt が立たず、何度でも再集計できる)
@@ -968,10 +976,36 @@ describe("日程が終わった表が永久にブロックされない", () => {
 });
 
 describe("締切後に表を作り直しても進行が止まらない", () => {
+  it("不戦勝の勝者は表を作った時点で次のラウンドへ入る", async () => {
+    // **転送を集計ワーカー任せにしない。** ワーカーは開催前(SCHEDULED)のイベントを
+    // 対象にしない(`aggregationWindow`)ので、事前に組んだ表が永久に進まなくなる。
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id, c.id],
+    });
+
+    // **集計を1周も回していない状態で**決勝の片側が埋まっていること。
+    const final = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 2 },
+      select: {
+        sides: {
+          orderBy: { sideIndex: "asc" },
+          select: { participants: { select: { participantId: true } } },
+        },
+      },
+    });
+    expect(final.sides.filter((s) => s.participants.length > 0)).toHaveLength(1);
+  });
+
   it("勝者を下流へ送った周回では最終集計にしない", async () => {
-    // 検知(detectMatches)は進行(resolveMatchResults)より先に走るので、1周で進むのは
-    // 1ラウンドだけ。締切後にそのまま finalizedAt を立てると、2回戦以降が
-    // 永久に SCHEDULED のまま取り残される。
+    // 転送そのものは1回の呼び出しで全ラウンド伝播しきるが、**新しく埋まった枠の
+    // バトル検知は次の周**になる(検知は進行より先に走る)。締切後にそのまま
+    // finalizedAt を立てると、2回戦以降が永久に SCHEDULED のまま取り残される。
     const event = await newPastTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -982,7 +1016,33 @@ describe("締切後に表を作り直しても進行が止まらない", () => {
       entrantIds: [a.id, b.id, c.id],
     });
 
-    // 1周目: 不戦勝の勝者が2回戦へ送られる = 進行があったので確定しない。
+    // 1回戦の実試合(不戦勝で自動確定していない枠)に、日程内で終わったバトルを置く。
+    // これで1周目に「検知 → 勝敗確定 → 決勝へ転送」が起きる。
+    const real = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1, winnerDecidedBy: null },
+      select: {
+        sides: {
+          orderBy: { sideIndex: "asc" },
+          select: { participants: { select: { participant: { select: { roomId: true } } } } },
+        },
+      },
+    });
+    const rooms = real.sides.map((s) => s.participants[0].participant.roomId);
+    const battleId = `${PREFIX}_defer_${uniqueSuffix()}`;
+    const battleStart = new Date(PAST_ROUND1_START.getTime() + 10 * 60_000);
+    const battleEnd = new Date(PAST_ROUND1_START.getTime() + 20 * 60_000);
+    for (const roomId of rooms) {
+      await insertBattle({ roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
+    }
+    // 同点(0対0を含む)だと自動確定しないので、片側にだけギフトを入れる。
+    await insertGift({
+      roomId: rooms[0],
+      uniqueId: "listener1",
+      diamonds: 500,
+      receivedAt: new Date(battleStart.getTime() + 60_000),
+    });
+
+    // 1周目: 実試合が確定して決勝へ送られる = 進行があったので確定しない。
     await aggregateEvent(event.id);
     const afterFirst = await prisma.event.findUniqueOrThrow({
       where: { id: event.id },
@@ -999,3 +1059,4 @@ describe("締切後に表を作り直しても進行が止まらない", () => {
     expect(afterSecond.finalizedAt).not.toBeNull();
   });
 });
+

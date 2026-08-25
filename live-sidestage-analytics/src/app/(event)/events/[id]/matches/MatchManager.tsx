@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BracketMethod } from "@/event/bracket";
 import {
@@ -16,6 +16,12 @@ import { resolveBracket } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
+
+/**
+ * 画面を読み直す間隔。集計ワーカーが10秒周期なので、それより短く引いても新しい値は
+ * 出てこない(公開ページの `EventResults.tsx` と同じ根拠)。
+ */
+const POLL_INTERVAL_MS = 10_000;
 
 /** 開催日程1件。日時は ISO 文字列(サーバーコンポーネントから Date を渡せないため)。 */
 export type SessionRow = {
@@ -256,9 +262,38 @@ export function MatchManager({
   const destroySummary = useMemo(() => summarizeBracket(matches), [matches]);
 
   /**
-   * 表の破棄をともなう作り直し / 破棄だけ。**モーダルを開く前に必ず最新を読み直す。**
+   * 定期的に読み直す。**主催者の操作なしで画面が変わる要因があるため。**
+   * バトルの自動検知で status が LIVE → DETECTED → FINISHED と動き、勝敗が自動確定すれば
+   * 表そのものが進む。どれも event-worker 側で起きるので、`send()` の `router.refresh()`
+   * だけでは追いつかない。
+   *
+   * **破棄ダイアログを開いている間は止める。** 表示中に裏で `matches` が入れ替わると、
+   * 主催者が読んでいる「確定3件が消える」の要約が、確認している最中に別の表のものへ
+   * すり替わる。要約と `expectedMatchIds` はどちらも同じ `matches` 由来なので不整合には
+   * ならないが、**主催者が見ていない表を消す**ことになるのは同じ。
+   * 送信中・ドラッグ編集中・タブが裏にいる間も引かない。
+   */
+  useEffect(() => {
+    if (eventStatus === "ARCHIVED") return;
+    if (destroyOpen || busy || draggedIndex !== null) return;
+
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      router.refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [eventStatus, destroyOpen, busy, draggedIndex, router]);
+
+  /**
+   * 表の破棄をともなう作り直し / 破棄だけ。**モーダルを開く前に最新を読み直す。**
    * event-worker が10秒ごとに status を書き換えるので、画面の件数はすぐ古くなる。
    * 古い件数のまま「確定3件が消える」と見せて確認させない。
+   *
+   * `router.refresh()` は非同期なので、開いた瞬間の表示が最新である保証まではない。
+   * **最後の砦はサーバー側の `expectedMatchIds` 照合**(`BRACKET_CHANGED` → 409)で、
+   * 弾かれたらここへ戻ってきて開き直す。要約(`destroySummary`)と送信する
+   * `expectedMatchIds` は**必ず同じ `matches` から作る** — 片方だけ固定すると、
+   * 主催者が見た表と実際に消す表が食い違う。
    *
    * `keepError` はサーバーに弾かれて開き直すとき。**理由を消さない** — 消すと
    * 「押したのに何も起きなかった」ようにしか見えない。

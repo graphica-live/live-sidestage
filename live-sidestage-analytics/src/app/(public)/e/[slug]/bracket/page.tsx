@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { findPublicEvent, loadBracket } from "@/event/public-event";
 import { CARD_CLIP } from "../battle-ui";
-import { BracketTree } from "./BracketTree";
+import { BracketLive } from "./BracketLive";
 
 export const dynamic = "force-dynamic";
 
@@ -43,11 +43,9 @@ export default async function BracketPage({ params }: { params: { slug: string }
         トーナメント表
       </h1>
 
-      {!bracket ? (
+      {event.format !== "TOURNAMENT" ? (
         <p className={`mt-6 border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
-          {event.format === "TOURNAMENT"
-            ? "まだ対戦表が公開されていない。"
-            : "この種目にトーナメント表はない。"}
+          この種目にトーナメント表はない。
         </p>
       ) : (
         <>
@@ -58,9 +56,22 @@ export default async function BracketPage({ params }: { params: { slug: string }
           </p>
 
           {/* 決勝を中央に置き、左右へブロックを分けて描く。狭い画面では初期表示を
-              画面幅に収まるよう縮小する(BracketScroller)。拡大はピンチズームで行う。 */}
+              画面幅に収まるよう縮小する(BracketScroller)。拡大はピンチズームで行う。
+
+              **表が無くてもマウントする。** このページは表を見に来る場所なので、
+              開いたまま主催者が表を作ったら出るようにしておく(破棄→再作成も拾う)。 */}
           <div className="mt-6">
-            <BracketTree roundCount={bracket.roundCount} matches={bracket.matches} />
+            <BracketLive
+              slug={event.slug}
+              initial={bracket}
+              initialStatus={event.status}
+              initialFinalizedAt={event.finalizedAt?.toISOString() ?? null}
+              empty={
+                <p className={`border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+                  まだ対戦表が公開されていない。
+                </p>
+              }
+            />
           </div>
 
           <p className="mt-3 text-xs leading-relaxed text-gray-600">

@@ -4,6 +4,7 @@ import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { nextSlot } from "@/event/bracket";
 import { acquireEventLock } from "@/event/event-lock";
+import { advanceBracket } from "@/event/match-results";
 import { isByeRow, isPlainObject, isStartedMatch } from "@/event/match-status";
 import {
   isTransactionTimeout,
@@ -287,6 +288,14 @@ export async function PATCH(
 
         default:
           return { error: "未知の action です。", status: 400 };
+      }
+
+      // **勝敗が動いたら、その場で下流へ送る。** 転送は集計ワーカーの周回でも走るが、
+      // ワーカーは開催前(SCHEDULED)のイベントを対象にしない(`aggregationWindow`)ので、
+      // 事前に組んだ表を確定しても永久に次のラウンドが埋まらない。ロックは
+      // このトランザクションの先頭で取ってあるので順序は変わらない。
+      if (resultAction) {
+        await advanceBracket(tx, params.id);
       }
 
       await reopenAggregation(tx, params.id);

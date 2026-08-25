@@ -20,7 +20,7 @@ import { resolveEventWindows } from "@/event/sessions";
 import type { EntryMode, EventFormat, EventStatus } from "@/event/validation";
 import { getCoverImageUrl } from "@/lib/media-storage";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "./battle-ui";
-import { BracketTree } from "./bracket/BracketTree";
+import { BracketLive } from "./bracket/BracketLive";
 import { EventResults } from "./EventResults";
 import { NoticeSection } from "./NoticeSection";
 import { ParticipantRoster } from "./ParticipantRoster";
@@ -161,8 +161,15 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
             <p className="mt-2 text-sm text-gray-400">
               勝敗は当サービスが受信したギフトのダイヤで決まる。バトル中に投げられたぶんが対象。
             </p>
+            {/* トップは表があるときだけセクションを出す。表が消えたら中身も消える
+                (見出しだけ残るが、破棄は開催中に起きる操作ではない)。 */}
             <div className="mt-5">
-              <BracketTree roundCount={bracket.roundCount} matches={bracket.matches} />
+              <BracketLive
+                slug={event.slug}
+                initial={bracket}
+                initialStatus={event.status}
+                initialFinalizedAt={event.finalizedAt?.toISOString() ?? null}
+              />
             </div>
           </section>
         </div>
