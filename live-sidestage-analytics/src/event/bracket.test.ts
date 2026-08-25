@@ -2,12 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   bracketSize,
   buildBracket,
-  buildStagedBracket,
+  buildBracketFor,
+  buildPlacementBlocks,
   nextSlot,
+  placementOptions,
+  placementRoundLabel,
+  buildStagedBracket,
   resolveBracket,
   roundLabel,
   seedOrder,
   stagedRoundLabel,
+  type BracketMethod,
 } from "./bracket";
 
 describe("bracketSize", () => {
@@ -309,5 +314,210 @@ describe("roundLabel", () => {
 
   it("それより前は人数で表す", () => {
     expect(roundLabel(1, 4)).toBe("16人制 1回戦");
+  });
+});
+
+describe("placementOptions", () => {
+  const ranks = (n: number, method: BracketMethod) =>
+    placementOptions(n, method).map((o) => `d${o.depth}:${o.rank}位:+${o.matchCount}`);
+
+  it("標準方式では深さと順位が 2^d+1 で対応する", () => {
+    expect(ranks(8, "STANDARD")).toEqual(["d1:3位:+1", "d2:5位:+4"]);
+    expect(ranks(16, "STANDARD")).toEqual(["d1:3位:+1", "d2:5位:+4", "d3:9位:+11"]);
+  });
+
+  it("不戦勝で減った出場数のぶんだけブロックが小さくなる", () => {
+    // 6人・標準: 1回戦の実試合は2件だけ(残り2枠は不戦勝)。5位決定戦は1試合で済む。
+    expect(ranks(6, "STANDARD")).toEqual(["d1:3位:+1", "d2:5位:+2"]);
+    // 11人・標準: 1回戦の実試合は3件。9位決定戦のブロックは3人=2試合。
+    expect(ranks(11, "STANDARD")).toEqual(["d1:3位:+1", "d2:5位:+4", "d3:9位:+6"]);
+  });
+
+  it("出どころのラウンドの実試合が2件未満なら、その深さは選べない", () => {
+    // 2人: 決勝しかない
+    expect(placementOptions(2, "STANDARD")).toEqual([]);
+    // 3人: 1回戦の実試合が1件しかない。3位は無試合で確定するので正しい
+    expect(placementOptions(3, "STANDARD")).toEqual([]);
+    expect(ranks(4, "STANDARD")).toEqual(["d1:3位:+1"]);
+    // 5人・標準: 1回戦の実試合が1件なので d=2 は組めない
+    expect(ranks(5, "STANDARD")).toEqual(["d1:3位:+1"]);
+  });
+
+  it("段階的不戦勝方式では深さが飛ぶ(d=1 が欠けて d=2 だけ残る)", () => {
+    // 準決勝が「1試合 + 不戦勝行」なので3位は無試合で確定する。
+    // 一方1回戦の敗者2人は同着なので、その2人で 4位決定戦が成立する。
+    expect(ranks(5, "STAGED_BYE")).toEqual(["d2:4位:+1"]);
+    expect(ranks(6, "STAGED_BYE")).toEqual(["d2:4位:+2"]);
+  });
+
+  it("rank は「そのラウンドより後で脱落した人数 + 優勝者」から数える", () => {
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (let n = 2; n <= 33; n++) {
+        const bracket = buildBracketFor(n, method);
+        for (const option of placementOptions(n, method)) {
+          const above = bracket.matches.filter(
+            (m) =>
+              m.round > bracket.roundCount - option.depth &&
+              m.sourceA.kind !== "BYE" &&
+              m.sourceB.kind !== "BYE"
+          ).length;
+          expect(option.rank).toBe(above + 2);
+          // 順位は必ず3位以上(2位までは本選の決勝で決まる)で、参加人数を超えない
+          expect(option.rank).toBeGreaterThanOrEqual(3);
+          expect(option.rank).toBeLessThanOrEqual(n);
+        }
+      }
+    }
+  });
+});
+
+describe("buildPlacementBlocks", () => {
+  it("ブロックの決勝は本選の決勝と同じラウンドの position=depth に来る", () => {
+    const blocks = buildPlacementBlocks(8, "STANDARD", 2);
+    const roundCount = buildBracketFor(8, "STANDARD").roundCount;
+    expect(blocks.map((b) => b.depth)).toEqual([1, 2]);
+    for (const block of blocks) {
+      const final = block.matches.find((m) => m.roundInBlock === block.blockRoundCount)!;
+      expect(final.round).toBe(roundCount);
+      expect(final.position).toBe(block.depth);
+    }
+  });
+
+  it("葉だけが loserFrom を持ち、その出どころは本選の実試合である", () => {
+    const bracket = buildBracketFor(8, "STANDARD");
+    const blocks = buildPlacementBlocks(8, "STANDARD", 2);
+    const real = new Set(
+      bracket.matches
+        .filter((m) => m.sourceA.kind !== "BYE" && m.sourceB.kind !== "BYE")
+        .map((m) => `${m.round}:${m.position}`)
+    );
+
+    for (const block of blocks) {
+      for (const match of block.matches) {
+        if (match.roundInBlock !== 1) {
+          expect(match.loserFrom).toBeNull();
+          continue;
+        }
+        expect(match.loserFrom).not.toBeNull();
+        for (const slot of match.loserFrom!) {
+          if (slot === null) continue;
+          expect(real.has(`${slot.round}:${slot.position}`)).toBe(true);
+          // 出どころは必ずこのブロックの深さのラウンド
+          expect(slot.round).toBe(bracket.roundCount - block.depth);
+        }
+      }
+    }
+  });
+
+  it("同じ本選の行から2つの敗者を引かない(出どころは全体で重複しない)", () => {
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (let n = 2; n <= 33; n++) {
+        const seen = new Set<string>();
+        for (const block of buildPlacementBlocks(n, method, 3)) {
+          for (const match of block.matches) {
+            for (const slot of match.loserFrom ?? []) {
+              if (slot === null) continue;
+              const key = `${slot.round}:${slot.position}`;
+              expect(seen.has(key)).toBe(false);
+              seen.add(key);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("depth で切ると、それ以下のブロックだけが作られる", () => {
+    expect(buildPlacementBlocks(16, "STANDARD", 0)).toEqual([]);
+    expect(buildPlacementBlocks(16, "STANDARD", 1).map((b) => b.depth)).toEqual([1]);
+    expect(buildPlacementBlocks(16, "STANDARD", 3).map((b) => b.depth)).toEqual([1, 2, 3]);
+    // 上限を超えて要求されても、組める段までしか作らない
+    expect(buildPlacementBlocks(4, "STANDARD", 3).map((b) => b.depth)).toEqual([1]);
+  });
+
+  it("実際に行われる試合の数が placementOptions の累計と一致する", () => {
+    // `matchCount` は主催者に見せる「増えるバトルの本数」。不戦勝行は対戦が起きないので
+    // 数えない(DB に作られる行数は size-1 で、これより多くなりうる)。
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (let n = 2; n <= 33; n++) {
+        for (const option of placementOptions(n, method)) {
+          const total = buildPlacementBlocks(n, method, option.depth).reduce(
+            (sum, b) => sum + b.matches.filter((m) => !m.isBye).length,
+            0
+          );
+          expect(total).toBe(option.matchCount);
+        }
+      }
+    }
+  });
+
+  it("BYE同士の行は作らない(必ず片側は敗者が来る)", () => {
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (let n = 2; n <= 33; n++) {
+        for (const block of buildPlacementBlocks(n, method, 3)) {
+          for (const match of block.matches) {
+            if (match.roundInBlock !== 1) continue;
+            expect(match.loserFrom!.filter((s) => s !== null).length).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+
+  it("本選と順位決定戦の座標が衝突せず、進行がそれぞれの側に閉じる(座標の整合性)", () => {
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18, 33, 100]) {
+        const bracket = buildBracketFor(n, method);
+        const roundCount = bracket.roundCount;
+        const blocks = buildPlacementBlocks(n, method, 3);
+
+        const mainKeys = new Set(bracket.matches.map((m) => `${m.round}:${m.position}`));
+        const blockKeys = new Set<string>();
+        for (const block of blocks) {
+          for (const m of block.matches) {
+            const key = `${m.round}:${m.position}`;
+            // 本選ともブロック同士とも重ならない
+            expect(mainKeys.has(key)).toBe(false);
+            expect(blockKeys.has(key)).toBe(false);
+            blockKeys.add(key);
+            // ブロックは決勝のラウンドを超えない(roundCount = Math.max(round) を動かさない)
+            expect(m.round).toBeLessThanOrEqual(roundCount);
+            expect(m.round).toBeGreaterThanOrEqual(1);
+          }
+        }
+
+        // 本選の勝者は必ず本選の枠へ行く
+        for (const m of bracket.matches) {
+          const slot = nextSlot(m.round, m.position, roundCount);
+          if (!slot) continue;
+          const key = `${slot.round}:${slot.position}`;
+          expect(blockKeys.has(key)).toBe(false);
+          expect(mainKeys.has(key)).toBe(true);
+        }
+
+        // ブロックの勝者は必ず同じブロックの枠へ行く
+        for (const block of blocks) {
+          const ownKeys = new Set(block.matches.map((m) => `${m.round}:${m.position}`));
+          for (const m of block.matches) {
+            const slot = nextSlot(m.round, m.position, roundCount);
+            if (m.roundInBlock === block.blockRoundCount) {
+              // ブロックの決勝は本選の決勝と同じラウンドなので転送先を持たない
+              expect(slot).toBeNull();
+              continue;
+            }
+            expect(slot).not.toBeNull();
+            expect(ownKeys.has(`${slot!.round}:${slot!.position}`)).toBe(true);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("placementRoundLabel", () => {
+  it("ブロックの決勝が「N位決定戦」", () => {
+    expect(placementRoundLabel(3, 1, 1)).toBe("3位決定戦");
+    expect(placementRoundLabel(5, 2, 2)).toBe("5位決定戦");
+    expect(placementRoundLabel(5, 1, 2)).toBe("5位決定 1回戦");
   });
 });

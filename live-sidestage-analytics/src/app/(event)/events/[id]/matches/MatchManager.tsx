@@ -12,7 +12,12 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
-import { resolveBracket } from "@/event/bracket";
+import {
+  buildPlacementBlocks,
+  placementOptions,
+  placementRounds,
+  resolveBracket,
+} from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
@@ -76,6 +81,13 @@ export type MatchRow = {
   winnerDecidedBy: string | null;
   /** 不戦勝行(`EventMatch.rules.bye`)。サーバー側で評価した真偽値だけ受け取る */
   isBye: boolean;
+  /**
+   * 順位決定戦(`EventMatch.rules.placement`)の行なら、その印。本選の行は null。
+   *
+   * **本選と座標空間を共有している**ので、一覧も表もこれでブロックを切り出す
+   * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
+   */
+  placement: { depth: number; rank: number } | null;
   sides: MatchSideRow[];
 };
 
@@ -174,6 +186,7 @@ export function MatchManager({
   lives,
   rules,
   bracketMethod,
+  eventPlacementDepth,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -190,6 +203,11 @@ export function MatchManager({
   rules: DeathmatchRules;
   /** トーナメントの不戦勝配分方式(TOURNAMENTのときだけ意味を持つ)。 */
   bracketMethod: BracketMethod;
+  /**
+   * 作成ウィザードで決めた順位決定戦の希望値(`Event.rules.bracket.placementDepth`)。
+   * **既存の表があればそちらが優先**で、これは初回作成時の既定値にしかならない。
+   */
+  eventPlacementDepth: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -201,6 +219,9 @@ export function MatchManager({
   // ラウンドごとの開催日程。既定は全ラウンドを最初の日程に置く(1日で終わるのが大半)。
   // ラウンド数は参加者数から決まるので、シード順が変わるたびに作り直す。
   const [roundSessionIds, setRoundSessionIds] = useState<string[]>([]);
+  // 順位決定戦。null = まだ主催者が触っていない(今の表 → イベントの希望値 の順で決める)。
+  const [placementDepth, setPlacementDepth] = useState<number | null>(null);
+  const [placementSessionIds, setPlacementSessionIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
@@ -237,15 +258,106 @@ export function MatchManager({
     [roundCount, roundSessionIds, currentRoundSessionIds, sessions]
   );
 
+  // 本選のラウンドごと。**順位決定戦は含めない** — 本選と同じ座標空間にいるので、
+  // round で束ねると決勝と同じ見出しに混ざる。
   const byRound = useMemo(() => {
     const groups = new Map<number, MatchRow[]>();
     for (const m of matches) {
+      if (m.placement) continue;
       const list = groups.get(m.round);
       if (list) list.push(m);
       else groups.set(m.round, [m]);
     }
     return [...groups.entries()].sort((a, b) => a[0] - b[0]);
   }, [matches]);
+
+  /** 順位決定戦の一覧。ブロック順 → ブロック内ラウンド順に並べ、見出しごとに束ねる。 */
+  const placementGroups = useMemo(() => {
+    const rows = matches
+      .filter((m) => m.placement)
+      .sort(
+        (a, b) =>
+          a.placement!.depth - b.placement!.depth ||
+          a.round - b.round ||
+          a.position - b.position
+      );
+    const groups: { label: string; rows: MatchRow[] }[] = [];
+    for (const row of rows) {
+      const last = groups[groups.length - 1];
+      if (last && last.label === row.roundLabel) last.rows.push(row);
+      else groups.push({ label: row.roundLabel, rows: [row] });
+    }
+    return groups;
+  }, [matches]);
+
+  // --- 順位決定戦の設定（作り直すときの入力）
+  //
+  // **選べる範囲は参加人数と不戦勝の出方で決まる**ので、サーバーと同じ純粋関数から算出する。
+  const placementChoices = useMemo(
+    () => (seed.length < 2 ? [] : placementOptions(seed.length, bracketMethod)),
+    [seed, bracketMethod]
+  );
+
+  /** 今の表に入っている順位決定戦の深さ。作り直しで勝手に外れないよう既定値に使う。 */
+  const currentPlacementDepth = useMemo(
+    () => matches.reduce((max, m) => (m.placement ? Math.max(max, m.placement.depth) : max), 0),
+    [matches]
+  );
+
+  /**
+   * 実際に作る深さ。**選べる選択肢へスナップする。** 単に上限で丸めると、
+   * 「d=1 は組めないが d=2 は組める」（段階的不戦勝方式で起きる）ときに
+   * 「3位決定戦まで」と表示しながら1つも作られない、という食い違いになる。
+   */
+  const plannedPlacementDepth = useMemo(() => {
+    const wanted =
+      placementDepth ?? (currentPlacementDepth || eventPlacementDepth);
+    const usable = placementChoices.filter((o) => o.depth <= wanted);
+    return usable.length > 0 ? usable[usable.length - 1].depth : 0;
+  }, [placementDepth, currentPlacementDepth, eventPlacementDepth, placementChoices]);
+
+  const plannedPlacementRounds = useMemo(
+    () =>
+      seed.length < 2 || plannedPlacementDepth === 0
+        ? []
+        : placementRounds(
+            buildPlacementBlocks(seed.length, bracketMethod, plannedPlacementDepth),
+            roundCount
+          ),
+    [seed, bracketMethod, plannedPlacementDepth, roundCount]
+  );
+
+  /** 今の表で順位決定戦がどの日程に置かれているか。 */
+  const currentPlacementSessionIds = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const m of matches) {
+      if (!m.placement) continue;
+      const key = `${m.placement.depth}:${m.round}`;
+      if (!byKey.has(key)) byKey.set(key, m.sessionId);
+    }
+    return byKey;
+  }, [matches]);
+
+  /** 既定は本選の決勝と同じ日程（本選のどのラウンドより後ろなので必ず妥当）。 */
+  const plannedPlacementSessionIds = useMemo(
+    () =>
+      plannedPlacementRounds.map(
+        (round, index) =>
+          placementSessionIds[index] ||
+          currentPlacementSessionIds.get(`${round.depth}:${round.round}`) ||
+          plannedRoundSessionIds[roundCount - 1] ||
+          sessions[0]?.id ||
+          ""
+      ),
+    [
+      plannedPlacementRounds,
+      placementSessionIds,
+      currentPlacementSessionIds,
+      plannedRoundSessionIds,
+      roundCount,
+      sessions,
+    ]
+  );
 
   // 判定はサーバーと同じ述語を使う(`match-status.ts`)。不戦勝・NO_SHOW・VOID は
   // 「進行済み」に数えない — 数えると、参加者が2のべき乗でないイベントや、
@@ -275,6 +387,8 @@ export function MatchManager({
       {
         entrantIds: seed,
         roundSessionIds: plannedRoundSessionIds,
+        placementDepth: plannedPlacementDepth,
+        placementSessionIds: plannedPlacementSessionIds,
         ...(confirm === undefined ? {} : { confirm }),
         // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
         expectedMatchIds: matches.map((m) => m.id),
@@ -540,6 +654,84 @@ export function MatchManager({
           </div>
         )}
 
+        {/* 順位決定戦。選べる範囲は参加人数と不戦勝の出方で決まるので、
+            組める段が1つも無ければセクションごと出さない（2〜3人など）。 */}
+        {placementChoices.length > 0 && (
+          <div className="grid gap-2 border-t border-border pt-4">
+            <div>
+              <label htmlFor="placement-depth" className="label">
+                順位決定戦
+              </label>
+              <p className="mt-0.5 text-xs text-gray-500">
+                3位以下も試合で決めるか。増やすと参加者の実際のライブバトルが増える。
+              </p>
+            </div>
+
+            <select
+              id="placement-depth"
+              className="input-field"
+              value={plannedPlacementDepth}
+              onChange={(e) => setPlacementDepth(Number(e.target.value))}
+            >
+              <option value={0}>行わない（優勝・準優勝だけ）</option>
+              {placementChoices.map((option) => (
+                <option key={option.depth} value={option.depth}>
+                  {option.rank}位決定戦まで（+{option.matchCount}試合）
+                </option>
+              ))}
+            </select>
+
+            {plannedPlacementDepth > 0 && (
+              <ul className="grid gap-0.5 text-xs text-gray-500">
+                {placementChoices
+                  .filter((option) => option.depth <= plannedPlacementDepth)
+                  .map((option) => (
+                    <li key={option.depth}>
+                      {option.rank}位決定戦の優勝者が{option.rank}位、準優勝が
+                      {option.rank + 1}位になる。それ以下は同着とする。
+                    </li>
+                  ))}
+              </ul>
+            )}
+
+            {/* 日程が複数あるときだけ、本選とは別に順位決定戦の日程を選ばせる。 */}
+            {sessions.length > 1 && plannedPlacementRounds.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {plannedPlacementRounds.map((round, index) => (
+                  <div key={`${round.depth}:${round.roundInBlock}`}>
+                    <label htmlFor={`placement-session-${index}`} className="label">
+                      {round.label}の日程
+                    </label>
+                    <select
+                      id={`placement-session-${index}`}
+                      className="input-field"
+                      value={plannedPlacementSessionIds[index] ?? ""}
+                      onChange={(e) => {
+                        const next = [...plannedPlacementSessionIds];
+                        next[index] = e.target.value;
+                        // 同じブロックの後のラウンドが前より early にならないよう引きずる。
+                        const picked = sessions.findIndex((s) => s.id === e.target.value);
+                        for (let i = index + 1; i < next.length; i++) {
+                          if (plannedPlacementRounds[i].depth !== round.depth) break;
+                          const current = sessions.findIndex((s) => s.id === next[i]);
+                          if (current < picked) next[i] = e.target.value;
+                        }
+                        setPlacementSessionIds(next);
+                      }}
+                    >
+                      {sessions.map((session, i) => (
+                        <option key={session.id} value={session.id}>
+                          {sessionRangeLabel(session, i)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-end gap-3">
           <button
             type="button"
@@ -597,24 +789,50 @@ export function MatchManager({
           </div>
 
           {viewMode === "list" ? (
-            byRound.map(([round, rows]) => (
-              <section key={round} className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-300">
-                  {rows[0]?.roundLabel ?? `${round}回戦`}
-                </h2>
-                {rows.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    eventId={eventId}
-                    match={match}
-                    format={format}
-                    sessions={sessions}
-                    busy={busy}
-                    onSend={send}
-                  />
-                ))}
-              </section>
-            ))
+            <>
+              {byRound.map(([round, rows]) => (
+                <section key={round} className="space-y-2">
+                  <h2 className="text-sm font-semibold text-gray-300">
+                    {rows[0]?.roundLabel ?? `${round}回戦`}
+                  </h2>
+                  {rows.map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      eventId={eventId}
+                      match={match}
+                      format={format}
+                      sessions={sessions}
+                      busy={busy}
+                      onSend={send}
+                    />
+                  ))}
+                </section>
+              ))}
+
+              {placementGroups.length > 0 && (
+                <div className="space-y-4 border-t border-border pt-4">
+                  <h2 className="text-[11px] font-bold tracking-[0.2em] text-gray-500">
+                    順位決定戦
+                  </h2>
+                  {placementGroups.map((group) => (
+                    <section key={group.label} className="space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-300">{group.label}</h3>
+                      {group.rows.map((match) => (
+                        <MatchCard
+                          key={match.id}
+                          eventId={eventId}
+                          match={match}
+                          format={format}
+                          sessions={sessions}
+                          busy={busy}
+                          onSend={send}
+                        />
+                      ))}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <AdminBracketTree matches={matches} onSelect={setSelectedMatchId} />
           )}

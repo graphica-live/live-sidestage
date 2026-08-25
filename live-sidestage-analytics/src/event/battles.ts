@@ -8,7 +8,7 @@ import {
   type MatchCandidate,
   type ReviewReason,
 } from "./match-detect";
-import { isByeRow } from "./match-status";
+import { isByeRow, parseLoserFrom } from "./match-status";
 import type { TimeRange } from "./scoring";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
@@ -135,29 +135,50 @@ function decidedAtOfSlot(
   if (decided) return decided;
 
   // 不戦勝(バトルが起きていない)行は時刻を持たない。その上流まで遡る。
-  const upstream = [
-    decidedAtOfSlot(round - 1, position * 2, bySlot, depth + 1),
-    decidedAtOfSlot(round - 1, position * 2 + 1, bySlot, depth + 1),
-  ].filter((d): d is Date => !!d);
+  const upstream = upstreamSlots(match)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, depth + 1))
+    .filter((d): d is Date => !!d);
   if (upstream.length === 0) return null;
   return upstream.reduce((max, d) => (d > max ? d : max));
 }
 
 /**
- * 上流(feeder)の決着時刻。`nextSlot()` の逆(round-1 の position*2 と position*2+1)を引く。
+ * この行に出場者を送り込んでくる上流の座標。
+ *
+ * 通常は `nextSlot()` の逆（round-1 の position*2 と position*2+1）。
+ * **順位決定戦の葉だけは例外**で、`rules.loserFrom`（本選のどの行の敗者が来るか）を見る —
+ * 座標の上流には何も無いので、そのままだと制約なし(null)になってしまう。
+ *
+ * 上流のラウンドは必ず自分より小さいので、辿っても循環しない。
+ */
+function upstreamSlots(match: MatchWithSides): { round: number; position: number }[] {
+  const loserFrom = parseLoserFrom(match.rules);
+  if (loserFrom) {
+    return loserFrom.filter((slot): slot is { round: number; position: number } => slot !== null);
+  }
+  if (match.round <= 1) return [];
+  return [
+    { round: match.round - 1, position: match.bracketPosition * 2 },
+    { round: match.round - 1, position: match.bracketPosition * 2 + 1 },
+  ];
+}
+
+/**
+ * 上流(feeder)の決着時刻。
  *
  * これがないと、2回戦のカードが埋まった瞬間に「同じ組み合わせで前に行われたバトル」
  * (1回戦そのもの、練習バトル)が候補に入る。時間枠がラウンドを分けていた前提の代わり。
+ *
+ * 順位決定戦でも同じ危険がある — 3位決定戦の枠が埋まった瞬間に、その2人が過去に
+ * 行った別のバトルを拾いうる。`upstreamSlots()` が `loserFrom` を見るのはそのため。
  */
 function feederDecidedAt(
   match: MatchWithSides,
   bySlot: Map<string, MatchWithSides>
 ): Date | null {
-  if (match.round <= 1) return null;
-  const feeders = [
-    decidedAtOfSlot(match.round - 1, match.bracketPosition * 2, bySlot),
-    decidedAtOfSlot(match.round - 1, match.bracketPosition * 2 + 1, bySlot),
-  ].filter((d): d is Date => !!d);
+  const feeders = upstreamSlots(match)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot))
+    .filter((d): d is Date => !!d);
   if (feeders.length === 0) return null;
   return feeders.reduce((max, d) => (d > max ? d : max));
 }

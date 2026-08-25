@@ -4,7 +4,7 @@ import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { nextSlot } from "@/event/bracket";
 import { acquireEventLock } from "@/event/event-lock";
-import { isByeRow, isPlainObject, isStartedMatch } from "@/event/match-status";
+import { isByeRow, isPlainObject, isStartedMatch, parseLoserFrom } from "@/event/match-status";
 import {
   isTransactionTimeout,
   MUTATION_TX_OPTIONS,
@@ -381,42 +381,94 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
+/**
+ * この対戦の結果を待っている下流が、すでに始まっているか。
+ *
+ * 下流の辺は2種類ある:
+ *
+ * - **勝者辺** — `nextSlot()` の座標。順位決定戦ブロックも本選と同じ座標空間にいるので、
+ *   ブロック内の進行はこれで辿れる
+ * - **敗者辺** — 順位決定戦の葉が持つ `rules.loserFrom`。座標からは導出できないので逆引きする。
+ *   これを見ないと「準決勝を void したら、すでに始まっている3位決定戦の出場者が黙って
+ *   入れ替わる」が起きる
+ *
+ * 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
+ * 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
+ * わたることがある)。訪問済み集合で有界なので無限ループにはならない。
+ *
+ * **対戦は1イベントぶんしかない**（100人でも99行＋順位決定戦）ので、ホップごとに引かず
+ * 1回で読み切る。
+ */
 async function downstreamStarted(
   tx: DbClient,
   eventId: string,
   round: number,
   position: number
 ): Promise<boolean> {
-  const agg = await tx.eventMatch.aggregate({
+  const all = await tx.eventMatch.findMany({
     where: { eventId },
-    _max: { round: true },
+    select: {
+      round: true,
+      bracketPosition: true,
+      status: true,
+      winnerDecidedBy: true,
+      rules: true,
+    },
   });
-  const roundCount = agg._max.round ?? round;
+  if (all.length === 0) return false;
 
-  // 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
-  // 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
-  // わたることがある)。ラウンド数で有界なので無限ループにはならない。
-  let cur = { round, position };
-  for (let hop = 0; hop < roundCount; hop++) {
-    const slot = nextSlot(cur.round, cur.position, roundCount);
-    if (!slot) return false;
+  const roundCount = Math.max(...all.map((m) => m.round));
+  const bySlot = new Map(all.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
 
-    const next = await tx.eventMatch.findFirst({
-      where: { eventId, round: slot.round, bracketPosition: slot.position },
-      select: { status: true, winnerDecidedBy: true, rules: true },
-    });
-    if (!next) return false;
+  const loserEdges = new Map<string, string[]>();
+  for (const match of all) {
+    for (const slot of parseLoserFrom(match.rules) ?? []) {
+      if (!slot) continue;
+      const from = `${slot.round}:${slot.position}`;
+      const to = `${match.round}:${match.bracketPosition}`;
+      const list = loserEdges.get(from);
+      if (list) list.push(to);
+      else loserEdges.set(from, [to]);
+    }
+  }
 
-    const nextIsBye = isByeRow(next.rules);
-    if (nextIsBye) {
-      cur = { round: slot.round, position: slot.position };
+  const downstreamOf = (r: number, p: number): string[] => {
+    const keys: string[] = [];
+    const slot = nextSlot(r, p, roundCount);
+    if (slot) keys.push(`${slot.round}:${slot.position}`);
+    keys.push(...(loserEdges.get(`${r}:${p}`) ?? []));
+    return keys;
+  };
+
+  const seen = new Set<string>();
+  const queue: string[] = [];
+  const push = (key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    queue.push(key);
+  };
+
+  // 起点そのものは下流ではない。起点から出る辺だけを積む。
+  for (const key of downstreamOf(round, position)) push(key);
+
+  while (queue.length > 0) {
+    const next = bySlot.get(queue.shift()!);
+    if (!next) continue;
+
+    if (isByeRow(next.rules)) {
+      for (const key of downstreamOf(next.round, next.bracketPosition)) push(key);
       continue;
     }
-    return isStartedMatch({
-      status: next.status,
-      winnerDecidedBy: next.winnerDecidedBy,
-      isBye: nextIsBye,
-    });
+    if (
+      isStartedMatch({
+        status: next.status,
+        winnerDecidedBy: next.winnerDecidedBy,
+        isBye: false,
+      })
+    ) {
+      return true;
+    }
   }
+
   return false;
 }

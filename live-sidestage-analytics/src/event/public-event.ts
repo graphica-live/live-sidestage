@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { rankByLife } from "./deathmatch";
+import { parsePlacement } from "./match-status";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -126,6 +127,13 @@ export type BracketMatchDto = {
   round: number;
   position: number;
   roundLabel: string;
+  /**
+   * 順位決定戦(3位決定戦など)の行なら、その印。本選の行は null。
+   *
+   * **本選と座標空間を共有している**ので、描画側はこれでブロックを切り出す
+   * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
+   */
+  placement: { depth: number; rank: number } | null;
   status: string;
   /** この対戦を行う開催日程の表示名(「1日目」「予選」など)。対戦に個別の時刻は無い */
   sessionLabel: string;
@@ -213,6 +221,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
         typeof (m.rules as { roundLabel?: unknown } | null)?.roundLabel === "string"
           ? (m.rules as { roundLabel: string }).roundLabel
           : `${m.round}回戦`,
+      placement: parsePlacement(m.rules),
       status: m.status === "NEEDS_REVIEW" ? "LIVE" : m.status,
       sessionLabel: sessionLabels.get(m.sessionId) ?? "",
       detectedStartAt: m.detectedStartAt?.toISOString() ?? null,

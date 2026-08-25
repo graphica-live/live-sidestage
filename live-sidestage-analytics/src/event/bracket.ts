@@ -298,3 +298,229 @@ export function stagedRoundLabel(round: number, roundCount: number): string {
   if (remaining === 2) return "準々決勝";
   return `${round}回戦`;
 }
+
+// ---------------------------------------------------------------------------
+// 順位決定戦(3位決定戦・5位決定戦…)のブロック
+// ---------------------------------------------------------------------------
+//
+// 深さ `d` のブロック = **本選ラウンド `R-d` の敗者だけで組む独立した表**
+// (`R` = 本選のラウンド数 = 決勝のラウンド)。d=1 なら準決勝の敗者、つまり3位決定戦。
+//
+// **本選と同じ座標空間に埋め込む。** ブロック d の決勝を `(round: R, position: d)` に置き、
+// ラウンド `R-k` では position 範囲 `[d*2^k, (d+1)*2^k - 1]` を占める。本選は同ラウンドで
+// `[0, 2^k - 1]` を占めるので、`d >= 1` である限り衝突しない。しかも `d*2^k` は偶数なので
+// `floor((d*2^k + p)/2) = d*2^(k-1) + floor(p/2)` — **`nextSlot()` の座標式がブロック内の
+// 進行にそのまま成立する**。これは意図的な設計で、以下を無改修で通すためにある:
+//
+// - `nextSlot()` / `roundCount = Math.max(...round)`(ブロックは round R を超えない)
+// - 本選の勝者転送(本選 position は floor(p/2) で必ず本選範囲に落ちる)
+// - `BracketTree` / `AdminBracketTree` の再帰描画(決勝 position 0 から降りるので届かない)
+//
+// **新しく要るのは「敗者を送る辺」1本だけ**で、それは `PlacementMatch.loserFrom`
+// (DB では `EventMatch.rules.loserFrom`)として明示的に持つ。座標から導出しないのは、
+// どの本選行が「実試合(=敗者を出す)」かが不戦勝の配置に依存し、読み取り側で座標だけからは
+// 復元できないため。
+
+/** 本選ブラケット上の座標。 */
+export type BracketSlot = { round: number; position: number };
+
+/** 順位決定戦ブロックの1行。 */
+export type PlacementMatch = {
+  /** 本選と共通の座標系での round */
+  round: number;
+  /** 本選と共通の座標系での position(必ず本選の範囲外) */
+  position: number;
+  /** ブロック内での何回戦目か(1始まり) */
+  roundInBlock: number;
+  /**
+   * 敗者の出どころ。**葉(roundInBlock === 1)の行だけ**が持ち、sideIndex 順に並ぶ。
+   * BYE 側は null。葉でない行は null(勝者が `nextSlot()` で上がってくる)。
+   */
+  loserFrom: (BracketSlot | null)[] | null;
+  /**
+   * 片側が BYE の行か。**ブロックの BYE は常に「動的」** — 出どころが LOSER_OF なので
+   * 生成時点では出場者が決まらず、`match-results.ts` が敗者の到着時に自動確定する。
+   */
+  isBye: boolean;
+};
+
+/** 順位決定戦ブロック1つ分。 */
+export type PlacementBlock = {
+  /** 深さ。1 = 準決勝(round R-1)の敗者で組むブロック */
+  depth: number;
+  /** このブロックの優勝者が何位になるか */
+  rank: number;
+  /** ブロックのラウンド数 */
+  blockRoundCount: number;
+  matches: PlacementMatch[];
+};
+
+/**
+ * 主催者に見せる選択肢。
+ *
+ * `matchCount` はその深さまで選んだときに**実際に増えるバトルの本数**の累計。
+ * 不戦勝行は対戦が起きないので数えない(DB に作られる行数はこれより多くなりうる)。
+ */
+export type PlacementOption = { depth: number; rank: number; matchCount: number };
+
+/** 方式を見てブラケットの構造を作る。`resolveBracket` と同じ選択規則。 */
+export function buildBracketFor(entrantCount: number, method: BracketMethod): Bracket {
+  return method === "STAGED_BYE" ? buildStagedBracket(entrantCount) : buildBracket(entrantCount);
+}
+
+/**
+ * そのラウンドで**実際に対戦が行われる**行。position 昇順。
+ *
+ * 不戦勝行は敗者を出さないので順位決定戦の出どころにならない。標準方式の静的な不戦勝
+ * (相手が ENTRANT)も、段階的方式の動的な不戦勝(相手が WINNER_OF)も、どちらも
+ * 「片側が BYE」で判別できる。
+ */
+function realMatchesInRound(bracket: Bracket, round: number): BracketMatch[] {
+  return bracket.matches
+    .filter((m) => m.round === round && m.sourceA.kind !== "BYE" && m.sourceB.kind !== "BYE")
+    .sort((a, b) => a.position - b.position);
+}
+
+/**
+ * 深さ `d` のブロックの優勝者が何位になるか。
+ *
+ * **`2^d + 1` では求まらない。** 段階的不戦勝方式ではラウンドごとの人数が2のべき乗に
+ * ならず、深さと順位が対応しない(例: 5人・段階的方式では準決勝の実試合が1件しかなく、
+ * 3位は無試合で確定する一方、1回戦の敗者2人による「4位決定戦」が成立する)。
+ *
+ * 1試合＝1人脱落なので、そのラウンドより後で脱落した人数 + 優勝者 が上位にいる。
+ */
+function rankForDepth(bracket: Bracket, depth: number): number {
+  let above = 0;
+  for (let round = bracket.roundCount - depth + 1; round <= bracket.roundCount; round++) {
+    above += realMatchesInRound(bracket, round).length;
+  }
+  return above + 2;
+}
+
+/**
+ * 選べる順位決定戦の一覧。
+ *
+ * **深さは連続しない。** 出どころのラウンドの実試合が2件未満だとブロックを組めないので、
+ * `d=1` が欠けて `d=2` だけが残ることがある(上記の段階的5人)。UI には「深さ」ではなく
+ * この一覧を出し、主催者には `${rank}位決定戦まで` で選ばせる。
+ */
+export function placementOptions(entrantCount: number, method: BracketMethod): PlacementOption[] {
+  const bracket = buildBracketFor(entrantCount, method);
+  const options: PlacementOption[] = [];
+  let matchCount = 0;
+
+  for (let depth = 1; depth <= bracket.roundCount - 1; depth++) {
+    const feeders = realMatchesInRound(bracket, bracket.roundCount - depth);
+    if (feeders.length < 2) continue;
+    // シングルイリミネーションの総試合数は「出場数 - 1」。
+    matchCount += feeders.length - 1;
+    options.push({ depth, rank: rankForDepth(bracket, depth), matchCount });
+  }
+
+  return options;
+}
+
+/**
+ * 順位決定戦ブロックの構造を作る。`depth` 以下で組める段すべてを返す。
+ *
+ * ブロック内の表は**常に標準方式**で組む。出場者は全員「まだ確定していない敗者」なので
+ * 静的な不戦勝(相手が確定済みの ENTRANT)は原理的に発生せず、方式で挙動が変わらない。
+ */
+export function buildPlacementBlocks(
+  entrantCount: number,
+  method: BracketMethod,
+  depth: number
+): PlacementBlock[] {
+  const bracket = buildBracketFor(entrantCount, method);
+  const roundCount = bracket.roundCount;
+  const blocks: PlacementBlock[] = [];
+
+  for (let d = 1; d <= Math.min(depth, roundCount - 1); d++) {
+    const feeders = realMatchesInRound(bracket, roundCount - d);
+    if (feeders.length < 2) continue;
+
+    const inner = buildBracket(feeders.length);
+    // ブロックの決勝を本選の決勝と同じラウンドに揃える。
+    const firstRound = roundCount - inner.roundCount + 1;
+
+    const matches = inner.matches.map((m): PlacementMatch => {
+      const round = firstRound + m.round - 1;
+      // このラウンドでのブロック幅。inner の position はちょうど [0, 2^k - 1] に収まる。
+      const k = roundCount - round;
+      const sources = [m.sourceA, m.sourceB];
+      return {
+        round,
+        position: d * 2 ** k + m.position,
+        roundInBlock: m.round,
+        loserFrom:
+          m.round === 1
+            ? sources.map((s) =>
+                s.kind === "ENTRANT"
+                  ? { round: feeders[s.entrantIndex].round, position: feeders[s.entrantIndex].position }
+                  : null
+              )
+            : null,
+        isBye: sources.some((s) => s.kind === "BYE"),
+      };
+    });
+
+    blocks.push({
+      depth: d,
+      rank: rankForDepth(bracket, d),
+      blockRoundCount: inner.roundCount,
+      matches,
+    });
+  }
+
+  return blocks;
+}
+
+/** 順位決定戦のラウンドの呼び名。ブロックの決勝が「N位決定戦」。 */
+export function placementRoundLabel(
+  rank: number,
+  roundInBlock: number,
+  blockRoundCount: number
+): string {
+  return roundInBlock === blockRoundCount
+    ? `${rank}位決定戦`
+    : `${rank}位決定 ${roundInBlock}回戦`;
+}
+
+/** 順位決定戦の日程を選ばせる単位。 */
+export type PlacementRound = {
+  depth: number;
+  rank: number;
+  /** 本選と共通の座標系での round */
+  round: number;
+  roundInBlock: number;
+  blockRoundCount: number;
+  label: string;
+  /** 敗者の出どころになる本選のラウンド。葉でなければ null */
+  feederRound: number | null;
+};
+
+/**
+ * ブロックを「日程を割り当てる単位」に平らへ並べる。**ブロック順 → ブロック内ラウンド順**。
+ *
+ * `planPlacementSessions()` の `requested` と UI のセレクトはこの並びの添字で対応する。
+ * クライアントとサーバーが同じ純粋関数から作るので、並びがずれない。
+ */
+export function placementRounds(blocks: PlacementBlock[], roundCount: number): PlacementRound[] {
+  const rounds: PlacementRound[] = [];
+  for (const block of blocks) {
+    for (let roundInBlock = 1; roundInBlock <= block.blockRoundCount; roundInBlock++) {
+      const round = roundCount - block.blockRoundCount + roundInBlock;
+      rounds.push({
+        depth: block.depth,
+        rank: block.rank,
+        round,
+        roundInBlock,
+        blockRoundCount: block.blockRoundCount,
+        label: placementRoundLabel(block.rank, roundInBlock, block.blockRoundCount),
+        feederRound: roundInBlock === 1 ? roundCount - block.depth : null,
+      });
+    }
+  }
+  return rounds;
+}

@@ -1,7 +1,7 @@
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
 import { MANUAL_DECISIONS } from "./match-detect";
-import { isByeRow, isStartedMatch } from "./match-status";
+import { isByeRow, isStartedMatch, parseLoserFrom } from "./match-status";
 import { intersectWindows, type EventWindow } from "./sessions";
 import {
   buildRateSegments,
@@ -186,24 +186,21 @@ export async function resolveMatchResults(
   const roundCount = Math.max(...fresh.map((m) => m.round));
   const slotIndex = new Map(fresh.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
 
-  for (const match of fresh) {
-    const slot = nextSlot(match.round, match.bracketPosition, roundCount);
-    if (!slot) continue; // 決勝
+  type FreshMatch = (typeof fresh)[number];
 
-    const target = slotIndex.get(`${slot.round}:${slot.position}`);
-    if (!target) continue;
-
-    const targetSide = target.sides.find((s) => s.sideIndex === slot.sideIndex);
-    if (!targetSide) continue;
-
-    const winner =
-      match.status === "VOID"
-        ? null
-        : (match.sides.find((s) => s.id === match.winnerSideId) ?? null);
-
-    const desiredParticipants = winner ? winner.participants.map((p) => p.participantId) : [];
+  /**
+   * 上流の結果を下流の1サイドへ反映する。**勝者辺と敗者辺で共通**。
+   *
+   * `source` が null なら「上流がまだ決まっていない / VOID になった」ので枠を空へ戻す。
+   */
+  const applyTransfer = async (
+    target: FreshMatch,
+    targetSide: FreshMatch["sides"][number],
+    source: SideRow | null
+  ) => {
+    const desiredParticipants = source ? source.participants.map((p) => p.participantId) : [];
     const currentParticipants = targetSide.participants.map((p) => p.participantId);
-    const desiredTeam = winner?.teamId ?? null;
+    const desiredTeam = source?.teamId ?? null;
 
     const sameParticipants =
       desiredParticipants.length === currentParticipants.length &&
@@ -227,7 +224,7 @@ export async function resolveMatchResults(
         // ここは advanced に数えない。この枠は毎周「転送したい」状態のままなので、
         // 数えると finalizedAt が永久に立たなくなる。
         summary.blocked++;
-        continue;
+        return;
       }
 
       await tx.eventMatchSideParticipant.deleteMany({ where: { sideId: targetSide.id } });
@@ -249,10 +246,11 @@ export async function resolveMatchResults(
     }
 
     if (targetIsBye) {
-      // 段階的不戦勝方式の不戦勝行。相手側は永久に空(BYE)なので、こちら側に
-      // 勝者が来た時点でバトルを待たずに確定し、逆に上流が VOID 等で勝者を失ったら
-      // 未確定へ戻す(自動で導出される状態なので、他の行のような「進行中は触らない」
-      // 保護は不要 — 上のガードで進行中チェック自体を素通りさせている)。
+      // 不戦勝行。相手側は永久に空(BYE)なので、こちら側に出場者が来た時点で
+      // バトルを待たずに確定し、逆に上流が VOID 等で出場者を失ったら未確定へ戻す
+      // (自動で導出される状態なので、他の行のような「進行中は触らない」保護は不要 —
+      // 上のガードで進行中チェック自体を素通りさせている)。
+      // 段階的不戦勝方式の本選と、順位決定戦ブロックの葉の両方がここを通る。
       const shouldFinish = desiredParticipants.length > 0;
       const newStatus = shouldFinish ? "FINISHED" : "SCHEDULED";
       const newWinnerSideId = shouldFinish ? targetSide.id : null;
@@ -264,9 +262,77 @@ export async function resolveMatchResults(
         summary.advanced++;
       }
     }
+  };
+
+  // --- 勝者辺。`nextSlot()` の座標だけで決まる（順位決定戦ブロックも同じ座標空間なので
+  //     ブロック内の進行はここで一緒に処理される）。
+  for (const match of fresh) {
+    const slot = nextSlot(match.round, match.bracketPosition, roundCount);
+    if (!slot) continue; // 決勝(と各ブロックの決定戦)
+
+    const target = slotIndex.get(`${slot.round}:${slot.position}`);
+    if (!target) continue;
+
+    const targetSide = target.sides.find((s) => s.sideIndex === slot.sideIndex);
+    if (!targetSide) continue;
+
+    const winner =
+      match.status === "VOID"
+        ? null
+        : (match.sides.find((s) => s.id === match.winnerSideId) ?? null);
+
+    await applyTransfer(target, targetSide, winner);
+  }
+
+  // --- 敗者辺。**座標からは導出できない**ので、順位決定戦の行が持つ `rules.loserFrom`
+  //     （どの本選の行の敗者が来るか）を逆引きする。
+  const loserTargets = new Map<string, { target: FreshMatch; sideIndex: number }[]>();
+  for (const match of fresh) {
+    const loserFrom = parseLoserFrom(match.rules);
+    if (!loserFrom) continue;
+    loserFrom.forEach((slot, sideIndex) => {
+      if (!slot) return;
+      const key = `${slot.round}:${slot.position}`;
+      const list = loserTargets.get(key);
+      if (list) list.push({ target: match, sideIndex });
+      else loserTargets.set(key, [{ target: match, sideIndex }]);
+    });
+  }
+
+  for (const match of fresh) {
+    const targets = loserTargets.get(`${match.round}:${match.bracketPosition}`);
+    if (!targets) continue;
+
+    const loser = resolveLoser(match);
+    for (const { target, sideIndex } of targets) {
+      const targetSide = target.sides.find((s) => s.sideIndex === sideIndex);
+      if (!targetSide) continue;
+      await applyTransfer(target, targetSide, loser);
+    }
   }
 
   return summary;
+}
+
+/**
+ * 順位決定戦へ送る敗者のサイド。**敗者が存在しないケースを漏らさないこと。**
+ *
+ * - `VOID` / 未確定 — まだ誰も負けていない
+ * - `BYE` — 対戦そのものが起きていないので敗者はいない（相手側は永久に空）
+ * - `DRAW` — 引き分けに敗者はいない（トーナメントでは `[matchId]` API が拒否するが、
+ *   デスマッチから種目を切り替えた等で残りうるので fail closed にしておく）
+ */
+function resolveLoser(match: {
+  status: string;
+  winnerSideId: string | null;
+  winnerDecidedBy: string | null;
+  rules: unknown;
+  sides: SideRow[];
+}): SideRow | null {
+  if (match.status !== "FINISHED" || !match.winnerSideId) return null;
+  if (match.winnerDecidedBy === "BYE" || match.winnerDecidedBy === "DRAW") return null;
+  if (isByeRow(match.rules)) return null;
+  return match.sides.find((s) => s.id !== match.winnerSideId) ?? null;
 }
 
 type SideTotal = { sideId: string; diamonds: bigint; points: bigint };
