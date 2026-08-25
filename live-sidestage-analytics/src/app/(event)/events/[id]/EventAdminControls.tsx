@@ -1,21 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { STATUS_CLASSES, STATUS_LABELS } from "@/event/labels";
+import type { ReadinessTask } from "@/event/readiness";
+import { STATUS_TRANSITIONS } from "@/event/status-transition";
 import type { EventStatus } from "@/event/validation";
 
-// RUNNING への遷移は集計ワーカーの対象になることを意味する(フェーズ3以降)。
-// 取り消せる遷移だけをここに出す。
-const NEXT_STATUS: Partial<Record<EventStatus, { to: EventStatus; label: string }[]>> = {
-  SCHEDULED: [{ to: "RUNNING", label: "開催中にする" }],
-  RUNNING: [{ to: "FINISHED", label: "終了にする" }],
-  FINISHED: [
-    { to: "RUNNING", label: "開催中に戻す" },
-    { to: "ARCHIVED", label: "アーカイブする" },
-  ],
-  ARCHIVED: [{ to: "FINISHED", label: "アーカイブを解除する" }],
-};
+// 残タスクを出すのは、まだ開催に向けて動いている状態のときだけ。
+// 終了・アーカイブでは「開催までに何をするか」に意味がない。
+const SHOW_TASKS_IN: EventStatus[] = ["SCHEDULED", "RUNNING"];
 
 // 公開範囲が非公開のときの注記。findPublicEvent()(src/event/public-event.ts)と対になっている
 // — オーナー自身は非公開でも公開ページを開けるが、それ以外には見えないことを伝える。
@@ -26,22 +21,75 @@ function privateNotice(visibility: string): string | null {
   return null;
 }
 
+/**
+ * 開催までの残タスク。クリックでそのタスクを片付ける画面へ飛ぶ。
+ *
+ * `blocking` は「これが残っていると開催中にできない」もの。任意のタスクと混ぜず、
+ * マーカーと文言で区別する(サーバー側 `PATCH /api/events/{id}` も同じ判定で弾く)。
+ */
+function ReadinessList({ tasks }: { tasks: ReadinessTask[] }) {
+  if (tasks.length === 0) {
+    return (
+      <p className="mt-3 border-t border-border pt-3 text-xs text-gray-500">
+        開催までの残タスクはない。
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <span className="label">開催までの残タスク</span>
+      <ul className="grid gap-1.5">
+        {tasks.map((task) => (
+          <li key={task.key}>
+            <Link
+              href={task.href}
+              className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2 transition-colors hover:border-brand/40"
+            >
+              <span
+                className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  task.blocking
+                    ? "bg-red-400/10 text-red-400"
+                    : "bg-white/5 text-gray-400"
+                }`}
+              >
+                {task.blocking ? "必須" : "任意"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm text-white">{task.label}</span>
+                <span className="mt-0.5 block text-xs text-gray-500">{task.detail}</span>
+              </span>
+              <span className="mt-0.5 shrink-0 text-xs text-gray-500">→</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function EventAdminControls({
   id,
   slug,
   status,
   visibility,
+  readinessTasks,
 }: {
   id: string;
   slug: string;
   status: string;
   visibility: string;
+  readinessTasks: ReadinessTask[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const notice = privateNotice(visibility);
+
+  const transitions = STATUS_TRANSITIONS[status as EventStatus] ?? [];
+  const blocked = readinessTasks.some((task) => task.blocking);
+  const showTasks = SHOW_TASKS_IN.includes(status as EventStatus);
 
   // origin はサーバーレンダリング時には存在しない。初回レンダーで参照すると
   // サーバー(相対パス)とクライアント(絶対URL)で出力が食い違い、hydration エラーになる。
@@ -62,6 +110,9 @@ export function EventAdminControls({
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       setError(body?.errors?.[0] ?? body?.error ?? "変更に失敗した。");
+      // 準備不足・状態の食い違いで弾かれたときは、サーバーの現状を取り直して
+      // 残タスクとボタンを描き直す(別タブで先に操作されている場合がある)。
+      router.refresh();
       return;
     }
     router.refresh();
@@ -90,12 +141,25 @@ export function EventAdminControls({
         <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_CLASSES[status as EventStatus]}`}>
           {STATUS_LABELS[status as EventStatus]}
         </span>
-        {(NEXT_STATUS[status as EventStatus] ?? []).map(({ to, label }) => (
-          <button key={to} onClick={() => changeStatus(to)} disabled={busy} className="btn-ghost text-xs">
-            {label}
-          </button>
-        ))}
+        {transitions.map(({ to, label }) => {
+          // 開催中にする遷移だけ、必須タスクが残っている間は押させない
+          // (押せてもサーバーが 409 NOT_READY で弾く。理由は下の一覧に出ている)。
+          const disabled = busy || (to === "RUNNING" && blocked);
+          return (
+            <button
+              key={to}
+              onClick={() => changeStatus(to)}
+              disabled={disabled}
+              title={to === "RUNNING" && blocked ? "必須の残タスクが片付いていない。" : undefined}
+              className="btn-ghost text-xs disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
+
+      {showTasks && <ReadinessList tasks={readinessTasks} />}
 
       <div className="mt-4 border-t border-border pt-4">
         <span className="label">公開ページ</span>

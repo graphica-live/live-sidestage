@@ -105,7 +105,7 @@ function sumOf(map: Map<string, Bucket>): { diamonds: bigint; points: bigint } {
 }
 
 export type AggregateResult =
-  | { status: "skipped"; reason: "locked" | "no-participants" }
+  | { status: "skipped"; reason: "locked" | "no-participants" | "not-due" }
   | { status: "done"; elapsedMs: number; contributionRows: number; standingRows: number };
 
 /**
@@ -136,6 +136,8 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           rules: true,
           startAt: true,
           endAt: true,
+          status: true,
+          finalizedAt: true,
           sessions: {
             orderBy: { startAt: "asc" },
             select: { startAt: true, endAt: true, name: true },
@@ -144,6 +146,22 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
       });
       if (!event) {
         return { status: "skipped", reason: "no-participants" } as const;
+      }
+
+      // **ロックを取ってから適格性を数え直す。** 対象一覧(`aggregateDueEvents`)は
+      // トランザクションの外で引くので、選ばれてからロックが取れるまでの間に主催者が
+      // 開催中を解除(RUNNING → SCHEDULED)したり、別の経路が最終集計を済ませたりしうる。
+      // 見ないと、開催準備中へ戻したイベントを集計して `finalizedAt` まで立ててしまう。
+      //
+      // **`startAt <= now` はここでは見ない。** `aggregateEvent()` は対象期間の外からでも
+      // 直接呼べる関数として使われている(テストと手動の再集計)。窓の判定は呼び出し側
+      // (`aggregationWindow`)の責務のままにして、ここで見るのは
+      // 「あとから覆りうる2つ」— ステータスと最終集計済みかどうか — だけにする。
+      if (event.status !== "RUNNING" && event.status !== "FINISHED") {
+        return { status: "skipped", reason: "not-due" } as const;
+      }
+      if (event.finalizedAt !== null) {
+        return { status: "skipped", reason: "not-due" } as const;
       }
 
       // 集計するのは開催日程の中だけ。日程の隙間のギフトは入らない。

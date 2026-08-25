@@ -47,8 +47,11 @@ export const VISIBILITY_LABELS: Record<Visibility, string> = {
   PRIVATE: "非公開",
 };
 
+// SCHEDULED は「まだ始まっていない」ではなく「開催に向けて準備している」状態を指す
+// (この間に参加者登録・トーナメント表の作成をやる)。公開ページも同じ辞書を使うので、
+// リスナーにも「開催準備中」と出る。
 export const STATUS_LABELS: Record<EventStatus, string> = {
-  SCHEDULED: "開催予定",
+  SCHEDULED: "開催準備中",
   RUNNING: "開催中",
   FINISHED: "終了",
   ARCHIVED: "アーカイブ",
