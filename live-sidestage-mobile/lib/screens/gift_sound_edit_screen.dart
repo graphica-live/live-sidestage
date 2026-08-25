@@ -338,7 +338,8 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.giftSoundId == null ? '追加' : '編集'),
+        // 入口のボタン（サウンドタブの「音を追加」）と同じ名前にする。
+        title: Text(widget.giftSoundId == null ? '音を追加' : '編集'),
         actions: [
           if (widget.giftSoundId != null)
             IconButton(

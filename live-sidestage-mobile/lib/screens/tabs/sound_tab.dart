@@ -68,12 +68,16 @@ class SoundTab extends StatelessWidget {
 
     return Scaffold(
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 96),
+        // 追加ボタンは囲いの中へ移したので、画面下に浮くボタンぶんの
+        // 逃げは要らない。
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
           FeatureStatusBar(status: status, errors: errors, notice: notice),
           if (store.configFromFutureVersion) const ConfigTooNewBanner(),
 
-          // どのセットが対象なのかをタブの色だけに委ねない（§7）。
+          // どのセットが対象なのかをタブの色だけに委ねない（§7）。囲いの見出しにも
+          // 同じ名前が出るが、こちらは画面を開いた瞬間に目に入る位置での明示で、
+          // 役割が違う（スクロールで囲いの見出しが流れても対象が分かる）。
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Text(
@@ -104,9 +108,7 @@ class SoundTab extends StatelessWidget {
                 store.updateSound((c) => c.copyWith(masterVolume: value)),
           ),
 
-          _SoundSetTabs(config: config, locked: locked),
-          _SelectedSetHeader(set: selected, locked: locked),
-
+          // 受信の状況はセットの設定ではないので、囲いの中には入れない。
           if (sound.lastGiftName != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -124,29 +126,9 @@ class SoundTab extends StatelessWidget {
               ),
             ),
 
-          if (selected.gifts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Text(
-                'まだ何も登録されていません。\n「追加」からギフトと音を選んでください。',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          for (final gift in selected.gifts)
-            _GiftSoundTile(gift: gift, setId: selected.id, locked: locked),
+          _SoundSetTabs(config: config, locked: locked),
+          _SelectedSetPanel(set: selected, locked: locked),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: locked
-            ? null
-            : () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => GiftSoundEditScreen(setId: selected.id),
-                  ),
-                ),
-        icon: const Icon(Icons.add),
-        label: const Text('追加'),
       ),
     );
   }
@@ -198,6 +180,14 @@ class _MasterVolumeSliderState extends State<_MasterVolumeSlider> {
   }
 }
 
+/// タブと、その中身を囲うパネルをつなぐ色。
+///
+/// 選択中の `ChoiceChip` が M3 で使う `secondaryContainer` と同じロールを引く。
+/// タブ → 舌 → 囲いの上端が一本の色でつながることで、下に並ぶものが
+/// 「今開いているタブの中身」だと辿れるようにする（装飾用の新色は足さない）。
+Color _setAccentColor(BuildContext context) =>
+    Theme.of(context).colorScheme.secondaryContainer;
+
 /// セットの切り替えタブ。名前や数が増えても収まるよう横スクロールにする（§5）。
 class _SoundSetTabs extends StatelessWidget {
   const _SoundSetTabs({required this.config, required this.locked});
@@ -209,8 +199,11 @@ class _SoundSetTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      // 下の余白は持たない。選択中タブの舌をそのまま下のパネルへ接続させる。
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       child: Row(
+        // タブごとに舌のぶんの高さを持つので、チップの上端で揃える。
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final set in config.sets) ...[
             _SetChip(set: set, config: config, locked: locked),
@@ -247,36 +240,154 @@ class _SetChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSelected = set.id == config.selectedSetId;
 
-    return GestureDetector(
-      // 上級者向けのショートカット。これだけが操作方法にならないよう、
-      // 見える「…」メニューも別に用意してある（§18）。
-      onLongPress: locked ? null : () => showSetMenu(context, set),
-      child: Opacity(
-        // ロック中の他セットは薄くしてロックを示す。画面全体はグレーアウトしない（§15）。
-        opacity: locked && !isSelected ? 0.45 : 1,
-        child: ChoiceChip(
-          label: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: _maxWidth),
-            child: Text(set.name, overflow: TextOverflow.ellipsis, maxLines: 1),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          // 上級者向けのショートカット。これだけが操作方法にならないよう、
+          // 見える「…」メニューも別に用意してある（§18）。
+          onLongPress: locked ? null : () => showSetMenu(context, set),
+          child: Opacity(
+            // ロック中の他セットは薄くしてロックを示す。画面全体はグレーアウトしない（§15）。
+            opacity: locked && !isSelected ? 0.45 : 1,
+            child: ChoiceChip(
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _maxWidth),
+                child: Text(set.name, overflow: TextOverflow.ellipsis, maxLines: 1),
+              ),
+              selected: isSelected,
+              // **ロック中も onSelected を null にしない。** null にすると押しても
+              // 無反応になり、「停止してください」を伝えられない（§14）。
+              onSelected: (_) {
+                if (isSelected) return;
+                if (locked) {
+                  _showLocked(context, _lockedSetMessage);
+                  return;
+                }
+                context.read<AppConfigStore>().updateSound((c) => c.selectSet(set.id));
+              },
+            ),
           ),
-          selected: isSelected,
-          // **ロック中も onSelected を null にしない。** null にすると押しても
-          // 無反応になり、「停止してください」を伝えられない（§14）。
-          onSelected: (_) {
-            if (isSelected) return;
-            if (locked) {
-              _showLocked(context, _lockedSetMessage);
-              return;
-            }
-            context.read<AppConfigStore>().updateSound((c) => c.selectSet(set.id));
-          },
         ),
+        // 選択中だけ下のパネルへ舌を出す。非選択でも同じ高さを取っておき、
+        // 選択を移してもタブ行の高さが変わらないようにする。
+        SizedBox(
+          height: _SetTabNotch.height,
+          child: isSelected ? _SetTabNotch(color: _setAccentColor(context)) : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// 選択中のタブから下のパネルへ伸びる舌。どのタブの中身を見ているのかを、
+/// 色の一致だけでなく形でも示す。
+class _SetTabNotch extends StatelessWidget {
+  const _SetTabNotch({required this.color});
+
+  final Color color;
+
+  static const double width = 18;
+  static const double height = 7;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        size: const Size(width, height),
+        painter: _SetTabNotchPainter(color),
+      );
+}
+
+class _SetTabNotchPainter extends CustomPainter {
+  const _SetTabNotchPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SetTabNotchPainter oldDelegate) => oldDelegate.color != color;
+}
+
+/// 選択中セットの中身を1枚に囲うパネル。
+///
+/// 見出しもギフト一覧も、タブと地続きの面に閉じ込める。囲いが無いと
+/// 一覧が画面直下に流れ、どこまでがそのセットの持ち物なのかが見えない。
+/// 深度は増やさない（`Card.outlined` = elevation 0 + 枠線）。
+class _SelectedSetPanel extends StatelessWidget {
+  const _SelectedSetPanel({required this.set, required this.locked});
+
+  final SoundSet set;
+  final bool locked;
+
+  /// 上端の帯。舌と同色でタブへつなぐ。細いと画面に埋もれるので6px取る。
+  static const double _accentHeight = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card.outlined(
+      // 上マージンは持たない。タブの舌と接するのが囲いの上端。
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      // 枠線だけだと画面の地（surface）と差が出ず、囲いとして読めない。
+      // 影は足さず、tonal な surface ロールを一段上げて面を分ける。
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      // 帯と一覧の背景を角丸からはみ出させない。
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(height: _accentHeight, color: _setAccentColor(context)),
+          _SelectedSetHeader(set: set, locked: locked),
+          if (set.gifts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 8, 24, 8),
+              child: Text(
+                'まだ何も登録されていません。\n「音を追加」からギフトと音を選んでください。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            for (final gift in set.gifts)
+              _GiftSoundTile(gift: gift, setId: set.id, locked: locked),
+
+          // 追加も囲いの中に入れる。画面右下に浮かせたままだと、
+          // どのセットへ足すのかがボタン側から読み取れない。
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FloatingActionButton.extended(
+                // 囲いの中なので浮かせない（DESIGN.md「Flat-By-Default」）。
+                elevation: 0,
+                highlightElevation: 0,
+                onPressed: locked
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => GiftSoundEditScreen(setId: set.id),
+                          ),
+                        ),
+                icon: const Icon(Icons.add),
+                // 「追加」だけでは何が増えるのか分からない。
+                label: const Text('音を追加'),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// 選択中セットの見出しと操作メニュー（§17）。
+/// パネルの見出しと操作メニュー（§17）。
 class _SelectedSetHeader extends StatelessWidget {
   const _SelectedSetHeader({required this.set, required this.locked});
 
@@ -288,7 +399,10 @@ class _SelectedSetHeader extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, locked ? 16 : 4, 0),
+          // ロック中は「…」が消えて縦の詰まりが変わるので、余白で吸収する。
+          padding: locked
+              ? const EdgeInsets.fromLTRB(16, 14, 16, 2)
+              : const EdgeInsets.fromLTRB(16, 6, 4, 0),
           child: Row(
             children: [
               Expanded(
@@ -308,12 +422,20 @@ class _SelectedSetHeader extends StatelessWidget {
             ],
           ),
         ),
-        const Divider(),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
+        // 囲いが境界を作っているので、区切り線ではなく見出しで区切る
+        // （DESIGN.md「Grouping / Section header」）。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('ギフト設定', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            child: Text(
+              'ギフト設定',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           ),
         ),
       ],
