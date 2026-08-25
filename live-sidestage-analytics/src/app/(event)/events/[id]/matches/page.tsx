@@ -64,6 +64,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
             team: { select: { name: true } },
             participants: {
               select: {
+                // 組み合わせ変更の楽観的排他に要る(クライアントが見ていた枠の中身)。
+                participantId: true,
                 participant: { select: { displayName: true, tiktokId: true, roomId: true } },
               },
             },
@@ -189,6 +191,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         s.participants.map((p) => p.participant.displayName).join(" / ") ??
         "",
       empty: s.participants.length === 0 && !s.team,
+      participantIds: s.participants.map((p) => p.participantId),
     })),
   }));
 
@@ -236,7 +239,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
             次へ: 完了
           </Link>
           <span className="text-xs text-gray-500">
-            トーナメント表はあとからでも、破棄してから作り直せる。
+            組み合わせはあとからでも入れ替えられる。作り直すときは破棄してから。
           </span>
         </div>
       )}

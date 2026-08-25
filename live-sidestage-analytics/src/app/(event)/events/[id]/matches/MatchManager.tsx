@@ -14,7 +14,7 @@ import {
 import type { DeathmatchRules } from "@/event/deathmatch";
 import { bracketSize } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
-import { AdminBracketTree } from "./AdminBracketTree";
+import { AdminBracketTree, type SwapSlotRef } from "./AdminBracketTree";
 import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
 import { ManualBracketBuilder } from "./ManualBracketBuilder";
@@ -64,6 +64,11 @@ export type MatchSideRow = {
   tiktokScore: string | null;
   label: string;
   empty: boolean;
+  /**
+   * この枠に入っている出場者。**組み合わせ変更の楽観的排他に使う**(画面が見ていた枠と
+   * サーバーの実体がずれていたら 409 で弾く)。チーム戦でも「実際に出る人」が入る。
+   */
+  participantIds: string[];
 };
 
 export type MatchRow = {
@@ -106,6 +111,22 @@ const REVIEW_REASON_NOTES: Record<string, string> = {
 
 /** 承認できない(区間が確定していない)理由。サーバー側の UNAPPROVABLE_REASONS と揃える。 */
 const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
+
+/**
+ * 「画面が見ていた状態が古い」種類の失敗。**理由を出したうえで最新を読み直す**ので、
+ * ふつうのエラー(操作そのものが誤り)とは扱いを分ける。
+ */
+const CONFLICT_CODES = new Set([
+  "BRACKET_EXISTS",
+  "BRACKET_CHANGED",
+  "CONFIRM_MISMATCH",
+  // 組み合わせ変更。枠の中身が変わった / その枠がもう動かせない / 次の対戦が始まった /
+  // 表の構造が壊れている。
+  "SLOT_CHANGED",
+  "SLOT_LOCKED",
+  "DOWNSTREAM_STARTED",
+  "BRACKET_INCONSISTENT",
+]);
 
 /**
  * 破棄したときに何が消えるかを数える。**追加のクエリは要らない** — 画面が持っている
@@ -186,6 +207,39 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   );
 }
 
+/**
+ * 編集モード中の案内。**何ができて何ができないか**をその場で示す。
+ *
+ * 「枝ごと移動する」ことを必ず書く — 準決勝を入れ替えると1回戦のカードも動くので、
+ * 説明が無いと表が壊れたように見える。
+ */
+function SwapNote({ selected }: { selected: boolean }) {
+  return (
+    <div className="rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
+      <p className="font-medium text-brand">組み合わせの変更中</p>
+      <ul className="mt-1 space-y-0.5 text-gray-400">
+        <li>
+          ・
+          {selected
+            ? "入れ替え先の枠を押す(ドラッグ中ならそのまま置く)。"
+            : "動かしたい組をドラッグする(スマホは組を押してから相手の枠を押す)。"}
+        </li>
+        <li>
+          ・入れ替えられるのは
+          <strong className="text-gray-200">同じラウンドの、まだ始まっていない枠</strong>
+          だけ。敗退した組と進行中の対戦は動かせない
+        </li>
+        <li>
+          ・準決勝以降を入れ替えると、その組が勝ち上がってきた
+          <strong className="text-gray-200">1回戦のカードも一緒に移動する</strong>
+          (結果はそのまま)
+        </li>
+        <li>・空いている枠へ置くと、元の枠は不戦勝になる</li>
+      </ul>
+    </div>
+  );
+}
+
 export function MatchManager({
   eventId,
   eventTitle,
@@ -229,6 +283,10 @@ export function MatchManager({
   const [viewMode, setViewMode] = useState<"list" | "bracket">("bracket");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
+  // 組み合わせの編集モード。**表を破棄せずに**勝ち残っている出場者を別の枠へ移す。
+  // 誤操作でカードが動かないよう、明示的にこのモードへ入ったときだけ掴めるようにする。
+  const [swapping, setSwapping] = useState(false);
+  const [swapSlot, setSwapSlot] = useState<SwapSlotRef | null>(null);
   // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せるだけ。
   const [step, setStep] = useState<WizardStep | null>(matches.length === 0 ? "session" : null);
   // 手動配置(1回戦の枠に置いたエントリー)。**戻る操作で失わないようここで持つ。**
@@ -301,7 +359,8 @@ export function MatchManager({
    * 表そのものが進む。どれも event-worker 側で起きるので、`send()` の `router.refresh()`
    * だけでは追いつかない。
    *
-   * **破棄ダイアログを開いている間は止める。** 表示中に裏で `matches` が入れ替わると、
+   * **破棄ダイアログを開いている間と、組み合わせの編集モード中は止める。** 表示中に裏で
+   * `matches` が入れ替わると、
    * 主催者が読んでいる「確定3件が消える」の要約が、確認している最中に別の表のものへ
    * すり替わる。要約と `expectedMatchIds` はどちらも同じ `matches` 由来なので不整合には
    * ならないが、**主催者が見ていない表を消す**ことになるのは同じ。
@@ -309,14 +368,14 @@ export function MatchManager({
    */
   useEffect(() => {
     if (eventStatus === "ARCHIVED") return;
-    if (destroyOpen || busy || draggedIndex !== null) return;
+    if (destroyOpen || busy || draggedIndex !== null || swapping) return;
 
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       router.refresh();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [eventStatus, destroyOpen, busy, draggedIndex, router]);
+  }, [eventStatus, destroyOpen, busy, draggedIndex, swapping, router]);
 
   /**
    * 表があるあいだは作成ウィザードを出さない。**表がある状態でできるのは破棄だけ**で、
@@ -383,6 +442,56 @@ export function MatchManager({
     if (ok) setDestroyOpen(false);
   }
 
+  /**
+   * その枠を掴めるか。**出場者がいて、そのカードがまだ始まっていないこと。**
+   * 敗退者はそもそも下流の枠に載らないので、この条件だけで「勝ち残っている人」に絞れる。
+   *
+   * `VOID` を外すのはサーバー側と同じ理由 — 無効にした対戦は検知から永久に除外されるので、
+   * 新しい相手を入れても照合されない(先に「検知をやり直す」で戻してもらう)。
+   *
+   * **下流が始まっているかはここでは見ない。** 上流が未着手なのに下流だけ進んでいるのは
+   * 主催者が手で確定したときくらいで、その稀なケースはサーバーが 409 で弾く。
+   */
+  function slotCardSwappable(match: MatchRow): boolean {
+    return !isStartedMatch(match) && match.status !== "VOID";
+  }
+
+  function canGrabSlot(match: MatchRow, sideIndex: number): boolean {
+    if (!slotCardSwappable(match)) return false;
+    const side = match.sides.find((s) => s.sideIndex === sideIndex);
+    return !!side && !side.empty;
+  }
+
+  /** 置ける枠か。**空き枠も置き先になる**(片道移動 = 元の枠が不戦勝になる)。 */
+  function canDropSlot(match: MatchRow, _sideIndex: number): boolean {
+    if (!swapSlot) return false;
+    if (!slotCardSwappable(match)) return false;
+    const from = matches.find((m) => m.id === swapSlot.matchId);
+    // 同じカードの上下を入れ替えても対戦相手は変わらない(サーバーも SAME_SLOT で弾く)。
+    return !!from && from.round === match.round && from.id !== match.id;
+  }
+
+  async function submitSwap(from: SwapSlotRef, to: SwapSlotRef) {
+    const sideOf = (ref: SwapSlotRef) =>
+      matches.find((m) => m.id === ref.matchId)?.sides.find((s) => s.sideIndex === ref.sideIndex);
+    const fromSide = sideOf(from);
+    const toSide = sideOf(to);
+    if (!fromSide || !toSide) return;
+
+    setSwapSlot(null);
+    // 画面が見ていた枠の中身をそのまま送る(楽観的排他)。ずれていればサーバーが
+    // SLOT_CHANGED で弾き、最新を読み直す。
+    await send(
+      `/api/events/${eventId}/matches/swap`,
+      {
+        a: { ...from, expectedParticipantIds: fromSide.participantIds },
+        b: { ...to, expectedParticipantIds: toSide.participantIds },
+      },
+      "POST",
+      { onConflict: () => router.refresh() }
+    );
+  }
+
   async function send(
     url: string,
     body: unknown,
@@ -400,10 +509,7 @@ export function MatchManager({
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
       const code = typeof payload?.code === "string" ? payload.code : null;
-      if (
-        options.onConflict &&
-        (code === "BRACKET_EXISTS" || code === "BRACKET_CHANGED" || code === "CONFIRM_MISMATCH")
-      ) {
+      if (options.onConflict && code !== null && CONFLICT_CODES.has(code)) {
         setError(payload?.error ?? null);
         options.onConflict(code);
         return false;
@@ -531,7 +637,7 @@ export function MatchManager({
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
                 {matches.length === 0
                   ? "まだ表がない。日程を決めるところから順に作る。"
-                  : `対戦カードが${matches.length}件ある。組み合わせを変えるには、いまの表を破棄してから作り直す。`}
+                  : `対戦カードが${matches.length}件ある。組み合わせは表を保ったまま変えられる(まだ始まっていない枠どうし)。`}
                 {started &&
                   `進行中・確定済みが${destroySummary.finished + destroySummary.running}件あり、破棄すると消える。`}
               </p>
@@ -547,19 +653,40 @@ export function MatchManager({
                   表を作る
                 </button>
               ) : (
-                // **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
-                // 状態のときに公開ページの古い表を消せなくなる。
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => openDestroyDialog()}
-                  className="rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  表を破棄する
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      // 入れ替えは表モードでしかできない(一覧には枠の位置関係が無い)。
+                      if (!swapping) setViewMode("bracket");
+                      setSwapSlot(null);
+                      setSwapping((on) => !on);
+                      setError(null);
+                    }}
+                    className={
+                      swapping
+                        ? "btn-primary"
+                        : "rounded-lg border border-border px-3 py-2 text-sm text-gray-300 transition hover:border-brand/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    }
+                  >
+                    {swapping ? "変更を終える" : "組み合わせを変更"}
+                  </button>
+                  {/* **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
+                      状態のときに公開ページの古い表を消せなくなる。 */}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => openDestroyDialog()}
+                    className="rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    表を破棄する
+                  </button>
+                </div>
               )}
             </div>
           </div>
+          {swapping && <SwapNote selected={!!swapSlot} />}
           {matches.length > 0 && <SessionNote sessions={sessions} />}
         </section>
       )}
@@ -768,7 +895,12 @@ export function MatchManager({
           <div className="flex items-center gap-1 text-xs">
             <button
               type="button"
-              onClick={() => setViewMode("list")}
+              onClick={() => {
+                // 一覧には枠の位置関係が無いので、切り替えたら編集モードは畳む。
+                setViewMode("list");
+                setSwapping(false);
+                setSwapSlot(null);
+              }}
               className={`rounded-full px-3 py-1 ${
                 viewMode === "list" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
               }`}
@@ -806,7 +938,22 @@ export function MatchManager({
               </section>
             ))
           ) : (
-            <AdminBracketTree matches={matches} onSelect={setSelectedMatchId} />
+            <AdminBracketTree
+              matches={matches}
+              onSelect={setSelectedMatchId}
+              swap={
+                swapping
+                  ? {
+                      canGrab: canGrabSlot,
+                      canDrop: canDropSlot,
+                      selected: swapSlot,
+                      onSelect: setSwapSlot,
+                      onSwap: (from, to) => void submitSwap(from, to),
+                      busy,
+                    }
+                  : undefined
+              }
+            />
           )}
         </>
       )}
