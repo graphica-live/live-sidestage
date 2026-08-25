@@ -5,6 +5,7 @@ import '../../core/app_config_store.dart';
 import '../../core/session_controller.dart';
 import '../../models/auth_session.dart';
 import '../home_screen.dart' show SpeechState;
+import '../widgets/voicevox_terms.dart';
 
 class SettingsTab extends StatelessWidget {
   const SettingsTab({
@@ -62,6 +63,11 @@ class SettingsTab extends StatelessWidget {
             ),
             subtitle: Text(session.userEmail),
           ),
+        ListTile(
+          leading: const Icon(Icons.description_outlined),
+          title: const Text('VOICEVOX利用規約'),
+          onTap: () => showVoicevoxTermsDialog(context),
+        ),
         ListTile(
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('ログアウト', style: TextStyle(color: Colors.red)),

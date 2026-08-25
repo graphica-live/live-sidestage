@@ -13,6 +13,7 @@ import '../models/comment.dart';
 import 'tabs/settings_tab.dart';
 import 'tabs/sound_tab.dart';
 import 'tabs/tts_tab.dart';
+import 'widgets/voicevox_terms.dart';
 
 /// 背景Isolateから届く読み上げ状態。
 class SpeechState {
@@ -135,6 +136,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 操作されると、両方が「サービスは止まっている」と判断して二重に起動しうる。
   Future<void> _toggleFeature({required bool isTts, required bool enable}) async {
     if (_serviceBusy) return;
+
+    // 読み上げを初めて開始するときだけ VOICEVOX の利用条件を出す。モーダルなので
+    // この間に他の操作は入らない。_serviceBusy を立てる前に出すのは、読んでいる間
+    // 開始ボタンを「処理中」に見せないため。
+    if (isTts && enable) {
+      await showVoicevoxTermsDialogOnce(context);
+      if (!mounted) return;
+    }
+
     setState(() => _serviceBusy = true);
 
     // context は最初の await より前に読んでおく。await をまたいで触ると、
