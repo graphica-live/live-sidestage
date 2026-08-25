@@ -286,6 +286,43 @@ describe("mergeBattleState", () => {
     expect(lateOpen.endedAt).not.toBeNull();
   });
 
+  it("CUT_SHORTのあとにFINISHが遅れて届いてもCUT_SHORTのままにする", () => {
+    const opened = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!,
+      now
+    );
+    const cutShort = mergeBattleState(
+      opened,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.CUT_SHORT))!,
+      new Date(END_MS)
+    );
+    const lateFinish = mergeBattleState(
+      cutShort,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS + 2000)
+    );
+
+    // 途中終了だった事実はイベント機能の勝敗判定の可否そのものなので消さない。
+    expect(lateFinish.action).toBe(BATTLE_ACTION.CUT_SHORT);
+    expect(lateFinish.endedAt).not.toBeNull();
+  });
+
+  it("FINISHのあとにCUT_SHORTが届いたらCUT_SHORTにする", () => {
+    const finished = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+    const cutShort = mergeBattleState(
+      finished,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.CUT_SHORT))!,
+      new Date(END_MS + 2000)
+    );
+
+    expect(cutShort.action).toBe(BATTLE_ACTION.CUT_SHORT);
+  });
+
   it("同じイベントを2回処理しても結果が変わらない(冪等)", () => {
     const parsed = parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!;
     const once = mergeBattleState(null, parsed, now);
