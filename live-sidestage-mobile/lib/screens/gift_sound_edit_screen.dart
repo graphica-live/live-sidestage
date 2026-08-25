@@ -906,6 +906,9 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
       if (!mounted) return;
       setState(() {
         _error = '$e';
+        // 直前の検索結果を残すと、エラー文と噛み合わない一覧が
+        // 新しいキーワードの結果に見えてしまう。
+        _results = null;
         _searching = false;
       });
     }
@@ -928,7 +931,14 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
                   child: TextField(
                     controller: _controller,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: 'キーワード'),
+                    decoration: InputDecoration(
+                      labelText: 'キーワード',
+                      // MyInstants は短いキーワードをサイト側が0件で返す。
+                      // 押してから怒られるより先に出しておく。
+                      helperText: widget.source == SoundSourceKind.myInstants
+                          ? '${SoundLibrary.myInstantsMinQueryLength}文字以上'
+                          : null,
+                    ),
                     onSubmitted: (_) => _search(),
                   ),
                 ),
