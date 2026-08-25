@@ -223,7 +223,7 @@ export function MatchManager({
   const [viewMode, setViewMode] = useState<"list" | "bracket">("bracket");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
-  // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せ、作り直すときに開く。
+  // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せるだけ。
   const [step, setStep] = useState<WizardStep | null>(matches.length === 0 ? "session" : null);
   // 手動配置(1回戦の枠に置いたエントリー)。**戻る操作で失わないようここで持つ。**
   const [placement, setPlacement] = useState<(string | null)[] | null>(null);
@@ -283,15 +283,24 @@ export function MatchManager({
   }, [matches]);
 
   // 判定はサーバーと同じ述語を使う(`match-status.ts`)。不戦勝・NO_SHOW・VOID は
-  // 「進行済み」に数えない — 数えると、参加者が2のべき乗でないイベントや、
-  // 時間枠を過ぎた表が二度と作り直せなくなる。
+  // 「進行済み」に数えない。ここで使うのは「破棄すると何が消えるか」の表示だけ。
   const started = matches.some(isStartedMatch);
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) ?? null;
 
   const destroySummary = useMemo(() => summarizeBracket(matches), [matches]);
 
   /**
-   * 表の破棄をともなう作り直し / 破棄だけ。**モーダルを開く前に必ず最新を読み直す。**
+   * 表があるあいだは作成ウィザードを出さない。**表がある状態でできるのは破棄だけ**で、
+   * 作り直しは「破棄 → 改めて表を作る」の2手順に分けてある。
+   *
+   * `step` はクライアントの state なので、別タブが表を作った場合(こちらの POST は 409)にも
+   * ここで畳む。`step` 自体は残しておき、破棄で表が消えたときに勝手に作成画面へ入らないようにする
+   * (もう一度「表を作る」を押させる)。
+   */
+  const wizardStep = matches.length === 0 ? step : null;
+
+  /**
+   * 破棄ダイアログを開く。**開く前に必ず最新を読み直す。**
    * event-worker が10秒ごとに status を書き換えるので、画面の件数はすぐ古くなる。
    * 古い件数のまま「確定3件が消える」と見せて確認させない。
    *
@@ -307,33 +316,29 @@ export function MatchManager({
   /**
    * 作成リクエストの中身。**シード順(`entrantIds`)と手動配置(`placement`)は排他**で、
    * サーバーは両方来たら 400 を返す。いま開いている作成画面がどちらかで決める。
+   *
+   * 表を消すのは破棄(DELETE)だけになったので、確認(イベント名)も `expectedMatchIds` も
+   * 送らない。既存の表があれば作成そのものが 409 で弾かれる。
    */
-  function bracketBody(confirm?: string) {
-    const base = {
-      roundSessionIds: plannedRoundSessionIds,
-      ...(confirm === undefined ? {} : { confirm }),
-      // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
-      expectedMatchIds: matches.map((m) => m.id),
-    };
-    return step === "manual" ? { ...base, placement: slots } : { ...base, entrantIds: seed };
+  function bracketBody() {
+    const base = { roundSessionIds: plannedRoundSessionIds };
+    return wizardStep === "manual" ? { ...base, placement: slots } : { ...base, entrantIds: seed };
   }
 
-  async function submitBracket(confirm?: string) {
+  async function submitBracket() {
     const ok = await send(
       `/api/events/${eventId}/matches`,
-      bracketBody(confirm),
+      bracketBody(),
       "POST",
-      // 確認が要る・表が変わっていた場合はダイアログへ回す(エラー表示で行き止まりにしない)。
-      { onConflict: () => openDestroyDialog(true) }
+      // 別タブが先に作っていた場合(BRACKET_EXISTS)。最新を読み直せば、その表が画面に出て
+      // ウィザードは畳まれる。
+      { onConflict: () => router.refresh() }
     );
-    if (ok) {
-      setDestroyOpen(false);
-      // 作れたらウィザードを閉じて、できた表そのものを見せる。
-      setStep(null);
-    }
+    // 作れたらウィザードを閉じて、できた表そのものを見せる。
+    if (ok) setStep(null);
   }
 
-  async function destroyBracketOnly(confirm: string) {
+  async function destroyBracket(confirm: string) {
     const ok = await send(
       `/api/events/${eventId}/matches`,
       { confirm, expectedMatchIds: matches.map((m) => m.id) },
@@ -362,7 +367,7 @@ export function MatchManager({
       const code = typeof payload?.code === "string" ? payload.code : null;
       if (
         options.onConflict &&
-        (code === "ALREADY_STARTED" || code === "BRACKET_CHANGED" || code === "CONFIRM_MISMATCH")
+        (code === "BRACKET_EXISTS" || code === "BRACKET_CHANGED" || code === "CONFIRM_MISMATCH")
       ) {
         setError(payload?.error ?? null);
         options.onConflict(code);
@@ -473,29 +478,17 @@ export function MatchManager({
           eventTitle={eventTitle}
           eventStatus={eventStatus}
           summary={destroySummary}
-          // 作り直せるのは作成画面から来たときだけ。既存の表のカードから直接開いた場合
-          // (step が null)は「何で作り直すか」を主催者が決めていないので、破棄だけにする。
-          canRebuild={step === "manual" ? allPlaced : step === "seed" && seed.length >= 2}
-          rebuildNote={
-            step === null
-              ? "作り直すときは「表を作り直す」から、日程と作り方を選び直す。"
-              : step === "manual"
-                ? "作り直すには、すべてのエントリーを枠へ置く。"
-                : undefined
-          }
-          requireConfirmText={started}
           busy={busy}
           error={error}
           onClose={() => {
             setDestroyOpen(false);
             setError(null);
           }}
-          onRebuild={(confirm) => void submitBracket(confirm)}
-          onDestroyOnly={(confirm) => void destroyBracketOnly(confirm)}
+          onDestroy={(confirm) => void destroyBracket(confirm)}
         />
       )}
 
-      {step === null && (
+      {wizardStep === null && (
         <section className="card space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -503,28 +496,29 @@ export function MatchManager({
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
                 {matches.length === 0
                   ? "まだ表がない。日程を決めるところから順に作る。"
-                  : `対戦カードが${matches.length}件ある。`}
+                  : `対戦カードが${matches.length}件ある。組み合わせを変えるには、いまの表を破棄してから作り直す。`}
                 {started &&
-                  `進行中・確定済みが${destroySummary.finished + destroySummary.running}件あり、作り直すと消える。`}
+                  `進行中・確定済みが${destroySummary.finished + destroySummary.running}件あり、破棄すると消える。`}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setStep("session")}
-                className="btn-primary"
-              >
-                {matches.length === 0 ? "表を作る" : "表を作り直す"}
-              </button>
-              {matches.length > 0 && (
-                // **参加が2組未満に減っても押せる。** ここへ到達できないと、作り直せない
+              {matches.length === 0 ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setStep("session")}
+                  className="btn-primary"
+                >
+                  表を作る
+                </button>
+              ) : (
+                // **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
                 // 状態のときに公開ページの古い表を消せなくなる。
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => openDestroyDialog()}
-                  className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40"
+                  className="rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   表を破棄する
                 </button>
@@ -535,12 +529,11 @@ export function MatchManager({
         </section>
       )}
 
-      {step === "session" && (
+      {wizardStep === "session" && (
         <WizardFrame
           stepNo={1}
           title="1. どの日程で行うか"
           description="対戦ごとの開始・終了時刻は設定しない。割り当てた日程の中で終了したバトルを、組み合わせで照合する。"
-          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
         >
           {sessions.length === 0 ? (
             <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
@@ -607,13 +600,12 @@ export function MatchManager({
         </WizardFrame>
       )}
 
-      {step === "method" && (
+      {wizardStep === "method" && (
         <WizardFrame
           stepNo={2}
           title="2. どう作るか"
           description={`${entrants.length}組を${frameSize}枠に入れる。決め方を選ぶ。`}
           onBack={() => setStep("session")}
-          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <MethodChoice
@@ -639,7 +631,7 @@ export function MatchManager({
         </WizardFrame>
       )}
 
-      {step === "seed" && (
+      {wizardStep === "seed" && (
         <WizardFrame
           stepNo={3}
           title="3. シード順を決める"
@@ -649,17 +641,8 @@ export function MatchManager({
               : "上から強い順に並べる。参加数が2のべき乗でない場合、上位から順に1回戦が不戦勝になる(標準シード方式)。"
           }
           onBack={() => setStep("method")}
-          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
         >
           <SelectedSessions sessions={sessions} roundSessionIds={plannedRoundSessionIds} />
-
-          {started && (
-            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
-              進行中・確定済みの対戦が
-              {destroySummary.finished + destroySummary.running} 件ある。
-              作り直すとその結果は消える。実行するときはイベント名の入力を求める。
-            </p>
-          )}
 
           <ol className="space-y-1">
           {seed.map((id, index) => {
@@ -707,40 +690,19 @@ export function MatchManager({
           </ol>
 
           <div className="flex justify-end">
-            <BuildButton
-              busy={busy}
-              disabled={seed.length < 2}
-              hasBracket={matches.length > 0}
-              started={started}
-              onBuild={() => {
-                if (matches.length > 0) {
-                  openDestroyDialog();
-                  return;
-                }
-                void submitBracket();
-              }}
-            />
+            <BuildButton busy={busy} disabled={seed.length < 2} onBuild={() => void submitBracket()} />
           </div>
         </WizardFrame>
       )}
 
-      {step === "manual" && (
+      {wizardStep === "manual" && (
         <WizardFrame
           stepNo={3}
           title="3. 枠へ配置する"
           description={`1回戦の枠は${frameSize}。${entrants.length}組すべてを置くと作れる。空けたままの枠は不戦勝になる。`}
           onBack={() => setStep("method")}
-          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
         >
           <SelectedSessions sessions={sessions} roundSessionIds={plannedRoundSessionIds} />
-
-          {started && (
-            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
-              進行中・確定済みの対戦が
-              {destroySummary.finished + destroySummary.running} 件ある。
-              作り直すとその結果は消える。実行するときはイベント名の入力を求める。
-            </p>
-          )}
 
           <ManualBracketBuilder
             entrants={entrants}
@@ -755,25 +717,13 @@ export function MatchManager({
                 残り {entrants.length - placedCount} 組を配置すると作れる。
               </p>
             )}
-            <BuildButton
-              busy={busy}
-              disabled={!allPlaced}
-              hasBracket={matches.length > 0}
-              started={started}
-              onBuild={() => {
-                if (matches.length > 0) {
-                  openDestroyDialog();
-                  return;
-                }
-                void submitBracket();
-              }}
-            />
+            <BuildButton busy={busy} disabled={!allPlaced} onBuild={() => void submitBracket()} />
           </div>
         </WizardFrame>
       )}
 
       {byRound.length === 0 ? (
-        step === null && (
+        wizardStep === null && (
           <div className="card text-sm text-gray-500">
             まだ対戦表がない。「表を作る」から日程・作成方法の順に決める。
           </div>
@@ -862,21 +812,21 @@ export function MatchManager({
 /**
  * ウィザードの1ステップぶんの枠。**1画面に決定を1つしか置かない**ための器で、
  * 現在地(N/3)と戻る導線をここに集約する。
+ *
+ * 「やめる」は無い。ウィザードが出るのは表が1件も無いときだけで、抜けた先に見せるものが
+ * 「まだ表がない」以外に無いため。
  */
 function WizardFrame({
   stepNo,
   title,
   description,
   onBack,
-  onCancel,
   children,
 }: {
   stepNo: number;
   title: string;
   description?: string;
   onBack?: () => void;
-  /** 既存の表があるときだけ「やめる」で元の表示へ戻れる */
-  onCancel?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -889,15 +839,6 @@ function WizardFrame({
             </button>
           )}
           <span className="rounded-full bg-white/5 px-2 py-0.5">ステップ {stepNo} / 3</span>
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="ml-auto text-gray-500 hover:text-white"
-            >
-              やめる
-            </button>
-          )}
         </div>
         <h2 className="mt-2 font-semibold">{title}</h2>
         {description && (
@@ -965,18 +906,17 @@ function SelectedSessions({
   );
 }
 
-/** 表を作る/作り直すボタン。押したあとの流れ(確認ダイアログの有無)は呼び出し側が持つ。 */
+/**
+ * 表を作るボタン。**押した先で表が消えることはない** — 既存の表があるイベントでは
+ * ウィザードそのものが出ない(あれば先に破棄する)。
+ */
 function BuildButton({
   busy,
   disabled,
-  hasBracket,
-  started,
   onBuild,
 }: {
   busy: boolean;
   disabled: boolean;
-  hasBracket: boolean;
-  started: boolean;
   onBuild: () => void;
 }) {
   return (
@@ -986,7 +926,7 @@ function BuildButton({
       onClick={onBuild}
       className="btn-primary shrink-0"
     >
-      {!hasBracket ? "この内容で表を作る" : started ? "表を破棄して作り直す" : "表を作り直す"}
+      この内容で表を作る
     </button>
   );
 }

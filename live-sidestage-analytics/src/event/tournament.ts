@@ -9,10 +9,14 @@ import {
 } from "./bracket";
 import { parseBracketMethod } from "./bracket-rules";
 import { acquireEventLock } from "./event-lock";
-import { isByeRow, isStartedMatch } from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 
 // トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
+//
+// **既存の表がある状態では作らない。** 作り直しは「破棄(`destroyBracket`) → 作成」の
+// 2手順に分けてある。`createBracket` が古い表を消してから作り直す方式は廃止した —
+// 1回の操作に「消す」と「作る」が同居していて、確認の要否・楽観的排他・作成の失敗時の
+// 巻き戻しがすべてこの1経路に集まり、主催者から見て何が起きるのか読めなくなっていた。
 //
 // 進行(勝者を次のラウンドへ送る)は match-results.ts が集計のたびに作り直すので、
 // ここでやるのは枠を用意することと、不戦勝を確定させることだけ。
@@ -42,17 +46,6 @@ export type BracketPlanInput = BracketPlanSource & {
    * 省略・空なら全ラウンドを最初の日程に置く。
    */
   roundSessionIds?: string[];
-  /**
-   * 主催者が入力したイベント名。**進行中・確定済みの対戦を含む表を破棄するときだけ要る。**
-   * ロックを取った後の `Event.title` と突き合わせる(後述の `assertConfirmed`)。
-   */
-  confirm?: string;
-  /**
-   * クライアントが見ていた表のマッチID。**渡すと、ロック内の現在の集合と一致しないときに
-   * `BRACKET_CHANGED` で弾く。** 別タブや遅延したリクエストが、主催者の知らない
-   * 新しい表を消すのを止めるため。
-   */
-  expectedMatchIds?: string[];
 };
 
 export class BracketError extends Error {
@@ -60,7 +53,7 @@ export class BracketError extends Error {
     message: string,
     readonly code:
       | "TOO_FEW_ENTRANTS"
-      | "ALREADY_STARTED"
+      | "BRACKET_EXISTS"
       | "INVALID_SESSION"
       | "UNKNOWN_ENTRANT"
       | "CONFIRM_MISMATCH"
@@ -119,17 +112,13 @@ export function planRoundSessions(input: {
 }
 
 /**
- * トーナメント表を作る。既存の表があれば作り直す。
+ * トーナメント表を作る。**既存の表があるイベントでは作らない**(`BRACKET_EXISTS`)。
  *
- * **進行済みのマッチ(検知済み・確定済み)を含む表は、主催者がイベント名を入力して
- * 確認したときだけ破棄する**(`confirm`)。何も進行していない表は従来どおり確認なしで
- * 置き換える — 失われる結果がないので儀式を課す意味がない。
- *
- * 破棄と再作成は必ず同じトランザクションで行う。分けると、破棄は成功したが
- * 作成が(日程不正などで)失敗して、主催者が表を失ったまま取り残される。
+ * 作り直したいときは先に `destroyBracket()` で破棄する。表を消すのはこの関数の仕事では
+ * ないので、確認(イベント名)も楽観的排他も受け取らない — 消えるものが無いなら儀式も要らない。
  */
 export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
-  const { eventId, placement, roundSessionIds, confirm, expectedMatchIds } = input;
+  const { eventId, placement, roundSessionIds } = input;
 
   // 手動配置は「どの枠へ置いたか」がそのまま構造になるので、エントリーの一覧は配置から導く。
   if (placement) {
@@ -149,10 +138,20 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     // 組んだ枠がそのままコミットされて日程の外に取り残される。
     await acquireEventLock(tx, eventId);
 
+    // **既存の表がある間は何も作らない。** 数えるのはロックの内側なので、同時に届いた
+    // 2つの作成リクエストは直列化され、片方だけが成功する(もう片方はここで弾かれる)。
+    // 検証より先に見るのは、主催者に返す理由を「先に破棄すること」1つに寄せるため。
+    const existing = await tx.eventMatch.count({ where: { eventId } });
+    if (existing > 0) {
+      throw new BracketError(
+        "すでにトーナメント表があります。作り直すときは先に表を破棄してください。",
+        "BRACKET_EXISTS"
+      );
+    }
+
     const event = await tx.event.findUnique({
       where: { id: eventId },
       select: {
-        title: true,
         entryMode: true,
         rules: true,
         sessions: {
@@ -191,12 +190,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     if (!roundSessions.ok) {
       throw new BracketError(roundSessions.error, "INVALID_SESSION");
     }
-
-    await clearBracket(tx, eventId, {
-      eventTitle: event.title,
-      confirm,
-      expectedMatchIds,
-    });
 
     const sessionById = new Map(event.sessions.map((s) => [s.id, s]));
 
@@ -262,7 +255,8 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       }
     }
 
-    // 表を作り直したら、最終集計が済んでいても結果が変わる。
+    // 表を作ったら、最終集計が済んでいても結果が変わる。**破棄と作成が別の操作になった今は
+    // ここが要る** — 表の無い状態でワーカーが最終集計を終えていても、作成で再開させる。
     await reopenAggregation(tx, eventId);
 
     return { matches: bracket.matches.length };
@@ -270,13 +264,14 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
 }
 
 /**
- * トーナメント表を破棄する(作り直さない)。
+ * トーナメント表を破棄する。**表がある状態でできる操作はこれだけ**で、作り直したい主催者は
+ * 破棄してから改めて `createBracket()` で作る。
  *
  * `createBracket` が永久に成功しない状態 — 参加者が2組未満に減った、日程を縮めて
- * 全ラウンドが収まらない、メンバー0のチームが混ざった — でも古い表を消せるようにするため、
- * 破棄だけの経路を分けてある。これがないと公開ページに古い表が残り続ける。
+ * 全ラウンドが収まらない、メンバー0のチームが混ざった — でも古い表を消せる必要があるので、
+ * 破棄は作成の条件を一切見ない。
  *
- * **明示的な破棄なので、進行状態にかかわらずイベント名の確認を要求する。**
+ * **明示的な破壊操作なので、進行状態にかかわらずイベント名の確認を要求する。**
  */
 export async function destroyBracket(
   eventId: string,
@@ -295,7 +290,6 @@ export async function destroyBracket(
       eventTitle: event.title,
       confirm: options.confirm,
       expectedMatchIds: options.expectedMatchIds,
-      alwaysConfirm: true,
     });
 
     // 表を消したら順位・ライフが変わる。最終集計が済んでいても計算し直させる。
@@ -320,17 +314,21 @@ async function clearBracket(
     eventTitle: string;
     confirm?: string;
     expectedMatchIds?: string[];
-    /** 進行していなくてもイベント名の確認を要求する(破棄だけの経路) */
-    alwaysConfirm?: boolean;
   }
 ): Promise<number> {
   const existing = await tx.eventMatch.findMany({
     where: { eventId },
-    select: { id: true, status: true, winnerDecidedBy: true, rules: true },
+    select: { id: true },
   });
 
-  // クライアントが見ていた表と違うなら、その判断は古い。別タブが作り直した表や、
-  // その後に入った結果を、主催者の知らないうちに消さないための楽観的排他。
+  // クライアントが見ていた表と違うなら、その判断は古い。別タブが作り直した表を、
+  // 主催者の知らないうちに消さないための楽観的排他。
+  //
+  // **保証するのは「同じ表かどうか」だけで、行の中身の鮮度ではない。** 確認ダイアログを
+  // 開いてからイベント名を入力するまでの間に、同じ行が検知・確定されても破棄は通る
+  // (ダイアログの「消える結果」は開いた時点のスナップショット)。status まで照合条件に
+  // 入れると、10秒ごとに status を書き換える集計ワーカーと競合して、開催中のイベントは
+  // 破棄そのものができなくなる — 壊れた表を捨てる最後の経路なので、そこは通す側に倒す。
   if (options.expectedMatchIds) {
     const now = new Set(existing.map((m) => m.id));
     const expected = new Set(options.expectedMatchIds);
@@ -343,21 +341,9 @@ async function clearBracket(
     }
   }
 
-  // 不戦勝(BYE)は表を作った時点でバトルを待たずに自動確定させただけで、
-  // 主催者や実際の対戦が進行したわけではない。破棄のブロック対象にしない。
-  const started = existing.some((m) =>
-    isStartedMatch({
-      status: m.status,
-      winnerDecidedBy: m.winnerDecidedBy,
-      isBye: isByeRow(m.rules),
-    })
-  );
-
   // **確認は「消すものが無い」より先に見る。** ここを後回しにすると、空の表に対して
   // 確認なしの破棄が 200 で通り、呼び出し側の後始末(reopenAggregation)だけが走る。
-  if (started || options.alwaysConfirm) {
-    assertConfirmed(options.confirm, options.eventTitle, started);
-  }
+  assertConfirmed(options.confirm, options.eventTitle);
 
   if (existing.length === 0) return 0;
 
@@ -375,15 +361,9 @@ async function clearBracket(
  * なおこれは誤操作を止めるための儀式であって、認可ではない(イベント名は公開ページに
  * 出るので秘密ではない)。認可の境界は API 側の `requireEventOwner`。
  */
-function assertConfirmed(confirm: string | undefined, eventTitle: string, started: boolean): void {
+function assertConfirmed(confirm: string | undefined, eventTitle: string): void {
   if (typeof confirm === "string" && confirm.trim() === eventTitle.trim()) return;
 
-  if (confirm === undefined && started) {
-    throw new BracketError(
-      "すでに進行中・確定済みの対戦があります。破棄して作り直すには、イベント名を入力して確認してください。",
-      "ALREADY_STARTED"
-    );
-  }
   throw new BracketError(
     "確認のため、イベント名を正確に入力してください。",
     "CONFIRM_MISMATCH"

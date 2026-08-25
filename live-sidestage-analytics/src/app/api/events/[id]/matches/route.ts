@@ -5,7 +5,11 @@ import { MAX_BRACKET_SIZE } from "@/event/bracket";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
 import { BracketError, createBracket, destroyBracket } from "@/event/tournament";
 
-// トーナメント表の作成と破棄。
+// トーナメント表の作成(POST)と破棄(DELETE)。
+//
+// **表を消すのは DELETE だけ。** POST は既存の表があれば 409(`BRACKET_EXISTS`)で、
+// 作り直したい主催者は破棄してから作る。したがって `confirm` / `expectedMatchIds` を
+// 読むのは DELETE だけで、POST のボディに混ざっていても無視する(旧クライアント対策)。
 //
 // **`confirm`(イベント名)の中身は検証しない。** 型だけ見て `tournament.ts` へ渡す —
 // 文字列の一致は advisory lock を取った後の `Event.title` と突き合わせないと、
@@ -26,7 +30,7 @@ function readConfirmation(body: { confirm?: unknown; expectedMatchIds?: unknown 
 
 function bracketErrorResponse(err: BracketError) {
   const status =
-    err.code === "ALREADY_STARTED" || err.code === "BRACKET_CHANGED" ? 409 : 400;
+    err.code === "BRACKET_EXISTS" || err.code === "BRACKET_CHANGED" ? 409 : 400;
   return NextResponse.json({ error: err.message, code: err.code }, { status });
 }
 
@@ -73,10 +77,8 @@ function eventBusy() {
 }
 
 /**
- * トーナメント表を作る(既存の表があれば作り直す)。
- *
- * 進行済みのマッチを含む表を破棄するには `confirm` にイベント名が要る。
- * 何も進行していない表は従来どおり確認なしで置き換える。
+ * トーナメント表を作る。**既存の表があるイベントでは 409(`BRACKET_EXISTS`)**。
+ * 作り直しは DELETE で破棄してから、あらためてこの POST を叩く2手順。
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const owned = await requireEventOwner(params.id);
@@ -102,8 +104,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     entrantIds?: unknown;
     placement?: unknown;
     roundSessionIds?: unknown;
-    confirm?: unknown;
-    expectedMatchIds?: unknown;
   } | null;
 
   // **シード順(`entrantIds`)と手動配置(`placement`)は排他。** 両方来たときにどちらかを
@@ -151,7 +151,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       eventId: params.id,
       ...source,
       roundSessionIds,
-      ...readConfirmation(body),
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
@@ -162,10 +161,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 /**
- * トーナメント表を破棄する(作り直さない)。
+ * トーナメント表を破棄する。**表がある状態でできる操作はこれだけ。**
  *
  * 参加者が2組未満に減った・メンバー0のチームが混ざった等、`POST` が永久に成功しない
- * 状態でも古い表を消せるようにするための経路。**イベント名の入力が必須。**
+ * 状態でも古い表を消せる必要があるので、破棄は作成の条件を見ない。**イベント名の入力が必須。**
  *
  * デスマッチには使わせない。個別に組んだ対戦まで巻き込むうえ、あちらには
  * `DELETE /matches/:matchId` がある。

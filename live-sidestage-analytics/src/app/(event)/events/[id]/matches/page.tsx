@@ -236,7 +236,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
             次へ: 完了
           </Link>
           <span className="text-xs text-gray-500">
-            トーナメント表はあとからでも作り直せる。
+            トーナメント表はあとからでも、破棄してから作り直せる。
           </span>
         </div>
       )}
