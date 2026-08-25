@@ -9,13 +9,15 @@ import {
 } from "./bracket";
 import { parseBracketMethod } from "./bracket-rules";
 import { acquireEventLock } from "./event-lock";
+import { advanceBracket } from "./match-results";
 import { isByeRow, isStartedMatch } from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 
 // トーナメント表の作成。主催者が「表を作る」を実行したときに1回だけ走る。
 //
-// 進行(勝者を次のラウンドへ送る)は match-results.ts が集計のたびに作り直すので、
-// ここでやるのは枠を用意することと、不戦勝を確定させることだけ。
+// ここでやるのは枠を用意することと、不戦勝を確定させること、そして
+// その不戦勝の勝者を次のラウンドへ送ること(`advanceBracket`)。以降の進行は
+// 結果を動かす操作と集計の周回が同じ `advanceBracket` を呼んで作り直す。
 //
 // **対戦に個別の時間枠は持たせない。** ラウンドごとに「どの開催日程で行うか」だけを決める
 // (バトルの検知はその日程まるごとが対象)。1回戦の開始時刻・試合枠・ラウンド間隔から
@@ -246,7 +248,7 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       }
 
       // 不戦勝。バトルは起きないので検知を待たずに確定させる。
-      // 勝者を次のラウンドへ送るのは match-results.ts が集計のたびに行う。
+      // 勝者を次のラウンドへ送るのは、この下の `advanceBracket()`。
       if (match.autoWinnerSide !== null) {
         const sides = await tx.eventMatchSide.findMany({
           where: { matchId: created.id },
@@ -261,6 +263,12 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
         }
       }
     }
+
+    // **不戦勝の勝者をここで次のラウンドへ送る。** 標準シード方式では1回戦の不戦勝行が
+    // 作成時点で FINISHED になるが、転送しないと2回戦のサイドが空のままになる。
+    // 集計ワーカーは開催前(SCHEDULED)のイベントを対象にしない(`aggregationWindow`)ので、
+    // 事前に表を組む運用ではワーカー任せにできない。
+    await advanceBracket(tx, eventId);
 
     // 表を作り直したら、最終集計が済んでいても結果が変わる。
     await reopenAggregation(tx, eventId);

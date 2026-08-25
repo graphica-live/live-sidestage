@@ -237,10 +237,10 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           windows,
           now,
         });
-        // **勝者を下流へ送った周回では最終集計にしない。** 検知(detectMatches)は
-        // 進行(resolveMatchResults)より先に走るので、1周で進むのは1ラウンドだけ。
-        // ここで finalizedAt を立てると、締切後に表を作り直したときに
-        // 「1回戦を確定して2回戦へ送った周回でそのまま打ち切り」になり、
+        // **勝者を下流へ送った周回では最終集計にしない。** 転送そのものは1回で全ラウンド
+        // 伝播しきるが、検知(detectMatches)は進行より先に走るので、**新しく埋まった枠の
+        // バトルを拾うのは次の周**になる。ここで finalizedAt を立てると、締切後に表を
+        // 作り直したときに「1回戦を確定して2回戦へ送った周回でそのまま打ち切り」になり、
         // 過去のバトルが残っていても2回戦以降が永久に SCHEDULED のままになる。
         //
         // 転送は冪等なので、書き終われば次の周回で advanced が 0 に落ちる

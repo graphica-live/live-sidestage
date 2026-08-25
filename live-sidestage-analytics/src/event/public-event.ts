@@ -30,6 +30,9 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
+      // 公開ページのポーリングを止める条件。**集計側の打ち切り(`aggregationWindow`)と
+      // 揃えるため**に status ではなくこれを見る(主催者はいつでも FINISHED にできる)。
+      finalizedAt: true,
       rules: true,
       coverImageKey: true,
       prizeText: true,

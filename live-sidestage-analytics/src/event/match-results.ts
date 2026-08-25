@@ -29,9 +29,11 @@ export type MatchResultSummary = {
    * 下流へ勝者を実際に転送した(サイドの出場者・チームを書き換えた、または不戦勝行を
    * 自動確定した)件数。
    *
-   * **`aggregate.ts` はこれが 0 でない周回で `finalizedAt` を立てない。** 検知と進行は
-   * 1周につき1ラウンドしか進まないので、締切後に表を作り直すと「1回戦を確定して
-   * 2回戦へ送った周回でそのまま最終集計になり、2回戦以降が永久に SCHEDULED」になる。
+   * **`aggregate.ts` はこれが 0 でない周回で `finalizedAt` を立てない。** 転送そのものは
+   * 1回の呼び出しで全ラウンド伝播しきるが、**新しく埋まった枠のバトル検知は次の周**に
+   * なる(検知は進行より先に走る)。ここで打ち切ると、締切後に表を作り直したときに
+   * 「1回戦を確定して2回戦へ送った周回でそのまま最終集計になり、2回戦以降が永久に
+   * SCHEDULED」になる。
    *
    * **`blocked` はここに数えない。** 下流が始まっている枠は毎周「転送したい」状態のまま
    * なので、数えると `finalizedAt` が永久に立たなくなる。
@@ -155,10 +157,41 @@ export async function resolveMatchResults(
   }
 
   // ------------------------------------------------------------------
-  // 2. トーナメント表の進行(毎回作り直す)
+  // 2. トーナメント表の進行
   // ------------------------------------------------------------------
+  const advance = await advanceBracket(tx, params.eventId);
+  summary.blocked += advance.blocked;
+  summary.advanced += advance.advanced;
+
+  return summary;
+}
+
+/**
+ * 確定した勝者をトーナメント表の下流へ送る。増分ではなく**毎回の再構築**。
+ *
+ * **呼び出し側の同一トランザクション内で、`acquireEventLock()` を取った後にだけ呼ぶこと。**
+ * ロックの外で呼ぶと、10秒ごとに status を書き換える集計ワーカーや、表を丸ごと作り直す
+ * `POST /matches` と競合したときに、古い値で通した判定がそのままコミットされる。
+ *
+ * 呼び出し元は集計ループ(`resolveMatchResults`)だけでなく、**結果を動かす主催者の操作**
+ * (`[matchId]` の PATCH、`createBracket`)も含む。集計ワーカーは開催前(`SCHEDULED`)の
+ * イベントを対象にしないので、ワーカー任せにすると事前に組んだ表が永久に進まない。
+ *
+ * **1回の呼び出しで全ラウンド伝播しきる。** DB を更新したら、読み込んだスナップショット
+ * (`fresh`)も同じ内容へ**その場で**書き換えること。書き換えないと、不戦勝行を確定しても
+ * その行自身を処理するときに更新前の値を見てしまい、その先へ勝者が流れない(段階的不戦勝
+ * 方式では不戦勝が複数ラウンドにわたる)。`slotIndex` は `fresh` と同じオブジェクトを
+ * 指しているので、**必ず in-place で書き換える** — `{...target}` で置き換えると
+ * 片方にしか反映されず1パス収束が壊れる。
+ */
+export async function advanceBracket(
+  tx: DbClient,
+  eventId: string
+): Promise<{ blocked: number; advanced: number }> {
+  const summary = { blocked: 0, advanced: 0 };
+
   const fresh = await tx.eventMatch.findMany({
-    where: { eventId: params.eventId },
+    where: { eventId },
     orderBy: [{ round: "asc" }, { bracketPosition: "asc" }],
     select: {
       id: true,
@@ -182,6 +215,9 @@ export async function resolveMatchResults(
       },
     },
   });
+
+  // 表が無いイベント。`Math.max(...[])` は -Infinity になるので先に返す。
+  if (fresh.length === 0) return summary;
 
   const roundCount = Math.max(...fresh.map((m) => m.round));
   const slotIndex = new Map(fresh.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
@@ -245,6 +281,12 @@ export async function resolveMatchResults(
           data: { teamId: desiredTeam },
         });
       }
+
+      // **スナップショットを DB と同じ内容へ揃える。** この枠がさらに下流の feeder に
+      // なっているとき、同じパスの後半でここを読む(上の doc を参照)。
+      targetSide.participants = winner ? [...winner.participants] : [];
+      targetSide.teamId = desiredTeam;
+
       summary.advanced++;
     }
 
@@ -256,11 +298,18 @@ export async function resolveMatchResults(
       const shouldFinish = desiredParticipants.length > 0;
       const newStatus = shouldFinish ? "FINISHED" : "SCHEDULED";
       const newWinnerSideId = shouldFinish ? targetSide.id : null;
+      const newDecidedBy = shouldFinish ? "BYE" : null;
       if (target.status !== newStatus || target.winnerSideId !== newWinnerSideId) {
         await tx.eventMatch.update({
           where: { id: target.id },
-          data: { status: newStatus, winnerSideId: newWinnerSideId, winnerDecidedBy: shouldFinish ? "BYE" : null },
+          data: { status: newStatus, winnerSideId: newWinnerSideId, winnerDecidedBy: newDecidedBy },
         });
+        // ここもスナップショットへ反映する。**この不戦勝行を通過した勝者が、同じパスで
+        // さらに下流へ進めるようにするため。** 段階的不戦勝方式では不戦勝が複数ラウンドに
+        // わたるので、反映しないと1回の呼び出しで1段しか進まない。
+        target.status = newStatus;
+        target.winnerSideId = newWinnerSideId;
+        target.winnerDecidedBy = newDecidedBy;
         summary.advanced++;
       }
     }
