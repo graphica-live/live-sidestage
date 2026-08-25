@@ -950,8 +950,8 @@ describe("バトルの取り込みと対戦の確定", () => {
   });
 });
 
-describe("トーナメント表の作り直し", () => {
-  it("不戦勝(BYE)だけが確定している状態なら作り直せる", async () => {
+describe("トーナメント表は作り直さず、破棄してから作る", () => {
+  it("表があるイベントでは、何も進行していなくても作成を拒否する", async () => {
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -962,22 +962,28 @@ describe("トーナメント表の作り直し", () => {
       eventId: event.id,
       entrantIds: [a.id, b.id, c.id],
     });
-
-    const byeMatch = await prisma.eventMatch.findFirst({
-      where: { eventId: event.id, round: 1, winnerDecidedBy: "BYE" },
+    const before = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
     });
-    expect(byeMatch?.status).toBe("FINISHED");
 
-    // BYEしか確定していないので、entrantIds を変えて作り直しても拒否されない。
+    // 不戦勝しか確定していない = 失う結果は無いが、それでも作成は通さない。
+    // **表を消すのは破棄(destroyBracket)だけの仕事**にしてある。
     await expect(
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id, c.id].reverse(),
       })
-    ).resolves.toMatchObject({ matches: expect.any(Number) });
+    ).rejects.toMatchObject({ code: "BRACKET_EXISTS" });
+
+    const after = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
+    });
+    expect(after.map((m) => m.id).sort()).toEqual(before.map((m) => m.id).sort());
   });
 
-  it("主催者が手動確定した対戦があると作り直しは拒否される", async () => {
+  it("主催者が手動確定した対戦があっても、拒否の理由は同じ", async () => {
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -996,18 +1002,21 @@ describe("トーナメント表の作り直し", () => {
       data: { status: "FINISHED", winnerSideId: match.sides[0].id, winnerDecidedBy: "MANUAL" },
     });
 
+    // 進行状態で理由を出し分けない。主催者がすることは「先に破棄する」の1つだけ。
     await expect(
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
       })
-    ).rejects.toMatchObject({ code: "ALREADY_STARTED" });
+    ).rejects.toMatchObject({ code: "BRACKET_EXISTS" });
   });
 
-  it("NO_SHOW だけの表は確認なしで作り直せる", async () => {
-    // 1回戦の開始を過去に置くと、集計の周回で NO_SHOW が付く。これを進行済みに
-    // 数えていたせいで、その表は二度と作り直せなくなっていた。
+  it("NO_SHOW だけの表は破棄して作り直せる", async () => {
+    // 1回戦の開始を過去に置くと、集計の周回で NO_SHOW が付く。これを「進行済み」と
+    // 数えていたせいで、その表は二度と作り直せなくなっていた。破棄はイベント名さえ
+    // 合えば通るので、この状態でも作り直しへ抜けられる。
     const event = await newTournament();
+    const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
 
@@ -1020,6 +1029,9 @@ describe("トーナメント表の作り直し", () => {
       data: { status: "NO_SHOW" },
     });
 
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 1,
+    });
     await expect(
       createBracket({
         eventId: event.id,
@@ -1028,10 +1040,11 @@ describe("トーナメント表の作り直し", () => {
     ).resolves.toMatchObject({ matches: 1 });
   });
 
-  it("VOID だけの表は確認なしで作り直せる", async () => {
+  it("VOID だけの表は破棄して作り直せる", async () => {
     // 「作り直すには対戦を無効にすること」と案内しておきながら、無効にすると
     // 永久にブロックされる状態だった。
     const event = await newTournament();
+    const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
 
@@ -1044,6 +1057,9 @@ describe("トーナメント表の作り直し", () => {
       data: { status: "VOID" },
     });
 
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 1,
+    });
     await expect(
       createBracket({
         eventId: event.id,
@@ -1052,7 +1068,7 @@ describe("トーナメント表の作り直し", () => {
     ).resolves.toMatchObject({ matches: 1 });
   });
 
-  it("イベント名を入力すれば確定済みの対戦があっても作り直せる", async () => {
+  it("破棄してから作れば作り直せる。表が無いあいだの最終集計も巻き戻す", async () => {
     const event = await newTournament();
     const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
@@ -1063,6 +1079,13 @@ describe("トーナメント表の作り直し", () => {
       entrantIds: [a.id, b.id],
     });
     const before = await finishFirstMatch(event.id);
+
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: 1,
+    });
+
+    // **破棄と作成は別のトランザクションになった。** その隙にワーカーが「対戦0件の
+    // イベント」として最終集計を終えることがあるので、作成側でも巻き戻す必要がある。
     await prisma.event.update({
       where: { id: event.id },
       data: { finalizedAt: new Date() },
@@ -1072,7 +1095,6 @@ describe("トーナメント表の作り直し", () => {
       createBracket({
         eventId: event.id,
         entrantIds: [a.id, b.id],
-        confirm: title,
       })
     ).resolves.toMatchObject({ matches: 1 });
 
@@ -1083,7 +1105,6 @@ describe("トーナメント表の作り直し", () => {
     expect(after).toHaveLength(1);
     expect(after[0].id).not.toBe(before);
     expect(after[0].status).toBe("SCHEDULED");
-    // 表を作り直したら結果が変わる。最終集計が済んでいてもやり直させる。
     const reopened = await prisma.event.findUniqueOrThrow({
       where: { id: event.id },
       select: { finalizedAt: true },
@@ -1091,112 +1112,33 @@ describe("トーナメント表の作り直し", () => {
     expect(reopened.finalizedAt).toBeNull();
   });
 
-  it("イベント名が一致しなければ拒否し、既存の表と結果を残す", async () => {
+  it("同時に2つ作成しても、成功するのは片方だけ", async () => {
+    // 存在確認は advisory lock の内側でやる。外でやると、2つのリクエストが
+    // どちらも「表は無い」と読んで2組ぶんの表が重なる。
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
 
-    await createBracket({
-      eventId: event.id,
-      entrantIds: [a.id, b.id],
+    const results = await Promise.allSettled([
+      createBracket({ eventId: event.id, entrantIds: [a.id, b.id] }),
+      createBracket({ eventId: event.id, entrantIds: [b.id, a.id] }),
+    ]);
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: "BRACKET_EXISTS",
     });
-    const kept = await finishFirstMatch(event.id);
-
-    await expect(
-      createBracket({
-        eventId: event.id,
-        entrantIds: [a.id, b.id],
-        confirm: "まったく違うイベント名",
-      })
-    ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
-
-    const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
-    expect(still.status).toBe("FINISHED");
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(1);
   });
 
-  it("イベント名を変えた後は、古い名前の確認では破棄できない", async () => {
-    // 確認の照合は route 層ではなくロックを取った後に行う。外で読むと、
-    // 名前の変更と競合したときに古い名前で新しいイベントの表を消せてしまう。
+  it("作成が日程の指定不正で失敗したら、何も書き込まない", async () => {
     const event = await newTournament();
-    const oldTitle = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
-
-    await createBracket({
-      eventId: event.id,
-      entrantIds: [a.id, b.id],
-    });
-    await finishFirstMatch(event.id);
-    await prisma.event.update({
-      where: { id: event.id },
-      data: { title: `${oldTitle} 改` },
-    });
-
-    await expect(
-      createBracket({
-        eventId: event.id,
-        entrantIds: [a.id, b.id],
-        confirm: oldTitle,
-      })
-    ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
-  });
-
-  it("表が入れ替わっていたら BRACKET_CHANGED で拒否する", async () => {
-    // 別タブが作り直した表を、古い画面のリクエストが消さないようにする。
-    const event = await newTournament();
-    const title = await eventTitle(event.id);
-    const a = await newParticipant(event.id, "a");
-    const b = await newParticipant(event.id, "b");
-
-    await createBracket({
-      eventId: event.id,
-      entrantIds: [a.id, b.id],
-    });
-    const staleIds = (
-      await prisma.eventMatch.findMany({ where: { eventId: event.id }, select: { id: true } })
-    ).map((m) => m.id);
-
-    // 別タブが作り直す。
-    await createBracket({
-      eventId: event.id,
-      entrantIds: [b.id, a.id],
-    });
-    const current = await prisma.eventMatch.findMany({
-      where: { eventId: event.id },
-      select: { id: true },
-    });
-
-    await expect(
-      createBracket({
-        eventId: event.id,
-        entrantIds: [a.id, b.id],
-        confirm: title,
-        expectedMatchIds: staleIds,
-      })
-    ).rejects.toMatchObject({ code: "BRACKET_CHANGED" });
-
-    const after = await prisma.eventMatch.findMany({
-      where: { eventId: event.id },
-      select: { id: true },
-    });
-    expect(after.map((m) => m.id).sort()).toEqual(current.map((m) => m.id).sort());
-  });
-
-  it("作り直しが日程の指定不正で失敗したら、既存の表と結果はそのまま残る", async () => {
-    const event = await newTournament();
-    const title = await eventTitle(event.id);
-    const a = await newParticipant(event.id, "a");
-    const b = await newParticipant(event.id, "b");
-
-    await createBracket({
-      eventId: event.id,
-      entrantIds: [a.id, b.id],
-    });
-    const kept = await finishFirstMatch(event.id);
-    await prisma.event.update({
-      where: { id: event.id },
-      data: { finalizedAt: new Date() },
-    });
+    const finalizedAt = new Date();
+    await prisma.event.update({ where: { id: event.id }, data: { finalizedAt } });
 
     await expect(
       createBracket({
@@ -1204,13 +1146,11 @@ describe("トーナメント表の作り直し", () => {
         entrantIds: [a.id, b.id],
         // このイベントに無い日程。planRoundSessions が通らない。
         roundSessionIds: ["not-a-session-of-this-event"],
-        confirm: title,
       })
     ).rejects.toMatchObject({ code: "INVALID_SESSION" });
 
-    // 破棄と再作成は同じトランザクション。片方だけ通って表を失うことはない。
-    const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
-    expect(still.status).toBe("FINISHED");
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(0);
+    // 失敗した作成で最終集計を巻き戻さない(確定済みのイベントが再集計へ戻ってしまう)。
     const untouched = await prisma.event.findUniqueOrThrow({
       where: { id: event.id },
       select: { finalizedAt: true },
@@ -1268,6 +1208,83 @@ describe("トーナメント表の破棄", () => {
     expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(1);
   });
 
+  it("イベント名が一致しなければ拒否し、既存の表と結果を残す", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+    });
+    const kept = await finishFirstMatch(event.id);
+
+    await expect(
+      destroyBracket(event.id, { confirm: "まったく違うイベント名" })
+    ).rejects.toMatchObject({ code: "CONFIRM_MISMATCH" });
+
+    const still = await prisma.eventMatch.findUniqueOrThrow({ where: { id: kept } });
+    expect(still.status).toBe("FINISHED");
+  });
+
+  it("イベント名を変えた後は、古い名前の確認では破棄できない", async () => {
+    // 確認の照合は route 層ではなくロックを取った後に行う。外で読むと、
+    // 名前の変更と競合したときに古い名前で新しいイベントの表を消せてしまう。
+    const event = await newTournament();
+    const oldTitle = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+    });
+    await finishFirstMatch(event.id);
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { title: `${oldTitle} 改` },
+    });
+
+    await expect(destroyBracket(event.id, { confirm: oldTitle })).rejects.toMatchObject({
+      code: "CONFIRM_MISMATCH",
+    });
+    expect(await prisma.eventMatch.count({ where: { eventId: event.id } })).toBe(1);
+  });
+
+  it("表が入れ替わっていたら BRACKET_CHANGED で拒否する", async () => {
+    // 別タブが作り直した表を、古い画面の破棄リクエストが消さないようにする。
+    const event = await newTournament();
+    const title = await eventTitle(event.id);
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: [a.id, b.id],
+    });
+    const staleIds = (
+      await prisma.eventMatch.findMany({ where: { eventId: event.id }, select: { id: true } })
+    ).map((m) => m.id);
+
+    // 別タブが破棄して作り直す。
+    await destroyBracket(event.id, { confirm: title });
+    await createBracket({ eventId: event.id, entrantIds: [b.id, a.id] });
+    const current = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
+    });
+
+    await expect(
+      destroyBracket(event.id, { confirm: title, expectedMatchIds: staleIds })
+    ).rejects.toMatchObject({ code: "BRACKET_CHANGED" });
+
+    const after = await prisma.eventMatch.findMany({
+      where: { eventId: event.id },
+      select: { id: true },
+    });
+    expect(after.map((m) => m.id).sort()).toEqual(current.map((m) => m.id).sort());
+  });
+
   it("表が無くても確認は要求し、最終集計は勝手にやり直させない", async () => {
     // 空撃ちで finalizedAt が外れると、確定済みのイベントが再集計へ戻ってしまう。
     const event = await newTournament();
@@ -1313,11 +1330,12 @@ describe("トーナメント表の破棄", () => {
 });
 
 describe("日程が終わった表が永久にブロックされない", () => {
-  it("出場者が未確定の枠は NO_SHOW にならず、そのまま作り直せる", async () => {
+  it("出場者が未確定の枠は NO_SHOW にならず、破棄して作り直せる", async () => {
     // 日程が終わった表を作り、集計を1周させる。
     // 以前はこの周回で2回戦以降まで NO_SHOW になり、以後その表は
     // 「進行済み」と判定されて二度と作り直せなくなっていた。
     const event = await newTournament();
+    const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
     const c = await newParticipant(event.id, "c");
@@ -1345,7 +1363,10 @@ describe("日程が終わった表が永久にブロックされない", () => {
     expect(round2.length).toBeGreaterThan(0);
     expect(round2.every((m) => m.status === "SCHEDULED")).toBe(true);
 
-    // そしてこの状態から確認なしで作り直せること(永久ブロックの回帰)。
+    // そしてこの状態から破棄 → 作成で作り直せること(永久ブロックの回帰)。
+    await expect(destroyBracket(event.id, { confirm: title })).resolves.toMatchObject({
+      destroyed: matches.length,
+    });
     await expect(
       createBracket({
         eventId: event.id,
@@ -1677,23 +1698,20 @@ describe("手動で配置したトーナメント表", () => {
     ).rejects.toMatchObject({ code: "UNKNOWN_ENTRANT" });
   });
 
-  it("シード順で作った表を手動配置で作り直せる", async () => {
+  it("シード順で作った表を破棄して手動配置で作り直せる", async () => {
     const event = await newTournament();
+    const title = await eventTitle(event.id);
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
     const c = await newParticipant(event.id, "c");
     const d = await newParticipant(event.id, "d");
 
     await createBracket({ eventId: event.id, entrantIds: [a.id, b.id, c.id, d.id] });
-    const before = await prisma.eventMatch.findMany({
-      where: { eventId: event.id },
-      select: { id: true },
-    });
+    await destroyBracket(event.id, { confirm: title });
 
     await createBracket({
       eventId: event.id,
       placement: [b.id, c.id, a.id, d.id],
-      expectedMatchIds: before.map((m) => m.id),
     });
 
     const first = await prisma.eventMatch.findFirstOrThrow({
