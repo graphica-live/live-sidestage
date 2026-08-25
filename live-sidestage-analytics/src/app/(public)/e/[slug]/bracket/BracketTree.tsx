@@ -99,7 +99,13 @@ function RoundHeadings({
   index: MatchIndex;
   hasWings: boolean;
 }) {
-  const label = (round: number) => index.get(key(round, 0))?.roundLabel ?? `${round}回戦`;
+  // **position 0 の行が存在するとは限らない。** 主催者が手動で配置した表では、空き枠が
+  // 隣り合った枝の行がまるごと作られない。そのラウンドの任意の行からラベルを取る。
+  const labels = new Map<number, string>();
+  for (const match of index.values()) {
+    if (!labels.has(match.round)) labels.set(match.round, match.roundLabel);
+  }
+  const label = (round: number) => labels.get(round) ?? `${round}回戦`;
 
   // 左ブロックは 1回戦 → 準決勝、右ブロックはその逆順。
   const wings = Array.from({ length: roundCount - 1 }, (_, i) => i + 1);

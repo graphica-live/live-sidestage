@@ -160,7 +160,13 @@ function RoundHeadings({
   index: MatchIndex;
   hasWings: boolean;
 }) {
-  const label = (round: number) => index.get(key(round, 0))?.roundLabel ?? `${round}回戦`;
+  // **position 0 の行が存在するとは限らない。** 手動配置では空き枠が隣り合った枝の行が
+  // まるごと作られないので、そのラウンドの任意の行からラベルを取る。
+  const labels = new Map<number, string>();
+  for (const match of index.values()) {
+    if (!labels.has(match.round)) labels.set(match.round, match.roundLabel);
+  }
+  const label = (round: number) => labels.get(round) ?? `${round}回戦`;
   const wings = Array.from({ length: roundCount - 1 }, (_, i) => i + 1);
 
   return (

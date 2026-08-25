@@ -48,6 +48,15 @@ export function bracketSize(entrantCount: number): number {
 }
 
 /**
+ * 手動配置で受け付ける枠数の上限。
+ *
+ * 1イベントの参加者は 200 人・チームは 100 組が上限(`validation.ts` の `MAX_PARTICIPANTS` /
+ * `MAX_TEAMS`)なので、必要な枠数は最大でも 256。これ以上を許すと、2組しか配置していない
+ * のに巨大な疎ツリー(不戦勝行だらけ)を作れてしまう。
+ */
+export const MAX_BRACKET_SIZE = 256;
+
+/**
  * 標準的なブラケットのシード順を作る。
  *
  * size=4 なら [1,4,2,3] — 1位と4位、2位と3位が1回戦で当たり、勝てば決勝で1位対2位になる。
@@ -168,14 +177,33 @@ export function buildStagedBracket(entrantCount: number): Bracket {
   }
 
   const size = bracketSize(entrantCount);
+  return buildFromLeaves(
+    Array.from({ length: size }, (_, i) =>
+      i < entrantCount ? ({ kind: "ENTRANT", entrantIndex: i } as BracketSource) : null
+    )
+  );
+}
+
+/**
+ * 1回戦の枠(葉)の中身から表の構造を作る。段階的不戦勝方式と手動配置の共通の土台。
+ *
+ * `leaves[i]` が null の枠は「誰も来ない」。上の `buildStagedBracket` の解説どおり、
+ * 各節の状態は子2つから再帰的に決まる(両方 alive なら実試合、片方だけなら不戦勝行、
+ * どちらも来ないなら行を作らない)。**`nextSlot()` の固定座標の上でしか表現しない**ので、
+ * 葉に何を置いても「不戦勝の印」と実際の転送内容が食い違うことはない。
+ *
+ * **片側だけ生きている場合に左右を入れ替えない。** 手動配置では「カードの上下どちらの枠へ
+ * 置いたか」が主催者の指定そのもので、寄せてしまうと指定が失われる。段階的方式は葉を
+ * 先頭から詰めるので右だけ生存という形にはならず、この違いによる挙動の変化はない。
+ */
+function buildFromLeaves(leaves: (BracketSource | null)[]): Bracket {
+  const size = leaves.length;
+  if (size < 2) return { roundCount: 0, size: 0, matches: [] };
+
   const roundCount = Math.log2(size);
   const matches: BracketMatch[] = [];
 
-  let level: StagedNode[] = Array.from({ length: size }, (_, i) =>
-    i < entrantCount
-      ? { alive: true, source: { kind: "ENTRANT", entrantIndex: i } }
-      : { alive: false, source: null }
-  );
+  let level: StagedNode[] = leaves.map((source) => ({ alive: source !== null, source }));
 
   for (let round = 1; round <= roundCount; round++) {
     const next: StagedNode[] = [];
@@ -183,12 +211,13 @@ export function buildStagedBracket(entrantCount: number): Bracket {
       const left = level[position * 2];
       const right = level[position * 2 + 1];
 
-      if (left.alive && right.alive) {
-        matches.push({ round, position, sourceA: left.source!, sourceB: right.source! });
-        next.push({ alive: true, source: { kind: "WINNER_OF", round, position } });
-      } else if (left.alive || right.alive) {
-        const winner = left.alive ? left : right;
-        matches.push({ round, position, sourceA: winner.source!, sourceB: { kind: "BYE" } });
+      if (left.alive || right.alive) {
+        matches.push({
+          round,
+          position,
+          sourceA: left.alive ? left.source! : { kind: "BYE" },
+          sourceB: right.alive ? right.source! : { kind: "BYE" },
+        });
         next.push({ alive: true, source: { kind: "WINNER_OF", round, position } });
       } else {
         next.push({ alive: false, source: null });
@@ -198,6 +227,21 @@ export function buildStagedBracket(entrantCount: number): Bracket {
   }
 
   return { roundCount, size, matches };
+}
+
+/**
+ * 主催者が1回戦の枠へ直接エントリーを置いた表の構造。
+ *
+ * `occupied[i]` = 葉 i にエントリーが置かれているか。枠数(配列長)は2のべき乗で、
+ * 空き枠は不戦勝(BYE)になる。**シード順の概念は無い** — 誰と誰が当たるかは配置がすべて。
+ */
+export function buildManualBracket(occupied: boolean[]): Bracket {
+  if (occupied.filter(Boolean).length < 2) {
+    return { roundCount: 0, size: 0, matches: [] };
+  }
+  return buildFromLeaves(
+    occupied.map((taken, i) => (taken ? ({ kind: "ENTRANT", entrantIndex: i } as BracketSource) : null))
+  );
 }
 
 /** 勝者が進む先。決勝(次がない)なら null。 */
@@ -245,13 +289,37 @@ export function resolveBracket(
 } {
   const bracket =
     method === "STAGED_BYE" ? buildStagedBracket(entrants.length) : buildBracket(entrants.length);
+  return resolveFromBracket(bracket, (index) => entrants[index] ?? null);
+}
+
+/**
+ * 主催者が1回戦の枠へ直接置いた配置を解決する。
+ *
+ * `slots[i]` = 葉 i に置いたエントリーID(空き枠は null)。**配列長がそのまま枠数**で、
+ * 妥当性(2のべき乗・枠数と配置数の対応・重複)は `validatePlacement` で先に確かめる。
+ */
+export function resolveManualBracket(slots: (string | null)[]): {
+  roundCount: number;
+  matches: (ResolvedMatch & { sideIds: (string | null)[] })[];
+} {
+  const bracket = buildManualBracket(slots.map((id) => id !== null));
+  return resolveFromBracket(bracket, (index) => slots[index] ?? null);
+}
+
+function resolveFromBracket(
+  bracket: Bracket,
+  entrantAt: (index: number) => string | null
+): {
+  roundCount: number;
+  matches: (ResolvedMatch & { sideIds: (string | null)[] })[];
+} {
   const resolved: (ResolvedMatch & { sideIds: (string | null)[] })[] = [];
 
   for (const match of bracket.matches) {
     const sides = [match.sourceA, match.sourceB].map((s) =>
       s.kind === "ENTRANT" ? s.entrantIndex : null
     );
-    const sideIds = sides.map((i) => (i === null ? null : (entrants[i] ?? null)));
+    const sideIds = sides.map((i) => (i === null ? null : entrantAt(i)));
 
     // 片方が BYE で、もう片方が実在の参加者(ENTRANT)なら、作成時点で不戦勝を確定できる。
     // もう片方が WINNER_OF(段階的方式の動的な不戦勝)の場合は、この時点では誰が来るか
@@ -272,6 +340,39 @@ export function resolveBracket(
   }
 
   return { roundCount: bracket.roundCount, matches: resolved };
+}
+
+/**
+ * 手動配置の妥当性。**サーバー側の検証の正本**(UI と API の両方がこれを使う)。
+ *
+ * 枠数を「配置数以上で最小の2のべき乗」に固定しているのが肝で、これがないと API を直接
+ * 叩いて「2組しか置いていないのに 256 枠」のような疎ツリーを作れてしまう。不戦勝行と
+ * DB 書き込みが無駄に増えるうえ、ウィザードが日程を割り当てたラウンド数とも食い違う。
+ */
+export function validatePlacement(
+  slots: readonly (string | null)[]
+): { ok: true } | { ok: false; error: string } {
+  if (slots.length > MAX_BRACKET_SIZE) {
+    return { ok: false, error: `トーナメント表の枠は${MAX_BRACKET_SIZE}までです。` };
+  }
+
+  const placed = slots.filter((id): id is string => id !== null);
+  if (placed.length < 2) {
+    return { ok: false, error: "トーナメント表を作るには2組以上を枠へ置いてください。" };
+  }
+  if (new Set(placed).size !== placed.length) {
+    return { ok: false, error: "同じエントリーが複数の枠に置かれています。" };
+  }
+
+  const expected = bracketSize(placed.length);
+  if (slots.length !== expected) {
+    return {
+      ok: false,
+      error: `枠の数が合いません。${placed.length}組なら${expected}枠になります。`,
+    };
+  }
+
+  return { ok: true };
 }
 
 /** ラウンドの呼び名。決勝から逆算する。標準方式専用(下の注記を参照)。 */
