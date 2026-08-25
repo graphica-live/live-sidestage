@@ -190,6 +190,66 @@ describe("aggregateEvent", () => {
       where: { eventId: event.id, scope: "PARTICIPANT", scopeId: a.id },
     });
     expect(forA.every((c) => c.topParticipantId === null && c.participantCount === 0)).toBe(true);
+    expect(forA.every((c) => c.breakdown === null)).toBe(true);
+  });
+
+  it("イベント全体の行に、枠ごとの内訳がポイント降順で入る", async () => {
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+
+    const at = new Date("2026-09-02T12:00:00.000Z");
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: c.roomId, uniqueId: "listener1", diamonds: 50, receivedAt: at });
+    // 1枠だけのリスナーも内訳を持つ(1件)
+    await insertGift({ roomId: a.roomId, uniqueId: "listener2", diamonds: 20, receivedAt: at });
+
+    await aggregateEvent(event.id);
+
+    const eventScope = await prisma.eventContribution.findMany({
+      where: { eventId: event.id, scope: "EVENT" },
+    });
+    const byListener = new Map(eventScope.map((r) => [r.listenerUniqueId, r]));
+
+    expect(byListener.get("listener1")?.breakdown).toEqual([
+      { p: b.id, d: "100", pt: "100.00" },
+      { p: c.id, d: "50", pt: "50.00" },
+      { p: a.id, d: "30", pt: "30.00" },
+    ]);
+    expect(byListener.get("listener2")?.breakdown).toEqual([{ p: a.id, d: "20", pt: "20.00" }]);
+
+    // 内訳の合計はその行の合計と一致する(打ち切っていない)
+    const row = byListener.get("listener1");
+    const breakdown = row?.breakdown as { d: string }[];
+    const sum = breakdown.reduce((acc, e) => acc + BigInt(e.d), 0n);
+    expect(sum).toBe(row?.diamonds);
+  });
+
+  it("内訳のポイントは倍率適用後の Decimal 文字列(100倍された内部値を出さない)", async () => {
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await prisma.eventMultiplier.create({
+      data: { eventId: event.id, kind: "SOLO_STREAM", factor: "1.5" },
+    });
+
+    const at = new Date("2026-09-02T12:00:00.000Z");
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 10, receivedAt: at });
+    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 4, receivedAt: at });
+
+    await aggregateEvent(event.id);
+
+    const row = await prisma.eventContribution.findFirst({
+      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "listener1" },
+    });
+
+    expect(row?.breakdown).toEqual([
+      { p: a.id, d: "10", pt: "15.00" },
+      { p: b.id, d: "4", pt: "6.00" },
+    ]);
   });
 
   it("期間外(半開区間の外)のギフトは集計されない", async () => {

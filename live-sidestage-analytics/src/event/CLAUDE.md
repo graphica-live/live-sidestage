@@ -165,12 +165,22 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
   参加者一覧・チーム一覧そのものから作ること（集計結果の Map から作ると0点が消える）
 - `EventContribution` は scope ごとに `MAX_CONTRIBUTION_ROWS`(200) 件で打ち切る。
   順位表の合計は**切り捨て前の全ギフト**から計算しているので、合計や順位には影響しない
-- `topParticipantId` / `participantCount`（リスナーの支援先）は **scope=EVENT の行にだけ**入れる。
-  判定は `top-participant.ts` の `resolveListenerAttribution()` で、**打ち切り前の
-  `byParticipant` 全量**から出す（打ち切り後だと参加者側の上位200位に入らない分を拾えない）。
-  基準は常にポイント（公開ページを実弾順に並べ替えても支援先は動かさない）。
+- `topParticipantId` / `participantCount` / `breakdown`（リスナーの支援先と枠ごとの内訳）は
+  **scope=EVENT の行にだけ**入れる。判定は `top-participant.ts` の
+  `resolveListenerAttribution()` で、**打ち切り前の `byParticipant` 全量**から出す
+  （打ち切り後だと参加者側の上位200位に入らない分を拾えない）。
+  基準は常にポイント（公開ページを実弾順に並べ替えても支援先も内訳の順序も動かさない）。
   FK は張らない（`EventStanding.subjectId` と同じ扱い）ので、読み側は名前を解決できなければ
   表示しないこと
+- **`breakdown`（Json）の形式は `contribution-breakdown.ts` の1箇所に閉じる。**
+  `[{ p: participantId, d: ダイヤ, pt: ポイント }]`。**`pt` は `formatScaledPoints()` を通した
+  Decimal 文字列**で、`Bucket.points` の100倍された内部値をそのまま入れない（公開ページに
+  100倍の数字が出る）。参加者名は載せない — クライアントが `EventSnapshot.participants` から引く
+  （10秒ごとに全 snapshot を返すので、200リスナー×200枠の最悪ケースで名前まで重複させない）
+- **`breakdown` の `null` は「内訳を持たない行」**で、`[]`（投げた枠が0件）と区別する。
+  `finalizedAt` が立った過去イベントは再集計されないので、内訳を持たない行は残り続ける。
+  読み側は null のとき従来表示（`X のリスナー` +「他N人にも」）へフォールバックすること
+  — ここを `[]` に丸めると過去イベントの表示から人数が消える
 - スナップショットの入れ替えは delete → createMany を同一トランザクションで行う
   （読み手が中間状態を見ないように）
 

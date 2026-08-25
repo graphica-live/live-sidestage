@@ -727,6 +727,10 @@ model EventContribution {
   topParticipantId String?
   // そのリスナーがギフトを入れた参加者の人数。scope="EVENT" のときだけ意味を持つ
   participantCount Int      @default(0)
+  // 参加者ごとの内訳。scope="EVENT" のときだけ入る(形式は src/event/contribution-breakdown.ts)。
+  // **null は「集計が内訳に未対応だった頃の行」**で、読み側は従来表示へフォールバックする。
+  // finalizedAt が立ったイベントは再集計されないので、過去イベントの行は永久に null のまま残る。
+  breakdown        Json?
   updatedAt        DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)

@@ -14,8 +14,8 @@ describe("resolveListenerAttribution", () => {
 
     const result = resolveListenerAttribution(byParticipant);
 
-    expect(result.get("alice")).toEqual({ topParticipantId: "p2", participantCount: 2 });
-    expect(result.get("bob")).toEqual({ topParticipantId: "p2", participantCount: 1 });
+    expect(result.get("alice")).toMatchObject({ topParticipantId: "p2", participantCount: 2 });
+    expect(result.get("bob")).toMatchObject({ topParticipantId: "p2", participantCount: 1 });
   });
 
   it("ポイントが同点ならダイヤが多い方を採る", () => {
@@ -24,7 +24,7 @@ describe("resolveListenerAttribution", () => {
       ["p2", new Map([["alice", amount(1000n, 10n)]])],
     ]);
 
-    expect(resolveListenerAttribution(byParticipant).get("alice")).toEqual({
+    expect(resolveListenerAttribution(byParticipant).get("alice")).toMatchObject({
       topParticipantId: "p1",
       participantCount: 2,
     });
@@ -51,7 +51,7 @@ describe("resolveListenerAttribution", () => {
       ["p2", new Map([["alice", amount(0n, 0n)]])],
     ]);
 
-    expect(resolveListenerAttribution(byParticipant).get("alice")).toEqual({
+    expect(resolveListenerAttribution(byParticipant).get("alice")).toMatchObject({
       topParticipantId: "p1",
       participantCount: 2,
     });
@@ -59,5 +59,56 @@ describe("resolveListenerAttribution", () => {
 
   it("参加者がいなければ空", () => {
     expect(resolveListenerAttribution(new Map()).size).toBe(0);
+  });
+
+  describe("枠ごとの内訳", () => {
+    it("投げた参加者を全件、ポイント降順で並べる", () => {
+      const byParticipant = new Map([
+        ["p1", new Map([["alice", amount(300n, 3n)]])],
+        ["p2", new Map([["alice", amount(1000n, 10n)]])],
+        ["p3", new Map([["alice", amount(500n, 5n)]])],
+      ]);
+
+      expect(resolveListenerAttribution(byParticipant).get("alice")?.breakdown).toEqual([
+        { participantId: "p2", points: 1000n, diamonds: 10n },
+        { participantId: "p3", points: 500n, diamonds: 5n },
+        { participantId: "p1", points: 300n, diamonds: 3n },
+      ]);
+    });
+
+    it("先頭は必ず支援先(topParticipantId)になる", () => {
+      const byParticipant = new Map([
+        ["p1", new Map([["alice", amount(1000n, 20n)]])],
+        ["p2", new Map([["alice", amount(1000n, 10n)]])],
+        ["p3", new Map([["alice", amount(1000n, 20n)]])],
+      ]);
+
+      const attribution = resolveListenerAttribution(byParticipant).get("alice");
+      expect(attribution?.breakdown[0].participantId).toBe(attribution?.topParticipantId);
+      // 同点はダイヤ降順 → participantId 昇順
+      expect(attribution?.breakdown.map((b) => b.participantId)).toEqual(["p1", "p3", "p2"]);
+    });
+
+    it("投げた枠が1つだけなら1件だけ入る", () => {
+      const byParticipant = new Map([["p1", new Map([["alice", amount(300n, 3n)]])]]);
+
+      expect(resolveListenerAttribution(byParticipant).get("alice")?.breakdown).toEqual([
+        { participantId: "p1", points: 300n, diamonds: 3n },
+      ]);
+    });
+
+    it("参加者200枠すべてに投げても省略しない", () => {
+      const byParticipant = new Map(
+        Array.from({ length: 200 }, (_, i) => [
+          `p${String(i).padStart(3, "0")}`,
+          new Map([["alice", amount(BigInt(i + 1) * 100n, BigInt(i + 1))]]),
+        ])
+      );
+
+      const attribution = resolveListenerAttribution(byParticipant).get("alice");
+      expect(attribution?.participantCount).toBe(200);
+      expect(attribution?.breakdown).toHaveLength(200);
+      expect(attribution?.breakdown[0].participantId).toBe("p199");
+    });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatJstStamp } from "@/event/datetime";
 import { FORMAT_PENDING_NOTES, STANDING_HEADINGS } from "@/event/labels";
 import type {
@@ -70,6 +70,13 @@ export function EventResults({
 
   const notAggregated = snapshot.standings.length === 0 && snapshot.eventContributions.length === 0;
 
+  // 内訳(breakdown)は参加者IDだけを持つので、名前はここで引く。
+  // 引けない(参加者が抜けた直後など)ものは表示しない — 支援先の表示と同じ規約。
+  const participantNames = useMemo(
+    () => new Map(snapshot.participants.map((p) => [p.id, p.displayName])),
+    [snapshot.participants]
+  );
+
   // デスマッチの順位はライフで決まる。獲得ダイヤの順位表とは別のものを出す。
   const lives = format === "DEATHMATCH" ? snapshot.lives : null;
   const heading = lives ? "ライフ" : (STANDING_HEADINGS[format as EventFormat] ?? "順位");
@@ -136,7 +143,11 @@ export function EventResults({
             )}
           </div>
 
-          <ListenerTable rows={sorted} hasMultiplier={snapshot.hasMultiplier} />
+          <ListenerTable
+            rows={sorted}
+            hasMultiplier={snapshot.hasMultiplier}
+            participantNames={participantNames}
+          />
         </div>
       )}
 
@@ -320,9 +331,11 @@ function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
 function ListenerTable({
   rows,
   hasMultiplier,
+  participantNames,
 }: {
   rows: ContributionDto[];
   hasMultiplier: boolean;
+  participantNames: Map<string, string>;
 }) {
   if (rows.length === 0) {
     return <p className={`border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだギフトが記録されていない。</p>;
@@ -363,17 +376,65 @@ function ListenerTable({
               </p>
             </div>
           </div>
-          {/* 支援先。イベント全体の表示でだけ入る(参加者を選んでいるときは自明なので出ない)。
-              判定はポイント基準なので、実弾(ダイヤ)順に並べ替えても所属は動かない。
-              名前が長いとモバイルで切れるので、上の行の中ではなくカード幅いっぱいに置く。 */}
-          {r.topParticipantName && (
-            <p className="mt-2 truncate border-t border-white/5 pt-2 text-xs text-gray-500">
-              <span className="text-brand/80">{r.topParticipantName}</span> のリスナー
-              {r.participantCount > 1 && <>（他{r.participantCount - 1}人にも）</>}
-            </p>
-          )}
+          <ListenerParticipants
+            row={r}
+            hasMultiplier={hasMultiplier}
+            participantNames={participantNames}
+          />
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * そのリスナーが「どの枠へいくら入れたか」。イベント全体の表示でだけ入る
+ * (参加者を選んでいるときは自明なので出ない)。
+ *
+ * 並びはポイント基準なので、実弾(ダイヤ)順に並べ替えても順序は動かない。
+ * 名前が長いとモバイルで切れるので、上の行の中ではなくカード幅いっぱいに置いて折り返す。
+ *
+ * `breakdown` が null の行は内訳を持たない(集計が内訳に未対応だった頃の行 — 終了済みの
+ * 過去イベントは再集計されないので残り続ける)。そのときは従来どおり支援先だけを出す。
+ */
+function ListenerParticipants({
+  row,
+  hasMultiplier,
+  participantNames,
+}: {
+  row: ContributionDto;
+  hasMultiplier: boolean;
+  participantNames: Map<string, string>;
+}) {
+  const entries = row.breakdown?.flatMap((b) => {
+    const name = participantNames.get(b.participantId);
+    return name ? [{ ...b, name }] : [];
+  });
+
+  if (entries && entries.length > 1) {
+    return (
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-white/5 pt-2 text-xs text-gray-500">
+        {/* 数値の単位(pt / ダイヤ)はカード上段の合計に出ているので繰り返さない。 */}
+        <span className="shrink-0 text-gray-600">内訳</span>
+        {entries.map((b) => (
+          <span key={b.participantId} className="inline-flex min-w-0 items-baseline gap-1">
+            <span className="truncate text-brand/80">{b.name}</span>
+            <span className="shrink-0 font-mono tabular-nums text-gray-400">
+              {hasMultiplier ? formatPoints(b.points) : formatNumber(b.diamonds)}
+            </span>
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (!row.topParticipantName) return null;
+
+  return (
+    <p className="mt-2 truncate border-t border-white/5 pt-2 text-xs text-gray-500">
+      <span className="text-brand/80">{row.topParticipantName}</span> のリスナー
+      {/* 内訳を持たない行だけ、従来の省略表記で人数を伝える。 */}
+      {!row.breakdown && row.participantCount > 1 && <>（他{row.participantCount - 1}人にも）</>}
+    </p>
   );
 }
