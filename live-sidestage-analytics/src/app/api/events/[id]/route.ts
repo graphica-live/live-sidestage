@@ -3,17 +3,102 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/event/authz";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { acquireEventLock } from "@/event/event-lock";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
 import { deleteCoverObject } from "@/lib/media-storage";
-import { MUTATION_TX_OPTIONS, reopenAggregation } from "@/event/reopen-aggregation";
+import {
+  blockingReadinessTasks,
+  evaluateEventReadiness,
+  loadReadinessInput,
+  type ReadinessTask,
+} from "@/event/readiness";
+import {
+  isTransactionTimeout,
+  MUTATION_TX_OPTIONS,
+  reopenAggregation,
+} from "@/event/reopen-aggregation";
 import { parseSessionRequest } from "@/event/sessions";
 import { applySessionDiff, SessionUpdateError } from "@/event/session-update";
+import { isAllowedStatusTransition } from "@/event/status-transition";
 import {
   EVENT_STATUSES,
   resolveEventFormatForUpdate,
   validateEventInput,
   type EventStatus,
 } from "@/event/validation";
+
+/** 集計とのロック待ちで打ち切られたときの応答。主催者にやり直させる。 */
+function eventBusy() {
+  return NextResponse.json(
+    {
+      error: "集計中で混み合っています。少し待ってからやり直してください。",
+      code: "EVENT_BUSY",
+    },
+    { status: 503 }
+  );
+}
+
+type StatusChangeOutcome =
+  | { kind: "ok"; event: { id: string; slug: string; status: string } }
+  | { kind: "notFound" }
+  | { kind: "invalidTransition" }
+  | { kind: "notReady"; tasks: ReadinessTask[] };
+
+/**
+ * ステータスだけを変える。
+ *
+ * **`RUNNING` への遷移は「開始・再開」なので、開催準備チェックを通し、
+ * 同じトランザクションで `reopenAggregation()` を呼ぶ。**
+ * 呼ばないと、締切後に最終集計を終えた(= `finalizedAt` が立った)イベントを
+ * 開催中へ戻しても `aggregationWindow()` から外れたままで、二度と集計されない。
+ *
+ * 判定に使う現在の状態は**ロックの内側で読み直す**。トーナメント表の破棄や日程の更新は
+ * 同じ advisory lock を取るので、「表を消しながら同時に開催中にする」競合を止められる。
+ * (参加者・チームの削除はこのロックを取らないため、そこまでは直列化されない。
+ *  readiness.ts の冒頭に書いたとおりベストエフォートのゲート。)
+ */
+async function changeEventStatus(
+  eventId: string,
+  next: EventStatus
+): Promise<StatusChangeOutcome> {
+  return prisma.$transaction(async (tx) => {
+    await acquireEventLock(tx, eventId);
+
+    const current = await tx.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, slug: true, status: true, format: true, entryMode: true },
+    });
+    if (!current) return { kind: "notFound" };
+
+    // 同じステータスへの変更は冪等に成功させる(二重クリック・別タブでの先行操作)。
+    // 副作用(準備チェック・reopenAggregation)は起こさない。
+    if (current.status === next) {
+      return {
+        kind: "ok",
+        event: { id: current.id, slug: current.slug, status: current.status },
+      };
+    }
+
+    if (!isAllowedStatusTransition(current.status, next)) {
+      return { kind: "invalidTransition" };
+    }
+
+    if (next === "RUNNING") {
+      const readiness = await loadReadinessInput(tx, current);
+      const blocking = blockingReadinessTasks(evaluateEventReadiness(readiness));
+      if (blocking.length > 0) return { kind: "notReady", tasks: blocking };
+
+      await reopenAggregation(tx, eventId);
+    }
+
+    const updated = await tx.event.update({
+      where: { id: eventId },
+      data: { status: next },
+      select: { id: true, slug: true, status: true },
+    });
+    return { kind: "ok", event: updated };
+  }, MUTATION_TX_OPTIONS);
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const owned = await requireEventOwner(params.id);
@@ -32,12 +117,38 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!EVENT_STATUSES.includes(body.status as EventStatus)) {
       return NextResponse.json({ errors: ["ステータスの指定が不正です。"] }, { status: 400 });
     }
-    const updated = await prisma.event.update({
-      where: { id: params.id },
-      data: { status: body.status },
-      select: { id: true, slug: true, status: true },
-    });
-    return NextResponse.json(updated);
+
+    let outcome: StatusChangeOutcome;
+    try {
+      outcome = await changeEventStatus(params.id, body.status as EventStatus);
+    } catch (err) {
+      if (isTransactionTimeout(err)) return eventBusy();
+      throw err;
+    }
+
+    if (outcome.kind === "notFound") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (outcome.kind === "invalidTransition") {
+      return NextResponse.json(
+        {
+          errors: ["この状態からは変更できません。画面を再読み込みしてください。"],
+          code: "INVALID_STATUS_TRANSITION",
+        },
+        { status: 409 }
+      );
+    }
+    if (outcome.kind === "notReady") {
+      return NextResponse.json(
+        {
+          errors: outcome.tasks.map((task) => `${task.label}: ${task.detail}`),
+          code: "NOT_READY",
+          tasks: outcome.tasks,
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(outcome.event);
   }
 
   // 種目別ルールだけの更新(デスマッチのライフ設定)。

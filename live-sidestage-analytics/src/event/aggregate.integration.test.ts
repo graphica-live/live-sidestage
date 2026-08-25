@@ -51,6 +51,7 @@ async function createEvent(overrides: {
   status?: string;
   startAt?: Date;
   endAt?: Date;
+  finalizedAt?: Date;
   /** 省略すると日程を持たないイベントになる(統合前のイベントと同じ状態) */
   sessions?: { startAt: Date; endAt: Date; name?: string }[];
 } = {}) {
@@ -62,6 +63,7 @@ async function createEvent(overrides: {
       format: "DIAMOND_RACE",
       entryMode: overrides.entryMode ?? "SOLO",
       status: overrides.status ?? "RUNNING",
+      finalizedAt: overrides.finalizedAt ?? null,
       startAt: overrides.startAt ?? START,
       endAt: overrides.endAt ?? END,
       ...(overrides.sessions ? { sessions: { create: overrides.sessions } } : {}),
@@ -611,6 +613,50 @@ describe("最終集計(finalizedAt)", () => {
       select: { id: true },
     });
     expect(due).toHaveLength(0);
+  });
+
+  it("ロックを取ったあとに開催準備中へ戻されていたら集計しない", async () => {
+    // 対象一覧はトランザクションの外で引くので、選ばれてからロックが取れるまでの間に
+    // 主催者が開催中を解除しうる。見ないと、締切後なら finalizedAt まで立ててしまう。
+    const endAt = new Date(Date.now() - AGGREGATE_GRACE_MS - 60_000);
+    const event = await newEvent({
+      status: "SCHEDULED",
+      startAt: new Date(endAt.getTime() - 86_400_000),
+      endAt,
+    });
+    const a = await newParticipant(event.id, "a");
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "l1",
+      diamonds: 100,
+      receivedAt: new Date(endAt.getTime() - 3600_000),
+    });
+
+    const result = await aggregateEvent(event.id);
+    expect(result).toMatchObject({ status: "skipped", reason: "not-due" });
+
+    const after = await prisma.event.findUnique({
+      where: { id: event.id },
+      select: { finalizedAt: true },
+    });
+    expect(after?.finalizedAt).toBeNull();
+    expect(await prisma.eventStanding.count({ where: { eventId: event.id } })).toBe(0);
+  });
+
+  it("最終集計が済んだイベントは集計しない", async () => {
+    const event = await newEvent({ finalizedAt: new Date() });
+    await newParticipant(event.id, "a");
+
+    const result = await aggregateEvent(event.id);
+    expect(result).toMatchObject({ status: "skipped", reason: "not-due" });
+  });
+
+  it("アーカイブ済みのイベントは集計しない", async () => {
+    const event = await newEvent({ status: "ARCHIVED" });
+    await newParticipant(event.id, "a");
+
+    const result = await aggregateEvent(event.id);
+    expect(result).toMatchObject({ status: "skipped", reason: "not-due" });
   });
 
   it("開催中(締切前)の集計ではfinalizedAtは立たない", async () => {

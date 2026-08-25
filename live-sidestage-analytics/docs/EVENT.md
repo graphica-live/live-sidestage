@@ -175,7 +175,8 @@ Railway で analytics と同じリポジトリ・同じ Root Directory（`live-s
 2. 参加者を1人登録する → `TiktokRoom.monitorUntil` が立つ
 3. **最大60秒待つ。** TikTok 接続の worker の reconcile が拾って接続を開始する。
    参加者一覧の監視状態が `connecting` → `connected` に変わる
-4. イベントを `RUNNING` にする
+4. イベントを `RUNNING` にする（開催準備チェックを通る必要がある。出場者が足りない、
+   トーナメントなのに表が無い、のいずれかなら 409 で弾かれ、管理画面に残タスクが出る）
 5. 実際にギフトが飛ぶと、10秒以内に `/e/<slug>` の順位が動く。
    `Event.lastAggregatedAt` が更新されているかでも確認できる
 
