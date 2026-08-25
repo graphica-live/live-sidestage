@@ -12,10 +12,12 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
-import { resolveBracket } from "@/event/bracket";
+import { bracketSize } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
+import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
+import { ManualBracketBuilder } from "./ManualBracketBuilder";
 
 /**
  * 画面を読み直す間隔。集計ワーカーが10秒周期なので、それより短く引いても新しい値は
@@ -144,13 +146,26 @@ function sessionLabel(sessions: SessionRow[], sessionId: string | null): string 
   return session.name || `${index + 1}日目`;
 }
 
-/** 日程の時間帯つきの表示。 */
+/**
+ * 日程の時間帯つきの表示。**select の option にも使うので接尾辞を足さない**
+ * (option は幅が固定で、伸ばすと末尾が切れて読めなくなる)。
+ */
 function sessionRangeLabel(session: SessionRow, index: number): string {
   const name = session.name || `${index + 1}日目`;
   return `${name}: ${formatJst(new Date(session.startAt))} 〜 ${formatJst(new Date(session.endAt))}`;
 }
 
-/** 開催日程の一覧。**日程の中で終了したバトルだけが対象**であることを毎回示す。 */
+/**
+ * トーナメント表を作る手順。**1画面に1つの決定しか出さない**(一本道)。
+ *
+ * `null` はウィザードを開いていない状態(既存の表を見ているだけ)。
+ */
+type WizardStep = "session" | "method" | "seed" | "manual";
+
+/**
+ * 開催日程の一覧。**日程の中で終了したバトルだけが対象**であることを毎回示す。
+ * 各行の「(監視対象)」は、その区間そのものが TikTok バトルの検知対象であることを指す。
+ */
 function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   if (sessions.length === 0) return null;
   return (
@@ -161,7 +176,10 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
       </p>
       <ul className="mt-1 space-y-0.5">
         {sessions.map((s, index) => (
-          <li key={s.id}>{sessionRangeLabel(s, index)}</li>
+          <li key={s.id}>
+            {sessionRangeLabel(s, index)}{" "}
+            <span className="whitespace-nowrap text-gray-400">(監視対象)</span>
+          </li>
         ))}
       </ul>
     </div>
@@ -207,15 +225,32 @@ export function MatchManager({
   // ラウンドごとの開催日程。既定は全ラウンドを最初の日程に置く(1日で終わるのが大半)。
   // ラウンド数は参加者数から決まるので、シード順が変わるたびに作り直す。
   const [roundSessionIds, setRoundSessionIds] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
+  // 既定は表。対戦の進み方はトーナメント表のほうが一目で分かる(一覧は操作用)。
+  const [viewMode, setViewMode] = useState<"list" | "bracket">("bracket");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
+  // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せ、作り直すときに開く。
+  const [step, setStep] = useState<WizardStep | null>(matches.length === 0 ? "session" : null);
+  // 手動配置(1回戦の枠に置いたエントリー)。**戻る操作で失わないようここで持つ。**
+  const [placement, setPlacement] = useState<(string | null)[] | null>(null);
 
-  // ラウンド数はシード順の人数と不戦勝方式から決まる(サーバーと同じ純粋関数を使う)。
-  const roundCount = useMemo(
-    () => (seed.length < 2 ? 0 : resolveBracket(seed, bracketMethod).roundCount),
-    [seed, bracketMethod]
+  /**
+   * 1回戦の枠数。**シード順でも手動配置でも同じ**(参加組数以上で最小の2のべき乗)なので、
+   * ラウンド数は作成方法を選ぶ前に決まる — だから日程の割り当てを先に聞ける。
+   */
+  const frameSize = entrants.length < 2 ? 0 : bracketSize(entrants.length);
+  const roundCount = frameSize === 0 ? 0 : Math.log2(frameSize);
+
+  /** 手動配置の現在値。参加組数が変わって枠数が合わなくなったら作り直す。 */
+  const slots = useMemo(
+    () =>
+      placement && placement.length === frameSize
+        ? placement
+        : Array.from({ length: frameSize }, () => null),
+    [placement, frameSize]
   );
+  const placedCount = slots.filter((id) => id !== null).length;
+  const allPlaced = frameSize > 0 && placedCount === entrants.length;
 
   /** すでに表があるなら、そのラウンドが今どの日程に置かれているか。 */
   const currentRoundSessionIds = useMemo(() => {
@@ -304,21 +339,33 @@ export function MatchManager({
     setDestroyOpen(true);
   }
 
+  /**
+   * 作成リクエストの中身。**シード順(`entrantIds`)と手動配置(`placement`)は排他**で、
+   * サーバーは両方来たら 400 を返す。いま開いている作成画面がどちらかで決める。
+   */
+  function bracketBody(confirm?: string) {
+    const base = {
+      roundSessionIds: plannedRoundSessionIds,
+      ...(confirm === undefined ? {} : { confirm }),
+      // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
+      expectedMatchIds: matches.map((m) => m.id),
+    };
+    return step === "manual" ? { ...base, placement: slots } : { ...base, entrantIds: seed };
+  }
+
   async function submitBracket(confirm?: string) {
     const ok = await send(
       `/api/events/${eventId}/matches`,
-      {
-        entrantIds: seed,
-        roundSessionIds: plannedRoundSessionIds,
-        ...(confirm === undefined ? {} : { confirm }),
-        // 別タブや遅延したリクエストが、主催者の知らない新しい表を消すのを止める。
-        expectedMatchIds: matches.map((m) => m.id),
-      },
+      bracketBody(confirm),
       "POST",
       // 確認が要る・表が変わっていた場合はダイアログへ回す(エラー表示で行き止まりにしない)。
       { onConflict: () => openDestroyDialog(true) }
     );
-    if (ok) setDestroyOpen(false);
+    if (ok) {
+      setDestroyOpen(false);
+      // 作れたらウィザードを閉じて、できた表そのものを見せる。
+      setStep(null);
+    }
   }
 
   async function destroyBracketOnly(confirm: string) {
@@ -461,7 +508,16 @@ export function MatchManager({
           eventTitle={eventTitle}
           eventStatus={eventStatus}
           summary={destroySummary}
-          canRebuild={seed.length >= 2}
+          // 作り直せるのは作成画面から来たときだけ。既存の表のカードから直接開いた場合
+          // (step が null)は「何で作り直すか」を主催者が決めていないので、破棄だけにする。
+          canRebuild={step === "manual" ? allPlaced : step === "seed" && seed.length >= 2}
+          rebuildNote={
+            step === null
+              ? "作り直すときは「表を作り直す」から、日程と作り方を選び直す。"
+              : step === "manual"
+                ? "作り直すには、すべてのエントリーを枠へ置く。"
+                : undefined
+          }
           requireConfirmText={started}
           busy={busy}
           error={error}
@@ -474,28 +530,173 @@ export function MatchManager({
         />
       )}
 
-      <section className="card space-y-4">
-        <div>
-          <h2 className="font-semibold">トーナメント表を作る</h2>
-          <p className="mt-1 text-xs leading-relaxed text-gray-400">
-            シード順に並べると、上位の
-            {entryMode === "TEAM" ? "チーム" : "参加者"}
-            どうしが早い段階で当たらないように振り分ける。
-            {bracketMethod === "STAGED_BYE"
-              ? "参加数が2のべき乗でない場合、各ラウンド最大1人ずつ不戦勝になる(段階的不戦勝方式)。"
-              : "参加数が2のべき乗でない場合、上位から順に1回戦が不戦勝になる(標準シード方式)。"}
-          </p>
-        </div>
+      {step === null && (
+        <section className="card space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-semibold">トーナメント表</h2>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                {matches.length === 0
+                  ? "まだ表がない。日程を決めるところから順に作る。"
+                  : `対戦カードが${matches.length}件ある。`}
+                {started &&
+                  `進行中・確定済みが${destroySummary.finished + destroySummary.running}件あり、作り直すと消える。`}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setStep("session")}
+                className="btn-primary"
+              >
+                {matches.length === 0 ? "表を作る" : "表を作り直す"}
+              </button>
+              {matches.length > 0 && (
+                // **参加が2組未満に減っても押せる。** ここへ到達できないと、作り直せない
+                // 状態のときに公開ページの古い表を消せなくなる。
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => openDestroyDialog()}
+                  className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40"
+                >
+                  表を破棄する
+                </button>
+              )}
+            </div>
+          </div>
+          {matches.length > 0 && <SessionNote sessions={sessions} />}
+        </section>
+      )}
 
-        {started && (
-          <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
-            進行中・確定済みの対戦が
-            {destroySummary.finished + destroySummary.running} 件ある。
-            作り直すとその結果は消える。実行するときはイベント名の入力を求める。
-          </p>
-        )}
+      {step === "session" && (
+        <WizardFrame
+          stepNo={1}
+          title="1. どの日程で行うか"
+          description="対戦ごとの開始・終了時刻は設定しない。割り当てた日程の中で終了したバトルを、組み合わせで照合する。"
+          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
+        >
+          {sessions.length === 0 ? (
+            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
+              開催日程がまだない。先にイベント設定で日程を登録する。
+            </p>
+          ) : entrants.length < 2 ? (
+            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
+              {entryMode === "TEAM" ? "チーム" : "参加者"}が2組未満。
+              先に登録してから表を作る。
+            </p>
+          ) : sessions.length === 1 ? (
+            <div className="rounded-lg bg-white/5 px-3 py-2 text-sm">
+              <p>{sessionRangeLabel(sessions[0], 0)}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                日程は1つだけなので、全{roundCount}ラウンドをこの日程で行う。
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Array.from({ length: roundCount }, (_, index) => (
+                <div key={index}>
+                  <label htmlFor={`round-session-${index}`} className="label">
+                    {index + 1}回戦の日程
+                  </label>
+                  <select
+                    id={`round-session-${index}`}
+                    className="input-field"
+                    value={plannedRoundSessionIds[index] ?? ""}
+                    onChange={(e) => {
+                      const next = [...plannedRoundSessionIds];
+                      next[index] = e.target.value;
+                      // 後のラウンドが前より early にならないよう、以降を引きずって揃える。
+                      const picked = sessions.findIndex((s) => s.id === e.target.value);
+                      for (let i = index + 1; i < next.length; i++) {
+                        const current = sessions.findIndex((s) => s.id === next[i]);
+                        if (current < picked) next[i] = e.target.value;
+                      }
+                      setRoundSessionIds(next);
+                    }}
+                  >
+                    {sessions.map((session, i) => (
+                      <option key={session.id} value={session.id}>
+                        {sessionRangeLabel(session, i)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
 
-        <ol className="space-y-1">
+          <SessionNote sessions={sessions} />
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={busy || sessions.length === 0 || entrants.length < 2}
+              onClick={() => setStep("method")}
+              className="btn-primary"
+            >
+              次へ
+            </button>
+          </div>
+        </WizardFrame>
+      )}
+
+      {step === "method" && (
+        <WizardFrame
+          stepNo={2}
+          title="2. どう作るか"
+          description={`${entrants.length}組を${frameSize}枠に入れる。決め方を選ぶ。`}
+          onBack={() => setStep("session")}
+          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MethodChoice
+              kind="SEED"
+              title="シード順から作る"
+              lead={`強い順に並べるだけ。上位の${entryMode === "TEAM" ? "チーム" : "参加者"}どうしが早い段階で当たらないよう自動で振り分ける。`}
+              points={[
+                "並べ替えはドラッグだけ",
+                bracketMethod === "STAGED_BYE"
+                  ? "不戦勝は各ラウンド最大1組(段階的不戦勝方式)"
+                  : "不戦勝は1回戦にまとめる(標準シード方式)",
+              ]}
+              onSelect={() => setStep("seed")}
+            />
+            <MethodChoice
+              kind="MANUAL"
+              title="手動で配置する"
+              lead="空欄の表へ自分で置く。誰と誰を当てるかを完全に決めたいとき。"
+              points={["1回戦の枠へドラッグして配置", "空けたままの枠は不戦勝になる"]}
+              onSelect={() => setStep("manual")}
+            />
+          </div>
+        </WizardFrame>
+      )}
+
+      {step === "seed" && (
+        <WizardFrame
+          stepNo={3}
+          title="3. シード順を決める"
+          description={
+            bracketMethod === "STAGED_BYE"
+              ? "上から強い順に並べる。参加数が2のべき乗でない場合、各ラウンド最大1組ずつ不戦勝になる(段階的不戦勝方式)。"
+              : "上から強い順に並べる。参加数が2のべき乗でない場合、上位から順に1回戦が不戦勝になる(標準シード方式)。"
+          }
+          onBack={() => setStep("method")}
+          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
+        >
+          <SelectedSessions sessions={sessions} roundSessionIds={plannedRoundSessionIds} />
+
+          {started && (
+            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
+              進行中・確定済みの対戦が
+              {destroySummary.finished + destroySummary.running} 件ある。
+              作り直すとその結果は消える。実行するときはイベント名の入力を求める。
+            </p>
+          )}
+
+          <ol className="space-y-1">
           {seed.map((id, index) => {
             const entrant = entrants.find((e) => e.id === id);
             if (!entrant) return null;
@@ -538,76 +739,80 @@ export function MatchManager({
               </li>
             );
           })}
-        </ol>
+          </ol>
 
-        {/* 日程が複数あるときだけラウンドの振り分けを見せる。1日開催なら選ぶものがない。 */}
-        {sessions.length > 1 && roundCount > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {Array.from({ length: roundCount }, (_, index) => (
-              <div key={index}>
-                <label htmlFor={`round-session-${index}`} className="label">
-                  {index + 1}回戦の日程
-                </label>
-                <select
-                  id={`round-session-${index}`}
-                  className="input-field"
-                  value={plannedRoundSessionIds[index] ?? ""}
-                  onChange={(e) => {
-                    const next = [...plannedRoundSessionIds];
-                    next[index] = e.target.value;
-                    // 後のラウンドが前より early にならないよう、以降を引きずって揃える。
-                    const picked = sessions.findIndex((s) => s.id === e.target.value);
-                    for (let i = index + 1; i < next.length; i++) {
-                      const current = sessions.findIndex((s) => s.id === next[i]);
-                      if (current < picked) next[i] = e.target.value;
-                    }
-                    setRoundSessionIds(next);
-                  }}
-                >
-                  {sessions.map((session, i) => (
-                    <option key={session.id} value={session.id}>
-                      {sessionRangeLabel(session, i)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
+          <div className="flex justify-end">
+            <BuildButton
+              busy={busy}
+              disabled={seed.length < 2}
+              hasBracket={matches.length > 0}
+              started={started}
+              onBuild={() => {
+                if (matches.length > 0) {
+                  openDestroyDialog();
+                  return;
+                }
+                void submitBracket();
+              }}
+            />
           </div>
-        )}
+        </WizardFrame>
+      )}
 
-        <div className="flex flex-wrap items-end gap-3">
-          <button
-            type="button"
-            // **表がある限り常に押せる。** 参加者が2組未満に減っても「破棄だけ」へ
-            // 到達できないと、公開ページに古い表が残ったまま消せなくなる。
-            disabled={busy || (matches.length === 0 && seed.length < 2)}
-            onClick={() => {
-              if (matches.length > 0) {
-                openDestroyDialog();
-                return;
-              }
-              void submitBracket();
-            }}
-            className="btn-primary shrink-0"
-          >
-            {matches.length === 0
-              ? "表を作る"
-              : started
-                ? "表を破棄して作り直す"
-                : "表を作り直す"}
-          </button>
-        </div>
-        <SessionNote sessions={sessions} />
-        <p className="text-xs text-gray-500">
-          対戦ごとの開始・終了時刻は設定しない。割り当てた日程の中で終了したバトルを
-          組み合わせで照合する。
-        </p>
-      </section>
+      {step === "manual" && (
+        <WizardFrame
+          stepNo={3}
+          title="3. 枠へ配置する"
+          description={`1回戦の枠は${frameSize}。${entrants.length}組すべてを置くと作れる。空けたままの枠は不戦勝になる。`}
+          onBack={() => setStep("method")}
+          onCancel={matches.length > 0 ? () => setStep(null) : undefined}
+        >
+          <SelectedSessions sessions={sessions} roundSessionIds={plannedRoundSessionIds} />
+
+          {started && (
+            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80">
+              進行中・確定済みの対戦が
+              {destroySummary.finished + destroySummary.running} 件ある。
+              作り直すとその結果は消える。実行するときはイベント名の入力を求める。
+            </p>
+          )}
+
+          <ManualBracketBuilder
+            entrants={entrants}
+            slots={slots}
+            disabled={busy}
+            onChange={setPlacement}
+          />
+
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {!allPlaced && (
+              <p className="text-xs text-gray-500">
+                残り {entrants.length - placedCount} 組を配置すると作れる。
+              </p>
+            )}
+            <BuildButton
+              busy={busy}
+              disabled={!allPlaced}
+              hasBracket={matches.length > 0}
+              started={started}
+              onBuild={() => {
+                if (matches.length > 0) {
+                  openDestroyDialog();
+                  return;
+                }
+                void submitBracket();
+              }}
+            />
+          </div>
+        </WizardFrame>
+      )}
 
       {byRound.length === 0 ? (
-        <div className="card text-sm text-gray-500">
-          まだ対戦表がない。シード順を決めて「表を作る」を実行する。
-        </div>
+        step === null && (
+          <div className="card text-sm text-gray-500">
+            まだ対戦表がない。「表を作る」から日程・作成方法の順に決める。
+          </div>
+        )
       ) : (
         <>
           <div className="flex items-center gap-1 text-xs">
@@ -686,6 +891,138 @@ export function MatchManager({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ウィザードの1ステップぶんの枠。**1画面に決定を1つしか置かない**ための器で、
+ * 現在地(N/3)と戻る導線をここに集約する。
+ */
+function WizardFrame({
+  stepNo,
+  title,
+  description,
+  onBack,
+  onCancel,
+  children,
+}: {
+  stepNo: number;
+  title: string;
+  description?: string;
+  onBack?: () => void;
+  /** 既存の表があるときだけ「やめる」で元の表示へ戻れる */
+  onCancel?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="card space-y-4">
+      <div>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          {onBack && (
+            <button type="button" onClick={onBack} className="text-gray-400 hover:text-white">
+              ← 戻る
+            </button>
+          )}
+          <span className="rounded-full bg-white/5 px-2 py-0.5">ステップ {stepNo} / 3</span>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="ml-auto text-gray-500 hover:text-white"
+            >
+              やめる
+            </button>
+          )}
+        </div>
+        <h2 className="mt-2 font-semibold">{title}</h2>
+        {description && (
+          <p className="mt-1 text-xs leading-relaxed text-gray-400">{description}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** 作成方法の選択肢。図解つきで大きく見せて、押したらその作成画面へ入る。 */
+function MethodChoice({
+  kind,
+  title,
+  lead,
+  points,
+  onSelect,
+}: {
+  kind: "SEED" | "MANUAL";
+  title: string;
+  lead: string;
+  points: string[];
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex flex-col gap-3 rounded-xl border border-border bg-white/[0.02] p-4 text-left transition hover:border-brand/50 hover:bg-white/[0.05]"
+    >
+      <div className="rounded-lg bg-black/20 p-3">
+        <BracketBuildMethodDiagram kind={kind} />
+      </div>
+      <div>
+        <h3 className="font-semibold">{title}</h3>
+        <p className="mt-1 text-xs leading-relaxed text-gray-400">{lead}</p>
+        <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
+          {points.map((point) => (
+            <li key={point}>・{point}</li>
+          ))}
+        </ul>
+      </div>
+      <span className="mt-auto text-xs font-medium text-brand">この方法で作る →</span>
+    </button>
+  );
+}
+
+/** ステップ1で決めた日程。作成画面でも見えるようにしておく(戻らなくても確認できる)。 */
+function SelectedSessions({
+  sessions,
+  roundSessionIds,
+}: {
+  sessions: SessionRow[];
+  roundSessionIds: string[];
+}) {
+  if (sessions.length <= 1) return null;
+  return (
+    <p className="rounded-lg bg-white/5 px-3 py-2 text-xs text-gray-400">
+      日程:{" "}
+      {roundSessionIds
+        .map((id, index) => `${index + 1}回戦 ${sessionLabel(sessions, id)}`)
+        .join(" / ")}
+    </p>
+  );
+}
+
+/** 表を作る/作り直すボタン。押したあとの流れ(確認ダイアログの有無)は呼び出し側が持つ。 */
+function BuildButton({
+  busy,
+  disabled,
+  hasBracket,
+  started,
+  onBuild,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  hasBracket: boolean;
+  started: boolean;
+  onBuild: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy || disabled}
+      onClick={onBuild}
+      className="btn-primary shrink-0"
+    >
+      {!hasBracket ? "この内容で表を作る" : started ? "表を破棄して作り直す" : "表を作り直す"}
+    </button>
   );
 }
 
@@ -1074,9 +1411,11 @@ function MatchCard({
   const reschedulable = match.status === "SCHEDULED" || match.status === "NO_SHOW";
   // 区間が確定していない検知は承認させない(サーバー側も 409 で拒否する)。
   const unapprovable = !!match.reviewReason && UNAPPROVABLE_REASONS.has(match.reviewReason);
+  // バトルの開始を検知した対戦。トーナメント表と同じ赤い発光で一覧でも目立たせる。
+  const isLive = match.status === "LIVE";
 
   return (
-    <div className="card space-y-3">
+    <div className={`card space-y-3 ${isLive ? "border-red-500/70 live-glow" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${

@@ -70,6 +70,21 @@ class SoundLibrary {
   /// 検索HTMLの読み込み上限。
   static const int maxHtmlBytes = 3 * 1024 * 1024;
 
+  /// 1回の検索で持ち帰る件数の上限。
+  ///
+  /// 配布元サイトの検索結果1ページは myinstants が36件、効果音ラボが30件。
+  /// 1ページ分を丸ごと収められる値にしておかないと、末尾の数件が黙って落ちて
+  /// 「サイトには有るのにアプリに出てこない」状態になる。
+  static const int maxSearchResults = 60;
+
+  /// MyInstants が受け付ける最小キーワード長（文字数）。
+  ///
+  /// サイト側の検索は2文字以下だと必ず404(0件)を返す。`fart` が36件出るのに
+  /// `fa` では0件なので部分一致の問題ではなく純粋な文字数制限で、
+  /// [searchMyInstants] は0件時の404を空扱いにする都合上、そのまま投げると
+  /// 「見つかりませんでした」と区別が付かない。通信する前にここで弾く。
+  static const int myInstantsMinQueryLength = 3;
+
   static const int maxRedirects = 5;
 
   static const String soundEffectLabHost = 'soundeffect-lab.info';
@@ -186,9 +201,17 @@ class SoundLibrary {
     );
   }
 
-  Future<List<RemoteSound>> searchMyInstants(String query) {
+  Future<List<RemoteSound>> searchMyInstants(String query) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) return Future.value(const []);
+    if (trimmed.isEmpty) return const [];
+    // 絵文字などのサロゲートペアを2文字と数えないよう runes で見る。
+    // サイト側の判定もコードポイント数。
+    if (trimmed.runes.length < myInstantsMinQueryLength) {
+      throw SoundLibraryException(
+        'MyInstants は $myInstantsMinQueryLength 文字以上のキーワードでないと検索できません。'
+        'サイト側の仕様で、短いキーワードは常に0件になります。',
+      );
+    }
     final uri = sitePageUri(SoundSourceKind.myInstants, query: trimmed);
     return _search(
       uri: uri,
@@ -207,25 +230,32 @@ class SoundLibrary {
     required RemoteSound sound,
     required SoundSourceKind source,
   }) async {
-    final allowedHost = source == SoundSourceKind.soundEffectLab ? soundEffectLabHost : myInstantsHost;
-    final uri = _parseAndVerify(sound.mp3Url, allowedHost);
-
-    final bytes = await _getBytes(uri, allowedHost: allowedHost, maxBytes: maxFileBytes, headers: {
-      'User-Agent': 'Mozilla/5.0 (LiveSidestage)',
-      if (source == SoundSourceKind.soundEffectLab) 'Referer': 'https://$soundEffectLabHost/',
-    });
-
-    _ensureFileSize(bytes.length);
-    await _ensureTotalCapacity(bytes.length);
+    final fetched = await _fetchRemote(sound: sound, source: source);
+    await _ensureTotalCapacity(fetched.bytes.length);
 
     return _commit(
       id: _newId(),
-      extension: _extensionOf(uri.path, fallback: '.mp3'),
+      extension: _extensionOf(fetched.uri.path, fallback: '.mp3'),
       displayName: sound.name,
       source: source,
-      sourceUrl: uri.toString(),
-      write: (tempFile) => tempFile.writeAsBytes(bytes, flush: true),
+      sourceUrl: fetched.uri.toString(),
+      write: (tempFile) => tempFile.writeAsBytes(fetched.bytes, flush: true),
     );
+  }
+
+  /// 取り込む前に鳴らして確かめるための取得。**ファイルには書かない。**
+  ///
+  /// 一時ファイルにすると「どの要求が作ったファイルを、いつ誰が消すか」を要求ごとに
+  /// 追う必要があり、連打・画面破棄と絡んで残骸や取り違えの原因になる。採用前の音は
+  /// 端末に残す理由が無いので、バイト列のまま [SoundPreview] へ渡して鳴らす。
+  /// `sounds/` の総容量（[maxTotalBytes]）にも数えない — ディスクを使わないため。
+  /// 1件あたりの上限（[maxFileBytes]）は取り込みと同じく効く。
+  Future<Uint8List> fetchPreviewBytes({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+  }) async {
+    final fetched = await _fetchRemote(sound: sound, source: source);
+    return fetched.bytes;
   }
 
   /// 音源ファイルを削除する。設定から参照を外したあとに呼ぶこと。
@@ -268,6 +298,33 @@ class SoundLibrary {
   void dispose() => _client.close();
 
   // ── 内部 ────────────────────────────────────────────────────────────────────
+
+  /// 配布元から音源を取ってくる。**取り込みも試聴もここだけを通す。**
+  ///
+  /// host 固定・Referer・サイズ上限・リダイレクト各段の検証を2箇所に書くと、
+  /// 片方だけ条件が緩んでも気づけない。
+  ///
+  /// 返す [Uri] は検証済みの取得元（リダイレクト前）。拡張子と `sourceUrl` に使う。
+  Future<({Uri uri, Uint8List bytes})> _fetchRemote({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+  }) async {
+    // 三項演算子で2択にすると local が MyInstants 扱いになる。網羅的に分ける。
+    final allowedHost = switch (source) {
+      SoundSourceKind.soundEffectLab => soundEffectLabHost,
+      SoundSourceKind.myInstants => myInstantsHost,
+      SoundSourceKind.local => throw SoundLibraryException('この音源はダウンロードできません。'),
+    };
+    final uri = _parseAndVerify(sound.mp3Url, allowedHost);
+
+    final bytes = await _getBytes(uri, allowedHost: allowedHost, maxBytes: maxFileBytes, headers: {
+      'User-Agent': 'Mozilla/5.0 (LiveSidestage)',
+      if (source == SoundSourceKind.soundEffectLab) 'Referer': 'https://$soundEffectLabHost/',
+    });
+    _ensureFileSize(bytes.length);
+
+    return (uri: uri, bytes: bytes);
+  }
 
   /// 一時ファイルへ書いてから rename する。途中で失敗しても壊れたファイルが
   /// 音源として設定に残らない。
@@ -333,7 +390,7 @@ class SoundLibrary {
 
     final results = <RemoteSound>[];
     for (final match in pattern.allMatches(response.body)) {
-      if (results.length >= 30) break;
+      if (results.length >= maxSearchResults) break;
       final rawUrl = match.group(urlGroup);
       final rawName = match.group(nameGroup);
       if (rawUrl == null || rawName == null) continue;
@@ -369,14 +426,14 @@ class SoundLibrary {
 
       if (response.isRedirect || (response.statusCode >= 300 && response.statusCode < 400)) {
         final location = response.headers['location'];
-        await response.stream.drain<void>();
+        await _discardBody(response);
         if (location == null) throw SoundLibraryException('リダイレクト先が不正です。');
         current = current.resolve(location);
         continue;
       }
 
       if (response.statusCode >= 400) {
-        await response.stream.drain<void>();
+        await _discardBody(response);
         throw SoundLibraryException('音声のダウンロードに失敗しました (HTTP ${response.statusCode})');
       }
 
@@ -384,7 +441,7 @@ class SoundLibrary {
       // chunked では Content-Length が無いので、読みながら打ち切る必要がある。
       final declared = response.contentLength;
       if (declared != null && declared > maxBytes) {
-        await response.stream.drain<void>();
+        await _discardBody(response);
         throw SoundLibraryException('音声ファイルが大きすぎます（上限 ${maxBytes ~/ (1024 * 1024)}MB）。');
       }
 
@@ -399,6 +456,16 @@ class SoundLibrary {
     }
 
     throw SoundLibraryException('リダイレクトが多すぎます。');
+  }
+
+  /// 使わない body を捨てる。**待ち切らない** — 相手がいつまでも閉じない場合に、
+  /// リダイレクトやエラー応答の後始末で処理全体が止まってしまう。
+  Future<void> _discardBody(http.StreamedResponse response) async {
+    try {
+      await response.stream.drain<void>().timeout(requestTimeout);
+    } catch (_) {
+      // 捨てるだけなので失敗しても構わない。
+    }
   }
 
   Uri _parseAndVerify(String raw, String allowedHost) {

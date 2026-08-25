@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { DbClient } from "./analytics-db";
-import { resolveBracket, roundLabel, stagedRoundLabel } from "./bracket";
+import {
+  resolveBracket,
+  resolveManualBracket,
+  roundLabel,
+  stagedRoundLabel,
+  validatePlacement,
+} from "./bracket";
 import { parseBracketMethod } from "./bracket-rules";
 import { acquireEventLock } from "./event-lock";
 import { advanceBracket } from "./match-results";
@@ -18,10 +24,21 @@ import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 // 予定表を組む方式は廃止した — 主催者が事前に総所要時間を見積もれないと表すら作れず、
 // 進行が押すたびに枠を引き直す必要があったため。
 
-export type BracketPlanInput = {
+/**
+ * 表の中身の決め方。**どちらか一方だけを渡す**(両方・どちらも無しは呼び出し側で弾く)。
+ *
+ * - `entrantIds`: シード順(強い順)。配置はイベントの方式(標準/段階的)が決める
+ * - `placement`: 主催者が1回戦の枠へ直接置いた配置。配列長がそのまま枠数で、null は空き枠
+ *
+ * 「両方来たら placement を優先」にはしない。曖昧な入力を黙って別の意味で処理すると、
+ * 旧クライアントの `entrantIds` が新サーバーで無視される事故を検知できない。
+ */
+type BracketPlanSource =
+  | { entrantIds: string[]; placement?: undefined }
+  | { placement: (string | null)[]; entrantIds?: undefined };
+
+export type BracketPlanInput = BracketPlanSource & {
   eventId: string;
-  /** シード順(強い順)に並べたエントリー。個人戦なら participantId、チーム戦なら teamId */
-  entrantIds: string[];
   /**
    * ラウンド順(1回戦から)に、そのラウンドを行う開催日程の id。
    * 省略・空なら全ラウンドを最初の日程に置く。
@@ -50,6 +67,7 @@ export class BracketError extends Error {
       | "UNKNOWN_ENTRANT"
       | "CONFIRM_MISMATCH"
       | "BRACKET_CHANGED"
+      | "INVALID_PLACEMENT"
   ) {
     super(message);
     this.name = "BracketError";
@@ -113,7 +131,16 @@ export function planRoundSessions(input: {
  * 作成が(日程不正などで)失敗して、主催者が表を失ったまま取り残される。
  */
 export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
-  const { eventId, entrantIds, roundSessionIds, confirm, expectedMatchIds } = input;
+  const { eventId, placement, roundSessionIds, confirm, expectedMatchIds } = input;
+
+  // 手動配置は「どの枠へ置いたか」がそのまま構造になるので、エントリーの一覧は配置から導く。
+  if (placement) {
+    const valid = validatePlacement(placement);
+    if (!valid.ok) throw new BracketError(valid.error, "INVALID_PLACEMENT");
+  }
+  const entrantIds = placement
+    ? placement.filter((id): id is string => id !== null)
+    : input.entrantIds;
 
   if (entrantIds.length < 2) {
     throw new BracketError("トーナメント表を作るには2組以上の参加が必要です。", "TOO_FEW_ENTRANTS");
@@ -150,9 +177,13 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
 
     // ブラケット方式はイベントの rules から読む(主催者が作成ウィザードで決めた値)。
     // 表を作るたびに読み直すので、旧方式で作った表を消して別方式で作り直すこともできる。
+    //
+    // **手動配置のときは方式を参照しない。** 誰と誰が当たるかは主催者の配置がすべてで、
+    // 不戦勝の配り方も配置から決まる。ラウンド名は「N人制」を出さない側を使う
+    // (空き枠のせいでラウンドごとの実人数が2のべき乗の等比にならないため)。
     const method = parseBracketMethod(event.rules);
-    const bracket = resolveBracket(entrantIds, method);
-    const label = method === "STAGED_BYE" ? stagedRoundLabel : roundLabel;
+    const bracket = placement ? resolveManualBracket(placement) : resolveBracket(entrantIds, method);
+    const label = placement || method === "STAGED_BYE" ? stagedRoundLabel : roundLabel;
 
     const roundSessions = planRoundSessions({
       sessions: event.sessions,

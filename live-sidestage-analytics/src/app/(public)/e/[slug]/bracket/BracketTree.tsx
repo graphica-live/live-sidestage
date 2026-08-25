@@ -1,3 +1,4 @@
+import { fitBracketName } from "@/event/bracket-name-fit";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import {
   formatNumber,
@@ -30,13 +31,34 @@ import { BracketScroller } from "./BracketScroller";
 //
 // カードの角は右下(mirror時は左下)を斜めに切り落とす(CARD_CLIP)。中央へ向かって
 // 刃が入っているように見えるのが狙いで、これがこの表全体で唯一のシェイプ言語。
+//
+// **カードの主役はアイコンと名前で、そのために高さを配分している。** サイド枠・名前枠は
+// px 固定で、名前の文字サイズだけが長さに応じて変わる(`fitBracketName`)。行数が変わっても
+// 枠の高さは動かないので、上の幾何の前提(カード高さが全部同じ)は保たれる。
 
 /** カード幅。ラウンド見出しの列と揃えるため、見出し側にも同じ幅を使う。 */
 const CARD_W = "w-40 sm:w-44";
 /** コネクタ列の幅。見出しの間隔にも同じ幅を使う。 */
 const CONN_W = "w-5";
-/** カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。アイコン+名前を縦積みにした分、h-28から拡張。 */
-const CARD_H = "h-36";
+/**
+ * カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。
+ * 内訳は p-2.5(20) + 見出し行(約15) + サイド枠2つ(92×2) + サイドの間隔(12)。
+ */
+const CARD_H = "h-[232px]";
+/** サイド枠の高さ。py-1(8) + アイコン(44) + gap-1(4) + 名前枠(36)。 */
+const SIDE_H = "h-[92px]";
+/** 名前枠の高さ。1行(最大22px)でも2行(最大16px)でもこの高さに収まる。 */
+const NAME_BOX_H = "h-[36px]";
+
+/**
+ * 優勝バナーは対戦カードを 1.2 倍した枠で組む(表の頂点なので一回り大きい)。
+ * **名前の枠だけでなく倍率も揃える**こと — `fitBracketName` の第2引数に同じ値を渡す。
+ */
+const CHAMPION_SCALE = 1.2;
+/** 優勝バナーの枠。py-2.5(20) + アイコン(48) + gap-1(4) + 名前枠(44)。未確定の枠も同じ高さにする。 */
+const CHAMPION_BOX_H = "h-[116px]";
+/** 優勝の名前枠。1行(最大26.4px)でも2行(最大19.2px)でも収まる。 */
+const CHAMPION_NAME_BOX_H = "h-[44px]";
 
 type MatchIndex = Map<string, BracketMatchDto>;
 
@@ -62,8 +84,8 @@ export function BracketTree({
       <div className="min-w-max">
         <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん。 */}
-        <div className="flex items-center pt-24">
+        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。 */}
+        <div className="flex items-center pt-40">
           {hasWings && <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} />}
           {hasWings && <StraightConnector />}
 
@@ -99,7 +121,13 @@ function RoundHeadings({
   index: MatchIndex;
   hasWings: boolean;
 }) {
-  const label = (round: number) => index.get(key(round, 0))?.roundLabel ?? `${round}回戦`;
+  // **position 0 の行が存在するとは限らない。** 主催者が手動で配置した表では、空き枠が
+  // 隣り合った枝の行がまるごと作られない。そのラウンドの任意の行からラベルを取る。
+  const labels = new Map<number, string>();
+  for (const match of index.values()) {
+    if (!labels.has(match.round)) labels.set(match.round, match.roundLabel);
+  }
+  const label = (round: number) => labels.get(round) ?? `${round}回戦`;
 
   // 左ブロックは 1回戦 → 準決勝、右ブロックはその逆順。
   const wings = Array.from({ length: roundCount - 1 }, (_, i) => i + 1);
@@ -212,24 +240,33 @@ function StraightConnector() {
   );
 }
 
+/**
+ * 決勝の上に出る優勝バナー。**対戦カードと同じ組み方(アイコンの上、名前の下)を
+ * 1.2倍(CHAMPION_SCALE)した枠**で、表の頂点であることをサイズで示す。
+ *
+ * 未確定の枠も同じ高さにしてある。優勝が決まった瞬間にバナーの高さが変わると、
+ * 絶対配置の基準(決勝カードの上端)から上へ伸び縮みして表全体が跳ねて見えるため。
+ */
 function Champion({ final }: { final: BracketMatchDto | undefined }) {
   const winner = final?.sides.find((s) => s.isWinner) ?? null;
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="flex items-center gap-1 text-[10px] font-black tracking-[0.25em] text-brand">
+      <span className="flex items-center gap-1.5 text-xs font-black tracking-[0.25em] text-brand">
         <TrophyIcon />
         優勝
       </span>
-      {winner ? (
+      {winner?.name ? (
         <div
-          className={`motion-safe:animate-pulse flex w-full items-center justify-center gap-1.5 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
+          className={`motion-safe:animate-pulse flex ${CHAMPION_BOX_H} w-full flex-col items-center justify-center gap-1 border-2 border-brand bg-gradient-to-b from-brand/20 to-brand/5 px-2 py-2.5 shadow-[0_0_18px_-2px_rgba(254,44,85,0.65)] ${CARD_CLIP}`}
         >
-          <EntrantAvatars entrants={winner.entrants} size="md" />
-          <span className="min-w-0 truncate text-sm font-bold text-white">{winner.name}</span>
+          <EntrantAvatars entrants={winner.entrants} size="champion" />
+          <FitName name={winner.name} boxH={CHAMPION_NAME_BOX_H} scale={CHAMPION_SCALE} />
         </div>
       ) : (
-        <div className={`w-full border border-dashed border-brand/40 px-2 py-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}>
+        <div
+          className={`flex ${CHAMPION_BOX_H} w-full items-center justify-center border border-dashed border-brand/40 px-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}
+        >
           未確定
         </div>
       )}
@@ -239,9 +276,31 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
 
 function TrophyIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={11} height={11} fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 24 24" width={13} height={13} fill="currentColor" aria-hidden>
       <path d="M6 2h12v2h3v3a4 4 0 0 1-4 4h-.35A6.02 6.02 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1A6.02 6.02 0 0 1 7.35 11H7a4 4 0 0 1-4-4V4h3V2Zm0 4H5v1a2 2 0 0 0 2 2V6Zm12 0v3a2 2 0 0 0 2-2V6h-2Z" />
     </svg>
+  );
+}
+
+/**
+ * 名前を枠いっぱいまで拡げ、枠の中で上下中央に置く。枠の高さは固定で、
+ * 1行に収まらない長さなら2行に折る(`fitBracketName`)。**枠の高さと `scale` は
+ * 必ず対で渡すこと** — 片方だけ変えると2行目が枠からはみ出す。
+ */
+function FitName({ name, boxH, scale }: { name: string; boxH: string; scale?: number }) {
+  const fit = fitBracketName(name, scale);
+
+  return (
+    <span className={`flex ${boxH} w-full items-center justify-center overflow-hidden`}>
+      <span
+        style={{ fontSize: `${fit.fontSizePx}px`, lineHeight: fit.lines === 2 ? 1.05 : 1.15 }}
+        className={`w-full font-bold text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] ${
+          fit.lines === 2 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate"
+        }`}
+      >
+        {name}
+      </span>
+    </span>
   );
 }
 
@@ -270,12 +329,16 @@ function MatchCard({
   const isLive = match.status === "LIVE";
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
-  return (
+  const card = (
     <article
-      className={`relative flex ${CARD_H} flex-col justify-between overflow-hidden border p-2.5 ${clip} ${
-        isFinal
-          ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-          : "border-white/10 bg-panel"
+      className={`relative flex ${CARD_H} flex-col overflow-hidden border p-2.5 ${clip} ${
+        isLive
+          ? `border-red-500/70 bg-gradient-to-b from-red-500/15 to-transparent ${
+              isFinal ? "border-2" : ""
+            }`
+          : isFinal
+            ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+            : "border-white/10 bg-panel"
       }`}
     >
       <div
@@ -286,13 +349,16 @@ function MatchCard({
         {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。 */}
         <span className="shrink-0 truncate">{match.sessionLabel}</span>
         <span
-          className={`truncate font-semibold ${isLive ? "text-green-400" : decided ? "text-brand" : ""}`}
+          className={`truncate font-semibold ${isLive ? "text-red-400" : decided ? "text-brand" : ""}`}
         >
           {decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status}
         </span>
       </div>
 
-      <div className="relative">
+      {/* サイド枠は見出し行を除いた残り全部を使い、その中で上下中央に置く。
+          不戦勝(枠が1つ)のときもカードの中央に来る。「VS」バッジは2枠の境目 =
+          この枠の中央にいるので、gap-3 のぶんだけ名前・アイコンから逃げている。 */}
+      <div className="relative flex flex-1 flex-col justify-center gap-3">
         {byeWinner ? (
           <SideRow side={byeWinner} />
         ) : (
@@ -310,27 +376,40 @@ function MatchCard({
       </div>
     </article>
   );
+
+  // clip-path を持つ要素に filter を書くと影ごと切り落とされるので、外へにじむ赤い光は
+  // clip-path を持たないラッパへ当てる(理由は globals.css の .live-glow)。
+  return isLive ? <div className="live-glow">{card}</div> : card;
 }
 
 /**
- * アイコンを上、名前を下に縦積みして横幅を節約する。
+ * アイコンを上、名前を下に縦積みして横幅を節約する。**枠の高さ(SIDE_H)と
+ * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
+ * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
+ *
+ * 名前は名前枠の中で上下中央に置く。1行と2行が隣り合っても、視線の高さが揃う。
  *
  * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
- * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。
+ * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンを大きくして
+ * 横幅を食うようになったぶん、重なっても読めるよう背景を敷いている。
  */
 function SideRow({ side }: { side: BracketSideDto }) {
   return (
     <div
-      className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-0.5 text-center ${
-        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.03]"
+      className={`relative flex ${SIDE_H} flex-col items-center justify-center gap-1 px-1.5 py-1 text-center ${
+        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
       }`}
     >
-      <EntrantAvatars entrants={side.entrants} size="sm" />
-      <span className="min-w-0 max-w-full truncate text-sm">
-        {side.name ?? <span className="text-gray-600">未確定</span>}
-      </span>
+      <EntrantAvatars entrants={side.entrants} size="card" />
+
+      {side.name ? (
+        <FitName name={side.name} boxH={NAME_BOX_H} />
+      ) : (
+        <span className={`flex ${NAME_BOX_H} items-center text-xs text-gray-600`}>未確定</span>
+      )}
+
       {side.tiktokScore !== null && (
-        <span className="absolute right-1 top-0.5 font-mono text-[10px] leading-none text-gray-400">
+        <span className="absolute right-1 top-1 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
           {formatNumber(side.tiktokScore)}
         </span>
       )}
@@ -350,9 +429,14 @@ function EntrantAvatars({
   size,
 }: {
   entrants: BracketEntrantDto[];
-  size: "sm" | "md";
+  /** card = 対戦カードの中、champion = 決勝の上の「優勝」バナー(一回り大きい)。 */
+  size: "card" | "champion";
 }) {
-  const box = size === "md" ? "h-7 w-7" : "h-6 w-6";
+  const champion = size === "champion";
+  const box = champion ? "h-12 w-12" : "h-11 w-11";
+  const px = champion ? 48 : 44;
+  const overlap = champion ? "-space-x-2.5" : "-space-x-2";
+  const restText = champion ? "text-xs" : "text-[11px]";
   const shown = entrants.slice(0, 2);
   const rest = entrants.length - shown.length;
 
@@ -361,7 +445,7 @@ function EntrantAvatars({
   }
 
   return (
-    <span className="flex shrink-0 items-center -space-x-1.5">
+    <span className={`flex shrink-0 items-center ${overlap}`}>
       {shown.map((e) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -369,8 +453,8 @@ function EntrantAvatars({
           src={`/api/public/avatar/${e.participantId}`}
           alt=""
           title={e.displayName}
-          width={28}
-          height={28}
+          width={px}
+          height={px}
           className={`${box} rounded-full border border-panel bg-white/5 object-cover`}
           loading="lazy"
           decoding="async"
@@ -379,7 +463,7 @@ function EntrantAvatars({
       ))}
       {rest > 0 && (
         <span
-          className={`${box} flex items-center justify-center rounded-full border border-panel bg-white/10 font-mono text-[9px] text-gray-300`}
+          className={`${box} flex items-center justify-center rounded-full border border-panel bg-white/10 font-mono ${restText} text-gray-300`}
           title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
         >
           +{rest}

@@ -10,6 +10,7 @@ import {
 } from "./match-detect";
 import { isByeRow } from "./match-status";
 import type { TimeRange } from "./scoring";
+import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
 //
@@ -218,12 +219,21 @@ function toObservations(
 export type DetectionResult = {
   detected: number;
   missed: number;
+  /**
+   * 途中終了(CUT_SHORT)と判明したバトルに紐づいていたので解除した対戦の数。
+   *
+   * **呼び出し側はこれが 0 でない周回を最終集計にしないこと**(`aggregate.ts`)。
+   * 解除した対戦の再検知は次の周回まで走らないため。
+   */
+  invalidated: number;
 };
 
 /**
  * 対戦カードと取り込んだバトルを突き合わせ、EventMatch へ反映する。
  *
  * - 主催者が VOID にしたマッチ、手動で勝者を確定したマッチには触らない
+ * - **途中終了(CUT_SHORT)したバトルは候補の母集団から丸ごと外す。** 成立したバトルとして
+ *   扱わない。すでに紐づいてしまっている未確定の対戦は解除して検知対象へ戻す(下記)
  * - 終了をまだ観測できていないバトルは**暫定関連**(`detectedEndAt` は null のまま LIVE)。
  *   勝敗もバトル倍率も出さずに次の周回を待つ
  * - 暫定のまま日程が終わったら `NEEDS_REVIEW`(主催者が手で決める)
@@ -264,14 +274,14 @@ export async function detectMatches(
       !LOCKED_STATUSES.has(m.status) &&
       !(m.winnerDecidedBy && MANUAL_DECISIONS.has(m.winnerDecidedBy))
   );
-  if (open.length === 0) return { detected: 0, missed: 0 };
+  if (open.length === 0) return { detected: 0, missed: 0, invalidated: 0 };
 
   // 上流は**全マッチ**から引く(VOID や手動確定の行も上流にはなりうる)。
   const bySlot = bySlotIndex(matches);
   const candidates = open
     .map((m) => toCandidate(m, bySlot))
     .filter((c): c is MatchCandidate => c !== null);
-  if (candidates.length === 0) return { detected: 0, missed: 0 };
+  if (candidates.length === 0) return { detected: 0, missed: 0, invalidated: 0 };
 
   // 対象の room と、対象になりうる時間帯(日程の前後 grace)だけを読む。
   const starts = candidates.map((c) => c.sessionStart.getTime());
@@ -297,12 +307,25 @@ export async function detectMatches(
       startedAtEstimated: true,
       endedAt: true,
       durationSec: true,
+      // 途中終了(CUT_SHORT)の判定に要る。**select し忘れると値が届かない。**
+      lastAction: true,
     },
   });
 
+  // **途中終了したバトルは成立したバトルとして扱わない。** room ごとに行が分かれていて、
+  // 片側が途中接続で終了イベントを取り逃していれば lastAction は OPEN / UNKNOWN のまま
+  // 残るので、**1つでも CUT_SHORT を観測した room があればそのバトル全体を除外する**
+  // (summarize() の集約と同じ向き。判定できないものは従来どおり候補にする fail-open)。
+  //
+  // ここで母集団から丸ごと外すことで、AMBIGUOUS の母数・usedBattles の取り合い・
+  // partial・暫定関連のすべてから自動的に消える。assignBattles() 側に例外を持ち込まない。
+  const cutShortBattleIds = new Set(
+    rows.filter((r) => r.lastAction === BATTLE_ACTION.CUT_SHORT).map((r) => r.battleId)
+  );
+
   const assignments = assignBattles({
     matches: candidates,
-    battles: toObservations(rows),
+    battles: toObservations(rows.filter((r) => !cutShortBattleIds.has(r.battleId))),
   });
 
   const byId = new Map(open.map((m) => [m.id, m]));
@@ -351,14 +374,37 @@ export async function detectMatches(
 
   const assigned = new Set(assignments.map((a) => a.matchId));
 
+  /**
+   * 途中終了と判明したバトルに紐づいたままの、**まだ結果が確定していない**対戦。
+   *
+   * **`LOCKED_DETECTION_STATUSES` を「確定済み」の判定に流用しないこと。** あれは
+   * 「別の battleId へ付け替えない」という安定性の規則で、`DETECTED` も `NEEDS_REVIEW` も
+   * 結果は未確定(`DETECTED` は次の `resolveMatchResults()` でそのまま FINISHED になる)。
+   * 守るのは実際に確定した `FINISHED` と手動確定だけ(後者は `open` で既に落ちている)。
+   */
+  const invalidatedByCutShort = (m: MatchWithSides) =>
+    m.detectedBattleId !== null &&
+    cutShortBattleIds.has(m.detectedBattleId) &&
+    (m.status === "LIVE" || m.status === "DETECTED" || m.status === NEEDS_REVIEW);
+
   // **暫定関連の取り消し。** 実際の終了が日程の外だった、候補が変わったなどで外れた
   // 「まだ終わっていないはずのバトル」を、いつまでも LIVE のまま残さない。
+  // 途中終了と判明したバトルに紐づいた対戦も、ここで検知対象へ戻す。
+  //
+  // **`!assigned` は OR の外側に置く。** LIVE は `LOCKED_DETECTION_STATUSES` に入らない
+  // ので、CUT_SHORT を母集団から外した同じ周回で正常終了バトルへ付け替わりうる。
+  // 内側に書くと、その周回で成立した正しい割り当てを直後に巻き戻してしまう。
   const retracted = open.filter(
-    (m) => m.status === "LIVE" && m.detectedEndAt === null && !assigned.has(m.id)
+    (m) =>
+      !assigned.has(m.id) &&
+      ((m.status === "LIVE" && m.detectedEndAt === null) || invalidatedByCutShort(m))
   );
-  if (retracted.length > 0) {
-    await tx.eventMatch.updateMany({
-      where: { id: { in: retracted.map((m) => m.id) } },
+
+  // `rules` は行ごとにマージするので updateMany にはできない
+  // (`roundLabel` / `bye` など `reviewReason` 以外のキーを潰さないため)。
+  for (const m of retracted) {
+    await tx.eventMatch.update({
+      where: { id: m.id },
       data: {
         detectedBattleId: null,
         detectedStartAt: null,
@@ -366,8 +412,20 @@ export async function detectMatches(
         detectionConfidence: null,
         detectedEndSource: null,
         decidedAt: null,
+        // 検知が外れた以上、そこから出た勝者も残さない(手動確定は open で除外済み)。
+        winnerSideId: null,
+        winnerDecidedBy: null,
         status: "SCHEDULED",
+        rules: mergeReviewReason(m.rules, null),
       },
+    });
+  }
+  if (retracted.length > 0) {
+    // 集計済みのスコアも消す。残っていると「もう結果が出ている」と読めてしまう
+    // (主催者の「検知をやり直す」と同じ後始末)。
+    await tx.eventMatchSide.updateMany({
+      where: { matchId: { in: retracted.map((m) => m.id) } },
+      data: { diamonds: 0, score: 0 },
     });
   }
 
@@ -387,7 +445,11 @@ export async function detectMatches(
     });
   }
 
-  return { detected: assignments.length, missed: missed.length };
+  return {
+    detected: assignments.length,
+    missed: missed.length,
+    invalidated: retracted.filter(invalidatedByCutShort).length,
+  };
 }
 
 /**

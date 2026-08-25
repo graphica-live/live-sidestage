@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toJstInputValue } from "@/event/datetime";
 import { parseMatchRules } from "@/event/match-rules";
+import { evaluateEventReadiness, loadReadinessInput } from "@/event/readiness";
 import { resolveEventWindows } from "@/event/sessions";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS } from "@/event/labels";
 import { getCoverImageUrl, isCoverUploadEnabled } from "@/lib/media-storage";
@@ -60,6 +61,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const coverImageUrl = await getCoverImageUrl(event.coverImageKey);
   const uploadEnabled = isCoverUploadEnabled();
 
+  // 開催までの残タスク。**API のゲートと同じ関数・同じクエリで出す**
+  // (画面では「まだできる」と見えるのにサーバーが弾く、を避ける)。
+  const readinessTasks = evaluateEventReadiness(await loadReadinessInput(prisma, event));
+
   const format = event.format as EventFormat;
   // 種目と噛み合わない対戦が残っている既存イベント(種目を変更できた頃に作られたもの)でも
   // 対戦管理へ行けるようにする。導線ごと消すと、残った対戦を片付けられなくなる。
@@ -81,6 +86,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
         slug={event.slug}
         status={event.status}
         visibility={event.visibility}
+        readinessTasks={readinessTasks}
       />
 
       <div className="mt-4">

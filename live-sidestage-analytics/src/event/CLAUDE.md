@@ -198,6 +198,48 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
 `endAt` を後ろへ動かしたら `finalizedAt` を `null` に戻すこと（イベント更新APIでやっている）。
 戻し忘れると延長分が二度と集計されない。
 
+**ロックを取ったあとに status と `finalizedAt` を数え直す。** 対象一覧はトランザクションの
+外で引くので、選ばれてからロックが取れるまでの間に主催者が開催中を解除（`RUNNING` →
+`SCHEDULED`）しうる。見ないと、開催準備中へ戻したイベントを集計して、締切後なら
+`finalizedAt` まで立ててしまう。**`startAt <= now` はここでは見ない** — `aggregateEvent()` は
+期間外からでも直接呼べる関数として使われている（テスト・手動の再集計）ので、窓の判定は
+呼び出し側（`aggregationWindow`）の責務のままにする。
+
+### ステータス遷移（`status-transition.ts` / `readiness.ts`）
+
+遷移表は `src/event/status-transition.ts` の1箇所。**UI（`EventAdminControls`）と
+API（`PATCH /api/events/{id}`）が同じ表を見る。** 以前は表がクライアントにしかなく、
+API は列挙値でありさえすればどこからどこへでも飛ばせた。
+
+- `SCHEDULED`（開催準備中）⇄ `RUNNING` ⇄ `FINISHED` ⇄ `ARCHIVED`。飛び越えは 409
+- 同じ status への PATCH は**冪等に 200**。副作用は起こさない（二重クリック・別タブ）
+
+**`RUNNING` への遷移はすべて（`SCHEDULED` からも `FINISHED` からも）同じ扱いにする。**
+
+1. 開催準備チェック（`readiness.ts`）を通す。残っていれば 409 `NOT_READY`
+2. 同じトランザクションで `reopenAggregation()` を呼ぶ
+
+2 を省くと、締切後に最終集計を終えた（`finalizedAt` が立った）イベントは開催中へ戻しても
+`aggregationWindow()` から外れたままで**二度と集計されない**。1 を `SCHEDULED` からだけに
+すると、`FINISHED` を経由してゲートを迂回できる。
+
+開催準備チェックが止めるのは2つだけ:
+
+- 出場できるエントリーが必要数（対戦する種目は2、獲得ダイヤレースは1）未満
+  — 個人戦なら ACTIVE な参加者、チーム戦なら **ACTIVE メンバーを持つ**チームを数える
+  （`createBracket` の `TOO_FEW_ENTRANTS` / `UNKNOWN_ENTRANT` と同じ基準。
+  表に使わない空のチームが1つあるだけで止めたりはしない）
+- `TOURNAMENT` でトーナメント表が1件も無い（表が無いと検知も勝敗も動かない）
+
+**日程0件は止めない。** `resolveEventWindows()` が外枠を1日程として扱うので集計も検知も
+動く。止めると、日程を持たない旧イベントを開催準備中へ戻したとき二度と開催中にできない。
+デスマッチの対戦カード0件も止めない（開催中に随時足す運用）— 残タスク一覧に「任意」で出す。
+
+**これはベストエフォートのゲートで、開催中に維持される不変条件ではない。** 参加者・チームの
+削除は同じ advisory lock を取らないので、遷移の直後に出場者が減ることはありうる。
+そもそも開催中の参加者の追加・削除は仕様（全期間再集計なので過去に遡る）。
+ここで守るのは「開催中にした時点で明らかに不完全ではない」ことだけ。
+
 ### 実測値（ローカル docker Postgres、`npm run bench:aggregate:local`）
 
 | 規模 | 集計クエリ単体 | 1イベントの再集計 |
@@ -264,6 +306,63 @@ undefined になる**。
   不戦勝行は自分の決着時刻を持たないので、さらに上流まで遡る（`decidedAtOfSlot`）
 - 同じ組み合わせの候補が日程内に複数あるときは、決定的に最初の1件を付けたうえで
   `AMBIGUOUS` にして**承認を許さない**。主催者は勝者を手動で確定する（その経路は検知を捨てる）
+
+### 途中終了（CUT_SHORT）したバトルは勝敗判定に使わない
+
+TikTok の `BattleAction` は `FINISH`(5) と `CUT_SHORT`(6) を区別する。後者は「規定時間を
+待たずに打ち切られたバトル」で、**成立したバトルとして扱わない**（誤って開始して即切り上げた
+バトルが、本番のバトルと同じ日程に並んで `AMBIGUOUS` を起こすのを防ぐ意味もある）。
+
+判定材料は `DetectedBattle.lastAction`。`detectMatches()` の `select` に**必ず入れること**
+（入れ忘れても型は通り、静かに「途中終了なし」になる）。
+
+守ること:
+
+- **除外は `battles.ts` が母集団から丸ごと外して行う。`match-detect.ts` に条件を足さない。**
+  `assignBattles()` にマッチごとの例外を持ち込むと、除外したはずのバトルが `AMBIGUOUS` の
+  母数や `usedBattles` の取り合いに残る
+- **room 横断は「1つでも CUT_SHORT を観測したら途中終了」。** 片側が途中接続で終了イベントを
+  取り逃していれば `lastAction` は `OPEN` / `UNKNOWN` のまま残る。`UNKNOWN`(0) は判定不能なので
+  従来どおり候補にする（fail-open）
+- **`mergeBattleState()` は `CUT_SHORT` を sticky にしてある**（`src/lib/tiktok-battle.ts`）。
+  終了イベントどうしは後着が上書きするので、これが無いと `CUT_SHORT → 遅延 FINISH` で
+  途中終了だった事実が消える。代償として、誤検知した `CUT_SHORT` は `FINISH` で自己修復しない
+- **`parseBattleEvent()` の `phase` は `END` のまま**にする。`CUT_SHORT` を終了として扱わないと
+  `endedAt` が入らず「終了未観測」になってしまう
+
+### すでに紐づいてしまった対戦の解除（ここが壊しやすい）
+
+新規の割り当てから外すだけでは足りない。`detectMatches()` は既存の暫定関連の解除
+（`retracted`）に CUT_SHORT 由来の解除を合流させている。
+
+- **`LOCKED_DETECTION_STATUSES` を「確定済み」の判定に流用しない。** あれは「別の battleId へ
+  付け替えない」という安定性の規則で、`DETECTED` も `NEEDS_REVIEW` も結果は未確定
+  （`DETECTED` は次の `resolveMatchResults()` でそのまま `FINISHED` になる）。守るのは実際に
+  確定した `FINISHED` と手動確定だけ（後者は `open` フィルタで既に落ちている）
+- **`LIVE` は `detectedEndAt` が非 null になりうる。** `resolveEndedAt()` は OPEN 時に
+  `duration` が取れると**将来の**終了時刻を作る。既存の解除条件
+  （`LIVE && detectedEndAt === null`）だけでは `OPEN(duration=300) → 2分後に CUT_SHORT` が
+  引っかからず、`LIVE` のまま BATTLE 倍率区間と公開スコアに残り続ける
+- **`!assigned` は OR の外側に置く。** `LIVE` はロックされないので、CUT_SHORT を母集団から
+  外した**同じ周回で正常終了バトルへ付け替わる**。内側に書くと、その周回で成立した正しい
+  割り当てを直後に巻き戻す（`DETECTED` / `NEEDS_REVIEW` は locked なので付け替えは次周）
+- 解除の内容は `[matchId]` API の `reopen` と同じに揃える（検知フィールド・`decidedAt`・
+  勝者・`EventMatchSide` の `diamonds` / `score`）。`rules` は `reviewReason` だけを消して
+  `roundLabel` / `bye` を残すので、`updateMany` ではなく行ごとの `update` にしてある
+- **解除が起きた周回は `finalizedAt` を立てない**（`DetectionResult.invalidated` →
+  `aggregate.ts` の `deferFinalize`）。締切後に解除すると次の周回が来ないので、同じ日程に
+  正常終了バトルが残っていても `SCHEDULED` / `NO_SHOW` で固定される。解除は冪等
+  （`detectedBattleId` を null にする）なので永久に立たなくなることはない
+
+限界:
+
+- CUT_SHORT の観測は `detectMatches()` が読んだ room の範囲でしか見えない（対戦相手が
+  イベント参加者でない場合など、範囲外の room だけが持っていても判定できない）
+- `finalizedAt` が既に立っているイベントは再評価されない。過去の未確定 CUT_SHORT は自動では直らない
+- **ローリングデプロイ中の新旧 event-worker 混在は advisory lock では防げない。** 新版が解除した
+  対戦を旧版が `lastAction` を無視して再関連付けし `FINISHED` へ確定させうる。デプロイは
+  event-worker を一度止めるか、イベント開催時間外に行う（誤確定しても主催者が
+  「検知をやり直す」で戻せる）
 
 ### 検知したバトルは日程で切ってから集計する
 

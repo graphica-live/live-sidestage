@@ -1,9 +1,9 @@
-# Live Sidestage (live_sidestage_mobile)
+# LIVE Sidestage (live_sidestage_mobile)
 
 TikTok Liveのコメントをリアルタイムに取得し、オンデバイスVOICEVOXで読み上げるAndroidアプリ。
 バックエンドは LIVE Sidestage Analytics (Railway本番) を利用する。
 
-- アプリ表示名: **Live Sidestage** (PC・Webサービス共通のブランド名)
+- アプリ表示名: **LIVE Sidestage** (PC・Webサービス共通のブランド名)
 - Dartパッケージ名: `live_sidestage_mobile`
 - Androidパッケージ: `com.liveanalytics.live_sidestage_mobile`
 

@@ -48,14 +48,24 @@ GiftSound giftSound(
   );
 }
 
+/// 1セットだけを持つ設定。ギフト一覧はセットの入れ子になったので、ここで包む。
 AppConfig configWith({
   List<GiftSound> gifts = const [],
   bool enabled = true,
   int masterVolume = 100,
 }) {
   return AppConfig(
-    sound: SoundConfig(enabled: enabled, masterVolume: masterVolume, gifts: gifts),
+    sound: SoundConfig(
+      enabled: enabled,
+      masterVolume: masterVolume,
+      sets: [SoundSet(id: SoundSet.defaultId, gifts: gifts)],
+    ),
   );
+}
+
+/// 複数セットを持つ設定。先頭を選択中にする。
+AppConfig configWithSets(List<SoundSet> sets, {String? selectedSetId}) {
+  return AppConfig(sound: SoundConfig(sets: sets, selectedSetId: selectedSetId));
 }
 
 GiftEvent gift({
@@ -164,6 +174,47 @@ void main() {
     test('効果音全体がOFFなら鳴らない', () async {
       final engine = engineFor(configWith(gifts: [giftSound('a')], enabled: false));
       engine.handleGift(gift());
+      await settle();
+      expect(player.played, isEmpty);
+    });
+  });
+
+  // 同時に有効なセットは常に1つ。裏のセットは鳴らす対象に入らない。
+  group('セットの切り替え', () {
+    List<SoundSet> twoSets() => [
+          SoundSet(id: 'a', gifts: [giftSound('in_a', giftName: 'rose')]),
+          SoundSet(id: 'b', gifts: [giftSound('in_b', giftName: 'rose')]),
+        ];
+
+    test('選択中のセットのギフトだけ鳴る', () async {
+      final engine = engineFor(configWithSets(twoSets(), selectedSetId: 'b'));
+      engine.handleGift(gift(giftName: 'rose'));
+      await settle();
+      expect(player.played, ['/sounds/in_b.mp3']);
+    });
+
+    test('選択を切り替えると鳴る音も変わる', () async {
+      final sets = twoSets();
+      final engine = engineFor(configWithSets(sets, selectedSetId: 'a'));
+      engine.handleGift(gift(giftName: 'rose'));
+      await settle();
+
+      engine.applyConfig(configWithSets(sets, selectedSetId: 'b'));
+      engine.handleGift(gift(giftName: 'rose'));
+      await settle();
+
+      expect(player.played, ['/sounds/in_a.mp3', '/sounds/in_b.mp3']);
+    });
+
+    test('選択中セットが空なら、他セットに一致があっても鳴らない', () async {
+      final engine = engineFor(configWithSets(
+        [
+          const SoundSet(id: 'empty'),
+          SoundSet(id: 'b', gifts: [giftSound('in_b', giftName: 'rose')]),
+        ],
+        selectedSetId: 'empty',
+      ));
+      engine.handleGift(gift(giftName: 'rose'));
       await settle();
       expect(player.played, isEmpty);
     });

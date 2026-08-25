@@ -47,8 +47,11 @@ export const VISIBILITY_LABELS: Record<Visibility, string> = {
   PRIVATE: "非公開",
 };
 
+// SCHEDULED は「まだ始まっていない」ではなく「開催に向けて準備している」状態を指す
+// (この間に参加者登録・トーナメント表の作成をやる)。公開ページも同じ辞書を使うので、
+// リスナーにも「開催準備中」と出る。
 export const STATUS_LABELS: Record<EventStatus, string> = {
-  SCHEDULED: "開催予定",
+  SCHEDULED: "開催準備中",
   RUNNING: "開催中",
   FINISHED: "終了",
   ARCHIVED: "アーカイブ",
@@ -77,7 +80,7 @@ export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {};
 // 対戦の状態。schema.prisma の EventMatch.status と対応する。
 export const MATCH_STATUS_LABELS: Record<string, string> = {
   SCHEDULED: "検知待ち",
-  LIVE: "進行中",
+  LIVE: "バトル中",
   DETECTED: "検知済み",
   NEEDS_REVIEW: "要確認",
   FINISHED: "確定",
@@ -87,7 +90,8 @@ export const MATCH_STATUS_LABELS: Record<string, string> = {
 
 export const MATCH_STATUS_CLASSES: Record<string, string> = {
   SCHEDULED: "text-gray-400 bg-white/5",
-  LIVE: "text-green-400 bg-green-400/10",
+  // バトル中だけは赤。カード側の赤い発光(.live-glow)と揃えて、表でも一覧でも同じ色で読める。
+  LIVE: "text-red-400 bg-red-500/15",
   DETECTED: "text-blue-400 bg-blue-400/10",
   NEEDS_REVIEW: "text-yellow-400 bg-yellow-400/10",
   FINISHED: "text-white bg-white/10",

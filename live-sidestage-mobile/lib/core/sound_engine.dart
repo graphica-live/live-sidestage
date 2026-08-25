@@ -149,7 +149,8 @@ class SoundEngine extends ChangeNotifier {
     var budget = maxPlaybacksPerEvent;
     var fired = false;
 
-    for (final gift in sound.gifts) {
+    // 鳴らすのは選択中のセットだけ。同時に有効なセットは常に1つ。
+    for (final gift in sound.selectedGifts) {
       if (!gift.enabled) continue;
       // giftName が空 = 任意のギフトに一致。
       if (gift.giftName.isNotEmpty && gift.giftName != event.giftName) continue;

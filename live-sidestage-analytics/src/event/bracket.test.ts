@@ -1,13 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
+  MAX_BRACKET_SIZE,
   bracketSize,
   buildBracket,
+  buildManualBracket,
   buildStagedBracket,
   nextSlot,
   resolveBracket,
+  resolveManualBracket,
   roundLabel,
   seedOrder,
   stagedRoundLabel,
+  validatePlacement,
 } from "./bracket";
 
 describe("bracketSize", () => {
@@ -198,6 +202,186 @@ describe("buildStagedBracket", () => {
         }
       }
     }
+  });
+});
+
+/** 決定的な擬似乱数(テストを再現可能にする)。 */
+function rng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+/** size 枠のうち count 個を擬似乱数で埋めた配置。 */
+function randomOccupied(size: number, count: number, seed: number): boolean[] {
+  const next = rng(seed);
+  const indexes = Array.from({ length: size }, (_, i) => i);
+  for (let i = indexes.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
+  }
+  const taken = new Set(indexes.slice(0, count));
+  return Array.from({ length: size }, (_, i) => taken.has(i));
+}
+
+describe("buildManualBracket", () => {
+  it("両側とも空の枝は行を作らない", () => {
+    // 8枠に葉0,1,2 だけ。position3(葉6,7)は誰も来ないので行が無い。
+    const bracket = buildManualBracket([true, true, true, false, false, false, false, false]);
+    const round1 = bracket.matches.filter((m) => m.round === 1).map((m) => m.position);
+    expect(round1).toEqual([0, 1]);
+    expect(bracket.roundCount).toBe(3);
+  });
+
+  it("右側だけ埋まった枠は、右側(sourceB)のまま不戦勝行になる", () => {
+    // 主催者が「カードの下段」へ置いた指定を、生成器が上段へ寄せてはいけない。
+    const bracket = buildManualBracket([false, true, false, true]);
+    const first = bracket.matches.find((m) => m.round === 1 && m.position === 0);
+    expect(first?.sourceA).toEqual({ kind: "BYE" });
+    expect(first?.sourceB).toEqual({ kind: "ENTRANT", entrantIndex: 1 });
+  });
+
+  it("実試合(両側にエントリー・勝者が来る行)の数は配置数-1になる", () => {
+    for (const [size, count] of [
+      [4, 3],
+      [8, 5],
+      [8, 8],
+      [16, 9],
+      [16, 11],
+      [32, 17],
+    ] as const) {
+      const bracket = buildManualBracket(randomOccupied(size, count, size * 31 + count));
+      const real = bracket.matches.filter(
+        (m) => m.sourceA.kind !== "BYE" && m.sourceB.kind !== "BYE"
+      );
+      expect(real).toHaveLength(count - 1);
+    }
+  });
+
+  it("配置が2組未満なら表を作らない", () => {
+    expect(buildManualBracket([true, false, false, false]).matches).toEqual([]);
+    expect(buildManualBracket([false, false]).matches).toEqual([]);
+  });
+
+  it("nextSlot の機械的な転送先と、実際に作られた行の座標が完全に一致する(座標の整合性)", () => {
+    // 段階的方式と同じ回帰テストを、任意配置(飛び地・片側寄せ)に対して回す。
+    // ここがずれると、無関係な2人の実試合を丸ごと不戦勝処理するデータ破損になる。
+    const cases: boolean[][] = [
+      [true, false, false, true],
+      [false, true, true, false],
+      [true, true, false, false, false, false, true, true],
+      [false, false, true, true, true, false, false, true],
+      ...[
+        [8, 5],
+        [16, 9],
+        [16, 12],
+        [32, 17],
+        [32, 30],
+        [64, 33],
+      ].map(([size, count]) => randomOccupied(size, count, size + count)),
+    ];
+
+    for (const occupied of cases) {
+      const bracket = buildManualBracket(occupied);
+      const byPos = new Map(bracket.matches.map((m) => [`${m.round}:${m.position}`, m]));
+      const aliveByRound = new Map<number, Set<number>>();
+      for (let round = 1; round <= bracket.roundCount; round++) {
+        aliveByRound.set(
+          round,
+          new Set(bracket.matches.filter((m) => m.round === round).map((m) => m.position))
+        );
+      }
+
+      for (let round = 1; round < bracket.roundCount; round++) {
+        const alive = aliveByRound.get(round)!;
+        const nextAlive = aliveByRound.get(round + 1)!;
+        for (const position of alive) {
+          const slot = nextSlot(round, position, bracket.roundCount)!;
+          expect(slot).not.toBeNull();
+          expect(nextAlive.has(slot.position)).toBe(true);
+
+          const target = byPos.get(`${slot.round}:${slot.position}`)!;
+          expect(target).toBeDefined();
+
+          const targetSources = [target.sourceA, target.sourceB];
+          if (targetSources.some((s) => s.kind === "BYE")) {
+            // 不戦勝行へ入ってくる生きた枠は高々1つ(相手側には構造的に誰も来ない)。
+            const siblings = [...alive].filter(
+              (p) => nextSlot(round, p, bracket.roundCount)!.position === slot.position
+            );
+            expect(siblings).toHaveLength(1);
+            // **その1つが入る側(sideIndex)と、BYE でない側が一致すること。**
+            // ここがずれると「不戦勝の印」と実際の転送内容が食い違う。
+            expect(targetSources[slot.sideIndex].kind).not.toBe("BYE");
+            expect(targetSources[1 - slot.sideIndex].kind).toBe("BYE");
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("resolveManualBracket", () => {
+  it("葉に置いたとおりに1回戦のサイドへ入る", () => {
+    const { matches, roundCount } = resolveManualBracket(["a", "b", "c", "d"]);
+    expect(roundCount).toBe(2);
+    expect(matches.find((m) => m.round === 1 && m.position === 0)?.sideIds).toEqual(["a", "b"]);
+    expect(matches.find((m) => m.round === 1 && m.position === 1)?.sideIds).toEqual(["c", "d"]);
+  });
+
+  it("右側だけ置いた枠は sideIndex 1 が不戦勝の勝者になる", () => {
+    const { matches } = resolveManualBracket([null, "a", "b", "c"]);
+    const bye = matches.find((m) => m.round === 1 && m.position === 0);
+    expect(bye?.sideIds).toEqual([null, "a"]);
+    expect(bye?.autoWinnerSide).toBe(1);
+    expect(bye?.isBye).toBe(true);
+  });
+
+  it("左側だけ置いた枠は sideIndex 0 が不戦勝の勝者になる", () => {
+    const { matches } = resolveManualBracket(["a", null, "b", "c"]);
+    const bye = matches.find((m) => m.round === 1 && m.position === 0);
+    expect(bye?.sideIds).toEqual(["a", null]);
+    expect(bye?.autoWinnerSide).toBe(0);
+  });
+
+  it("2回戦以降の不戦勝(相手が実試合の勝者)は作成時点では確定しない", () => {
+    // 8枠に3組。position0 は実試合、position1 は空なので、2回戦は動的な不戦勝になる。
+    const { matches } = resolveManualBracket(["a", "b", null, null, "c", null, null, null]);
+    const dynamic = matches.find((m) => m.round === 2 && m.position === 0);
+    expect(dynamic?.sideIds).toEqual([null, null]);
+    expect(dynamic?.autoWinnerSide).toBeNull();
+    expect(dynamic?.isBye).toBe(true);
+  });
+});
+
+describe("validatePlacement", () => {
+  it("枠数が配置数に対して最小の2のべき乗なら通る", () => {
+    expect(validatePlacement(["a", "b"])).toEqual({ ok: true });
+    expect(validatePlacement(["a", null, "b", "c"])).toEqual({ ok: true });
+    expect(validatePlacement([null, "a", "b", null, "c", null, "d", "e"])).toEqual({ ok: true });
+  });
+
+  it("配置が2組未満なら弾く", () => {
+    expect(validatePlacement(["a", null]).ok).toBe(false);
+    expect(validatePlacement([null, null, null, null]).ok).toBe(false);
+  });
+
+  it("同じエントリーを複数の枠に置いたら弾く", () => {
+    expect(validatePlacement(["a", "b", "a", null]).ok).toBe(false);
+  });
+
+  it("枠数が配置数に見合わないものは弾く(疎な巨大ツリーを作らせない)", () => {
+    // 2組しか置いていないのに8枠、のような配置。
+    expect(validatePlacement(["a", "b", null, null, null, null, null, null]).ok).toBe(false);
+    // 2のべき乗でない枠数も同じ判定で落ちる。
+    expect(validatePlacement(["a", "b", "c"]).ok).toBe(false);
+  });
+
+  it("上限を超える枠数は弾く", () => {
+    const huge = Array.from({ length: MAX_BRACKET_SIZE * 2 }, (_, i) => (i < 300 ? `p${i}` : null));
+    expect(validatePlacement(huge).ok).toBe(false);
   });
 });
 
