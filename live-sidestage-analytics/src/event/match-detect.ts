@@ -226,6 +226,10 @@ function compareSummaries(a: Summary, b: Summary): number {
  * - 観測 room の集合が対戦カードと完全一致すれば exact、部分集合なら候補が唯一のときだけ partial
  * - 1つのバトルを複数のマッチに、1つのマッチに複数のバトルを割り当てない
  * - 割り当てても、`autoConfirm` が false のものは主催者の確認を挟む
+ *
+ * **途中終了(CUT_SHORT)したバトルの除外はここでやらない。** 呼び出し側(`battles.ts` の
+ * `detectMatches`)が `battles` の母集団から丸ごと外して渡す。ここに条件を足すと、
+ * `AMBIGUOUS` の母数や `usedBattles` の取り合いに除外したはずのバトルが残ってしまう。
  */
 export function assignBattles(input: {
   matches: MatchCandidate[];

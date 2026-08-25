@@ -206,7 +206,13 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
             end: span.end,
           });
         }
-        await detectMatches(tx as DbClient, { eventId, now });
+        const detection = await detectMatches(tx as DbClient, { eventId, now });
+        // **途中終了と判明したバトルの関連を解除した周回も最終集計にしない。**
+        // 解除した対戦の再検知(同じ日程に残っている正常終了バトルへの付け替え)は
+        // 次の周回まで走らないので、ここで finalizedAt を立てると SCHEDULED /
+        // NO_SHOW のまま固定される。解除は冪等(detectedBattleId を null にするので
+        // 次の周回では該当しない)なので、永久に立たなくなることはない。
+        if (detection.invalidated > 0) deferFinalize = true;
         const results = await resolveMatchResults(tx as DbClient, {
           eventId,
           multipliers: multiplierInputs,

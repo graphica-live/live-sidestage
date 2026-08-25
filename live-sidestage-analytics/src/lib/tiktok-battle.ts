@@ -249,8 +249,17 @@ export function mergeBattleState(
 
   // armies は action を持たないので既存を保つ(OPEN を観測済みなら OPEN のまま)。
   // 終了を観測した後に開始のイベントが遅れて届いても、状態を巻き戻さない。
+  //
+  // **CUT_SHORT は終了イベントどうしでも上書きさせない。** イベント機能は
+  // 「途中終了したバトルは勝敗判定に使わない」の判定材料にこの action を使うので、
+  // 後着の FINISH で塗り替わると途中終了だった事実が消える。代償として、誤って
+  // CUT_SHORT を観測した場合は後続の FINISH で自己修復しない(判定しない側に倒す)。
   let action = existing?.action ?? BATTLE_ACTION.UNKNOWN;
-  if (parsed.action !== null && !(existing?.endedAt != null && parsed.phase === "START")) {
+  if (
+    parsed.action !== null &&
+    !(existing?.endedAt != null && parsed.phase === "START") &&
+    existing?.action !== BATTLE_ACTION.CUT_SHORT
+  ) {
     action = parsed.action;
   }
 
