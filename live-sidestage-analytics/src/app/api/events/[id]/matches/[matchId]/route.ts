@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { nextSlot } from "@/event/bracket";
 import { acquireEventLock } from "@/event/event-lock";
+import { downstreamStarted } from "@/event/match-downstream";
 import { advanceBracket } from "@/event/match-results";
-import { isByeRow, isPlainObject, isStartedMatch } from "@/event/match-status";
+import { isByeRow, isPlainObject } from "@/event/match-status";
 import {
   isTransactionTimeout,
   MUTATION_TX_OPTIONS,
@@ -388,44 +388,4 @@ export async function DELETE(
     );
   }
   return NextResponse.json({ ok: true });
-}
-
-async function downstreamStarted(
-  tx: DbClient,
-  eventId: string,
-  round: number,
-  position: number
-): Promise<boolean> {
-  const agg = await tx.eventMatch.aggregate({
-    where: { eventId },
-    _max: { round: true },
-  });
-  const roundCount = agg._max.round ?? round;
-
-  // 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
-  // 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
-  // わたることがある)。ラウンド数で有界なので無限ループにはならない。
-  let cur = { round, position };
-  for (let hop = 0; hop < roundCount; hop++) {
-    const slot = nextSlot(cur.round, cur.position, roundCount);
-    if (!slot) return false;
-
-    const next = await tx.eventMatch.findFirst({
-      where: { eventId, round: slot.round, bracketPosition: slot.position },
-      select: { status: true, winnerDecidedBy: true, rules: true },
-    });
-    if (!next) return false;
-
-    const nextIsBye = isByeRow(next.rules);
-    if (nextIsBye) {
-      cur = { round: slot.round, position: slot.position };
-      continue;
-    }
-    return isStartedMatch({
-      status: next.status,
-      winnerDecidedBy: next.winnerDecidedBy,
-      isBye: nextIsBye,
-    });
-  }
-  return false;
 }

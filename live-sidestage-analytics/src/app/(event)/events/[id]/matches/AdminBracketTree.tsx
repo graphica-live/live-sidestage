@@ -29,22 +29,49 @@ const ZOOM_STEP = 0.15;
 
 type MatchIndex = Map<string, MatchRow>;
 
+/** 組み合わせ変更(編集モード)の操作面。渡されている間だけカードがドラッグできる。 */
+export type SwapSlotRef = { matchId: string; sideIndex: number };
+
+export type SwapMode = {
+  /** 掴める枠か(出場者がいて、そのカードがまだ始まっていない) */
+  canGrab: (match: MatchRow, sideIndex: number) => boolean;
+  /** 置ける枠か。**空き枠も置き先になる**(片道移動 = その枠を不戦勝にする) */
+  canDrop: (match: MatchRow, sideIndex: number) => boolean;
+  /** タップ操作のフォールバックで選択中の枠 */
+  selected: SwapSlotRef | null;
+  onSelect: (slot: SwapSlotRef | null) => void;
+  onSwap: (from: SwapSlotRef, to: SwapSlotRef) => void;
+  busy: boolean;
+};
+
 function key(round: number, position: number): string {
   return `${round}:${position}`;
+}
+
+function sameSlot(a: SwapSlotRef | null, b: SwapSlotRef): boolean {
+  return !!a && a.matchId === b.matchId && a.sideIndex === b.sideIndex;
 }
 
 export function AdminBracketTree({
   matches,
   onSelect,
+  swap,
 }: {
   matches: MatchRow[];
   onSelect: (matchId: string) => void;
+  /** 編集モードのときだけ渡す。渡さなければ従来どおりの表示専用。 */
+  swap?: SwapMode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
   const [fitZoom, setFitZoom] = useState(1);
   const [zoom, setZoom] = useState(1);
+
+  // **編集モードでは縮小しない。** スマホ幅では画面に収める倍率が 35% ほどまで下がり、
+  // 枠が小さすぎて置けなくなる(`ManualBracketBuilder.tsx` がそもそもズームを持っていないのと
+  // 同じ理由)。横スクロールで見せて、縮めたい人はズームボタンで下げられるようにしておく。
+  const editing = !!swap;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -58,7 +85,7 @@ export function AdminBracketTree({
       setTreeSize({ width, height });
       const next = Math.min(1, container!.clientWidth / width);
       setFitZoom(next);
-      setZoom(next);
+      setZoom(editing ? 1 : next);
     }
 
     fit();
@@ -68,7 +95,7 @@ export function AdminBracketTree({
     // 画面幅の変化(回転・リサイズ)だけを見ればよいので window の resize で足りる。
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [matches]);
+  }, [matches, editing]);
 
   if (matches.length === 0) return null;
 
@@ -125,12 +152,18 @@ export function AdminBracketTree({
                   mirror={false}
                   index={index}
                   onSelect={onSelect}
+                  swap={swap}
                 />
               )}
               {hasWings && <StraightConnector />}
 
               <div className={`${CARD_W} shrink-0`}>
-                <MatchCardOrEmpty match={index.get(key(roundCount, 0))} mirror={false} onSelect={onSelect} />
+                <MatchCardOrEmpty
+                  match={index.get(key(roundCount, 0))}
+                  mirror={false}
+                  onSelect={onSelect}
+                  swap={swap}
+                />
               </div>
 
               {hasWings && <StraightConnector />}
@@ -141,6 +174,7 @@ export function AdminBracketTree({
                   mirror
                   index={index}
                   onSelect={onSelect}
+                  swap={swap}
                 />
               )}
             </div>
@@ -204,16 +238,23 @@ function MatchNode({
   mirror,
   index,
   onSelect,
+  swap,
 }: {
   round: number;
   position: number;
   mirror: boolean;
   index: MatchIndex;
   onSelect: (matchId: string) => void;
+  swap?: SwapMode;
 }) {
   const card = (
     <div className={`${CARD_W} shrink-0`}>
-      <MatchCardOrEmpty match={index.get(key(round, position))} mirror={mirror} onSelect={onSelect} />
+      <MatchCardOrEmpty
+        match={index.get(key(round, position))}
+        mirror={mirror}
+        onSelect={onSelect}
+        swap={swap}
+      />
     </div>
   );
 
@@ -225,7 +266,14 @@ function MatchNode({
     <div className={`flex items-stretch ${mirror ? "flex-row-reverse" : ""}`}>
       <div className="flex flex-col">
         <div className="flex flex-1 items-center py-1">
-          <MatchNode round={round - 1} position={position * 2} mirror={mirror} index={index} onSelect={onSelect} />
+          <MatchNode
+            round={round - 1}
+            position={position * 2}
+            mirror={mirror}
+            index={index}
+            onSelect={onSelect}
+            swap={swap}
+          />
         </div>
         <div className="flex flex-1 items-center py-1">
           <MatchNode
@@ -234,6 +282,7 @@ function MatchNode({
             mirror={mirror}
             index={index}
             onSelect={onSelect}
+            swap={swap}
           />
         </div>
       </div>
@@ -270,10 +319,12 @@ function MatchCardOrEmpty({
   match,
   mirror,
   onSelect,
+  swap,
 }: {
   match: MatchRow | undefined;
   mirror: boolean;
   onSelect: (matchId: string) => void;
+  swap?: SwapMode;
 }) {
   if (!match) {
     return (
@@ -286,13 +337,58 @@ function MatchCardOrEmpty({
   }
 
   // 不戦勝は対戦相手がそもそも存在しない。相手側の「未確定」枠は出さず、本人だけを表示する。
+  // **編集モードでは両サイドを描く** — 空き枠そのものがドロップ先(そこへ置くと不戦勝が
+  // 実際の対戦になり、元いた枠が不戦勝になる)なので、畳んでしまうと操作できない。
   const byeWinner =
-    match.winnerDecidedBy === "BYE"
+    !swap && match.winnerDecidedBy === "BYE"
       ? match.sides.find((s) => s.id === match.winnerSideId)
       : undefined;
 
   // バトルの開始を検知した枠。公開ページの表と同じ赤い発光にする(.live-glow は globals.css)。
   const isLive = match.status === "LIVE";
+
+  const header = (
+    <div
+      className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
+        mirror ? "flex-row-reverse" : ""
+      }`}
+    >
+      <span
+        className={`rounded-full px-1.5 py-0.5 ${
+          MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400"
+        }`}
+      >
+        {MATCH_STATUS_LABELS[match.status] ?? match.status}
+      </span>
+    </div>
+  );
+
+  const body = byeWinner ? (
+    <div className="flex flex-1 items-center">
+      <div className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand/10 px-1.5 py-1 text-sm ring-1 ring-brand/40">
+        <span className="min-w-0 truncate">{byeWinner.label}</span>
+      </div>
+    </div>
+  ) : (
+    match.sides.map((side) => (
+      <SideRow key={side.id} match={match} side={side} mirror={mirror} swap={swap} />
+    ))
+  );
+
+  // 編集モードではカード全体のクリック(操作モーダル)を外す。サイド行がドラッグと
+  // タップ選択を受け取るので、button で包むと入れ子の操作と競合する。
+  if (swap) {
+    return (
+      <div
+        className={`card flex ${CARD_H} w-full flex-col justify-between overflow-hidden p-2 ${
+          isLive ? "live-glow border-red-500/70" : ""
+        }`}
+      >
+        {header}
+        {body}
+      </div>
+    );
+  }
 
   return (
     <button
@@ -302,47 +398,135 @@ function MatchCardOrEmpty({
         isLive ? "live-glow border-red-500/70 hover:border-red-400" : "hover:border-brand/40"
       }`}
     >
-      <div
-        className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
-          mirror ? "flex-row-reverse" : ""
-        }`}
-      >
-        <span
-          className={`rounded-full px-1.5 py-0.5 ${
-            MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400"
-          }`}
-        >
-          {MATCH_STATUS_LABELS[match.status] ?? match.status}
-        </span>
-      </div>
-
-      {byeWinner ? (
-        <div className="flex flex-1 items-center">
-          <div className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand/10 px-1.5 py-1 text-sm ring-1 ring-brand/40">
-            <span className="min-w-0 truncate">{byeWinner.label}</span>
-          </div>
-        </div>
-      ) : (
-        match.sides.map((side) => (
-          <div
-            key={side.id}
-            className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-sm ${
-              match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
-            } ${mirror ? "flex-row-reverse" : ""}`}
-          >
-            <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
-              {side.empty ? <span className="text-gray-600">未確定</span> : side.label}
-            </span>
-            {/* TikTok 側のバトルスコア。**行を増やさず同じ行に置く** — カード高(CARD_H)を
-                変えると公開側と同じくコネクタの幾何が崩れるため。 */}
-            {side.tiktokScore !== null && (
-              <span className="shrink-0 font-mono text-[11px] text-gray-400">
-                {side.tiktokScore}
-              </span>
-            )}
-          </div>
-        ))
-      )}
+      {header}
+      {body}
     </button>
+  );
+}
+
+/** ドラッグ&ドロップで受け渡すスロット。`matchId` は cuid なので `:` を含まない。 */
+function parseSlot(raw: string): SwapSlotRef | null {
+  const at = raw.lastIndexOf(":");
+  if (at <= 0) return null;
+  const sideIndex = Number(raw.slice(at + 1));
+  if (sideIndex !== 0 && sideIndex !== 1) return null;
+  return { matchId: raw.slice(0, at), sideIndex };
+}
+
+/**
+ * カード内の1サイド。**行を増やさない** — カード高(`CARD_H`)が変わるとコネクタの
+ * 幾何(25% / 50% / 75%)がカード中心とずれて線が刺さらなくなる。
+ */
+function SideRow({
+  match,
+  side,
+  mirror,
+  swap,
+}: {
+  match: MatchRow;
+  side: MatchRow["sides"][number];
+  mirror: boolean;
+  swap?: SwapMode;
+}) {
+  const [over, setOver] = useState(false);
+
+  // 空き枠の見え方を2つに分ける。不戦勝行の空き側は「構造的に誰も来ない枠」で、
+  // それ以外の空きは「上流がまだ決まっていない枠」。編集モードではどちらへも置けるが、
+  // 後者へ置くと相手の枝ごと入れ替わるので、同じ言葉で見せない。
+  const emptyLabel = match.isBye ? "空き" : "未確定";
+  const content = (
+    <>
+      <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
+        {side.empty ? <span className="text-gray-600">{emptyLabel}</span> : side.label}
+      </span>
+      {/* TikTok 側のバトルスコア。**行を増やさず同じ行に置く**。 */}
+      {side.tiktokScore !== null && (
+        <span className="shrink-0 font-mono text-[11px] text-gray-400">{side.tiktokScore}</span>
+      )}
+    </>
+  );
+
+  const base = `flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-sm ${
+    match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
+  } ${mirror ? "flex-row-reverse" : ""}`;
+
+  if (!swap) {
+    return <div className={base}>{content}</div>;
+  }
+
+  const ref: SwapSlotRef = { matchId: match.id, sideIndex: side.sideIndex };
+  const grabbable = !swap.busy && swap.canGrab(match, side.sideIndex);
+  const droppable = !swap.busy && swap.canDrop(match, side.sideIndex);
+  const selected = sameSlot(swap.selected, ref);
+  const acceptsDrop = droppable && !!swap.selected && !selected;
+
+  function activate() {
+    if (swap!.busy) return;
+    if (swap!.selected && !selected) {
+      if (droppable) swap!.onSwap(swap!.selected, ref);
+      return;
+    }
+    if (selected) {
+      swap!.onSelect(null);
+      return;
+    }
+    if (grabbable) swap!.onSelect(ref);
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={grabbable || acceptsDrop ? 0 : -1}
+      aria-label={`${match.roundLabel} ${side.empty ? emptyLabel : side.label}`}
+      title={
+        grabbable
+          ? "ドラッグして入れ替え(スマホは押してから相手の枠を押す)"
+          : acceptsDrop
+            ? "ここへ入れ替える"
+            : side.empty
+              ? undefined
+              : "この枠は動かせません"
+      }
+      draggable={grabbable}
+      onDragStart={(e) => {
+        if (!grabbable) return;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", `${match.id}:${side.sideIndex}`);
+        swap.onSelect(ref);
+      }}
+      onDragEnd={() => setOver(false)}
+      onDragOver={(e) => {
+        if (!acceptsDrop) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (!over) setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (!droppable) return;
+        const from = parseSlot(e.dataTransfer.getData("text/plain")) ?? swap.selected;
+        if (from && !sameSlot(from, ref)) swap.onSwap(from, ref);
+      }}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate();
+        }
+      }}
+      className={`${base} ${selected ? "ring-1 ring-brand" : ""} ${
+        over ? "ring-1 ring-brand" : ""
+      } ${
+        grabbable
+          ? "cursor-grab active:cursor-grabbing"
+          : acceptsDrop
+            ? "cursor-pointer"
+            : "cursor-not-allowed opacity-50"
+      }`}
+    >
+      {content}
+    </div>
   );
 }
