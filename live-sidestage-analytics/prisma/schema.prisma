@@ -437,6 +437,13 @@ model Event {
 
   lastAggregatedAt DateTime?
   aggregateMs      Int? // 直近の再集計にかかった時間(SLO監視用)
+  // スナップショット(EventContribution / EventStanding)を作った集計方式。
+  // "FULL_PERIOD" = 開催日程の全ギフト / "BATTLE_ONLY" = 検知したバトル区間のギフトだけ。
+  // null は方式を記録し始める前に最終集計を終えたイベント(FULL_PERIOD 相当)。
+  // **主催者が設定する項目ではない。** aggregateEvent() が毎回書く。
+  // finalizedAt が立ったイベントは再集計されないので、公開ページは format ではなく
+  // この列を見て見出し・注記を決める(過去のスナップショットへ新しい説明を付けないため)。
+  aggregationPolicy String?
   // 締切(endAt + 猶予)を過ぎてからの最終集計が1回成功した時刻。
   // これが入るまでは status を FINISHED にしても集計を続ける(遅れて保存された
   // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。

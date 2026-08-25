@@ -567,6 +567,81 @@ describe("createSingleMatch（チーム戦）", () => {
   });
 });
 
+describe("バトル中のみ集計する(デスマッチ)", () => {
+  it("バトル外のギフトは順位表のダイヤに入らない", async () => {
+    const event = await newDeathmatch();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await playMatch({ eventId: event.id, a, b, slot: SLOT1, aDiamonds: 100, bDiamonds: 50 });
+    // バトル区間の外(対戦の前)に大きなギフト。旧仕様ならこれも計上されていた。
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "outside",
+      diamonds: 9000,
+      receivedAt: new Date(SLOT1.getTime() + 60_000),
+    });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+
+    const standing = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    expect(standing.diamonds).toBe(100n);
+
+    // リスナー貢献にもバトル外の分は出ない。
+    const outside = await prisma.eventContribution.findFirst({
+      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "outside" },
+    });
+    expect(outside).toBeNull();
+  });
+
+  it("同ライフのタイブレークもバトル限定のダイヤで決まる", async () => {
+    const event = await newDeathmatch();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+    const d = await newParticipant(event.id, "d");
+
+    // a と c を別々の対戦で勝たせて、ライフを同じにする。
+    await playMatch({ eventId: event.id, a, b, slot: SLOT1, aDiamonds: 100, bDiamonds: 50 });
+    await playMatch({ eventId: event.id, a: c, b: d, slot: SLOT2, aDiamonds: 300, bDiamonds: 10 });
+    // a はバトル外で大量に受け取るが、これはタイブレークに効かない。
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "outside",
+      diamonds: 9000,
+      receivedAt: new Date(SLOT1.getTime() + 60_000),
+    });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+
+    const standings = await prisma.eventStanding.findMany({
+      where: { eventId: event.id, subjectType: "PARTICIPANT" },
+    });
+    const forA = standings.find((s) => s.subjectId === a.id);
+    const forC = standings.find((s) => s.subjectId === c.id);
+    // バトル中だけなら c(300) > a(100)。全期間なら a(9100) > c(300) で逆転していた。
+    expect(forA?.diamonds).toBe(100n);
+    expect(forC?.diamonds).toBe(300n);
+  });
+
+  it("集計方式(aggregationPolicy)を BATTLE_ONLY として記録する", async () => {
+    const event = await newDeathmatch();
+    await newParticipant(event.id, "a");
+
+    await aggregateEvent(event.id);
+
+    const row = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { aggregationPolicy: true },
+    });
+    expect(row.aggregationPolicy).toBe("BATTLE_ONLY");
+  });
+});
+
 describe("assertEventSession", () => {
   it("このイベントの日程なら通る", async () => {
     const event = await newDeathmatch();

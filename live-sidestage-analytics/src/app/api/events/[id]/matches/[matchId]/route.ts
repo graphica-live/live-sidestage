@@ -201,6 +201,12 @@ export async function PATCH(
           if (event?.format !== "DEATHMATCH") {
             return { error: "引き分けで確定できるのはデスマッチだけです。", status: 400 };
           }
+          // **`confirm` と同じく、特定できていない検知は捨ててから確定する。**
+          // 残したままだと、どのバトルか決まっていない区間が
+          // `loadBattleRangesByRoom()`(FINISHED かつ両端あり)に拾われて、
+          // バトル倍率だけでなく**バトル中のみ集計する種目では順位・貢献の母集団そのもの**
+          // になってしまう。決着時刻(ライフの適用順に要る)だけは残す。
+          const dropDetection = UNAPPROVABLE_REASONS.has(reviewReasonOf(match.rules));
           await tx.eventMatch.update({
             where: { id: match.id },
             data: {
@@ -209,6 +215,15 @@ export async function PATCH(
               winnerDecidedBy: "DRAW",
               decidedAt: match.decidedAt ?? new Date(),
               rules: clearReviewReason(match.rules),
+              ...(dropDetection
+                ? {
+                    detectedBattleId: null,
+                    detectedStartAt: null,
+                    detectedEndAt: null,
+                    detectionConfidence: null,
+                    detectedEndSource: null,
+                  }
+                : {}),
             },
           });
           break;
