@@ -364,20 +364,31 @@ class _SelectedSetPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Align(
               alignment: Alignment.centerRight,
-              child: FloatingActionButton.extended(
-                // 囲いの中なので浮かせない（DESIGN.md「Flat-By-Default」）。
-                elevation: 0,
-                highlightElevation: 0,
-                onPressed: locked
-                    ? null
-                    : () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => GiftSoundEditScreen(setId: set.id),
-                          ),
-                        ),
-                icon: const Icon(Icons.add),
-                // 「追加」だけでは何が増えるのか分からない。
-                label: const Text('音を追加'),
+              child: Opacity(
+                // ロック中は薄くしてロックを示す。押せなくはしない（§15）。
+                opacity: locked ? 0.45 : 1,
+                child: FloatingActionButton.extended(
+                  // 囲いの中なので浮かせない（DESIGN.md「Flat-By-Default」）。
+                  elevation: 0,
+                  highlightElevation: 0,
+                  // **ロック中も onPressed を null にしない。** null にすると押しても
+                  // 無反応で、なぜ追加できないのかを伝えられない。セットタブや
+                  // ギフト行と同じく、押されたら停止を促す（§14）。
+                  onPressed: () {
+                    if (locked) {
+                      _showLocked(context, _lockedSettingMessage);
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => GiftSoundEditScreen(setId: set.id),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.add),
+                  // 「追加」だけでは何が増えるのか分からない。
+                  label: const Text('音を追加'),
+                ),
               ),
             ),
           ),

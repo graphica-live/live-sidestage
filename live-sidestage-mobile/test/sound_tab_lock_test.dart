@@ -93,6 +93,17 @@ void main() {
   FloatingActionButton fab(WidgetTester tester) =>
       tester.widget<FloatingActionButton>(find.byType(FloatingActionButton));
 
+  /// 「音を追加」はロック中も押せる（押されたら停止を促す）ので、ロックは
+  /// `onPressed` ではなく薄さで示している。
+  double fabOpacity(WidgetTester tester) => tester
+      .widget<Opacity>(find
+          .ancestor(
+            of: find.byType(FloatingActionButton),
+            matching: find.byType(Opacity),
+          )
+          .first)
+      .opacity;
+
   group('停止中は設定モード', () {
     testWidgets('「現在のセット」を出す', (tester) async {
       await pumpTab(tester, await storeWithTwoSets(), started: false, busy: false);
@@ -117,6 +128,7 @@ void main() {
       expect(addChip(tester).onPressed, isNotNull);
       expect(giftSwitch(tester).onChanged, isNotNull);
       expect(fab(tester).onPressed, isNotNull);
+      expect(fabOpacity(tester), 1);
       expect(volumeSlider(tester).onChanged, isNotNull);
     });
   });
@@ -150,7 +162,20 @@ void main() {
       expect(find.text('使用中：A'), findsOneWidget);
     });
 
-    testWidgets('セット追加・操作メニュー・Switch・追加ボタンを禁止する', (tester) async {
+    testWidgets('「音を追加」を押しても画面遷移せず、停止を促す', (tester) async {
+      await pumpTab(tester, await storeWithTwoSets(), started: true, busy: false);
+
+      await tester.tap(find.text('音を追加'));
+      await tester.pump();
+
+      expect(find.text('設定を変更するには停止してください'), findsOneWidget);
+      // 編集画面へ行っていない（一覧のままである）。
+      expect(find.text('使用中：A'), findsOneWidget);
+      // 押せる状態のままなので、ロックは薄さで示す。
+      expect(fabOpacity(tester), lessThan(1));
+    });
+
+    testWidgets('セット追加・操作メニュー・Switch を禁止する', (tester) async {
       await pumpTab(tester, await storeWithTwoSets(), started: true, busy: false);
 
       // 全項目が禁止なので、空のメニューを出す意味がない。
@@ -158,7 +183,6 @@ void main() {
       // 消すとタブ行の幅が変わって並びが飛ぶので、非表示ではなく disabled。
       expect(addChip(tester).onPressed, isNull);
       expect(giftSwitch(tester).onChanged, isNull);
-      expect(fab(tester).onPressed, isNull);
     });
 
     testWidgets('全体音量だけは触れる（配信中に調整できる必要がある）', (tester) async {
@@ -180,7 +204,16 @@ void main() {
       expect(find.byIcon(Icons.more_horiz), findsNothing);
       expect(addChip(tester).onPressed, isNull);
       expect(giftSwitch(tester).onChanged, isNull);
-      expect(fab(tester).onPressed, isNull);
+      expect(fabOpacity(tester), lessThan(1));
+    });
+
+    testWidgets('遷移中も「音を追加」は停止を促す', (tester) async {
+      await pumpTab(tester, await storeWithTwoSets(), started: false, busy: true);
+
+      await tester.tap(find.text('音を追加'));
+      await tester.pump();
+
+      expect(find.text('設定を変更するには停止してください'), findsOneWidget);
     });
 
     testWidgets('全体音量も遷移中だけは止める', (tester) async {
