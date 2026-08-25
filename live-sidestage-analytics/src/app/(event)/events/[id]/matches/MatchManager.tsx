@@ -201,7 +201,8 @@ export function MatchManager({
   // ラウンドごとの開催日程。既定は全ラウンドを最初の日程に置く(1日で終わるのが大半)。
   // ラウンド数は参加者数から決まるので、シード順が変わるたびに作り直す。
   const [roundSessionIds, setRoundSessionIds] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"list" | "bracket">("list");
+  // 既定は表。対戦の進み方はトーナメント表のほうが一目で分かる(一覧は操作用)。
+  const [viewMode, setViewMode] = useState<"list" | "bracket">("bracket");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
 
@@ -1039,9 +1040,11 @@ function MatchCard({
   const reschedulable = match.status === "SCHEDULED" || match.status === "NO_SHOW";
   // 区間が確定していない検知は承認させない(サーバー側も 409 で拒否する)。
   const unapprovable = !!match.reviewReason && UNAPPROVABLE_REASONS.has(match.reviewReason);
+  // バトルの開始を検知した対戦。トーナメント表と同じ赤い発光で一覧でも目立たせる。
+  const isLive = match.status === "LIVE";
 
   return (
-    <div className="card space-y-3">
+    <div className={`card space-y-3 ${isLive ? "border-red-500/70 live-glow" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${

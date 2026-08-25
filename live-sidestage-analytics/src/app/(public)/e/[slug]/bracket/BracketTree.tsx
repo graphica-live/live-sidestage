@@ -270,12 +270,16 @@ function MatchCard({
   const isLive = match.status === "LIVE";
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
-  return (
+  const card = (
     <article
       className={`relative flex ${CARD_H} flex-col justify-between overflow-hidden border p-2.5 ${clip} ${
-        isFinal
-          ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-          : "border-white/10 bg-panel"
+        isLive
+          ? `border-red-500/70 bg-gradient-to-b from-red-500/15 to-transparent ${
+              isFinal ? "border-2" : ""
+            }`
+          : isFinal
+            ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+            : "border-white/10 bg-panel"
       }`}
     >
       <div
@@ -286,7 +290,7 @@ function MatchCard({
         {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。 */}
         <span className="shrink-0 truncate">{match.sessionLabel}</span>
         <span
-          className={`truncate font-semibold ${isLive ? "text-green-400" : decided ? "text-brand" : ""}`}
+          className={`truncate font-semibold ${isLive ? "text-red-400" : decided ? "text-brand" : ""}`}
         >
           {decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status}
         </span>
@@ -310,6 +314,10 @@ function MatchCard({
       </div>
     </article>
   );
+
+  // clip-path を持つ要素に filter を書くと影ごと切り落とされるので、外へにじむ赤い光は
+  // clip-path を持たないラッパへ当てる(理由は globals.css の .live-glow)。
+  return isLive ? <div className="live-glow">{card}</div> : card;
 }
 
 /**
