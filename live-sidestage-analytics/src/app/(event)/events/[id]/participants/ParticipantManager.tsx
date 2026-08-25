@@ -314,15 +314,21 @@ export function ParticipantManager({
                   </form>
                 ) : (
                   <div className="flex items-center gap-2">
+                    {/*
+                      名前だけだと編集できることが伝わらないので、ペンマークを常時出す
+                      (hover でだけ出す方式はタッチ端末で気付けない)。当たり判定は
+                      名前とペンを含むボタン全体。
+                    */}
                     <button
                       type="button"
                       onClick={() => startEdit(p)}
                       disabled={busy}
                       title="クリックで表示名を編集"
                       aria-label={`@${p.tiktokId} の表示名を編集`}
-                      className="min-w-0 truncate text-left font-medium hover:underline"
+                      className="group flex min-w-0 items-center gap-1.5 text-left font-medium"
                     >
-                      {p.displayName}
+                      <span className="truncate group-hover:underline">{p.displayName}</span>
+                      <PencilIcon />
                     </button>
                     {p.verified ? (
                       <span
@@ -395,8 +401,27 @@ export function ParticipantManager({
       <p className="text-xs leading-relaxed text-gray-500">
         参加者を追加すると、その配信者の TikTok Live をイベント終了まで監視する。監視の開始・停止は
         最大60秒ごとの同期で反映される。参加者を外しても、それまでに受信したギフトのデータは消えない。
-        一覧の表示名はクリックすると編集できる(TikTok ID は登録し直しになるので変更できない)。
+        一覧の表示名はペンマークか名前をクリックすると編集できる(TikTok ID は登録し直しになるので変更できない)。
       </p>
     </div>
+  );
+}
+
+/** 表示名が編集できることを示す小さなペン。装飾なので読み上げからは外す。 */
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-white"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
   );
 }
