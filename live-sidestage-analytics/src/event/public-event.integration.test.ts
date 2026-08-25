@@ -1,7 +1,7 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { findPublicEvent, findPublicParticipantTiktokId } from "./public-event";
+import { findPublicEvent, findPublicParticipantTiktokId, loadBracket } from "./public-event";
 
 const PREFIX = "itest_pubevt";
 let seq = 0;
@@ -9,13 +9,17 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 
 const createdEventIds: string[] = [];
 
-async function createEvent(visibility: "PUBLIC" | "PRIVATE", ownerUserId: string) {
+async function createEvent(
+  visibility: "PUBLIC" | "PRIVATE",
+  ownerUserId: string,
+  format: "DIAMOND_RACE" | "TOURNAMENT" = "DIAMOND_RACE"
+) {
   const event = await prisma.event.create({
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 公開範囲テスト`,
       ownerUserId,
-      format: "DIAMOND_RACE",
+      format,
       entryMode: "SOLO",
       visibility,
       startAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -29,6 +33,11 @@ async function createEvent(visibility: "PUBLIC" | "PRIVATE", ownerUserId: string
 
 afterAll(async () => {
   for (const id of createdEventIds) {
+    // EventMatch.sessionId は EventSession への Restrict FK なので、
+    // 対戦 → 参加者 → 日程 → イベントの順に消す(docs/src/event/CLAUDE.md参照)。
+    await prisma.eventMatch.deleteMany({ where: { eventId: id } }).catch(() => {});
+    await prisma.eventParticipant.deleteMany({ where: { eventId: id } }).catch(() => {});
+    await prisma.eventSession.deleteMany({ where: { eventId: id } }).catch(() => {});
     await prisma.event.delete({ where: { id } }).catch(() => {});
   }
   await prisma.$disconnect();
@@ -98,5 +107,73 @@ describe("findPublicParticipantTiktokId", () => {
 
     await prisma.eventParticipant.delete({ where: { id: participant.id } });
     await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE id = ${roomId}`;
+  });
+});
+
+describe("loadBracket", () => {
+  it("hasLiveStreamer は SCHEDULED の対戦でだけ、配信中(listenerActivity='live')の出場者がいるサイドに立つ", async () => {
+    const owner = `${PREFIX}_owner_${uniqueSuffix()}`;
+    const event = await createEvent("PUBLIC", owner, "TOURNAMENT");
+    const session = await prisma.eventSession.create({
+      data: {
+        eventId: event.id,
+        startAt: new Date("2026-09-01T00:00:00.000Z"),
+        endAt: new Date("2026-09-08T00:00:00.000Z"),
+      },
+      select: { id: true },
+    });
+
+    async function makeParticipant(activity: string) {
+      const room = (
+        await prisma.$queryRaw<{ id: string }[]>`
+          INSERT INTO public."TiktokRoom" (id, "tiktokId", "listenerActivity", "createdAt")
+          VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, ${activity}, NOW())
+          RETURNING id
+        `
+      )[0].id;
+      const participant = await prisma.eventParticipant.create({
+        data: {
+          eventId: event.id,
+          tiktokId: `${PREFIX}_tiktok_${uniqueSuffix()}`,
+          roomId: room,
+          displayName: "テスト配信者",
+        },
+        select: { id: true },
+      });
+      return { participantId: participant.id, roomId: room };
+    }
+
+    const live = await makeParticipant("live");
+    const offline = await makeParticipant("offline");
+
+    const match = await prisma.eventMatch.create({
+      data: {
+        eventId: event.id,
+        sessionId: session.id,
+        round: 1,
+        bracketPosition: 0,
+        status: "SCHEDULED",
+        sides: {
+          create: [
+            { sideIndex: 0, participants: { create: [{ participantId: live.participantId }] } },
+            { sideIndex: 1, participants: { create: [{ participantId: offline.participantId }] } },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    const scheduled = await loadBracket(event.id);
+    const scheduledSides = scheduled?.matches[0]?.sides ?? [];
+    expect(scheduledSides.find((s) => s.sideIndex === 0)?.hasLiveStreamer).toBe(true);
+    expect(scheduledSides.find((s) => s.sideIndex === 1)?.hasLiveStreamer).toBe(false);
+
+    // バトル中(SCHEDULEDでない)に進んだら、配信中でも発光の対象にしない。
+    await prisma.eventMatch.update({ where: { id: match.id }, data: { status: "LIVE" } });
+    const live_ = await loadBracket(event.id);
+    const liveSides = live_?.matches[0]?.sides ?? [];
+    expect(liveSides.every((s) => !s.hasLiveStreamer)).toBe(true);
+
+    await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE id IN (${live.roomId}, ${offline.roomId})`;
   });
 });
