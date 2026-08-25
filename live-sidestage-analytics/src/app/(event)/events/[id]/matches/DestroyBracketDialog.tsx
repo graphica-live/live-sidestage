@@ -33,6 +33,7 @@ export function DestroyBracketDialog({
   eventStatus,
   summary,
   canRebuild,
+  rebuildNote,
   requireConfirmText,
   busy,
   error,
@@ -43,8 +44,10 @@ export function DestroyBracketDialog({
   eventTitle: string;
   eventStatus: string;
   summary: BracketSummary;
-  /** 作り直しに必要な人数が揃っているか。揃っていなくても「破棄だけ」はできる */
+  /** 作り直しの条件が揃っているか。揃っていなくても「破棄だけ」はできる */
   canRebuild: boolean;
+  /** 作り直せない理由。省略すると「2組以上の参加が要る」を出す */
+  rebuildNote?: string;
   /** 作り直しにイベント名の入力が要るか(進行済みの対戦を含むとき) */
   requireConfirmText: boolean;
   busy: boolean;
@@ -174,7 +177,7 @@ export function DestroyBracketDialog({
         </div>
         {!canRebuild && (
           <p className="mt-2 text-right text-xs text-gray-500">
-            作り直すには2組以上の参加が要る。破棄だけならできる。
+            {rebuildNote ?? "作り直すには2組以上の参加が要る。"}破棄だけならできる。
           </p>
         )}
       </div>
