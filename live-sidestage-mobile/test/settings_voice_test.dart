@@ -117,6 +117,22 @@ void main() {
       expect(find.text('ずんだもん あまあま'), findsOneWidget);
     });
 
+    // ttsEnabled は「読み上げ機能のON/OFF設定」ではなく**開始しているか**の記録で、
+    // 停止すると false になる。これで無効化すると「一度開始しないとボイスを選べない」
+    // 画面になり、停止中でも選べるように静的カタログを持たせた意味が無くなる。
+    testWidgets('読み上げを開始していなくても設定を触れる', (tester) async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.setFeatureMask(tts: false, sound: false);
+      await store.setRandomVoice(false);
+      await pumpSettings(tester, existing: store);
+
+      expect(store.config.ttsEnabled, isFalse);
+      expect(voiceTile(tester).onTap, isNotNull);
+      expect(volumeSlider(tester, '読み上げの音量').onChanged, isNotNull);
+      expect(volumeSlider(tester, '全体の音量').onChanged, isNotNull);
+    });
+
     testWidgets('同じボイスを選び直しても revision を進めない', (tester) async {
       final store = await pumpSettings(tester);
       await store.setRandomVoice(false);
@@ -149,9 +165,18 @@ void main() {
       expect(volumeSlider(tester, '全体の音量').onChanged, isNotNull);
     });
 
-    testWidgets('効果音の全体音量は開始/停止の遷移中だけ止める', (tester) async {
+    // 開始処理は「設定を保存 → サービス起動」の順に進むので、その間の変更は背景
+    // Isolate へ渡らない。
+    testWidgets('開始/停止の遷移中はどの設定も止める', (tester) async {
       await pumpSettings(tester, busy: true);
+
       expect(volumeSlider(tester, '全体の音量').onChanged, isNull);
+      expect(volumeSlider(tester, '読み上げの音量').onChanged, isNull);
+      expect(voiceTile(tester).onTap, isNull);
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
+        isNull,
+      );
     });
   });
 }

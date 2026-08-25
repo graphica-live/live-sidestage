@@ -34,7 +34,13 @@ class SettingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<AppConfigStore>();
     final session = context.watch<SessionController>().session;
-    final ttsEnabled = store.config.ttsEnabled;
+
+    // **どの設定も「開始しているか」では止めない。** `ttsEnabled` / `sound.enabled` は
+    // 機能のON/OFF設定ではなく開始しているかの記録なので、それで無効化すると
+    // 「一度開始しないと設定できない」画面になる。停止中の変更は永続化され、次の
+    // onStart で背景 Isolate が読む。運用中の変更も applyConfig でそのまま届く。
+    // 止めるのは開始/停止の遷移中だけ（保存とサービス起動の間に挟まると渡らない）。
+    final canEdit = !busy;
 
     return ListView(
       children: [
@@ -45,27 +51,26 @@ class SettingsTab extends StatelessWidget {
           title: const Text('ランダムボイス'),
           subtitle: const Text('コメント投稿者ごとに声を割り当てます'),
           value: store.config.randomVoice,
-          onChanged: ttsEnabled ? (value) => store.setRandomVoice(value) : null,
+          onChanged: canEdit ? (value) => store.setRandomVoice(value) : null,
         ),
         _VoiceTile(
           styleId: store.config.fixedStyleId,
           randomVoice: store.config.randomVoice,
-          enabled: ttsEnabled,
+          enabled: canEdit,
           onSelected: store.setFixedStyleId,
         ),
         _VolumeSlider(
           title: '読み上げの音量',
           value: store.config.ttsVolume,
-          enabled: ttsEnabled,
+          enabled: canEdit,
           onChanged: store.setTtsVolume,
         ),
         const _SectionHeader('効果音'),
-        // セットをまたいだ共通の音量。配信中に下げたくなるものなので、運用中も
-        // 触れるままにする（止めるのは開始/停止の遷移中だけ）。
+        // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
         _VolumeSlider(
           title: '全体の音量',
           value: store.sound.masterVolume,
-          enabled: !busy,
+          enabled: canEdit,
           onChanged: (value) =>
               store.updateSound((c) => c.copyWith(masterVolume: value)),
         ),
