@@ -39,7 +39,7 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
       ],
       child: MaterialApp(
-        title: 'Live Sidestage',
+        title: 'LIVE Sidestage',
         theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
         home: const AuthGate(),
       ),
