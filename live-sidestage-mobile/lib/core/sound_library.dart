@@ -70,6 +70,21 @@ class SoundLibrary {
   /// 検索HTMLの読み込み上限。
   static const int maxHtmlBytes = 3 * 1024 * 1024;
 
+  /// 1回の検索で持ち帰る件数の上限。
+  ///
+  /// 配布元サイトの検索結果1ページは myinstants が36件、効果音ラボが30件。
+  /// 1ページ分を丸ごと収められる値にしておかないと、末尾の数件が黙って落ちて
+  /// 「サイトには有るのにアプリに出てこない」状態になる。
+  static const int maxSearchResults = 60;
+
+  /// MyInstants が受け付ける最小キーワード長（文字数）。
+  ///
+  /// サイト側の検索は2文字以下だと必ず404(0件)を返す。`fart` が36件出るのに
+  /// `fa` では0件なので部分一致の問題ではなく純粋な文字数制限で、
+  /// [searchMyInstants] は0件時の404を空扱いにする都合上、そのまま投げると
+  /// 「見つかりませんでした」と区別が付かない。通信する前にここで弾く。
+  static const int myInstantsMinQueryLength = 3;
+
   static const int maxRedirects = 5;
 
   static const String soundEffectLabHost = 'soundeffect-lab.info';
@@ -186,9 +201,17 @@ class SoundLibrary {
     );
   }
 
-  Future<List<RemoteSound>> searchMyInstants(String query) {
+  Future<List<RemoteSound>> searchMyInstants(String query) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) return Future.value(const []);
+    if (trimmed.isEmpty) return const [];
+    // 絵文字などのサロゲートペアを2文字と数えないよう runes で見る。
+    // サイト側の判定もコードポイント数。
+    if (trimmed.runes.length < myInstantsMinQueryLength) {
+      throw SoundLibraryException(
+        'MyInstants は $myInstantsMinQueryLength 文字以上のキーワードでないと検索できません。'
+        'サイト側の仕様で、短いキーワードは常に0件になります。',
+      );
+    }
     final uri = sitePageUri(SoundSourceKind.myInstants, query: trimmed);
     return _search(
       uri: uri,
@@ -333,7 +356,7 @@ class SoundLibrary {
 
     final results = <RemoteSound>[];
     for (final match in pattern.allMatches(response.body)) {
-      if (results.length >= 30) break;
+      if (results.length >= maxSearchResults) break;
       final rawUrl = match.group(urlGroup);
       final rawName = match.group(nameGroup);
       if (rawUrl == null || rawName == null) continue;
