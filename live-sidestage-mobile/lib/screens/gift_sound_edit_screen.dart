@@ -163,6 +163,11 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   }
 
   Future<void> _importRemote(SoundSourceKind source) async {
+    // 検索画面でも試聴するので、この画面で鳴っている音は先に止める。
+    // 画面を重ねただけでは止まらない。
+    await _preview.stop();
+    if (!mounted) return;
+
     final picked = await Navigator.of(context).push<RemoteSound>(
       MaterialPageRoute(builder: (_) => _RemoteSearchScreen(library: _library, source: source)),
     );
@@ -856,14 +861,50 @@ class _RemoteSearchScreen extends StatefulWidget {
 class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   final TextEditingController _controller = TextEditingController();
 
+  /// 試聴はこの画面の中で完結させる。編集画面の [SoundPreview] とは別インスタンスで、
+  /// この画面を閉じたら止まる。`library` は編集画面の所有物なのでここでは dispose しない。
+  late final SoundPreview _preview = SoundPreview(library: widget.library);
+
   List<RemoteSound>? _results;
   bool _searching = false;
   String? _error;
 
+  /// 取得中の1件。行の index ではなく実体で持つ（検索し直すと index はずれる）。
+  RemoteSound? _preparing;
+
+  /// 試聴要求の世代。[SoundPreview] 側の世代は「古い音を鳴らさない」ためのもので、
+  /// この画面の表示は守らない。await から戻ったとき自分がまだ最新か判定する。
+  int _previewRequest = 0;
+
   @override
   void dispose() {
     _controller.dispose();
+    // 完了は待てない。停止要求は同期的に効くので、この後に鳴り始めることはない。
+    unawaited(_preview.dispose());
     super.dispose();
+  }
+
+  /// 検索結果を取り込まずに鳴らす。
+  ///
+  /// 取得している間は**全部の行の**再生ボタンを止める。連打を許すと、鳴らさずに捨てる
+  /// だけのダウンロードが端末の回線と配布元サイトへ積み上がる。
+  Future<void> _playPreview(RemoteSound sound) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final masterVolume = context.read<AppConfigStore>().sound.masterVolume;
+
+    final request = ++_previewRequest;
+    setState(() => _preparing = sound);
+
+    final error = await _preview.playRemote(
+      sound: sound,
+      source: widget.source,
+      masterVolume: masterVolume,
+    );
+
+    // 検索し直した / 別の音を押した後なら、この結果はもう表示先が無い。
+    if (!mounted || request != _previewRequest) return;
+    setState(() => _preparing = null);
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
   }
 
   /// 配布元サイトを外部ブラウザで開く。
@@ -887,11 +928,20 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
   }
 
   Future<void> _search() async {
+    // 検索ボタンは検索中に押せないが、キーボードの確定（onSubmitted）は飛んでくる。
+    // 走らせると新旧の結果が入れ替わりうる。
+    if (_searching) return;
     final query = _controller.text.trim();
     if (query.isEmpty) return;
+
+    // 結果が入れ替わると、試聴中の行はもう表示に残らない。
+    _previewRequest++;
+    unawaited(_preview.stop());
+
     setState(() {
       _searching = true;
       _error = null;
+      _preparing = null;
     });
     try {
       final results = widget.source == SoundSourceKind.soundEffectLab
@@ -963,12 +1013,42 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
             Expanded(
               child: ListView.builder(
                 itemCount: results.length,
-                itemBuilder: (_, index) => ListTile(
-                  dense: true,
-                  title: Text(results[index].name),
-                  trailing: const Icon(Icons.download),
-                  onTap: () => Navigator.of(context).pop(results[index]),
-                ),
+                itemBuilder: (_, index) {
+                  final sound = results[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(sound.name),
+                    // 行そのものは従来どおり「取り込む」。試聴はその左のボタンだけで、
+                    // 押しても取り込まない。
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 40,
+                          child: identical(_preparing, sound)
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.play_arrow),
+                                  tooltip: '試聴',
+                                  padding: EdgeInsets.zero,
+                                  onPressed:
+                                      _preparing == null ? () => _playPreview(sound) : null,
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.download),
+                      ],
+                    ),
+                    onTap: () {
+                      // 取り込みは編集画面が行う。鳴っている試聴は閉じる前に止める。
+                      unawaited(_preview.stop());
+                      Navigator.of(context).pop(sound);
+                    },
+                  );
+                },
               ),
             ),
         ],

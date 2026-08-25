@@ -207,25 +207,32 @@ class SoundLibrary {
     required RemoteSound sound,
     required SoundSourceKind source,
   }) async {
-    final allowedHost = source == SoundSourceKind.soundEffectLab ? soundEffectLabHost : myInstantsHost;
-    final uri = _parseAndVerify(sound.mp3Url, allowedHost);
-
-    final bytes = await _getBytes(uri, allowedHost: allowedHost, maxBytes: maxFileBytes, headers: {
-      'User-Agent': 'Mozilla/5.0 (LiveSidestage)',
-      if (source == SoundSourceKind.soundEffectLab) 'Referer': 'https://$soundEffectLabHost/',
-    });
-
-    _ensureFileSize(bytes.length);
-    await _ensureTotalCapacity(bytes.length);
+    final fetched = await _fetchRemote(sound: sound, source: source);
+    await _ensureTotalCapacity(fetched.bytes.length);
 
     return _commit(
       id: _newId(),
-      extension: _extensionOf(uri.path, fallback: '.mp3'),
+      extension: _extensionOf(fetched.uri.path, fallback: '.mp3'),
       displayName: sound.name,
       source: source,
-      sourceUrl: uri.toString(),
-      write: (tempFile) => tempFile.writeAsBytes(bytes, flush: true),
+      sourceUrl: fetched.uri.toString(),
+      write: (tempFile) => tempFile.writeAsBytes(fetched.bytes, flush: true),
     );
+  }
+
+  /// 取り込む前に鳴らして確かめるための取得。**ファイルには書かない。**
+  ///
+  /// 一時ファイルにすると「どの要求が作ったファイルを、いつ誰が消すか」を要求ごとに
+  /// 追う必要があり、連打・画面破棄と絡んで残骸や取り違えの原因になる。採用前の音は
+  /// 端末に残す理由が無いので、バイト列のまま [SoundPreview] へ渡して鳴らす。
+  /// `sounds/` の総容量（[maxTotalBytes]）にも数えない — ディスクを使わないため。
+  /// 1件あたりの上限（[maxFileBytes]）は取り込みと同じく効く。
+  Future<Uint8List> fetchPreviewBytes({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+  }) async {
+    final fetched = await _fetchRemote(sound: sound, source: source);
+    return fetched.bytes;
   }
 
   /// 音源ファイルを削除する。設定から参照を外したあとに呼ぶこと。
@@ -268,6 +275,33 @@ class SoundLibrary {
   void dispose() => _client.close();
 
   // ── 内部 ────────────────────────────────────────────────────────────────────
+
+  /// 配布元から音源を取ってくる。**取り込みも試聴もここだけを通す。**
+  ///
+  /// host 固定・Referer・サイズ上限・リダイレクト各段の検証を2箇所に書くと、
+  /// 片方だけ条件が緩んでも気づけない。
+  ///
+  /// 返す [Uri] は検証済みの取得元（リダイレクト前）。拡張子と `sourceUrl` に使う。
+  Future<({Uri uri, Uint8List bytes})> _fetchRemote({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+  }) async {
+    // 三項演算子で2択にすると local が MyInstants 扱いになる。網羅的に分ける。
+    final allowedHost = switch (source) {
+      SoundSourceKind.soundEffectLab => soundEffectLabHost,
+      SoundSourceKind.myInstants => myInstantsHost,
+      SoundSourceKind.local => throw SoundLibraryException('この音源はダウンロードできません。'),
+    };
+    final uri = _parseAndVerify(sound.mp3Url, allowedHost);
+
+    final bytes = await _getBytes(uri, allowedHost: allowedHost, maxBytes: maxFileBytes, headers: {
+      'User-Agent': 'Mozilla/5.0 (LiveSidestage)',
+      if (source == SoundSourceKind.soundEffectLab) 'Referer': 'https://$soundEffectLabHost/',
+    });
+    _ensureFileSize(bytes.length);
+
+    return (uri: uri, bytes: bytes);
+  }
 
   /// 一時ファイルへ書いてから rename する。途中で失敗しても壊れたファイルが
   /// 音源として設定に残らない。

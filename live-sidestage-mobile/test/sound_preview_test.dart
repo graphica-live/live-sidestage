@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:live_sidestage_mobile/core/sound_library.dart';
 import 'package:live_sidestage_mobile/core/sound_preview.dart';
+import 'package:live_sidestage_mobile/models/app_config.dart';
 
 /// 再生要求を記録するだけの fake。完了タイミングをテスト側で制御する。
 class FakePreviewPlayer implements PreviewPlayer {
   final List<String> played = [];
+  final List<Uint8List> playedBytes = [];
   final List<double> volumes = [];
   int stopCount = 0;
   bool disposed = false;
@@ -23,6 +28,14 @@ class FakePreviewPlayer implements PreviewPlayer {
     final error = playError;
     if (error != null) throw error;
     played.add(filePath);
+    volumes.add(volume);
+  }
+
+  @override
+  Future<void> playBytes(Uint8List bytes, double volume) async {
+    final error = playError;
+    if (error != null) throw error;
+    playedBytes.add(bytes);
     volumes.add(volume);
   }
 
@@ -158,5 +171,147 @@ void main() {
     final error = await preview.play(fileName: 'a.mp3', volume: 100, masterVolume: 100);
 
     expect(error, contains('再生に失敗しました'));
+  });
+
+  group('検索結果の試聴', () {
+    const labSound = RemoteSound(
+      name: 'ドラムロール',
+      mp3Url: 'https://soundeffect-lab.info/sound/battle/mp3/drum.mp3',
+    );
+
+    /// 応答を差し替えた [SoundPreview] を作る。
+    SoundPreview previewWith(http.Client client) {
+      final library = SoundLibrary(client: client, overrideDirectory: root);
+      addTearDown(library.dispose);
+      return SoundPreview(library: library, player: player);
+    }
+
+    Future<String?> playLab(SoundPreview preview, {int masterVolume = 100}) => preview.playRemote(
+          sound: labSound,
+          source: SoundSourceKind.soundEffectLab,
+          masterVolume: masterVolume,
+        );
+
+    test('取り込まずに、取得したバイト列をそのまま鳴らす', () async {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final preview = previewWith(MockClient((_) async => http.Response.bytes(bytes, 200)));
+
+      final error = await playLab(preview, masterVolume: 50);
+
+      expect(error, isNull);
+      expect(player.playedBytes.single, bytes);
+      // ギフトごとの音量はまだ無いので、全体音量だけが掛かる。
+      expect(player.volumes.single, closeTo(0.5, 0.0001));
+      // 試聴は端末に何も残さない。
+      expect((await preview.library.soundsDirectory()).listSync(), isEmpty);
+    });
+
+    test('許可外ホストの URL は取りに行かない', () async {
+      var requests = 0;
+      final preview = previewWith(MockClient((_) async {
+        requests++;
+        return http.Response.bytes(Uint8List.fromList([1]), 200);
+      }));
+
+      final error = await preview.playRemote(
+        sound: const RemoteSound(name: 'x', mp3Url: 'https://evil.example.com/a.mp3'),
+        source: SoundSourceKind.soundEffectLab,
+        masterVolume: 100,
+      );
+
+      expect(error, contains(SoundLibrary.soundEffectLabHost));
+      expect(requests, 0);
+      expect(player.playedBytes, isEmpty);
+    });
+
+    test('途中で別ホストへリダイレクトされたら鳴らさない', () async {
+      final preview = previewWith(MockClient((request) async {
+        if (request.url.host == SoundLibrary.soundEffectLabHost) {
+          return http.Response('', 302, headers: {'location': 'https://evil.example.com/a.mp3'});
+        }
+        return http.Response.bytes(Uint8List.fromList([1]), 200);
+      }));
+
+      final error = await playLab(preview);
+
+      expect(error, isNotNull);
+      expect(player.playedBytes, isEmpty);
+    });
+
+    test('端末内の音源には配布元が無いので鳴らさない', () async {
+      final preview = previewWith(MockClient((_) async => http.Response.bytes(Uint8List.fromList([1]), 200)));
+
+      final error = await preview.playRemote(
+        sound: labSound,
+        source: SoundSourceKind.local,
+        masterVolume: 100,
+      );
+
+      expect(error, isNotNull);
+      expect(player.playedBytes, isEmpty);
+    });
+
+    test('取得に失敗したらメッセージを返す', () async {
+      final preview = previewWith(MockClient((_) async => http.Response('', 500)));
+
+      final error = await playLab(preview);
+
+      expect(error, contains('ダウンロードに失敗'));
+      expect(player.playedBytes, isEmpty);
+    });
+
+    test('取得中に別の音を押したら、遅れて届いた方は鳴らさない', () async {
+      final slow = Completer<void>();
+      final preview = previewWith(MockClient((request) async {
+        if (request.url.path.endsWith('slow.mp3')) {
+          await slow.future;
+          return http.Response.bytes(Uint8List.fromList([9]), 200);
+        }
+        return http.Response.bytes(Uint8List.fromList([1]), 200);
+      }));
+
+      final pending = preview.playRemote(
+        sound: const RemoteSound(
+          name: 'slow',
+          mp3Url: 'https://soundeffect-lab.info/sound/slow.mp3',
+        ),
+        source: SoundSourceKind.soundEffectLab,
+        masterVolume: 100,
+      );
+      await pumpEventQueue();
+      await playLab(preview);
+      slow.complete();
+
+      expect(await pending, isNull);
+      expect(player.playedBytes, [
+        Uint8List.fromList([1]),
+      ]);
+    });
+
+    test('取得中に止めたら鳴らさない', () async {
+      final gate = Completer<void>();
+      final preview = previewWith(MockClient((_) async {
+        await gate.future;
+        return http.Response.bytes(Uint8List.fromList([1]), 200);
+      }));
+
+      final pending = playLab(preview);
+      await pumpEventQueue();
+      await preview.stop();
+      gate.complete();
+
+      expect(await pending, isNull);
+      expect(player.playedBytes, isEmpty);
+    });
+
+    test('画面を離れた後は鳴らさない', () async {
+      final preview = previewWith(MockClient((_) async => http.Response.bytes(Uint8List.fromList([1]), 200)));
+      await preview.dispose();
+
+      final error = await playLab(preview);
+
+      expect(error, isNull);
+      expect(player.playedBytes, isEmpty);
+    });
   });
 }

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 
+import '../models/app_config.dart';
 import 'sound_library.dart';
 import 'sound_player_pool.dart';
 
@@ -9,6 +11,10 @@ import 'sound_player_pool.dart';
 abstract class PreviewPlayer {
   /// 1音を鳴らす。**再生の開始まで**で戻り、鳴り終わりは待たない。
   Future<void> play(String filePath, double volume);
+
+  /// メモリ上の音源を鳴らす。まだ端末に取り込んでいない検索結果の試聴に使う。
+  /// 契約は [play] と同じで、再生の開始までで戻る。
+  Future<void> playBytes(Uint8List bytes, double volume);
 
   /// 鳴っている音を止める。鳴っていなければ何もしない。
   Future<void> stop();
@@ -36,12 +42,19 @@ class AudioPlayerPreview implements PreviewPlayer {
   }
 
   @override
-  Future<void> play(String filePath, double volume) async {
+  Future<void> play(String filePath, double volume) =>
+      _playSource(DeviceFileSource(filePath), volume);
+
+  @override
+  Future<void> playBytes(Uint8List bytes, double volume) =>
+      _playSource(BytesSource(bytes), volume);
+
+  Future<void> _playSource(Source source, double volume) async {
     if (_disposed) return;
     final player = await _ensurePlayer();
     if (_disposed) return;
     await player.setVolume(volume.clamp(0.0, 1.0));
-    await player.play(DeviceFileSource(filePath));
+    await player.play(source);
   }
 
   @override
@@ -120,6 +133,43 @@ class SoundPreview {
       // 鳴らし始めるまでの間に画面を離れていたら、鳴らしっぱなしにしない。
       if (_isStale(generation)) await player.stop();
       return null;
+    } catch (e) {
+      if (_isStale(generation)) return null;
+      return '再生に失敗しました: $e';
+    }
+  }
+
+  /// 検索結果を**取り込む前に**鳴らす。表示すべきエラーがあればそのメッセージを返す。
+  ///
+  /// 端末にはまだ何も無いので、配布元から取ってきたバイト列をそのまま鳴らす
+  /// （[SoundLibrary.fetchPreviewBytes]）。取得は毎回行う。
+  ///
+  /// ギフトごとの音量（[GiftSound.volume]）はこの時点で存在しないので、全体音量だけを掛ける。
+  ///
+  /// [play] と同じ latest-wins。取得している間に別の音を押された・止められた・画面を
+  /// 離れた場合は、取れても鳴らさない。
+  Future<String?> playRemote({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+    required int masterVolume,
+  }) async {
+    if (_disposed) return null;
+
+    final generation = ++_generation;
+    try {
+      final bytes = await library.fetchPreviewBytes(sound: sound, source: source);
+      if (_isStale(generation)) return null;
+
+      await player.stop();
+      if (_isStale(generation)) return null;
+
+      await player.playBytes(bytes, masterVolume / 100.0);
+      // 鳴らし始めるまでの間に画面を離れていたら、鳴らしっぱなしにしない。
+      if (_isStale(generation)) await player.stop();
+      return null;
+    } on SoundLibraryException catch (e) {
+      // 通信失敗・許可外ホスト・サイズ超過。そのまま出せる日本語になっている。
+      return _isStale(generation) ? null : e.message;
     } catch (e) {
       if (_isStale(generation)) return null;
       return '再生に失敗しました: $e';
