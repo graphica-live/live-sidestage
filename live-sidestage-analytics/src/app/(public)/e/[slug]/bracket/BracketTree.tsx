@@ -1,3 +1,4 @@
+import { fitBracketName } from "@/event/bracket-name-fit";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import {
   formatNumber,
@@ -30,13 +31,24 @@ import { BracketScroller } from "./BracketScroller";
 //
 // カードの角は右下(mirror時は左下)を斜めに切り落とす(CARD_CLIP)。中央へ向かって
 // 刃が入っているように見えるのが狙いで、これがこの表全体で唯一のシェイプ言語。
+//
+// **カードの主役はアイコンと名前で、そのために高さを配分している。** サイド枠・名前枠は
+// px 固定で、名前の文字サイズだけが長さに応じて変わる(`fitBracketName`)。行数が変わっても
+// 枠の高さは動かないので、上の幾何の前提(カード高さが全部同じ)は保たれる。
 
 /** カード幅。ラウンド見出しの列と揃えるため、見出し側にも同じ幅を使う。 */
 const CARD_W = "w-40 sm:w-44";
 /** コネクタ列の幅。見出しの間隔にも同じ幅を使う。 */
 const CONN_W = "w-5";
-/** カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。アイコン+名前を縦積みにした分、h-28から拡張。 */
-const CARD_H = "h-36";
+/**
+ * カード高。中身に関わらずこの高さに固定する(上のコメントを参照)。
+ * 内訳は p-2.5(20) + 見出し行(約15) + サイド枠2つ(92×2) + サイドの間隔(12)。
+ */
+const CARD_H = "h-[232px]";
+/** サイド枠の高さ。py-1(8) + アイコン(44) + gap-1(4) + 名前枠(36)。 */
+const SIDE_H = "h-[92px]";
+/** 名前枠の高さ。1行(最大22px)でも2行(最大16px)でもこの高さに収まる。 */
+const NAME_BOX_H = "h-[36px]";
 
 type MatchIndex = Map<string, BracketMatchDto>;
 
@@ -272,7 +284,7 @@ function MatchCard({
 
   return (
     <article
-      className={`relative flex ${CARD_H} flex-col justify-between overflow-hidden border p-2.5 ${clip} ${
+      className={`relative flex ${CARD_H} flex-col overflow-hidden border p-2.5 ${clip} ${
         isFinal
           ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
           : "border-white/10 bg-panel"
@@ -292,7 +304,10 @@ function MatchCard({
         </span>
       </div>
 
-      <div className="relative">
+      {/* サイド枠は見出し行を除いた残り全部を使い、その中で上下中央に置く。
+          不戦勝(枠が1つ)のときもカードの中央に来る。「VS」バッジは2枠の境目 =
+          この枠の中央にいるので、gap-3 のぶんだけ名前・アイコンから逃げている。 */}
+      <div className="relative flex flex-1 flex-col justify-center gap-3">
         {byeWinner ? (
           <SideRow side={byeWinner} />
         ) : (
@@ -313,24 +328,44 @@ function MatchCard({
 }
 
 /**
- * アイコンを上、名前を下に縦積みして横幅を節約する。
+ * アイコンを上、名前を下に縦積みして横幅を節約する。**枠の高さ(SIDE_H)と
+ * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
+ * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
+ *
+ * 名前は名前枠の中で上下中央に置く。1行と2行が隣り合っても、視線の高さが揃う。
  *
  * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
- * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。
+ * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンを大きくして
+ * 横幅を食うようになったぶん、重なっても読めるよう背景を敷いている。
  */
 function SideRow({ side }: { side: BracketSideDto }) {
+  const fit = side.name ? fitBracketName(side.name) : null;
+
   return (
     <div
-      className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-0.5 text-center ${
-        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.03]"
+      className={`relative flex ${SIDE_H} flex-col items-center justify-center gap-1 px-1.5 py-1 text-center ${
+        side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
       }`}
     >
-      <EntrantAvatars entrants={side.entrants} size="sm" />
-      <span className="min-w-0 max-w-full truncate text-sm">
-        {side.name ?? <span className="text-gray-600">未確定</span>}
+      <EntrantAvatars entrants={side.entrants} size="lg" />
+
+      <span className={`flex ${NAME_BOX_H} w-full items-center justify-center overflow-hidden`}>
+        {side.name && fit ? (
+          <span
+            style={{ fontSize: `${fit.fontSizePx}px`, lineHeight: fit.lines === 2 ? 1.05 : 1.15 }}
+            className={`w-full font-bold text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] ${
+              fit.lines === 2 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate"
+            }`}
+          >
+            {side.name}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-600">未確定</span>
+        )}
       </span>
+
       {side.tiktokScore !== null && (
-        <span className="absolute right-1 top-0.5 font-mono text-[10px] leading-none text-gray-400">
+        <span className="absolute right-1 top-1 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
           {formatNumber(side.tiktokScore)}
         </span>
       )}
@@ -350,9 +385,14 @@ function EntrantAvatars({
   size,
 }: {
   entrants: BracketEntrantDto[];
-  size: "sm" | "md";
+  /** lg = 対戦カードの中(主役)、md = 決勝の上の「優勝」バナー。 */
+  size: "lg" | "md";
 }) {
-  const box = size === "md" ? "h-7 w-7" : "h-6 w-6";
+  const lg = size === "lg";
+  const box = lg ? "h-11 w-11" : "h-7 w-7";
+  const px = lg ? 44 : 28;
+  const overlap = lg ? "-space-x-2" : "-space-x-1.5";
+  const restText = lg ? "text-[11px]" : "text-[9px]";
   const shown = entrants.slice(0, 2);
   const rest = entrants.length - shown.length;
 
@@ -361,7 +401,7 @@ function EntrantAvatars({
   }
 
   return (
-    <span className="flex shrink-0 items-center -space-x-1.5">
+    <span className={`flex shrink-0 items-center ${overlap}`}>
       {shown.map((e) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -369,8 +409,8 @@ function EntrantAvatars({
           src={`/api/public/avatar/${e.participantId}`}
           alt=""
           title={e.displayName}
-          width={28}
-          height={28}
+          width={px}
+          height={px}
           className={`${box} rounded-full border border-panel bg-white/5 object-cover`}
           loading="lazy"
           decoding="async"
@@ -379,7 +419,7 @@ function EntrantAvatars({
       ))}
       {rest > 0 && (
         <span
-          className={`${box} flex items-center justify-center rounded-full border border-panel bg-white/10 font-mono text-[9px] text-gray-300`}
+          className={`${box} flex items-center justify-center rounded-full border border-panel bg-white/10 font-mono ${restText} text-gray-300`}
           title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
         >
           +{rest}
