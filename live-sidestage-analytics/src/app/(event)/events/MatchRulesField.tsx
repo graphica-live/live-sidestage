@@ -5,17 +5,20 @@ import {
   GLOVE_LEVEL_LABELS,
   RETRY_LEVEL_LABELS,
   VIOLATION_HANDLING_LABELS,
+  WIN_CONDITION_LABELS,
 } from "@/event/labels";
 import {
   BOOSTER_LEVELS,
   GLOVE_LEVELS,
   RETRY_LEVELS,
   VIOLATION_HANDLINGS,
+  WIN_CONDITIONS,
   type BoosterLevel,
   type GloveLevel,
   type MatchRules,
   type RetryLevel,
   type ViolationHandling,
+  type WinCondition,
 } from "@/event/match-rules";
 
 /**
@@ -34,6 +37,24 @@ export function MatchRulesField({
 
   return (
     <div className="grid gap-4">
+      <div>
+        <label className="label" htmlFor="matchRules-winCondition">
+          勝利条件
+        </label>
+        <select
+          id="matchRules-winCondition"
+          className="input-field"
+          value={value.winCondition}
+          onChange={(e) => set("winCondition", e.target.value as WinCondition)}
+        >
+          {WIN_CONDITIONS.map((condition) => (
+            <option key={condition} value={condition}>
+              {WIN_CONDITION_LABELS[condition]}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="matchRules-glove">

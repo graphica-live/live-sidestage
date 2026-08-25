@@ -20,6 +20,7 @@ describe("parseMatchRules", () => {
     expect(
       parseMatchRules({
         matchRules: {
+          winCondition: "UNKNOWN",
           glove: "UNKNOWN",
           booster: 123,
           bonusTime: "yes",
@@ -35,6 +36,7 @@ describe("parseMatchRules", () => {
     const result = parseMatchRules({
       deathmatch: { initialLife: 3 },
       matchRules: {
+        winCondition: "BEST_OF_THREE",
         glove: "TWO",
         booster: "ONE_EACH",
         bonusTime: true,
@@ -44,6 +46,7 @@ describe("parseMatchRules", () => {
       },
     });
     expect(result).toEqual({
+      winCondition: "BEST_OF_THREE",
       glove: "TWO",
       booster: "ONE_EACH",
       bonusTime: true,

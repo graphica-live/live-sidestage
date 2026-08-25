@@ -13,6 +13,7 @@ import {
   STATUS_CLASSES,
   STATUS_LABELS,
   VIOLATION_HANDLING_LABELS,
+  WIN_CONDITION_LABELS,
 } from "@/event/labels";
 import { hasMatchRules, parseMatchRules } from "@/event/match-rules";
 import { findPublicEvent, loadBracket, loadEventSnapshot } from "@/event/public-event";
@@ -191,6 +192,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
           <section className="mt-10 first:mt-0">
             <SectionHeading>ルール</SectionHeading>
             <dl className={`mt-3 grid gap-2 border border-white/10 bg-white/[0.03] p-4 text-sm ${CARD_CLIP}`}>
+              <RuleRow label="勝利条件">{WIN_CONDITION_LABELS[matchRules.winCondition]}</RuleRow>
               <RuleRow label="グローブ">{GLOVE_LEVEL_LABELS[matchRules.glove]}</RuleRow>
               <RuleRow label="ブースター">{BOOSTER_LEVEL_LABELS[matchRules.booster]}</RuleRow>
               <RuleRow label="ボーナスタイム">{matchRules.bonusTime ? "あり" : "なし"}</RuleRow>
