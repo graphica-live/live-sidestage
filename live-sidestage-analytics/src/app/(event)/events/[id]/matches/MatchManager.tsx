@@ -138,13 +138,19 @@ function sessionLabel(sessions: SessionRow[], sessionId: string | null): string 
   return session.name || `${index + 1}日目`;
 }
 
-/** 日程の時間帯つきの表示。 */
+/**
+ * 日程の時間帯つきの表示。**select の option にも使うので接尾辞を足さない**
+ * (option は幅が固定で、伸ばすと末尾が切れて読めなくなる)。
+ */
 function sessionRangeLabel(session: SessionRow, index: number): string {
   const name = session.name || `${index + 1}日目`;
   return `${name}: ${formatJst(new Date(session.startAt))} 〜 ${formatJst(new Date(session.endAt))}`;
 }
 
-/** 開催日程の一覧。**日程の中で終了したバトルだけが対象**であることを毎回示す。 */
+/**
+ * 開催日程の一覧。**日程の中で終了したバトルだけが対象**であることを毎回示す。
+ * 各行の「(監視対象)」は、その区間そのものが TikTok バトルの検知対象であることを指す。
+ */
 function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   if (sessions.length === 0) return null;
   return (
@@ -155,7 +161,10 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
       </p>
       <ul className="mt-1 space-y-0.5">
         {sessions.map((s, index) => (
-          <li key={s.id}>{sessionRangeLabel(s, index)}</li>
+          <li key={s.id}>
+            {sessionRangeLabel(s, index)}{" "}
+            <span className="whitespace-nowrap text-gray-400">(監視対象)</span>
+          </li>
         ))}
       </ul>
     </div>
