@@ -98,15 +98,8 @@ class SoundTab extends StatelessWidget {
             onToggle: onToggle,
           ),
 
-          // 全体音量はセット共通なので、セットタブより上に置く（§10）。
-          // 運用中も配信中に調整できる必要があるため触れるままにする（§11）。
-          // 開始/停止の遷移中だけは止める。
-          _MasterVolumeSlider(
-            value: config.masterVolume,
-            enabled: !busy,
-            onChanged: (value) =>
-                store.updateSound((c) => c.copyWith(masterVolume: value)),
-          ),
+          // 全体音量は設定タブにある。配信中に見る画面なので、ここには
+          // 状態とセットの中身だけを置く。
 
           // 受信の状況はセットの設定ではないので、囲いの中には入れない。
           if (sound.lastGiftName != null)
@@ -130,52 +123,6 @@ class SoundTab extends StatelessWidget {
           _SelectedSetPanel(set: selected, locked: locked),
         ],
       ),
-    );
-  }
-}
-
-/// 全体音量。
-///
-/// ドラッグ中は手元の値で追従させ、**指を離したときにだけ保存する**。
-/// `onChanged` ごとに永続化すると、1回のドラッグで数十回の書き込みと背景 Isolate への
-/// 送信が走る。逆に追従を省くと、`value` が設定値のままなのでつまみが指に付いてこない。
-class _MasterVolumeSlider extends StatefulWidget {
-  const _MasterVolumeSlider({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final int value;
-  final bool enabled;
-  final ValueChanged<int> onChanged;
-
-  @override
-  State<_MasterVolumeSlider> createState() => _MasterVolumeSliderState();
-}
-
-class _MasterVolumeSliderState extends State<_MasterVolumeSlider> {
-  /// ドラッグ中だけ持つ表示用の値。離したら null に戻して設定値へ従う。
-  int? _dragging;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = _dragging ?? widget.value;
-
-    return ListTile(
-      title: const Text('全体の音量'),
-      subtitle: Slider(
-        value: value.toDouble(),
-        max: 100,
-        divisions: 20,
-        label: '$value',
-        onChanged: widget.enabled ? (v) => setState(() => _dragging = v.round()) : null,
-        onChangeEnd: (v) {
-          setState(() => _dragging = null);
-          widget.onChanged(v.round());
-        },
-      ),
-      trailing: Text('$value'),
     );
   }
 }

@@ -38,6 +38,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
         home: Scaffold(
           body: SettingsTab(
             speech: const SpeechState(),
+            busy: false,
             onChangeTiktokId: () async {},
             onBeforeLogout: () async {},
           ),
@@ -45,6 +46,11 @@ Future<void> _pumpSettings(WidgetTester tester) async {
       ),
     ),
   );
+  // 読み上げ・効果音の設定項目をこのタブへ集約したぶん一覧が縦に伸び、規約と
+  // ログアウトは初期表示の外へ出た。ListView は可視域の外を組み立てないので、
+  // 見つける前に送っておく。
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(find.text('ログアウト'), 200);
 }
 
 /// 読み上げの開始ボタン相当。押すと初回だけ案内が出る。

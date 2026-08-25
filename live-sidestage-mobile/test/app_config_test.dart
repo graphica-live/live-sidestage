@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/models/app_config.dart';
+import 'package:live_sidestage_mobile/models/voice_catalog.dart';
 
 void main() {
   group('AppConfig.ttsVolume', () {
@@ -36,6 +37,52 @@ void main() {
       expect(next.ttsVolume, 30);
       expect(next.randomVoice, false);
       expect(next.ttsEnabled, true);
+    });
+  });
+
+  group('AppConfig.fixedStyleId', () {
+    test('既定値は四国めたん ノーマル', () {
+      expect(const AppConfig().fixedStyleId, VoiceCatalog.defaultStyleId);
+      expect(VoiceCatalog.labelFor(const AppConfig().fixedStyleId), '四国めたん ノーマル');
+    });
+
+    test('encode/decodeで往復する', () {
+      // ずんだもん あまあま。
+      final decoded = AppConfig.decode(const AppConfig(fixedStyleId: 1).encode());
+      expect(decoded.fixedStyleId, 1);
+    });
+
+    test('キーを持たない旧設定は既定値になる', () {
+      final raw = jsonEncode({'schemaVersion': 3, 'revision': 3, 'ttsEnabled': true});
+      expect(AppConfig.decode(raw).fixedStyleId, VoiceCatalog.defaultStyleId);
+    });
+
+    // vvm を減らして実在しなくなった styleId を持ち続けると、合成のたびに失敗して
+    // 読み上げが丸ごと無音になる。
+    test('同梱していないstyleId・非数値は既定値へ落とす', () {
+      int styleOf(Object? value) =>
+          AppConfig.decode(jsonEncode({'fixedStyleId': value})).fixedStyleId;
+
+      expect(styleOf(999), VoiceCatalog.defaultStyleId);
+      expect(styleOf(-1), VoiceCatalog.defaultStyleId);
+      expect(styleOf('3'), VoiceCatalog.defaultStyleId);
+      expect(styleOf(null), VoiceCatalog.defaultStyleId);
+    });
+
+    test('bumpedはrevisionを進めて他の設定を保つ', () {
+      const base = AppConfig(revision: 7, ttsVolume: 40);
+      final next = base.bumped(fixedStyleId: 8);
+
+      expect(next.revision, 8);
+      expect(next.fixedStyleId, 8);
+      expect(next.ttsVolume, 40);
+    });
+
+    // フィールドを足してもスキーマは上げない。上げると旧アプリが「未来のバージョン」と
+    // 判定して設定の保存を丸ごと止めてしまう（isFutureVersion のコメント参照）。
+    test('キーが増えてもschemaVersionは3のまま', () {
+      expect(AppConfig.currentSchemaVersion, 3);
+      expect(AppConfig.isFutureVersion(const AppConfig().encode()), isFalse);
     });
   });
 

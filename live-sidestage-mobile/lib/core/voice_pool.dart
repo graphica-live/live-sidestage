@@ -34,14 +34,29 @@ class VoiceStyle {
 /// コメント投稿者(uniqueId)ごとにボイスを割り当てる。
 /// ランダム割り当てはアプリのセッション中のみ保持し、永続化しない。
 class VoicePool {
-  VoicePool(this.styles) : fixedStyleId = styles.isNotEmpty ? styles.first.styleId : 0;
+  VoicePool(this.styles) : _fixedStyleId = _firstStyleId(styles);
 
   final List<VoiceStyle> styles;
   final Map<String, int> _userVoiceCache = {};
   final Random _random = Random();
 
   bool randomEnabled = true;
-  int fixedStyleId;
+
+  static int _firstStyleId(List<VoiceStyle> styles) =>
+      styles.isNotEmpty ? styles.first.styleId : 0;
+
+  int _fixedStyleId;
+
+  int get fixedStyleId => _fixedStyleId;
+
+  /// 設定から来た値をそのまま信用しない。**このモデルに無い styleId を保持すると
+  /// 合成のたびに `createAudioQuery` が失敗し、読み上げが丸ごと無音になる。**
+  /// 設定側の静的なボイス一覧(`VoiceCatalog`)と同梱 vvm がズレたときの逃げ道で、
+  /// 知らない値なら先頭のボイスへ落とす。
+  set fixedStyleId(int value) {
+    _fixedStyleId =
+        styles.any((s) => s.styleId == value) ? value : _firstStyleId(styles);
+  }
 
   int effectiveStyleId(String uniqueId) {
     if (!randomEnabled) return fixedStyleId;

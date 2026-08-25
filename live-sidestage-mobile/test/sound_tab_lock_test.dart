@@ -84,8 +84,6 @@ void main() {
     }
   }
 
-  Slider volumeSlider(WidgetTester tester) => tester.widget<Slider>(find.byType(Slider));
-
   Switch giftSwitch(WidgetTester tester) => tester.widget<Switch>(find.byType(Switch));
 
   ActionChip addChip(WidgetTester tester) => tester.widget<ActionChip>(find.byType(ActionChip));
@@ -129,7 +127,6 @@ void main() {
       expect(giftSwitch(tester).onChanged, isNotNull);
       expect(fab(tester).onPressed, isNotNull);
       expect(fabOpacity(tester), 1);
-      expect(volumeSlider(tester).onChanged, isNotNull);
     });
   });
 
@@ -185,10 +182,8 @@ void main() {
       expect(giftSwitch(tester).onChanged, isNull);
     });
 
-    testWidgets('全体音量だけは触れる（配信中に調整できる必要がある）', (tester) async {
-      await pumpTab(tester, await storeWithTwoSets(), started: true, busy: false);
-      expect(volumeSlider(tester).onChanged, isNotNull);
-    });
+    // 全体音量は設定タブへ移した（運用中も触れること・遷移中は止まることの検証は
+    // settings_voice_test.dart にある）。
   });
 
   group('開始/停止の遷移中(busy)', () {
@@ -214,11 +209,6 @@ void main() {
       await tester.pump();
 
       expect(find.text('設定を変更するには停止してください'), findsOneWidget);
-    });
-
-    testWidgets('全体音量も遷移中だけは止める', (tester) async {
-      await pumpTab(tester, await storeWithTwoSets(), started: false, busy: true);
-      expect(volumeSlider(tester).onChanged, isNull);
     });
   });
 

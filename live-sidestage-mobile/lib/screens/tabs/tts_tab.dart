@@ -44,8 +44,6 @@ class TtsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppConfigStore>();
-    final ttsEnabled = store.config.ttsEnabled;
-    final ttsVolume = store.config.ttsVolume;
 
     return Column(
       children: [
@@ -76,46 +74,8 @@ class TtsTab extends StatelessWidget {
               ),
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              const Text('ランダムボイス', style: TextStyle(fontSize: 13)),
-              Switch(
-                value: store.config.randomVoice,
-                onChanged: ttsEnabled ? (value) => store.setRandomVoice(value) : null,
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              const Text('音量', style: TextStyle(fontSize: 13)),
-              Expanded(
-                child: Slider(
-                  value: ttsVolume.toDouble(),
-                  max: 100,
-                  divisions: 20,
-                  label: '$ttsVolume',
-                  onChanged: ttsEnabled ? (value) => store.setTtsVolume(value.round()) : null,
-                ),
-              ),
-              SizedBox(
-                width: 32,
-                child: Text(
-                  '$ttsVolume',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: ttsEnabled ? null : Theme.of(context).disabledColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        // ランダムボイス・音量・ボイスの選択は設定タブにある。配信中に見る画面なので、
+        // ここには状態と一覧だけを置く。
         Expanded(
           child: comments.isEmpty
               ? Center(

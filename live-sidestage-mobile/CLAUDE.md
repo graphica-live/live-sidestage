@@ -139,6 +139,7 @@ flutter build apk --release
 - **Google と Apple は常に別ユーザー**（メールが同じでも統合しない）。Apple で入り直すとオンボーディングからやり直しになる。担保の仕組みはサーバー側 [live-sidestage-analytics/src/lib/apple-account.ts](../live-sidestage-analytics/src/lib/apple-account.ts) の冒頭コメント
 - `AuthSession.provider` は **どちらでログインしたかの記録**で、無言リフレッシュとログアウトの分岐、設定画面のアカウント表示（Google/Apple）に使う。Apple には `signInSilently` 相当が無いので、JWT が失効したら手動の再ログインになる。保存済みセッションでは `provider` を**必須キーにしない**（既存インストールのセッションが消える）
 - **`sign_in_with_apple` は Android で Custom Tab を閉じられると Future を永久に resolve しない**（プラグイン側に戻りを知る手段が無いための仕様）。そのまま待つと `isLoading` が立ちっぱなしになり、再起動するまでログインできなくなる。`SessionController._awaitAppleCredential()` がアプリの復帰を検知して猶予3秒で打ち切っている。この打ち切りを外さないこと
-- VOICEVOX モデルと OpenJTalk 辞書は `assets/` に同梱（サイズ大）
+- VOICEVOX モデルと OpenJTalk 辞書は `assets/` に同梱（サイズ大）。**vvm は中のキャラ数に関係なく1本 55MB 前後**（`0.vvm` は4キャラ10スタイル、`4.vvm` は2キャラ2スタイルで同サイズ）で、`extractTtsAssets()` が起動時にアプリ領域へ展開するので端末上は二重に載る。読み上げ開始時に全 vvm を `loadModel` するため、**増やすと常駐 RAM と初期化時間が本数に比例して増える**（合成のコストは選ばれた1スタイルぶんなので本数に依存しない）。Foreground Service はメモリ圧で真っ先に落とされる側なので、増やすときは実機で `dumpsys meminfo` を見る
+- **vvm を足す・差し替えるときは [lib/models/voice_catalog.dart](lib/models/voice_catalog.dart) も更新する。** 設定画面のボイス選択肢はこの静的な表から出している（VOICEVOX が返す実際の一覧は読み上げを開始するまで存在せず、停止中に開く設定画面では使えないため）。更新し忘れても壊れはしない（`VoicePool` が実在しない styleId を先頭のボイスへ落とす）が、増えたキャラを選べないままになる
 - ギフト名の日本語表示は `lib/core/gift_name_ja.dart` が `assets/gift_names/gift_names_ja.json` を参照する。この JSON はモノレポ `shared/gift-names/` からの生成物なので直接編集しない（詳細は [../shared/gift-names/README.md](../shared/gift-names/README.md)）
 - このリポジトリは統合前の git remote を持たないローカル専用リポジトリだった。モノレポが唯一のリモートバックアップ
