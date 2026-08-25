@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   aggregateGiftsBySegment,
@@ -26,6 +27,7 @@ import { resolveMatchResults } from "./match-results";
 import { parseDeathmatchRules } from "./deathmatch";
 import { applyLifePoints } from "./life-points";
 import { resolveListenerAttribution, type ListenerAttribution } from "./top-participant";
+import { serializeBreakdown } from "./contribution-breakdown";
 
 // イベントの集計本体。
 //
@@ -349,8 +351,8 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         for (const [uniqueId, profile] of found) profiles.set(uniqueId, profile);
       }
 
-      // イベント全体の行だけ「どの参加者のリスナーか」を持たせる。打ち切り前の
-      // byParticipant 全量から出す(打ち切り後だと上位に入らない分が拾えない)。
+      // イベント全体の行だけ「どの参加者のリスナーか」と「枠ごとの内訳」を持たせる。
+      // 打ち切り前の byParticipant 全量から出す(打ち切り後だと上位に入らない分が拾えない)。
       const attribution = resolveListenerAttribution(byParticipant);
 
       const contributions = [
@@ -435,19 +437,24 @@ function buildContributionRows(
   profiles: Map<string, ListenerProfile>,
   attribution?: Map<string, ListenerAttribution>
 ) {
-  return topRows(map).map(([uniqueId, bucket]) => ({
-    eventId,
-    scope,
-    scopeId,
-    listenerUniqueId: uniqueId,
-    nickname: profiles.get(uniqueId)?.nickname ?? uniqueId,
-    profileImageUrl: profiles.get(uniqueId)?.profileImageUrl ?? null,
-    diamonds: bucket.diamonds,
-    points: formatScaledPoints(bucket.points),
-    giftCount: bucket.giftCount,
-    topParticipantId: attribution?.get(uniqueId)?.topParticipantId ?? null,
-    participantCount: attribution?.get(uniqueId)?.participantCount ?? 0,
-  }));
+  return topRows(map).map(([uniqueId, bucket]) => {
+    const found = attribution?.get(uniqueId);
+    return {
+      eventId,
+      scope,
+      scopeId,
+      listenerUniqueId: uniqueId,
+      nickname: profiles.get(uniqueId)?.nickname ?? uniqueId,
+      profileImageUrl: profiles.get(uniqueId)?.profileImageUrl ?? null,
+      diamonds: bucket.diamonds,
+      points: formatScaledPoints(bucket.points),
+      giftCount: bucket.giftCount,
+      topParticipantId: found?.topParticipantId ?? null,
+      participantCount: found?.participantCount ?? 0,
+      // JSON 列の null は Prisma.DbNull で明示する(undefined だと列自体が省かれる)。
+      breakdown: found ? serializeBreakdown(found.breakdown) : Prisma.DbNull,
+    };
+  });
 }
 
 /** 集計対象のイベントを1周ぶん処理する。ワーカーから呼ぶ。 */

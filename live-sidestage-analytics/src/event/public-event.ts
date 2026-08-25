@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
+import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-breakdown";
 import { rankByLife } from "./deathmatch";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
@@ -73,6 +74,8 @@ export async function findPublicParticipantTiktokId(
   return { tiktokId: row.tiktokId, visibility: row.event.visibility };
 }
 
+export type { ContributionBreakdownDto };
+
 export type StandingDto = {
   subjectId: string;
   name: string;
@@ -98,6 +101,17 @@ export type ContributionDto = {
   topParticipantName: string | null;
   /** ギフトを入れた参加者の人数。イベント全体でだけ意味を持つ */
   participantCount: number;
+  /**
+   * 参加者ごとの内訳。ポイント降順。イベント全体(scope=EVENT)でだけ入る。
+   *
+   * **null は「内訳を持たない行」** — 内訳に未対応だった頃の集計が書いた行
+   * (finalizedAt が立った過去イベントは再集計されないので永久に null)、または
+   * PARTICIPANT / TEAM scope。読み側は null のとき従来表示へフォールバックする。
+   *
+   * 参加者名は載せない。表示側が参加者一覧(`EventSnapshot.participants`)から引き、
+   * 引けない参加者は落とす(`topParticipantName` と同じ規約)。
+   */
+  breakdown: ContributionBreakdownDto[] | null;
 };
 
 /**
@@ -278,6 +292,9 @@ export type EventSnapshot = {
 /**
  * `topParticipantId` は FK ではないので、名前は呼び出し側が持っている参加者一覧から引く。
  * 解決できない(参加者が抜けた直後など)ときは支援先を出さない。
+ *
+ * `breakdown` は保存形のまま信用せず `parseBreakdown()` を通す。壊れていれば null に落ちて
+ * 従来表示へフォールバックする(公開ページを 500 にしない)。
  */
 function toContributionDto(
   row: {
@@ -289,6 +306,7 @@ function toContributionDto(
     giftCount: number;
     topParticipantId: string | null;
     participantCount: number;
+    breakdown: unknown;
   },
   participantNameById: Map<string, string>
 ): ContributionDto {
@@ -303,6 +321,7 @@ function toContributionDto(
       ? (participantNameById.get(row.topParticipantId) ?? null)
       : null,
     participantCount: row.participantCount,
+    breakdown: parseBreakdown(row.breakdown),
   };
 }
 
