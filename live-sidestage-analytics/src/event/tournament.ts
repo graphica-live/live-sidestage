@@ -446,6 +446,12 @@ async function resolveEntrantParticipants(
  * シード順の既定値を作る。
  *
  * 現在の順位表(獲得ダイヤ)があればその順、なければ登録順。主催者は並べ替えできる。
+ *
+ * **全員0点の順位表は使わない。** `EventStanding` はギフトが1件もない参加者も0点で載せるので
+ * 「行がある = 差が付いている」ではない。とくにバトル中のみ集計する種目(トーナメント・
+ * デスマッチ)では、表を作る時点でまだバトルが1件も検知されておらず全員0点＝全員同順位に
+ * なるのが常態で、`rank` だけで並べると Postgres の返却順まかせになる。
+ * 同順位が残る場合に備えて `subjectId` を第2キーに入れ、順序を決定的にする。
  */
 export async function defaultSeedOrder(
   eventId: string,
@@ -454,10 +460,11 @@ export async function defaultSeedOrder(
   const subjectType = entryMode === "TEAM" ? "TEAM" : "PARTICIPANT";
   const standings = await prisma.eventStanding.findMany({
     where: { eventId, subjectType },
-    orderBy: { rank: "asc" },
-    select: { subjectId: true },
+    orderBy: [{ rank: "asc" }, { subjectId: "asc" }],
+    select: { subjectId: true, diamonds: true },
   });
-  if (standings.length > 0) return standings.map((s) => s.subjectId);
+  const hasScore = standings.some((s) => s.diamonds !== 0n);
+  if (standings.length > 0 && hasScore) return standings.map((s) => s.subjectId);
 
   if (entryMode === "TEAM") {
     const teams = await prisma.eventTeam.findMany({

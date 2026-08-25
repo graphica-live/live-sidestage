@@ -4,6 +4,7 @@ import {
   buildRateSegments,
   factorToScaled,
   formatScaledPoints,
+  isBattleOnlyFormat,
   scaledPoints,
 } from "./scoring";
 
@@ -135,6 +136,125 @@ describe("buildRateSegments", () => {
     expect(segments[2]).toMatchObject({ start: bEnd, end: END, scaledFactor: 200n });
   });
 
+  it("BATTLE_ONLY ではバトル区間の外を1つも返さない", () => {
+    const bStart = T("2026-09-02T20:00:00.000Z");
+    const bEnd = T("2026-09-02T20:05:00.000Z");
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [
+        { kind: "BATTLE", factor: "5", startAt: null, endAt: null },
+        // 枠投げ倍率は BATTLE_ONLY では区間そのものが無いので効きようがない。
+        { kind: "SOLO_STREAM", factor: "2", startAt: null, endAt: null },
+      ],
+      battleRanges: [{ start: bStart, end: bEnd }],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ start: bStart, end: bEnd, scaledFactor: 500n });
+  });
+
+  it("BATTLE_ONLY で離れた2つのバトル区間は1本にマージされない", () => {
+    const a = { start: T("2026-09-02T20:00:00.000Z"), end: T("2026-09-02T20:05:00.000Z") };
+    const b = { start: T("2026-09-02T21:00:00.000Z"), end: T("2026-09-02T21:05:00.000Z") };
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [],
+      battleRanges: [a, b],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toMatchObject({ start: a.start, end: a.end });
+    expect(segments[1]).toMatchObject({ start: b.start, end: b.end });
+  });
+
+  it("BATTLE_ONLY で隣接するバトル区間は1本に結合される", () => {
+    const mid = T("2026-09-02T20:05:00.000Z");
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [],
+      battleRanges: [
+        { start: T("2026-09-02T20:00:00.000Z"), end: mid },
+        { start: mid, end: T("2026-09-02T20:10:00.000Z") },
+      ],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({
+      start: T("2026-09-02T20:00:00.000Z"),
+      end: T("2026-09-02T20:10:00.000Z"),
+    });
+  });
+
+  it("BATTLE_ONLY で重なったバトル区間を渡しても二重計上しない(合計が和集合と一致する)", () => {
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [],
+      battleRanges: [
+        { start: T("2026-09-02T20:00:00.000Z"), end: T("2026-09-02T20:06:00.000Z") },
+        { start: T("2026-09-02T20:04:00.000Z"), end: T("2026-09-02T20:10:00.000Z") },
+      ],
+      coverage: "BATTLE_ONLY",
+    });
+
+    const totalMs = segments.reduce((sum, s) => sum + (s.end.getTime() - s.start.getTime()), 0);
+    // 和集合は 20:00〜20:10 の10分。重なった2分を二重に数えていたら12分になる。
+    expect(totalMs).toBe(10 * 60 * 1000);
+    // 区間どうしも重なっていないこと。
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i].start.getTime()).toBeGreaterThanOrEqual(segments[i - 1].end.getTime());
+    }
+  });
+
+  it("BATTLE_ONLY のバトル区間は開始を含み終了を含まない(半開区間)", () => {
+    const bStart = T("2026-09-02T20:00:00.000Z");
+    const bEnd = T("2026-09-02T20:05:00.000Z");
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [],
+      battleRanges: [{ start: bStart, end: bEnd }],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments[0].start.getTime()).toBe(bStart.getTime());
+    expect(segments[0].end.getTime()).toBe(bEnd.getTime());
+  });
+
+  it("BATTLE_ONLY でバトル区間が無ければ空になる(全員0点)", () => {
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [{ kind: "SOLO_STREAM", factor: "2", startAt: null, endAt: null }],
+      battleRanges: [],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments).toEqual([]);
+  });
+
+  it("BATTLE_ONLY で日程の外へはみ出したバトルは日程の中だけ残る", () => {
+    const segments = buildRateSegments({
+      eventStart: START,
+      eventEnd: END,
+      multipliers: [],
+      battleRanges: [
+        // 日程の開始前から始まり、終了後まで続くバトル。
+        { start: T("2026-08-31T23:00:00.000Z"), end: T("2026-09-09T00:00:00.000Z") },
+      ],
+      coverage: "BATTLE_ONLY",
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ start: START, end: END });
+  });
+
   it("隣接する同じ倍率の区間はマージされる(クエリ本数を増やさない)", () => {
     const mid = T("2026-09-04T00:00:00.000Z");
     const segments = buildRateSegments({
@@ -244,5 +364,17 @@ describe("assignRanks", () => {
 
   it("空の入力を受け付ける", () => {
     expect(assignRanks([])).toEqual([]);
+  });
+});
+
+describe("isBattleOnlyFormat", () => {
+  it("対戦する種目だけバトル中のみ集計する", () => {
+    expect(isBattleOnlyFormat("TOURNAMENT")).toBe(true);
+    expect(isBattleOnlyFormat("DEATHMATCH")).toBe(true);
+  });
+
+  it("獲得ダイヤレースは開催日程の全ギフトを数える", () => {
+    // 対戦が無くバトル検知も回していないので、絞ると全員0点になる。
+    expect(isBattleOnlyFormat("DIAMOND_RACE")).toBe(false);
   });
 });

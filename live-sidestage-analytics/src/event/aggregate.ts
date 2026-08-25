@@ -9,9 +9,11 @@ import {
   assignRanks,
   buildRateSegments,
   formatScaledPoints,
+  isBattleOnlyFormat,
   scaledPoints,
   type MultiplierInput,
   type RateSegment,
+  type SegmentCoverage,
   type TimeRange,
 } from "./scoring";
 import { advisoryLockKey } from "./event-lock";
@@ -182,6 +184,11 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         tx.eventTeam.findMany({ where: { eventId }, select: { id: true } }),
       ]);
 
+      // トーナメント・デスマッチは**検知したバトル区間のギフトだけ**を集計する。
+      // 対戦しない獲得ダイヤレースは従来どおり開催日程の全ギフト。
+      const battleOnly = isBattleOnlyFormat(event.format);
+      const aggregationPolicy = battleOnly ? "BATTLE_ONLY" : "FULL_PERIOD";
+
       const now = new Date();
       const finalizedAt = now >= aggregationDeadline(event.endAt) ? now : undefined;
       /** ブラケットの進行が起きた周回は最終集計にしない(下の resolveMatchResults を参照)。 */
@@ -197,7 +204,12 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         await tx.eventLifeLedger.deleteMany({ where: { eventId } });
         await tx.event.update({
           where: { id: eventId },
-          data: { lastAggregatedAt: now, aggregateMs: Date.now() - startedAt, finalizedAt },
+          data: {
+            lastAggregatedAt: now,
+            aggregateMs: Date.now() - startedAt,
+            aggregationPolicy,
+            finalizedAt,
+          },
         });
         return { status: "skipped", reason: "no-participants" } as const;
       }
@@ -210,6 +222,11 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         startAt: m.startAt,
         endAt: m.endAt,
       }));
+      // バトル中しか集計しない種目では枠投げ倍率を使わない。BATTLE_ONLY の区間は
+      // kind が必ず BATTLE なので実害は無いが、意図をコードに残しておく。
+      const effectiveMultipliers = battleOnly
+        ? multiplierInputs.filter((m) => m.kind === "BATTLE")
+        : multiplierInputs;
 
       // バトルの取り込み・照合・勝敗確定。倍率区間がこれに依存するので集計本体より先に
       // 済ませる(同じトランザクション内なので読み手に中間状態は見えない)。
@@ -295,25 +312,33 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         }
       };
 
-      const aggregateRooms = async (
-        rooms: string[],
-        ranges: TimeRange[],
-        window: EventWindow
-      ) => {
+      /**
+       * 区間ごとに引くギフト集約を溜める。
+       *
+       * **同じ `(start, end, scaledFactor)` の room をまとめて1本のクエリにする。**
+       * バトルに出た両サイドの room は `loadBattleRangesByRoom()` が同じ区間を返すので、
+       * room ごとに素直に投げるとクエリ数が倍になる。
+       *
+       * 同じ room が同じキーへ2度入ることはない — `buildRateSegments()` の出力区間は
+       * 互いに重ならないため(バトル区間が重なっていても基本区間は1度しか作られない)。
+       */
+      type SegmentBatch = { segment: RateSegment; rooms: string[] };
+      const batches = new Map<string, SegmentBatch>();
+
+      const queueRooms = (rooms: string[], ranges: TimeRange[], window: EventWindow) => {
         if (rooms.length === 0) return;
         const segments = buildRateSegments({
           eventStart: window.start,
           eventEnd: window.end,
-          multipliers: multiplierInputs,
+          multipliers: effectiveMultipliers,
           battleRanges: ranges,
+          coverage: battleOnly ? "BATTLE_ONLY" : "FULL",
         });
         for (const segment of segments) {
-          const rows = await aggregateGiftsBySegment(tx as DbClient, {
-            roomIds: rooms,
-            start: segment.start,
-            end: segment.end,
-          });
-          for (const row of rows) consume(row, segment);
+          const key = `${segment.start.getTime()}:${segment.end.getTime()}:${segment.scaledFactor}`;
+          const found = batches.get(key);
+          if (found) found.rooms.push(...rooms);
+          else batches.set(key, { segment, rooms: [...rooms] });
         }
       };
 
@@ -322,23 +347,38 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         // 個別化するのは**その日程と重なるバトル区間を持つ参加者だけ**。
         // 日程数 × 参加者数のクエリにしないため、他の日程でしかバトルがない参加者は
         // まとめて1本で集約する。
-        const perRoomRooms = battleFactorInUse
-          ? roomIds.filter((id) =>
-              (battleRanges.get(id) ?? []).some(
-                (r) => r.start < window.end && r.end > window.start
+        const perRoomRooms =
+          battleOnly || battleFactorInUse
+            ? roomIds.filter((id) =>
+                (battleRanges.get(id) ?? []).some(
+                  (r) => r.start < window.end && r.end > window.start
+                )
               )
-            )
-          : [];
+            : [];
         const perRoomSet = new Set(perRoomRooms);
-        const commonRooms = roomIds.filter((id) => !perRoomSet.has(id));
+        // バトル中しか集計しない種目では、バトル区間を持たない room を一切引かない
+        // (0点のまま。順位表には参加者一覧から0点で載る)。
+        const commonRooms = battleOnly ? [] : roomIds.filter((id) => !perRoomSet.has(id));
 
-        await aggregateRooms(commonRooms, [], window);
+        queueRooms(commonRooms, [], window);
         for (const roomId of perRoomRooms) {
-          await aggregateRooms([roomId], battleRanges.get(roomId) ?? [], window);
+          queueRooms([roomId], battleRanges.get(roomId) ?? [], window);
         }
       }
 
+      for (const { segment, rooms } of batches.values()) {
+        const rows = await aggregateGiftsBySegment(tx as DbClient, {
+          roomIds: rooms,
+          start: segment.start,
+          end: segment.end,
+        });
+        for (const row of rows) consume(row, segment);
+      }
+
       // 表示名は日程ごとに引いて後勝ちでまとめる(最後に観測したものが残る)。
+      // **バトル中のみ集計する種目でもここは絞らない。** 余分に引いた行は下の
+      // buildContributionRows が bucket に無い uniqueId を捨てるだけで結果に影響せず、
+      // 絞るとバトル外でも投げたリスナーの表示名が古いものへ変わりうる。
       const profiles = new Map<string, ListenerProfile>();
       for (const window of windows) {
         const found = await fetchListenerProfiles(tx as DbClient, {
@@ -408,6 +448,7 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         data: {
           lastAggregatedAt: now,
           aggregateMs: elapsedMs,
+          aggregationPolicy,
           finalizedAt: deferFinalize ? undefined : finalizedAt,
         },
       });

@@ -30,6 +30,9 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
+      // 公開ページの見出し・注記は種目ではなくこの列で決める(過去のスナップショットへ
+      // 新しい集計方式の説明を付けないため)。EventSnapshot.battleOnly を参照。
+      aggregationPolicy: true,
       // 公開ページのポーリングを止める条件。**集計側の打ち切り(`aggregationWindow`)と
       // 揃えるため**に status ではなくこれを見る(主催者はいつでも FINISHED にできる)。
       finalizedAt: true,
@@ -273,6 +276,14 @@ export type EventSnapshot = {
   lastAggregatedAt: string | null;
   /** 倍率が設定されているか。ないならポイント表示を出さずダイヤだけ見せる */
   hasMultiplier: boolean;
+  /**
+   * このスナップショットが「検知したバトル区間のギフトだけ」で作られているか。
+   *
+   * **`format` から導かない。** `finalizedAt` が立った過去イベントは再集計されないので、
+   * 旧方式(日程の全ギフト)のスナップショットがそのまま残る。種目で判定すると、
+   * 過去のトーナメントに「バトル中のみ」という説明を付けてしまう。
+   */
+  battleOnly: boolean;
 };
 
 /**
@@ -317,8 +328,10 @@ export async function loadEventSnapshot(event: {
   format: string;
   entryMode: string;
   lastAggregatedAt: Date | null;
+  aggregationPolicy: string | null;
 }): Promise<EventSnapshot> {
   const subjectType = event.entryMode === "TEAM" ? "TEAM" : "PARTICIPANT";
+  const battleOnly = event.aggregationPolicy === "BATTLE_ONLY";
 
   const [standings, contributions, participants, teams, multiplierCount, lifePoints] =
     await Promise.all([
@@ -339,7 +352,12 @@ export async function loadEventSnapshot(event: {
         where: { eventId: event.id },
         select: { id: true, name: true, colorHex: true },
       }),
-      prisma.eventMultiplier.count({ where: { eventId: event.id } }),
+      // バトル中のみ集計したスナップショットでは SOLO_STREAM(枠投げ)倍率が効いていない。
+      // 数に入れると、その倍率しか持たないイベントで「ポイント順 / 実弾順」の切り替えが
+      // 出るのに押しても並びが変わらない、という状態になる。
+      prisma.eventMultiplier.count({
+        where: { eventId: event.id, ...(battleOnly ? { kind: "BATTLE" } : {}) },
+      }),
       event.format === "DEATHMATCH"
         ? prisma.eventLifePoint.findMany({
             where: { eventId: event.id, subjectType },
@@ -422,6 +440,7 @@ export async function loadEventSnapshot(event: {
     teams: teams.map((t) => ({ id: t.id, name: t.name, colorHex: t.colorHex })),
     lastAggregatedAt: event.lastAggregatedAt?.toISOString() ?? null,
     hasMultiplier: multiplierCount > 0,
+    battleOnly,
   };
 }
 

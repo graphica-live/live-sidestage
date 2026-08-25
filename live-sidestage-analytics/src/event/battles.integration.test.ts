@@ -452,11 +452,11 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(match?.status).toBe("SCHEDULED");
   });
 
-  it("BATTLE倍率はバトル中の参加者にだけかかる", async () => {
+  it("トーナメントはバトル中のギフトだけを集計し、BATTLE倍率がかかる", async () => {
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
-    // 対戦に出ていない参加者。同時刻にギフトを受けても等倍のまま。
+    // 対戦に出ていない参加者。同時刻にギフトを受けても1ダイヤも計上されない。
     const c = await newParticipant(event.id, "c");
 
     await createBracket({
@@ -489,9 +489,209 @@ describe("バトルの取り込みと対戦の確定", () => {
 
     expect(forA?.diamonds).toBe(100n);
     expect(String(forA?.points)).toBe("200");
-    // 同時刻でもバトルに出ていない c は等倍のまま。
-    expect(forC?.diamonds).toBe(100n);
-    expect(String(forC?.points)).toBe("100");
+    // 同時刻でもバトルに出ていない c は集計対象外。**行は残る**(順位表から消さない)。
+    expect(forC).toBeDefined();
+    expect(forC?.diamonds).toBe(0n);
+    expect(String(forC?.points)).toBe("0");
+  });
+
+  it("バトル区間の外のギフトは順位にもリスナー貢献にも入らない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const battleId = `${PREFIX}_m1_${uniqueSuffix()}`;
+    await insertBattle({
+      roomId: a.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+    await insertBattle({
+      roomId: b.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+
+    // 同じリスナーが、バトル中(100)とバトル外(900)に投げる。
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "listener1",
+      diamonds: 900,
+      receivedAt: new Date(BATTLE_END.getTime() + 30 * 60_000),
+    });
+    // 境界のギフト: 開始ちょうどは含み、終了ちょうどは含まない(半開区間)。
+    await insertGift({ roomId: a.roomId, uniqueId: "edge", diamonds: 7, receivedAt: BATTLE_START });
+    await insertGift({ roomId: a.roomId, uniqueId: "edge", diamonds: 500, receivedAt: BATTLE_END });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+
+    const standing = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    expect(standing.diamonds).toBe(107n);
+
+    const listener = await prisma.eventContribution.findFirstOrThrow({
+      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "listener1" },
+    });
+    expect(listener.diamonds).toBe(100n);
+
+    const edge = await prisma.eventContribution.findFirstOrThrow({
+      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "edge" },
+    });
+    expect(edge.diamonds).toBe(7n);
+  });
+
+  it("トーナメントではSOLO_STREAM(枠投げ)倍率が一切効かない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+    await prisma.eventMultiplier.create({
+      data: { eventId: event.id, kind: "SOLO_STREAM", factor: "3.00" },
+    });
+
+    const battleId = `${PREFIX}_m1_${uniqueSuffix()}`;
+    await insertBattle({
+      roomId: a.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+    await insertBattle({
+      roomId: b.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+
+    const standing = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    // 枠投げ倍率は BATTLE 区間には効かないので等倍のまま。
+    expect(standing.diamonds).toBe(100n);
+    expect(String(standing.points)).toBe("100");
+  });
+
+  it("集計方式(aggregationPolicy)を記録する", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    await aggregateEvent(event.id);
+
+    const row = await prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { aggregationPolicy: true },
+    });
+    expect(row.aggregationPolicy).toBe("BATTLE_ONLY");
+  });
+
+  it("VOIDにした対戦の区間は集計されない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const battleId = `${PREFIX}_m1_${uniqueSuffix()}`;
+    await insertBattle({
+      roomId: a.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+    await insertBattle({
+      roomId: b.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: BATTLE_END,
+    });
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+    const before = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    expect(before.diamonds).toBe(100n);
+
+    // 主催者が対戦を無効にすると、その区間は BATTLE 区間ではなくなる。
+    await prisma.eventMatch.updateMany({
+      where: { eventId: event.id, round: 1 },
+      data: { status: "VOID", winnerSideId: null, winnerDecidedBy: null, decidedAt: null },
+    });
+    await aggregateEvent(event.id);
+
+    const after = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    expect(after.diamonds).toBe(0n);
+  });
+
+  it("終了が未観測のうちは0点、終了が判明したら遡って加算される", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const battleId = `${PREFIX}_m1_${uniqueSuffix()}`;
+    // 開始だけ観測。durationSec も無いので detectedEndAt は null のまま(LIVE)。
+    await insertBattle({
+      roomId: a.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: null,
+      action: BATTLE_ACTION.OPEN,
+    });
+    await insertBattle({
+      roomId: b.roomId,
+      battleId,
+      startedAt: BATTLE_START,
+      endedAt: null,
+      action: BATTLE_ACTION.OPEN,
+    });
+    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+
+    await aggregateEvent(event.id);
+    await aggregateEvent(event.id);
+    const during = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    // 区間が確定していないので、バトル中に飛んだギフトもまだ入らない。
+    expect(during.diamonds).toBe(0n);
+
+    // 終了イベントが届く。
+    await updateBattle({
+      roomId: a.roomId,
+      battleId,
+      action: BATTLE_ACTION.FINISH,
+      endedAt: BATTLE_END,
+    });
+    await updateBattle({
+      roomId: b.roomId,
+      battleId,
+      action: BATTLE_ACTION.FINISH,
+      endedAt: BATTLE_END,
+    });
+    await aggregateEvent(event.id);
+
+    const after = await prisma.eventStanding.findFirstOrThrow({
+      where: { eventId: event.id, subjectType: "PARTICIPANT", subjectId: a.id },
+    });
+    expect(after.diamonds).toBe(100n);
   });
 
   it("不戦勝は検知を待たずに次のラウンドへ進む", async () => {

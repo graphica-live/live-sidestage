@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FORMAT_PENDING_NOTES, STANDING_HEADINGS } from "@/event/labels";
+import {
+  BATTLE_ONLY_SCORING_NOTE,
+  BATTLE_ONLY_STANDING_HEADINGS,
+  FORMAT_PENDING_NOTES,
+  STANDING_HEADINGS,
+} from "@/event/labels";
 import type {
   ContributionDto,
   EventSnapshot,
@@ -71,7 +76,12 @@ export function EventResults({
 
   // デスマッチの順位はライフで決まる。獲得ダイヤの順位表とは別のものを出す。
   const lives = format === "DEATHMATCH" ? snapshot.lives : null;
-  const heading = lives ? "ライフ" : (STANDING_HEADINGS[format as EventFormat] ?? "順位");
+  const battleOnly = snapshot.battleOnly;
+  const standingHeading =
+    (battleOnly ? BATTLE_ONLY_STANDING_HEADINGS[format as EventFormat] : undefined) ??
+    STANDING_HEADINGS[format as EventFormat] ??
+    "順位";
+  const heading = lives ? "ライフ" : standingHeading;
   const pendingNote = FORMAT_PENDING_NOTES[format as EventFormat];
 
   return (
@@ -79,6 +89,15 @@ export function EventResults({
       {pendingNote && (
         <p className={`mb-4 border border-yellow-400/25 bg-yellow-400/5 px-3 py-2 text-xs text-yellow-200/80 ${CARD_CLIP}`}>
           {pendingNote}
+        </p>
+      )}
+
+      {/* バトル中のみ集計しているイベントは、何が数えられているかを常に明示する。
+          空状態の差し替えではなく常時表示にしてあるのは、EventStanding が0点でも
+          全参加者ぶん作られるため「集計結果が空」の状態が事実上ありえないから。 */}
+      {battleOnly && (
+        <p className={`mb-4 border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-gray-400 ${CARD_CLIP}`}>
+          {BATTLE_ONLY_SCORING_NOTE}
         </p>
       )}
 
@@ -102,7 +121,7 @@ export function EventResults({
         </p>
       ) : tab === "standings" ? (
         lives ? (
-          <LifeStandingsTable rows={lives} />
+          <LifeStandingsTable rows={lives} battleOnly={battleOnly} />
         ) : (
           <StandingsTable rows={snapshot.standings} hasMultiplier={snapshot.hasMultiplier} />
         )
@@ -268,8 +287,12 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
 /**
  * デスマッチの順位表。残ライフが多い順(同じなら遅く脱落した順 → 獲得ダイヤ順)。
  * 獲得ダイヤの順位(StandingsTable)とは別物なので、混ぜて表示しない。
+ *
+ * **同ライフのタイブレークに使うダイヤは集計方式の影響を受ける。** バトル中のみ集計する
+ * スナップショットではバトル外のダイヤが入らないので、ライフ順位まで変わりうる。
+ * 何のダイヤなのかが読み取れるよう、副表示のラベルを切り替える。
  */
-function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
+function LifeStandingsTable({ rows, battleOnly }: { rows: LifeStandingDto[]; battleOnly: boolean }) {
   if (rows.length === 0) {
     return <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ順位がついていない。</p>;
   }
@@ -305,7 +328,7 @@ function LifeStandingsTable({ rows }: { rows: LifeStandingDto[] }) {
               </p>
             )}
             <p className="font-mono text-xs text-gray-600 tabular-nums">
-              {formatNumber(r.diamonds)} ダイヤ
+              {formatNumber(r.diamonds)} {battleOnly ? "バトルダイヤ" : "ダイヤ"}
             </p>
           </div>
         </li>

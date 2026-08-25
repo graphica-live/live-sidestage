@@ -73,6 +73,19 @@ export const STANDING_HEADINGS: Record<EventFormat, string> = {
   DEATHMATCH: "獲得ダイヤ",
 };
 
+// バトル中のみ集計しているスナップショットで、順位表の見出しに使う。
+// **種目ではなく Event.aggregationPolicy で切り替える**(過去のスナップショットは旧方式のため)。
+// デスマッチは見出しが「ライフ」に差し替わるので、実際に見えるのはトーナメントだけ。
+export const BATTLE_ONLY_STANDING_HEADINGS: Partial<Record<EventFormat, string>> = {
+  TOURNAMENT: "バトル獲得ダイヤ",
+  DEATHMATCH: "バトル獲得ダイヤ",
+};
+
+// バトル中のみ集計しているときに公開ページへ出す注記。
+// 数字が遡って増減することまで書く(検知・承認・再検知で母集団が変わるため)。
+export const BATTLE_ONLY_SCORING_NOTE =
+  "集計対象は検知した対戦バトル中のギフトだけ。バトル外の通常配信で受け取ったギフトは含まない。対戦の承認・再検知で過去分の数字も増減する。";
+
 // 種目のうち、まだ勝敗判定を実装していないものの注記。
 // フェーズ4・5で TOURNAMENT と DEATHMATCH を実装したので、現在は空。
 export const FORMAT_PENDING_NOTES: Partial<Record<EventFormat, string>> = {};

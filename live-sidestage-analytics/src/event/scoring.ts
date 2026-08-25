@@ -27,6 +27,24 @@ export type RateSegment = {
 };
 
 /**
+ * 集計する時間の範囲。
+ *
+ * - `"FULL"` — 開催日程を隙間なく覆う(獲得ダイヤレース)
+ * - `"BATTLE_ONLY"` — 検知したバトル区間だけを返す(トーナメント・デスマッチ)
+ */
+export type SegmentCoverage = "FULL" | "BATTLE_ONLY";
+
+/**
+ * バトル中のギフトだけを集計する種目かどうか。
+ *
+ * 対戦しない獲得ダイヤレースは従来どおり開催日程の全ギフトを数える
+ * (バトル検知そのものを回していないので、絞ると全員0点になる)。
+ */
+export function isBattleOnlyFormat(format: string): boolean {
+  return format === "TOURNAMENT" || format === "DEATHMATCH";
+}
+
+/**
  * Decimal(6,2) 相当の倍率を 100倍の整数にする。"2.5" → 250n
  * 小数第3位以下は切り捨てる(DB 側が Decimal(6,2) なので存在しないはず)。
  */
@@ -88,14 +106,21 @@ function covers(range: { startAt: Date | null; endAt: Date | null }, at: Date): 
  * 参加者にまで BATTLE 倍率がかかってしまう。参加者(room)ごとにこの関数を呼び直し、
  * その参加者のバトル区間だけを渡すこと。
  * フェーズ3では常に空なので、実質 SOLO_STREAM の倍率だけが効く。
+ *
+ * `coverage: "BATTLE_ONLY"` を渡すと、**バトル区間の外を1区間も返さない**
+ * (トーナメント・デスマッチはバトル中のギフトだけを集計するため)。このとき返る区間の
+ * kind は必ず BATTLE なので、SOLO_STREAM の倍率は一切効かない。
+ * 二重計上しない・離れたバトルが繋がらないことは下のループのコメントを参照。
  */
 export function buildRateSegments(input: {
   eventStart: Date;
   eventEnd: Date;
   multipliers: MultiplierInput[];
   battleRanges?: TimeRange[];
+  coverage?: SegmentCoverage;
 }): RateSegment[] {
   const { eventStart, eventEnd } = input;
+  const coverage = input.coverage ?? "FULL";
   if (eventStart >= eventEnd) return [];
 
   const battles = clampRanges(input.battleRanges ?? [], eventStart, eventEnd);
@@ -120,7 +145,15 @@ export function buildRateSegments(input: {
     const end = new Date(sorted[i + 1]);
 
     // 区間内では倍率が一定なので、開始時刻だけで判定してよい。
+    // `some()` は区間の**和集合**を見るので、重なったバトル区間を渡しても
+    // 基本区間は1度しか作られない(= 二重計上にならない)。
     const inBattle = battles.some((b) => start >= b.start && start < b.end);
+
+    // バトル中のみ集計する種目では、バトル外の区間を1つも返さない。
+    // 飛ばした区間は下のマージ条件(終端と始端の完全一致)を破るので、
+    // 離れたバトルどうしが1本に繋がることはない。
+    if (coverage === "BATTLE_ONLY" && !inBattle) continue;
+
     const kind = inBattle ? "BATTLE" : "SOLO_STREAM";
 
     let scaledFactor = FACTOR_SCALE;
