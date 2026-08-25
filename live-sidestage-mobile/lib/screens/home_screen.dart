@@ -222,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 長時間の配信待受が途中で止まるため（AndroidManifest.xml のコメント参照）。
     final result = await FlutterForegroundTask.startService(
       serviceTypes: [ForegroundServiceTypes.mediaPlayback],
-      notificationTitle: 'Live Sidestage',
+      notificationTitle: 'LIVE Sidestage',
       notificationText: _notificationText(store),
       callback: startCallback,
     );

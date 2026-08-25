@@ -19,7 +19,7 @@ void main() {
     await tester.pump();
 
     // ウェルカム画面はAppConfigを触らないので、設定のロード完了を待たずに出る。
-    expect(find.text('Live Sidestage'), findsOneWidget);
+    expect(find.text('LIVE Sidestage'), findsOneWidget);
     expect(find.text('Googleでログイン'), findsOneWidget);
   });
 }
