@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { formatJst, formatJstRange, parseJstLocal, toJstInputValue } from "./datetime";
+import {
+  formatJst,
+  formatJstRange,
+  formatJstStamp,
+  parseJstLocal,
+  toJstInputValue,
+} from "./datetime";
 
 describe("parseJstLocal", () => {
   it("入力値をJSTとして解釈する(サーバーのタイムゾーンに依存しない)", () => {
@@ -66,5 +72,17 @@ describe("formatJst", () => {
     const formatted = formatJst(new Date("2026-09-01T11:00:00.000Z"));
     expect(formatted).toContain("2026");
     expect(formatted).toContain("20:00");
+  });
+});
+
+describe("formatJstStamp", () => {
+  // 実行環境のタイムゾーンに依存しない固定値であること自体が要件
+  // (サーバーは UTC、ブラウザは JST。ずれると SSR がハイドレーション不一致になる)。
+  it("秒までJSTで出す", () => {
+    expect(formatJstStamp(new Date("2026-08-25T14:41:38.000Z"))).toBe("2026/08/25 23:41:38");
+  });
+
+  it("JSTで日をまたぐ時刻も繰り上げる", () => {
+    expect(formatJstStamp(new Date("2026-08-25T15:00:00.000Z"))).toBe("2026/08/26 00:00:00");
   });
 });
