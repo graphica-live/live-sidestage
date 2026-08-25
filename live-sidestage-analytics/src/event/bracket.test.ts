@@ -7,6 +7,7 @@ import {
   nextSlot,
   placementOptions,
   placementRoundLabel,
+  placementRounds,
   buildStagedBracket,
   resolveBracket,
   roundLabel,
@@ -508,6 +509,36 @@ describe("buildPlacementBlocks", () => {
             expect(slot).not.toBeNull();
             expect(ownKeys.has(`${slot!.round}:${slot!.position}`)).toBe(true);
           }
+        }
+      }
+    }
+  });
+});
+
+describe("placementRounds", () => {
+  it("日程を割り当てる単位の round が、実際に作られる行の round と一致する", () => {
+    // ここがずれると、作り直したときに順位決定戦の日程の既定値が別ラウンドへ載る。
+    for (const method of ["STANDARD", "STAGED_BYE"] as BracketMethod[]) {
+      for (const n of [4, 5, 6, 7, 8, 11, 16, 33]) {
+        const roundCount = buildBracketFor(n, method).roundCount;
+        const blocks = buildPlacementBlocks(n, method, 3);
+        const plan = placementRounds(blocks, roundCount);
+
+        for (const block of blocks) {
+          const planned = plan.filter((r) => r.depth === block.depth);
+          expect(planned.map((r) => r.roundInBlock)).toEqual(
+            Array.from({ length: block.blockRoundCount }, (_, i) => i + 1)
+          );
+          for (const round of planned) {
+            const rows = block.matches.filter((m) => m.roundInBlock === round.roundInBlock);
+            expect(rows.length).toBeGreaterThan(0);
+            for (const row of rows) expect(row.round).toBe(round.round);
+          }
+          // 葉だけが「敗者の出どころの本選ラウンド」を持つ。
+          expect(planned.filter((r) => r.feederRound !== null).map((r) => r.roundInBlock)).toEqual([
+            1,
+          ]);
+          expect(planned[0].feederRound).toBe(roundCount - block.depth);
         }
       }
     }

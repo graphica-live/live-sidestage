@@ -4,7 +4,7 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { aggregateEvent } from "./aggregate";
-import { createBracket, destroyBracket } from "./tournament";
+import { BracketError, createBracket, destroyBracket } from "./tournament";
 
 const PREFIX = "itest_battle";
 // 検知の判定は現在時刻との前後関係で決まるので、固定日付ではなく now からの相対で組む。
@@ -1140,6 +1140,59 @@ describe("順位決定戦", () => {
     expect(await thirdPlaceSides(event.id)).toEqual([null, c.id]);
   });
 
+  it("決勝が始まっていたら、3位決定戦のほうも古いまま揃える(同じ人が両方に載らない)", async () => {
+    // **転送はソース単位の all-or-nothing。** 辺ごとに判定すると、勝敗が覆ったときに
+    // 「決勝は始まっているので旧勝者のまま、3位決定戦は未開始なので新しい敗者を受け取る」
+    // となり、同じ参加者が決勝と3位決定戦の両方に載る。
+    const { event, a, c, d } = await tournamentWithThirdPlace();
+    await aggregateEvent(event.id);
+
+    const finalBefore = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 2, bracketPosition: 0 },
+      include: {
+        sides: {
+          orderBy: { sideIndex: "asc" },
+          select: { participants: { select: { participantId: true } } },
+        },
+      },
+    });
+    expect(finalBefore.sides[0].participants.map((p) => p.participantId)).toEqual([a.id]);
+
+    // 決勝がすでに進行中。
+    await prisma.eventMatch.updateMany({
+      where: { eventId: event.id, round: 2, bracketPosition: 0 },
+      data: { status: "DETECTED" },
+    });
+
+    // 準決勝の勝敗がひっくり返る(勝者 d / 敗者 a)。
+    const semi = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1, bracketPosition: 0 },
+      include: { sides: { orderBy: { sideIndex: "asc" } } },
+    });
+    await prisma.eventMatch.update({
+      where: { id: semi.id },
+      data: { winnerSideId: semi.sides[1].id, winnerDecidedBy: "MANUAL" },
+    });
+    await aggregateEvent(event.id);
+
+    // 決勝は blocked のまま a。3位決定戦も追従せず d のまま。
+    const finalAfter = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 2, bracketPosition: 0 },
+      include: {
+        sides: {
+          orderBy: { sideIndex: "asc" },
+          select: { participants: { select: { participantId: true } } },
+        },
+      },
+    });
+    expect(finalAfter.sides[0].participants.map((p) => p.participantId)).toEqual([a.id]);
+
+    const third = await thirdPlaceSides(event.id);
+    expect(third).toEqual([d.id, c.id]);
+    // a が決勝と3位決定戦の両方に載っていないこと。
+    expect(third).not.toContain(a.id);
+  });
+
   it("3位決定戦が始まっていたら、上流の結果が変わっても出場者を差し替えない", async () => {
     const { event, a, c, d } = await tournamentWithThirdPlace();
     await aggregateEvent(event.id);
@@ -1218,6 +1271,138 @@ describe("順位決定戦", () => {
     // 破棄も通る。
     const destroyed = await destroyBracket(event.id, { confirm: await eventTitle(event.id) });
     expect(destroyed.destroyed).toBe(3);
+  });
+
+  it("複数ラウンドのブロックが進行する(葉の不戦勝が自動確定し、その勝者が決定戦へ上がる)", async () => {
+    // 7人・標準・depth=2。1回戦の実試合は3件(pos0は不戦勝)なので、5位決定戦のブロックは
+    // 3人 = 「不戦勝の葉 + 実試合の葉 + 決定戦」の2ラウンド構成になる。
+    //   (1,1)=第4対第5 / (1,2)=第2対第7 / (1,3)=第3対第6
+    //   → (2,4) 不戦勝の葉[(1,1)の敗者] / (2,5) [(1,2)の敗者 対 (1,3)の敗者] / (3,2) 5位決定戦
+    const event = await newTournament();
+    const seeds = [];
+    for (let i = 1; i <= 7; i++) seeds.push(await newParticipant(event.id, `p${i}`));
+
+    await createBracket({
+      eventId: event.id,
+      entrantIds: seeds.map((s) => s.id),
+      placementDepth: 2,
+    });
+
+    // 1回戦の実試合3件。上位シードが勝つ。
+    const wins: [number, number][] = [
+      [3, 4], // (1,1) 第4シード(index3) が 第5シード(index4) に勝つ
+      [1, 6], // (1,2) 第2シード が 第7シード に勝つ
+      [2, 5], // (1,3) 第3シード が 第6シード に勝つ
+    ];
+    for (const [winnerIndex, loserIndex] of wins) {
+      const battleId = `${PREFIX}_r1_${uniqueSuffix()}`;
+      const winner = seeds[winnerIndex];
+      const loser = seeds[loserIndex];
+      await insertBattle({ roomId: winner.roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
+      await insertBattle({ roomId: loser.roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
+      await insertGift({ roomId: winner.roomId, uniqueId: `w${winnerIndex}`, diamonds: 500, receivedAt: GIFT_AT });
+      await insertGift({ roomId: loser.roomId, uniqueId: `l${loserIndex}`, diamonds: 100, receivedAt: GIFT_AT });
+    }
+
+    // 1周目: 1回戦が確定し、敗者がブロックの葉へ入る。
+    await aggregateEvent(event.id);
+
+    const sidesOf = async (round: number, position: number) => {
+      const match = await prisma.eventMatch.findFirstOrThrow({
+        where: { eventId: event.id, round, bracketPosition: position },
+        include: {
+          sides: {
+            orderBy: { sideIndex: "asc" },
+            select: { participants: { select: { participantId: true } } },
+          },
+        },
+      });
+      return match.sides.map((s) => s.participants[0]?.participantId ?? null);
+    };
+
+    // 不戦勝の葉: (1,1) の敗者(第5シード)だけが入り、相手側は永久に空。
+    expect(await sidesOf(2, 4)).toEqual([seeds[4].id, null]);
+    const byeLeaf = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 2, bracketPosition: 4 },
+      select: { status: true, winnerDecidedBy: true, rules: true },
+    });
+    expect(byeLeaf.status).toBe("FINISHED");
+    expect(byeLeaf.winnerDecidedBy).toBe("BYE");
+    expect((byeLeaf.rules as { bye?: unknown }).bye).toBe(true);
+
+    // 実試合の葉: (1,2) と (1,3) の敗者が向かい合う。
+    expect(await sidesOf(2, 5)).toEqual([seeds[6].id, seeds[5].id]);
+
+    // 5位決定戦はまだ空(この周では葉が埋まっただけ)。
+    expect(await sidesOf(3, 2)).toEqual([null, null]);
+
+    // 2周目: 不戦勝の葉の勝者がブロックの決定戦へ上がる。**1周で1ラウンドしか進まない。**
+    await aggregateEvent(event.id);
+    expect(await sidesOf(3, 2)).toEqual([seeds[4].id, null]);
+
+    // 3位決定戦(準決勝の敗者)はまだ誰も来ていない。
+    expect(await sidesOf(3, 1)).toEqual([null, null]);
+  });
+
+  it("順位決定戦のラウンドごとに、本選とは別の日程を割り当てられる", async () => {
+    const event = await prisma.event.create({
+      data: {
+        slug: `${PREFIX}-${uniqueSuffix()}`,
+        title: `${PREFIX} 2日程トーナメント`,
+        ownerUserId: `${PREFIX}_owner`,
+        format: "TOURNAMENT",
+        entryMode: "SOLO",
+        status: "RUNNING",
+        startAt: START,
+        endAt: END,
+        sessions: {
+          create: [
+            { name: "1日目", startAt: START, endAt: new Date(NOW - 86_400_000) },
+            { name: "2日目", startAt: new Date(NOW - 86_400_000), endAt: END },
+          ],
+        },
+      },
+      select: { id: true, sessions: { orderBy: { startAt: "asc" }, select: { id: true } } },
+    });
+    createdEventIds.push(event.id);
+    const [day1, day2] = event.sessions.map((s) => s.id);
+
+    const seeds = [];
+    for (let i = 1; i <= 7; i++) seeds.push(await newParticipant(event.id, `p${i}`));
+
+    // 順位決定戦の並びは placementRounds() と同じ「ブロック順 → ブロック内ラウンド順」。
+    // [3位決定戦, 5位決定 1回戦, 5位決定戦]
+    await createBracket({
+      eventId: event.id,
+      entrantIds: seeds.map((s) => s.id),
+      roundSessionIds: [day1, day1, day2],
+      placementDepth: 2,
+      placementSessionIds: [day2, day1, day2],
+    });
+
+    const sessionOf = async (round: number, position: number) =>
+      (
+        await prisma.eventMatch.findFirstOrThrow({
+          where: { eventId: event.id, round, bracketPosition: position },
+          select: { sessionId: true },
+        })
+      ).sessionId;
+
+    expect(await sessionOf(3, 1)).toBe(day2); // 3位決定戦
+    expect(await sessionOf(2, 4)).toBe(day1); // 5位決定 1回戦(不戦勝の葉)
+    expect(await sessionOf(2, 5)).toBe(day1); // 5位決定 1回戦
+    expect(await sessionOf(3, 2)).toBe(day2); // 5位決定戦
+
+    // 出場者が決まる本選ラウンドより前には置けない。
+    await expect(
+      createBracket({
+        eventId: event.id,
+        entrantIds: seeds.map((s) => s.id),
+        roundSessionIds: [day2, day2, day2],
+        placementDepth: 1,
+        placementSessionIds: [day1],
+      })
+    ).rejects.toThrow(BracketError);
   });
 
   it("組めない深さを指定しても、組める段までしか作らない", async () => {

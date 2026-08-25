@@ -308,13 +308,17 @@ export function MatchManager({
    * 実際に作る深さ。**選べる選択肢へスナップする。** 単に上限で丸めると、
    * 「d=1 は組めないが d=2 は組める」（段階的不戦勝方式で起きる）ときに
    * 「3位決定戦まで」と表示しながら1つも作られない、という食い違いになる。
+   *
+   * 既定値は「今の表 → イベントの希望値」の順。**表があるならその 0 も尊重する** —
+   * `currentPlacementDepth || eventPlacementDepth` にすると、順位決定戦なしで作り直した表に
+   * 対してウィザードの希望値が復活し、主催者が外したはずの設定が既定で選ばれてしまう。
    */
   const plannedPlacementDepth = useMemo(() => {
     const wanted =
-      placementDepth ?? (currentPlacementDepth || eventPlacementDepth);
+      placementDepth ?? (matches.length > 0 ? currentPlacementDepth : eventPlacementDepth);
     const usable = placementChoices.filter((o) => o.depth <= wanted);
     return usable.length > 0 ? usable[usable.length - 1].depth : 0;
-  }, [placementDepth, currentPlacementDepth, eventPlacementDepth, placementChoices]);
+  }, [placementDepth, matches, currentPlacementDepth, eventPlacementDepth, placementChoices]);
 
   const plannedPlacementRounds = useMemo(
     () =>
