@@ -68,6 +68,37 @@ class FeatureStatusBar extends StatelessWidget {
   }
 }
 
+/// 保存済み設定が**このアプリより新しいバージョン**で作られていたときの警告。
+///
+/// このとき設定は一切保存できず、開始もできない
+/// （[AppConfigStore.configFromFutureVersion]）。古いアプリで上書きすると、次の
+/// サービス起動で孤児ファイルの掃除が走り、音源の実ファイルまで失われるため。
+class ConfigTooNewBanner extends StatelessWidget {
+  const ConfigTooNewBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Colors.red.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.red),
+          SizedBox(width: 8),
+          Expanded(
+            child: SelectableText(
+              'このアプリより新しいバージョンで作られた設定です。'
+              '設定を壊さないため、読み込みと変更を停止しています。アプリを更新してください。',
+              style: TextStyle(fontSize: 12, color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// タブごとの開始/停止ボタン。押すとその機能の有効状態が変わり、
 /// TikTok への接続は「読み上げ・効果音のどちらかが有効か」から導出される。
 class FeatureStartButton extends StatelessWidget {
@@ -76,11 +107,16 @@ class FeatureStartButton extends StatelessWidget {
     required this.started,
     required this.busy,
     required this.onToggle,
+    this.blocked = false,
   });
 
   final bool started;
   final bool busy;
   final ValueChanged<bool> onToggle;
+
+  /// 設定の状態そのものが開始を許さない（未来バージョンの設定を読んでいる）。
+  /// [busy] と違い、待っても解消しない。
+  final bool blocked;
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +127,7 @@ class FeatureStartButton extends StatelessWidget {
         child: FilledButton.icon(
           // busy は両タブ共通。片方の遷移中にもう片方を押させると、
           // 双方が「サービスは止まっている」と判断して二重に起動しうる。
-          onPressed: busy ? null : () => onToggle(!started),
+          onPressed: busy || blocked ? null : () => onToggle(!started),
           style: FilledButton.styleFrom(
             backgroundColor: started ? Colors.red : null,
             padding: const EdgeInsets.symmetric(vertical: 14),

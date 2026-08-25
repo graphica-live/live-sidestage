@@ -9,6 +9,7 @@ import '../core/api_client.dart';
 import '../core/app_config_store.dart';
 import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
+import '../core/sound_file_cleanup.dart';
 import '../core/sound_library.dart';
 import '../core/sound_preview.dart';
 import '../models/app_config.dart';
@@ -16,6 +17,9 @@ import '../models/app_config.dart';
 /// 「ギフトを選んで、音を選ぶ」だけの編集画面。
 ///
 /// [giftSoundId] を渡すと編集、渡さないと新規作成。
+///
+/// [setId] は**画面を開いたときのセット**を指す。「現在選択中のセット」を都度読み直しては
+/// いけない — 編集中に選択が変わると、別のセットへ保存してしまう。
 ///
 /// ## 音源ファイルのライフサイクル
 ///
@@ -28,12 +32,15 @@ import '../models/app_config.dart';
 /// - 保存成功: 採用した1件を残し、それ以外（差し替え前の旧ファイル含む）を消す
 /// - 保存失敗: 作ったファイルを全部消す（設定は変わっていない）
 ///
-/// 旧ファイルの削除は**設定の永続化と背景 Isolate への反映が済んでから**行う。
-/// 反映前に消すと、背景がまだ古い設定を持っていて再生中・キュー保持中の
-/// ファイルを消すことになる。反映を確認できなければ消さず、次回起動時の
-/// 掃除（[SoundLibrary.pruneOrphans]）に委ねる。
+/// **設定に入ったファイルの削除は [deleteUnreferencedSoundFiles] に任せる。**
+/// セット複製で1つの実ファイルを複数の [GiftSound] が参照しうるので、この行から
+/// 外れただけでは消してよいと判断できない。まだ設定へ入っていない取り込みファイル
+/// （[_ownedFileNames]）だけは他から参照されようがないので直接消してよい。
 class GiftSoundEditScreen extends StatefulWidget {
-  const GiftSoundEditScreen({super.key, this.giftSoundId});
+  const GiftSoundEditScreen({super.key, required this.setId, this.giftSoundId});
+
+  /// 編集対象のセット。画面を開いた時点で固定する。
+  final String setId;
 
   final String? giftSoundId;
 
@@ -63,17 +70,14 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
   void initState() {
     super.initState();
     final config = context.read<AppConfigStore>().sound;
+    // 対象セット内だけを探す。セットごと消えていれば「削除されています」を出す。
+    final set = config.sets.where((s) => s.id == widget.setId).firstOrNull;
     final existing = widget.giftSoundId == null
         ? null
-        : config.gifts.where((g) => g.id == widget.giftSoundId).firstOrNull;
+        : set?.gifts.where((g) => g.id == widget.giftSoundId).firstOrNull;
 
-    _exists = existing != null || widget.giftSoundId == null;
-    _draft = existing ??
-        GiftSound(
-          id: 'gs_${DateTime.now().microsecondsSinceEpoch}',
-          giftName: '',
-          fileName: '',
-        );
+    _exists = set != null && (existing != null || widget.giftSoundId == null);
+    _draft = existing ?? GiftSound(id: GiftSound.newId(), giftName: '', fileName: '');
     _originalFileName = existing?.fileName;
   }
 
@@ -245,14 +249,14 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
 
     final next = _draft;
     try {
-      await store.updateSound((c) {
-        final exists = c.gifts.any((g) => g.id == next.id);
-        return c.copyWith(
-          gifts: exists
-              ? [for (final g in c.gifts) g.id == next.id ? next : g]
-              : [...c.gifts, next],
-        );
-      });
+      // 画面を開いたときのセットへ書く。updateSet はセットが消えていれば投げるので、
+      // 別のセットへ紛れ込むことはない。
+      await store.updateSound((c) => c.updateSet(widget.setId, (gifts) {
+            final exists = gifts.any((g) => g.id == next.id);
+            return exists
+                ? [for (final g in gifts) g.id == next.id ? next : g]
+                : [...gifts, next];
+          }));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -265,14 +269,11 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     // 保存できたので、採用したファイルはもうこの画面の所有物ではない。
     _ownedFileNames.remove(next.fileName);
 
-    // 差し替えた旧ファイルは、背景 Isolate が新しい設定を読み終えてから消す。
+    // 差し替えた旧ファイルは、**他のセットから参照されていなければ**消す。
+    // セット複製で同じファイルを共有していることがあるので、単純に消してはいけない。
     final replaced = _originalFileName;
     if (replaced != null && replaced != next.fileName) {
-      final synced = await store.waitForSync();
-      if (synced) {
-        unawaited(_library.deleteFile(replaced));
-      }
-      // 同期を確認できなければ消さない。次回起動時の掃除で回収する。
+      unawaited(deleteUnreferencedSoundFiles(store, _library, [replaced]));
     }
     _originalFileName = next.fileName;
 
@@ -307,17 +308,19 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     final navigator = Navigator.of(context);
     final removedFileName = _draft.fileName;
 
-    await store.updateSound(
-      (c) => c.copyWith(gifts: c.gifts.where((g) => g.id != _draft.id).toList()),
-    );
+    try {
+      await store.updateSound(
+        (c) => c.updateSet(widget.setId, (gifts) => gifts.where((g) => g.id != _draft.id).toList()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '削除に失敗しました: $e');
+      return;
+    }
 
     // まず設定から参照を外し、背景 Isolate が反映し終えてから実ファイルを消す。
     // 逆順にすると、再生中のファイルを消してしまう可能性がある。
-    final synced = await store.waitForSync();
-    final stillReferenced = store.sound.gifts.any((g) => g.fileName == removedFileName);
-    if (synced && !stillReferenced) {
-      unawaited(_library.deleteFile(removedFileName));
-    }
+    await deleteUnreferencedSoundFiles(store, _library, [removedFileName]);
     _originalFileName = null;
 
     if (!mounted) return;
