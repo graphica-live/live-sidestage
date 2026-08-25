@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 
+import '../models/app_config.dart';
 import 'sound_library.dart';
 import 'sound_player_pool.dart';
 
@@ -9,6 +11,10 @@ import 'sound_player_pool.dart';
 abstract class PreviewPlayer {
   /// 1音を鳴らす。**再生の開始まで**で戻り、鳴り終わりは待たない。
   Future<void> play(String filePath, double volume);
+
+  /// メモリ上の音源を鳴らす。まだ端末に取り込んでいない検索結果の試聴に使う。
+  /// 契約は [play] と同じで、再生の開始までで戻る。
+  Future<void> playBytes(Uint8List bytes, double volume);
 
   /// 鳴っている音を止める。鳴っていなければ何もしない。
   Future<void> stop();
@@ -25,30 +31,59 @@ class AudioPlayerPreview implements PreviewPlayer {
   Future<AudioPlayer>? _player;
   bool _disposed = false;
 
-  Future<AudioPlayer> _ensurePlayer() {
-    return _player ??= () async {
-      final player = AudioPlayer();
-      // 効果音と同じ設定で鳴らす。ここがずれると「テストでは鳴ったのに本番で鳴らない」になる。
-      await player.setAudioContext(SoundPlayerPool.playbackContext);
-      await player.setReleaseMode(ReleaseMode.stop);
-      return player;
-    }();
+  Future<AudioPlayer> _ensurePlayer() async {
+    final existing = _player;
+    if (existing != null) return existing;
+
+    final player = AudioPlayer();
+    final pending = _configure(player);
+    _player = pending;
+    try {
+      return await pending;
+    } catch (_) {
+      // 失敗した Future を持ち続けると、以降この画面では二度と鳴らせなくなる。
+      // 作りかけのプレイヤーごと捨てて、次の要求で作り直せるようにする。
+      if (identical(_player, pending)) _player = null;
+      await player.dispose().catchError((_) {});
+      rethrow;
+    }
+  }
+
+  Future<AudioPlayer> _configure(AudioPlayer player) async {
+    // 効果音と同じ設定で鳴らす。ここがずれると「テストでは鳴ったのに本番で鳴らない」になる。
+    await player.setAudioContext(SoundPlayerPool.playbackContext);
+    await player.setReleaseMode(ReleaseMode.stop);
+    return player;
   }
 
   @override
-  Future<void> play(String filePath, double volume) async {
+  Future<void> play(String filePath, double volume) =>
+      _playSource(DeviceFileSource(filePath), volume);
+
+  @override
+  Future<void> playBytes(Uint8List bytes, double volume) =>
+      _playSource(BytesSource(bytes), volume);
+
+  Future<void> _playSource(Source source, double volume) async {
     if (_disposed) return;
     final player = await _ensurePlayer();
     if (_disposed) return;
     await player.setVolume(volume.clamp(0.0, 1.0));
-    await player.play(DeviceFileSource(filePath));
+    await player.play(source);
   }
 
+  // 停止と破棄は best-effort。プレイヤーを用意できていなければ止める音も無いので、
+  // ここで投げると「鳴らせなかった」だけでなく、呼び出し側（画面遷移や dispose）まで
+  // 巻き込んで壊れる。
   @override
   Future<void> stop() async {
     final pending = _player;
     if (pending == null) return;
-    await (await pending).stop();
+    try {
+      await (await pending).stop();
+    } catch (_) {
+      // 鳴っていないのと同じ。
+    }
   }
 
   @override
@@ -57,9 +92,13 @@ class AudioPlayerPreview implements PreviewPlayer {
     final pending = _player;
     _player = null;
     if (pending == null) return;
-    final player = await pending;
-    await player.stop();
-    await player.dispose();
+    try {
+      final player = await pending;
+      await player.stop();
+      await player.dispose();
+    } catch (_) {
+      // 用意に失敗したプレイヤーは _ensurePlayer が始末している。
+    }
   }
 }
 
@@ -91,6 +130,9 @@ class SoundPreview {
   /// 再生要求ごとに進める。await から戻ったときに、自分がまだ最新の要求か判定する。
   int _generation = 0;
 
+  /// 最後に鳴らし始めた要求の世代。[_afterPlay] が「止めてよい音か」を見るのに使う。
+  int _playingGeneration = 0;
+
   /// 鳴らす。表示すべきエラーがあればそのメッセージを、無ければ null を返す。
   ///
   /// 画面を離れた後や、より新しい要求に追い越された場合も null を返す（もう表示先が無い）。
@@ -117,13 +159,61 @@ class SoundPreview {
       if (_isStale(generation)) return null;
 
       await player.play(path, (volume / 100.0) * (masterVolume / 100.0));
-      // 鳴らし始めるまでの間に画面を離れていたら、鳴らしっぱなしにしない。
-      if (_isStale(generation)) await player.stop();
+      await _afterPlay(generation);
       return null;
     } catch (e) {
       if (_isStale(generation)) return null;
       return '再生に失敗しました: $e';
     }
+  }
+
+  /// 検索結果を**取り込む前に**鳴らす。表示すべきエラーがあればそのメッセージを返す。
+  ///
+  /// 端末にはまだ何も無いので、配布元から取ってきたバイト列をそのまま鳴らす
+  /// （[SoundLibrary.fetchPreviewBytes]）。取得は毎回行う。
+  ///
+  /// ギフトごとの音量（[GiftSound.volume]）はこの時点で存在しないので、全体音量だけを掛ける。
+  ///
+  /// [play] と同じ latest-wins。取得している間に別の音を押された・止められた・画面を
+  /// 離れた場合は、取れても鳴らさない。
+  Future<String?> playRemote({
+    required RemoteSound sound,
+    required SoundSourceKind source,
+    required int masterVolume,
+  }) async {
+    if (_disposed) return null;
+
+    final generation = ++_generation;
+    try {
+      final bytes = await library.fetchPreviewBytes(sound: sound, source: source);
+      if (_isStale(generation)) return null;
+
+      await player.stop();
+      if (_isStale(generation)) return null;
+
+      await player.playBytes(bytes, masterVolume / 100.0);
+      await _afterPlay(generation);
+      return null;
+    } on SoundLibraryException catch (e) {
+      // 通信失敗・許可外ホスト・サイズ超過。そのまま出せる日本語になっている。
+      return _isStale(generation) ? null : e.message;
+    } catch (e) {
+      if (_isStale(generation)) return null;
+      return '再生に失敗しました: $e';
+    }
+  }
+
+  /// 鳴らし始めた直後の後始末。
+  ///
+  /// 鳴り始めるまでの間に画面を離れた・別の音を押されたなら、鳴らしっぱなしにしない。
+  /// ただし**自分より後に鳴り始めた音があれば触らない** — プレイヤーは1つしか無いので、
+  /// 追い越された側が無条件に止めると、最新の音を消してしまう。
+  Future<void> _afterPlay(int generation) async {
+    if (!_isStale(generation)) {
+      _playingGeneration = generation;
+      return;
+    }
+    if (_playingGeneration < generation) await player.stop();
   }
 
   /// 鳴っている音を止める。音源を差し替えたときなど。
