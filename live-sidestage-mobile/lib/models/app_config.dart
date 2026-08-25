@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'voice_catalog.dart';
+
 /// 音源をどこから取ってきたか。表示と再取得の可否判断にのみ使う。
 enum SoundSourceKind { local, soundEffectLab, myInstants }
 
@@ -541,6 +543,15 @@ class AppConfig {
   final bool ttsEnabled;
   final bool randomVoice;
 
+  /// [randomVoice] が false のときに使うボイス（VOICEVOX の styleId）。
+  ///
+  /// **新しいキーを足しても [currentSchemaVersion] は上げない。** 旧バージョンの
+  /// アプリはこのキーを無視して既定値になるだけで壊れないが、バージョンを上げると
+  /// 旧アプリ側が [isFutureVersion] と判定して**設定の保存を完全に止める**
+  /// （そのぶん `ConfigTooNewBanner` が出て開始もできなくなる）。互換のつもりで
+  /// 上げると、かえってダウングレード時の被害を自分で作ることになる。
+  final int fixedStyleId;
+
   /// 読み上げの音量。0-100。効果音の [SoundConfig.masterVolume] と同じ尺度で、
   /// 再生時の AudioPlayer 音量に掛ける（VOICEVOX の volumeScale は触らない）。
   /// 合成音声は先読みするので、合成時に掛けると変更が次の1件に効かない。
@@ -553,6 +564,7 @@ class AppConfig {
     this.revision = 0,
     this.ttsEnabled = true,
     this.randomVoice = true,
+    this.fixedStyleId = VoiceCatalog.defaultStyleId,
     this.ttsVolume = 100,
     this.sound = SoundConfig.initial,
   });
@@ -562,6 +574,7 @@ class AppConfig {
         'revision': revision,
         'ttsEnabled': ttsEnabled,
         'randomVoice': randomVoice,
+        'fixedStyleId': fixedStyleId,
         'ttsVolume': ttsVolume,
         'sound': sound.toJson(),
       };
@@ -609,6 +622,9 @@ class AppConfig {
         revision: _clampInt(json['revision'], min: 0, max: 1 << 30, fallback: 0),
         ttsEnabled: json['ttsEnabled'] != false,
         randomVoice: json['randomVoice'] != false,
+        // 同梱していないボイスは選べない。キーが無い旧設定も、vvm を減らして
+        // 実在しなくなった styleId も、ここで既定へ落とす。
+        fixedStyleId: _knownStyleId(json['fixedStyleId']),
         ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
         sound: SoundConfig.fromJson(soundJson),
       );
@@ -643,6 +659,7 @@ class AppConfig {
     int? revision,
     bool? ttsEnabled,
     bool? randomVoice,
+    int? fixedStyleId,
     int? ttsVolume,
     SoundConfig? sound,
   }) {
@@ -651,19 +668,34 @@ class AppConfig {
       revision: revision ?? this.revision,
       ttsEnabled: ttsEnabled ?? this.ttsEnabled,
       randomVoice: randomVoice ?? this.randomVoice,
+      fixedStyleId: fixedStyleId ?? this.fixedStyleId,
       ttsVolume: ttsVolume ?? this.ttsVolume,
       sound: sound ?? this.sound,
     );
   }
 
   /// 編集を1つ進めた新しい設定を作る。保存前に必ず通す。
-  AppConfig bumped({bool? ttsEnabled, bool? randomVoice, int? ttsVolume, SoundConfig? sound}) {
+  AppConfig bumped({
+    bool? ttsEnabled,
+    bool? randomVoice,
+    int? fixedStyleId,
+    int? ttsVolume,
+    SoundConfig? sound,
+  }) {
     return copyWith(
       revision: revision + 1,
       ttsEnabled: ttsEnabled,
       randomVoice: randomVoice,
+      fixedStyleId: fixedStyleId,
       ttsVolume: ttsVolume,
       sound: sound,
     );
   }
+}
+
+/// 同梱している vvm に無い styleId は既定のボイスへ落とす。
+int _knownStyleId(Object? value) {
+  final id = value is int ? value : null;
+  if (id == null || !VoiceCatalog.isKnown(id)) return VoiceCatalog.defaultStyleId;
+  return id;
 }

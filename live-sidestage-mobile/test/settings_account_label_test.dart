@@ -34,6 +34,7 @@ Future<void> _pumpSettings(WidgetTester tester, AuthProvider provider) async {
         home: Scaffold(
           body: SettingsTab(
             speech: const SpeechState(),
+            busy: false,
             onChangeTiktokId: () async {},
             onBeforeLogout: () async {},
           ),

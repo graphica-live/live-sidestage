@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/comment.dart';
+import '../models/voice_catalog.dart';
 import 'comment_feed.dart';
 import 'tts_engine.dart';
 import 'voice_pool.dart';
@@ -47,6 +48,18 @@ class SpeechQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ランダムボイスがOFFのときに読み上げるボイス。[randomVoice] と同じ理由で
+  /// 初期化前の値もここに残す。
+  int _desiredFixedStyleId = VoiceCatalog.defaultStyleId;
+
+  int get fixedStyleId => _voicePool?.fixedStyleId ?? _desiredFixedStyleId;
+
+  set fixedStyleId(int value) {
+    _desiredFixedStyleId = value;
+    _voicePool?.fixedStyleId = value;
+    notifyListeners();
+  }
+
   /// 読み上げ音量。0-100。
   ///
   /// VOICEVOX の volumeScale ではなく再生側で掛ける。合成は次のコメントを
@@ -66,7 +79,9 @@ class SpeechQueueController extends ChangeNotifier {
     if (initialized) return;
     try {
       await _engine.initialize();
-      _voicePool = VoicePool(_engine.voices)..randomEnabled = _desiredRandomVoice;
+      _voicePool = VoicePool(_engine.voices)
+        ..randomEnabled = _desiredRandomVoice
+        ..fixedStyleId = _desiredFixedStyleId;
       initialized = true;
       errorMessage = null;
     } catch (e) {

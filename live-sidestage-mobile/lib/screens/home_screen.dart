@@ -506,6 +506,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 SettingsTab(
                   speech: _speech,
+                  busy: _serviceBusy,
                   onChangeTiktokId: changeTiktokId,
                   onBeforeLogout: _stopService,
                 ),
