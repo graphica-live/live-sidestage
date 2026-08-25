@@ -89,10 +89,13 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
     // 設定を解釈できたときだけ孤児ファイルを掃除する。壊れたJSONや未対応の
     // 未来バージョンで既定値へ落ちた状態で掃除すると、ユーザーの音源を全部消す。
+    //
+    // keep するのは**全セットを横断した**参照。選択中セットだけを渡すと、
+    // 裏のセットが使っているファイルを孤児と誤判定して消してしまう。
     if (decoded != null) {
       unawaited(
         _soundLibrary
-            .pruneOrphans(decoded.sound.gifts.map((g) => g.fileName))
+            .pruneOrphans(decoded.sound.referencedFileNames)
             .catchError((Object e) {
           debugPrint('[sound] 孤児ファイルの掃除に失敗: $e');
           return 0;

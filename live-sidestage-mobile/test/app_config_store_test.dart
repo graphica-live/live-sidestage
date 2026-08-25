@@ -8,9 +8,13 @@
 //     （効果音も true のままなので一緒に起動してしまう）
 //  2. サービス停止中の保存は ACK を待たないこと。待つと syncPending が永久に残り、
 //     設定タブの「設定を反映中…」が消えず、音源ファイルの削除もブロックされる
+import 'dart:convert';
+
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
+import 'package:live_sidestage_mobile/models/app_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -142,6 +146,122 @@ void main() {
       await store.setFeatureMask(tts: false, sound: false);
 
       expect(store.syncPending, isFalse);
+    });
+  });
+
+  group('セット操作', () {
+    test('1回の操作で進む revision は1つ', () async {
+      final store = AppConfigStore();
+      await store.load();
+      final before = store.config.revision;
+
+      await store.updateSound((c) => c.addSet('ダンス', id: 'dance'));
+
+      expect(store.config.revision, before + 1);
+      expect(store.sound.sets.map((s) => s.id), [SoundSet.defaultId, 'dance']);
+      expect(store.sound.selectedSetId, 'dance');
+    });
+
+    test('保存した内容は読み直しても残る', () async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.updateSound((c) => c
+          .addSet('ダンス', id: 'dance')
+          .updateSet('dance', (_) => const [
+                GiftSound(id: 'g1', giftName: 'rose', fileName: 'a.mp3', volume: 30),
+              ]));
+
+      final reloaded = AppConfigStore();
+      await reloaded.load();
+
+      expect(reloaded.sound.sets.map((s) => s.id), [SoundSet.defaultId, 'dance']);
+      expect(reloaded.sound.selectedSetId, 'dance');
+      expect(reloaded.sound.selectedGifts.single.volume, 30);
+    });
+
+    test('全体音量はセットをまたいで共通', () async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.updateSound((c) => c.copyWith(masterVolume: 42).addSet('ダンス', id: 'dance'));
+
+      await store.updateSound((c) => c.selectSet(SoundSet.defaultId));
+
+      expect(store.sound.masterVolume, 42);
+    });
+  });
+
+  // 新しいアプリで作った設定を古い形式で上書きすると、次のサービス起動で
+  // pruneOrphans が音源の実ファイルまで消す。schemaVersion を上げるだけでは
+  // 防げない（背景 Isolate は掃除をスキップするが、UI 側が保存し直してしまう）。
+  group('未来バージョンの設定を上書きしない', () {
+    Future<void> seedFutureConfig() {
+      return FlutterForegroundTask.saveData(
+        key: appConfigStorageKey,
+        value: jsonEncode({
+          'schemaVersion': AppConfig.currentSchemaVersion + 1,
+          'revision': 9,
+          'sound': {'somethingNew': true},
+        }),
+      );
+    }
+
+    Future<Object?> storedSchemaVersion() async {
+      final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
+      return (jsonDecode(raw!) as Map)['schemaVersion'];
+    }
+
+    test('読み込んだ時点で検出する', () async {
+      await seedFutureConfig();
+      final store = AppConfigStore();
+      await store.load();
+
+      expect(store.configFromFutureVersion, isTrue);
+      expect(store.configReadable, isFalse);
+    });
+
+    test('setFeatureMask は保存しない', () async {
+      await seedFutureConfig();
+      final store = AppConfigStore();
+      await store.load();
+
+      await store.setFeatureMask(tts: false, sound: false);
+
+      expect(await storedSchemaVersion(), AppConfig.currentSchemaVersion + 1);
+    });
+
+    test('updateSound は保存しない', () async {
+      await seedFutureConfig();
+      final store = AppConfigStore();
+      await store.load();
+
+      await store.updateSound((c) => c.addSet('ダンス', id: 'dance'));
+
+      expect(await storedSchemaVersion(), AppConfig.currentSchemaVersion + 1);
+      expect(store.sound.sets.any((s) => s.id == 'dance'), isFalse);
+    });
+
+    test('背景 Isolate へも送らない', () async {
+      platform.running = true;
+      await seedFutureConfig();
+      final store = AppConfigStore();
+      await store.load();
+
+      await store.setTtsVolume(10);
+
+      expect(platform.sentToTaskCount, 0);
+      expect(store.syncPending, isFalse);
+    });
+
+    // 壊れたJSONは上書きで復旧させたい。未来バージョンと同じ扱いにしてはいけない。
+    test('壊れたJSONは従来どおり上書きできる', () async {
+      await FlutterForegroundTask.saveData(key: appConfigStorageKey, value: '{');
+      final store = AppConfigStore();
+      await store.load();
+
+      expect(store.configFromFutureVersion, isFalse);
+      await store.setFeatureMask(tts: false, sound: false);
+
+      expect(await storedSchemaVersion(), AppConfig.currentSchemaVersion);
     });
   });
 }
