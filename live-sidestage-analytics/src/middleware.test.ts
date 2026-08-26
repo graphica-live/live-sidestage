@@ -88,7 +88,7 @@ describe("middleware の matcher", () => {
       "/event/logins", // `event/login` に食われてはいけない
       "/registered", // `register` に食われてはいけない
       "/login-history", // `login` に食われてはいけない
-      "/overlays", // `overlay` に食われてはいけない
+      "/overlays", // オーバーレイ管理ページ(要ログイン)。OBS用の公開パス `overlay` に食われてはいけない
       "/api/publicity", // `api/public` に食われてはいけない
       "/api/internally", // `api/internal` に食われてはいけない
     ]) {

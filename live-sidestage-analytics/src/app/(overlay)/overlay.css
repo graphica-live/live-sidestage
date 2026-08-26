@@ -1,0 +1,23 @@
+/* OBS ブラウザソース用ページの背景。
+ *
+ * **セレクタは必ず .overlay-body に閉じること。** 裸の `body { background: transparent }` で
+ * 書くと、Next が CSS を共通チャンクへまとめたときにダッシュボード側の
+ * `body { background-color: #111111 }`(globals.css) まで消えてしまう。
+ * クラスが付くのは (overlay) 配下のページだけなので、この形なら漏れない。
+ *
+ * クラスは2経路で付く:
+ *   1. layout.tsx がサーバー描画する inline script (hydration 前に走る = 黒背景のフラッシュを防ぐ)
+ *   2. OverlayBodyClass の useEffect (クリーンアップ担当。SPA遷移で外す)
+ */
+
+body.overlay-body {
+  background: transparent;
+}
+
+/* ?preview=1 のときだけ。OBS ではなくブラウザや管理画面の iframe で見る用で、
+ * 透過のままだと白地に白文字で読めないため暗い背景を敷く。
+ * 値は CLAUDE.md の Widget Preview Background Rule に合わせてある。 */
+body.overlay-body.overlay-body-preview {
+  background: radial-gradient(circle at top, rgba(30, 41, 59, 0.88) 0%, rgba(15, 23, 42, 0.94) 100%);
+  min-height: 100vh;
+}

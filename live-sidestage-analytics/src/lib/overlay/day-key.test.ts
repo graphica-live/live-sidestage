@@ -1,13 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  jstDateKey,
-  shiftDayKey,
-  resolveOverlayDayKey,
-  inferOverlayDisplayReference,
-  clampOverlayDisplaySpeed,
-  OVERLAY_DISPLAY_SPEED_MIN,
-  OVERLAY_DISPLAY_SPEED_MAX,
-} from "./overlay";
+import { jstDateKey, shiftDayKey, resolveOverlayDayKey, inferOverlayDisplayReference } from "./day-key";
 
 describe("jstDateKey", () => {
   beforeEach(() => {
@@ -85,29 +77,5 @@ describe("inferOverlayDisplayReference", () => {
 
   it("今日以外の日付ならfixedを返す", () => {
     expect(inferOverlayDisplayReference("2020-01-01")).toBe("fixed");
-  });
-});
-
-describe("clampOverlayDisplaySpeed", () => {
-  it("範囲内の値はそのまま返す", () => {
-    expect(clampOverlayDisplaySpeed(3)).toBe(3);
-  });
-
-  it("最小値未満は最小値にクランプする", () => {
-    expect(clampOverlayDisplaySpeed(0)).toBe(OVERLAY_DISPLAY_SPEED_MIN);
-    expect(clampOverlayDisplaySpeed(-10)).toBe(OVERLAY_DISPLAY_SPEED_MIN);
-  });
-
-  it("最大値超過は最大値にクランプする", () => {
-    expect(clampOverlayDisplaySpeed(10)).toBe(OVERLAY_DISPLAY_SPEED_MAX);
-  });
-
-  it("小数は丸める", () => {
-    expect(clampOverlayDisplaySpeed(2.6)).toBe(3);
-  });
-
-  it("NaN/Infinityはデフォルト値3にフォールバックする", () => {
-    expect(clampOverlayDisplaySpeed(NaN)).toBe(3);
-    expect(clampOverlayDisplaySpeed(Infinity)).toBe(3);
   });
 });

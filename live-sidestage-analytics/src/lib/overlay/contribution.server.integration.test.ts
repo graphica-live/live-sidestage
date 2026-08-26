@@ -1,7 +1,7 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach, afterEach } from "vitest";
-import { prisma } from "./prisma";
-import { buildOverlaySnapshot } from "./overlay";
+import { prisma } from "@/lib/prisma";
+import { buildOverlaySnapshot } from "./contribution.server";
 
 const STREAMER_TIKTOK_ID = "itest_overlay_streamer";
 let streamerId: string;
