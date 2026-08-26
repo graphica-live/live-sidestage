@@ -101,8 +101,8 @@ npm run seed:event:local    # イベント機能のシード
 npm run bench:aggregate:local  # イベント集計の性能を実測する（ローカルDB専用）
 ```
 
-単体テストを1つだけ流す: `npx vitest run src/lib/overlay.test.ts -t "テスト名"`
-（integration は DB 接続が要るので `npx dotenv -e .env.local.test -- vitest run src/lib/overlay.integration.test.ts`）
+単体テストを1つだけ流す: `npx vitest run src/lib/overlay/day-key.test.ts -t "テスト名"`
+（integration は DB 接続が要るので `npx dotenv -e .env.local.test -- vitest run src/lib/overlay/contribution.server.integration.test.ts`）
 
 **typecheck → docker DB 起動 → db:push:local → npm test** はコミット前に強制される（モノレポルートの `.githooks/pre-commit`、`git config core.hooksPath .githooks` の有効化が前提）。Docker Desktop が動いていないとコミットできない。
 
@@ -114,7 +114,7 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 ### Web/Worker 2ロール構成
 
-- [server.js](server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
+- [server.js](server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay/emit.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
 - [worker.ts](worker.ts) は Next を持たず、担当 shard の TikTok Webcast 接続だけを維持する軽量プロセス。`hash(streamerId) % WORKER_COUNT` で配信者を分散し、`WORKER_INDEX` が自分の担当番号。`GET /healthz` は初回 `resumeAllListeners()` 完了まで 503 を返し、Railway のゼロダウンタイム切替に使う
 - Worker が接続を維持する部屋の条件は `watchedRoomFilter()`（[src/lib/tiktok-listener.ts](src/lib/tiktok-listener.ts)）の1箇所に集約されていて、`getMyRooms()` はこれを使う。**「`Streamer` が1人以上いる」「`AgencyWatch`（事務所の監視対象）が1件以上ある」「`TiktokRoom.monitorUntil` が未来」のいずれか**で、3つ目はイベント機能が期限付きで監視を要求している状態。どれも満たさなくなった部屋は60秒ごとの reconcile が切断する（ギフトデータは残る）
 - Worker → Web は `POST /api/internal/gift-event`（`INTERNAL_API_SECRET` で保護）。`WEB_INTERNAL_URL` 未設定なら Web/Worker 同居とみなして in-process 直呼びにフォールバックする
@@ -130,6 +130,16 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 - `linkMicBattle` / `linkMicArmies` を購読して `tiktok_battles` に残す（`src/lib/tiktok-battle.ts` がパーサ、`tiktok-listener.ts` の `persistBattle` が保存）。読むのはイベント機能の対戦自動検知だけ。**実 payload は実配信のバトルでしか得られない**ため、`raw` を必ず保存し `GET /api/debug/battle-payloads?token=<GIFT_LOG_TOKEN>` で取り出せるようにしてある
 - **ギフトの一致キーは `giftId` ではなく名前**（trim + 小文字化）。`chat:gift` はその形で配信し、モバイルの効果音設定はそれと文字列比較する。全ギフトカタログ `tiktok_gift_catalog`（[src/lib/tiktok-gift-catalog.ts](src/lib/tiktok-gift-catalog.ts) が `gift/list/` から取得、Worker の60秒 reconcile が24時間TTLで叩く）も **giftId 主キーで持つが消費側は名前で畳む**。実測で **670件中29の名前が複数 giftId を持ち、giftId 自体もレスポンス内で重複する**ので、giftId 照合にすると同名の別IDを取りこぼす。カタログ名は英語で、`app_language: "ja"` を渡しても日本語にならない（実イベント側も英語なので照合は成立する）
 - カタログ取得で `enableExtendedGiftInfo: true` を**使わない**。あれを立てると `connect()` の内部で `fetchAvailableGifts()` が呼ばれ、失敗時に `InvalidResponseError` で**ライブ接続そのものが落ちる**。未接続の使い捨て接続から明示的に呼び、失敗はログのみに留める
+
+### オーバーレイ（OBS ブラウザソース）
+
+- **表示ページの URL `/overlay/<kind>?token=<overlayToken>` は配信者の OBS に設定済み。絶対に変えないこと。** ファイルは `src/app/(overlay)/overlay/<kind>/` に置くが、`(overlay)` はルートグループなので URL には出ない
+- 種類の一覧は [src/lib/overlay/kinds.ts](src/lib/overlay/kinds.ts) が正本。**表示系の種類を足すなら (1) `kinds.ts` に1エントリ (2) [server-kinds.ts](src/lib/overlay/server-kinds.ts) に集計実装 (3) `(overlay)/overlay/<kind>/page.tsx` の3点**で、API (`/api/overlay/[kind]`) と管理画面のカードは自動で載る。`server-kinds.ts` は `satisfies Record<OverlayKind, ...>` なので実装を書き忘れると型エラーになる
+- **`src/lib/overlay/` は client/server をファイルで分けている。** `contracts.ts`(型・定数)と `kinds.ts`(種類の一覧)だけが import ゼロでクライアント安全。`index.ts`(= `@/lib/overlay`)・`token.ts`・`contribution.server.ts`・`emit.ts` は prisma / crypto を引くのでサーバー専用。**クライアントコンポーネントから `@/lib/overlay` を import しないこと**
+- データ取得は `(overlay)/_hooks/useOverlaySnapshot.ts` に集約。socket.io の push が主経路で、切断中だけ 30秒 polling が動く（GET はその日のギフト全件を読む重い処理なので接続中は投げない）。クエリの読み取りは `useOverlayParams.ts` を通す — **`useSearchParams` に戻さないこと**（Suspense 構成が本番でだけ "Element type is invalid" を起こした経緯がある）
+- 背景の透過は `(overlay)/layout.tsx` の inline script が hydration 前に `body.overlay-body` を付けて実現する。CSS は必ず `.overlay-body` にスコープを閉じる（裸の `body` セレクタだとダッシュボード側の背景まで消える）
+- 設定 UI は `/overlays`（[src/app/(dashboard)/overlays/](src/app/(dashboard)/overlays/)）。**ヘッダーのドロップダウンへ戻さないこと。** 未送信の変更は項目別ではなく1つの patch にマージして直列 PATCH する（[useOverlaySettings.ts](src/app/(dashboard)/overlays/useOverlaySettings.ts)）— 項目ごとに debounce タイマーを共有すると、連続操作で先の変更が握り潰される
+- 設定の保存 API `/api/streamer/overlay-settings` は **contribution 固定**。設定が要る種類を2つ目に足すときは、この API か `Streamer` の `overlay*` 列（種類ごとに増え続ける）の設計から必要になる
 
 ### イベント機能（LIVE Sidestage Event）— 同じコードベース、別プロセス
 

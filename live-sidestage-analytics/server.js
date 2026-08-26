@@ -17,7 +17,7 @@ app.prepare().then(() => {
   const httpServer = createServer((req, res) => handle(req, res));
   const io = new Server(httpServer);
 
-  // src/lib/overlay.ts の emitOverlaySnapshot などが参照する。
+  // src/lib/overlay/emit.ts の emitOverlayUpdate などが参照する。
   global.__io = io;
 
   // ブラウザ製オーバーレイウィジェット: ?token=overlayToken → overlay:{streamerId} ルーム
