@@ -315,4 +315,39 @@ describe("parseParticipantPatch", () => {
     expect(parseParticipantPatch({ displayName: 123 }).ok).toBe(false);
     expect(parseParticipantPatch({ displayName: { a: 1 } }).ok).toBe(false);
   });
+
+  it("avatarFrame は offsetX/offsetY/zoom が揃った有効な値だけを通す", () => {
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: 10, offsetY: 90, zoom: 2 } })).toEqual({
+      ok: true,
+      value: { avatarFrame: { offsetX: 10, offsetY: 90, zoom: 2 } },
+    });
+  });
+
+  it("avatarFrame: null はデフォルトへのリセットとして通す", () => {
+    expect(parseParticipantPatch({ avatarFrame: null })).toEqual({
+      ok: true,
+      value: { avatarFrame: null },
+    });
+  });
+
+  it("avatarFrame の値域外・NaN・欠損フィールドを弾く", () => {
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: -1, offsetY: 50, zoom: 1 } }).ok).toBe(
+      false
+    );
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: 101, offsetY: 50, zoom: 1 } }).ok).toBe(
+      false
+    );
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: 50, offsetY: 50, zoom: 0.5 } }).ok).toBe(
+      false
+    );
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: 50, offsetY: 50, zoom: 4 } }).ok).toBe(
+      false
+    );
+    expect(
+      parseParticipantPatch({ avatarFrame: { offsetX: NaN, offsetY: 50, zoom: 1 } }).ok
+    ).toBe(false);
+    expect(parseParticipantPatch({ avatarFrame: { offsetX: 50, offsetY: 50 } }).ok).toBe(false);
+    expect(parseParticipantPatch({ avatarFrame: "50,30,1" }).ok).toBe(false);
+    expect(parseParticipantPatch({ avatarFrame: [50, 30, 1] }).ok).toBe(false);
+  });
 });

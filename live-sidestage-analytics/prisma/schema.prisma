@@ -541,6 +541,12 @@ model EventParticipant {
   status      String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
   joinedAt    DateTime @default(now())
 
+  // 対戦カードに表示するアバターの切り出し位置・ズーム。null = 現状のデフォルト表示
+  // (object-position: 50% 30%, zoom: 1)。解決は src/event/avatar-frame.ts に閉じる。
+  avatarOffsetX Float? // object-position の横位置(%, 0-100)
+  avatarOffsetY Float? // object-position の縦位置(%, 0-100)
+  avatarZoom    Float? // 拡大率(1-3)
+
   event Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
   team  EventTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
   sides EventMatchSideParticipant[]

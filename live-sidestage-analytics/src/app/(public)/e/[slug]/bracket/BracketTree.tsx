@@ -1,3 +1,4 @@
+import { avatarFrameStyle, resolveAvatarFrame } from "@/event/avatar-frame";
 import { fitBracketName } from "@/event/bracket-name-fit";
 import { findSurvivorMatchIds } from "@/event/bracket-survivors";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
@@ -687,6 +688,13 @@ function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "
  * src はいつでも `/api/public/avatar/<participantId>`。**取得に失敗した場合も API 側が
  * プレースホルダ画像を返す**ので、ここで欠損や読み込み失敗を扱う必要がない
  * (TikTok の avatar URL は署名付きで約2日で失効するため、URL をここへ埋めない)。
+ *
+ * **参加者ごとの切り出し位置・ズーム(avatarOffsetX/Y/Zoom)を適用するのは1人表示(count===1)
+ * だけ。** 2人以上の丸アイコン表示は `<img>` 自身に `rounded-full` を直接掛けていて
+ * `overflow-hidden` のラッパが無いため、transform: scale() を当てると円がborderごと
+ * 拡大されレイアウトからはみ出す(SmallEntrantAvatars も同様の理由で対象外)。
+ * 対戦カードに表示されるプロフィール画像という要件の対象は1人表示の枠なので、
+ * チーム戦の複数人アイコンには意図的に適用しない。
  */
 function EntrantAvatars({
   entrants,
@@ -706,6 +714,7 @@ function EntrantAvatars({
 
   if (count === 1) {
     const only = shown[0];
+    const frame = resolveAvatarFrame(only.avatarOffsetX, only.avatarOffsetY, only.avatarZoom);
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -714,7 +723,8 @@ function EntrantAvatars({
         title={only.displayName}
         width={champion ? 176 : 156}
         height={champion ? 176 : 156}
-        className="absolute inset-0 h-full w-full bg-white/5 object-cover object-[50%_30%]"
+        className="absolute inset-0 h-full w-full bg-white/5 object-cover"
+        style={avatarFrameStyle(frame)}
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
