@@ -82,6 +82,26 @@ export async function findRoomStatuses(roomIds: string[]): Promise<Map<string, R
   );
 }
 
+/**
+ * 今まさに配信中(TikTok Live に接続できている)の room を引く。
+ *
+ * `listenerActivity`(analytics 側の正規化済み接続状態)が `"live"` の room だけを返す。
+ * `listenerStatus`(findRoomStatuses)とは軸が違う — こちらは「配信しているか」だけを見る。
+ * 公開トーナメント表で、まだバトル前の対戦カードに「今配信中」の目印を出すために使う。
+ */
+export async function findLiveRoomIds(roomIds: string[]): Promise<Set<string>> {
+  if (roomIds.length === 0) return new Set();
+
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id
+    FROM public."TiktokRoom"
+    WHERE id = ANY(${roomIds}::text[])
+      AND "listenerActivity" = 'live'
+  `;
+
+  return new Set(rows.map((r) => r.id));
+}
+
 export type GiftAggregateRow = {
   roomId: string;
   uniqueId: string;

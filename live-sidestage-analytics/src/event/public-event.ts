@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { findLiveRoomIds } from "./analytics-db";
 import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-breakdown";
 import { rankByLife } from "./deathmatch";
@@ -140,6 +141,11 @@ export type BracketSideDto = {
    */
   tiktokScore: string | null;
   isWinner: boolean;
+  /**
+   * バトル前(対戦の status が SCHEDULED)の対戦でだけ意味を持つ。出場者の誰かが
+   * 今まさに TikTok Live に接続できているか。それ以外の状態では常に false。
+   */
+  hasLiveStreamer: boolean;
 };
 
 export type BracketMatchDto = {
@@ -216,6 +222,13 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
     sessions.map((s, index) => [s.id, s.name || `${index + 1}日目`] as const)
   );
 
+  // バトル前(SCHEDULED)の対戦だけ、出場者が今配信中かを見る。「接続中」発光の判定材料
+  // (すでにバトルへ入っている対戦や確定済みの対戦には出さない)。
+  const scheduledRoomIds = matches
+    .filter((m) => m.status === "SCHEDULED")
+    .flatMap((m) => m.sides.flatMap((s) => s.participants.map((p) => p.participant.roomId)));
+  const liveRoomIds = await findLiveRoomIds(scheduledRoomIds);
+
   // TikTok 側のバトルスコア。公開側は誤解のコストが大きいので exact 検知のマッチだけに出す。
   // roomId は帰属の突き合わせにだけ使い、DTO には出さない。
   const tiktokScores = await loadMatchTiktokScores(
@@ -264,6 +277,9 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           tiktokScore: tiktokScores.get(s.id) ?? null,
           // 確定するまでは勝者を出さない(NEEDS_REVIEW のまま公開しない)。
           isWinner: m.status === "FINISHED" && m.winnerSideId === s.id,
+          hasLiveStreamer:
+            m.status === "SCHEDULED" &&
+            s.participants.some((p) => liveRoomIds.has(p.participant.roomId)),
         };
       }),
     })),

@@ -566,11 +566,19 @@ function MatchCard({
  * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
  * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンの上に乗るので、
  * 読めるよう背景を敷いている。
+ *
+ * `hasLiveStreamer` はバトル前(SCHEDULED)の枠にだけ立つ(DTO側で保証済み)。「今まさに配信中」の
+ * 目印として緑のリングで発光させる — LIVE中の対戦(カード全体が赤く光る `.live-glow`)と
+ * 混同しないよう、こちらは点滅させず静的にしてある。
  */
 function SideRow({ side }: { side: BracketSideDto }) {
   const hasAvatar = side.entrants.length > 0;
   const frame = `relative flex ${SIDE_H} flex-col overflow-hidden text-center ${
-    side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
+    side.isWinner
+      ? "bg-brand/10 ring-1 ring-inset ring-brand/40"
+      : side.hasLiveStreamer
+        ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
+        : "bg-white/[0.04]"
   }`;
 
   if (!side.name) {
