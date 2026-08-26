@@ -170,6 +170,38 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
 - **数字は単調増加しない。** `NEEDS_REVIEW` の承認で一気に加算され、`CUT_SHORT` の判明で減る。
   公開ページの注記（`BATTLE_ONLY_SCORING_NOTE`）でその旨を出している
 
+### ⚠️トラブル対処: 対戦単位の `forceFullPeriod` 強制フラグ
+
+1回戦の検知失敗（部分一致・`AMBIGUOUS`・`END_UNKNOWN`）で主催者が勝者を手動確定すると、
+その `decidedAt`（手動確定した時刻）が下流ラウンドの `feederDecidedAt` に使われる。実際の
+バトルがそれより前に開始していると、**正常に検知できたはずの下流ラウンドまで候補から
+除外される連鎖**が起きうる（実例: 2026-08-26 `awake-vol-3-kcmkdz`）。`feederDecidedAt`
+自体の設計変更（手動確定時刻と実決着時刻の分離）は今のところ見送っている。
+
+代わりに、主催者が対戦カード単位で明示的に有効化する緊急救済フラグ
+（`EventMatch.rules.forceFullPeriod === true`、`match-status.ts` の `isForceFullPeriod`）を
+用意してある。管理画面（`MatchManager.tsx` の `TroubleShootingSection`）でのみ操作でき、
+**`FINISHED` の対戦にしか存在しない不変条件**（`route.ts` が設定を FINISHED 限定にし、
+`reopen`/`void` で自動的に消す）。
+
+守ること・既知の影響:
+
+- **`loadBattleRangesByRoom()` はフラグが立った対戦を検知区間ではなく開催日程
+  `[session.startAt, session.endAt)` まるごとで扱う。** 勝敗判定（`resolveMatchResults`）は
+  これを見ないので勝者には影響しない
+- **BATTLE倍率が設定されている場合、フラグ区間にも通常のBATTLE倍率がそのまま乗る**
+  （区間の kind は常に BATTLE）。フラグを立てた参加者は他参加者より構造的に有利になりうるが、
+  緊急救済としてこの歪みは許容する
+- **公開ページの注記（`aggregationPolicy: BATTLE_ONLY` に基づく説明）は変わらない。**
+  「バトル区間のみ集計」という説明とフラグ適用参加者の実態が食い違う点は、主催者の明示操作
+  による例外として受容する
+- **対戦カードのサイドスコア（`EventMatchSide.diamonds`、検知区間ベース）と、順位表・
+  リスナー貢献（フラグ適用時は全期間ベース）の数字が食い違いうる。** バグではなく仕様上の帰結
+- フラグは「保存済みだが集計区間の外にあるギフト」しか救済できない。**登録アカウントと
+  実際に配信したアカウントが異なる等でギフト自体がDBに存在しない場合は直せない**
+- 通常機能ではないので、`REVIEW_REASON_NOTES` 等の通常導線とは別枠（`TroubleShootingSection`）
+  に置き、誤操作防止の確認ダイアログを挟む
+
 **性能**（ローカル docker Postgres、ギフト50万 / 参加者50 / 1回戦18対戦）:
 バトル区間のみ 1.2秒 に対し、全期間は 2.7〜3.4秒。区間が短いぶん**従来より速い**ので、
 `unnest` での一括クエリ化は入れていない。`npm run bench:aggregate:local` は

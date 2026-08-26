@@ -39,6 +39,22 @@ export function isByeRow(rules: unknown): boolean {
   return isPlainObject(rules) && rules.bye === true;
 }
 
+/**
+ * ⚠️トラブル対処: 検知区間の代わりに開催日程まるごとを集計対象にする強制フラグ
+ * (`EventMatch.rules.forceFullPeriod === true`)。
+ *
+ * バトル検知が失敗して(部分一致・AMBIGUOUS・END_UNKNOWN等)主催者が勝者を手動確定した対戦は、
+ * バトル区間がゼロのままだと BATTLE_ONLY 種目でダイヤが0点になる。このフラグは
+ * `loadBattleRangesByRoom()` にだけ効く緊急救済で、勝敗判定には一切影響しない。
+ *
+ * **`FINISHED` の対戦にしか存在しない不変条件。** `route.ts` が設定を FINISHED 限定にし、
+ * `reopen`/`void` で明示的に消すことでこれを保つ(`match-status.ts` 自体は状態遷移を
+ * 知らないので、ここでは検証しない — 呼び出し側の責務)。
+ */
+export function isForceFullPeriod(rules: unknown): boolean {
+  return isPlainObject(rules) && rules.forceFullPeriod === true;
+}
+
 /** 順位決定戦の行に付く印(`EventMatch.rules.placement`)。 */
 export type PlacementMark = { depth: number; rank: number };
 

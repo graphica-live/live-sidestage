@@ -58,7 +58,32 @@ function clearReviewReason(rules: unknown): Prisma.InputJsonObject {
   return base as Prisma.InputJsonObject;
 }
 
-type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "assignSession";
+/**
+ * ⚠️トラブル対処フラグ(`forceFullPeriod`)を足す/消す。既存キー(`roundLabel`/`bye`等)は保つ。
+ * `reviewReason` と同じ「マージして片方だけ触る」パターン。
+ */
+function mergeForceFullPeriod(rules: unknown, enabled: boolean): Prisma.InputJsonObject {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  if (enabled) base.forceFullPeriod = true;
+  else delete base.forceFullPeriod;
+  return base as Prisma.InputJsonObject;
+}
+
+/** `reopen`/`void` で⚠️トラブル対処フラグも一緒に消す。フラグは FINISHED にしか存在しない。 */
+function clearForceFullPeriod(rules: unknown): Prisma.InputJsonObject {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  delete base.forceFullPeriod;
+  return base as Prisma.InputJsonObject;
+}
+
+type Action =
+  | "approve"
+  | "confirm"
+  | "draw"
+  | "void"
+  | "reopen"
+  | "assignSession"
+  | "forceFullPeriod";
 
 /** ロック内の検証で弾いたときの応答。トランザクションからはこれを返して外で JSON にする。 */
 type Failure = { error: string; code?: string; status: number };
@@ -76,6 +101,7 @@ export async function PATCH(
     action?: unknown;
     winnerSideId?: unknown;
     sessionId?: unknown;
+    enabled?: unknown;
   } | null;
 
   const action = body?.action as Action | undefined;
@@ -249,7 +275,8 @@ export async function PATCH(
               winnerSideId: null,
               winnerDecidedBy: null,
               decidedAt: null,
-              rules: clearReviewReason(match.rules),
+              // 無効化した対戦は集計対象から外れるので、⚠️トラブル対処フラグにも意味がない。
+              rules: clearForceFullPeriod(clearReviewReason(match.rules)),
             },
           });
           // 集計済みのスコアも消す。無効にした対戦の数字が残っていると
@@ -275,12 +302,35 @@ export async function PATCH(
               detectionConfidence: null,
               detectedEndSource: null,
               decidedAt: null,
-              rules: clearReviewReason(match.rules),
+              // 検知をやり直す以上、⚠️トラブル対処フラグ(緊急措置)もリセットして
+              // 素直に再評価させる。フラグは FINISHED にしか存在しない不変条件でもある。
+              rules: clearForceFullPeriod(clearReviewReason(match.rules)),
             },
           });
           await tx.eventMatchSide.updateMany({
             where: { matchId: match.id },
             data: { diamonds: 0, score: 0 },
+          });
+          break;
+        }
+
+        case "forceFullPeriod": {
+          // ⚠️トラブル対処: バトル検知が失敗して手動確定した対戦のダイヤ救済。
+          // 検知区間の代わりに開催日程まるごとを集計対象にする(loadBattleRangesByRoom側)。
+          // 通常機能ではないので、確定済み(FINISHED)の対戦にしか設定させない —
+          // 「検知をやり直す」「無効にする」を通ると自動的に消える(上のcase参照)。
+          if (isByeRow(match.rules)) {
+            return { error: "不戦勝の対戦には設定できません。", status: 400 };
+          }
+          if (match.status !== "FINISHED") {
+            return { error: "確定済みの対戦にのみ設定できます。", status: 400 };
+          }
+          if (typeof body?.enabled !== "boolean") {
+            return { error: "enabled を真偽値で指定してください。", status: 400 };
+          }
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: { rules: mergeForceFullPeriod(match.rules, body.enabled) },
           });
           break;
         }
