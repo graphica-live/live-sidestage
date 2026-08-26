@@ -18,6 +18,7 @@ const baseDraft: EventDraft = {
   sessions: [{ name: "", startAt: "2026-09-01T22:00", endAt: "2026-09-01T23:00" }],
   matchRules: MATCH_RULES_DEFAULT,
   bracketMethod: "STANDARD",
+  placementDepth: 0,
   prizeText: "",
   noticeText: "",
 };
@@ -50,6 +51,20 @@ describe("validateWizardStep", () => {
         format: "DIAMOND_RACE",
         bracketMethod: "INVALID" as never,
       })
+    ).toEqual([]);
+  });
+
+  it("トーナメントで順位決定戦の深さが範囲外なら弾く", () => {
+    for (const placementDepth of [-1, 4, 1.5, "1" as never]) {
+      expect(
+        validateWizardStep("format", { ...baseDraft, format: "TOURNAMENT", placementDepth })
+      ).toEqual(["順位決定戦の指定が不正です。"]);
+    }
+  });
+
+  it("トーナメント以外では順位決定戦を見ない", () => {
+    expect(
+      validateWizardStep("format", { ...baseDraft, format: "DIAMOND_RACE", placementDepth: 99 })
     ).toEqual([]);
   });
 

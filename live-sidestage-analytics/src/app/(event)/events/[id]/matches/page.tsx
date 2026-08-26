@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseBracketMethod } from "@/event/bracket-rules";
+import { parseBracketMethod, parsePlacementDepth } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
-import { isByeRow } from "@/event/match-status";
+import { isByeRow, parsePlacement } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
@@ -174,8 +174,9 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     detectedEndSource: m.detectedEndSource,
     winnerSideId: m.winnerSideId,
     winnerDecidedBy: m.winnerDecidedBy,
-    // rules を丸ごとクライアントへ流さず、要る真偽値だけ渡す。
+    // rules を丸ごとクライアントへ流さず、要る値だけ渡す。
     isBye: isByeRow(m.rules),
+    placement: parsePlacement(m.rules),
     sides: m.sides.map((s) => ({
       id: s.id,
       sideIndex: s.sideIndex,
@@ -230,6 +231,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           lives={lives}
           rules={parseDeathmatchRules(event.rules)}
           bracketMethod={parseBracketMethod(event.rules)}
+          eventPlacementDepth={parsePlacementDepth(event.rules)}
         />
       </div>
 

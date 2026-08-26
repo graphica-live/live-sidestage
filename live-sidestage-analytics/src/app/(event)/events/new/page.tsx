@@ -36,6 +36,8 @@ function defaultDraft(): EventDraft {
     matchRules: MATCH_RULES_DEFAULT,
     // 標準シード方式(プロ大会方式)を既定にする。段階的方式はTOURNAMENT選択時に選べる。
     bracketMethod: "STANDARD",
+    // 順位決定戦は既定で行わない(1つ増やすごとに参加者の実バトルが増えるため)。
+    placementDepth: 0,
     prizeText: "",
     noticeText: DEFAULT_NOTICE_TEMPLATE,
   };

@@ -1,13 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import type { DbClient } from "./analytics-db";
 import {
+  buildBracketFor,
+  buildManualBracket,
+  buildPlacementBlocksFor,
+  placementOptionsFor,
+  placementRoundLabel,
+  placementRounds,
   resolveBracket,
   resolveManualBracket,
   roundLabel,
   stagedRoundLabel,
   validatePlacement,
+  type Bracket,
+  type PlacementRound,
 } from "./bracket";
-import { parseBracketMethod } from "./bracket-rules";
+import { parseBracketMethod, parsePlacementDepth } from "./bracket-rules";
 import { acquireEventLock } from "./event-lock";
 import { advanceBracket } from "./match-results";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
@@ -48,6 +56,19 @@ export type BracketPlanInput = BracketPlanSource & {
    * 省略・空なら全ラウンドを最初の日程に置く。
    */
   roundSessionIds?: string[];
+  /**
+   * 順位決定戦(3位決定戦など)をどの深さまで行うか。0 なら行わない。
+   *
+   * **省略すると `Event.rules.bracket.placementDepth`(作成ウィザードで決めた希望値)を使う。**
+   * どちらの値も、実際に組める深さ(`placementOptions()`)を超えていれば黙って丸める —
+   * 深さの上限は参加人数と不戦勝の出方で決まり、ウィザードの時点では分からないため。
+   */
+  placementDepth?: number;
+  /**
+   * 順位決定戦のラウンドごとの開催日程 id。並びは `placementRounds()` と同じ
+   * (ブロック順 → ブロック内ラウンド順)。省略なら全部を本選決勝と同じ日程に置く。
+   */
+  placementSessionIds?: string[];
 };
 
 export class BracketError extends Error {
@@ -114,13 +135,86 @@ export function planRoundSessions(input: {
 }
 
 /**
+ * 順位決定戦のラウンドごとの日程を決める。**本選のラウンド日程とは別に選ばせる。**
+ *
+ * 既定は本選決勝と同じ日程。本選のどのラウンドよりも後ろ(または同時)なので必ず妥当になる。
+ *
+ * 検証はこの2つだけ:
+ *
+ * - **ブロック内で逆行しないこと。** 2回戦の日程を1回戦より前に置くと、勝者が決まる前の
+ *   時間帯で検知することになる（本選と同じ理由）
+ * - **葉の日程が、敗者の出どころの本選ラウンドより前にならないこと。** 前に置くと、
+ *   まだ敗者が決まっていない時間帯を検知対象にしてしまう
+ *
+ * **ブロック同士の前後関係は制約しない**（独立していて、どちらを先にやってもよい）。
+ * **本選の決勝と同じ日程に置くのも許可する** — 3位決定戦を決勝の前後にやるのは普通の運用で、
+ * 検知は日程ではなく room 集合の一致で行うので取り違えない。
+ */
+export function planPlacementSessions(input: {
+  sessions: { id: string; startAt: Date }[];
+  rounds: PlacementRound[];
+  /** 本選のラウンド順の日程 id（`planRoundSessions` の結果） */
+  mainRoundSessionIds: string[];
+  requested?: string[];
+}): { ok: true; value: string[] } | { ok: false; error: string } {
+  const { sessions, rounds, mainRoundSessionIds, requested } = input;
+  if (rounds.length === 0) return { ok: true, value: [] };
+
+  const ordered = [...sessions].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  const finalSessionId = mainRoundSessionIds[mainRoundSessionIds.length - 1];
+  if (!requested || requested.length === 0) {
+    return { ok: true, value: rounds.map(() => finalSessionId) };
+  }
+
+  if (requested.length !== rounds.length) {
+    return {
+      ok: false,
+      error: `順位決定戦のラウンドは${rounds.length}つあります。すべての日程を選んでください。`,
+    };
+  }
+
+  const orderById = new Map(ordered.map((s, index) => [s.id, index]));
+  // ブロックごとに直前のラウンドの日程を覚えて逆行を見る。
+  const previousByDepth = new Map<number, number>();
+
+  for (const [index, sessionId] of requested.entries()) {
+    const placement = rounds[index];
+    const order = orderById.get(sessionId);
+    if (order === undefined) {
+      return { ok: false, error: "このイベントに存在しない開催日程が指定されています。" };
+    }
+
+    const previous = previousByDepth.get(placement.depth);
+    if (previous !== undefined && order < previous) {
+      return {
+        ok: false,
+        error: `${placement.label}の日程が前のラウンドより前になっています。`,
+      };
+    }
+    previousByDepth.set(placement.depth, order);
+
+    if (placement.feederRound !== null) {
+      const feederOrder = orderById.get(mainRoundSessionIds[placement.feederRound - 1]);
+      if (feederOrder !== undefined && order < feederOrder) {
+        return {
+          ok: false,
+          error: `${placement.label}の日程が、出場者が決まる${placement.feederRound}回戦より前になっています。`,
+        };
+      }
+    }
+  }
+
+  return { ok: true, value: [...requested] };
+}
+
+/**
  * トーナメント表を作る。**既存の表があるイベントでは作らない**(`BRACKET_EXISTS`)。
  *
  * 作り直したいときは先に `destroyBracket()` で破棄する。表を消すのはこの関数の仕事では
  * ないので、確認(イベント名)も楽観的排他も受け取らない — 消えるものが無いなら儀式も要らない。
  */
 export async function createBracket(input: BracketPlanInput): Promise<{ matches: number }> {
-  const { eventId, placement, roundSessionIds } = input;
+  const { eventId, placement, roundSessionIds, placementDepth, placementSessionIds } = input;
 
   // 手動配置は「どの枠へ置いたか」がそのまま構造になるので、エントリーの一覧は配置から導く。
   if (placement) {
@@ -184,6 +278,24 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     const bracket = placement ? resolveManualBracket(placement) : resolveBracket(entrantIds, method);
     const label = placement || method === "STAGED_BYE" ? stagedRoundLabel : roundLabel;
 
+    // 順位決定戦。**実際に組める深さは参加人数と不戦勝の出方で決まる**ので、
+    // 主催者の指定（またはウィザードで決めた希望値）を黙って上限へ丸める。
+    // **手動配置では実際の形（疎な不戦勝パターン）から組む。** entrantIds.length と
+    // 方式だけから再計算すると、手動配置には存在しない実試合を前提にしたブロック
+    // （例: 準決勝が1件しかないのに2件分の敗者を待つ3位決定戦）になる。
+    const placementSourceBracket: Bracket = placement
+      ? buildManualBracket(placement.map((id) => id !== null))
+      : buildBracketFor(entrantIds.length, method);
+    const options = placementOptionsFor(placementSourceBracket);
+    const maxDepth = options.length > 0 ? options[options.length - 1].depth : 0;
+    const requestedDepth = placementDepth ?? parsePlacementDepth(event.rules);
+    const depth = Math.min(
+      Number.isInteger(requestedDepth) && requestedDepth > 0 ? requestedDepth : 0,
+      maxDepth
+    );
+    const blocks = buildPlacementBlocksFor(placementSourceBracket, depth);
+    const placementPlan = placementRounds(blocks, bracket.roundCount);
+
     const roundSessions = planRoundSessions({
       sessions: event.sessions,
       roundCount: bracket.roundCount,
@@ -191,6 +303,16 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     });
     if (!roundSessions.ok) {
       throw new BracketError(roundSessions.error, "INVALID_SESSION");
+    }
+
+    const placementSessions = planPlacementSessions({
+      sessions: event.sessions,
+      rounds: placementPlan,
+      mainRoundSessionIds: roundSessions.value,
+      requested: placementSessionIds,
+    });
+    if (!placementSessions.ok) {
+      throw new BracketError(placementSessions.error, "INVALID_SESSION");
     }
 
     const sessionById = new Map(event.sessions.map((s) => [s.id, s]));
@@ -257,17 +379,64 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
       }
     }
 
+    // 順位決定戦のブロック。**サイドは空のまま作る** — 出場者は本選の敗者なので、
+    // この時点では誰も決まっていない。`match-results.ts` の進行が `rules.loserFrom` を
+    // 見て転送してくる（片側が BYE の行も、敗者が着いた時点でそこが自動確定させる）。
+    const placementSessionByRound = new Map(
+      placementPlan.map((round, index) => [
+        `${round.depth}:${round.roundInBlock}`,
+        placementSessions.value[index],
+      ])
+    );
+
+    for (const block of blocks) {
+      for (const match of block.matches) {
+        const sessionId = placementSessionByRound.get(`${block.depth}:${match.roundInBlock}`)!;
+        const session = sessionById.get(sessionId)!;
+        const created = await tx.eventMatch.create({
+          data: {
+            eventId,
+            round: match.round,
+            bracketPosition: match.position,
+            matchType: "1V1",
+            sessionId,
+            // 本選と同じく旧列への dual-write。
+            scheduledStartAt: session.startAt,
+            scheduledEndAt: session.endAt,
+            status: "SCHEDULED",
+            rules: {
+              roundLabel: placementRoundLabel(
+                block.rank,
+                match.roundInBlock,
+                block.blockRoundCount
+              ),
+              placement: { depth: block.depth, rank: block.rank },
+              ...(match.loserFrom ? { loserFrom: match.loserFrom } : {}),
+              ...(match.isBye ? { bye: true } : {}),
+            },
+          },
+        });
+
+        await tx.eventMatchSide.createMany({
+          data: [0, 1].map((sideIndex) => ({ matchId: created.id, sideIndex })),
+        });
+      }
+    }
+
     // **不戦勝の勝者をここで次のラウンドへ送る。** 標準シード方式では1回戦の不戦勝行が
     // 作成時点で FINISHED になるが、転送しないと2回戦のサイドが空のままになる。
     // 集計ワーカーは開催前(SCHEDULED)のイベントを対象にしない(`aggregationWindow`)ので、
-    // 事前に表を組む運用ではワーカー任せにできない。
+    // 事前に表を組む運用ではワーカー任せにできない。順位決定戦のブロックは上で作成済みなので、
+    // 本選の不戦勝行に敗者辺(`rules.loserFrom`)があればここで一緒に転送される。
     await advanceBracket(tx, eventId);
 
     // 表を作ったら、最終集計が済んでいても結果が変わる。**破棄と作成が別の操作になった今は
     // ここが要る** — 表の無い状態でワーカーが最終集計を終えていても、作成で再開させる。
     await reopenAggregation(tx, eventId);
 
-    return { matches: bracket.matches.length };
+    return {
+      matches: bracket.matches.length + blocks.reduce((sum, b) => sum + b.matches.length, 0),
+    };
   }, MUTATION_TX_OPTIONS);
 }
 

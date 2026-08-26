@@ -1,22 +1,30 @@
 import type { DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
-import { isByeRow, isStartedMatch } from "./match-status";
+import { isByeRow, isStartedMatch, parseLoserFrom } from "./match-status";
 
 /**
- * この枠の下流(次のラウンド以降)がすでに始まっているか。
+ * この枠の下流(次のラウンド以降)がすでに始まっているか。**`anyDownstreamStarted()` の
+ * 起点1つぶんの薄いラッパー。** 複数の枠についてまとめて確かめたいときはそちらを
+ * 直接使う(全件読み込みを共有できる)。
  *
  * 結果を動かす操作(`[matchId]` の confirm / draw / void / reopen)と、組み合わせの
  * 入れ替え(`bracket-swap-apply.ts`)の**両方**がこれを使う。進行中の対戦の出場者が
  * 途中で入れ替わると、集計対象が変わって結果が壊れるため。
  *
+ * 下流の辺は2種類ある:
+ *
+ * - **勝者辺** — `nextSlot()` の座標。順位決定戦ブロックも本選と同じ座標空間にいるので、
+ *   ブロック内の進行はこれで辿れる
+ * - **敗者辺** — 順位決定戦の葉が持つ `rules.loserFrom`。座標からは導出できないので逆引きする。
+ *   これを見ないと「準決勝を void したら、すでに始まっている3位決定戦の出場者が黙って
+ *   入れ替わる」が起きる
+ *
  * 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
  * 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
- * わたることがある)。ラウンド数で有界なので無限ループにはならない。
+ * わたることがある)。訪問済み集合で有界なので無限ループにはならない。
  *
- * **最初に見つけた非不戦勝の下流で判定を打ち切る**(その先は見ない)。下流が未着手なのに
- * さらにその下流だけが手動確定済み、という順序逆転があると素通りするが、そのときは
- * `advanceBracket` が該当の枠を `blocked` にして書き換えを拒む。既存の `[matchId]` 操作と
- * 同じ挙動をそのまま共有している。
+ * **対戦は1イベントぶんしかない**(100人でも99行＋順位決定戦)ので、ホップごとに引かず
+ * 1回で読み切る。
  */
 export async function downstreamStarted(
   tx: DbClient,
@@ -24,33 +32,97 @@ export async function downstreamStarted(
   round: number,
   position: number
 ): Promise<boolean> {
-  const agg = await tx.eventMatch.aggregate({
+  return anyDownstreamStarted(tx, eventId, [{ round, position }]);
+}
+
+/**
+ * 複数の起点について、**いずれか1つでも**下流がすでに始まっているか。
+ *
+ * `downstreamStarted()` と同じ判定を、**1回の全件読み込みでまとめて**行う。
+ * `bracket-swap-apply.ts` は組み合わせ入れ替えで移動する行すべてについてこの判定が
+ * 要るが、行ごとに `downstreamStarted()` を呼ぶと同じ全件スキャンを N 回繰り返す
+ * (N+1 クエリ)。起点が複数でも対戦の総数は変わらないので、まとめて1回で済ませる。
+ */
+export async function anyDownstreamStarted(
+  tx: DbClient,
+  eventId: string,
+  starts: { round: number; position: number }[]
+): Promise<boolean> {
+  if (starts.length === 0) return false;
+
+  const all = await tx.eventMatch.findMany({
     where: { eventId },
-    _max: { round: true },
+    select: {
+      round: true,
+      bracketPosition: true,
+      status: true,
+      winnerDecidedBy: true,
+      rules: true,
+    },
   });
-  const roundCount = agg._max.round ?? round;
+  if (all.length === 0) return false;
 
-  let cur = { round, position };
-  for (let hop = 0; hop < roundCount; hop++) {
-    const slot = nextSlot(cur.round, cur.position, roundCount);
-    if (!slot) return false;
+  const roundCount = Math.max(...all.map((m) => m.round));
+  const bySlot = new Map(all.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
 
-    const next = await tx.eventMatch.findFirst({
-      where: { eventId, round: slot.round, bracketPosition: slot.position },
-      select: { status: true, winnerDecidedBy: true, rules: true },
-    });
-    if (!next) return false;
-
-    const nextIsBye = isByeRow(next.rules);
-    if (nextIsBye) {
-      cur = { round: slot.round, position: slot.position };
-      continue;
+  const loserEdges = new Map<string, string[]>();
+  for (const match of all) {
+    for (const slot of parseLoserFrom(match.rules) ?? []) {
+      if (!slot) continue;
+      const from = `${slot.round}:${slot.position}`;
+      const to = `${match.round}:${match.bracketPosition}`;
+      const list = loserEdges.get(from);
+      if (list) list.push(to);
+      else loserEdges.set(from, [to]);
     }
-    return isStartedMatch({
-      status: next.status,
-      winnerDecidedBy: next.winnerDecidedBy,
-      isBye: nextIsBye,
-    });
   }
+
+  const downstreamOf = (r: number, p: number): string[] => {
+    const keys: string[] = [];
+    const slot = nextSlot(r, p, roundCount);
+    if (slot) keys.push(`${slot.round}:${slot.position}`);
+    keys.push(...(loserEdges.get(`${r}:${p}`) ?? []));
+    return keys;
+  };
+
+  // **不戦勝行は `rules.bye` だけでなく後方互換の `winnerDecidedBy === "BYE"` でも
+  // 透過する。** `isStartedMatch()` はこの2つを同じ「不戦勝」として扱うので、BFS の
+  // 透過条件もそれに揃えないと、`rules.bye` を持たない旧データの不戦勝行で探索が
+  // 止まり、その先にいる進行中の対戦を見落とす。
+  const isBye = (m: { rules: unknown; winnerDecidedBy: string | null }) =>
+    isByeRow(m.rules) || m.winnerDecidedBy === "BYE";
+
+  for (const start of starts) {
+    const seen = new Set<string>();
+    const queue: string[] = [];
+    const push = (key: string) => {
+      if (seen.has(key)) return;
+      seen.add(key);
+      queue.push(key);
+    };
+
+    // 起点そのものは下流ではない。起点から出る辺だけを積む。
+    for (const key of downstreamOf(start.round, start.position)) push(key);
+
+    while (queue.length > 0) {
+      const next = bySlot.get(queue.shift()!);
+      if (!next) continue;
+
+      if (isBye(next)) {
+        for (const key of downstreamOf(next.round, next.bracketPosition)) push(key);
+        continue;
+      }
+      if (
+        isStartedMatch({
+          status: next.status,
+          winnerDecidedBy: next.winnerDecidedBy,
+          isBye: false,
+        })
+      ) {
+        return true;
+      }
+    }
+  }
+
   return false;
 }

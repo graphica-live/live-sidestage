@@ -102,6 +102,7 @@ export function AdminBracketTree({
   const roundCount = Math.max(...matches.map((m) => m.round));
   const index: MatchIndex = new Map(matches.map((m) => [key(m.round, m.position), m]));
   const hasWings = roundCount >= 2;
+  const blocks = groupPlacementBlocks(matches);
 
   return (
     <div className="space-y-2">
@@ -178,6 +179,10 @@ export function AdminBracketTree({
                 />
               )}
             </div>
+
+            {blocks.length > 0 && (
+              <PlacementSection blocks={blocks} index={index} onSelect={onSelect} />
+            )}
           </div>
         </div>
       </div>
@@ -232,6 +237,10 @@ function RoundHeadings({
   );
 }
 
+/**
+ * `minRound` は再帰の停止ラウンド。本選は 1(1回戦)まで降りるが、順位決定戦のブロックは
+ * 葉が本選の途中のラウンドにいるので、そこで止めないと存在しない枠まで描いてしまう。
+ */
 function MatchNode({
   round,
   position,
@@ -239,6 +248,7 @@ function MatchNode({
   index,
   onSelect,
   swap,
+  minRound = 1,
 }: {
   round: number;
   position: number;
@@ -246,6 +256,7 @@ function MatchNode({
   index: MatchIndex;
   onSelect: (matchId: string) => void;
   swap?: SwapMode;
+  minRound?: number;
 }) {
   const card = (
     <div className={`${CARD_W} shrink-0`}>
@@ -258,7 +269,7 @@ function MatchNode({
     </div>
   );
 
-  if (round <= 1) {
+  if (round <= minRound) {
     return <div className="flex items-center">{card}</div>;
   }
 
@@ -273,6 +284,7 @@ function MatchNode({
             index={index}
             onSelect={onSelect}
             swap={swap}
+            minRound={minRound}
           />
         </div>
         <div className="flex flex-1 items-center py-1">
@@ -283,6 +295,7 @@ function MatchNode({
             index={index}
             onSelect={onSelect}
             swap={swap}
+            minRound={minRound}
           />
         </div>
       </div>
@@ -290,6 +303,75 @@ function MatchNode({
       <PairConnector mirror={mirror} />
 
       <div className="flex items-center">{card}</div>
+    </div>
+  );
+}
+
+/** 描画に必要なぶんだけのブロック情報。公開側の `BracketTree.tsx` と同じ組み立て。 */
+type PlacementBlockView = {
+  depth: number;
+  rank: number;
+  root: { round: number; position: number };
+  minRound: number;
+};
+
+/**
+ * 順位決定戦の行をブロックごとにまとめる。**round では分けない** —
+ * ブロックは本選と同じ座標空間にいて、決定戦は本選の決勝と同じラウンドにいる。
+ */
+function groupPlacementBlocks(matches: MatchRow[]): PlacementBlockView[] {
+  const byDepth = new Map<number, MatchRow[]>();
+  for (const match of matches) {
+    if (!match.placement) continue;
+    const list = byDepth.get(match.placement.depth);
+    if (list) list.push(match);
+    else byDepth.set(match.placement.depth, [match]);
+  }
+
+  return [...byDepth.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([depth, rows]) => {
+      const maxRound = Math.max(...rows.map((r) => r.round));
+      const root = rows.find((r) => r.round === maxRound)!;
+      return {
+        depth,
+        rank: rows[0].placement!.rank,
+        root: { round: root.round, position: root.position },
+        minRound: Math.min(...rows.map((r) => r.round)),
+      };
+    });
+}
+
+/** 順位決定戦。本選の表とは完全に別のブロックとして決勝の下に置く(幾何を壊さないため)。 */
+function PlacementSection({
+  blocks,
+  index,
+  onSelect,
+}: {
+  blocks: PlacementBlockView[];
+  index: MatchIndex;
+  onSelect: (matchId: string) => void;
+}) {
+  return (
+    <div className="mt-8 border-t border-border pt-5">
+      <h3 className="mb-3 text-[11px] font-bold tracking-[0.2em] text-gray-500">順位決定戦</h3>
+      <div className="grid gap-6">
+        {blocks.map((block) => (
+          <div key={block.depth}>
+            <div className="mb-2 text-xs font-semibold text-gray-300">{block.rank}位決定戦</div>
+            <div className="flex items-center">
+              <MatchNode
+                round={block.root.round}
+                position={block.root.position}
+                minRound={block.minRound}
+                mirror={false}
+                index={index}
+                onSelect={onSelect}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -79,6 +79,7 @@ export function BracketTree({
 }) {
   const index: MatchIndex = new Map(matches.map((m) => [key(m.round, m.position), m]));
   const final = index.get(key(roundCount, 0));
+  const blocks = groupPlacementBlocks(matches);
 
   // 準決勝のサブツリー。roundCount が 1(参加2組)なら決勝しかないので左右は出さない。
   const hasWings = roundCount >= 2;
@@ -107,8 +108,138 @@ export function BracketTree({
           {hasWings && <StraightConnector />}
           {hasWings && <MatchNode round={roundCount - 1} position={1} mirror index={index} />}
         </div>
+
+        {blocks.length > 0 && <PlacementSection blocks={blocks} index={index} />}
       </div>
     </BracketScroller>
+  );
+}
+
+/** 描画に必要なぶんだけのブロック情報。DTO から組み立てる。 */
+type PlacementBlockView = {
+  depth: number;
+  rank: number;
+  /** ブロックの決定戦の座標(このブロックの根) */
+  root: { round: number; position: number };
+  /** ブロックの葉のラウンド。再帰の停止条件に使う */
+  minRound: number;
+};
+
+/**
+ * 順位決定戦の行をブロックごとにまとめる。
+ *
+ * **round で分けない。** ブロックは本選と同じ座標空間にいて、決定戦は本選の決勝と
+ * 同じラウンドにいる。切り出しの根拠は `placement.depth` だけ。
+ */
+function groupPlacementBlocks(matches: BracketMatchDto[]): PlacementBlockView[] {
+  const byDepth = new Map<number, BracketMatchDto[]>();
+  for (const match of matches) {
+    if (!match.placement) continue;
+    const list = byDepth.get(match.placement.depth);
+    if (list) list.push(match);
+    else byDepth.set(match.placement.depth, [match]);
+  }
+
+  return [...byDepth.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([depth, rows]) => {
+      const maxRound = Math.max(...rows.map((r) => r.round));
+      const root = rows.find((r) => r.round === maxRound)!;
+      return {
+        depth,
+        rank: rows[0].placement!.rank,
+        root: { round: root.round, position: root.position },
+        minRound: Math.min(...rows.map((r) => r.round)),
+      };
+    });
+}
+
+/**
+ * 順位決定戦。**本選の表とは完全に別のブロック**として決勝の下に置く。
+ *
+ * 本体の再帰レイアウトへ差し込まないのは幾何のため — 決勝カードの中心がずれると
+ * 左右から来る接続線が刺さらなくなる(ファイル冒頭を参照)。ブロックは同じ座標空間に
+ * いるので、`MatchNode` をそのまま根から呼べば完全二分木として正しく描ける。
+ */
+function PlacementSection({
+  blocks,
+  index,
+}: {
+  blocks: PlacementBlockView[];
+  index: MatchIndex;
+}) {
+  return (
+    <div className="mt-10 border-t border-white/10 pt-6">
+      <h3 className="mb-4 text-[11px] font-bold tracking-[0.2em] text-gray-500">順位決定戦</h3>
+      <div className="grid gap-8">
+        {blocks.map((block) => {
+          const root = index.get(key(block.root.round, block.root.position));
+          const winner = root?.sides.find((s) => s.isWinner) ?? null;
+          return (
+            <div key={block.depth}>
+              <div className="mb-2 flex items-center gap-2">
+                <RoundLabel>{`${block.rank}位決定戦`}</RoundLabel>
+                {winner && (
+                  <span className="flex items-center gap-1.5 text-xs text-gray-300">
+                    <span className="font-bold text-brand">{block.rank}位</span>
+                    <SmallEntrantAvatars entrants={winner.entrants} />
+                    <span className="truncate font-medium">{winner.name}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center">
+                <MatchNode
+                  round={block.root.round}
+                  position={block.root.position}
+                  minRound={block.minRound}
+                  mirror={false}
+                  index={index}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 順位決定戦の見出し行に出す小さいアイコン。**通常のドキュメントフローの中**で使うので、
+ * `EntrantAvatars`（対戦カードの枠いっぱいへ絶対配置する専用コンポーネント）は使えない。
+ */
+function SmallEntrantAvatars({ entrants }: { entrants: BracketEntrantDto[] }) {
+  const shown = entrants.slice(0, 2);
+  const rest = entrants.length - shown.length;
+
+  if (shown.length === 0) return null;
+
+  return (
+    <span className="flex shrink-0 items-center -space-x-1.5">
+      {shown.map((e) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={e.participantId}
+          src={`/api/public/avatar/${e.participantId}`}
+          alt=""
+          title={e.displayName}
+          width={24}
+          height={24}
+          className="h-6 w-6 rounded-full border border-panel bg-white/5 object-cover"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+      ))}
+      {rest > 0 && (
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-panel bg-white/10 font-mono text-[9px] text-gray-300"
+          title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
+        >
+          +{rest}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -179,16 +310,22 @@ function RoundLabel({ children, highlight }: { children: React.ReactNode; highli
   );
 }
 
+/**
+ * `minRound` は再帰の停止ラウンド。本選は 1(1回戦)まで降りるが、順位決定戦のブロックは
+ * 葉が本選の途中のラウンドにいるので、そこで止めないと存在しない枠まで描いてしまう。
+ */
 function MatchNode({
   round,
   position,
   mirror,
   index,
+  minRound = 1,
 }: {
   round: number;
   position: number;
   mirror: boolean;
   index: MatchIndex;
+  minRound?: number;
 }) {
   const match = index.get(key(round, position));
   const card = (
@@ -197,7 +334,7 @@ function MatchNode({
     </div>
   );
 
-  if (round <= 1) {
+  if (round <= minRound) {
     return <div className="flex items-center">{card}</div>;
   }
 
@@ -206,10 +343,22 @@ function MatchNode({
       {/* 子2つ。高さが等しいので、それぞれの中心が 25% / 75% に来る。 */}
       <div className="flex flex-col">
         <div className="flex flex-1 items-center py-1.5">
-          <MatchNode round={round - 1} position={position * 2} mirror={mirror} index={index} />
+          <MatchNode
+            round={round - 1}
+            position={position * 2}
+            mirror={mirror}
+            index={index}
+            minRound={minRound}
+          />
         </div>
         <div className="flex flex-1 items-center py-1.5">
-          <MatchNode round={round - 1} position={position * 2 + 1} mirror={mirror} index={index} />
+          <MatchNode
+            round={round - 1}
+            position={position * 2 + 1}
+            mirror={mirror}
+            index={index}
+            minRound={minRound}
+          />
         </div>
       </div>
 

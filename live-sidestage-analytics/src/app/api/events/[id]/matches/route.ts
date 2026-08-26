@@ -104,6 +104,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     entrantIds?: unknown;
     placement?: unknown;
     roundSessionIds?: unknown;
+    placementDepth?: unknown;
+    placementSessionIds?: unknown;
   } | null;
 
   // **シード順(`entrantIds`)と手動配置(`placement`)は排他。** 両方来たときにどちらかを
@@ -146,11 +148,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     source = { entrantIds };
   }
 
+  // 順位決定戦。**深さの上限は参加人数と不戦勝の出方で決まる**ので、ここでは丸めない
+  // (`createBracket` がブラケットを組んでから実際の上限へ丸める)。
+  const placementDepth =
+    typeof body?.placementDepth === "number" ? body.placementDepth : undefined;
+  const placementSessionIds = Array.isArray(body?.placementSessionIds)
+    ? body!.placementSessionIds.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : undefined;
+
   try {
     const result = await createBracket({
       eventId: params.id,
       ...source,
       roundSessionIds,
+      placementDepth,
+      placementSessionIds,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

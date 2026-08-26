@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { DbClient } from "./analytics-db";
+import { buildManualBracket, buildPlacementBlocksFor, placementRoundLabel, type PlacementMatch } from "./bracket";
 import {
   bracketShape,
   planRowMoves,
@@ -11,9 +12,9 @@ import {
   type BracketShape,
 } from "./bracket-swap";
 import { acquireEventLock } from "./event-lock";
-import { downstreamStarted } from "./match-downstream";
+import { anyDownstreamStarted, downstreamStarted } from "./match-downstream";
 import { advanceBracket } from "./match-results";
-import { isByeRow, isPlainObject, isStartedMatch } from "./match-status";
+import { isByeRow, isPlainObject, isStartedMatch, parseLoserFrom, parsePlacement } from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
 
 // トーナメント表の組み合わせ変更(スワップ)。表を破棄せずに、勝ち残っている出場者を
@@ -73,6 +74,7 @@ type MatchRow = {
   winnerSideId: string | null;
   winnerDecidedBy: string | null;
   rules: Prisma.JsonValue;
+  sessionId: string;
   sides: SideRow[];
 };
 
@@ -129,6 +131,7 @@ export async function applyBracketSwap(
       winnerSideId: true,
       winnerDecidedBy: true,
       rules: true,
+      sessionId: true,
       sides: {
         orderBy: { sideIndex: "asc" },
         select: {
@@ -141,8 +144,13 @@ export async function applyBracketSwap(
     },
   });
 
-  const slotA = resolveSlot(matches, a);
-  const slotB = resolveSlot(matches, b);
+  // 本選の行と順位決定戦の行は座標空間を共有しているが、葉の占有パターン交換の
+  // 対象は本選だけ。順位決定戦のブロックは after 側で改めて再計算する(下記)。
+  const mainRows = matches.filter((m) => !parsePlacement(m.rules));
+  const placementRows = matches.filter((m) => parsePlacement(m.rules));
+
+  const slotA = resolveSlot(mainRows, a);
+  const slotB = resolveSlot(mainRows, b);
 
   if (slotA.match.id === slotB.match.id) {
     // 同じカードの上下を入れ替えても対戦相手は変わらない(表示順が変わるだけ)。
@@ -187,28 +195,51 @@ export async function applyBracketSwap(
   }
 
   // ------------------------------------------------------------------
-  // 葉の占有を復元し、交換後の構造を出す
+  // 葉の占有を復元し、交換後の構造を出す(本選の行だけを対象にする)
   // ------------------------------------------------------------------
-  const roundCount = Math.max(...matches.map((m) => m.round));
+  const roundCount = Math.max(...mainRows.map((m) => m.round));
   const size = 2 ** roundCount;
   const occupancy = restoreOccupancy(
-    matches.filter((m) => m.round === 1),
+    mainRows.filter((m) => m.round === 1),
     size
   );
 
   const beforeShape = bracketShape(occupancy);
-  const originalKeys = new Map(matches.map((m) => [m.id, shapeKey(m.round, m.bracketPosition)]));
+  const originalKeys = new Map(mainRows.map((m) => [m.id, shapeKey(m.round, m.bracketPosition)]));
   assertShapeMatches(beforeShape, [...originalKeys.values()]);
 
   const rangeA = slotLeafRange(slotA.match.round, slotA.match.bracketPosition, a.sideIndex);
   const rangeB = slotLeafRange(slotB.match.round, slotB.match.bracketPosition, b.sideIndex);
-  const afterShape = bracketShape(swapLeafRanges(occupancy, rangeA, rangeB));
+  const afterOccupancy = swapLeafRanges(occupancy, rangeA, rangeB);
+  const afterShape = bracketShape(afterOccupancy);
 
   // ------------------------------------------------------------------
   // 行の移動。**中身(結果・検知)はそのままで座標だけ動かす**ので、確定済みの
   // 1回戦カードも matchId ごと新しい枝へ移る。
   // ------------------------------------------------------------------
-  const moves = planRowMoves({ rows: matches, rangeA, rangeB });
+  const moves = planRowMoves({ rows: mainRows, rangeA, rangeB });
+
+  // **移動する行それぞれの下流も、すでに始まっていないか確認する。** slotA/slotB 自身は
+  // 上でチェック済みだが、`planRowMoves` は「勝ち上がってきた1回戦」等の付随する行も
+  // 一緒に動かすので、それらが養う順位決定戦の枠(loserFrom の逆引き)まで含めて確認する
+  // 必要がある。ここで弾かないと、進行中の順位決定戦の出場者を黙って差し替えてしまう。
+  // **`anyDownstreamStarted` で1回にまとめる** — 移動する行1件ごとに呼ぶと、大きな
+  // サブツリーの入れ替えで対戦全件のスキャンを何度も繰り返すことになる。
+  if (
+    moves.length > 0 &&
+    (await anyDownstreamStarted(
+      tx,
+      eventId,
+      moves.map((move) => ({ round: move.round, position: move.from }))
+    ))
+  ) {
+    throw new BracketSwapError(
+      "移動する対戦の下流(順位決定戦を含む)がすでに始まっているため、この入れ替えはできません。",
+      "DOWNSTREAM_STARTED",
+      409
+    );
+  }
+
   for (const move of moves) {
     await tx.eventMatch.update({
       where: { id: move.id },
@@ -218,7 +249,7 @@ export async function applyBracketSwap(
   // **一意制約が無く、同一トランザクション内で中間状態を読む主体もいない**ので、
   // 一時退避は要らない(`advanceBracket` はこの後で自分から読み直す)。
   const movedTo = new Map(moves.map((move) => [move.id, move.to]));
-  for (const match of matches) {
+  for (const match of mainRows) {
     const to = movedTo.get(match.id);
     if (to !== undefined) match.bracketPosition = to;
   }
@@ -230,7 +261,7 @@ export async function applyBracketSwap(
   // ------------------------------------------------------------------
   const survivors: MatchRow[] = [];
   const removed: MatchRow[] = [];
-  for (const match of matches) {
+  for (const match of mainRows) {
     (afterShape.has(shapeKey(match.round, match.bracketPosition)) ? survivors : removed).push(match);
   }
   assertShapeMatches(afterShape, survivors.map((m) => shapeKey(m.round, m.bracketPosition)));
@@ -250,6 +281,19 @@ export async function applyBracketSwap(
   }
 
   await normalizeByeRows(tx, { survivors, originalKeys, beforeShape, afterShape });
+
+  // ------------------------------------------------------------------
+  // 順位決定戦のトポロジー再計算。**本選の構造が変わると、どの本選行が敗者を
+  // 出すか(loserFrom)が変わりうる。** 座標(round, position)自体は feeders の数が
+  // 変わらない限り不変だが、それも保証はしない — 実際に組み直して差分を取る。
+  // ------------------------------------------------------------------
+  await reconcilePlacementBlocks(tx, {
+    eventId,
+    placementRows,
+    mainRows,
+    beforeOccupancy: occupancy,
+    afterOccupancy,
+  });
 
   // 勝者を下流へ送り直す。不戦勝行の確定・解除もここが引き継ぐ。
   await advanceBracket(tx, eventId);
@@ -428,6 +472,228 @@ async function normalizeByeRows(
     await tx.eventMatchSide.updateMany({
       where: { matchId: match.id },
       data: { diamonds: 0, score: 0 },
+    });
+  }
+}
+
+/** `PlacementMatch.loserFrom` が指す2つの座標配列が同じか。 */
+function sameLoserFrom(
+  a: ({ round: number; position: number } | null)[] | null,
+  b: ({ round: number; position: number } | null)[] | null
+): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((slot, i) => {
+    const other = b[i];
+    if (slot === null || other === null) return slot === other;
+    return slot.round === other.round && slot.position === other.position;
+  });
+}
+
+/**
+ * swap で本選の構造(occupancy)が変わったとき、順位決定戦ブロックのトポロジーを
+ * 再計算して既存の行へ反映する。
+ *
+ * **座標(round, position)自体は、そのラウンドの実試合数(feeders)が変わらない限り
+ * 不変**（`buildPlacementBlocksFor` はブロックの内部構造を feeders の数だけから組む）。
+ * 変わりうるのは `loserFrom`（どの本選座標の敗者を待つか）と、`isBye`、稀に
+ * feeders の数が変わったときのブロックの形そのもの。
+ *
+ * **影響を受ける既存行のどれかがすでに進行していたら、swap 全体を拒否する**
+ * （呼び出し元のトランザクションがロールバックされるので、ここより前で行った
+ * 本選側の書き込みも一緒に巻き戻る）。まだ何も起きていない行なら、新しい形に
+ * 置き換えても失う結果がない。
+ *
+ * **既知の制約: 深さは「今の順位決定戦の行」からしか逆算しない。** 表を作った後に
+ * `Event.rules.bracket.placementDepth`（希望値）を読み直すことはしない —
+ * `tournament.ts` の `createBracket()` と同じく、正本は「今の表の状態」であって
+ * イベントの希望値は表がまだ無いときの既定値でしかないため。したがって、
+ * 進行していない順位決定戦ブロックが swap で丸ごと組めなくなって消えた場合、
+ * 以後の swap では自動的には復活しない（`placementRows.length === 0` なら即 return する）。
+ * 復活させたい主催者は表を破棄して作り直すこと。
+ */
+async function reconcilePlacementBlocks(
+  tx: DbClient,
+  input: {
+    eventId: string;
+    placementRows: MatchRow[];
+    mainRows: MatchRow[];
+    beforeOccupancy: boolean[];
+    afterOccupancy: boolean[];
+  }
+): Promise<void> {
+  const { eventId, placementRows, mainRows, beforeOccupancy, afterOccupancy } = input;
+  if (placementRows.length === 0) return;
+
+  const depth = placementRows.reduce(
+    (max, m) => Math.max(max, parsePlacement(m.rules)?.depth ?? 0),
+    0
+  );
+  if (depth === 0) return;
+
+  const beforeBlocks = buildPlacementBlocksFor(buildManualBracket(beforeOccupancy), depth);
+  const afterBlocks = buildPlacementBlocksFor(buildManualBracket(afterOccupancy), depth);
+
+  type PositionedMatch = { depth: number; rank: number; blockRoundCount: number; match: PlacementMatch };
+  const indexByKey = (blocks: typeof beforeBlocks): Map<string, PositionedMatch> => {
+    const byKey = new Map<string, PositionedMatch>();
+    for (const block of blocks) {
+      for (const m of block.matches) {
+        byKey.set(shapeKey(m.round, m.position), {
+          depth: block.depth,
+          rank: block.rank,
+          blockRoundCount: block.blockRoundCount,
+          match: m,
+        });
+      }
+    }
+    return byKey;
+  };
+  const beforeByKey = indexByKey(beforeBlocks);
+  const afterByKey = indexByKey(afterBlocks);
+  const existingByKey = new Map(placementRows.map((m) => [shapeKey(m.round, m.bracketPosition), m]));
+
+  // **座標(round, position)が同じでも、rank(順位)が変わることがある。** 深さdのブロックの
+  // rank は「それより浅い深さのブロックの実試合数の合計 + 2」で決まるので、浅い側の
+  // ブロックの feeders 数が変わると、深い側のブロックの rank だけがシフトしうる
+  // (座標自体は feeders 数が変わったブロック自身でない限り不変)。
+  const structureChanged = (key: string): boolean => {
+    const before = beforeByKey.get(key) ?? null;
+    const after = afterByKey.get(key) ?? null;
+    if (!before || !after) return true;
+    return (
+      !sameLoserFrom(before.match.loserFrom, after.match.loserFrom) ||
+      before.match.isBye !== after.match.isBye ||
+      before.rank !== after.rank
+    );
+  };
+
+  // 影響を受ける行(座標が消える・loserFrom や isBye や rank が変わる)のうち、すでに
+  // 進行しているものが1つでもあれば、この swap は通さない(all-or-nothing)。
+  //
+  // **対象は `existingByKey` の全キー。** `beforeByKey ∪ afterByKey` だけを見ると、
+  // 「現在の本選構造から理論的に導出される形」に存在しない座標にある既存行
+  // (壊れたデータ)を見落とし、進行中かどうかを確かめずに削除してしまう。
+  for (const [key, existing] of existingByKey) {
+    if (!structureChanged(key)) continue;
+    if (
+      isStartedMatch({
+        status: existing.status,
+        winnerDecidedBy: existing.winnerDecidedBy,
+        isBye: isByeRow(existing.rules),
+      })
+    ) {
+      throw new BracketSwapError(
+        "順位決定戦の組み合わせが変わるため、この入れ替えはできません。すでに進行している対戦があります。",
+        "DOWNSTREAM_STARTED",
+        409
+      );
+    }
+  }
+
+  // 新しく行を作る場合の日程の割り当て元。**粒度は (depth, roundInBlock)**
+  // — tournament.ts の作成時(`planPlacementSessions`)と同じ粒度で揃える。
+  // 同じ round でも別のブロック・別のラウンド内位置なら別の日程でありうるので、
+  // round だけをキーにすると別ブロックの日程を誤って継承しうる。
+  //
+  // 1. 同じ (depth, roundInBlock) の既存の順位決定戦行があればそれを使う。
+  // 2. 無ければ、`planPlacementSessions` の既定値ロジックと同じく本選の決勝と同じ日程にする。
+  const sessionByBlockRound = new Map<string, string>();
+  for (const [key, existing] of existingByKey) {
+    const before = beforeByKey.get(key);
+    if (!before) continue;
+    const blockKey = `${before.depth}:${before.match.roundInBlock}`;
+    if (!sessionByBlockRound.has(blockKey)) sessionByBlockRound.set(blockKey, existing.sessionId);
+  }
+  const finalMainSessionId = mainRows.reduce<{ round: number; sessionId: string } | null>(
+    (best, m) => (!best || m.round > best.round ? { round: m.round, sessionId: m.sessionId } : best),
+    null
+  )?.sessionId;
+
+  const sessionIdsToLoad = new Set<string>([
+    ...sessionByBlockRound.values(),
+    ...(finalMainSessionId ? [finalMainSessionId] : []),
+  ]);
+  const sessions = await tx.eventSession.findMany({
+    where: { id: { in: [...sessionIdsToLoad] } },
+    select: { id: true, startAt: true, endAt: true },
+  });
+  const sessionInfo = new Map(sessions.map((s) => [s.id, s]));
+
+  // 削除: after に存在しなくなった既存行。
+  const toDelete = [...existingByKey.entries()]
+    .filter(([key]) => !afterByKey.has(key))
+    .map(([, m]) => m.id);
+  if (toDelete.length > 0) {
+    await tx.eventMatch.deleteMany({ where: { id: { in: toDelete } } });
+  }
+
+  // 作成・更新。
+  for (const [key, { depth: blockDepth, rank, blockRoundCount, match }] of afterByKey) {
+    const existing = existingByKey.get(key);
+    const rules: Prisma.InputJsonObject = {
+      roundLabel: placementRoundLabel(rank, match.roundInBlock, blockRoundCount),
+      placement: { depth: blockDepth, rank },
+      ...(match.loserFrom ? { loserFrom: match.loserFrom } : {}),
+      ...(match.isBye ? { bye: true } : {}),
+    };
+
+    if (existing) {
+      if (!structureChanged(key)) continue; // 何も変わっていない行は触らない
+      // 構造が変わった(が進行していないことは上で確認済み)行は検知やり直しと同じ状態へ戻す。
+      // **サイドの出場者も消す。** loserFrom が変わると、旧サイドに残っていた出場者が
+      // 新しい loserFrom の null 側(BYE 側)に取り残されうる — advanceBracket() は
+      // null エントリを転送しないので、消さないと不戦勝行に旧出場者が残ったままになる。
+      await tx.eventMatchSideParticipant.deleteMany({
+        where: { sideId: { in: existing.sides.map((s) => s.id) } },
+      });
+      await tx.eventMatchSide.updateMany({
+        where: { matchId: existing.id },
+        data: { teamId: null, diamonds: 0, score: 0 },
+      });
+      await tx.eventMatch.update({
+        where: { id: existing.id },
+        data: {
+          rules,
+          status: "SCHEDULED",
+          winnerSideId: null,
+          winnerDecidedBy: null,
+          decidedAt: null,
+          detectedBattleId: null,
+          detectedStartAt: null,
+          detectedEndAt: null,
+          detectionConfidence: null,
+          detectedEndSource: null,
+        },
+      });
+      continue;
+    }
+
+    // 新規作成(ブロックが拡大したケース)。
+    const sessionId = sessionByBlockRound.get(`${blockDepth}:${match.roundInBlock}`) ?? finalMainSessionId;
+    const session = sessionId ? sessionInfo.get(sessionId) : undefined;
+    if (!sessionId || !session) {
+      throw new BracketSwapError(
+        "順位決定戦の新しい対戦に割り当てる日程が見つかりません。表を破棄して作り直してください。",
+        "BRACKET_INCONSISTENT",
+        409
+      );
+    }
+    const created = await tx.eventMatch.create({
+      data: {
+        eventId,
+        round: match.round,
+        bracketPosition: match.position,
+        matchType: "1V1",
+        sessionId,
+        scheduledStartAt: session.startAt,
+        scheduledEndAt: session.endAt,
+        status: "SCHEDULED",
+        rules,
+      },
+    });
+    await tx.eventMatchSide.createMany({
+      data: [0, 1].map((sideIndex) => ({ matchId: created.id, sideIndex })),
     });
   }
 }

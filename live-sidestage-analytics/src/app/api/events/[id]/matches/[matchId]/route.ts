@@ -96,6 +96,12 @@ export async function PATCH(
       // **ここから先の読み取りはすべてロックの内側。** 順序は破棄側と揃える。
       await acquireEventLock(tx, params.id);
 
+      const event = await tx.event.findUnique({
+        where: { id: params.id },
+        select: { format: true },
+      });
+      if (!event) return { error: "Not found", status: 404 };
+
       const match = await tx.eventMatch.findFirst({
         where: { id: params.matchId, eventId: params.id },
         select: {
@@ -125,7 +131,13 @@ export async function PATCH(
 
       // 勝敗を動かす操作は、次の対戦が始まっていたら拒否する。
       // 進行中の対戦の参加者が途中で入れ替わると、集計対象が変わって結果が壊れるため。
-      if (resultAction && (await downstreamStarted(tx, params.id, match.round, match.bracketPosition))) {
+      // **デスマッチには表の進行(nextSlot)が無い**ので、全対戦を毎回スキャンする
+      // このチェックはトーナメントだけに絞る(デスマッチの対戦履歴は人数に上限が無い)。
+      if (
+        resultAction &&
+        event.format === "TOURNAMENT" &&
+        (await downstreamStarted(tx, params.id, match.round, match.bracketPosition))
+      ) {
         return {
           error: "次の対戦がすでに始まっているため、この対戦の結果は変更できません。",
           code: "DOWNSTREAM_STARTED",
@@ -294,7 +306,9 @@ export async function PATCH(
       // ワーカーは開催前(SCHEDULED)のイベントを対象にしない(`aggregationWindow`)ので、
       // 事前に組んだ表を確定しても永久に次のラウンドが埋まらない。ロックは
       // このトランザクションの先頭で取ってあるので順序は変わらない。
-      if (resultAction) {
+      // **デスマッチには表の進行(nextSlot)が無い**ので、全対戦を毎回読み込む
+      // advanceBracket もトーナメントだけに絞る(デスマッチの対戦履歴は人数に上限が無い)。
+      if (resultAction && event.format === "TOURNAMENT") {
         await advanceBracket(tx, params.id);
       }
 
