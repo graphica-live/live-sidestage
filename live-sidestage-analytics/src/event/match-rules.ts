@@ -16,7 +16,11 @@ export type ViolationHandling = (typeof VIOLATION_HANDLINGS)[number];
 export const RETRY_LEVELS = ["NONE", "FIRST_X3", "SPICHA_X3"] as const;
 export type RetryLevel = (typeof RETRY_LEVELS)[number];
 
+export const WIN_CONDITIONS = ["SINGLE", "BEST_OF_THREE"] as const;
+export type WinCondition = (typeof WIN_CONDITIONS)[number];
+
 export type MatchRules = {
+  winCondition: WinCondition;
   glove: GloveLevel;
   booster: BoosterLevel;
   bonusTime: boolean;
@@ -26,6 +30,7 @@ export type MatchRules = {
 };
 
 export const MATCH_RULES_DEFAULT: MatchRules = {
+  winCondition: "SINGLE",
   glove: "NONE",
   booster: "NONE",
   bonusTime: false,
@@ -48,6 +53,9 @@ export function hasMatchRules(rules: unknown): boolean {
 export function parseMatchRules(rules: unknown): MatchRules {
   const source = isPlainObject(rules) && isPlainObject(rules.matchRules) ? rules.matchRules : {};
 
+  const winCondition = WIN_CONDITIONS.includes(source.winCondition as WinCondition)
+    ? (source.winCondition as WinCondition)
+    : MATCH_RULES_DEFAULT.winCondition;
   const glove = GLOVE_LEVELS.includes(source.glove as GloveLevel)
     ? (source.glove as GloveLevel)
     : MATCH_RULES_DEFAULT.glove;
@@ -63,5 +71,5 @@ export function parseMatchRules(rules: unknown): MatchRules {
     ? (source.retry as RetryLevel)
     : MATCH_RULES_DEFAULT.retry;
 
-  return { glove, booster, bonusTime, mist, violation, retry };
+  return { winCondition, glove, booster, bonusTime, mist, violation, retry };
 }

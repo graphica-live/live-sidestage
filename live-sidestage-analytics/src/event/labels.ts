@@ -1,5 +1,11 @@
 import type { BracketMethod } from "@/event/bracket";
-import type { BoosterLevel, GloveLevel, RetryLevel, ViolationHandling } from "@/event/match-rules";
+import type {
+  BoosterLevel,
+  GloveLevel,
+  RetryLevel,
+  ViolationHandling,
+  WinCondition,
+} from "@/event/match-rules";
 import type { EntryMode, EventFormat, EventStatus, TeamPreset, Visibility } from "@/event/validation";
 
 export const FORMAT_LABELS: Record<EventFormat, string> = {
@@ -167,6 +173,11 @@ export const LISTENER_STATUS_CLASSES: Record<string, string> = {
 };
 
 // 対戦ルール(Event.rules.matchRules)のラベル。
+export const WIN_CONDITION_LABELS: Record<WinCondition, string> = {
+  SINGLE: "1本勝負",
+  BEST_OF_THREE: "2本先取",
+};
+
 export const GLOVE_LEVEL_LABELS: Record<GloveLevel, string> = {
   NONE: "なし",
   ONE: "1個",
