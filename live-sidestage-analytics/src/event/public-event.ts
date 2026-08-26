@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { findLiveRoomIds } from "./analytics-db";
 import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-breakdown";
 import { rankByLife } from "./deathmatch";
+import { parsePlacement, parseWinnerFeeders } from "./match-status";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -120,10 +122,16 @@ export type ContributionDto = {
 /**
  * サイドに出る1人。アイコンは `/api/public/avatar/<participantId>` から引く
  * (URL をここに埋めない — TikTok の avatar URL は署名付きで約2日で失効する)。
+ *
+ * avatarOffsetX/Y/Zoom は表示専用の切り出し設定。null は現状のデフォルト表示
+ * (50%/30%/等倍)で、解決は `src/event/avatar-frame.ts` に閉じる。
  */
 export type BracketEntrantDto = {
   participantId: string;
   displayName: string;
+  avatarOffsetX: number | null;
+  avatarOffsetY: number | null;
+  avatarZoom: number | null;
 };
 
 export type BracketSideDto = {
@@ -139,6 +147,11 @@ export type BracketSideDto = {
    */
   tiktokScore: string | null;
   isWinner: boolean;
+  /**
+   * バトル前(対戦の status が SCHEDULED)の対戦でだけ意味を持つ。出場者の誰かが
+   * 今まさに TikTok Live に接続できているか。それ以外の状態では常に false。
+   */
+  hasLiveStreamer: boolean;
 };
 
 export type BracketMatchDto = {
@@ -146,7 +159,19 @@ export type BracketMatchDto = {
   round: number;
   position: number;
   roundLabel: string;
+  /**
+   * 順位決定戦(3位決定戦など)の行なら、その印。本選の行は null。
+   *
+   * **本選と座標空間を共有している**ので、描画側はこれでブロックを切り出す
+   * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
+   */
+  placement: { depth: number; rank: number } | null;
   status: string;
+  /**
+   * 組み合わせ変更(接続の交換)で座標既定を上書きしている枠か。**閲覧者には座標の詳細は
+   * 出さず、真偽値だけ**(この枠に描かれている接続線は実際のフローと異なる、という注記に使う)。
+   */
+  hasFeederOverride: boolean;
   /** この対戦を行う開催日程の表示名(「1日目」「予選」など)。対戦に個別の時刻は無い */
   sessionLabel: string;
   detectedStartAt: string | null;
@@ -195,7 +220,18 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           diamonds: true,
           team: { select: { name: true } },
           participants: {
-            select: { participant: { select: { id: true, displayName: true, roomId: true } } },
+            select: {
+              participant: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  roomId: true,
+                  avatarOffsetX: true,
+                  avatarOffsetY: true,
+                  avatarZoom: true,
+                },
+              },
+            },
           },
         },
       },
@@ -213,6 +249,13 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
   const sessionLabels = new Map(
     sessions.map((s, index) => [s.id, s.name || `${index + 1}日目`] as const)
   );
+
+  // バトル前(SCHEDULED)の対戦だけ、出場者が今配信中かを見る。「接続中」発光の判定材料
+  // (すでにバトルへ入っている対戦や確定済みの対戦には出さない)。
+  const scheduledRoomIds = matches
+    .filter((m) => m.status === "SCHEDULED")
+    .flatMap((m) => m.sides.flatMap((s) => s.participants.map((p) => p.participant.roomId)));
+  const liveRoomIds = await findLiveRoomIds(scheduledRoomIds);
 
   // TikTok 側のバトルスコア。公開側は誤解のコストが大きいので exact 検知のマッチだけに出す。
   // roomId は帰属の突き合わせにだけ使い、DTO には出さない。
@@ -243,9 +286,14 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
         typeof (m.rules as { roundLabel?: unknown } | null)?.roundLabel === "string"
           ? (m.rules as { roundLabel: string }).roundLabel
           : `${m.round}回戦`,
+      placement: parsePlacement(m.rules),
       // NEEDS_REVIEW は通常「進行中(LIVE)」に読み替えて隠す。**候補過多で選択待ちの
       // 状態だけは例外**で、そのまま渡して視聴者にも「⚠ 結果確認中」を見せる(確定仕様)。
       status: m.status === "NEEDS_REVIEW" && !needsResultSelection ? "LIVE" : m.status,
+      hasFeederOverride: (() => {
+        const parsed = parseWinnerFeeders(m.rules);
+        return !!parsed && parsed.ok;
+      })(),
       sessionLabel: sessionLabels.get(m.sessionId) ?? "",
       detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
       winnerDecidedBy: m.winnerDecidedBy,
@@ -263,11 +311,17 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           entrants: s.participants.map((p) => ({
             participantId: p.participant.id,
             displayName: p.participant.displayName,
+            avatarOffsetX: p.participant.avatarOffsetX,
+            avatarOffsetY: p.participant.avatarOffsetY,
+            avatarZoom: p.participant.avatarZoom,
           })),
           diamonds: s.diamonds.toString(),
           tiktokScore: tiktokScores.get(s.id) ?? null,
           // 確定するまでは勝者を出さない(NEEDS_REVIEW のまま公開しない)。
           isWinner: m.status === "FINISHED" && m.winnerSideId === s.id,
+          hasLiveStreamer:
+            m.status === "SCHEDULED" &&
+            s.participants.some((p) => liveRoomIds.has(p.participant.roomId)),
         };
       }),
       };

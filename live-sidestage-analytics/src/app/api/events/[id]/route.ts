@@ -266,6 +266,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     noticeText:
       body.noticeText !== undefined ? (body.noticeText == null ? null : String(body.noticeText)) : before.noticeText,
     matchRules: body.matchRules,
+    // **body の値を渡すこと。** 渡さないと `validateEventInput` が既定へ丸めた値を返し、
+    // 下の `bracketMethodProvided` 分岐が「送られてきた方式」ではなく既定を書いてしまう。
+    bracketMethod: body.bracketMethod,
+    placementDepth: body.placementDepth,
   });
 
   if (!validated.ok) {
@@ -275,12 +279,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // matchRules と bracketMethod は rules(JSON) の名前空間なので、実際にリクエストが
   // 送ってきたときだけマージ書き込みする(未送信なら rules 列自体に触らない)。
   //
-  // **`bracketMethod` を `event` に残さないこと。** `Event` に同名の列は無いので、
-  // そのまま `event.update()` へ渡すと Prisma が `Unknown argument` で落ちる
+  // **`bracketMethod` / `placementDepth` を `event` に残さないこと。** `Event` に同名の列は
+  // 無いので、そのまま `event.update()` へ渡すと Prisma が `Unknown argument` で落ちる
   // (イベント設定の保存が丸ごと 500 になっていた)。
   const matchRulesProvided = body.matchRules !== undefined;
   const bracketMethodProvided = body.bracketMethod !== undefined;
-  const { sessions, matchRules, bracketMethod, ...event } = validated.value;
+  const placementDepthProvided = body.placementDepth !== undefined;
+  const { sessions, matchRules, bracketMethod, placementDepth, ...event } = validated.value;
 
   let updated;
   try {
@@ -299,7 +304,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // rules はロック取得後にここで読み直してからマージする(デスマッチ専用ブランチと
       // 同時に走っても、どちらか片方の名前空間が古いスナップショットで消されないように)。
       let rulesPatch: Prisma.InputJsonValue | undefined;
-      if (matchRulesProvided || bracketMethodProvided) {
+      if (matchRulesProvided || bracketMethodProvided || placementDepthProvided) {
         const current = await tx.event.findUnique({
           where: { id: params.id },
           select: { rules: true },
@@ -316,10 +321,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           if (matchCount > 0) throw new WinConditionImmutableError();
         }
 
+        // **"bracket" 名前空間の中もマージする。** 丸ごと差し替えると、方式だけを送った
+        // リクエストが順位決定戦の設定を（逆も同様に）消してしまう。
+        const existingBracket =
+          existing.bracket && typeof existing.bracket === "object" && !Array.isArray(existing.bracket)
+            ? (existing.bracket as Prisma.JsonObject)
+            : {};
         rulesPatch = {
           ...(existing as Prisma.InputJsonObject),
           ...(matchRulesProvided ? { matchRules } : {}),
-          ...(bracketMethodProvided ? { bracket: { method: bracketMethod } } : {}),
+          ...(bracketMethodProvided || placementDepthProvided
+            ? {
+                bracket: {
+                  ...(existingBracket as Prisma.InputJsonObject),
+                  ...(bracketMethodProvided ? { method: bracketMethod } : {}),
+                  ...(placementDepthProvided ? { placementDepth } : {}),
+                },
+              }
+            : {}),
         };
       }
 

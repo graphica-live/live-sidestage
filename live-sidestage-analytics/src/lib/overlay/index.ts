@@ -1,0 +1,45 @@
+// `@/lib/overlay` のサーバー側 facade。
+//
+// **ここはサーバー専用(Route Handler / worker.ts / server.js 経由)。**
+// クライアントコンポーネントからこのファイルを import すると、prisma と crypto が
+// ブラウザバンドルの依存グラフに入る。クライアントからは
+// `@/lib/overlay/contracts`(型・定数) と `@/lib/overlay/kinds`(種類の一覧) を直接 import すること。
+//
+// 再エクスポートは「既存の呼び出し元が実際に使っているもの」に限っている。
+// 便利だからと全モジュールをここへ足すと、上の境界が意味を失う。
+
+export {
+  jstDateKey,
+  shiftDayKey,
+  resolveOverlayDayKey,
+  inferOverlayDisplayReference,
+} from "./day-key";
+
+export {
+  OVERLAY_HEADING_BACKGROUNDS,
+  OVERLAY_DISPLAY_SPEED_MIN,
+  OVERLAY_DISPLAY_SPEED_MAX,
+  clampOverlayDisplaySpeed,
+  normalizeOverlayAlign,
+  normalizeOverlayHeadingBackground,
+} from "./contracts";
+export type {
+  OverlayHeadingBackground,
+  OverlayContributor,
+  OverlaySnapshot,
+  OverlaySettingsPayload,
+} from "./contracts";
+
+export { generateOverlayToken, resolveStreamerIdByOverlayToken, ensureOverlayToken } from "./token";
+export { buildOverlaySnapshot } from "./contribution.server";
+export { emitOverlayUpdate, overlayRoom, __resetOverlayEmitStateForTest } from "./emit";
+
+import { emitOverlayUpdate } from "./emit";
+
+// 既存呼び出しの互換エイリアス。tiktok-listener.ts / api/internal/gift-event /
+// api/streamer/overlay-settings がこの名前で呼んでおり、integration テスト4本
+// (tiktok-listener.{combo,gift-dedup,room,watchdog})が `vi.mock("./overlay")` で
+// この名前をモックしている。**消すと呼び出し側とテストの両方を書き換えることになる。**
+export function emitOverlaySnapshot(streamerId: string): Promise<void> {
+  return emitOverlayUpdate(streamerId, "contribution");
+}

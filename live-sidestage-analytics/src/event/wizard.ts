@@ -8,6 +8,7 @@
 // (`validateEventInput()`)。二重に規則を書くとサーバーとずれる。
 
 import { BRACKET_METHODS, type BracketMethod } from "./bracket";
+import { PLACEMENT_DEPTH_MAX } from "./bracket-rules";
 import { parseJstLocal } from "./datetime";
 import type { MatchRules } from "./match-rules";
 import { normalizeSessionInputs } from "./sessions";
@@ -55,6 +56,14 @@ export type EventDraft = {
   matchRules: MatchRules;
   /** トーナメント表の不戦勝配分方式。TOURNAMENT のときだけ意味を持つ。 */
   bracketMethod: BracketMethod;
+  /**
+   * 順位決定戦をどの深さまで行うかの**希望値**。0 なら行わない。
+   *
+   * **ここは参加者登録より前なので、実際に組める深さは分からない。** 深さの上限は
+   * 参加人数と不戦勝の出方で決まるので、確定するのは「トーナメント表を作る」画面。
+   * この値はそこでの既定値にしかならず、上限を超えていれば黙って丸められる。
+   */
+  placementDepth: number;
   prizeText: string;
   noticeText: string;
 };
@@ -155,6 +164,14 @@ export function validateWizardStep(step: WizardStep, values: EventDraft): string
       }
       if (values.format === "TOURNAMENT" && !BRACKET_METHODS.includes(values.bracketMethod)) {
         errors.push("トーナメント表の方式を選んでください。");
+      }
+      if (
+        values.format === "TOURNAMENT" &&
+        (!Number.isInteger(values.placementDepth) ||
+          values.placementDepth < 0 ||
+          values.placementDepth > PLACEMENT_DEPTH_MAX)
+      ) {
+        errors.push("順位決定戦の指定が不正です。");
       }
       return errors;
     }

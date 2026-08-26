@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { isByeRow, isReadyForDetection, isStartedMatch } from "./match-status";
+import {
+  isByeRow,
+  isForceFullPeriod,
+  isReadyForDetection,
+  isStartedMatch,
+  parseWinnerFeeders,
+} from "./match-status";
 
 const progress = (
   status: string,
@@ -85,5 +91,145 @@ describe("isReadyForDetection", () => {
   it("サイドが2つ揃っていなければ対象にしない", () => {
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [] })).toBe(false);
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"]] })).toBe(false);
+  });
+});
+
+describe("isForceFullPeriod", () => {
+  it("forceFullPeriod: true のときだけ true を返す", () => {
+    expect(isForceFullPeriod({ forceFullPeriod: true })).toBe(true);
+    expect(isForceFullPeriod({ forceFullPeriod: false })).toBe(false);
+    expect(isForceFullPeriod({})).toBe(false);
+    expect(isForceFullPeriod(null)).toBe(false);
+    expect(isForceFullPeriod(undefined)).toBe(false);
+    expect(isForceFullPeriod("forceFullPeriod")).toBe(false);
+  });
+
+  it("既存キー(roundLabel/bye/reviewReason)を潰さずに forceFullPeriod だけ見る", () => {
+    const rules = {
+      roundLabel: "1回戦",
+      bye: false,
+      reviewReason: "PARTIAL",
+      forceFullPeriod: true,
+    };
+    expect(isForceFullPeriod(rules)).toBe(true);
+    expect(isByeRow(rules)).toBe(false);
+    expect(rules.roundLabel).toBe("1回戦");
+    expect(rules.reviewReason).toBe("PARTIAL");
+  });
+});
+
+describe("parseWinnerFeeders", () => {
+  const valid = {
+    winnerFeeders: {
+      slots: [
+        { round: 1, position: 0 },
+        { round: 1, position: 1 },
+      ],
+      changedAt: "2026-08-26T00:00:00.000Z",
+    },
+  };
+
+  it("キーが無ければ null(override無し)", () => {
+    expect(parseWinnerFeeders({})).toBeNull();
+    expect(parseWinnerFeeders({ roundLabel: "準決勝" })).toBeNull();
+    expect(parseWinnerFeeders(null)).toBeNull();
+    expect(parseWinnerFeeders(undefined)).toBeNull();
+  });
+
+  it("正しい形式なら ok:true で値を返す", () => {
+    const result = parseWinnerFeeders(valid);
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        slots: [
+          { round: 1, position: 0 },
+          { round: 1, position: 1 },
+        ],
+        changedAt: "2026-08-26T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("既存キー(roundLabel等)と共存しても正しく読める", () => {
+    const rules = { roundLabel: "準決勝", ...valid };
+    expect(parseWinnerFeeders(rules)).toEqual({ ok: true, value: valid.winnerFeeders });
+  });
+
+  it("slots が2要素でなければ ok:false(fail closed)", () => {
+    expect(
+      parseWinnerFeeders({
+        winnerFeeders: { slots: [{ round: 1, position: 0 }], changedAt: "2026-08-26T00:00:00.000Z" },
+      })
+    ).toEqual({ ok: false });
+    expect(
+      parseWinnerFeeders({
+        winnerFeeders: {
+          slots: [
+            { round: 1, position: 0 },
+            { round: 1, position: 1 },
+            { round: 1, position: 2 },
+          ],
+          changedAt: "2026-08-26T00:00:00.000Z",
+        },
+      })
+    ).toEqual({ ok: false });
+  });
+
+  it("slots の要素に null は許さない(loserFrom と違う。BYE側を対象外にしているため)", () => {
+    expect(
+      parseWinnerFeeders({
+        winnerFeeders: { slots: [null, { round: 1, position: 1 }], changedAt: "2026-08-26T00:00:00.000Z" },
+      })
+    ).toEqual({ ok: false });
+  });
+
+  it("round/position が整数でない、または position が負なら ok:false", () => {
+    const base = { round: 1, position: 1 };
+    for (const bad of [
+      { round: 1.5, position: 0 },
+      { round: "1", position: 0 },
+      { round: 1, position: -1 },
+      { round: 1, position: 0.5 },
+    ]) {
+      expect(
+        parseWinnerFeeders({
+          winnerFeeders: { slots: [bad, base], changedAt: "2026-08-26T00:00:00.000Z" },
+        })
+      ).toEqual({ ok: false });
+    }
+  });
+
+  it("両方の座標が同じ(重複source)なら ok:false", () => {
+    expect(
+      parseWinnerFeeders({
+        winnerFeeders: {
+          slots: [
+            { round: 1, position: 0 },
+            { round: 1, position: 0 },
+          ],
+          changedAt: "2026-08-26T00:00:00.000Z",
+        },
+      })
+    ).toEqual({ ok: false });
+  });
+
+  it("changedAt が不正な日時文字列なら ok:false", () => {
+    expect(
+      parseWinnerFeeders({
+        winnerFeeders: {
+          slots: [
+            { round: 1, position: 0 },
+            { round: 1, position: 1 },
+          ],
+          changedAt: "not-a-date",
+        },
+      })
+    ).toEqual({ ok: false });
+  });
+
+  it("winnerFeeders 自体がオブジェクトでなければ ok:false", () => {
+    expect(parseWinnerFeeders({ winnerFeeders: "broken" })).toEqual({ ok: false });
+    expect(parseWinnerFeeders({ winnerFeeders: null })).toEqual({ ok: false });
+    expect(parseWinnerFeeders({ winnerFeeders: [1, 2] })).toEqual({ ok: false });
   });
 });

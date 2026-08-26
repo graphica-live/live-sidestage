@@ -37,6 +37,26 @@ export const BRACKET_METHOD_DESCRIPTIONS: Record<BracketMethod, string> = {
     "各ラウンドの参加者数を半分に分け、奇数なら1人だけ不戦勝にする。同じラウンドで複数人が同時に不戦勝になることはない(例: 5人なら1回戦は1人だけ不戦勝で、標準方式の「3人同時」にはならない)。ただし、同じ人が複数ラウンドにわたって不戦勝になることはある。",
 };
 
+/**
+ * 作成ウィザードで見せる順位決定戦の選択肢。
+ *
+ * **参加人数が未確定なので、順位は代表値（8人・標準方式）でしか書けない。**
+ * 実際に何位が決まるかは `placementOptions()` がブラケット確定後に算出する。
+ */
+export const PLACEMENT_DEPTH_LABELS: Record<number, string> = {
+  0: "行わない",
+  1: "3位まで",
+  2: "5位まで",
+  3: "9位まで",
+};
+
+export const PLACEMENT_DEPTH_SUBTITLES: Record<number, string> = {
+  0: "優勝と準優勝だけを決める",
+  1: "準決勝の敗者どうしで1試合",
+  2: "さらに準々決勝の敗者どうしでも行う",
+  3: "さらに1つ前のラウンドの敗者どうしでも行う",
+};
+
 export const ENTRY_MODE_LABELS: Record<EntryMode, string> = {
   SOLO: "個人戦",
   TEAM: "チーム戦",

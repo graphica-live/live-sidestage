@@ -5,29 +5,19 @@ import { prisma } from "@/lib/prisma";
 import {
   clampOverlayDisplaySpeed,
   emitOverlaySnapshot,
-  generateOverlayToken,
+  ensureOverlayToken,
   inferOverlayDisplayReference,
   jstDateKey,
   OVERLAY_DISPLAY_SPEED_MAX,
   OVERLAY_DISPLAY_SPEED_MIN,
+  normalizeOverlayAlign,
+  normalizeOverlayHeadingBackground,
   OVERLAY_HEADING_BACKGROUNDS,
   OverlayHeadingBackground,
+  OverlaySettingsPayload,
   resolveOverlayDayKey,
   shiftDayKey,
 } from "@/lib/overlay";
-
-type OverlaySettingsResponse = {
-  overlayToken: string;
-  displayDate: string;
-  isToday: boolean;
-  threshold: number;
-  goalCount: number;
-  visibleRows: number;
-  nameMaxWidth: number;
-  align: string;
-  headingBackground: string;
-  displaySpeed: number;
-};
 
 async function loadStreamer(userId: string) {
   return prisma.streamer.findUnique({
@@ -59,7 +49,7 @@ function toResponse(streamer: {
   overlayAlign: string;
   overlayHeadingBackground: string;
   overlayDisplaySpeed: number;
-}): OverlaySettingsResponse {
+}): OverlaySettingsPayload {
   const displayDate = resolveOverlayDayKey(streamer);
   return {
     overlayToken: streamer.overlayToken ?? "",
@@ -69,8 +59,10 @@ function toResponse(streamer: {
     goalCount: streamer.overlayGoalCount,
     visibleRows: streamer.overlayVisibleRows,
     nameMaxWidth: streamer.overlayNameMaxWidth,
-    align: streamer.overlayAlign,
-    headingBackground: streamer.overlayHeadingBackground,
+    // DB の列は string なので、オーバーレイ本体(buildOverlaySnapshot)と同じ正規化を通す。
+    // 生の値を返すと、設定画面のボタンがどれも選択状態にならない値が紛れうる。
+    align: normalizeOverlayAlign(streamer.overlayAlign),
+    headingBackground: normalizeOverlayHeadingBackground(streamer.overlayHeadingBackground),
     displaySpeed: clampOverlayDisplaySpeed(streamer.overlayDisplaySpeed),
   };
 }
@@ -83,8 +75,10 @@ export async function GET() {
   if (!streamer) return NextResponse.json({ error: "配信者情報が見つかりません。" }, { status: 404 });
 
   if (!streamer.overlayToken) {
-    const overlayToken = generateOverlayToken();
-    await prisma.streamer.update({ where: { id: streamer.id }, data: { overlayToken } });
+    // 生成→update ではなく ensureOverlayToken を通す。初回に2タブで同時に開くと
+    // 別トークンが2つ生成され、DBに残らなかった側のタブが「コピーしても何も映らない」
+    // OBS URL を表示してしまう(ensure 側で updateMany + 読み直しにしてある)。
+    const overlayToken = await ensureOverlayToken(streamer.id);
     streamer = { ...streamer, overlayToken };
   }
 

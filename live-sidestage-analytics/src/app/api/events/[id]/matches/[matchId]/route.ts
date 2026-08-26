@@ -3,16 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { nextSlot } from "@/event/bracket";
 import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
 import { acquireEventLock } from "@/event/event-lock";
+import { downstreamStarted } from "@/event/match-downstream";
 import { advanceBracket, resolveMatchSeries } from "@/event/match-results";
 import { seriesRequirement, parseMatchRules, type MatchRules } from "@/event/match-rules";
 import {
   isByeRow,
   isCandidatesConfirmedByOrganizer,
   isPlainObject,
-  isStartedMatch,
   withCandidatesConfirmedByOrganizer,
 } from "@/event/match-status";
 import { resolveEventWindows, type EventWindow } from "@/event/sessions";
@@ -69,6 +68,24 @@ function clearReviewReason(rules: unknown): Prisma.InputJsonObject {
   return base as Prisma.InputJsonObject;
 }
 
+/**
+ * ⚠️トラブル対処フラグ(`forceFullPeriod`)を足す/消す。既存キー(`roundLabel`/`bye`等)は保つ。
+ * `reviewReason` と同じ「マージして片方だけ触る」パターン。
+ */
+function mergeForceFullPeriod(rules: unknown, enabled: boolean): Prisma.InputJsonObject {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  if (enabled) base.forceFullPeriod = true;
+  else delete base.forceFullPeriod;
+  return base as Prisma.InputJsonObject;
+}
+
+/** `reopen`/`void` で⚠️トラブル対処フラグも一緒に消す。フラグは FINISHED にしか存在しない。 */
+function clearForceFullPeriod(rules: unknown): Prisma.InputJsonObject {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  delete base.forceFullPeriod;
+  return base as Prisma.InputJsonObject;
+}
+
 type Action =
   | "approve"
   | "confirm"
@@ -77,7 +94,8 @@ type Action =
   | "reopen"
   | "assignSession"
   | "selectCandidates"
-  | "resetCandidates";
+  | "resetCandidates"
+  | "forceFullPeriod";
 
 /**
  * 候補一覧の「見た目」の指紋。楽観的排他に使う。
@@ -192,6 +210,7 @@ export async function PATCH(
     sessionId?: unknown;
     candidateIds?: unknown;
     candidatesFingerprint?: unknown;
+    enabled?: unknown;
   } | null;
 
   const action = body?.action as Action | undefined;
@@ -211,6 +230,12 @@ export async function PATCH(
     failure = await inTx(async (tx): Promise<Failure | null> => {
       // **ここから先の読み取りはすべてロックの内側。** 順序は破棄側と揃える。
       await acquireEventLock(tx, params.id);
+
+      const event = await tx.event.findUnique({
+        where: { id: params.id },
+        select: { format: true },
+      });
+      if (!event) return { error: "Not found", status: 404 };
 
       const match = await tx.eventMatch.findFirst({
         where: { id: params.matchId, eventId: params.id },
@@ -250,7 +275,13 @@ export async function PATCH(
 
       // 勝敗を動かす操作は、次の対戦が始まっていたら拒否する。
       // 進行中の対戦の参加者が途中で入れ替わると、集計対象が変わって結果が壊れるため。
-      if (resultAction && (await downstreamStarted(tx, params.id, match.round, match.bracketPosition))) {
+      // **デスマッチには表の進行(nextSlot)が無い**ので、全対戦を毎回スキャンする
+      // このチェックはトーナメントだけに絞る(デスマッチの対戦履歴は人数に上限が無い)。
+      if (
+        resultAction &&
+        event.format === "TOURNAMENT" &&
+        (await downstreamStarted(tx, params.id, match.round, match.bracketPosition))
+      ) {
         return {
           error: "次の対戦がすでに始まっているため、この対戦の結果は変更できません。",
           code: "DOWNSTREAM_STARTED",
@@ -375,7 +406,8 @@ export async function PATCH(
               winnerSideId: null,
               winnerDecidedBy: null,
               decidedAt: null,
-              rules: clearReviewReason(match.rules),
+              // 無効化した対戦は集計対象から外れるので、⚠️トラブル対処フラグにも意味がない。
+              rules: clearForceFullPeriod(clearReviewReason(match.rules)),
             },
           });
           // 集計済みのスコアも消す。無効にした対戦の数字が残っていると
@@ -410,8 +442,11 @@ export async function PATCH(
               detectionConfidence: null,
               detectedEndSource: null,
               decidedAt: null,
+              // 検知をやり直す以上、⚠️トラブル対処フラグ(緊急措置)もリセットして
+              // 素直に再評価させる。フラグは FINISHED にしか存在しない不変条件でもある。
+              // 主催者の候補選択の確定(`candidatesConfirmedByOrganizer`)も同時に解く。
               rules: withCandidatesConfirmedByOrganizer(
-                clearReviewReason(match.rules),
+                clearForceFullPeriod(clearReviewReason(match.rules)),
                 false
               ) as Prisma.InputJsonObject,
             },
@@ -546,6 +581,27 @@ export async function PATCH(
           break;
         }
 
+        case "forceFullPeriod": {
+          // ⚠️トラブル対処: バトル検知が失敗して手動確定した対戦のダイヤ救済。
+          // 検知区間の代わりに開催日程まるごとを集計対象にする(loadBattleRangesByRoom側)。
+          // 通常機能ではないので、確定済み(FINISHED)の対戦にしか設定させない —
+          // 「検知をやり直す」「無効にする」を通ると自動的に消える(上のcase参照)。
+          if (isByeRow(match.rules)) {
+            return { error: "不戦勝の対戦には設定できません。", status: 400 };
+          }
+          if (match.status !== "FINISHED") {
+            return { error: "確定済みの対戦にのみ設定できます。", status: 400 };
+          }
+          if (typeof body?.enabled !== "boolean") {
+            return { error: "enabled を真偽値で指定してください。", status: 400 };
+          }
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: { rules: mergeForceFullPeriod(match.rules, body.enabled) },
+          });
+          break;
+        }
+
         case "assignSession": {
           // **検知・確定した後は日程を動かせない。**
           // 日程はバトル検知の対象区間そのもので、動かすと確定済みの検知が
@@ -582,7 +638,9 @@ export async function PATCH(
       // ワーカーは開催前(SCHEDULED)のイベントを対象にしない(`aggregationWindow`)ので、
       // 事前に組んだ表を確定しても永久に次のラウンドが埋まらない。ロックは
       // このトランザクションの先頭で取ってあるので順序は変わらない。
-      if (resultAction) {
+      // **デスマッチには表の進行(nextSlot)が無い**ので、全対戦を毎回読み込む
+      // advanceBracket もトーナメントだけに絞る(デスマッチの対戦履歴は人数に上限が無い)。
+      if (resultAction && event.format === "TOURNAMENT") {
         await advanceBracket(tx, params.id);
       }
 
@@ -676,44 +734,4 @@ export async function DELETE(
     );
   }
   return NextResponse.json({ ok: true });
-}
-
-async function downstreamStarted(
-  tx: DbClient,
-  eventId: string,
-  round: number,
-  position: number
-): Promise<boolean> {
-  const agg = await tx.eventMatch.aggregate({
-    where: { eventId },
-    _max: { round: true },
-  });
-  const roundCount = agg._max.round ?? round;
-
-  // 不戦勝行は自動通過にすぎないので、それ自体が FINISHED でも「進行が始まった」とは
-  // 数えない。透過してさらに下流を見る(段階的不戦勝方式は不戦勝行が複数ラウンドに
-  // わたることがある)。ラウンド数で有界なので無限ループにはならない。
-  let cur = { round, position };
-  for (let hop = 0; hop < roundCount; hop++) {
-    const slot = nextSlot(cur.round, cur.position, roundCount);
-    if (!slot) return false;
-
-    const next = await tx.eventMatch.findFirst({
-      where: { eventId, round: slot.round, bracketPosition: slot.position },
-      select: { status: true, winnerDecidedBy: true, rules: true },
-    });
-    if (!next) return false;
-
-    const nextIsBye = isByeRow(next.rules);
-    if (nextIsBye) {
-      cur = { round: slot.round, position: slot.position };
-      continue;
-    }
-    return isStartedMatch({
-      status: next.status,
-      winnerDecidedBy: next.winnerDecidedBy,
-      isBye: nextIsBye,
-    });
-  }
-  return false;
 }

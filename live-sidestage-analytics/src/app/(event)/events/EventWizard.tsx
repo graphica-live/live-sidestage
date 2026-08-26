@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BRACKET_METHODS, type BracketMethod } from "@/event/bracket";
+import { PLACEMENT_DEPTH_MAX } from "@/event/bracket-rules";
 import {
   BRACKET_METHOD_DESCRIPTIONS,
   BRACKET_METHOD_LABELS,
@@ -10,6 +11,8 @@ import {
   ENTRY_MODE_LABELS,
   FORMAT_DESCRIPTIONS,
   FORMAT_LABELS,
+  PLACEMENT_DEPTH_LABELS,
+  PLACEMENT_DEPTH_SUBTITLES,
   TEAM_PRESET_LABELS,
 } from "@/event/labels";
 import {
@@ -31,6 +34,9 @@ import {
 import { BracketMethodDiagram } from "./BracketMethodDiagram";
 import { MatchRulesField } from "./MatchRulesField";
 import { SessionsField } from "./SessionsField";
+
+/** 0(行わない)から上限まで。ラベルは `PLACEMENT_DEPTH_LABELS`。 */
+const PLACEMENT_DEPTH_CHOICES = Array.from({ length: PLACEMENT_DEPTH_MAX + 1 }, (_, i) => i);
 
 /**
  * イベント作成ウィザード。**1画面につき1つだけ決めさせる。**
@@ -222,6 +228,51 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                     </label>
                   ))}
                 </div>
+
+                <div className="mt-2 grid gap-3 border-t border-border pt-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">順位決定戦</h3>
+                    <p className="mt-1 text-xs text-gray-500">
+                      3位以下も試合で決めるか。1つ増やすごとに参加者の実際のライブバトルが増える。
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {PLACEMENT_DEPTH_CHOICES.map((depth) => (
+                      <label
+                        key={depth}
+                        className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                          values.placementDepth === depth
+                            ? "border-brand bg-brand/5"
+                            : "border-border bg-panel"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="placementDepth"
+                          className="mt-1 accent-brand"
+                          checked={values.placementDepth === depth}
+                          onChange={() => set("placementDepth", depth)}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-white">
+                            {PLACEMENT_DEPTH_LABELS[depth]}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-gray-400">
+                            {PLACEMENT_DEPTH_SUBTITLES[depth]}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-amber-400">
+                    ここで決めるのは希望。
+                    <strong>実際に何位まで決まるかは参加人数と不戦勝の出方で変わる</strong>
+                    ので、確定するのは参加者を登録した後の「トーナメント表を作る」画面。
+                    そこで選び直せる。
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -369,7 +420,17 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                 <span className="ml-2 text-xs text-amber-400">作成後は変更できない</span>
               </Row>
               {values.format === "TOURNAMENT" && (
-                <Row label="不戦勝方式">{BRACKET_METHOD_LABELS[values.bracketMethod]}</Row>
+                <>
+                  <Row label="不戦勝方式">{BRACKET_METHOD_LABELS[values.bracketMethod]}</Row>
+                  <Row label="順位決定戦">
+                    {PLACEMENT_DEPTH_LABELS[values.placementDepth]}
+                    {values.placementDepth > 0 && (
+                      <span className="ml-2 text-xs text-amber-400">
+                        参加人数によって変わる（表を作る画面で確定）
+                      </span>
+                    )}
+                  </Row>
+                </>
               )}
               <Row label="イベント名">{values.title.trim() || "未入力"}</Row>
               <Row label="参加形式">

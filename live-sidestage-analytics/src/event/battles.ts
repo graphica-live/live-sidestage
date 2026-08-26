@@ -7,9 +7,22 @@ import {
   type BattleObservation,
   type MatchCandidate,
 } from "./match-detect";
-import { isByeRow, isCandidatesConfirmedByOrganizer } from "./match-status";
+import {
+  isByeRow,
+  isCandidatesConfirmedByOrganizer,
+  isForceFullPeriod,
+  parseLoserFrom,
+  parseWinnerFeeders,
+} from "./match-status";
 import type { TimeRange } from "./scoring";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
+import {
+  buildWinnerFeederGraph,
+  feederOf,
+  BracketInconsistentError,
+  type BracketSlot,
+  type WinnerFeederGraph,
+} from "./winner-feeders";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
 //
@@ -102,6 +115,7 @@ function decidedAtOfSlot(
   round: number,
   position: number,
   bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph,
   depth = 0
 ): Date | null {
   if (round < 1 || depth > 32) return null;
@@ -115,37 +129,70 @@ function decidedAtOfSlot(
   if (decided) return decided;
 
   // 不戦勝(バトルが起きていない)行は時刻を持たない。その上流まで遡る。
-  const upstream = [
-    decidedAtOfSlot(round - 1, position * 2, bySlot, depth + 1),
-    decidedAtOfSlot(round - 1, position * 2 + 1, bySlot, depth + 1),
-  ].filter((d): d is Date => !!d);
+  const upstream = upstreamSlots(match, graph)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, graph, depth + 1))
+    .filter((d): d is Date => !!d);
   if (upstream.length === 0) return null;
   return upstream.reduce((max, d) => (d > max ? d : max));
 }
 
 /**
- * 上流(feeder)の決着時刻。`nextSlot()` の逆(round-1 の position*2 と position*2+1)を引く。
+ * この行に出場者を送り込んでくる上流の座標。
+ *
+ * 通常は `WinnerFeederGraph` 経由(`winnerFeeders` override があればそちら、無ければ
+ * `nextSlot()` の逆算)。**順位決定戦の葉だけは例外**で、`rules.loserFrom`(本選のどの行の
+ * 敗者が来るか)を見る — 座標の上流には何も無いので、そのままだと制約なし(null)になる。
+ *
+ * 上流のラウンドは必ず自分より小さいので、辿っても循環しない。
+ */
+function upstreamSlots(match: MatchWithSides, graph: WinnerFeederGraph): BracketSlot[] {
+  const loserFrom = parseLoserFrom(match.rules);
+  if (loserFrom) {
+    return loserFrom.filter((slot): slot is BracketSlot => slot !== null);
+  }
+  return [0, 1]
+    .map((sideIndex) => feederOf(graph, match.round, match.bracketPosition, sideIndex))
+    .filter((slot): slot is BracketSlot => slot !== null);
+}
+
+/**
+ * 上流(feeder)の決着時刻。
  *
  * これがないと、2回戦のカードが埋まった瞬間に「同じ組み合わせで前に行われたバトル」
  * (1回戦そのもの、練習バトル)が候補に入る。時間枠がラウンドを分けていた前提の代わり。
+ *
+ * 順位決定戦でも同じ危険がある — 3位決定戦の枠が埋まった瞬間に、その2人が過去に
+ * 行った別のバトルを拾いうる。`upstreamSlots()` が `loserFrom` を見るのはそのため。
+ *
+ * **`match` 自身が `winnerFeeders` override を持つ場合、接続変更時刻(`changedAt`)も
+ * 検知下限に含める**(`max(各feederの決着時刻, changedAt)`)。これが無いと、接続変更
+ * "前" に発生した無関係なバトルが、新しい組み合わせの結果として誤検知される
+ * (`src/event/CLAUDE.md` の「検知の誤爆対策」参照)。override 対象は非bye行に限定されているので、
+ * bye行を透過した先でこの考慮が必要になることはない。
  */
 function feederDecidedAt(
   match: MatchWithSides,
-  bySlot: Map<string, MatchWithSides>
+  bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph
 ): Date | null {
-  if (match.round <= 1) return null;
-  const feeders = [
-    decidedAtOfSlot(match.round - 1, match.bracketPosition * 2, bySlot),
-    decidedAtOfSlot(match.round - 1, match.bracketPosition * 2 + 1, bySlot),
-  ].filter((d): d is Date => !!d);
-  if (feeders.length === 0) return null;
-  return feeders.reduce((max, d) => (d > max ? d : max));
+  const feeders = upstreamSlots(match, graph)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, graph))
+    .filter((d): d is Date => !!d);
+
+  const parsedOverride = parseWinnerFeeders(match.rules);
+  const changedAt =
+    parsedOverride && parsedOverride.ok ? new Date(parsedOverride.value.changedAt) : null;
+
+  const candidates = changedAt ? [...feeders, changedAt] : feeders;
+  if (candidates.length === 0) return null;
+  return candidates.reduce((max, d) => (d > max ? d : max));
 }
 
 /** 日程が付いていない対戦(移行前のデータ)は検知しようがないので候補にしない。 */
 function toCandidate(
   match: MatchWithSides,
-  bySlot: Map<string, MatchWithSides>
+  bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph
 ): MatchCandidate | null {
   if (!match.session) return null;
   const bySide = [...match.sides].sort((a, b) => a.sideIndex - b.sideIndex);
@@ -157,7 +204,9 @@ function toCandidate(
     sessionEnd: match.session.endAt,
     sideRoomIds: bySide.map((s) => s.participants.map((p) => p.participant.roomId)),
     isBye: isByeRow(match.rules),
-    feederDecidedAt: feederDecidedAt(match, bySlot),
+    // `lockedBattleId`(確定済みの割り当てを別の battleId へ動かさない)は候補テーブル
+    // (`EventMatchBattleCandidate`)へ移したのでここには無い。候補の追加・削除で表現する。
+    feederDecidedAt: feederDecidedAt(match, bySlot, graph),
   };
 }
 
@@ -256,8 +305,16 @@ export async function detectMatches(
 
   // 上流は**全マッチ**から引く(VOID や手動確定の行も上流にはなりうる)。
   const bySlot = bySlotIndex(matches);
+  const roundCount = Math.max(...matches.map((m) => m.round));
+  const feederGraph = buildWinnerFeederGraph(
+    matches.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    roundCount
+  );
+  if (!feederGraph.ok) throw new BracketInconsistentError();
+  const graph = feederGraph.graph;
+
   const candidates = open
-    .map((m) => toCandidate(m, bySlot))
+    .map((m) => toCandidate(m, bySlot, graph))
     .filter((c): c is MatchCandidate => c !== null);
   if (candidates.length === 0) return { detected: 0, missed: 0, invalidated: 0 };
 
@@ -411,6 +468,12 @@ export async function detectMatches(
  * `selected` は `resolveMatchSeries()` が計算した「現在の実効ゲーム集合」に一本化されて
  * いるので、候補過多で選択待ちの候補や、決着後に使われなかった余剰候補はここに現れない。
  * 対象マッチは VOID と NO_SHOW を含めない(バトルが成立していないので倍率の根拠がない)。
+ *
+ * **`rules.forceFullPeriod`(⚠️トラブル対処)が立っている対戦は例外。** 候補の区間を無視し、
+ * 割り当てた開催日程まるごとを区間にする。バトル検知が失敗して手動確定した対戦のダイヤ
+ * 救済に使う(`match-status.ts` の `isForceFullPeriod` を参照。設定は `route.ts` が
+ * FINISHED の対戦にしか許さない)。**救済したいのはまさに「実効ゲームを1件も持たない対戦」
+ * なので、候補テーブルからは引けない** — `EventMatch` を別に読んで日程を入れる。
  */
 export async function loadBattleRangesByRoom(
   tx: DbClient,
@@ -430,6 +493,7 @@ export async function loadBattleRangesByRoom(
           // 倍率区間は**割り当てた日程で切る**。日程の前から始まったバトルの、日程の外の
           // 部分にまでバトル倍率をかけない(勝敗の集計と同じ扱いに揃える)。
           session: { select: { startAt: true, endAt: true } },
+          rules: true,
           sides: {
             select: { participants: { select: { participant: { select: { roomId: true } } } } },
           },
@@ -438,15 +502,24 @@ export async function loadBattleRangesByRoom(
     },
   });
 
+  const forced = await tx.eventMatch.findMany({
+    where: { eventId, status: { in: ["LIVE", "DETECTED", "FINISHED"] } },
+    select: {
+      rules: true,
+      session: { select: { startAt: true, endAt: true } },
+      sides: {
+        select: { participants: { select: { participant: { select: { roomId: true } } } } },
+      },
+    },
+  });
+
   const byRoom = new Map<string, TimeRange[]>();
-  for (const candidate of candidates) {
-    const session = candidate.match.session;
-    const start =
-      session && candidate.startedAt < session.startAt ? session.startAt : candidate.startedAt;
-    const end = session && candidate.endedAt! > session.endAt ? session.endAt : candidate.endedAt!;
-    if (start >= end) continue;
-    const range: TimeRange = { start, end };
-    for (const side of candidate.match.sides) {
+  const addRange = (
+    sides: { participants: { participant: { roomId: string } }[] }[],
+    range: TimeRange
+  ) => {
+    if (range.start >= range.end) return;
+    for (const side of sides) {
       for (const p of side.participants) {
         const roomId = p.participant.roomId;
         const list = byRoom.get(roomId);
@@ -454,6 +527,23 @@ export async function loadBattleRangesByRoom(
         else byRoom.set(roomId, [range]);
       }
     }
+  };
+
+  for (const candidate of candidates) {
+    // ⚠️トラブル対処フラグが立った対戦は下で日程まるごとを入れる(区間を二重に持たせない)。
+    if (isForceFullPeriod(candidate.match.rules)) continue;
+    const session = candidate.match.session;
+    const start =
+      session && candidate.startedAt < session.startAt ? session.startAt : candidate.startedAt;
+    const end = session && candidate.endedAt! > session.endAt ? session.endAt : candidate.endedAt!;
+    addRange(candidate.match.sides, { start, end });
+  }
+
+  for (const match of forced) {
+    if (!isForceFullPeriod(match.rules)) continue;
+    // 日程を持たない対戦(移行前データ)は、日程が正本の区間そのものなので救済しようがない。
+    if (!match.session) continue;
+    addRange(match.sides, { start: match.session.startAt, end: match.session.endAt });
   }
 
   return byRoom;

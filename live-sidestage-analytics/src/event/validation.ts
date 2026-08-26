@@ -1,7 +1,8 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
+import { AVATAR_ZOOM_MAX, AVATAR_ZOOM_MIN } from "./avatar-frame";
 import type { BracketMethod } from "./bracket";
-import { parseBracketMethod } from "./bracket-rules";
+import { normalizePlacementDepth, parseBracketMethod } from "./bracket-rules";
 import { type MatchRules, parseMatchRules } from "./match-rules";
 import {
   MAX_EVENT_DAYS,
@@ -56,6 +57,11 @@ export type EventInput = {
   matchRules?: unknown;
   /** トーナメント表の不戦勝配分方式。不正値・欠損は既定(STANDARD)へ丸める。TOURNAMENT以外では無視。 */
   bracketMethod?: unknown;
+  /**
+   * 順位決定戦をどの深さまで行うかの希望値。不正値・欠損は 0(行わない)へ丸める。
+   * **実際に組める深さは参加人数が確定してから決まる**ので、ここでは上限だけ見る。
+   */
+  placementDepth?: unknown;
 };
 
 export type ValidatedEventInput = {
@@ -75,6 +81,8 @@ export type ValidatedEventInput = {
   matchRules: MatchRules;
   /** 常に正規化済み(parseBracketMethodが不正値を既定へ丸める)。 */
   bracketMethod: BracketMethod;
+  /** 常に正規化済み(normalizePlacementDepthが不正値を0へ丸める)。 */
+  placementDepth: number;
 };
 
 export type ValidationResult<T> =
@@ -109,6 +117,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
   // 不正値・欠損は既定へ丸める(deathmatchRulesと同じ方針)ので、ここではエラーを積まない。
   const matchRules = parseMatchRules({ matchRules: input.matchRules });
   const bracketMethod = parseBracketMethod({ bracket: { method: input.bracketMethod } });
+  const placementDepth = normalizePlacementDepth(input.placementDepth);
 
   if (!EVENT_FORMATS.includes(input.format as EventFormat)) {
     errors.push("イベント種目の指定が不正です。");
@@ -152,6 +161,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
       noticeText: noticeText || null,
       matchRules,
       bracketMethod,
+      placementDepth,
     },
   };
 }
@@ -250,25 +260,18 @@ export function validateTeamCount(count: number): ValidationResult<number> {
 }
 
 /**
- * 参加者の表示名を決める。空(未入力・空白のみ・null)なら fallback(TikTok ID)へ丸める。
- * 登録時も改名時もこの1箇所を通し、規則の二重定義を作らない。
- *
- * **fallback は長さ検査の対象外にする。** TikTok ID は64文字まで許すのに表示名の上限は
- * 60文字なので、fallback まで検査すると 61〜64文字のハンドルを持つ参加者が
- * 「名前を空にして TikTok ID へ戻す」をできなくなる(登録も通らない)。
- * 上限は主催者が入力した名前にだけ効かせる。
+ * 主催者が明示した表示名だけを検証する。空(未入力・空白のみ・null)なら
+ * まだ確定していないことを示す `value: null` を返す(fallback をいつ・何で埋めるかは
+ * 呼び出し側の責務 — 登録時は TikTok 実在確認の結果を待ってから決めるため)。
  *
  * `raw` は HTTP 境界から来るので `unknown` で受け、文字列以外は弾く。
  */
-export function resolveParticipantDisplayName(
-  raw: unknown,
-  fallback: string
-): ValidationResult<string> {
+export function validateExplicitDisplayName(raw: unknown): ValidationResult<string | null> {
   if (raw !== undefined && raw !== null && typeof raw !== "string") {
     return { ok: false, errors: ["表示名の指定が不正です。"] };
   }
   const name = (raw ?? "").trim();
-  if (!name) return { ok: true, value: fallback };
+  if (!name) return { ok: true, value: null };
   if (name.length > MAX_DISPLAY_NAME_LENGTH) {
     return {
       ok: false,
@@ -278,6 +281,43 @@ export function resolveParticipantDisplayName(
   return { ok: true, value: name };
 }
 
+/**
+ * 参加者の表示名を決める。空(未入力・空白のみ・null)なら fallback(TikTok ID)へ丸める。
+ * 改名時(`updateParticipant`)はこの1箇所を通す。
+ *
+ * **fallback は長さ検査の対象外にする。** TikTok ID は64文字まで許すのに表示名の上限は
+ * 60文字なので、fallback まで検査すると 61〜64文字のハンドルを持つ参加者が
+ * 「名前を空にして TikTok ID へ戻す」をできなくなる(登録も通らない)。
+ * 上限は主催者が入力した名前にだけ効かせる。
+ */
+export function resolveParticipantDisplayName(
+  raw: unknown,
+  fallback: string
+): ValidationResult<string> {
+  const explicit = validateExplicitDisplayName(raw);
+  if (!explicit.ok) return explicit;
+  return { ok: true, value: explicit.value ?? fallback };
+}
+
+/**
+ * TikTok のニックネームを、参加者登録の表示名フォールバックとして採用してよいか判定する。
+ *
+ * 主催者の明示入力とは違い**外部レスポンス由来の信頼できない文字列**なので、より厳しく検査する:
+ * 空・`MAX_DISPLAY_NAME_LENGTH` 超・改行や制御文字を含む場合は不採用にし、呼び出し側で
+ * さらに TikTok ID へフォールバックさせる(切り詰めはしない — 絵文字の途中で切ると壊れるため)。
+ */
+export function sanitizeNicknameFallback(nickname: string | null): string | null {
+  if (!nickname) return null;
+  if (nickname.length > MAX_DISPLAY_NAME_LENGTH) return null;
+  // C0/C1制御文字(改行含む)を含むニックネームは不採用にする。
+  // eslint-disable-next-line no-control-regex -- 意図的な制御文字検査
+  if (/[ --]/.test(nickname)) return null;
+  return nickname;
+}
+
+/** 対戦カードに表示するアバターの切り出し位置・ズーム。3値セットでのみ受け付ける。 */
+export type AvatarFrameInput = { offsetX: number; offsetY: number; zoom: number };
+
 // 参加者の部分更新(PATCH)。**送られてきたキーだけ**を持つ。
 // `undefined` = 触らない、`null` = 明示的に空へ戻す、を型で区別する。
 export type ParticipantPatchInput = {
@@ -285,6 +325,15 @@ export type ParticipantPatchInput = {
   teamId?: string | null;
   /** 表示名。null / 空文字なら TikTok ID へ戻る */
   displayName?: string | null;
+  /** アバターの表示位置。null で現状のデフォルト(50%/30%/等倍)へ戻る */
+  avatarFrame?: AvatarFrameInput | null;
+  /**
+   * TikTok ID の訂正(生の入力文字列)。登録ミスの後追い訂正専用。
+   * teamId/displayName と違い `null` によるクリア概念は無い(DB の tiktokId は NOT NULL)。
+   * 正規化(`normalizeTiktokId`)はここでは行わず `updateParticipant` 側に寄せる
+   * (register 側の役割分担と揃える)。
+   */
+  tiktokId?: string;
 };
 
 /**
@@ -316,11 +365,60 @@ export function parseParticipantPatch(body: unknown): ValidationResult<Participa
     value.displayName = raw.displayName;
   }
 
-  if (value.teamId === undefined && value.displayName === undefined) {
-    return { ok: false, errors: ["teamId か displayName のどちらかが必要です。"] };
+  if (raw.avatarFrame !== undefined) {
+    const parsed = parseAvatarFrameInput(raw.avatarFrame);
+    if (!parsed.ok) return parsed;
+    value.avatarFrame = parsed.value;
+  }
+
+  if (raw.tiktokId !== undefined) {
+    if (typeof raw.tiktokId !== "string") {
+      return { ok: false, errors: ["TikTok ID の指定が不正です。"] };
+    }
+    value.tiktokId = raw.tiktokId;
+  }
+
+  if (
+    value.teamId === undefined &&
+    value.displayName === undefined &&
+    value.tiktokId === undefined &&
+    value.avatarFrame === undefined
+  ) {
+    return { ok: false, errors: ["teamId・displayName・tiktokId・avatarFrame のいずれかが必要です。"] };
   }
 
   return { ok: true, value };
+}
+
+/** null(デフォルトへリセット) か、offsetX/offsetY/zoom が全て揃った有効な数値のオブジェクトだけを通す。 */
+function parseAvatarFrameInput(raw: unknown): ValidationResult<AvatarFrameInput | null> {
+  if (raw === null) return { ok: true, value: null };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, errors: ["avatarFrame の指定が不正です。"] };
+  }
+
+  const { offsetX, offsetY, zoom } = raw as Record<string, unknown>;
+  if (
+    typeof offsetX !== "number" ||
+    typeof offsetY !== "number" ||
+    typeof zoom !== "number" ||
+    !Number.isFinite(offsetX) ||
+    !Number.isFinite(offsetY) ||
+    !Number.isFinite(zoom)
+  ) {
+    return { ok: false, errors: ["avatarFrame の指定が不正です。"] };
+  }
+  if (offsetX < 0 || offsetX > 100 || offsetY < 0 || offsetY > 100) {
+    return { ok: false, errors: ["avatarFrame の位置は0〜100の範囲で指定してください。"] };
+  }
+  if (zoom < AVATAR_ZOOM_MIN || zoom > AVATAR_ZOOM_MAX) {
+    return {
+      ok: false,
+      errors: [`avatarFrame のズームは${AVATAR_ZOOM_MIN}〜${AVATAR_ZOOM_MAX}の範囲で指定してください。`],
+    };
+  }
+
+  return { ok: true, value: { offsetX, offsetY, zoom } };
 }
 
 // TikTok ID の正規化。analytics の normalizeTiktokId(src/lib/tiktok-room.ts)と

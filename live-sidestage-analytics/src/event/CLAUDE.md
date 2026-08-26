@@ -170,6 +170,38 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
 - **数字は単調増加しない。** `NEEDS_REVIEW` の承認で一気に加算され、`CUT_SHORT` の判明で減る。
   公開ページの注記（`BATTLE_ONLY_SCORING_NOTE`）でその旨を出している
 
+### ⚠️トラブル対処: 対戦単位の `forceFullPeriod` 強制フラグ
+
+1回戦の検知失敗（部分一致・`AMBIGUOUS`・`END_UNKNOWN`）で主催者が勝者を手動確定すると、
+その `decidedAt`（手動確定した時刻）が下流ラウンドの `feederDecidedAt` に使われる。実際の
+バトルがそれより前に開始していると、**正常に検知できたはずの下流ラウンドまで候補から
+除外される連鎖**が起きうる（実例: 2026-08-26 `awake-vol-3-kcmkdz`）。`feederDecidedAt`
+自体の設計変更（手動確定時刻と実決着時刻の分離）は今のところ見送っている。
+
+代わりに、主催者が対戦カード単位で明示的に有効化する緊急救済フラグ
+（`EventMatch.rules.forceFullPeriod === true`、`match-status.ts` の `isForceFullPeriod`）を
+用意してある。管理画面（`MatchManager.tsx` の `TroubleShootingSection`）でのみ操作でき、
+**`FINISHED` の対戦にしか存在しない不変条件**（`route.ts` が設定を FINISHED 限定にし、
+`reopen`/`void` で自動的に消す）。
+
+守ること・既知の影響:
+
+- **`loadBattleRangesByRoom()` はフラグが立った対戦を検知区間ではなく開催日程
+  `[session.startAt, session.endAt)` まるごとで扱う。** 勝敗判定（`resolveMatchResults`）は
+  これを見ないので勝者には影響しない
+- **BATTLE倍率が設定されている場合、フラグ区間にも通常のBATTLE倍率がそのまま乗る**
+  （区間の kind は常に BATTLE）。フラグを立てた参加者は他参加者より構造的に有利になりうるが、
+  緊急救済としてこの歪みは許容する
+- **公開ページの注記（`aggregationPolicy: BATTLE_ONLY` に基づく説明）は変わらない。**
+  「バトル区間のみ集計」という説明とフラグ適用参加者の実態が食い違う点は、主催者の明示操作
+  による例外として受容する
+- **対戦カードのサイドスコア（`EventMatchSide.diamonds`、検知区間ベース）と、順位表・
+  リスナー貢献（フラグ適用時は全期間ベース）の数字が食い違いうる。** バグではなく仕様上の帰結
+- フラグは「保存済みだが集計区間の外にあるギフト」しか救済できない。**登録アカウントと
+  実際に配信したアカウントが異なる等でギフト自体がDBに存在しない場合は直せない**
+- 通常機能ではないので、`REVIEW_REASON_NOTES` 等の通常導線とは別枠（`TroubleShootingSection`）
+  に置き、誤操作防止の確認ダイアログを挟む
+
 **性能**（ローカル docker Postgres、ギフト50万 / 参加者50 / 1回戦18対戦）:
 バトル区間のみ 1.2秒 に対し、全期間は 2.7〜3.4秒。区間が短いぶん**従来より速い**ので、
 `unnest` での一括クエリ化は入れていない。`npm run bench:aggregate:local` は
@@ -480,9 +512,10 @@ TikTok の `BattleAction` は `FINISH`(5) と `CUT_SHORT`(6) を区別する。�
 
 ### トーナメント表の破棄（作り直しは「破棄 → 作成」の2手順）
 
-**表がある状態でできるのは破棄だけ。** `createBracket()` は既存の表が1件でもあれば
-`BRACKET_EXISTS`（409）で拒否する。作り直したい主催者は `destroyBracket()` で消してから、
-あらためて作る。**`createBracket` に「古い表を消してから作り直す」機能を戻さないこと。**
+**表がある状態でできるのは破棄と、組み合わせの入れ替え（次節）だけ。** `createBracket()` は
+既存の表が1件でもあれば `BRACKET_EXISTS`（409）で拒否する。作り直したい主催者は
+`destroyBracket()` で消してから、あらためて作る。
+**`createBracket` に「古い表を消してから作り直す」機能を戻さないこと。**
 
 以前は1回の POST が破棄と再作成を兼ねていた。確認（`confirm`）の要否・楽観的排他・
 作成が失敗したときの巻き戻しがすべてその1経路に集まり、主催者からは押した結果どうなるのかが
@@ -529,6 +562,14 @@ TikTok の `BattleAction` は `FINISH`(5) と `CUT_SHORT`(6) を区別する。�
 参照しうる。次の `detectMatches` が新しい表へ照合し直すので、破棄して同じ日程で作り直せば
 検知が復活する（意図した挙動）。
 
+**転送はソース単位の all-or-nothing。** 1つの対戦は下流へ最大2本の辺を持つ（勝者辺と、
+順位決定戦への敗者辺）。**辺ごとに「下流が始まっているか」を判定してはいけない** —
+勝敗が覆ったときに「決勝は始まっているので旧勝者のまま、3位決定戦は未開始なので新しい敗者を
+受け取る」となり、**同じ参加者が決勝と3位決定戦の両方に載る**（AGGREGATE の再計算で実際に
+起きる。日程を後ろへ延ばすと交差区間が広がって勝者が反転しうる）。1つでも弾かれるなら
+その上流からの転送は全部やらず、両方を古いまま揃えて `blocked` で主催者に警告を出す。
+固定は `battles.integration.test.ts` の「決勝が始まっていたら、3位決定戦のほうも古いまま揃える」。
+
 **進行が起きた周回では `finalizedAt` を立てない**（`resolveMatchResults` の `summary.advanced`）。
 転送そのものは1回で全ラウンド伝播しきるが、**新しく埋まった枠のバトル検知は次の周**になる
 （検知は進行より先に走る）。締切後に表を作り直すと、1回戦を確定して2回戦へ送った周回で
@@ -552,6 +593,215 @@ TikTok の `BattleAction` は `FINISH`(5) と `CUT_SHORT`(6) を区別する。�
 このpositionの座標と実際の転送内容の整合性が崩れると、無関係な2人の実試合を丸ごと不戦勝処理
 してしまうデータ破損バグになる（実データで一度発生し、修正済み）。ブラケット生成のロジックを
 触るときは `src/event/bracket.test.ts` の「座標の整合性」テストを必ず通すこと。
+
+### トーナメント表の組み合わせ変更（表を保ったまま入れ替える）
+
+`src/event/bracket-swap.ts`（純粋関数）と `bracket-swap-apply.ts`（DB 適用）、
+`POST /api/events/{id}/matches/swap`。管理画面の「組み合わせを変更」で編集モードに入り、
+枠をドラッグ&ドロップで入れ替える。**開催中でも使える。**
+
+**「準決勝のサイドの中身だけ差し替える」は絶対に動かない。** `advanceBracket()` は
+`nextSlot()` の固定座標だけで転送先を決めて毎回下流を再構築するので、次の集計周回で
+必ず巻き戻される。座標を壊さずに組み合わせを変える唯一の方法は、**上流のサブツリーごと
+`bracketPosition` を移すこと**。
+
+そこでスワップを「**1回戦の葉の占有パターンの交換**」として定義してある。スロット
+(round r, position p, sideIndex s) が支配する葉は `[(p*2+s) * 2^(r-1), +2^(r-1))` で、
+r=1 なら葉そのもの、r=2 なら feeder カード1枚ぶん。**1回戦の入れ替えも準決勝の枝ごと交換も
+同じ操作**になり、交換後の構造（どの行が存在するか・どれが不戦勝行か）は既存の
+`buildManualBracket()` がそのまま返す。不戦勝の判定を書き直さないので、`rules.bye` の印と
+実際の転送内容が食い違わない。
+
+以下は実装で踏んだ地雷。**外すと壊れる。**
+
+**葉の占有は「行の構造」から復元する。サイドの中身から数えない。**
+`removeParticipant()` は `EventParticipant` を物理削除し、`EventMatchSideParticipant` は
+`onDelete: Cascade`。**確定済みの実試合カードからも出場者が消える。** 中身から復元すると、
+参加者を1人外しただけで確定済みの実試合が「不戦勝行」と判定され、スワップ対象ですらない行に
+`rules.bye` が付く（= 上で警告している実試合の不戦勝化そのもの）。両方消えていればその行ごと
+削除される。`restoreOccupancy()` は「行が無ければ空 / 不戦勝行なら `winnerSideId` の側だけ /
+それ以外は両方占有」だけを見る。旧データ（`rules.bye` 無し）は `winnerDecidedBy === "BYE"` で拾う。
+
+**不戦勝の確定・解除は swap 側で正規化する。`advanceBracket()` に任せられない。**
+あちらの不戦勝処理は「転送先(target)」にしか効かない:
+
+- **1回戦の行は決して target にならない**（target は必ず round ≥ 2）。1回戦の静的な不戦勝は
+  `createBracket()` が作成時に確定させている。放置すると新しく不戦勝になった1回戦が
+  `SCHEDULED` のまま固まり、生存者は永久に次のラウンドへ進めない。しかも `[matchId]` API は
+  不戦勝行への確定を `BYE_ROW` で拒否するので**主催者は手動でも直せない**
+- **不戦勝でなくなった行は巻き戻されない**。`FINISHED` / `winnerDecidedBy: "BYE"` が残ると、
+  対戦していない旧勝者が下流へ流れ続け、しかも `detectMatches()` の `open` フィルタが
+  `MANUAL_DECISIONS`（"BYE" を含む）を外すので**永久に検知されない**
+
+正規化するのは**不戦勝状態が変わった行だけ**（旧データの印の欠落はここで直さない。
+スワップと無関係な行を書き換えないため）。不戦勝でなくなった行は `[matchId]` の `reopen` と
+同じ状態へ戻す。
+
+**`VOID` はスワップ対象から外す。** `battles.ts` の `LOCKED_STATUSES` が VOID を検知から
+永久に除外するので、新しい相手を入れても照合されない。先に「検知をやり直す」で `SCHEDULED` へ
+戻してもらう（`assignSession` が `RESCHEDULABLE` を絞っているのと同じ考え方）。
+
+**行の「作成」は起こらない。起きたら中断する。** 掴む側も置く側も画面に出ている行なので、
+交換で新たに alive になる祖先はすでに行を持っている（`bracket-swap.test.ts` の
+「スワップ後の座標の整合性」が全パターンで確かめている）。目標構造が要求する行が足りない
+ケースは復元が実態とずれている証拠なので、`BRACKET_INCONSISTENT`（409）で止めて
+「表を破棄して作り直す」へ誘導する — 壊れた表に正規化をかけて傷を広げない。
+**逆に行が減るのは正常経路**（不戦勝行の唯一の出場者を移すとその行と祖先が消える）。
+消えるのは「誰も来ない行」だけなので失う対戦結果はない。
+
+**ロック順序は破棄・`[matchId]` と同じ。** `acquireEventLock` をトランザクション先頭で取り、
+種目・進行状態・構造の検証も、`downstreamStarted()` も全部その内側で行う。
+最後に `advanceBracket()` → `reopenAggregation()`。
+
+**`expectedParticipantIds` は楽観的排他。** スロットは座標ではなく `matchId` + `sideIndex` で
+受ける（別タブが上位ラウンドを入れ替えた直後に「同じ座標だが別のカード」を動かさないため）。
+中身がずれていたら `SLOT_CHANGED`。
+
+UI 側（`AdminBracketTree.tsx`）は編集モードのとき **不戦勝行も両サイドを描く**。通常表示は
+本人だけを見せているが、空き枠そのものがドロップ先なので畳むと操作できない。カードは
+`<button>` から `<div>` に切り替える（入れ子のドラッグと競合するため）。**行は増やさない**
+（`CARD_H` 固定が幾何の成立条件）。
+
+### 接続の交換（winner feeder edge swap）— 下流が始まっていても組み合わせを変える
+
+上のスワップ（葉スワップ / subtree swap）は、入れ替え対象の下流（次ラウンド・順位決定戦）が
+**すでに始まっていると使えない**。「下流ノードを丸ごと座標移動する」拡張を検討したが、
+**数学的に不成立と判明した**：順位決定戦（`realMatchesInRound()`）は複数のブロック（東西の
+準決勝など）の結果が合流したものなので、片方のブロックだけを座標移動すると、もう片方の
+参加者の結果が行き場を失う（実データで、動かそうとしたブロック以外の参加者の結果が同じ
+順位決定戦に混在していることを確認済み）。
+
+代わりに、**「まだ対戦していない対戦（round ≥ 2）について、勝者の供給元（フィーダー）の
+接続だけを交換する」**方式を採る。過去の結果（score/winner/loser）・`matchId`・
+`round`/`bracketPosition`・`loserFrom`・`realMatchesInRound()` の出力は一切変更しない。
+
+**構造（行の存在・不戦勝・順位決定戦トポロジー）は座標が正本。フロー（勝者の転送先）は
+座標既定 + `winnerFeeders` によるoverride、という新しい原則で読むこと。** これは
+`loserFrom`（座標で表現できない敗者辺を rules に明示する前例）の延長で、原則の放棄ではない。
+
+`src/event/winner-feeders.ts`（純粋関数）と `bracket-swap-apply.ts` の
+`swapWinnerFeeders()` / `resetWinnerFeeders()`、`POST /api/events/{id}/matches/swap`
+（`mode: "feeder"` / `"feeder-reset"`）。管理画面の「接続を交換」で編集モードに入る。
+
+**データモデル**: 受け側（target）の行の `EventMatch.rules.winnerFeeders` に
+`{ slots: [BracketSlot, BracketSlot], changedAt: ISO8601 }` を持たせる。**`loserFrom` と違い
+厳密パース**（非null固定2要素）— 対象を非bye行に限定しているので null 要素を許す必要がない。
+キーが無い行は従来通り `nextSlot()` の既定計算にフォールバックする。**不正な形式が見つかったら
+`parseLoserFrom()` のようにフォールバックせず `BRACKET_INCONSISTENT` で止める（fail closed）。**
+
+**勝者辺を座標から読む箇所は3つに閉じている。すべて `winner-feeders.ts` の
+`buildWinnerFeederGraph()` が返す `WinnerFeederGraph` を経由すること**（個別に
+「override優先、なければnextSlot」を書き散らすと、追従漏れが「下流巻き戻り」「誤ブロック/
+素通り」「誤検知（3位決定戦で過去に実際に起きたバグと同型）」に直結する）:
+
+- `match-results.ts` の `advanceBracket()`（勝者辺の転送先）
+- `match-downstream.ts` の `anyDownstreamStarted()`（下流判定）
+- `battles.ts` の `upstreamSlots()` / `feederDecidedAt`（検知の feeder 制約）
+
+グラフ構築（`buildWinnerFeederGraph()`）は次を検出したら `{ ok: false }`（呼び出し側は
+`BracketInconsistentError` を投げる）: override の構文不正・`source.round !== target.round-1`・
+source不在（override が実在しない座標を指す）・全単射崩壊（複数targetが同じsourceを指す）・
+孤児source（実在行の勝者辺がどのtargetにも向かわない）。**既定計算（override無し）で
+「誰も来ない」座標（段階的不戦勝方式の bye 行）に当たった場合は source不在エラーにせず
+`null` として扱う** — override はこの読み替えをしない（override 対象は非bye行に限定される
+ため、override が「誰も来ない」座標を指すのは常に異常データ）。
+
+**対象は非bye行のみ。** `isStartedMatch()` は動的bye行に常に `false` を返すため、「未実施
+であること」だけのガードでは bye行（構造的に片側にしかフィーダーを持たない）が対象に紛れ込み、
+厳密パース仕様（非null固定2要素）と原理的に両立しない。**target・source の両方について
+bye行を除外する。** この除外により、bye行を透過した下流へ `changedAt`（下記）が伝播しない
+問題も同時に回避される — 実試合の対象行は決着時刻が必ず `changedAt` より後になるため、
+下流は再帰的に安全になる。
+
+**検知の誤爆対策（`changedAt`）。** 検知下限（`feederDecidedAt`）は元々「フィーダーの決着
+時刻」だけを見ていたが、これだけでは不十分（例: 20:00に準々決勝決着 → 20:10に無関係な
+練習バトル → 20:30に接続変更、という順序だと20:10のバトルが誤って新ペアの結果として検知
+される）。検知下限は **`max(各feederの決着時刻, winnerFeeders.changedAt)`**（`battles.ts`）。
+**正規化（全エントリが座標既定と一致してもキーを削除しない）** — `changedAt` はこの
+誤検知リスク期間の記録そのものなので、通常のtranspositionでは残し続ける。
+
+**楽観的排他は座標だけでは不十分。** 交換対象は参加者ではなくフィーダーの接続なので、
+両sourceが未決着（参加者集合が空）なら `expectedParticipantIds` 相当の比較は意味をなさない。
+`expectedFeeder: { round, position, matchId, participantIds }` を、そのフィーダー行の
+**`{matchId, 現在のparticipantIds}` まで含む指紋**にする — round=1 の葉スワップ
+（`swapSideContents`。matchId・座標は変えず中身だけ変える）との競合を、座標だけでは
+検知できないため。
+
+**既存の葉スワップ（subtree swap）と接続の交換は相互排他。** 判定は「正常にparseできた
+override」ではなく、`rules` に**生の** `winnerFeeders` キーが存在するかどうかで行う
+（fail closed）。拒否コードは `FEEDER_OVERRIDDEN`。**明示的な「接続をリセットする」操作
+（`resetWinnerFeeders()`）だけが `winnerFeeders` キー自体を削除する** — 通常の
+transposition ではキーが残り続ける（`changedAt` を保存するため）ので、「元の組み合わせへ
+戻す」だけでは葉スワップは解禁されない。
+
+**書き込みは同一ラウンド内の2つのtargetスロット間のtranspositionのみ。** 各スロットの
+feederはちょうど1本・各sourceの勝者辺はちょうど1本という全単射が構成的に保たれ、行の存在・
+不戦勝配置・順位決定戦トポロジーへの影響がない。**書き込む `slots` は「既定座標」ではなく
+`WinnerFeederGraph` で解決した"現在の"値から合成する** — 対象スロットの一方が過去のスワップで
+既にoverride済みの場合、既定座標を書くとその変更が黙って巻き戻るため。
+
+**ロック順序・締めは葉スワップと同じ。** `acquireEventLock` を先頭に取り、種目・進行状態・
+構造の検証、`anyDownstreamStarted()` も全部その内側で行い、最後に `advanceBracket()` →
+`reopenAggregation()`。
+
+**集計ワーカーのfail-closedはすでに `aggregateDueEvents()`（`aggregate.ts`）が担保している。**
+「1イベントの失敗で全体を止めない」try/catch が既にイベント単位でループしているので、
+`BracketInconsistentError` が発生しても該当イベントだけが `failed` にカウントされ、他の
+イベントの集計は継続する。新しい対応は不要（実装時に確認済み）。
+
+**デプロイは2段階。feature flag は既定オフ（`EVENT_WINNER_FEEDER_SWAP=1` で有効化）。**
+「`winnerFeeders` 未設定なら従来動作」という後方互換は**新コードが旧データを読む場合のみ**
+保証される。ローリングデプロイ中に新しい書き込み経路（Web）が `winnerFeeders` を書けるように
+なった一方で、まだ更新されていない旧 `event-worker` が同じデータを読むと、新キーを無視して
+固定 `nextSlot()` で参加者を復元し、誤った組み合わせを検知・確定してしまう（advisory lock は
+新旧バイナリの逐次実行を防げない — 既存の「ローリングデプロイ中の新旧event-worker混在」
+[下記のバトル検知セクション参照]と同型のリスク）。手順: ① `WinnerFeederGraph` を読む
+reader（Web・event-worker）を先に全サービスへデプロイ、flag はオフのまま ② 全サービスの
+更新を確認 ③ writer（API）とUIを flag で有効化。**`winnerFeeders` を持つ行が1件でも存在する
+状態での旧バージョンへのロールバックは禁止** — 必要なら先に `resetWinnerFeeders()` で
+明示的にクリアする（開始済みの対戦のクリアは `blocked` 警告が毎周出る可能性があるが、
+データは破壊されない）。
+
+UI（`AdminBracketTree.tsx` / 公開ページの `BracketTree.tsx`）は、接続線自体を固定座標から
+直接計算しているため、override があると実際のフローと線が食い違う（"表示上の嘘"になる）。
+**線を描き直す代わりに、override されている枠に小さいバッジ/マーカーを付けて明示する**
+（管理側は「接続変更」バッジ、公開側は行を増やさない小さいドット。`CARD_H` 固定は維持）。
+
+### 順位決定戦は本選と同じ座標空間に埋め込んである
+
+3位決定戦・5位決定戦などのブロック（`buildPlacementBlocks()`、`src/event/bracket.ts`）は、
+**本選とは別の表ではなく、同じ `(round, bracketPosition)` 空間の別の列**として作る。
+
+- ブロック `d` の決定戦は `(round: roundCount, position: d)`。本選の決勝は position 0
+- ブロック `d` は round `R-k` で position 範囲 `[d*2^k, (d+1)*2^k - 1]` を占める。
+  本選は同ラウンドで `[0, 2^k - 1]` なので、`d >= 1` である限り衝突しない
+- `d*2^k` は偶数なので `floor((d*2^k + p)/2) = d*2^(k-1) + floor(p/2)` — **`nextSlot()` の
+  座標式がブロック内の進行にそのまま成立する**
+
+**この埋め込みは意図的**で、`nextSlot()` / `roundCount = Math.max(...round)`（4箇所）/
+`BracketTree` の再帰描画 / `findMissedMatches` を無改修のまま通すためにある。
+**ブロックを `roundCount` より後ろのラウンドへ置かないこと** — 置いた瞬間に
+`nextSlot(roundCount, 0, ...)` が非 null になり、本選の決勝の勝者が順位決定戦へ転送される。
+
+**新しいのは「敗者を送る辺」1本だけ**で、それは `EventMatch.rules.loserFrom`
+（sideIndex 順、BYE 側は null）としてブロックの葉に明示的に持たせる。
+**座標から導出しない** — どの本選行が「実試合（＝敗者を出す）」かは不戦勝の配置に依存し、
+読み取り側で座標だけからは復元できないため。この辺を読むのは3箇所:
+
+- `match-results.ts` の進行（`applyTransfer` を勝者辺と共有する）
+- `battles.ts` の `upstreamSlots()`（feeder 制約。**これが無いと、3位決定戦の枠が埋まった
+  瞬間にその2人が過去に行った別のバトルを拾う**）
+- `[matchId]/route.ts` の `downstreamStarted()`（準決勝を void したときに、始まっている
+  3位決定戦を巻き込まないため）
+
+**深さと順位は `2^d + 1` では対応しない。** 段階的不戦勝方式ではラウンドごとの人数が
+2のべき乗にならず、5人なら「3位決定戦は作れないが4位決定戦は作れる」が起きる。
+順位は `(その ラウンドより後ろの実試合数) + 2` で数える（1試合＝1人脱落）。
+選べる深さも連続しないので、UI には深さではなく `placementOptions()` の一覧を出す。
+
+ブロック内の表は**常に標準方式**で組む（出場者が全員「未確定の敗者」なので、
+静的な不戦勝が原理的に発生せず、方式で挙動が変わらない）。
+ブロックの不戦勝行は常に動的で、敗者が着いた時点で `match-results.ts` が自動確定する。
 
 ### analytics 側の観測記録
 
@@ -595,14 +845,19 @@ lease が切れた room は補完対象外なので、**終了済みイベント
 子カードの中心が 25% / 75% からずれ、線が刺さらなくなる。
 
 - 状態・不戦勝・時刻は1行に畳んである。補足を足したいときは行を増やさず既存の行に入れる
-- バトルスコアも行を増やしていない。公開側は**サイド枠の右上へ絶対配置**した。
-  通常フローの行にすると、サイドの境目に絶対配置している「VS」バッジ（高さ18px）が
-  上側サイドの最終行に7px重なって数字が読めなくなる（実測で確認）。VS は水平中央にいるので
-  右端へ逃がせば当たらない。管理側（`AdminBracketTree.tsx`）は既存の行の右端に入れた。
-  どちらも `CARD_H` は据え置き
+- バトルスコアも行を増やしていない。**公開側は名前を名前枠(NAME_BOX_H)ごとサイド枠の
+  上下中央へ寄せ、余った枠の端(VSに近い側)へスコアを絶対配置**して、VSバッジを挟むように
+  見せている(上側サイドは枠の下端、下側サイドは枠の上端)。通常フローの行にすると、
+  サイドの境目に絶対配置している「VS」バッジ（高さ18px）が上側サイドの最終行に7px重なって
+  数字が読めなくなる（実測で確認）。管理側（`AdminBracketTree.tsx`）は名前を下端に置いたまま
+  既存の行の右端にスコアを入れている(公開側と挙動を揃えていない)。どちらも `CARD_H` は据え置き
 - 「優勝」バナーは `absolute bottom-full`。通常フローに戻すと決勝カードの中心がずれる
+- **順位決定戦は本体の再帰ツリーへ差し込まず、決勝ブロックの下に独立したセクションとして
+  置く**（`PlacementSection`）。同じ座標空間にいるので `MatchNode` を根から呼べばそのまま
+  完全二分木として描ける。`MatchNode` の `minRound` は再帰の停止ラウンドで、ブロックの葉が
+  本選の途中のラウンドにいるために要る（既定 1 = 本選の 1回戦まで降りる）
 - 変えたときは実ブラウザで確認する。カード高さが1種類か、コネクタの 25/50/75% が
-  カード中心と一致するかを見れば足りる（6人・11人・16人で検証済み）
+  カード中心と一致するかを見れば足りる（6人・8人・11人・16人、標準／段階的の両方で検証済み）
 
 ### 配信者アイコンの URL を永続化しない
 
@@ -625,6 +880,15 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 同じ `api-live/user/room/` から取れる `data.user.id`（数値 userId）は**逆に不変**なので
 `TiktokRoom.hostUserId` に保存してよい（バトルスコアの帰属に要る）。ただし取得タイミングは
 アイコンと同じ理由で登録経路から切り離し、event-worker の補完ジョブに任せる。
+
+**表示名の未入力フォールバックだけは、実在確認と同じ応答から `nickname` を読む。**
+`checkAccountExistence()`（`src/lib/tiktok-profile.ts`）が実在確認(`EXISTS`)と同時に返す
+`AccountExistenceCheck.nickname` を `registerParticipant()` が使う（`sanitizeNicknameFallback()`
+で60文字超・制御文字を弾いてから採用、取れなければ従来どおり TikTok ID）。**新規の問い合わせは
+増やしていない** — 実在確認1回のレスポンスを2つの目的に使い回しているだけなので、上の
+「この例外を他へ広げないこと」には抵触しない。**アイコン取得(`fetchTiktokProfile`)経由の
+`parseProfileResponse` は使わない** — あちらは avatar URL の allowlist 検証に落ちると nickname
+ごと null を返すため、CDN ホストが変わると実在確認は生きているのに表示名だけ壊れる結合になる。
 
 ## デスマッチ（フェーズ5）
 
@@ -657,8 +921,8 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 集計ワーカーは `finalizedAt` が立ったイベントを飛ばす。**確定後に勝敗を覆したり
 対戦を足したりしても、これを消さないと順位・ライフに反映されない。**
 `src/event/reopen-aggregation.ts` を、対戦の追加・削除・承認・確定・引き分け・VOID・
-検知やり直し・日程の割り当て変更・ライフ設定の変更・トーナメント表の作成・トーナメント表の破棄で
-呼んでいる。
+検知やり直し・日程の割り当て変更・ライフ設定の変更・トーナメント表の作成・トーナメント表の破棄・
+トーナメント表の組み合わせ変更で呼んでいる。
 新しく結果を変える操作を足すときは、同じトランザクションから必ず呼ぶこと。
 
 ### ライフは全期間再計算
