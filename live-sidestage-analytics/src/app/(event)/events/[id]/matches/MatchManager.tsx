@@ -7,11 +7,14 @@ import {
   CONFIDENCE_NOTES,
   MATCH_STATUS_CLASSES,
   MATCH_STATUS_LABELS,
+  WIN_CONDITION_LABELS,
   WINNER_DECIDED_BY_LABELS,
   formatJst,
   toJstInputValue,
 } from "@/event/labels";
+import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
 import type { DeathmatchRules } from "@/event/deathmatch";
+import { seriesRequirement, type WinCondition } from "@/event/match-rules";
 import { bracketSize } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
 import { AdminBracketTree } from "./AdminBracketTree";
@@ -66,6 +69,22 @@ export type MatchSideRow = {
   empty: boolean;
 };
 
+/** 検知した候補バトル1件。勝利条件(1本勝負/2本先取)が複数試合を要求するときに複数件になる。 */
+export type MatchCandidateRow = {
+  id: string;
+  startedAt: string;
+  /** null はまだ終了を観測できていない(選択の対象にならない) */
+  endedAt: string | null;
+  confidence: string;
+  /** サーバー側の fingerprint 計算(candidatesFingerprint)と項目を揃えるためだけに持つ。
+   * CANDIDATES_EXCEEDED 状態の候補は通常 false(true なら先に AMBIGUOUS になっているため)。 */
+  ambiguous: boolean;
+  /** 主催者が「候補過多」画面で選んだプール。selectCandidates 後だけ意味を持つ */
+  organizerSelected: boolean;
+  /** 現在の実効ゲーム集合(サーバーが計算した、集計に使われている候補) */
+  selected: boolean;
+};
+
 export type MatchRow = {
   id: string;
   round: number;
@@ -85,6 +104,8 @@ export type MatchRow = {
   /** 不戦勝行(`EventMatch.rules.bye`)。サーバー側で評価した真偽値だけ受け取る */
   isBye: boolean;
   sides: MatchSideRow[];
+  /** 検知した候補バトル(startedAt 昇順)。勝利条件が絡む場合に複数件になりうる */
+  candidates: MatchCandidateRow[];
 };
 
 const END_SOURCE_NOTES: Record<string, string> = {
@@ -102,10 +123,43 @@ const REVIEW_REASON_NOTES: Record<string, string> = {
     "同じ組み合わせのバトルが日程内に複数ある。どれが公式か決められないので、勝者を手動で確定する。",
   END_UNKNOWN:
     "バトルの終了を観測できないまま日程が終わった。区間が確定しないので、勝者を手動で確定する。",
+  CANDIDATES_EXCEEDED:
+    "検知した候補バトルが勝利条件の本数を超えた。下から正式な試合として使う候補を選ぶ。",
 };
 
 /** 承認できない(区間が確定していない)理由。サーバー側の UNAPPROVABLE_REASONS と揃える。 */
-const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
+const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN", "CANDIDATES_EXCEEDED"]);
+
+/** シリーズの現在スコア(例: 1-0)。`selected` な候補の単体勝敗を数えるだけ(サーバー側の
+ * effectiveGames 計算と同じ考え方だが、表示専用なのでここでは概算 — 正本はサーバーの
+ * `EventMatchSide.diamonds` から出る最終結果)。ここでは「何本消化したか」だけ見せる。 */
+function seriesProgressLabel(candidates: MatchCandidateRow[]): string | null {
+  if (candidates.length < 2) return null;
+  const resolved = candidates.filter((c) => c.endedAt !== null).length;
+  const pending = candidates.length - resolved;
+  return pending > 0 ? `${resolved}試合終了 + 進行中1件` : `${resolved}試合`;
+}
+
+/**
+ * 候補一覧の「見た目」の指紋。**サーバー側(`route.ts` の `computeCandidatesFingerprint`)と
+ * 同じ入力文字列(`buildCandidatesFingerprintInput`)を使うこと**(ズレると毎回 409 になる)。
+ * ハッシュ化だけはブラウザの Web Crypto API(`crypto.subtle`)で行う
+ * (サーバー側は Node.js の `crypto` モジュールを使うため、実行環境ごとに分けている)。
+ */
+async function computeCandidatesFingerprint(candidates: MatchCandidateRow[]): Promise<string> {
+  const raw = buildCandidatesFingerprintInput(
+    candidates.map((c) => ({
+      id: c.id,
+      endedAt: c.endedAt ? new Date(c.endedAt) : null,
+      confidence: c.confidence,
+      ambiguous: c.ambiguous,
+    }))
+  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 /**
  * 破棄したときに何が消えるかを数える。**追加のクエリは要らない** — 画面が持っている
@@ -198,6 +252,7 @@ export function MatchManager({
   lives,
   rules,
   bracketMethod,
+  winCondition,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -214,6 +269,8 @@ export function MatchManager({
   rules: DeathmatchRules;
   /** トーナメントの不戦勝配分方式(TOURNAMENTのときだけ意味を持つ)。 */
   bracketMethod: BracketMethod;
+  /** 勝利条件(1本勝負/2本先取)。候補選択の上限本数(maxGames)を決める */
+  winCondition: WinCondition;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -484,6 +541,7 @@ export function MatchManager({
                 sessions={sessions}
                 busy={busy}
                 onSend={send}
+                winCondition={winCondition}
               />
             ))}
           </section>
@@ -801,6 +859,7 @@ export function MatchManager({
                     sessions={sessions}
                     busy={busy}
                     onSend={send}
+                    winCondition={winCondition}
                   />
                 ))}
               </section>
@@ -836,6 +895,7 @@ export function MatchManager({
               sessions={sessions}
               busy={busy}
               onSend={send}
+              winCondition={winCondition}
             />
           </div>
         </div>
@@ -1332,6 +1392,7 @@ function MatchCard({
   sessions,
   busy,
   onSend,
+  winCondition,
 }: {
   eventId: string;
   match: MatchRow;
@@ -1340,9 +1401,12 @@ function MatchCard({
   sessions: SessionRow[];
   busy: boolean;
   onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
+  /** 勝利条件(1本勝負/2本先取)。候補選択の上限本数(maxGames)を決める */
+  winCondition: WinCondition;
 }) {
   const [editing, setEditing] = useState(false);
   const [sessionId, setSessionId] = useState(match.sessionId);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
 
   const url = `/api/events/${eventId}/matches/${match.id}`;
   const decided = match.status === "FINISHED";
@@ -1353,6 +1417,12 @@ function MatchCard({
   const unapprovable = !!match.reviewReason && UNAPPROVABLE_REASONS.has(match.reviewReason);
   // バトルの開始を検知した対戦。トーナメント表と同じ赤い発光で一覧でも目立たせる。
   const isLive = match.status === "LIVE";
+  // 検知した候補バトルが勝利条件の最大試合数を超えた。「詳細画面の前の競合解消画面」に
+  // 相当する候補選択リストを、通常のカード内容より先に出す(専用モーダルは無いため)。
+  const needsCandidateSelection =
+    match.status === "NEEDS_REVIEW" && match.reviewReason === "CANDIDATES_EXCEEDED";
+  const { maxGames } = seriesRequirement(winCondition);
+  const progressLabel = seriesProgressLabel(match.candidates);
 
   return (
     <div className={`card space-y-3 ${isLive ? "border-red-500/70 live-glow" : ""}`}>
@@ -1450,6 +1520,12 @@ function MatchCard({
         </p>
       )}
 
+      {progressLabel && (
+        <p className="text-xs text-gray-400">
+          勝利条件: {WIN_CONDITION_LABELS[winCondition]}({progressLabel})
+        </p>
+      )}
+
       {match.status === "NEEDS_REVIEW" && (
         <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
           {(match.reviewReason && REVIEW_REASON_NOTES[match.reviewReason]) ??
@@ -1460,6 +1536,63 @@ function MatchCard({
             ? " 2vs2 はどちらの組が同じサイドだったかを payload から確認できないため、必ず目視で確認すること。"
             : ""}
         </p>
+      )}
+
+      {/* 「詳細画面の前の競合解消画面」に相当する候補選択リスト。専用モーダルは無いため、
+          このカード内(通常のボタン群より前)に直接出す。 */}
+      {needsCandidateSelection && (
+        <div className="space-y-2 rounded-lg border border-yellow-400/30 bg-yellow-400/[0.03] p-3">
+          <p className="text-xs text-yellow-200/80">
+            判定対象にするバトルを選ぶ(勝利条件: {WIN_CONDITION_LABELS[winCondition]}、最大
+            {maxGames}件)。
+          </p>
+          <ul className="space-y-1">
+            {match.candidates.map((c) => {
+              const pending = c.endedAt === null;
+              const atLimit =
+                !selectedCandidateIds.includes(c.id) && selectedCandidateIds.length >= maxGames;
+              return (
+                <li key={c.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    disabled={pending || atLimit}
+                    checked={selectedCandidateIds.includes(c.id)}
+                    onChange={(e) =>
+                      setSelectedCandidateIds((prev) =>
+                        e.target.checked
+                          ? [...prev, c.id]
+                          : prev.filter((id) => id !== c.id)
+                      )
+                    }
+                  />
+                  <span className={pending ? "text-gray-500" : "text-gray-300"}>
+                    {formatJst(new Date(c.startedAt))}
+                    {c.endedAt ? ` 〜 ${formatJst(new Date(c.endedAt))}` : " (進行中・選択不可)"}
+                    {c.confidence === "partial" && " · 部分一致"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            disabled={
+              busy || selectedCandidateIds.length < 1 || selectedCandidateIds.length > maxGames
+            }
+            onClick={async () => {
+              const candidatesFingerprint = await computeCandidatesFingerprint(match.candidates);
+              const ok = await onSend(url, {
+                action: "selectCandidates",
+                candidateIds: selectedCandidateIds,
+                candidatesFingerprint,
+              });
+              if (ok) setSelectedCandidateIds([]);
+            }}
+            className="btn-secondary"
+          >
+            この選択で確定する
+          </button>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -1515,6 +1648,22 @@ function MatchCard({
             className="btn-secondary"
           >
             検知をやり直す
+          </button>
+        )}
+
+        {/* 選択ミスのフォロー。候補行は残したまま選択状態だけ白紙に戻す
+            (「検知をやり直す」は候補行ごと消して最初からやり直す、これとは別の操作)。 */}
+        {match.candidates.length > 0 && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm("選択済みの候補をリセットして再集計する。")) return;
+              onSend(url, { action: "resetCandidates" });
+            }}
+            className="btn-secondary"
+          >
+            再集計
           </button>
         )}
 

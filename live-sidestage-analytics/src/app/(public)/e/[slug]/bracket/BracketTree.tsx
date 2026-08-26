@@ -347,6 +347,10 @@ function MatchCard({
   const byeWinner =
     match.winnerDecidedBy === "BYE" ? match.sides.find((s) => s.isWinner) : undefined;
   const isLive = match.status === "LIVE";
+  // 検知した候補バトルが勝利条件の最大試合数を超え、主催者の選択待ち。「NEEDS_REVIEW を
+  // LIVE に読み替えて隠す」既存方針の唯一の例外(public-event.ts)なので、ここに届いた時点
+  // で常に視聴者に見せてよい状態。LIVE の赤発光とは演出の強さを分ける(live-glow は使わない)。
+  const needsSelection = match.needsResultSelection;
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
   const card = (
@@ -356,9 +360,11 @@ function MatchCard({
           ? `border-red-500/70 bg-gradient-to-b from-red-500/15 to-transparent ${
               isFinal ? "border-2" : ""
             }`
-          : isFinal
-            ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-            : "border-white/10 bg-panel"
+          : needsSelection
+            ? "border-yellow-500/60 bg-gradient-to-b from-yellow-500/10 to-transparent"
+            : isFinal
+              ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+              : "border-white/10 bg-panel"
       }`}
     >
       <div
@@ -369,9 +375,13 @@ function MatchCard({
         {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。 */}
         <span className="shrink-0 truncate">{match.sessionLabel}</span>
         <span
-          className={`truncate font-semibold ${isLive ? "text-red-400" : decided ? "text-brand" : ""}`}
+          className={`truncate font-semibold ${
+            isLive ? "text-red-400" : needsSelection ? "text-yellow-400" : decided ? "text-brand" : ""
+          }`}
         >
-          {decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status}
+          {needsSelection
+            ? "⚠ 結果確認中"
+            : (decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status)}
         </span>
       </div>
 

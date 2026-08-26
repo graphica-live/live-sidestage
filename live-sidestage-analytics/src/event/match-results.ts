@@ -1,7 +1,15 @@
+import type { Prisma } from "@prisma/client";
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
 import { nextSlot } from "./bracket";
 import { MANUAL_DECISIONS } from "./match-detect";
-import { isByeRow, isStartedMatch } from "./match-status";
+import {
+  isByeRow,
+  isCandidatesConfirmedByOrganizer,
+  isStartedMatch,
+  mergeReviewReason,
+  reviewReasonOf,
+} from "./match-status";
+import { seriesRequirement, type MatchRules } from "./match-rules";
 import { intersectWindows, type EventWindow } from "./sessions";
 import {
   buildRateSegments,
@@ -15,6 +23,12 @@ import {
 // **勝敗は TikTok の hostScore ではなく、当サービスが gifts から集計したダイヤで決める。**
 // 集計の出所を1つに揃えるため。hostScore は DetectedBattle に参考値として残してあり、
 // 大きく食い違ったときの取りこぼし検知に使う(match-detect.ts の scoreDivergence)。
+//
+// **勝利条件(1本勝負/2本先取)の判定は `resolveMatchSeries()` に一本化する。** 対戦カード
+// 1件につき複数の候補バトル(`EventMatchBattleCandidate`)を持ちうるため、「先取条件に
+// 到達するまでの候補の並び」を「実効ゲーム集合(effectiveGames)」と呼び、決着判定・
+// `decidedAt`・サイド合計・BATTLE_ONLY 用の区間のすべてがこの集合だけを参照する
+// (`EventMatchBattleCandidate.selected` 列に一本化。詳細は src/event/CLAUDE.md)。
 //
 // 進行は増分ではなく**毎回の再構築**。主催者が勝者を変えたり VOID にしたりしたときに、
 // 下流へ流れた古い勝者が残らないようにするため(集計本体と同じ思想)。
@@ -48,6 +62,31 @@ type SideRow = {
   participants: { participantId: string; participant: { roomId: string } }[];
 };
 
+type CandidateRow = {
+  id: string;
+  battleId: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  endedAtSource: string | null;
+  confidence: string;
+  ambiguous: boolean;
+  organizerSelected: boolean;
+};
+
+type MatchWithCandidates = {
+  id: string;
+  round: number;
+  bracketPosition: number;
+  status: string;
+  matchType: string;
+  winnerSideId: string | null;
+  winnerDecidedBy: string | null;
+  rules: unknown;
+  session: { startAt: Date; endAt: Date; name: string | null } | null;
+  sides: SideRow[];
+  battleCandidates: CandidateRow[];
+};
+
 /**
  * 検知が終わったマッチのスコアを確定し、勝者を決め、トーナメント表を進める。
  *
@@ -57,13 +96,14 @@ export async function resolveMatchResults(
   tx: DbClient,
   params: {
     eventId: string;
+    matchRules: MatchRules;
     multipliers: MultiplierInput[];
     /** 開催日程。検知区間がここからはみ出したぶんは勝敗に数えない */
     windows: EventWindow[];
     now: Date;
   }
 ): Promise<MatchResultSummary> {
-  const matches = await tx.eventMatch.findMany({
+  const matches = (await tx.eventMatch.findMany({
     where: { eventId: params.eventId },
     orderBy: [{ round: "asc" }, { bracketPosition: "asc" }],
     select: {
@@ -71,10 +111,10 @@ export async function resolveMatchResults(
       round: true,
       bracketPosition: true,
       status: true,
-      detectedStartAt: true,
-      detectedEndAt: true,
+      matchType: true,
       winnerSideId: true,
       winnerDecidedBy: true,
+      rules: true,
       // 勝敗に数えるギフトは**この対戦を行う日程の中だけ**。イベントの全日程と
       // 交差させると、別の日程にはみ出したバトルのギフトまで勝敗に効く。
       session: { select: { startAt: true, endAt: true, name: true } },
@@ -89,71 +129,60 @@ export async function resolveMatchResults(
           },
         },
       },
+      battleCandidates: {
+        orderBy: { startedAt: "asc" },
+        select: {
+          id: true,
+          battleId: true,
+          startedAt: true,
+          endedAt: true,
+          endedAtSource: true,
+          confidence: true,
+          ambiguous: true,
+          organizerSelected: true,
+        },
+      },
     },
-  });
+  })) as MatchWithCandidates[];
 
   if (matches.length === 0) return { finished: 0, tied: 0, blocked: 0, advanced: 0 };
 
   const summary: MatchResultSummary = { finished: 0, tied: 0, blocked: 0, advanced: 0 };
 
+  // 下流(次ラウンド)が着手済みかの判定に使う。advanceBracket と同じ座標系。
+  const roundCount = Math.max(...matches.map((m) => m.round));
+  const slotIndex = new Map(matches.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
+
   // ------------------------------------------------------------------
-  // 1. スコアの確定と勝者の決定
+  // 1. 候補バトルから勝敗を確定する(resolveMatchSeries に一本化)
   // ------------------------------------------------------------------
   for (const match of matches) {
     if (match.winnerDecidedBy && MANUAL_DECISIONS.has(match.winnerDecidedBy)) continue;
-    if (match.status === "VOID") continue;
-    if (!match.detectedStartAt || !match.detectedEndAt) continue;
-    // 進行中と承認待ちは確定させない。
-    if (match.status !== "DETECTED" && match.status !== "FINISHED") continue;
-    if (match.detectedEndAt > params.now) continue;
+    if (match.status === "VOID" || match.status === "NO_SHOW") continue;
+    // 対象は「候補が1件以上あるか、上の除外に当てはまらないマッチ全部」
+    // (候補が0件でも SCHEDULED へ戻す後始末を resolveMatchSeries 側で行うため対象に含める)。
 
-    const totals = await scoreSides(tx, {
-      sides: match.sides as SideRow[],
-      start: match.detectedStartAt,
-      end: match.detectedEndAt,
-      // 日程が付いていない対戦(移行前のデータ)だけ、従来どおり全日程と交差させる。
-      windows: match.session
-        ? [
-            {
-              id: null,
-              start: match.session.startAt,
-              end: match.session.endAt,
-              name: match.session.name,
-            },
-          ]
-        : params.windows,
+    const slot = nextSlot(match.round, match.bracketPosition, roundCount);
+    const downstream = slot ? slotIndex.get(`${slot.round}:${slot.position}`) : undefined;
+    const downstreamStarted = downstream
+      ? isStartedMatch({
+          status: downstream.status,
+          winnerDecidedBy: downstream.winnerDecidedBy,
+          isBye: isByeRow(downstream.rules),
+        })
+      : false;
+
+    const result = await resolveMatchSeries(tx, {
+      match,
+      matchRules: params.matchRules,
       multipliers: params.multipliers,
+      windows: params.windows,
+      now: params.now,
+      downstreamStarted,
     });
 
-    for (const t of totals) {
-      await tx.eventMatchSide.update({
-        where: { id: t.sideId },
-        data: { diamonds: t.diamonds, score: formatScaledPoints(t.points) },
-      });
-    }
-
-    // 勝敗は倍率適用前のダイヤで決める。倍率は個人の通算ポイント用のもので、
-    // 対戦の勝敗に効かせると同じ実績でも枠の取り方で結果が変わってしまう。
-    const best = totals.reduce((a, b) => (b.diamonds > a.diamonds ? b : a), totals[0]);
-    const tie = totals.filter((t) => t.diamonds === best.diamonds).length > 1;
-
-    if (tie || best.diamonds === 0n) {
-      // 同点(0対0を含む)は自動で決めない。主催者が手動で確定する。
-      summary.tied++;
-      if (match.winnerSideId) {
-        await tx.eventMatch.update({
-          where: { id: match.id },
-          data: { winnerSideId: null, winnerDecidedBy: null, status: "DETECTED" },
-        });
-      }
-      continue;
-    }
-
-    await tx.eventMatch.update({
-      where: { id: match.id },
-      data: { winnerSideId: best.sideId, winnerDecidedBy: "AGGREGATE", status: "FINISHED" },
-    });
-    summary.finished++;
+    if (result.decided) summary.finished++;
+    if (result.tied) summary.tied++;
   }
 
   // ------------------------------------------------------------------
@@ -164,6 +193,290 @@ export async function resolveMatchResults(
   summary.advanced += advance.advanced;
 
   return summary;
+}
+
+/**
+ * 対戦カード1件ぶんの候補バトル(`EventMatchBattleCandidate`)から、勝利条件を踏まえて
+ * 勝敗・状態を確定する。**採点はキャッシュしない** — 呼ばれるたびに `scoreSides()` で
+ * 毎回計算する(全期間再計算という既存の集計哲学に合わせる)。
+ *
+ * `selectCandidates` / `resetCandidates` API からも同じトランザクション内で呼ばれる
+ * (`advanceBracket` が集計ワーカーと API route の両方から呼ばれるのと同じパターン)。
+ */
+export async function resolveMatchSeries(
+  tx: DbClient,
+  params: {
+    match: MatchWithCandidates;
+    matchRules: MatchRules;
+    multipliers: MultiplierInput[];
+    windows: EventWindow[];
+    now: Date;
+    /** この対戦の勝者が送られる先(次ラウンド)が着手済みか。候補過多の差し戻し可否に使う。 */
+    downstreamStarted: boolean;
+  }
+): Promise<{ decided: boolean; tied: boolean }> {
+  const { match, matchRules, multipliers, windows, now, downstreamStarted } = params;
+
+  if (match.winnerDecidedBy && MANUAL_DECISIONS.has(match.winnerDecidedBy)) {
+    return { decided: false, tied: false };
+  }
+  if (match.status === "VOID") return { decided: false, tied: false };
+
+  const { maxGames, winsNeeded } = seriesRequirement(matchRules.winCondition);
+  const candidates = match.battleCandidates;
+
+  // 3. 候補が0件。もともと SCHEDULED ならそのまま何もしない(無駄な書き込みを避ける)。
+  if (candidates.length === 0) {
+    // **下流が既に進んでいるなら差し戻さない。** ここに来る=候補が消えたのは、通常
+    // 「以前 FINISHED(AGGREGATE)だった対戦の唯一の決着根拠が CUT_SHORT と判明した」
+    // ケースで、`downstreamStarted` が true ならこの対戦は既に勝者を下流へ送っている
+    // (候補過多の差し戻し、7. と同じ安全策)。
+    if (downstreamStarted) {
+      return { decided: false, tied: false };
+    }
+    if (
+      match.status !== "SCHEDULED" ||
+      match.winnerSideId !== null ||
+      reviewReasonOf(match.rules) !== null
+    ) {
+      await tx.eventMatch.update({
+        where: { id: match.id },
+        data: {
+          status: "SCHEDULED",
+          winnerSideId: null,
+          winnerDecidedBy: null,
+          decidedAt: null,
+          detectedBattleId: null,
+          detectedStartAt: null,
+          detectedEndAt: null,
+          detectionConfidence: null,
+          detectedEndSource: null,
+          rules: mergeReviewReason(match.rules, null) as Prisma.InputJsonObject,
+        },
+      });
+      await tx.eventMatchSide.updateMany({
+        where: { matchId: match.id },
+        data: { diamonds: 0, score: 0 },
+      });
+    }
+    return { decided: false, tied: false };
+  }
+
+  // 4. cross-match衝突(sticky)。自動集計対象から丸ごと除外する。
+  if (candidates.some((c) => c.ambiguous)) {
+    await tx.eventMatchBattleCandidate.updateMany({
+      where: { matchId: match.id },
+      data: { selected: false },
+    });
+    await tx.eventMatch.update({
+      where: { id: match.id },
+      data: {
+        status: "NEEDS_REVIEW",
+        winnerSideId: null,
+        winnerDecidedBy: null,
+        decidedAt: null,
+        rules: mergeReviewReason(match.rules, "AMBIGUOUS") as Prisma.InputJsonObject,
+      },
+    });
+    await tx.eventMatchSide.updateMany({
+      where: { matchId: match.id },
+      data: { diamonds: 0, score: 0 },
+    });
+    return { decided: false, tied: false };
+  }
+
+  const organizerCurated = isCandidatesConfirmedByOrganizer(match.rules);
+  const pool = organizerCurated ? candidates.filter((c) => c.organizerSelected) : candidates;
+
+  // **終了時刻が確定していても、その時刻がまだ未来なら「進行中」として扱う。**
+  // duration から終了時刻を計算した OPEN 状態のバトル(旧 detectMatches の
+  // `a.endedAt > params.now` 判定を踏襲)。ここで resolved に含めて採点してしまうと、
+  // まだ終わっていないバトルの結果を先取りして確定させてしまう。
+  const resolved = pool.filter((c) => c.endedAt !== null && c.endedAt <= now);
+  const pending = pool.filter((c) => c.endedAt === null || c.endedAt > now);
+
+  // 7. 候補数超過(主催者確定前だけ判定する)。
+  if (!organizerCurated && resolved.length > maxGames) {
+    if (downstreamStarted) {
+      // 下流が既に進んでいる。上流下流の不整合を避けるため、差し戻さず既存結果を維持する。
+      return { decided: false, tied: false };
+    }
+    await tx.eventMatchBattleCandidate.updateMany({
+      where: { matchId: match.id },
+      data: { selected: false },
+    });
+    await tx.eventMatch.update({
+      where: { id: match.id },
+      data: {
+        status: "NEEDS_REVIEW",
+        winnerSideId: null,
+        winnerDecidedBy: null,
+        decidedAt: null,
+        rules: mergeReviewReason(match.rules, "CANDIDATES_EXCEEDED") as Prisma.InputJsonObject,
+      },
+    });
+    await tx.eventMatchSide.updateMany({
+      where: { matchId: match.id },
+      data: { diamonds: 0, score: 0 },
+    });
+    return { decided: false, tied: false };
+  }
+
+  // 8. 部分一致・2vs2は主催者の承認を待つ(承認後=DETECTED/FINISHEDになるまでは確定させない)。
+  const hasNonExact = resolved.some((c) => c.confidence === "partial") || match.matchType === "2V2";
+  if (hasNonExact && match.status !== "DETECTED" && match.status !== "FINISHED") {
+    const reason = match.matchType === "2V2" ? "TEAM_BATTLE" : "PARTIAL";
+    // **ミラー列も更新する。** スコア(サイド合計)は書かないが、検知時刻・信頼度は
+    // 主催者の承認画面に必要(既存 UI がここを見て「検知: …」を出す)。
+    const mirrorFirst = pool[0];
+    const mirrorLast = pool[pool.length - 1];
+    await tx.eventMatch.update({
+      where: { id: match.id },
+      data: {
+        status: "NEEDS_REVIEW",
+        detectedBattleId: mirrorLast.battleId,
+        detectedStartAt: mirrorFirst.startedAt,
+        detectedEndAt: mirrorLast.endedAt,
+        detectionConfidence: mirrorLast.confidence,
+        detectedEndSource: mirrorLast.endedAtSource,
+        rules: mergeReviewReason(match.rules, reason) as Prisma.InputJsonObject,
+      },
+    });
+    return { decided: false, tied: false };
+  }
+
+  // 9. 実効ゲーム集合(effectiveGames)を計算する。**毎回 scoreSides() で採点する**
+  //    (キャッシュしない)。どちらかが winsNeeded に達した時点で打ち切り、それ以降の
+  //    resolved 候補は無視する(誤って多すぎる候補が紛れても決着時刻がずれないため)。
+  const sideTotals = new Map<string, { diamonds: bigint; points: bigint }>(
+    match.sides.map((s) => [s.id, { diamonds: 0n, points: 0n }])
+  );
+  const sideWins = new Map<string, number>();
+  const effectiveGames: CandidateRow[] = [];
+  let decidedWinnerSideId: string | null = null;
+
+  for (const candidate of resolved) {
+    const totals = await scoreSides(tx, {
+      sides: match.sides,
+      start: candidate.startedAt,
+      end: candidate.endedAt!,
+      windows: match.session
+        ? [
+            {
+              id: null,
+              start: match.session.startAt,
+              end: match.session.endAt,
+              name: match.session.name,
+            },
+          ]
+        : windows,
+      multipliers,
+    });
+
+    effectiveGames.push(candidate);
+    for (const t of totals) {
+      const acc = sideTotals.get(t.sideId);
+      if (!acc) continue;
+      acc.diamonds += t.diamonds;
+      acc.points += t.points;
+    }
+
+    // 個々のゲームの勝者は倍率適用前のダイヤで決める(match-results.ts 冒頭のコメント参照)。
+    const best = totals.reduce((a, b) => (b.diamonds > a.diamonds ? b : a), totals[0]);
+    const tie = totals.filter((t) => t.diamonds === best.diamonds).length > 1;
+    const gameWinnerSideId = tie || best.diamonds === 0n ? null : best.sideId;
+
+    if (gameWinnerSideId) {
+      const wins = (sideWins.get(gameWinnerSideId) ?? 0) + 1;
+      sideWins.set(gameWinnerSideId, wins);
+      if (wins >= winsNeeded) {
+        decidedWinnerSideId = gameWinnerSideId;
+        break;
+      }
+    }
+  }
+
+  // 10. selected を effectiveGames に一本化する(loadBattleRangesByRoom はこの列だけを見る)。
+  const effectiveIds = new Set(effectiveGames.map((g) => g.id));
+  await tx.eventMatchBattleCandidate.updateMany({
+    where: { matchId: match.id },
+    data: { selected: false },
+  });
+  if (effectiveIds.size > 0) {
+    await tx.eventMatchBattleCandidate.updateMany({
+      where: { matchId: match.id, id: { in: [...effectiveIds] } },
+      data: { selected: true },
+    });
+  }
+
+  for (const [sideId, totals] of sideTotals) {
+    await tx.eventMatchSide.update({
+      where: { id: sideId },
+      data: { diamonds: totals.diamonds, score: formatScaledPoints(totals.points) },
+    });
+  }
+
+  if (decidedWinnerSideId) {
+    // 11. 決着した。
+    const firstGame = effectiveGames[0];
+    const lastGame = effectiveGames[effectiveGames.length - 1];
+    await tx.eventMatch.update({
+      where: { id: match.id },
+      data: {
+        winnerSideId: decidedWinnerSideId,
+        winnerDecidedBy: "AGGREGATE",
+        status: "FINISHED",
+        decidedAt: lastGame.endedAt,
+        detectedBattleId: lastGame.battleId,
+        detectedStartAt: firstGame.startedAt,
+        detectedEndAt: lastGame.endedAt,
+        detectionConfidence: lastGame.confidence,
+        detectedEndSource: lastGame.endedAtSource,
+        rules: mergeReviewReason(match.rules, null) as Prisma.InputJsonObject,
+      },
+    });
+    return { decided: true, tied: false };
+  }
+
+  // 12. 未決着。
+  const sessionEnded = match.session ? match.session.endAt <= now : false;
+  let status: string;
+  let reviewReason: string | null = null;
+  if (pending.length > 0) {
+    if (sessionEnded) {
+      status = "NEEDS_REVIEW";
+      reviewReason = "END_UNKNOWN";
+    } else {
+      status = "LIVE";
+    }
+  } else {
+    // pending が無い(候補が最大試合数に届かない、または日程が終わって決着不能)。
+    // 新しい reviewReason は付けない — 既存の「同点は自動確定しない」動作と同じ扱い。
+    status = "DETECTED";
+  }
+
+  // ミラー列は現時点の pool(resolved + pending、startedAt 順)の範囲。pending が最後
+  // なら detectedEndAt は null のまま(LIVE 表示に使う)。
+  const mirrorFirst = pool[0];
+  const mirrorLast = pool[pool.length - 1];
+
+  await tx.eventMatch.update({
+    where: { id: match.id },
+    data: {
+      winnerSideId: null,
+      winnerDecidedBy: null,
+      decidedAt: null,
+      status,
+      detectedBattleId: mirrorLast.battleId,
+      detectedStartAt: mirrorFirst.startedAt,
+      detectedEndAt: mirrorLast.endedAt,
+      detectionConfidence: mirrorLast.confidence,
+      detectedEndSource: mirrorLast.endedAtSource,
+      rules: mergeReviewReason(match.rules, reviewReason) as Prisma.InputJsonObject,
+    },
+  });
+
+  return { decided: false, tied: pending.length === 0 && effectiveGames.length > 0 };
 }
 
 /**

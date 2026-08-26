@@ -160,15 +160,29 @@ describe("applySessionDiff", () => {
     const event = await newEvent();
     const detectedStart = new Date(DAY1_START.getTime() + 30 * 60_000);
     const detectedEnd = new Date(DAY1_START.getTime() + 40 * 60_000);
-    await prisma.eventMatch.create({
+    const battleId = `${PREFIX}_b_${uniqueSuffix()}`;
+    const match = await prisma.eventMatch.create({
       data: {
         eventId: event.id,
         sessionId: event.sessionId,
         status: "DETECTED",
-        detectedBattleId: `${PREFIX}_b_${uniqueSuffix()}`,
+        detectedBattleId: battleId,
         detectedStartAt: detectedStart,
         detectedEndAt: detectedEnd,
         decidedAt: detectedEnd,
+      },
+    });
+    // **検証対象は EventMatch のミラー列ではなく EventMatchBattleCandidate(selected=true)。**
+    // 勝利条件対応で1対戦カードが複数の検知区間を持ちうるため、実際に集計へ使われている
+    // 候補行を作らないと applySessionDiff の検証対象に乗らない。
+    await prisma.eventMatchBattleCandidate.create({
+      data: {
+        matchId: match.id,
+        battleId,
+        startedAt: detectedStart,
+        endedAt: detectedEnd,
+        confidence: "exact",
+        selected: true,
       },
     });
 

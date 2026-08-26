@@ -77,22 +77,32 @@ export async function applySessionDiff(
     sessions.filter((s) => s.id).map((s) => [s.id as string, s] as const)
   );
   if (nextById.size > 0) {
-    const detected = await tx.eventMatch.findMany({
+    // **`EventMatch` のミラー列(1件)ではなく、`EventMatchBattleCandidate` の
+    // 実効ゲーム集合(`selected=true`)を1件ずつ検証する。** 勝利条件(1本勝負/2本先取)
+    // 対応で1対戦カードが複数の検知区間を持ちうるため、代表1件だけを見ると
+    // 個々のゲームが日程の外に出ていても素通りしてしまう。
+    const detected = await tx.eventMatchBattleCandidate.findMany({
       where: {
-        eventId,
-        status: { not: "VOID" },
-        detectedEndAt: { not: null },
-        sessionId: { in: [...nextById.keys()] },
+        selected: true,
+        endedAt: { not: null },
+        match: {
+          eventId,
+          status: { not: "VOID" },
+          sessionId: { in: [...nextById.keys()] },
+        },
       },
-      select: { sessionId: true, detectedStartAt: true, detectedEndAt: true },
+      select: {
+        startedAt: true,
+        endedAt: true,
+        match: { select: { sessionId: true } },
+      },
     });
-    for (const match of detected) {
-      const next = nextById.get(match.sessionId);
+    for (const candidate of detected) {
+      const next = nextById.get(candidate.match.sessionId);
       if (!next) continue;
-      const start = match.detectedStartAt ?? match.detectedEndAt!;
-      if (start < next.startAt || match.detectedEndAt! > next.endAt) {
+      if (candidate.startedAt < next.startAt || candidate.endedAt! > next.endAt) {
         throw new SessionUpdateError(
-          `検知済みの対戦が新しい開催日程の外に出ます(最初は ${formatJstRange(start, match.detectedEndAt!)})。` +
+          `検知済みの対戦が新しい開催日程の外に出ます(最初は ${formatJstRange(candidate.startedAt, candidate.endedAt!)})。` +
             "先に対戦の検知をやり直すか、日程を見直してください。",
           "MATCH_OUT_OF_SESSION",
           409

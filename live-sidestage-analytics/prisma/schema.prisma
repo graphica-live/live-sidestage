@@ -63,7 +63,7 @@ model Account {
   // account.create({ data }) へ素通しするため。将来プロバイダが email を含む
   // account オブジェクトを返したときに、意図せずここへ書かれるのを避ける。
   // unique も付けない(付けると同じメールで別プロバイダにログインできなくなる)。
-  providerEmail     String?
+  providerEmail String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -99,8 +99,8 @@ model TiktokRoom {
   id                String    @id @default(cuid())
   tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
   deviceId          String?
-  workerId          Int?     // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定し固定)
-  proxyKey          String?  // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
+  workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定し固定)
+  proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
@@ -115,9 +115,9 @@ model TiktokRoom {
   // **listenerStatus の意味は変えない。** tiktok-room-cleanup.ts の候補抽出
   // (listenerStatus IN ('retrying','error')) をはじめ既存の消費者がそのまま動く。
   // これらは追加の列で、書き込みは persistState() に一本化する。
-  listenerActivity  String?   // "live" | "offline" | "unknown"
-  listenerHealth    String?   // "ok" | "connecting" | "error"
-  listenerReason    String?   // scheduleReconnect() の reason。問い合わせ時の切り分け用
+  listenerActivity String? // "live" | "offline" | "unknown"
+  listenerHealth   String? // "ok" | "connecting" | "error"
+  listenerReason   String? // scheduleReconnect() の reason。問い合わせ時の切り分け用
 
   // 書き込み順序の正本。**単調増加で、これより小さい値の書き込みは棄却する**(fencing)。
   //
@@ -127,12 +127,12 @@ model TiktokRoom {
   // 勝ちうる。壁時計は複数コンテナ間で単調ではないので、DB採番の世代(ListenerEpoch)を使う。
   //
   // 値は epoch * LISTENER_REVISION_STRIDE + プロセス内連番。
-  listenerRevision  BigInt?
+  listenerRevision BigInt?
   // イベント(event スキーマ側)が期限付きで監視を要求している場合の期限。
   // これが未来の間は、Streamerが1人もいなくてもWorkerが接続を維持する(getMyRooms参照)。
   // 期限切れ後は次のreconcileで切断されるが、受信済みのGiftはそのまま残る。
-  monitorUntil      DateTime?
-  createdAt         DateTime  @default(now())
+  monitorUntil     DateTime?
+  createdAt        DateTime  @default(now())
 
   // --- TikTok非実在Streamer自動削除(tiktok-room-cleanup.ts)用 ---
   // listenerStatusがretrying/errorに入った最初の時刻。connectedに戻ったらnullに戻す。
@@ -155,7 +155,7 @@ model TiktokRoom {
   // avatar URLと違って**不変**なので保存してよい(署名付きURLのように失効しない)。
   // 書き込みはsrc/lib/tiktok-host-id.tsの1箇所だけ。一度入った値は上書きしない
   // (updateManyのwhereでhostUserId: nullを条件にして構造的に保証する)。
-  hostUserId           String?
+  hostUserId String?
 
   streamers Streamer[]
   gifts     Gift[]
@@ -217,8 +217,8 @@ model AgencyWatch {
   id        String   @id @default(cuid())
   agencyId  String
   roomId    String
-  tiktokId  String   // 表示用。ユーザー入力値そのまま
-  label     String?  // 事務所側の管理名(本名・所属チームなど)
+  tiktokId  String // 表示用。ユーザー入力値そのまま
+  label     String? // 事務所側の管理名(本名・所属チームなど)
   createdAt DateTime @default(now())
 
   agency Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -232,24 +232,24 @@ model AgencyWatch {
 model Streamer {
   id               String    @id @default(cuid())
   userId           String    @unique
-  tiktokId         String    // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
+  tiktokId         String // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
   verificationCode String
   verified         Boolean   @default(false)
   verifiedAt       DateTime?
   apiKey           String?   @unique
   createdAt        DateTime  @default(now())
-  roomId           String?   // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
+  roomId           String? // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
 
-  overlayToken            String? @unique
-  overlayDisplayReference String  @default("today") // "today" | "fixed"
-  overlayDisplayDate      String? // YYYY-MM-DD, overlayDisplayReference="fixed" のときのみ意味を持つ
-  overlayThreshold        Int     @default(1000)
-  overlayGoalCount        Int     @default(5)
-  overlayVisibleRows      Int     @default(5) // この人数を超えたらスナップスクロール
-  overlayNameMaxWidth     Int     @default(140) // px、これを超える名前は省略表示
-  overlayAlign            String  @default("left") // "left" | "right"
-  overlayHeadingBackground String @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
-  overlayDisplaySpeed     Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
+  overlayToken             String? @unique
+  overlayDisplayReference  String  @default("today") // "today" | "fixed"
+  overlayDisplayDate       String? // YYYY-MM-DD, overlayDisplayReference="fixed" のときのみ意味を持つ
+  overlayThreshold         Int     @default(1000)
+  overlayGoalCount         Int     @default(5)
+  overlayVisibleRows       Int     @default(5) // この人数を超えたらスナップスクロール
+  overlayNameMaxWidth      Int     @default(140) // px、これを超える名前は省略表示
+  overlayAlign             String  @default("left") // "left" | "right"
+  overlayHeadingBackground String  @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
+  overlayDisplaySpeed      Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
 
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   room      TiktokRoom? @relation(fields: [roomId], references: [id])
@@ -269,7 +269,7 @@ model AppSetting {
 
 model Gift {
   id              String   @id @default(cuid())
-  roomId          String   // TikTokアカウント単位で共有(同じtiktokIdを登録した全ユーザーが同じ行を参照)
+  roomId          String // TikTokアカウント単位で共有(同じtiktokIdを登録した全ユーザーが同じ行を参照)
   uniqueId        String
   nickname        String
   profileImageUrl String?
@@ -298,13 +298,13 @@ model Gift {
   room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   edits GiftEdit[]
 
-  @@map("gifts")
   @@unique([roomId, orderId])
   @@index([roomId, dayKey])
   @@index([roomId, receivedAt])
   @@index([roomId, uniqueId])
   @@index([roomId, groupId])
   @@index([roomId, msgId])
+  @@map("gifts")
   @@schema("public")
 }
 
@@ -325,8 +325,8 @@ model GiftEdit {
   gift     Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
-  @@map("gift_edits")
   @@unique([giftId, streamerId])
+  @@map("gift_edits")
   @@schema("public")
 }
 
@@ -352,8 +352,8 @@ model TiktokGiftCatalog {
   imageUrl     String?
   fetchedAt    DateTime @default(now()) // 最後にカタログから見た時刻。TTL判定に使う。**upsert時に明示更新する**
 
-  @@map("tiktok_gift_catalog")
   @@index([name])
+  @@map("tiktok_gift_catalog")
   @@schema("public")
 }
 
@@ -371,14 +371,14 @@ model TiktokBattle {
   battleId String // TikTokのbattleId。API上stringなので数値化しない
   action   Int // 最後に観測したBattleAction(OPEN=4 / FINISH=5 / CUT_SHORT=6)
 
-  startedAt DateTime
+  startedAt          DateTime
   // startedAtが受信時刻からの推定値か。接続はprocessInitialData:falseなので配信の
   // 途中から繋ぐと開始(OPEN)を取り逃す。BattleSetting.startTimeMsも取れなかった場合、
   // startedAtは「気づいた時刻」でしかない。イベント側の照合はこれを見て信頼度を決める。
-  startedAtEstimated Boolean @default(true)
+  startedAtEstimated Boolean  @default(true)
 
-  endedAt     DateTime?
-  durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
+  endedAt        DateTime?
+  durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
   hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
   hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
   hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
@@ -388,10 +388,10 @@ model TiktokBattle {
 
   room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
-  @@map("tiktok_battles")
   @@unique([roomId, battleId])
   @@index([roomId, startedAt])
   @@index([battleId])
+  @@map("tiktok_battles")
   @@schema("public")
 }
 
@@ -404,10 +404,10 @@ model TiktokBattle {
 // ============================================================================
 
 model Event {
-  id          String  @id @default(cuid())
-  slug        String  @unique // 公開URL /e/{slug}
-  title       String
-  description String? @db.Text
+  id            String  @id @default(cuid())
+  slug          String  @unique // 公開URL /e/{slug}
+  title         String
+  description   String? @db.Text
   // Railway Bucket(S3互換)上のオブジェクトキー。生のURLは保存しない
   // — 読み出しのたびに src/lib/media-storage.ts が presigned GET を発行する(media-storage.ts参照)。
   coverImageKey String?
@@ -433,10 +433,10 @@ model Event {
   // 名前空間ごとのルール。"deathmatch"(初期ライフ等、parseDeathmatchRules)と
   // "matchRules"(グローブ/ブースター等、parseMatchRules)を持つ。
   // 名前空間の追加・更新は既存キーを潰さないよう必ず `{ ...existing, <namespace>: ... }` で書く。
-  rules Json @default("{}")
+  rules   Json     @default("{}")
 
-  lastAggregatedAt DateTime?
-  aggregateMs      Int? // 直近の再集計にかかった時間(SLO監視用)
+  lastAggregatedAt  DateTime?
+  aggregateMs       Int? // 直近の再集計にかかった時間(SLO監視用)
   // スナップショット(EventContribution / EventStanding)を作った集計方式。
   // "FULL_PERIOD" = 開催日程の全ギフト / "BATTLE_ONLY" = 検知したバトル区間のギフトだけ。
   // null は方式を記録し始める前に最終集計を終えたイベント(FULL_PERIOD 相当)。
@@ -448,9 +448,9 @@ model Event {
   // これが入るまでは status を FINISHED にしても集計を続ける(遅れて保存された
   // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。
   // 主催者が endAt を延ばしたら null に戻して再開させる。
-  finalizedAt      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  finalizedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   sessions      EventSession[]
   teams         EventTeam[]
@@ -541,8 +541,8 @@ model EventParticipant {
   status      String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
   joinedAt    DateTime @default(now())
 
-  event Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  team  EventTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  event Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  team  EventTeam?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
   sides EventMatchSideParticipant[]
 
   @@unique([eventId, tiktokId])
@@ -582,7 +582,7 @@ model EventMatch {
   // (日程まるごとが監視・検知の対象。詳細は src/event/CLAUDE.md)。
   // 既存行の穴埋めは scripts/migrate-match-session.ts が db push の前に済ませる
   // (db push は「既存データのある非NULL列の追加」を実行できないため)。
-  sessionId String
+  sessionId        String
   // **旧: 主催者が指定した個別の時間枠。読まない。** 書き込みだけは当面続ける
   // (割り当てた日程の [startAt, endAt) をそのまま入れる) — ローリング更新や
   // ロールバックで旧コードが同時に動いても、必須列が null で落ちないようにするため。
@@ -596,11 +596,11 @@ model EventMatch {
   // "FINISHED"     勝者が確定した
   // "NO_SHOW"      日程が終わっても検知できなかった
   // "VOID"         主催者が無効にした
-  status String @default("SCHEDULED")
+  status           String    @default("SCHEDULED")
 
-  detectedBattleId String? // TikTok の battleId。string のまま保持する
-  detectedStartAt  DateTime?
-  detectedEndAt    DateTime?
+  detectedBattleId    String? // TikTok の battleId。string のまま保持する
+  detectedStartAt     DateTime?
+  detectedEndAt       DateTime?
   // "exact"  = 観測した room の集合が対戦カードと完全一致した
   // "partial" = 一部の room しか観測できなかった(相手が参加者でない・監視が落ちていた等)
   detectionConfidence String?
@@ -609,28 +609,74 @@ model EventMatch {
   // 実測できない終了時刻を作ると、その区間ぶんの通常ギフトまでバトル倍率と勝敗に混ざる。
   detectedEndSource   String?
 
-  winnerSideId String?
+  winnerSideId    String?
   // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝) / "DRAW"(引き分け)
   winnerDecidedBy String?
   // 決着時刻。デスマッチのライフはこの順に適用する(life-points.ts)。
-  // 自動検知なら detectedEndAt、主催者が確定したならその時刻。**null は「まだ決着していない」。**
+  // **resolveMatchSeries() が AGGREGATE 決着時も必ず書く**(旧: detectedEndAt にフォール
+  // バックしていたが、勝利条件(複数バトル)対応で decidedAt を優先参照先に統一した)。
+  // 主催者が確定した場合はその時刻。**null は「まだ決着していない」。**
   // updatedAt を使わない(再集計のたびに動いて適用順が不安定になる)。
-  decidedAt DateTime?
+  decidedAt       DateTime?
 
   rules Json @default("{}") // 種目別ルールと、判定時の補足情報
 
-  event   Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event            Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   // **複合FK。** sessionId 単独だと他イベントの日程を指す行が DB 上成立してしまう。
   //
   // **onDelete は Restrict。** 対戦がぶら下がった日程を消せなくすることで、
   // 「日程を全置換する古いコード(または古いイメージ)が動くと表が丸ごと消える」事故を
   // DB 側で止める。日程の削除は更新APIが 409 で先に弾き、イベントごと消すときは
   // DELETE が対戦を明示的に消してから Event を消す。
-  session EventSession     @relation(fields: [eventId, sessionId], references: [eventId, id], onDelete: Restrict)
-  sides   EventMatchSide[]
+  session          EventSession                @relation(fields: [eventId, sessionId], references: [eventId, id], onDelete: Restrict)
+  sides            EventMatchSide[]
+  battleCandidates EventMatchBattleCandidate[]
 
   @@index([eventId, sessionId])
   @@index([detectedBattleId])
+  @@schema("event")
+}
+
+// 対戦カード(EventMatch)に紐づく、検知した「候補バトル」1件の検知結果だけを持つ。
+// 勝利条件(matchRules.winCondition)が SINGLE なら通常1件、BEST_OF_THREE ならシリーズの
+// 各ゲームぶん複数件になりうる。**採点(ダイヤ集計・勝敗)はキャッシュしない** —
+// 全期間再計算という既存の集計哲学(aggregate.ts)に合わせ、resolveMatchSeries() が
+// 呼ばれるたびに scoreSides() で毎回計算する。詳細は src/event/CLAUDE.md。
+//
+// DetectedBattle への FK は張らない(roomId ごとに複数行あり、event を跨いで共有される
+// 疎結合テーブルのため。battleId は文字列のまま緩く参照する)。
+model EventMatchBattleCandidate {
+  id       String @id @default(cuid())
+  matchId  String
+  battleId String
+
+  startedAt     DateTime
+  endedAt       DateTime? // null = まだ進行中(暫定候補)
+  endedAtSource String? // "observed" | "duration"
+  confidence    String // "exact" | "partial"
+
+  // 同じ battleId が2つ以上の EventMatch の room 集合と完全一致した(cross-match衝突。
+  // デスマッチで同じ組み合わせが複数カードにあるケースを含む)。
+  // **一度 true になったら「検知をやり直す」まで sticky に true のまま**(片方のマッチが
+  // confirm で open から外れても、もう片方の曖昧判定が false へ戻らないように)。
+  ambiguous Boolean @default(false)
+
+  // 主催者が「候補過多(CANDIDATES_EXCEEDED)」画面で判定対象として選んだプール。
+  // selectCandidates API だけが書く。一度立てたら resolveMatchSeries() は書き換えない
+  // (主催者の意図をそのまま保持する — selected と役割を分けている理由は match-results.ts 参照)。
+  organizerSelected Boolean @default(false)
+
+  // resolveMatchSeries() が毎回計算する、現在の「実効ゲーム集合(effectiveGames)」に
+  // 含まれるか。loadBattleRangesByRoom() はこの列だけを見る。
+  selected Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match EventMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, battleId])
+  @@index([matchId])
   @@schema("event")
 }
 
@@ -777,9 +823,9 @@ model DetectedBattle {
   battleId String // TikTok の battleId。string のまま
   roomId   String
 
-  startedAt DateTime
+  startedAt          DateTime
   // startedAt が受信時刻からの推定値か。配信の途中から接続すると開始(OPEN)を取り逃す。
-  startedAtEstimated Boolean @default(true)
+  startedAtEstimated Boolean  @default(true)
 
   endedAt     DateTime?
   durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの推定に使う

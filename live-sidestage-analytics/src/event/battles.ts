@@ -6,15 +6,19 @@ import {
   MANUAL_DECISIONS,
   type BattleObservation,
   type MatchCandidate,
-  type ReviewReason,
 } from "./match-detect";
-import { isByeRow } from "./match-status";
+import { isByeRow, isCandidatesConfirmedByOrganizer } from "./match-status";
 import type { TimeRange } from "./scoring";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
 //
 // 照合そのものは match-detect.ts の純粋関数が持つ。ここは DB の出し入れだけ。
+//
+// **`detectMatches` は候補(`EventMatchBattleCandidate`)を正しい状態に保つことだけに専念する。**
+// `EventMatch.status` / `winnerSideId` / `decidedAt` の導出は一切行わない
+// (`match-results.ts` の `resolveMatchSeries()` に一本化している)。唯一の例外は
+// `NO_SHOW`(検知できなかったことの記録)。
 
 /**
  * 対戦カードの時間枠より広めに取り込む(枠外で始まったバトルも見えるようにする)。
@@ -23,12 +27,6 @@ import { BATTLE_ACTION } from "@/lib/tiktok-battle";
  * ここで広げると、隣り合う日程を広げた区間が重なって同じバトルを二度 upsert する。
  */
 export const BATTLE_INGEST_GRACE_MS = 60 * 60 * 1000;
-
-/** 主催者が手を入れたマッチは自動検知で上書きしない。 */
-const LOCKED_STATUSES = new Set(["VOID"]);
-
-/** 自動確定できない検知。主催者が承認するまで勝敗を出さない。 */
-export const NEEDS_REVIEW = "NEEDS_REVIEW";
 
 /**
  * 参加者の room で観測されたバトルを DetectedBattle へ取り込む。
@@ -77,7 +75,6 @@ type MatchWithSides = {
   round: number;
   bracketPosition: number;
   session: { startAt: Date; endAt: Date } | null;
-  detectedBattleId: string | null;
   detectedEndAt: Date | null;
   decidedAt: Date | null;
   winnerDecidedBy: string | null;
@@ -88,27 +85,6 @@ type MatchWithSides = {
     participants: { participant: { roomId: string } }[];
   }[];
 };
-
-/**
- * 検知を付け替えてはいけない状態。**一度確定した `detectedBattleId` は、主催者が
- * 「検知をやり直す」まで動かさない。** 日程まるごとが検知対象になったことで、後から
- * 取り込まれたバトルによって過去の割り当てが揺れうるため。
- */
-const LOCKED_DETECTION_STATUSES = new Set(["DETECTED", "FINISHED", "NEEDS_REVIEW"]);
-
-/**
- * `rules` に承認待ちの理由を書き足す。**既存のキー(`roundLabel` / `bye`)を潰さない。**
- * 理由が無くなったら消す(承認済みのカードに古い理由が残らないように)。
- */
-function mergeReviewReason(rules: unknown, reason: ReviewReason | null): Prisma.InputJsonObject {
-  const base: Record<string, unknown> =
-    rules && typeof rules === "object" && !Array.isArray(rules)
-      ? { ...(rules as Record<string, unknown>) }
-      : {};
-  if (reason) base.reviewReason = reason;
-  else delete base.reviewReason;
-  return base as Prisma.InputJsonObject;
-}
 
 /** ブラケットの座標 → その対戦。上流(feeder)を座標から引くために使う。 */
 function bySlotIndex(matches: MatchWithSides[]): Map<string, MatchWithSides> {
@@ -132,7 +108,10 @@ function decidedAtOfSlot(
   const match = bySlot.get(`${round}:${position}`);
   if (!match) return null;
 
-  const decided = match.detectedEndAt ?? match.decidedAt;
+  // **decidedAt を優先する。** resolveMatchSeries() は決着(AGGREGATE)時に必ず decidedAt を
+  // 書くので、通常はこちらだけで足りる。detectedEndAt へのフォールバックは、BYE 確定など
+  // decidedAt を書かない経路への後方互換のため。
+  const decided = match.decidedAt ?? match.detectedEndAt;
   if (decided) return decided;
 
   // 不戦勝(バトルが起きていない)行は時刻を持たない。その上流まで遡る。
@@ -179,10 +158,6 @@ function toCandidate(
     sideRoomIds: bySide.map((s) => s.participants.map((p) => p.participant.roomId)),
     isBye: isByeRow(match.rules),
     feederDecidedAt: feederDecidedAt(match, bySlot),
-    lockedBattleId:
-      match.detectedBattleId && LOCKED_DETECTION_STATUSES.has(match.status)
-        ? match.detectedBattleId
-        : null,
   };
 }
 
@@ -233,12 +208,11 @@ export type DetectionResult = {
  *
  * - 主催者が VOID にしたマッチ、手動で勝者を確定したマッチには触らない
  * - **途中終了(CUT_SHORT)したバトルは候補の母集団から丸ごと外す。** 成立したバトルとして
- *   扱わない。すでに紐づいてしまっている未確定の対戦は解除して検知対象へ戻す(下記)
- * - 終了をまだ観測できていないバトルは**暫定関連**(`detectedEndAt` は null のまま LIVE)。
- *   勝敗もバトル倍率も出さずに次の周回を待つ
- * - 暫定のまま日程が終わったら `NEEDS_REVIEW`(主催者が手で決める)
- * - 暫定関連が次の周回で候補から外れたら関連を解除する(実際の終了が日程の外だった等)
- * - 日程が終わっても検知できなかったマッチは NO_SHOW にする
+ *   扱わない。すでに保存されている候補行(`EventMatchBattleCandidate`)は削除する
+ * - 終了をまだ観測できていないバトルは**暫定候補**(`endedAt` は null のまま)として保存する。
+ *   勝敗・状態(LIVE/NEEDS_REVIEW 等)の導出は `resolveMatchSeries()` の責務
+ * - 今回のペアリングに現れなかった既存候補行(実際の終了が日程の外だった等)は削除する
+ * - 日程が終わっても候補が1件も無いマッチは NO_SHOW にする(この関数が書く唯一の状態)
  */
 export async function detectMatches(
   tx: DbClient,
@@ -253,11 +227,11 @@ export async function detectMatches(
       bracketPosition: true,
       // 検知の対象区間は「割り当てた開催日程まるごと」。対戦に個別の時間枠は無い。
       session: { select: { startAt: true, endAt: true } },
-      detectedBattleId: true,
       detectedEndAt: true,
       decidedAt: true,
       winnerDecidedBy: true,
-      // 不戦勝行を検知にも NO_SHOW にも関わらせないために要る(toCandidate)。
+      // 不戦勝行を検知に関わらせないため(toCandidate)。凍結判定(candidatesConfirmedByOrganizer)
+      // にも使う。
       rules: true,
       sides: {
         select: {
@@ -269,10 +243,14 @@ export async function detectMatches(
     },
   })) as MatchWithSides[];
 
+  // **`status === "FINISHED"` では対象から外さない。** 自動確定(AGGREGATE)は日程が
+  // 終わるまで検知を続け、超過が見つかったら resolveMatchSeries が差し戻す。
+  // 凍結するのは主催者が候補選択を「確定した」マッチだけ(`reopen` で明示的に解除するまで)。
   const open = matches.filter(
     (m) =>
-      !LOCKED_STATUSES.has(m.status) &&
-      !(m.winnerDecidedBy && MANUAL_DECISIONS.has(m.winnerDecidedBy))
+      m.status !== "VOID" &&
+      !(m.winnerDecidedBy && MANUAL_DECISIONS.has(m.winnerDecidedBy)) &&
+      !isCandidatesConfirmedByOrganizer(m.rules)
   );
   if (open.length === 0) return { detected: 0, missed: 0, invalidated: 0 };
 
@@ -316,9 +294,6 @@ export async function detectMatches(
   // 片側が途中接続で終了イベントを取り逃していれば lastAction は OPEN / UNKNOWN のまま
   // 残るので、**1つでも CUT_SHORT を観測した room があればそのバトル全体を除外する**
   // (summarize() の集約と同じ向き。判定できないものは従来どおり候補にする fail-open)。
-  //
-  // ここで母集団から丸ごと外すことで、AMBIGUOUS の母数・usedBattles の取り合い・
-  // partial・暫定関連のすべてから自動的に消える。assignBattles() 側に例外を持ち込まない。
   const cutShortBattleIds = new Set(
     rows.filter((r) => r.lastAction === BATTLE_ACTION.CUT_SHORT).map((r) => r.battleId)
   );
@@ -328,112 +303,86 @@ export async function detectMatches(
     battles: toObservations(rows.filter((r) => !cutShortBattleIds.has(r.battleId))),
   });
 
-  const byId = new Map(open.map((m) => [m.id, m]));
+  // 既存候補行を読む(open マッチぶんだけ。candidatesConfirmedByOrganizer なマッチは
+  // open に含まれないので、その候補行は自動的に触られない)。
+  const existingCandidates = await tx.eventMatchBattleCandidate.findMany({
+    where: { matchId: { in: open.map((m) => m.id) } },
+    select: { id: true, matchId: true, battleId: true, ambiguous: true },
+  });
+  const existingByKey = new Map(existingCandidates.map((c) => [`${c.matchId}:${c.battleId}`, c]));
+  const existingCountByMatch = new Map<string, number>();
+  for (const c of existingCandidates) {
+    existingCountByMatch.set(c.matchId, (existingCountByMatch.get(c.matchId) ?? 0) + 1);
+  }
 
+  const assignmentsByMatch = new Map<string, typeof assignments>();
   for (const a of assignments) {
-    const current = byId.get(a.matchId);
-    // 主催者が一度承認したマッチ(NEEDS_REVIEW → DETECTED)を再び承認待ちへ戻さない。
-    const alreadyApproved = current?.status === "DETECTED" || current?.status === "FINISHED";
-    const sessionEnd = current?.session?.endAt ?? null;
+    const list = assignmentsByMatch.get(a.matchId);
+    if (list) list.push(a);
+    else assignmentsByMatch.set(a.matchId, [a]);
+  }
 
-    let status: string;
-    let reviewReason: ReviewReason | null = a.reviewReason;
-    if (a.endedAt === null) {
-      // 終了がまだ確定していない暫定関連。日程が終わっても分からなければ主催者へ回す。
-      if (sessionEnd && sessionEnd <= params.now) {
-        status = NEEDS_REVIEW;
-        reviewReason = "END_UNKNOWN";
-      } else {
-        status = "LIVE";
-      }
-    } else if (!a.autoConfirm && !alreadyApproved) {
-      status = NEEDS_REVIEW;
-    } else if (a.endedAt > params.now) {
-      status = "LIVE";
-    } else if (current?.status === "FINISHED") {
-      status = "FINISHED";
-    } else {
-      status = "DETECTED";
+  let invalidated = 0;
+
+  for (const m of open) {
+    const matchAssignments = assignmentsByMatch.get(m.id) ?? [];
+    const keepKeys = new Set(matchAssignments.map((a) => `${m.id}:${a.battleId}`));
+
+    for (const a of matchAssignments) {
+      const key = `${m.id}:${a.battleId}`;
+      const existing = existingByKey.get(key);
+      await tx.eventMatchBattleCandidate.upsert({
+        where: { matchId_battleId: { matchId: m.id, battleId: a.battleId } },
+        create: {
+          matchId: m.id,
+          battleId: a.battleId,
+          startedAt: a.startedAt,
+          endedAt: a.endedAt,
+          endedAtSource: a.endedAtSource,
+          confidence: a.confidence,
+          ambiguous: a.ambiguous,
+        },
+        update: {
+          startedAt: a.startedAt,
+          endedAt: a.endedAt,
+          endedAtSource: a.endedAtSource,
+          confidence: a.confidence,
+          // **sticky。** 一度 ambiguous になったら「検知をやり直す」まで false へ戻さない
+          // (片方のマッチが confirm で open から外れても、もう片方の判定が動かないように)。
+          ambiguous: existing ? existing.ambiguous || a.ambiguous : a.ambiguous,
+        },
+      });
     }
 
-    await tx.eventMatch.update({
-      where: { id: a.matchId },
-      data: {
-        detectedBattleId: a.battleId,
-        detectedStartAt: a.startedAt,
-        detectedEndAt: a.endedAt,
-        // 決着時刻はライフの適用順に使う。終了が確定するまでは決着していない。
-        decidedAt: a.endedAt,
-        detectionConfidence: a.confidence,
-        detectedEndSource: a.endedAtSource,
-        status,
-        rules: mergeReviewReason(current?.rules, status === NEEDS_REVIEW ? reviewReason : null),
-      },
-    });
+    // 今回のペアリングに現れなかった既存候補は削除する
+    // (CUT_SHORT による除外、実際の終了が日程外だった暫定候補の解除等)。
+    const toDelete = existingCandidates.filter(
+      (c) => c.matchId === m.id && !keepKeys.has(`${c.matchId}:${c.battleId}`)
+    );
+    if (toDelete.length > 0) {
+      await tx.eventMatchBattleCandidate.deleteMany({
+        where: { id: { in: toDelete.map((c) => c.id) } },
+      });
+      invalidated += toDelete.length;
+    }
   }
 
   const assigned = new Set(assignments.map((a) => a.matchId));
 
-  /**
-   * 途中終了と判明したバトルに紐づいたままの、**まだ結果が確定していない**対戦。
-   *
-   * **`LOCKED_DETECTION_STATUSES` を「確定済み」の判定に流用しないこと。** あれは
-   * 「別の battleId へ付け替えない」という安定性の規則で、`DETECTED` も `NEEDS_REVIEW` も
-   * 結果は未確定(`DETECTED` は次の `resolveMatchResults()` でそのまま FINISHED になる)。
-   * 守るのは実際に確定した `FINISHED` と手動確定だけ(後者は `open` で既に落ちている)。
-   */
-  const invalidatedByCutShort = (m: MatchWithSides) =>
-    m.detectedBattleId !== null &&
-    cutShortBattleIds.has(m.detectedBattleId) &&
-    (m.status === "LIVE" || m.status === "DETECTED" || m.status === NEEDS_REVIEW);
-
-  // **暫定関連の取り消し。** 実際の終了が日程の外だった、候補が変わったなどで外れた
-  // 「まだ終わっていないはずのバトル」を、いつまでも LIVE のまま残さない。
-  // 途中終了と判明したバトルに紐づいた対戦も、ここで検知対象へ戻す。
-  //
-  // **`!assigned` は OR の外側に置く。** LIVE は `LOCKED_DETECTION_STATUSES` に入らない
-  // ので、CUT_SHORT を母集団から外した同じ周回で正常終了バトルへ付け替わりうる。
-  // 内側に書くと、その周回で成立した正しい割り当てを直後に巻き戻してしまう。
-  const retracted = open.filter(
-    (m) =>
-      !assigned.has(m.id) &&
-      ((m.status === "LIVE" && m.detectedEndAt === null) || invalidatedByCutShort(m))
+  // 既存候補が1件以上あったのに今回0件になったマッチ(候補が全部消えた)を、
+  // 「まだ何も検知していない」マッチと同じ扱いで NO_SHOW 候補に含める。
+  const nowEmptyMatchIds = new Set(
+    open
+      .filter((m) => (existingCountByMatch.get(m.id) ?? 0) > 0 && !assigned.has(m.id))
+      .map((m) => m.id)
   );
 
-  // `rules` は行ごとにマージするので updateMany にはできない
-  // (`roundLabel` / `bye` など `reviewReason` 以外のキーを潰さないため)。
-  for (const m of retracted) {
-    await tx.eventMatch.update({
-      where: { id: m.id },
-      data: {
-        detectedBattleId: null,
-        detectedStartAt: null,
-        detectedEndAt: null,
-        detectionConfidence: null,
-        detectedEndSource: null,
-        decidedAt: null,
-        // 検知が外れた以上、そこから出た勝者も残さない(手動確定は open で除外済み)。
-        winnerSideId: null,
-        winnerDecidedBy: null,
-        status: "SCHEDULED",
-        rules: mergeReviewReason(m.rules, null),
-      },
-    });
-  }
-  if (retracted.length > 0) {
-    // 集計済みのスコアも消す。残っていると「もう結果が出ている」と読めてしまう
-    // (主催者の「検知をやり直す」と同じ後始末)。
-    await tx.eventMatchSide.updateMany({
-      where: { matchId: { in: retracted.map((m) => m.id) } },
-      data: { diamonds: 0, score: 0 },
-    });
-  }
-
-  const retractedIds = new Set(retracted.map((m) => m.id));
+  const byId = new Map(open.map((m) => [m.id, m]));
   const missed = findMissedMatches({
-    matches: candidates.filter(
-      (c) => byId.get(c.id)?.status === "SCHEDULED" || retractedIds.has(c.id)
-    ),
+    matches: candidates.filter((c) => {
+      const m = byId.get(c.id);
+      return m?.status === "SCHEDULED" || nowEmptyMatchIds.has(c.id);
+    }),
     assigned,
     now: params.now,
   });
@@ -448,7 +397,7 @@ export async function detectMatches(
   return {
     detected: assignments.length,
     missed: missed.length,
-    invalidated: retracted.filter(invalidatedByCutShort).length,
+    invalidated,
   };
 }
 
@@ -458,45 +407,46 @@ export async function detectMatches(
  * **イベント全体で1本のリストにしてはいけない。** バトルは配信者ごとに起きるので、
  * 1人がバトル中というだけで同時刻の他の参加者にまで BATTLE 倍率がかかってしまう。
  *
- * 対象は検知できたマッチのみ。VOID と NO_SHOW は含めない
- * (バトルが成立していないので BATTLE 倍率をかける根拠がない)。
+ * **起点は `EventMatch` ではなく `EventMatchBattleCandidate`(`selected=true`)。**
+ * `selected` は `resolveMatchSeries()` が計算した「現在の実効ゲーム集合」に一本化されて
+ * いるので、候補過多で選択待ちの候補や、決着後に使われなかった余剰候補はここに現れない。
+ * 対象マッチは VOID と NO_SHOW を含めない(バトルが成立していないので倍率の根拠がない)。
  */
 export async function loadBattleRangesByRoom(
   tx: DbClient,
   eventId: string
 ): Promise<Map<string, TimeRange[]>> {
-  const matches = await tx.eventMatch.findMany({
+  const candidates = await tx.eventMatchBattleCandidate.findMany({
     where: {
-      eventId,
-      status: { in: ["LIVE", "DETECTED", "FINISHED"] },
-      detectedStartAt: { not: null },
-      detectedEndAt: { not: null },
+      selected: true,
+      endedAt: { not: null },
+      match: { eventId, status: { in: ["LIVE", "DETECTED", "FINISHED"] } },
     },
     select: {
-      detectedStartAt: true,
-      detectedEndAt: true,
-      // 倍率区間は**割り当てた日程で切る**。日程の前から始まったバトルの、日程の外の
-      // 部分にまでバトル倍率をかけない(勝敗の集計と同じ扱いに揃える)。
-      session: { select: { startAt: true, endAt: true } },
-      sides: {
-        select: { participants: { select: { participant: { select: { roomId: true } } } } },
+      startedAt: true,
+      endedAt: true,
+      match: {
+        select: {
+          // 倍率区間は**割り当てた日程で切る**。日程の前から始まったバトルの、日程の外の
+          // 部分にまでバトル倍率をかけない(勝敗の集計と同じ扱いに揃える)。
+          session: { select: { startAt: true, endAt: true } },
+          sides: {
+            select: { participants: { select: { participant: { select: { roomId: true } } } } },
+          },
+        },
       },
     },
   });
 
   const byRoom = new Map<string, TimeRange[]>();
-  for (const match of matches) {
+  for (const candidate of candidates) {
+    const session = candidate.match.session;
     const start =
-      match.session && match.detectedStartAt! < match.session.startAt
-        ? match.session.startAt
-        : match.detectedStartAt!;
-    const end =
-      match.session && match.detectedEndAt! > match.session.endAt
-        ? match.session.endAt
-        : match.detectedEndAt!;
+      session && candidate.startedAt < session.startAt ? session.startAt : candidate.startedAt;
+    const end = session && candidate.endedAt! > session.endAt ? session.endAt : candidate.endedAt!;
     if (start >= end) continue;
     const range: TimeRange = { start, end };
-    for (const side of match.sides) {
+    for (const side of candidate.match.sides) {
       for (const p of side.participants) {
         const roomId = p.participant.roomId;
         const list = byRoom.get(roomId);

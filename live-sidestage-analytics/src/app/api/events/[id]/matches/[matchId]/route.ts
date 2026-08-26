@@ -1,11 +1,22 @@
+import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { nextSlot } from "@/event/bracket";
+import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
 import { acquireEventLock } from "@/event/event-lock";
-import { advanceBracket } from "@/event/match-results";
-import { isByeRow, isPlainObject, isStartedMatch } from "@/event/match-status";
+import { advanceBracket, resolveMatchSeries } from "@/event/match-results";
+import { seriesRequirement, parseMatchRules, type MatchRules } from "@/event/match-rules";
+import {
+  isByeRow,
+  isCandidatesConfirmedByOrganizer,
+  isPlainObject,
+  isStartedMatch,
+  withCandidatesConfirmedByOrganizer,
+} from "@/event/match-status";
+import { resolveEventWindows, type EventWindow } from "@/event/sessions";
+import type { MultiplierInput } from "@/event/scoring";
 import {
   isTransactionTimeout,
   MUTATION_TX_OPTIONS,
@@ -58,7 +69,110 @@ function clearReviewReason(rules: unknown): Prisma.InputJsonObject {
   return base as Prisma.InputJsonObject;
 }
 
-type Action = "approve" | "confirm" | "draw" | "void" | "reopen" | "assignSession";
+type Action =
+  | "approve"
+  | "confirm"
+  | "draw"
+  | "void"
+  | "reopen"
+  | "assignSession"
+  | "selectCandidates"
+  | "resetCandidates";
+
+/**
+ * 候補一覧の「見た目」の指紋。楽観的排他に使う。
+ *
+ * **Next.js の route ファイルは HTTP メソッド以外を export できない**ため、テストは
+ * 同じ入力文字列(`buildCandidatesFingerprintInput`、`@/event/candidates-fingerprint`)を
+ * 使って自前でハッシュ化する(このファイル内の関数は呼べない)。
+ */
+function computeCandidatesFingerprint(
+  candidates: { id: string; endedAt: Date | null; confidence: string; ambiguous: boolean }[]
+): string {
+  return createHash("sha256").update(buildCandidatesFingerprintInput(candidates)).digest("hex");
+}
+
+/** `resolveMatchSeries()` に要る、イベント全体で共通の入力(1トランザクション内で使い回す)。 */
+async function loadSeriesInputs(
+  tx: DbClient,
+  eventId: string
+): Promise<{ matchRules: MatchRules; multipliers: MultiplierInput[]; windows: EventWindow[] }> {
+  const event = await tx.event.findUnique({
+    where: { id: eventId },
+    select: {
+      rules: true,
+      startAt: true,
+      endAt: true,
+      sessions: {
+        orderBy: { startAt: "asc" },
+        select: { id: true, startAt: true, endAt: true, name: true },
+      },
+    },
+  });
+  const multiplierRows = await tx.eventMultiplier.findMany({
+    where: { eventId },
+    select: { kind: true, factor: true, startAt: true, endAt: true },
+  });
+  return {
+    matchRules: parseMatchRules(event?.rules),
+    multipliers: multiplierRows.map((m) => ({
+      kind: m.kind,
+      factor: m.factor.toString(),
+      startAt: m.startAt,
+      endAt: m.endAt,
+    })),
+    windows: resolveEventWindows(
+      event ?? { startAt: new Date(0), endAt: new Date(0), sessions: [] }
+    ),
+  };
+}
+
+/**
+ * `resolveMatchSeries()` に渡すマッチのスナップショットを読み直す。**候補の
+ * `organizerSelected`/`selected` を書き換えた直後は、古いスナップショットではなく
+ * 必ずこれで読み直してから呼ぶこと**(でないと直前の書き込みが反映されない状態で判定される)。
+ */
+async function loadMatchForSeries(tx: DbClient, matchId: string) {
+  const match = await tx.eventMatch.findUniqueOrThrow({
+    where: { id: matchId },
+    select: {
+      id: true,
+      round: true,
+      bracketPosition: true,
+      status: true,
+      matchType: true,
+      winnerSideId: true,
+      winnerDecidedBy: true,
+      rules: true,
+      session: { select: { startAt: true, endAt: true, name: true } },
+      sides: {
+        orderBy: { sideIndex: "asc" },
+        select: {
+          id: true,
+          sideIndex: true,
+          teamId: true,
+          participants: {
+            select: { participantId: true, participant: { select: { roomId: true } } },
+          },
+        },
+      },
+      battleCandidates: {
+        orderBy: { startedAt: "asc" },
+        select: {
+          id: true,
+          battleId: true,
+          startedAt: true,
+          endedAt: true,
+          endedAtSource: true,
+          confidence: true,
+          ambiguous: true,
+          organizerSelected: true,
+        },
+      },
+    },
+  });
+  return match;
+}
 
 /** ロック内の検証で弾いたときの応答。トランザクションからはこれを返して外で JSON にする。 */
 type Failure = { error: string; code?: string; status: number };
@@ -76,6 +190,8 @@ export async function PATCH(
     action?: unknown;
     winnerSideId?: unknown;
     sessionId?: unknown;
+    candidateIds?: unknown;
+    candidatesFingerprint?: unknown;
   } | null;
 
   const action = body?.action as Action | undefined;
@@ -107,13 +223,22 @@ export async function PATCH(
           winnerDecidedBy: true,
           decidedAt: true,
           rules: true,
+          battleCandidates: {
+            orderBy: { startedAt: "asc" },
+            select: { id: true, endedAt: true, confidence: true, ambiguous: true },
+          },
           sides: { select: { id: true, sideIndex: true } },
         },
       });
       if (!match) return { error: "Not found", status: 404 };
 
       const resultAction =
-        action === "confirm" || action === "draw" || action === "void" || action === "reopen";
+        action === "confirm" ||
+        action === "draw" ||
+        action === "void" ||
+        action === "reopen" ||
+        action === "selectCandidates" ||
+        action === "resetCandidates";
 
       // 不戦勝行は主催者が結果を操作する対象ではない(対戦が起きていないので勝者確定・
       // 引き分け・無効化・検知やり直しのいずれも意味を持たない)。段階的不戦勝方式では
@@ -176,7 +301,10 @@ export async function PATCH(
               winnerSideId,
               winnerDecidedBy: "MANUAL",
               decidedAt: match.decidedAt ?? new Date(),
-              rules: clearReviewReason(match.rules),
+              rules: withCandidatesConfirmedByOrganizer(
+                clearReviewReason(match.rules),
+                false
+              ) as Prisma.InputJsonObject,
               ...(dropDetection
                 ? {
                     detectedBattleId: null,
@@ -188,6 +316,10 @@ export async function PATCH(
                 : {}),
             },
           });
+          // 手動確定は検知を丸ごと捨てる(既存方針)。候補バトルも複数ゲームぶんまとめて消す。
+          if (dropDetection) {
+            await tx.eventMatchBattleCandidate.deleteMany({ where: { matchId: match.id } });
+          }
           break;
         }
 
@@ -214,7 +346,10 @@ export async function PATCH(
               winnerSideId: null,
               winnerDecidedBy: "DRAW",
               decidedAt: match.decidedAt ?? new Date(),
-              rules: clearReviewReason(match.rules),
+              rules: withCandidatesConfirmedByOrganizer(
+                clearReviewReason(match.rules),
+                false
+              ) as Prisma.InputJsonObject,
               ...(dropDetection
                 ? {
                     detectedBattleId: null,
@@ -226,6 +361,9 @@ export async function PATCH(
                 : {}),
             },
           });
+          if (dropDetection) {
+            await tx.eventMatchBattleCandidate.deleteMany({ where: { matchId: match.id } });
+          }
           break;
         }
 
@@ -246,11 +384,20 @@ export async function PATCH(
             where: { matchId: match.id },
             data: { diamonds: 0, score: 0 },
           });
+          // **候補行は削除しない。** `reopen` すれば再検知の余地を残す
+          // (VOID は「無効化」であって「検知をやり直す」ではない)。ただし
+          // loadBattleRangesByRoom には一切現れないよう selected は倒しておく。
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id },
+            data: { selected: false, organizerSelected: false },
+          });
           break;
         }
 
         case "reopen": {
-          // 検知のやり直し。自動検知の対象へ戻す。
+          // 検知のやり直し。自動検知の対象へ戻す。**候補行を全削除**し、
+          // **`candidatesConfirmedByOrganizer` も明示的に消す**(消し忘れると、
+          // 次の検知で新しい候補が入っても「主催者選択済み・0件」のままになる)。
           await tx.eventMatch.update({
             where: { id: match.id },
             data: {
@@ -263,13 +410,139 @@ export async function PATCH(
               detectionConfidence: null,
               detectedEndSource: null,
               decidedAt: null,
-              rules: clearReviewReason(match.rules),
+              rules: withCandidatesConfirmedByOrganizer(
+                clearReviewReason(match.rules),
+                false
+              ) as Prisma.InputJsonObject,
             },
           });
           await tx.eventMatchSide.updateMany({
             where: { matchId: match.id },
             data: { diamonds: 0, score: 0 },
           });
+          await tx.eventMatchBattleCandidate.deleteMany({ where: { matchId: match.id } });
+          break;
+        }
+
+        case "selectCandidates": {
+          if (match.status !== "NEEDS_REVIEW" || reviewReasonOf(match.rules) !== "CANDIDATES_EXCEEDED") {
+            return { error: "候補選択が必要な対戦ではありません。", status: 400 };
+          }
+
+          const rawIds = body?.candidateIds;
+          if (!Array.isArray(rawIds) || rawIds.some((v) => typeof v !== "string")) {
+            return { error: "candidateIds が不正です。", status: 400 };
+          }
+          const candidateIds = rawIds as string[];
+          if (new Set(candidateIds).size !== candidateIds.length) {
+            return { error: "candidateIds に重複があります。", status: 400 };
+          }
+
+          const { matchRules } = await loadSeriesInputs(tx, params.id);
+          const { maxGames } = seriesRequirement(matchRules.winCondition);
+          if (candidateIds.length < 1 || candidateIds.length > maxGames) {
+            return { error: `選べる候補は1〜${maxGames}件です。`, status: 400 };
+          }
+
+          const byId = new Map(match.battleCandidates.map((c) => [c.id, c]));
+          if (!candidateIds.every((id) => byId.has(id))) {
+            return { error: "このマッチに存在しない候補が含まれています。", status: 400 };
+          }
+          if (candidateIds.some((id) => byId.get(id)!.endedAt === null)) {
+            return { error: "終了が確定していない候補は選べません。", status: 400 };
+          }
+
+          // **楽観的排他。** 選択画面を開いた時点の候補一覧の指紋と、ロックを取った
+          // このトランザクション内で読み直した現在の指紋を突き合わせる。ID集合の
+          // 増減だけでなく、終了時刻の確定・confidence の変化も拾う
+          // (ID集合だけを見る `expectedMatchIds` パターンは、候補の中身の鮮度は保証しない)。
+          const expectedFingerprint =
+            typeof body?.candidatesFingerprint === "string" ? body.candidatesFingerprint : "";
+          if (computeCandidatesFingerprint(match.battleCandidates) !== expectedFingerprint) {
+            return {
+              error: "この画面を開いた後に候補の内容が変わりました。最新の状態を確認してください。",
+              code: "CANDIDATES_CHANGED",
+              status: 409,
+            };
+          }
+
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id },
+            data: { organizerSelected: false },
+          });
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id, id: { in: candidateIds } },
+            data: { organizerSelected: true },
+          });
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: {
+              rules: withCandidatesConfirmedByOrganizer(
+                match.rules,
+                true
+              ) as Prisma.InputJsonObject,
+            },
+          });
+
+          {
+            const { multipliers, windows } = await loadSeriesInputs(tx, params.id);
+            const refreshed = await loadMatchForSeries(tx, match.id);
+            await resolveMatchSeries(tx, {
+              match: refreshed,
+              matchRules,
+              multipliers,
+              windows,
+              now: new Date(),
+              downstreamStarted: await downstreamStarted(
+                tx,
+                params.id,
+                match.round,
+                match.bracketPosition
+              ),
+            });
+          }
+          break;
+        }
+
+        case "resetCandidates": {
+          if (match.battleCandidates.length === 0) {
+            return { error: "候補が1件もありません。", status: 400 };
+          }
+
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id },
+            data: { organizerSelected: false, selected: false },
+          });
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: {
+              winnerSideId: null,
+              winnerDecidedBy: null,
+              decidedAt: null,
+              rules: withCandidatesConfirmedByOrganizer(
+                clearReviewReason(match.rules),
+                false
+              ) as Prisma.InputJsonObject,
+            },
+          });
+
+          {
+            const { matchRules, multipliers, windows } = await loadSeriesInputs(tx, params.id);
+            const refreshed = await loadMatchForSeries(tx, match.id);
+            await resolveMatchSeries(tx, {
+              match: refreshed,
+              matchRules,
+              multipliers,
+              windows,
+              now: new Date(),
+              downstreamStarted: await downstreamStarted(
+                tx,
+                params.id,
+                match.round,
+                match.bracketPosition
+              ),
+            });
+          }
           break;
         }
 
