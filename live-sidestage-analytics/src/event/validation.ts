@@ -327,6 +327,13 @@ export type ParticipantPatchInput = {
   displayName?: string | null;
   /** アバターの表示位置。null で現状のデフォルト(50%/30%/等倍)へ戻る */
   avatarFrame?: AvatarFrameInput | null;
+  /**
+   * TikTok ID の訂正(生の入力文字列)。登録ミスの後追い訂正専用。
+   * teamId/displayName と違い `null` によるクリア概念は無い(DB の tiktokId は NOT NULL)。
+   * 正規化(`normalizeTiktokId`)はここでは行わず `updateParticipant` 側に寄せる
+   * (register 側の役割分担と揃える)。
+   */
+  tiktokId?: string;
 };
 
 /**
@@ -364,8 +371,20 @@ export function parseParticipantPatch(body: unknown): ValidationResult<Participa
     value.avatarFrame = parsed.value;
   }
 
-  if (value.teamId === undefined && value.displayName === undefined && value.avatarFrame === undefined) {
-    return { ok: false, errors: ["teamId か displayName か avatarFrame のいずれかが必要です。"] };
+  if (raw.tiktokId !== undefined) {
+    if (typeof raw.tiktokId !== "string") {
+      return { ok: false, errors: ["TikTok ID の指定が不正です。"] };
+    }
+    value.tiktokId = raw.tiktokId;
+  }
+
+  if (
+    value.teamId === undefined &&
+    value.displayName === undefined &&
+    value.tiktokId === undefined &&
+    value.avatarFrame === undefined
+  ) {
+    return { ok: false, errors: ["teamId・displayName・tiktokId・avatarFrame のいずれかが必要です。"] };
   }
 
   return { ok: true, value };
