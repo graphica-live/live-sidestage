@@ -981,6 +981,81 @@ SCHEDULED / NO_SHOW のときだけ受け付け、それ以外は 409 で拒否�
 3人以上のチームは常に `NEEDS_REVIEW`。メンバー0人のチームは表に入れられない
 （`createBracket` が弾く）。ラウンドごとに出場メンバーを選ばせるなら別途設計が要る。
 
+## 勝利条件（1本勝負/2本先取）— 対戦カード1件が複数バトルを持つ
+
+`Event.rules.matchRules.winCondition`（`src/event/match-rules.ts`）が実際のバトル検出・
+勝敗確定に反映される。以前は表示専用の設定だった。設計は2回の Codex 独立レビューを経て
+確定している。ここには壊しやすい箇所だけ書く。
+
+### データモデル: `EventMatchBattleCandidate`
+
+1対戦カード（`EventMatch`）が複数の候補バトルを持てるようにする子テーブル。**採点結果は
+キャッシュしない** — `resolveMatchSeries()`（`match-results.ts`）が呼ばれるたびに毎回
+`scoreSides()` で再計算する（全期間再計算という既存の集計哲学に合わせるため）。
+
+- `selected`: `resolveMatchSeries()` が毎回計算する「現在の実効ゲーム集合
+  （effectiveGames）」。`loadBattleRangesByRoom()` はこの列だけを見る
+- `organizerSelected`: 主催者が「候補過多」画面で選んだプール。`selectCandidates` API
+  だけが書き、`resolveMatchSeries()` は書き換えない
+- **この2列を混同しないこと。** 混同すると、主催者が選んだ候補のうち先取に届かず
+  未使用だった分（`selected=false`）を、後から遅延ギフトで結果が反転したときに
+  再評価できなくなる（1回目のレビューで実際に指摘された欠陥）
+- `ambiguous`: 同じバトルが複数の対戦カードの room 集合と完全一致した（cross-match衝突。
+  デスマッチの同一組み合わせ複数カードで起きる）。**一度 true になったら「検知をやり直す」
+  まで sticky に true のまま**（片方のマッチが `confirm` で `open` から外れても、
+  もう片方の判定が動的に false へ戻らないように）
+
+### 検知の凍結条件は「決着」ではなく「主催者の確定」
+
+`detectMatches()`（`battles.ts`）の `open` フィルタは `status !== "FINISHED"` では対象から
+外さない。**自動確定（AGGREGATE）は日程が終わるまで検知を続け、超過候補が見つかったら
+差し戻す。** 凍結するのは主催者が候補選択を明示的に確定した
+（`rules.candidatesConfirmedByOrganizer=true`）マッチだけ。
+
+### 下流が着手済みなら、超過検知でも既存結果を差し戻さない
+
+`resolveMatchSeries()` の候補数超過判定・候補0件の後始末は、`downstreamStarted`（次ラウンドが
+`isStartedMatch()`）なら**何もせず既存の確定結果を維持する**（ユーザー確定方針、安全重視）。
+これにより「上流は未決着、下流は旧勝者のまま」という矛盾状態を構造的に防いでいる。
+**新しい差し戻し経路を足すときは、この `downstreamStarted` ガードを外さないこと。**
+
+### `decidedAt` が優先参照先。`detectedEndAt` は表示用ミラーでしかない
+
+`EventMatch.detectedStartAt/detectedEndAt` 等は「現在の実効ゲーム集合（`selected=true`）の
+最初/最後」を指す**表示専用のミラー列**。ライフ計算（`life-points.ts`）とfeeder境界判定
+（`battles.ts`）は **`decidedAt` を優先し、`detectedEndAt` へはBYE確定等の後方互換としてだけ
+フォールバックする**。`resolveMatchSeries()` は決着（AGGREGATE）時に必ず `decidedAt` を書く。
+
+### 候補が「終了時刻はあるがまだ未来」なら進行中（LIVE）として扱う
+
+duration から終了時刻を計算した OPEN 状態のバトルは、`endedAt` が非nullでも、その時刻が
+まだ `now` より先なら `pending` 扱いにする（`resolved` に混ぜて `scoreSides()` を呼ばない）。
+混ぜてしまうと、まだ終わっていないバトルの結果を先取りして確定させてしまう。
+
+### 開催後は `matchRules.winCondition` を変更できない
+
+対戦カードが1件でもあるイベントでは変更不可（イベント更新API、`acquireEventLock` 取得後に
+`EventMatch.count()` を読み直して判定する）。`matchRules` の他フィールド（グローブ等）は
+引き続き変更できる。DB件数を扱う判定なので `validation.ts`（純粋関数層）には置けない。
+
+### `selectCandidates` / `resetCandidates` の楽観的排他
+
+候補ID集合だけでなく、`endedAt`/`confidence`/`ambiguous` を含めた指紋（`candidatesFingerprint`、
+`src/event/candidates-fingerprint.ts` の `buildCandidatesFingerprintInput`）で照合する。
+既存の `expectedMatchIds`（`destroyBracket`）パターンは「表の同一性だけを保証し、行内容の
+鮮度は保証しない」ため、候補選択にはそのまま流用できない。ハッシュ化はサーバー側
+（`route.ts`、Node.js `crypto`）とクライアント側（`MatchManager.tsx`、Web Crypto API）で
+実行環境が異なるため別々に行う — 共有するのは入力文字列を組み立てる部分だけ。
+
+### マイグレーション
+
+`EventMatchBattleCandidate` は新規テーブルなので `prisma db push` 自体は普通に通る。
+既存 `EventMatch` の検知結果を複製するバックフィル（`scripts/migrate-match-battle-candidates.ts`、
+意味変換つき・冪等）を db push の後・`server.js` 起動の前に Dockerfile CMD で実行する。
+**新旧 `event-worker` を同時に動かさないこと**（旧版は「最新候補ミラー1本」だけでシリーズ
+勝者を上書きしうる）。ロジック変更（`detectMatches`/`resolveMatchResults` 書き換え）を含む
+デプロイの前に `event-worker` を一度止めるのが安全。
+
 ## 未実装（計画上のフェーズ）
 
 現在はフェーズ5まで。

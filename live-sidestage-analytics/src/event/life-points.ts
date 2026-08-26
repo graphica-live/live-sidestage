@@ -152,10 +152,13 @@ async function loadLifeEvents(
     if (results.length === 0) continue;
 
     // 決着時刻。updatedAt は再集計のたびに動いて順序が不安定になるので使わない。
-    // 自動検知なら実測の終了時刻、主催者が確定したならその時刻(`decidedAt`)。
-    // **対戦は予定時刻を持たない**ので、どちらも無い行は順番を決められない。
+    // **`decidedAt` を優先する。** resolveMatchSeries() は自動確定(AGGREGATE)時に必ず
+    // decidedAt を書く(勝利条件対応で、複数の候補バトルのうち実際に決着したゲームの
+    // 終了時刻を指すのは decidedAt だけになったため — detectedEndAt は表示用ミラー列)。
+    // detectedEndAt へのフォールバックは、BYE 確定など decidedAt を書かない経路への
+    // 後方互換のため。**対戦は予定時刻を持たない**ので、どちらも無い行は順番を決められない。
     // 適用順に依存する脱落判定を壊さないよう、ここで落とす(通常は起きない)。
-    const decidedAt = match.detectedEndAt ?? match.decidedAt;
+    const decidedAt = match.decidedAt ?? match.detectedEndAt;
     if (!decidedAt) continue;
 
     events.push({

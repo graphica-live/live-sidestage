@@ -540,6 +540,10 @@ function MatchCard({
   const byeWinner =
     match.winnerDecidedBy === "BYE" ? match.sides.find((s) => s.isWinner) : undefined;
   const isLive = match.status === "LIVE";
+  // 検知した候補バトルが勝利条件の最大試合数を超え、主催者の選択待ち。「NEEDS_REVIEW を
+  // LIVE に読み替えて隠す」既存方針の唯一の例外(public-event.ts)なので、ここに届いた時点
+  // で常に視聴者に見せてよい状態。LIVE の赤発光とは演出の強さを分ける(live-glow は使わない)。
+  const needsSelection = match.needsResultSelection;
   // 決勝は対象外(findSurvivorMatchIds が結果集合から除いている)。専用の枠+優勝バナーで
   // 既に「ここが頂点」を示せているので、この試合カードにさらに走光を重ねない。
   const isSurvivorWin = survivorMatchIds.has(match.id);
@@ -552,11 +556,13 @@ function MatchCard({
           ? `border-red-500/70 bg-gradient-to-b from-red-500/15 to-transparent ${
               isFinal ? "border-2" : ""
             }`
-          : isSurvivorWin
-            ? "border-red-500/70 bg-gradient-to-b from-red-500/10 to-transparent"
-            : isFinal
-              ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-              : "border-white/10 bg-panel"
+          : needsSelection
+            ? "border-yellow-500/60 bg-gradient-to-b from-yellow-500/10 to-transparent"
+            : isSurvivorWin
+              ? "border-red-500/70 bg-gradient-to-b from-red-500/10 to-transparent"
+              : isFinal
+                ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+                : "border-white/10 bg-panel"
       }`}
     >
       {/* 生き残っているツリーをひと目で追えるように、勝った試合の上辺だけ光を走らせる。
@@ -583,9 +589,13 @@ function MatchCard({
           {match.sessionLabel}
         </span>
         <span
-          className={`truncate font-semibold ${isLive ? "text-red-400" : decided ? "text-brand" : ""}`}
+          className={`truncate font-semibold ${
+            isLive ? "text-red-400" : needsSelection ? "text-yellow-400" : decided ? "text-brand" : ""
+          }`}
         >
-          {decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status}
+          {needsSelection
+            ? "⚠ 結果確認中"
+            : (decided ?? MATCH_STATUS_LABELS[match.status] ?? match.status)}
         </span>
       </div>
 

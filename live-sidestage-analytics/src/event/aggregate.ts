@@ -26,6 +26,7 @@ import {
 } from "./battles";
 import { expandAndMergeWindows, resolveEventWindows, type EventWindow } from "./sessions";
 import { resolveMatchResults } from "./match-results";
+import { parseMatchRules } from "./match-rules";
 import { parseDeathmatchRules } from "./deathmatch";
 import { applyLifePoints } from "./life-points";
 import { resolveListenerAttribution, type ListenerAttribution } from "./top-participant";
@@ -252,6 +253,7 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         if (detection.invalidated > 0) deferFinalize = true;
         const results = await resolveMatchResults(tx as DbClient, {
           eventId,
+          matchRules: parseMatchRules(event.rules),
           multipliers: multiplierInputs,
           windows,
           now,

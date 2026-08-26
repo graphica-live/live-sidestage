@@ -73,3 +73,16 @@ export function parseMatchRules(rules: unknown): MatchRules {
 
   return { winCondition, glove, booster, bonusTime, mist, violation, retry };
 }
+
+/** 勝利条件から、対戦カード1件が成立しうる最大試合数と先取本数を導く。 */
+export function seriesRequirement(winCondition: WinCondition): {
+  maxGames: number;
+  winsNeeded: number;
+} {
+  switch (winCondition) {
+    case "SINGLE":
+      return { maxGames: 1, winsNeeded: 1 };
+    case "BEST_OF_THREE":
+      return { maxGames: 3, winsNeeded: 2 };
+  }
+}

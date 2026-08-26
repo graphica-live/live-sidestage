@@ -4,6 +4,7 @@ import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { loadMatchContributions } from "./match-contributions";
 import { resolveMatchResults } from "./match-results";
+import { parseMatchRules } from "./match-rules";
 import type { EventWindow } from "./sessions";
 
 const PREFIX = "itest_mcontrib";
@@ -95,6 +96,7 @@ async function createMatch(params: {
   /** サイドごとの参加者ID。2要素なら 1vs1、内側が2人なら 2vs2 */
   sides: string[][];
 }): Promise<string> {
+  const battleId = params.detectedStartAt ? `${PREFIX}_battle_${uniqueSuffix()}` : null;
   const match = await prisma.eventMatch.create({
     data: {
       eventId: params.eventId,
@@ -103,7 +105,7 @@ async function createMatch(params: {
       bracketPosition: 0,
       matchType: params.sides.some((s) => s.length > 1) ? "2V2" : "1V1",
       status: params.status ?? "DETECTED",
-      detectedBattleId: params.detectedStartAt ? `${PREFIX}_battle_${uniqueSuffix()}` : null,
+      detectedBattleId: battleId,
       detectedStartAt: params.detectedStartAt ?? null,
       detectedEndAt: params.detectedEndAt ?? null,
       detectionConfidence: params.detectedStartAt ? "exact" : null,
@@ -117,6 +119,24 @@ async function createMatch(params: {
     },
     select: { id: true },
   });
+
+  // **勝敗確定の正本は候補(`EventMatchBattleCandidate`)。** 検知列(detectedStartAt/EndAt)は
+  // その実効ゲーム集合のミラーでしかないので、埋めるだけでは `resolveMatchSeries()` が
+  // 「候補0件」とみなして SCHEDULED へ差し戻す。同じ区間の候補を1件作っておく。
+  if (battleId && params.detectedStartAt && params.detectedEndAt) {
+    await prisma.eventMatchBattleCandidate.create({
+      data: {
+        matchId: match.id,
+        battleId,
+        startedAt: params.detectedStartAt,
+        endedAt: params.detectedEndAt,
+        endedAtSource: "observed",
+        confidence: "exact",
+        selected: true,
+      },
+    });
+  }
+
   return match.id;
 }
 
@@ -448,6 +468,7 @@ describe("loadMatchContributions", () => {
     await prisma.$transaction(async (tx) => {
       await resolveMatchResults(tx, {
         eventId: event.id,
+        matchRules: parseMatchRules(null),
         multipliers: [],
         windows: WINDOWS,
         now: NOW,
@@ -496,6 +517,7 @@ describe("loadMatchContributions", () => {
     await prisma.$transaction(async (tx) => {
       await resolveMatchResults(tx, {
         eventId: event.id,
+        matchRules: parseMatchRules(null),
         multipliers: [],
         windows: WINDOWS,
         now: NOW,

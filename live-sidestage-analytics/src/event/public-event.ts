@@ -176,6 +176,12 @@ export type BracketMatchDto = {
   sessionLabel: string;
   detectedStartAt: string | null;
   winnerDecidedBy: string | null;
+  /**
+   * 検知した候補バトルが勝利条件の最大試合数を超え、主催者の選択待ち。
+   * **この状態だけ、下の NEEDS_REVIEW→LIVE の読み替えの例外として視聴者にも見せる**
+   * (確定仕様)。選択操作自体は公開側に置かない — 表示のみ。
+   */
+  needsResultSelection: boolean;
   sides: BracketSideDto[];
 };
 
@@ -268,7 +274,11 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
 
   return {
     roundCount: Math.max(...matches.map((m) => m.round)),
-    matches: matches.map((m) => ({
+    matches: matches.map((m) => {
+      const needsResultSelection =
+        typeof (m.rules as { reviewReason?: unknown } | null)?.reviewReason === "string" &&
+        (m.rules as { reviewReason: string }).reviewReason === "CANDIDATES_EXCEEDED";
+      return {
       id: m.id,
       round: m.round,
       position: m.bracketPosition,
@@ -277,7 +287,9 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           ? (m.rules as { roundLabel: string }).roundLabel
           : `${m.round}回戦`,
       placement: parsePlacement(m.rules),
-      status: m.status === "NEEDS_REVIEW" ? "LIVE" : m.status,
+      // NEEDS_REVIEW は通常「進行中(LIVE)」に読み替えて隠す。**候補過多で選択待ちの
+      // 状態だけは例外**で、そのまま渡して視聴者にも「⚠ 結果確認中」を見せる(確定仕様)。
+      status: m.status === "NEEDS_REVIEW" && !needsResultSelection ? "LIVE" : m.status,
       hasFeederOverride: (() => {
         const parsed = parseWinnerFeeders(m.rules);
         return !!parsed && parsed.ok;
@@ -285,6 +297,7 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
       sessionLabel: sessionLabels.get(m.sessionId) ?? "",
       detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
       winnerDecidedBy: m.winnerDecidedBy,
+      needsResultSelection,
       sides: m.sides.map((s) => {
         const name =
           s.team?.name ??
@@ -311,7 +324,8 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
             s.participants.some((p) => liveRoomIds.has(p.participant.roomId)),
         };
       }),
-    })),
+      };
+    }),
   };
 }
 

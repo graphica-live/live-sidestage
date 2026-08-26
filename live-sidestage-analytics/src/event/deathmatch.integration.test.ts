@@ -642,6 +642,65 @@ describe("バトル中のみ集計する(デスマッチ)", () => {
   });
 });
 
+describe("同じ組み合わせが複数の対戦カードにある場合(cross-match衝突)", () => {
+  it("同じ日程に同じ組み合わせの対戦カードが2つあると、検知したバトルは両方をAMBIGUOUSにする", async () => {
+    // CLAUDE.md「同じ日程に同じ出場者の対戦が並ぶのは常態」の実例(1回戦と2回戦が
+    // 同じ日程に同居する等)。1つのバトルがどちらのカードのものか機械的に区別できないため、
+    // 両方を曖昧にして主催者の手動仕分けに委ねる(専用の再割当てAPIは追加しない、確定方針)。
+    const event = await newDeathmatch();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const sessionId = await sessionAt(event.id, SLOT1);
+
+    const { matchId: match1 } = await createSingleMatch({
+      eventId: event.id,
+      sideA: { participantIds: [a.id] },
+      sideB: { participantIds: [b.id] },
+      sessionId,
+    });
+    const { matchId: match2 } = await createSingleMatch({
+      eventId: event.id,
+      sideA: { participantIds: [a.id] },
+      sideB: { participantIds: [b.id] },
+      sessionId,
+    });
+
+    const battleId = `${PREFIX}_amb_${uniqueSuffix()}`;
+    const battleStart = new Date(SLOT1.getTime() + 10 * 60_000);
+    const battleEnd = new Date(SLOT1.getTime() + 20 * 60_000);
+    await insertBattle({ roomId: a.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
+    await insertBattle({ roomId: b.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
+
+    await aggregateEvent(event.id);
+
+    const m1 = await prisma.eventMatch.findUniqueOrThrow({ where: { id: match1 } });
+    const m2 = await prisma.eventMatch.findUniqueOrThrow({ where: { id: match2 } });
+    expect(m1.status).toBe("NEEDS_REVIEW");
+    expect((m1.rules as { reviewReason?: string }).reviewReason).toBe("AMBIGUOUS");
+    expect(m2.status).toBe("NEEDS_REVIEW");
+    expect((m2.rules as { reviewReason?: string }).reviewReason).toBe("AMBIGUOUS");
+
+    // 主催者が片方(match1)を手動で確定する(confirm相当、直接DBで模擬)。
+    const side = await prisma.eventMatchSide.findFirstOrThrow({ where: { matchId: match1 } });
+    await prisma.eventMatch.update({
+      where: { id: match1 },
+      data: {
+        status: "FINISHED",
+        winnerSideId: side.id,
+        winnerDecidedBy: "MANUAL",
+        decidedAt: new Date(),
+      },
+    });
+
+    // **ambiguousはsticky。** match1がopenから外れても、match2の判定は動的にfalseへ
+    // 戻らず、AMBIGUOUSのまま残る(残った片方だけを見て自動確定されないように)。
+    await aggregateEvent(event.id);
+    const m2After = await prisma.eventMatch.findUniqueOrThrow({ where: { id: match2 } });
+    expect(m2After.status).toBe("NEEDS_REVIEW");
+    expect((m2After.rules as { reviewReason?: string }).reviewReason).toBe("AMBIGUOUS");
+  });
+});
+
 describe("assertEventSession", () => {
   it("このイベントの日程なら通る", async () => {
     const event = await newDeathmatch();

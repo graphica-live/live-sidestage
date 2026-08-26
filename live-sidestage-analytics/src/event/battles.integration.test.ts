@@ -125,6 +125,27 @@ async function newTournament() {
   return event;
 }
 
+/** 勝利条件が2本先取(BEST_OF_THREE)のトーナメント。 */
+async function newBestOfThreeTournament() {
+  const event = await prisma.event.create({
+    data: {
+      slug: `${PREFIX}-${uniqueSuffix()}`,
+      title: `${PREFIX} 2本先取トーナメント`,
+      ownerUserId: `${PREFIX}_owner`,
+      format: "TOURNAMENT",
+      entryMode: "SOLO",
+      status: "RUNNING",
+      startAt: START,
+      endAt: END,
+      rules: { matchRules: { winCondition: "BEST_OF_THREE" } },
+      sessions: { create: [{ startAt: START, endAt: END }] },
+    },
+    select: { id: true },
+  });
+  createdEventIds.push(event.id);
+  return event;
+}
+
 /** 締切(endAt + 猶予1時間)を過ぎたイベント。最終集計の挙動を見るのに使う。 */
 async function newPastTournament() {
   const event = await prisma.event.create({
@@ -399,7 +420,10 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(match?.detectedEndAt).toBeNull();
   });
 
-  it("同じ組み合わせのバトルが日程内に複数あれば自動確定しない", async () => {
+  it("同じ組み合わせのバトルが1本勝負の日程内に複数あれば候補過多で選択待ちになる", async () => {
+    // 勝利条件のデフォルトは SINGLE(1本勝負、最大1試合)。同じ組み合わせで2試合検出
+    // されると、1マッチに複数の exact 候補が集まる(多本先取の通常状態)ため、cross-match
+    // の AMBIGUOUS ではなく CANDIDATES_EXCEEDED になる(下流が未着手なので差し戻す)。
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -419,8 +443,14 @@ describe("バトルの取り込みと対戦の確定", () => {
 
     const match = await prisma.eventMatch.findFirst({ where: { eventId: event.id, round: 1 } });
     expect(match?.status).toBe("NEEDS_REVIEW");
-    expect((match?.rules as { reviewReason?: string })?.reviewReason).toBe("AMBIGUOUS");
+    expect((match?.rules as { reviewReason?: string })?.reviewReason).toBe("CANDIDATES_EXCEEDED");
     expect(match?.winnerSideId).toBeNull();
+
+    const candidates = await prisma.eventMatchBattleCandidate.findMany({
+      where: { matchId: match!.id },
+    });
+    expect(candidates).toHaveLength(2);
+    expect(candidates.every((c) => c.selected === false)).toBe(true);
   });
 
   it("暫定関連は候補から外れたら解除される", async () => {
@@ -985,7 +1015,10 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(after.status).toBe("DETECTED");
   });
 
-  it("AGGREGATEで確定済みの対戦は、途中終了と判明しても維持する", async () => {
+  it("AGGREGATEで確定済みの対戦も、決着済みバトルがCUT_SHORTと判明すれば候補が消えて差し戻る", async () => {
+    // 勝利条件対応で「決着後も日程終了まで検知を続ける」設計に変わったため、唯一の
+    // 決着根拠だったバトルが後から CUT_SHORT と判明すると、候補行そのものが消え、
+    // resolveMatchSeries が「候補0件」としてSCHEDULEDへ戻す(下流が未着手なら安全)。
     const event = await newTournament();
     const a = await newParticipant(event.id, "a");
     const b = await newParticipant(event.id, "b");
@@ -1020,9 +1053,75 @@ describe("バトルの取り込みと対戦の確定", () => {
     const after = await prisma.eventMatch.findFirstOrThrow({
       where: { eventId: event.id, round: 1 },
     });
+    expect(after.status).toBe("SCHEDULED");
+    expect(after.winnerSideId).toBeNull();
+    expect(after.detectedBattleId).toBeNull();
+    const candidates = await prisma.eventMatchBattleCandidate.findMany({
+      where: { matchId: finished.id },
+    });
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("AGGREGATEで確定済みの対戦は、下流が着手済みなら候補が消えても差し戻さない", async () => {
+    const event = await newTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    const c = await newParticipant(event.id, "c");
+    const d = await newParticipant(event.id, "d");
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id, c.id, d.id] });
+
+    // 1回戦(a対d)をバトルで決着させ、勝者を2回戦へ送る。
+    const battleId = `${PREFIX}_cs8_${uniqueSuffix()}`;
+    for (const roomId of [a.roomId, d.roomId]) {
+      await insertBattle({ roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
+    }
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "listener1",
+      diamonds: 500,
+      receivedAt: GIFT_AT,
+    });
+    await aggregateEvent(event.id);
+    const finished = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1, bracketPosition: 0 },
+    });
+    expect(finished.status).toBe("FINISHED");
+
+    // 2回戦の相手側(b対c)も手動で確定させ、下流(決勝)を「着手済み」にする。
+    const other = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1, bracketPosition: 1 },
+      include: { sides: true },
+    });
+    await prisma.eventMatch.update({
+      where: { id: other.id },
+      data: { status: "FINISHED", winnerSideId: other.sides[0].id, winnerDecidedBy: "MANUAL" },
+    });
+    await aggregateEvent(event.id);
+    const final = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 2, bracketPosition: 0 },
+    });
+    // サイドに参加者が転送されただけでは isStartedMatch は true にならない(検知が
+    // 始まるまで status は SCHEDULED のまま)。「下流が着手済み」を再現するため、
+    // 決勝を直接 LIVE にする(実際にはバトル検知で遷移する状態を模擬)。
+    await prisma.eventMatch.update({ where: { id: final.id }, data: { status: "LIVE" } });
+
+    // ここで1回戦の決着根拠がCUT_SHORTと判明しても、決勝(下流)が既に動いているので
+    // 差し戻さず、FINISHEDのまま維持する。
+    for (const roomId of [a.roomId, d.roomId]) {
+      await updateBattle({
+        roomId,
+        battleId,
+        action: BATTLE_ACTION.CUT_SHORT,
+        endedAt: BATTLE_END,
+      });
+    }
+    await aggregateEvent(event.id);
+
+    const after = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1, bracketPosition: 0 },
+    });
     expect(after.status).toBe("FINISHED");
     expect(after.winnerSideId).toBe(finished.winnerSideId);
-    expect(after.detectedBattleId).toBe(battleId);
   });
 
   it("主催者が手動確定した対戦は、途中終了と判明しても維持する", async () => {
@@ -1147,6 +1246,148 @@ describe("バトルの取り込みと対戦の確定", () => {
       where: { eventId: event.id, round: 1 },
     });
     expect(match.detectedBattleId).toBe(battleId);
+  });
+});
+
+describe("勝利条件(BEST_OF_THREE)", () => {
+  it("2試合連続で同じ側が勝てば2-0でFINISHEDになり、3試合目があってもeffectiveGamesに含まれず無視する", async () => {
+    const event = await newBestOfThreeTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const g1Start = new Date(BATTLE_START.getTime());
+    const g1End = new Date(g1Start.getTime() + 5 * 60_000);
+    const g2Start = new Date(g1End.getTime() + 5 * 60_000);
+    const g2End = new Date(g2Start.getTime() + 5 * 60_000);
+    // 3試合目(誤って発生した練習バトル等)。b が勝っても無視されるはず。
+    const g3Start = new Date(g2End.getTime() + 5 * 60_000);
+    const g3End = new Date(g3Start.getTime() + 5 * 60_000);
+
+    for (const [start, end] of [
+      [g1Start, g1End],
+      [g2Start, g2End],
+      [g3Start, g3End],
+    ] as const) {
+      const battleId = `${PREFIX}_bo3_${uniqueSuffix()}`;
+      await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
+      await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
+    }
+    // g1・g2 は a が勝つ、g3 は b が勝つ(が、2-0で決着済みなので無視されるはず)。
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1 },
+      include: { sides: { orderBy: { sideIndex: "asc" } } },
+    });
+    expect(match.status).toBe("FINISHED");
+    expect(match.winnerDecidedBy).toBe("AGGREGATE");
+    expect(match.winnerSideId).toBe(match.sides[0].id);
+    // サイド合計もeffectiveGames(g1+g2)だけの100+100=200。g3のぶんは入らない。
+    expect(match.sides[0].diamonds).toBe(200n);
+    expect(match.sides[1].diamonds).toBe(0n);
+    // decidedAtはg2の終了時刻(effectiveGamesの最後)。
+    expect(match.decidedAt?.getTime()).toBe(g2End.getTime());
+
+    const candidates = await prisma.eventMatchBattleCandidate.findMany({
+      where: { matchId: match.id },
+      orderBy: { startedAt: "asc" },
+    });
+    expect(candidates).toHaveLength(3);
+    expect(candidates.map((c) => c.selected)).toEqual([true, true, false]);
+  });
+
+  it("1-1のまま日程継続中はDETECTEDで次のゲームを待つ", async () => {
+    const event = await newBestOfThreeTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const g1Start = BATTLE_START;
+    const g1End = new Date(g1Start.getTime() + 5 * 60_000);
+    const g2Start = new Date(g1End.getTime() + 5 * 60_000);
+    const g2End = new Date(g2Start.getTime() + 5 * 60_000);
+
+    for (const [start, end] of [
+      [g1Start, g1End],
+      [g2Start, g2End],
+    ] as const) {
+      const battleId = `${PREFIX}_bo3tie_${uniqueSuffix()}`;
+      await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
+      await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
+    }
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+
+    await aggregateEvent(event.id);
+
+    const match = await prisma.eventMatch.findFirstOrThrow({ where: { eventId: event.id, round: 1 } });
+    expect(match.status).toBe("DETECTED");
+    expect(match.winnerSideId).toBeNull();
+  });
+
+  it("選択後に遅延ギフトで2試合目の結果が反転すると、次の集計周回で3試合目まで見て正しく再決着する", async () => {
+    // selected/organizerSelected を分離した理由の直接検証。候補数(2件)が maxGames(3)
+    // 以内なので selectCandidates は使わず自動選定だが、ここで検証したいのは
+    // 「effectiveGames はキャッシュされず、毎回 scoreSides() で再計算される」こと。
+    const event = await newBestOfThreeTournament();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+    await createBracket({ eventId: event.id, entrantIds: [a.id, b.id] });
+
+    const g1Start = BATTLE_START;
+    const g1End = new Date(g1Start.getTime() + 5 * 60_000);
+    const g2Start = new Date(g1End.getTime() + 5 * 60_000);
+    const g2End = new Date(g2Start.getTime() + 5 * 60_000);
+    const g3Start = new Date(g2End.getTime() + 5 * 60_000);
+    const g3End = new Date(g3Start.getTime() + 5 * 60_000);
+
+    for (const [start, end] of [
+      [g1Start, g1End],
+      [g2Start, g2End],
+      [g3Start, g3End],
+    ] as const) {
+      const battleId = `${PREFIX}_bo3late_${uniqueSuffix()}`;
+      await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
+      await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
+    }
+    // g1: a勝ち, g2: a勝ち(まだ) → 2-0でFINISHEDになるはず。g3は無視される。
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+    // g3: b勝ち(この時点では無視される)。
+    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
+
+    await aggregateEvent(event.id);
+    const firstPass = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1 },
+      include: { sides: { orderBy: { sideIndex: "asc" } } },
+    });
+    expect(firstPass.status).toBe("FINISHED");
+    expect(firstPass.winnerSideId).toBe(firstPass.sides[0].id); // a
+
+    // 遅延して届いたギフトで g2 の結果が反転する(b が大量に投げていたことが後で判明)。
+    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 1000, receivedAt: new Date(g2Start.getTime() + 120_000) });
+
+    await aggregateEvent(event.id);
+    const secondPass = await prisma.eventMatch.findFirstOrThrow({
+      where: { eventId: event.id, round: 1 },
+      include: { sides: { orderBy: { sideIndex: "asc" } } },
+    });
+    // g1: a勝ち, g2: b勝ち(反転), g3: b勝ち → 1-2でbの勝利に変わる。
+    expect(secondPass.status).toBe("FINISHED");
+    expect(secondPass.winnerSideId).toBe(secondPass.sides[1].id); // b
+    expect(secondPass.decidedAt?.getTime()).toBe(g3End.getTime());
+
+    const candidates = await prisma.eventMatchBattleCandidate.findMany({
+      where: { matchId: firstPass.id },
+      orderBy: { startedAt: "asc" },
+    });
+    // 全3試合が実効ゲームに使われた(g3まで見る必要が生じたため)。
+    expect(candidates.map((c) => c.selected)).toEqual([true, true, true]);
   });
 });
 
@@ -2082,16 +2323,23 @@ describe("順位決定戦", () => {
       include: {
         sides: {
           orderBy: { sideIndex: "asc" },
-          select: { participants: { select: { participantId: true } } },
+          select: { id: true, participants: { select: { participantId: true } } },
         },
       },
     });
     expect(finalBefore.sides[0].participants.map((p) => p.participantId)).toEqual([a.id]);
 
-    // 決勝がすでに進行中。
-    await prisma.eventMatch.updateMany({
-      where: { eventId: event.id, round: 2, bracketPosition: 0 },
-      data: { status: "DETECTED" },
+    // 決勝がすでに始まっている(= 転送を受け付けない)。**status だけ書き換えても保てない** —
+    // 勝敗確定の正本が候補(`EventMatchBattleCandidate`)になったので、候補0件の DETECTED は
+    // 次の集計で SCHEDULED へ差し戻される。主催者の手動確定で固定する(下流ブロックの判定は
+    // `isStartedMatch` なので DETECTED でも手動確定でも同じ扱い)。
+    await prisma.eventMatch.update({
+      where: { id: finalBefore.id },
+      data: {
+        status: "FINISHED",
+        winnerDecidedBy: "MANUAL",
+        winnerSideId: finalBefore.sides[0].id,
+      },
     });
 
     // 準決勝の勝敗がひっくり返る(勝者 d / 敗者 a)。
@@ -2128,10 +2376,19 @@ describe("順位決定戦", () => {
     await aggregateEvent(event.id);
     expect(await thirdPlaceSides(event.id)).toEqual([d.id, c.id]);
 
-    // 3位決定戦がすでに進行中。ここで出場者を差し替えると集計対象が途中で変わる。
-    await prisma.eventMatch.updateMany({
+    // 3位決定戦がすでに始まっている。ここで出場者を差し替えると集計対象が途中で変わる。
+    // status だけでは保てない理由は上のテストと同じ(候補0件は SCHEDULED へ戻される)。
+    const thirdMatch = await prisma.eventMatch.findFirstOrThrow({
       where: { eventId: event.id, round: 2, bracketPosition: 1 },
-      data: { status: "DETECTED" },
+      include: { sides: { orderBy: { sideIndex: "asc" }, select: { id: true } } },
+    });
+    await prisma.eventMatch.update({
+      where: { id: thirdMatch.id },
+      data: {
+        status: "FINISHED",
+        winnerDecidedBy: "MANUAL",
+        winnerSideId: thirdMatch.sides[0].id,
+      },
     });
 
     // 主催者が準決勝の勝敗をひっくり返す(敗者が a になる)。

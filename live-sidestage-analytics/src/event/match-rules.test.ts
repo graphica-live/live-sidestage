@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MATCH_RULES_DEFAULT, hasMatchRules, parseMatchRules } from "./match-rules";
+import { MATCH_RULES_DEFAULT, hasMatchRules, parseMatchRules, seriesRequirement } from "./match-rules";
 
 describe("hasMatchRules", () => {
   it("matchRules名前空間が無いイベントはfalse(既定値をでっち上げない)", () => {
@@ -67,5 +67,15 @@ describe("parseMatchRules", () => {
   it("retryはSPICHA_X3も受け付ける", () => {
     const result = parseMatchRules({ matchRules: { retry: "SPICHA_X3" } });
     expect(result.retry).toBe("SPICHA_X3");
+  });
+});
+
+describe("seriesRequirement", () => {
+  it("SINGLEは1本勝負(最大1試合・先取1)", () => {
+    expect(seriesRequirement("SINGLE")).toEqual({ maxGames: 1, winsNeeded: 1 });
+  });
+
+  it("BEST_OF_THREEは2本先取(最大3試合・先取2)", () => {
+    expect(seriesRequirement("BEST_OF_THREE")).toEqual({ maxGames: 3, winsNeeded: 2 });
   });
 });

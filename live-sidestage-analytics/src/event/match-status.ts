@@ -27,6 +27,44 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 /**
+ * `rules` に `reviewReason` をマージする。**既存キー(`roundLabel` / `bye` 等)を潰さない。**
+ * `reason` が null なら消す(承認済みのカードに古い理由が残らないように)。
+ *
+ * `battles.ts`(検知)と `match-results.ts`(`resolveMatchSeries`)の両方が書き込むので
+ * ここに1つだけ置く。型パラメータを `string` にして `ReviewReason`(`match-detect.ts`)への
+ * 依存を避けている(このファイルは何も import しない、というファイル冒頭の制約のため)。
+ */
+export function mergeReviewReason(rules: unknown, reason: string | null): Record<string, unknown> {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  if (reason) base.reviewReason = reason;
+  else delete base.reviewReason;
+  return base;
+}
+
+export function reviewReasonOf(rules: unknown): string | null {
+  if (!isPlainObject(rules)) return null;
+  return typeof rules.reviewReason === "string" ? rules.reviewReason : null;
+}
+
+/**
+ * 主催者が「候補過多(CANDIDATES_EXCEEDED)」画面で判定対象を選び確定したか。
+ * true の間、`detectMatches` はこのマッチへ新規候補を追加しない(凍結)。
+ */
+export function isCandidatesConfirmedByOrganizer(rules: unknown): boolean {
+  return isPlainObject(rules) && rules.candidatesConfirmedByOrganizer === true;
+}
+
+export function withCandidatesConfirmedByOrganizer(
+  rules: unknown,
+  confirmed: boolean
+): Record<string, unknown> {
+  const base: Record<string, unknown> = isPlainObject(rules) ? { ...rules } : {};
+  if (confirmed) base.candidatesConfirmedByOrganizer = true;
+  else delete base.candidatesConfirmedByOrganizer;
+  return base;
+}
+
+/**
  * 不戦勝行(`EventMatch.rules.bye === true`)か。`tournament.ts` が表の生成時に付ける。
  *
  * 段階的不戦勝方式では、相手が実試合の勝者(WINNER_OF)である不戦勝行は生成時点では

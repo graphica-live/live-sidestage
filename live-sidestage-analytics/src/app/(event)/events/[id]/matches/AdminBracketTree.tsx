@@ -435,6 +435,9 @@ function MatchCardOrEmpty({
 
   // バトルの開始を検知した枠。公開ページの表と同じ赤い発光にする(.live-glow は globals.css)。
   const isLive = match.status === "LIVE";
+  // 検知した候補バトルが勝利条件の最大試合数を超え、主催者の選択待ち。LIVE の赤発光とは
+  // 演出の強さを分ける(緊急度が違う — 進行中ではなく操作待ち)。
+  const needsSelection = match.status === "NEEDS_REVIEW" && match.reviewReason === "CANDIDATES_EXCEEDED";
 
   const header = (
     <div
@@ -444,10 +447,12 @@ function MatchCardOrEmpty({
     >
       <span
         className={`rounded-full px-1.5 py-0.5 ${
-          MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400"
+          needsSelection
+            ? "bg-yellow-400/10 text-yellow-300"
+            : (MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400")
         }`}
       >
-        {MATCH_STATUS_LABELS[match.status] ?? match.status}
+        {needsSelection ? "⚠ 候補選択待ち" : (MATCH_STATUS_LABELS[match.status] ?? match.status)}
       </span>
       {/* 接続(winnerFeeders)が座標既定を上書きしている枠であることを示す。
           この座標を結ぶ接続線は元の位置のままなので、実際のフローと食い違う
@@ -495,7 +500,11 @@ function MatchCardOrEmpty({
       type="button"
       onClick={() => onSelect(match.id)}
       className={`card flex ${CARD_H} w-full flex-col justify-between overflow-hidden p-2 text-left transition ${
-        isLive ? "live-glow border-red-500/70 hover:border-red-400" : "hover:border-brand/40"
+        isLive
+          ? "live-glow border-red-500/70 hover:border-red-400"
+          : needsSelection
+            ? "border-yellow-400/60 hover:border-yellow-300"
+            : "hover:border-brand/40"
       }`}
     >
       {header}

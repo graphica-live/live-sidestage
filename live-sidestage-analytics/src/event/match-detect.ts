@@ -35,11 +35,6 @@ export type MatchCandidate = {
    * 前に行われたバトル(1回戦・練習)」まで候補に入ってしまうのを防ぐ。null なら制約なし。
    */
   feederDecidedAt: Date | null;
-  /**
-   * すでに確定している検知。主催者が「検知をやり直す」まで動かさない。
-   * これが入っているマッチは、その battleId 以外を候補にしない。
-   */
-  lockedBattleId: string | null;
 };
 
 export type BattleObservation = {
@@ -80,10 +75,12 @@ export type ReviewReason =
   | "PARTIAL"
   /** 2vs2。room の和集合ではサイドの組み分けを検証できない */
   | "TEAM_BATTLE"
-  /** 同じ組み合わせの候補が複数ある(再戦・練習バトル) */
+  /** 同じバトルが複数の対戦カードの room 集合と完全一致した(cross-match衝突) */
   | "AMBIGUOUS"
   /** 日程が終わっても終了を観測できなかった */
-  | "END_UNKNOWN";
+  | "END_UNKNOWN"
+  /** 検知した候補バトルが勝利条件の最大試合数を超えた。主催者が判定対象を選ぶ */
+  | "CANDIDATES_EXCEEDED";
 
 /**
  * 主催者が決めた結果、または対戦なしで決まった結果。**自動集計で上書きしない。**
@@ -112,19 +109,14 @@ export type MatchAssignment = {
    */
   confidence: "exact" | "partial";
   /**
-   * 主催者の確認なしに勝敗を確定してよいか。
+   * 同じバトルが複数の対戦カードの room 集合と完全一致した(cross-match衝突。デスマッチの
+   * 同一組み合わせ再戦などで起きる)。true の候補は自動集計に使わず、主催者の手動確認に回す。
    *
-   * **終了が確定した 1vs1 の完全一致で、かつ候補が一意のときだけ true。** それ以外は
-   * room の集合だけでは実際の対戦が対戦カードどおりだったと言い切れない:
-   *
-   * - partial: 予定が A 対 B のとき、A が部外者と戦っても観測は {A} になる
-   * - 2vs2 の exact: 予定 [A,B] 対 [C,D] と、実際の [A,C] 対 [B,D] は
-   *   room の和集合が同じなので区別できない
-   * - 候補が複数: 同じ組み合わせが日程内で2回battleしている(再戦・やり直し)
+   * **勝利条件(1本勝負/2本先取)を踏まえた「候補が多すぎるか」の判定はここではしない** —
+   * それは種目非依存のこの関数の責務ではなく、呼び出し側(match-results.ts の
+   * resolveMatchSeries)が Event.rules.matchRules を読んで行う。
    */
-  autoConfirm: boolean;
-  /** autoConfirm が false の理由。true のときは null */
-  reviewReason: ReviewReason | null;
+  ambiguous: boolean;
 };
 
 function summarize(battle: BattleObservation) {
@@ -185,11 +177,6 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return a.size === b.size && isSubset(a, b);
 }
 
-/** 1vs1(各サイドがちょうど1room)か。自動確定してよいのはこの形の完全一致だけ。 */
-function isOneOnOne(match: MatchCandidate): boolean {
-  return match.sideRoomIds.length === 2 && match.sideRoomIds.every((side) => side.length === 1);
-}
-
 type Summary = ReturnType<typeof summarize> & { battleId: string };
 
 type Pair = {
@@ -215,21 +202,22 @@ function compareSummaries(a: Summary, b: Summary): number {
 }
 
 /**
- * 対戦カードと検知したバトルを突き合わせる。
+ * 対戦カードと検知したバトルを突き合わせる。**種目非依存の純粋関数**
+ * (勝利条件を踏まえた「候補が多すぎるか」の判定は行わない。呼び出し側の責務)。
  *
  * - **候補はバトルの終了時刻が日程の `[sessionStart, sessionEnd)` に入るものだけ**。
  *   半開区間なのは、日程の境目のバトルが前後2つの日程の候補にならないようにするため
  * - 終了をまだ観測できていないバトルは「暫定関連」として付ける(`endedAt: null`)。
  *   勝敗もバトル倍率も出さないまま、次の周回で確定を待つ
- * - すでに確定した検知(`lockedBattleId`)はその battleId 以外に動かさない
  * - 上流の決着より前に始まったバトルは候補にしない(`feederDecidedAt`)
  * - 観測 room の集合が対戦カードと完全一致すれば exact、部分集合なら候補が唯一のときだけ partial
- * - 1つのバトルを複数のマッチに、1つのマッチに複数のバトルを割り当てない
- * - 割り当てても、`autoConfirm` が false のものは主催者の確認を挟む
+ * - **1つのマッチに複数の exact 候補が集まってよい**(多本先取の通常状態)。
+ *   1つのバトルを複数のマッチに割り当てることだけは禁止する — ただし同じバトルが
+ *   複数マッチの room 集合と完全一致した場合(cross-match衝突)は例外で、該当する
+ *   全マッチへ `ambiguous: true` として付ける(通常の重複排除の外側で処理する)
  *
  * **途中終了(CUT_SHORT)したバトルの除外はここでやらない。** 呼び出し側(`battles.ts` の
- * `detectMatches`)が `battles` の母集団から丸ごと外して渡す。ここに条件を足すと、
- * `AMBIGUOUS` の母数や `usedBattles` の取り合いに除外したはずのバトルが残ってしまう。
+ * `detectMatches`)が `battles` の母集団から丸ごと外して渡す。
  */
 export function assignBattles(input: {
   matches: MatchCandidate[];
@@ -252,8 +240,6 @@ export function assignBattles(input: {
     const want = expected.get(match.id)!;
 
     for (const summary of summaries) {
-      // 確定済みの検知は、その battleId だけを見る。
-      if (match.lockedBattleId && summary.battleId !== match.lockedBattleId) continue;
       // 上流が決着する前・同時に始まったバトルは、この対戦のものではありえない。
       if (match.feederDecidedAt && summary.startedAt <= match.feederDecidedAt) continue;
       if (!isSubset(summary.rooms, want)) continue;
@@ -280,18 +266,13 @@ export function assignBattles(input: {
     }
   }
 
+  // partial/pending の排他にだけ使う(exact の完全一致は複数マッチ・複数バトルとも
+  // 素通りさせるので、ここには登録しない)。
   const usedMatches = new Set<string>();
   const usedBattles = new Set<string>();
   const assignments: MatchAssignment[] = [];
 
-  const take = (pair: Pair, reason: ReviewReason | null) => {
-    const oneOnOne = isOneOnOne(pair.match);
-    const resolved = pair.end !== null;
-    const reviewReason: ReviewReason | null = !resolved
-      ? null // 暫定関連はまだ確認を求める段階ではない(終了を待っている)
-      : (reason ??
-        (pair.confidence === "partial" ? "PARTIAL" : !oneOnOne ? "TEAM_BATTLE" : null));
-
+  const takeAssignment = (pair: Pair, ambiguous: boolean) => {
     assignments.push({
       matchId: pair.match.id,
       battleId: pair.summary.battleId,
@@ -299,46 +280,66 @@ export function assignBattles(input: {
       endedAt: pair.end?.endedAt ?? null,
       endedAtSource: pair.end?.source ?? null,
       confidence: pair.confidence,
-      autoConfirm: resolved && pair.confidence === "exact" && oneOnOne && reviewReason === null,
-      reviewReason,
+      ambiguous,
     });
-    usedMatches.add(pair.match.id);
-    usedBattles.add(pair.summary.battleId);
   };
 
-  const free = (pair: Pair) =>
-    !usedMatches.has(pair.match.id) && !usedBattles.has(pair.summary.battleId);
-
-  // 1) 終了が確定した完全一致。候補が一意でないものは付けるが自動確定しない。
+  // 1) 終了が確定した完全一致。**1マッチに複数件割り当ててよい**(多本先取の通常状態)。
+  //    同じバトルが複数マッチの room 集合と完全一致した場合だけ、両方を ambiguous にする。
   const resolvedExact = pairs.filter((p) => p.end !== null && p.confidence === "exact");
-  const exactByMatch = countBy(resolvedExact, (p) => p.match.id);
   const exactByBattle = countBy(resolvedExact, (p) => p.summary.battleId);
 
+  // すでに exact 候補を1件以上取ったマッチ。信頼度の低い partial を混ぜ込まないための印
+  // (2 のフィルタで使う。pending の排他には使わない — 既決着ゲームがあるマッチへの
+  // 「次のゲームが進行中」という pending 候補は正しい状態のため)。
+  const matchesWithExactTaken = new Set<string>();
+
   for (const pair of resolvedExact) {
-    if (!free(pair)) continue;
-    const ambiguous =
-      (exactByMatch.get(pair.match.id) ?? 0) > 1 ||
-      (exactByBattle.get(pair.summary.battleId) ?? 0) > 1;
-    take(pair, ambiguous ? "AMBIGUOUS" : null);
+    const crossMatchAmbiguous = (exactByBattle.get(pair.summary.battleId) ?? 0) > 1;
+    if (crossMatchAmbiguous) {
+      // cross-match衝突: usedBattles の通常排他を経由させない。該当する全マッチへ付ける。
+      takeAssignment(pair, true);
+      matchesWithExactTaken.add(pair.match.id);
+      continue;
+    }
+    if (usedBattles.has(pair.summary.battleId)) continue; // 保険(通常はここに来ない)
+    takeAssignment(pair, false);
+    usedBattles.add(pair.summary.battleId);
+    matchesWithExactTaken.add(pair.match.id);
   }
 
-  // 2) 終了が確定した部分一致。曖昧さが残らないものだけ。
+  // 2) 終了が確定した部分一致。exact を既に取ったマッチには追加しない。曖昧さが残らないものだけ。
   const resolvedPartial = pairs.filter(
-    (p) => p.end !== null && p.confidence === "partial" && free(p)
+    (p) =>
+      p.end !== null &&
+      p.confidence === "partial" &&
+      !matchesWithExactTaken.has(p.match.id) &&
+      !usedBattles.has(p.summary.battleId)
   );
   for (const pair of resolvedPartial) {
-    if (!free(pair)) continue;
+    if (usedMatches.has(pair.match.id) || usedBattles.has(pair.summary.battleId)) continue;
     if (hasCompetitor(resolvedPartial, pair, usedMatches, usedBattles)) continue;
-    take(pair, "PARTIAL");
+    takeAssignment(pair, false);
+    usedMatches.add(pair.match.id);
+    usedBattles.add(pair.summary.battleId);
   }
 
-  // 3) 進行中(終了未確定)の完全一致だけを暫定で関連づける。
+  // 3) 進行中(終了未確定)の完全一致だけを暫定で関連づける。exact を既に取ったマッチにも
+  //    追加してよい(次のゲームが進行中、という正しい状態)。
   //    部分一致まで暫定で付けると、部外者とのバトルが LIVE として表に出てしまう。
-  const pendingExact = pairs.filter((p) => p.end === null && p.confidence === "exact" && free(p));
+  const pendingExact = pairs.filter(
+    (p) =>
+      p.end === null &&
+      p.confidence === "exact" &&
+      !usedMatches.has(p.match.id) &&
+      !usedBattles.has(p.summary.battleId)
+  );
   for (const pair of pendingExact) {
-    if (!free(pair)) continue;
+    if (usedMatches.has(pair.match.id) || usedBattles.has(pair.summary.battleId)) continue;
     if (hasCompetitor(pendingExact, pair, usedMatches, usedBattles)) continue;
-    take(pair, null);
+    takeAssignment(pair, false);
+    usedMatches.add(pair.match.id);
+    usedBattles.add(pair.summary.battleId);
   }
 
   return assignments;

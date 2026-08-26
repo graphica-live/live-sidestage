@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireEventOwner } from "@/event/authz";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { parseMatchRules } from "@/event/match-rules";
 import { acquireEventLock } from "@/event/event-lock";
 import { refreshEventLeases, releaseEventLeases } from "@/event/participants";
 import { deleteCoverObject } from "@/lib/media-storage";
@@ -26,6 +27,18 @@ import {
   validateEventInput,
   type EventStatus,
 } from "@/event/validation";
+
+/**
+ * 対戦カードが1件でもあるイベントで `matchRules.winCondition` を変えようとしたときに投げる。
+ * 種目(`format`)と同じ「作成後は変更できない」扱い — 開催中に検知・勝敗確定ロジックが
+ * 前提にする最大試合数・先取本数が変わると、過去の確定結果(FINISHED)が未決着へ戻りうる。
+ */
+class WinConditionImmutableError extends Error {
+  constructor() {
+    super("対戦カードを作成した後は勝利条件を変更できません。");
+    this.name = "WinConditionImmutableError";
+  }
+}
 
 /** 集計とのロック待ちで打ち切られたときの応答。主催者にやり直させる。 */
 function eventBusy() {
@@ -300,6 +313,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
             ? (current.rules as Prisma.JsonObject)
             : {};
+
+        // **開催後(対戦カードが1件でもある)は勝利条件を変更できない。** ロック取得後に
+        // 現在値・件数を読み直す(バリデーションだけの層では DB 件数を扱えないため)。
+        if (matchRulesProvided && parseMatchRules(existing).winCondition !== matchRules.winCondition) {
+          const matchCount = await tx.eventMatch.count({ where: { eventId: params.id } });
+          if (matchCount > 0) throw new WinConditionImmutableError();
+        }
+
         // **"bracket" 名前空間の中もマージする。** 丸ごと差し替えると、方式だけを送った
         // リクエストが順位決定戦の設定を（逆も同様に）消してしまう。
         const existingBracket =
@@ -332,6 +353,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json(
         { errors: [err.message], code: err.code },
         { status: err.status }
+      );
+    }
+    if (err instanceof WinConditionImmutableError) {
+      return NextResponse.json(
+        { errors: [err.message], code: "WIN_CONDITION_IMMUTABLE" },
+        { status: 409 }
       );
     }
     throw err;

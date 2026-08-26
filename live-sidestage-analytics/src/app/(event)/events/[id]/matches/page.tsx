@@ -7,6 +7,7 @@ import { parseBracketMethod, parsePlacementDepth } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
+import { parseMatchRules } from "@/event/match-rules";
 import { isByeRow, isForceFullPeriod, parsePlacement, parseWinnerFeeders } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
 import { EventSetupSteps } from "../../EventSetupSteps";
@@ -55,6 +56,18 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         winnerSideId: true,
         winnerDecidedBy: true,
         rules: true,
+        battleCandidates: {
+          orderBy: { startedAt: "asc" },
+          select: {
+            id: true,
+            startedAt: true,
+            endedAt: true,
+            confidence: true,
+            ambiguous: true,
+            organizerSelected: true,
+            selected: true,
+          },
+        },
         sides: {
           orderBy: { sideIndex: "asc" },
           select: {
@@ -176,6 +189,15 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     winnerDecidedBy: m.winnerDecidedBy,
     // rules を丸ごとクライアントへ流さず、要る値だけ渡す。
     isBye: isByeRow(m.rules),
+    candidates: m.battleCandidates.map((c) => ({
+      id: c.id,
+      startedAt: c.startedAt.toISOString(),
+      endedAt: c.endedAt?.toISOString() ?? null,
+      confidence: c.confidence,
+      ambiguous: c.ambiguous,
+      organizerSelected: c.organizerSelected,
+      selected: c.selected,
+    })),
     placement: parsePlacement(m.rules),
     // 組み合わせ変更(接続の交換)で座標既定を上書きしている場合だけ値を持つ。
     // 不正な形式(ok:false)はここでは表示に倒さず null にする — 一覧が壊れるより、
@@ -243,6 +265,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           lives={lives}
           rules={parseDeathmatchRules(event.rules)}
           bracketMethod={parseBracketMethod(event.rules)}
+          winCondition={parseMatchRules(event.rules).winCondition}
           eventPlacementDepth={parsePlacementDepth(event.rules)}
           feederSwapEnabled={process.env.EVENT_WINNER_FEEDER_SWAP === "1"}
         />
