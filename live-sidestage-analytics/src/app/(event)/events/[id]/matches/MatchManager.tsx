@@ -12,9 +12,20 @@ import {
   toJstInputValue,
 } from "@/event/labels";
 import type { DeathmatchRules } from "@/event/deathmatch";
-import { bracketSize } from "@/event/bracket";
+import {
+  bracketSize,
+  buildBracketFor,
+  buildManualBracket,
+  buildPlacementBlocksFor,
+  placementOptionsFor,
+  placementRounds,
+  resolveBracket,
+  type Bracket,
+  type PlacementOption,
+  type PlacementRound,
+} from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
-import { AdminBracketTree } from "./AdminBracketTree";
+import { AdminBracketTree, type SwapSlotRef } from "./AdminBracketTree";
 import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
 import { ManualBracketBuilder } from "./ManualBracketBuilder";
@@ -64,6 +75,11 @@ export type MatchSideRow = {
   tiktokScore: string | null;
   label: string;
   empty: boolean;
+  /**
+   * この枠に入っている出場者。**組み合わせ変更の楽観的排他に使う**(画面が見ていた枠と
+   * サーバーの実体がずれていたら 409 で弾く)。チーム戦でも「実際に出る人」が入る。
+   */
+  participantIds: string[];
 };
 
 export type MatchRow = {
@@ -84,6 +100,13 @@ export type MatchRow = {
   winnerDecidedBy: string | null;
   /** 不戦勝行(`EventMatch.rules.bye`)。サーバー側で評価した真偽値だけ受け取る */
   isBye: boolean;
+  /**
+   * 順位決定戦(`EventMatch.rules.placement`)の行なら、その印。本選の行は null。
+   *
+   * **本選と座標空間を共有している**ので、一覧も表もこれでブロックを切り出す
+   * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
+   */
+  placement: { depth: number; rank: number } | null;
   sides: MatchSideRow[];
 };
 
@@ -106,6 +129,22 @@ const REVIEW_REASON_NOTES: Record<string, string> = {
 
 /** 承認できない(区間が確定していない)理由。サーバー側の UNAPPROVABLE_REASONS と揃える。 */
 const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
+
+/**
+ * 「画面が見ていた状態が古い」種類の失敗。**理由を出したうえで最新を読み直す**ので、
+ * ふつうのエラー(操作そのものが誤り)とは扱いを分ける。
+ */
+const CONFLICT_CODES = new Set([
+  "BRACKET_EXISTS",
+  "BRACKET_CHANGED",
+  "CONFIRM_MISMATCH",
+  // 組み合わせ変更。枠の中身が変わった / その枠がもう動かせない / 次の対戦が始まった /
+  // 表の構造が壊れている。
+  "SLOT_CHANGED",
+  "SLOT_LOCKED",
+  "DOWNSTREAM_STARTED",
+  "BRACKET_INCONSISTENT",
+]);
 
 /**
  * 破棄したときに何が消えるかを数える。**追加のクエリは要らない** — 画面が持っている
@@ -186,6 +225,39 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   );
 }
 
+/**
+ * 編集モード中の案内。**何ができて何ができないか**をその場で示す。
+ *
+ * 「枝ごと移動する」ことを必ず書く — 準決勝を入れ替えると1回戦のカードも動くので、
+ * 説明が無いと表が壊れたように見える。
+ */
+function SwapNote({ selected }: { selected: boolean }) {
+  return (
+    <div className="rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
+      <p className="font-medium text-brand">組み合わせの変更中</p>
+      <ul className="mt-1 space-y-0.5 text-gray-400">
+        <li>
+          ・
+          {selected
+            ? "入れ替え先の枠を押す(ドラッグ中ならそのまま置く)。"
+            : "動かしたい組をドラッグする(スマホは組を押してから相手の枠を押す)。"}
+        </li>
+        <li>
+          ・入れ替えられるのは
+          <strong className="text-gray-200">同じラウンドの、まだ始まっていない枠</strong>
+          だけ。敗退した組と進行中の対戦は動かせない
+        </li>
+        <li>
+          ・準決勝以降を入れ替えると、その組が勝ち上がってきた
+          <strong className="text-gray-200">1回戦のカードも一緒に移動する</strong>
+          (結果はそのまま)
+        </li>
+        <li>・空いている枠へ置くと、元の枠は不戦勝になる</li>
+      </ul>
+    </div>
+  );
+}
+
 export function MatchManager({
   eventId,
   eventTitle,
@@ -198,6 +270,7 @@ export function MatchManager({
   lives,
   rules,
   bracketMethod,
+  eventPlacementDepth,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -214,6 +287,11 @@ export function MatchManager({
   rules: DeathmatchRules;
   /** トーナメントの不戦勝配分方式(TOURNAMENTのときだけ意味を持つ)。 */
   bracketMethod: BracketMethod;
+  /**
+   * 作成ウィザードで決めた順位決定戦の希望値(`Event.rules.bracket.placementDepth`)。
+   * **既存の表があればそちらが優先**で、これは初回作成時の既定値にしかならない。
+   */
+  eventPlacementDepth: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -225,10 +303,17 @@ export function MatchManager({
   // ラウンドごとの開催日程。既定は全ラウンドを最初の日程に置く(1日で終わるのが大半)。
   // ラウンド数は参加者数から決まるので、シード順が変わるたびに作り直す。
   const [roundSessionIds, setRoundSessionIds] = useState<string[]>([]);
+  // 順位決定戦。null = まだ主催者が触っていない(今の表 → イベントの希望値 の順で決める)。
+  const [placementDepth, setPlacementDepth] = useState<number | null>(null);
+  const [placementSessionIds, setPlacementSessionIds] = useState<string[]>([]);
   // 既定は表。対戦の進み方はトーナメント表のほうが一目で分かる(一覧は操作用)。
   const [viewMode, setViewMode] = useState<"list" | "bracket">("bracket");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [destroyOpen, setDestroyOpen] = useState(false);
+  // 組み合わせの編集モード。**表を破棄せずに**勝ち残っている出場者を別の枠へ移す。
+  // 誤操作でカードが動かないよう、明示的にこのモードへ入ったときだけ掴めるようにする。
+  const [swapping, setSwapping] = useState(false);
+  const [swapSlot, setSwapSlot] = useState<SwapSlotRef | null>(null);
   // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せるだけ。
   const [step, setStep] = useState<WizardStep | null>(matches.length === 0 ? "session" : null);
   // 手動配置(1回戦の枠に置いたエントリー)。**戻る操作で失わないようここで持つ。**
@@ -278,15 +363,121 @@ export function MatchManager({
     [roundCount, roundSessionIds, currentRoundSessionIds, sessions]
   );
 
+  // 本選のラウンドごと。**順位決定戦は含めない** — 本選と同じ座標空間にいるので、
+  // round で束ねると決勝と同じ見出しに混ざる。
   const byRound = useMemo(() => {
     const groups = new Map<number, MatchRow[]>();
     for (const m of matches) {
+      if (m.placement) continue;
       const list = groups.get(m.round);
       if (list) list.push(m);
       else groups.set(m.round, [m]);
     }
     return [...groups.entries()].sort((a, b) => a[0] - b[0]);
   }, [matches]);
+
+  /** 順位決定戦の一覧。ブロック順 → ブロック内ラウンド順に並べ、見出しごとに束ねる。 */
+  const placementGroups = useMemo(() => {
+    const rows = matches
+      .filter((m) => m.placement)
+      .sort(
+        (a, b) =>
+          a.placement!.depth - b.placement!.depth ||
+          a.round - b.round ||
+          a.position - b.position
+      );
+    const groups: { label: string; rows: MatchRow[] }[] = [];
+    for (const row of rows) {
+      const last = groups[groups.length - 1];
+      if (last && last.label === row.roundLabel) last.rows.push(row);
+      else groups.push({ label: row.roundLabel, rows: [row] });
+    }
+    return groups;
+  }, [matches]);
+
+  // --- 順位決定戦の設定（作り直すときの入力）
+  //
+  // **選べる範囲は参加人数と不戦勝の出方で決まる**ので、サーバーと同じ純粋関数から算出する。
+  // **手動配置ステップでは実際に置いた形（`slots` の疎な不戦勝パターン）を使う。**
+  // entrants 数と方式だけから再計算すると、手動配置には存在しない実試合を前提にした
+  // ブロック（例: 準決勝が1件しかないのに2件分の敗者を待つ3位決定戦）になる
+  // （`src/event/tournament.ts` の `createBracket` と同じ理由で揃えてある）。
+  const placementSourceBracket: Bracket | null = useMemo(() => {
+    if (step === "manual") {
+      return placedCount < 2 ? null : buildManualBracket(slots.map((id) => id !== null));
+    }
+    return seed.length < 2 ? null : buildBracketFor(seed.length, bracketMethod);
+  }, [step, slots, placedCount, seed, bracketMethod]);
+
+  const placementChoices = useMemo(
+    () => (placementSourceBracket ? placementOptionsFor(placementSourceBracket) : []),
+    [placementSourceBracket]
+  );
+
+  /** 今の表に入っている順位決定戦の深さ。作り直しで勝手に外れないよう既定値に使う。 */
+  const currentPlacementDepth = useMemo(
+    () => matches.reduce((max, m) => (m.placement ? Math.max(max, m.placement.depth) : max), 0),
+    [matches]
+  );
+
+  /**
+   * 実際に作る深さ。**選べる選択肢へスナップする。** 単に上限で丸めると、
+   * 「d=1 は組めないが d=2 は組める」（段階的不戦勝方式で起きる）ときに
+   * 「3位決定戦まで」と表示しながら1つも作られない、という食い違いになる。
+   *
+   * 既定値は「今の表 → イベントの希望値」の順。**表があるならその 0 も尊重する** —
+   * `currentPlacementDepth || eventPlacementDepth` にすると、順位決定戦なしで作り直した表に
+   * 対してウィザードの希望値が復活し、主催者が外したはずの設定が既定で選ばれてしまう。
+   */
+  const plannedPlacementDepth = useMemo(() => {
+    const wanted =
+      placementDepth ?? (matches.length > 0 ? currentPlacementDepth : eventPlacementDepth);
+    const usable = placementChoices.filter((o) => o.depth <= wanted);
+    return usable.length > 0 ? usable[usable.length - 1].depth : 0;
+  }, [placementDepth, matches, currentPlacementDepth, eventPlacementDepth, placementChoices]);
+
+  const plannedPlacementRounds = useMemo(
+    () =>
+      !placementSourceBracket || plannedPlacementDepth === 0
+        ? []
+        : placementRounds(
+            buildPlacementBlocksFor(placementSourceBracket, plannedPlacementDepth),
+            roundCount
+          ),
+    [placementSourceBracket, plannedPlacementDepth, roundCount]
+  );
+
+  /** 今の表で順位決定戦がどの日程に置かれているか。 */
+  const currentPlacementSessionIds = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const m of matches) {
+      if (!m.placement) continue;
+      const key = `${m.placement.depth}:${m.round}`;
+      if (!byKey.has(key)) byKey.set(key, m.sessionId);
+    }
+    return byKey;
+  }, [matches]);
+
+  /** 既定は本選の決勝と同じ日程（本選のどのラウンドより後ろなので必ず妥当）。 */
+  const plannedPlacementSessionIds = useMemo(
+    () =>
+      plannedPlacementRounds.map(
+        (round, index) =>
+          placementSessionIds[index] ||
+          currentPlacementSessionIds.get(`${round.depth}:${round.round}`) ||
+          plannedRoundSessionIds[roundCount - 1] ||
+          sessions[0]?.id ||
+          ""
+      ),
+    [
+      plannedPlacementRounds,
+      placementSessionIds,
+      currentPlacementSessionIds,
+      plannedRoundSessionIds,
+      roundCount,
+      sessions,
+    ]
+  );
 
   // 判定はサーバーと同じ述語を使う(`match-status.ts`)。不戦勝・NO_SHOW・VOID は
   // 「進行済み」に数えない。ここで使うのは「破棄すると何が消えるか」の表示だけ。
@@ -301,7 +492,8 @@ export function MatchManager({
    * 表そのものが進む。どれも event-worker 側で起きるので、`send()` の `router.refresh()`
    * だけでは追いつかない。
    *
-   * **破棄ダイアログを開いている間は止める。** 表示中に裏で `matches` が入れ替わると、
+   * **破棄ダイアログを開いている間と、組み合わせの編集モード中は止める。** 表示中に裏で
+   * `matches` が入れ替わると、
    * 主催者が読んでいる「確定3件が消える」の要約が、確認している最中に別の表のものへ
    * すり替わる。要約と `expectedMatchIds` はどちらも同じ `matches` 由来なので不整合には
    * ならないが、**主催者が見ていない表を消す**ことになるのは同じ。
@@ -309,14 +501,14 @@ export function MatchManager({
    */
   useEffect(() => {
     if (eventStatus === "ARCHIVED") return;
-    if (destroyOpen || busy || draggedIndex !== null) return;
+    if (destroyOpen || busy || draggedIndex !== null || swapping) return;
 
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       router.refresh();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [eventStatus, destroyOpen, busy, draggedIndex, router]);
+  }, [eventStatus, destroyOpen, busy, draggedIndex, swapping, router]);
 
   /**
    * 表があるあいだは作成ウィザードを出さない。**表がある状態でできるのは破棄だけ**で、
@@ -356,7 +548,11 @@ export function MatchManager({
    * 送らない。既存の表があれば作成そのものが 409 で弾かれる。
    */
   function bracketBody() {
-    const base = { roundSessionIds: plannedRoundSessionIds };
+    const base = {
+      roundSessionIds: plannedRoundSessionIds,
+      placementDepth: plannedPlacementDepth,
+      placementSessionIds: plannedPlacementSessionIds,
+    };
     return wizardStep === "manual" ? { ...base, placement: slots } : { ...base, entrantIds: seed };
   }
 
@@ -383,6 +579,56 @@ export function MatchManager({
     if (ok) setDestroyOpen(false);
   }
 
+  /**
+   * その枠を掴めるか。**出場者がいて、そのカードがまだ始まっていないこと。**
+   * 敗退者はそもそも下流の枠に載らないので、この条件だけで「勝ち残っている人」に絞れる。
+   *
+   * `VOID` を外すのはサーバー側と同じ理由 — 無効にした対戦は検知から永久に除外されるので、
+   * 新しい相手を入れても照合されない(先に「検知をやり直す」で戻してもらう)。
+   *
+   * **下流が始まっているかはここでは見ない。** 上流が未着手なのに下流だけ進んでいるのは
+   * 主催者が手で確定したときくらいで、その稀なケースはサーバーが 409 で弾く。
+   */
+  function slotCardSwappable(match: MatchRow): boolean {
+    return !isStartedMatch(match) && match.status !== "VOID";
+  }
+
+  function canGrabSlot(match: MatchRow, sideIndex: number): boolean {
+    if (!slotCardSwappable(match)) return false;
+    const side = match.sides.find((s) => s.sideIndex === sideIndex);
+    return !!side && !side.empty;
+  }
+
+  /** 置ける枠か。**空き枠も置き先になる**(片道移動 = 元の枠が不戦勝になる)。 */
+  function canDropSlot(match: MatchRow, _sideIndex: number): boolean {
+    if (!swapSlot) return false;
+    if (!slotCardSwappable(match)) return false;
+    const from = matches.find((m) => m.id === swapSlot.matchId);
+    // 同じカードの上下を入れ替えても対戦相手は変わらない(サーバーも SAME_SLOT で弾く)。
+    return !!from && from.round === match.round && from.id !== match.id;
+  }
+
+  async function submitSwap(from: SwapSlotRef, to: SwapSlotRef) {
+    const sideOf = (ref: SwapSlotRef) =>
+      matches.find((m) => m.id === ref.matchId)?.sides.find((s) => s.sideIndex === ref.sideIndex);
+    const fromSide = sideOf(from);
+    const toSide = sideOf(to);
+    if (!fromSide || !toSide) return;
+
+    setSwapSlot(null);
+    // 画面が見ていた枠の中身をそのまま送る(楽観的排他)。ずれていればサーバーが
+    // SLOT_CHANGED で弾き、最新を読み直す。
+    await send(
+      `/api/events/${eventId}/matches/swap`,
+      {
+        a: { ...from, expectedParticipantIds: fromSide.participantIds },
+        b: { ...to, expectedParticipantIds: toSide.participantIds },
+      },
+      "POST",
+      { onConflict: () => router.refresh() }
+    );
+  }
+
   async function send(
     url: string,
     body: unknown,
@@ -400,10 +646,7 @@ export function MatchManager({
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
       const code = typeof payload?.code === "string" ? payload.code : null;
-      if (
-        options.onConflict &&
-        (code === "BRACKET_EXISTS" || code === "BRACKET_CHANGED" || code === "CONFIRM_MISMATCH")
-      ) {
+      if (options.onConflict && code !== null && CONFLICT_CODES.has(code)) {
         setError(payload?.error ?? null);
         options.onConflict(code);
         return false;
@@ -531,7 +774,7 @@ export function MatchManager({
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
                 {matches.length === 0
                   ? "まだ表がない。日程を決めるところから順に作る。"
-                  : `対戦カードが${matches.length}件ある。組み合わせを変えるには、いまの表を破棄してから作り直す。`}
+                  : `対戦カードが${matches.length}件ある。組み合わせは表を保ったまま変えられる(まだ始まっていない枠どうし)。`}
                 {started &&
                   `進行中・確定済みが${destroySummary.finished + destroySummary.running}件あり、破棄すると消える。`}
               </p>
@@ -547,19 +790,40 @@ export function MatchManager({
                   表を作る
                 </button>
               ) : (
-                // **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
-                // 状態のときに公開ページの古い表を消せなくなる。
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => openDestroyDialog()}
-                  className="rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  表を破棄する
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      // 入れ替えは表モードでしかできない(一覧には枠の位置関係が無い)。
+                      if (!swapping) setViewMode("bracket");
+                      setSwapSlot(null);
+                      setSwapping((on) => !on);
+                      setError(null);
+                    }}
+                    className={
+                      swapping
+                        ? "btn-primary"
+                        : "rounded-lg border border-border px-3 py-2 text-sm text-gray-300 transition hover:border-brand/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    }
+                  >
+                    {swapping ? "変更を終える" : "組み合わせを変更"}
+                  </button>
+                  {/* **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
+                      状態のときに公開ページの古い表を消せなくなる。 */}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => openDestroyDialog()}
+                    className="rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    表を破棄する
+                  </button>
+                </div>
               )}
             </div>
           </div>
+          {swapping && <SwapNote selected={!!swapSlot} />}
           {matches.length > 0 && <SessionNote sessions={sessions} />}
         </section>
       )}
@@ -724,6 +988,16 @@ export function MatchManager({
           })}
           </ol>
 
+          <PlacementDepthSection
+            placementChoices={placementChoices}
+            plannedPlacementDepth={plannedPlacementDepth}
+            setPlacementDepth={setPlacementDepth}
+            plannedPlacementRounds={plannedPlacementRounds}
+            plannedPlacementSessionIds={plannedPlacementSessionIds}
+            setPlacementSessionIds={setPlacementSessionIds}
+            sessions={sessions}
+          />
+
           <div className="flex justify-end">
             <BuildButton busy={busy} disabled={seed.length < 2} onBuild={() => void submitBracket()} />
           </div>
@@ -744,6 +1018,16 @@ export function MatchManager({
             slots={slots}
             disabled={busy}
             onChange={setPlacement}
+          />
+
+          <PlacementDepthSection
+            placementChoices={placementChoices}
+            plannedPlacementDepth={plannedPlacementDepth}
+            setPlacementDepth={setPlacementDepth}
+            plannedPlacementRounds={plannedPlacementRounds}
+            plannedPlacementSessionIds={plannedPlacementSessionIds}
+            setPlacementSessionIds={setPlacementSessionIds}
+            sessions={sessions}
           />
 
           <div className="flex flex-wrap items-center justify-end gap-3">
@@ -768,7 +1052,12 @@ export function MatchManager({
           <div className="flex items-center gap-1 text-xs">
             <button
               type="button"
-              onClick={() => setViewMode("list")}
+              onClick={() => {
+                // 一覧には枠の位置関係が無いので、切り替えたら編集モードは畳む。
+                setViewMode("list");
+                setSwapping(false);
+                setSwapSlot(null);
+              }}
               className={`rounded-full px-3 py-1 ${
                 viewMode === "list" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
               }`}
@@ -787,26 +1076,67 @@ export function MatchManager({
           </div>
 
           {viewMode === "list" ? (
-            byRound.map(([round, rows]) => (
-              <section key={round} className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-300">
-                  {rows[0]?.roundLabel ?? `${round}回戦`}
-                </h2>
-                {rows.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    eventId={eventId}
-                    match={match}
-                    format={format}
-                    sessions={sessions}
-                    busy={busy}
-                    onSend={send}
-                  />
-                ))}
-              </section>
-            ))
+            <>
+              {byRound.map(([round, rows]) => (
+                <section key={round} className="space-y-2">
+                  <h2 className="text-sm font-semibold text-gray-300">
+                    {rows[0]?.roundLabel ?? `${round}回戦`}
+                  </h2>
+                  {rows.map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      eventId={eventId}
+                      match={match}
+                      format={format}
+                      sessions={sessions}
+                      busy={busy}
+                      onSend={send}
+                    />
+                  ))}
+                </section>
+              ))}
+
+              {placementGroups.length > 0 && (
+                <div className="space-y-4 border-t border-border pt-4">
+                  <h2 className="text-[11px] font-bold tracking-[0.2em] text-gray-500">
+                    順位決定戦
+                  </h2>
+                  {placementGroups.map((group) => (
+                    <section key={group.label} className="space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-300">{group.label}</h3>
+                      {group.rows.map((match) => (
+                        <MatchCard
+                          key={match.id}
+                          eventId={eventId}
+                          match={match}
+                          format={format}
+                          sessions={sessions}
+                          busy={busy}
+                          onSend={send}
+                        />
+                      ))}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            <AdminBracketTree matches={matches} onSelect={setSelectedMatchId} />
+            <AdminBracketTree
+              matches={matches}
+              onSelect={setSelectedMatchId}
+              swap={
+                swapping
+                  ? {
+                      canGrab: canGrabSlot,
+                      canDrop: canDropSlot,
+                      selected: swapSlot,
+                      onSelect: setSwapSlot,
+                      onSwap: (from, to) => void submitSwap(from, to),
+                      busy,
+                    }
+                  : undefined
+              }
+            />
           )}
         </>
       )}
@@ -838,6 +1168,108 @@ export function MatchManager({
               onSend={send}
             />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 順位決定戦(3位決定戦・5位決定戦…)の選択。シード順・手動配置どちらのステップでも
+ * 同じ入力(深さ・ラウンドごとの日程)を使うので共通化してある。
+ *
+ * 組める段が1つも無ければセクションごと出さない(2〜3人など)。
+ */
+function PlacementDepthSection({
+  placementChoices,
+  plannedPlacementDepth,
+  setPlacementDepth,
+  plannedPlacementRounds,
+  plannedPlacementSessionIds,
+  setPlacementSessionIds,
+  sessions,
+}: {
+  placementChoices: PlacementOption[];
+  plannedPlacementDepth: number;
+  setPlacementDepth: (depth: number) => void;
+  plannedPlacementRounds: PlacementRound[];
+  plannedPlacementSessionIds: string[];
+  setPlacementSessionIds: (ids: string[]) => void;
+  sessions: SessionRow[];
+}) {
+  if (placementChoices.length === 0) return null;
+
+  return (
+    <div className="grid gap-2 border-t border-border pt-4">
+      <div>
+        <label htmlFor="placement-depth" className="label">
+          順位決定戦
+        </label>
+        <p className="mt-0.5 text-xs text-gray-500">
+          3位以下も試合で決めるか。増やすと参加者の実際のライブバトルが増える。
+        </p>
+      </div>
+
+      <select
+        id="placement-depth"
+        className="input-field"
+        value={plannedPlacementDepth}
+        onChange={(e) => setPlacementDepth(Number(e.target.value))}
+      >
+        <option value={0}>行わない（優勝・準優勝だけ）</option>
+        {placementChoices.map((option) => (
+          <option key={option.depth} value={option.depth}>
+            {option.rank}位決定戦まで（+{option.matchCount}試合）
+          </option>
+        ))}
+      </select>
+
+      {plannedPlacementDepth > 0 && (
+        <ul className="grid gap-0.5 text-xs text-gray-500">
+          {placementChoices
+            .filter((option) => option.depth <= plannedPlacementDepth)
+            .map((option) => (
+              <li key={option.depth}>
+                {option.rank}位決定戦の優勝者が{option.rank}位、準優勝が
+                {option.rank + 1}位になる。それ以下は同着とする。
+              </li>
+            ))}
+        </ul>
+      )}
+
+      {/* 日程が複数あるときだけ、本選とは別に順位決定戦の日程を選ばせる。 */}
+      {sessions.length > 1 && plannedPlacementRounds.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {plannedPlacementRounds.map((round, index) => (
+            <div key={`${round.depth}:${round.roundInBlock}`}>
+              <label htmlFor={`placement-session-${index}`} className="label">
+                {round.label}の日程
+              </label>
+              <select
+                id={`placement-session-${index}`}
+                className="input-field"
+                value={plannedPlacementSessionIds[index] ?? ""}
+                onChange={(e) => {
+                  const next = [...plannedPlacementSessionIds];
+                  next[index] = e.target.value;
+                  // 同じブロックの後のラウンドが前より early にならないよう引きずる。
+                  const picked = sessions.findIndex((s) => s.id === e.target.value);
+                  for (let i = index + 1; i < next.length; i++) {
+                    if (plannedPlacementRounds[i].depth !== round.depth) break;
+                    const current = sessions.findIndex((s) => s.id === next[i]);
+                    if (current < picked) next[i] = e.target.value;
+                  }
+                  setPlacementSessionIds(next);
+                }}
+              >
+                {sessions.map((session, i) => (
+                  <option key={session.id} value={session.id}>
+                    {sessionRangeLabel(session, i)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       )}
     </div>

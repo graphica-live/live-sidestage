@@ -39,6 +39,39 @@ export function isByeRow(rules: unknown): boolean {
   return isPlainObject(rules) && rules.bye === true;
 }
 
+/** 順位決定戦の行に付く印(`EventMatch.rules.placement`)。 */
+export type PlacementMark = { depth: number; rank: number };
+
+/**
+ * 順位決定戦(3位決定戦など)の行か。`tournament.ts` が表の生成時に付ける。
+ *
+ * 本選の行と座標空間を共有しているので、**UI のグルーピングはこの印だけで行う**
+ * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
+ */
+export function parsePlacement(rules: unknown): PlacementMark | null {
+  if (!isPlainObject(rules) || !isPlainObject(rules.placement)) return null;
+  const { depth, rank } = rules.placement;
+  if (typeof depth !== "number" || typeof rank !== "number") return null;
+  return { depth, rank };
+}
+
+/**
+ * 敗者の出どころ(`EventMatch.rules.loserFrom`)。sideIndex 順で、BYE 側は null。
+ *
+ * **順位決定戦ブロックの葉の行だけが持つ。** これが「敗者を送る辺」の実体で、
+ * `match-results.ts` の進行と `battles.ts` の feeder 判定の両方が読む。
+ * 座標(`nextSlot()`)からは導出できない — どの本選行が実試合かは不戦勝の配置に依存する。
+ */
+export function parseLoserFrom(rules: unknown): ({ round: number; position: number } | null)[] | null {
+  if (!isPlainObject(rules) || !Array.isArray(rules.loserFrom)) return null;
+  return rules.loserFrom.map((entry) => {
+    if (!isPlainObject(entry)) return null;
+    const { round, position } = entry;
+    if (typeof round !== "number" || typeof position !== "number") return null;
+    return { round, position };
+  });
+}
+
 export type MatchProgress = {
   status: string;
   winnerDecidedBy: string | null;

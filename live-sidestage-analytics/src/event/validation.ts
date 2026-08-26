@@ -1,7 +1,7 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
 import type { BracketMethod } from "./bracket";
-import { parseBracketMethod } from "./bracket-rules";
+import { normalizePlacementDepth, parseBracketMethod } from "./bracket-rules";
 import { type MatchRules, parseMatchRules } from "./match-rules";
 import {
   MAX_EVENT_DAYS,
@@ -56,6 +56,11 @@ export type EventInput = {
   matchRules?: unknown;
   /** トーナメント表の不戦勝配分方式。不正値・欠損は既定(STANDARD)へ丸める。TOURNAMENT以外では無視。 */
   bracketMethod?: unknown;
+  /**
+   * 順位決定戦をどの深さまで行うかの希望値。不正値・欠損は 0(行わない)へ丸める。
+   * **実際に組める深さは参加人数が確定してから決まる**ので、ここでは上限だけ見る。
+   */
+  placementDepth?: unknown;
 };
 
 export type ValidatedEventInput = {
@@ -75,6 +80,8 @@ export type ValidatedEventInput = {
   matchRules: MatchRules;
   /** 常に正規化済み(parseBracketMethodが不正値を既定へ丸める)。 */
   bracketMethod: BracketMethod;
+  /** 常に正規化済み(normalizePlacementDepthが不正値を0へ丸める)。 */
+  placementDepth: number;
 };
 
 export type ValidationResult<T> =
@@ -109,6 +116,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
   // 不正値・欠損は既定へ丸める(deathmatchRulesと同じ方針)ので、ここではエラーを積まない。
   const matchRules = parseMatchRules({ matchRules: input.matchRules });
   const bracketMethod = parseBracketMethod({ bracket: { method: input.bracketMethod } });
+  const placementDepth = normalizePlacementDepth(input.placementDepth);
 
   if (!EVENT_FORMATS.includes(input.format as EventFormat)) {
     errors.push("イベント種目の指定が不正です。");
@@ -152,6 +160,7 @@ export function validateEventInput(input: EventInput): ValidationResult<Validate
       noticeText: noticeText || null,
       matchRules,
       bracketMethod,
+      placementDepth,
     },
   };
 }
