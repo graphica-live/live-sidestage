@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
 import { ParticipantError, removeParticipant, updateParticipant } from "@/event/participants";
+import { isTransactionTimeout } from "@/event/reopen-aggregation";
 import { parseParticipantPatch } from "@/event/validation";
 
 // 参加者の部分更新。送られてきたキーだけを変える。
 // - teamId: null で未所属に戻す
 // - displayName: null / 空文字で TikTok ID に戻る
+// - tiktokId: 登録ミスの訂正。同じ EventParticipant.id のまま tiktokId/roomId だけ
+//   書き換えるので、対戦カード・トーナメント表の枠(EventMatchSideParticipant)は
+//   維持される。集計母集団を変える操作なので、集計中は 503(EVENT_BUSY)を返しうる。
 // 検証と書き込みは updateParticipant に閉じてある(部分適用させないため)。
 export async function PATCH(
   req: NextRequest,
@@ -27,10 +31,19 @@ export async function PATCH(
       participantId: params.participantId,
       patch: parsed.value,
     });
-    return NextResponse.json({ ok: true, displayName: result.displayName });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof ParticipantError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (isTransactionTimeout(err)) {
+      return NextResponse.json(
+        {
+          error: "集計中で混み合っています。少し待ってからやり直してください。",
+          code: "EVENT_BUSY",
+        },
+        { status: 503 }
+      );
     }
     throw err;
   }

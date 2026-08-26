@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LISTENER_STATUS_CLASSES, LISTENER_STATUS_LABELS } from "@/event/labels";
-import { MAX_DISPLAY_NAME_LENGTH } from "@/event/validation";
+import { MAX_DISPLAY_NAME_LENGTH, normalizeTiktokId } from "@/event/validation";
 
 export type ParticipantRow = {
   id: string;
@@ -44,6 +44,12 @@ export function ParticipantManager({
   const [draft, setDraft] = useState("");
   // busy(state)は非同期に反映されるので、二重送信の抑止には同期的な ref を使う。
   const savingRef = useRef(false);
+
+  // TikTok ID の訂正(登録ミスの後追い専用)。表示名編集とは独立させる
+  // (同時に別の行を開いても互いの保存を妨げないように)。
+  const [editingTiktokIdFor, setEditingTiktokIdFor] = useState<string | null>(null);
+  const [tiktokDraft, setTiktokDraft] = useState("");
+  const savingTiktokRef = useRef(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -171,6 +177,92 @@ export function ParticipantManager({
     }
   }
 
+  function startEditTiktok(p: ParticipantRow) {
+    setNotices([]);
+    setEditingTiktokIdFor(p.id);
+    setTiktokDraft(p.tiktokId);
+  }
+
+  function cancelEditTiktok() {
+    setEditingTiktokIdFor(null);
+    setTiktokDraft("");
+  }
+
+  /**
+   * TikTok ID を訂正する。登録ミスの後追い救済専用。
+   *
+   * `EventParticipant.id` は変わらないので対戦カード・トーナメント表の枠は自動的に
+   * そのまま残る。一方で監視先の room とイベント期間の全ギフト集計が新しい ID の実績へ
+   * 切り替わる操作なので、`remove()` と同じく常に確認ダイアログを挟む
+   * (表示名編集と違い集計対象は status に関わらず変わりうるため、開催中限定にしない)。
+   */
+  async function commitTiktokId(p: ParticipantRow) {
+    if (savingTiktokRef.current) return;
+
+    const normalized = normalizeTiktokId(tiktokDraft);
+    if (!normalized) {
+      setNotices([{ kind: "error", text: "TikTok ID の形式が正しくない。" }]);
+      return;
+    }
+    if (normalized === p.tiktokId) {
+      cancelEditTiktok();
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `@${p.tiktokId} を @${normalized} へ訂正する。イベント期間の全ギフトが新しいIDの実績で計算し直される(対戦カード・トーナメント表の枠はそのまま維持される)。よろしいか?`
+      )
+    ) {
+      return;
+    }
+
+    savingTiktokRef.current = true;
+    setBusy(true);
+    setNotices([]);
+
+    try {
+      const res = await fetch(`/api/events/${eventId}/participants/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tiktokId: tiktokDraft }),
+      });
+      const body = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setNotices([{ kind: "error", text: body?.error ?? "TikTok ID の訂正に失敗した。" }]);
+        return;
+      }
+
+      const next: Notice[] = [
+        {
+          kind: "info",
+          text: `TikTok ID を @${body.tiktokId} へ訂正した。対戦カード・トーナメント表の枠はそのまま維持される。`,
+        },
+      ];
+      if (body.existence === "UNVERIFIED") {
+        next.push({
+          kind: "warn",
+          text: "TikTok からの応答が得られず、このアカウントが実在するか確認できなかった。ID が正しいか見直すこと。",
+        });
+      }
+      if (body.leaseClamped) {
+        next.push({
+          kind: "warn",
+          text: "イベント終了が遠いため、監視の確保期間を上限まで切り詰めた。期限が近づいたら訂正し直すこと。",
+        });
+      }
+      setNotices(next);
+      cancelEditTiktok();
+      router.refresh();
+    } catch {
+      setNotices([{ kind: "error", text: "TikTok ID の訂正に失敗した(通信エラー)。" }]);
+    } finally {
+      savingTiktokRef.current = false;
+      setBusy(false);
+    }
+  }
+
   async function remove(p: ParticipantRow) {
     if (!window.confirm(`@${p.tiktokId} を参加者から外す。集計対象からも外れる。`)) return;
     setBusy(true);
@@ -196,7 +288,7 @@ export function ParticipantManager({
     <div className="space-y-6">
       {status === "RUNNING" && (
         <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
-          開催中に参加者を追加・削除したり所属チームを変えると
+          開催中に参加者を追加・削除したり所属チームを変えたり TikTok ID を訂正すると
           <strong className="font-semibold">イベント期間の全ギフトが計算し直される</strong>。
           途中で追加した参加者には登録前のギフトも算入され、外した参加者のぶんは順位から消える。
           表示名の変更だけは集計に影響しない(表示が切り替わるだけ)。
@@ -354,7 +446,64 @@ export function ParticipantManager({
                     )}
                   </div>
                 )}
-                <p className="truncate font-mono text-xs text-gray-500">@{p.tiktokId}</p>
+                {editingTiktokIdFor === p.id ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void commitTiktokId(p);
+                    }}
+                    className="mt-1 flex items-center gap-2"
+                  >
+                    <input
+                      autoFocus
+                      value={tiktokDraft}
+                      onChange={(e) => setTiktokDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing) {
+                          if (e.key === "Enter") e.preventDefault();
+                          return;
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEditTiktok();
+                        }
+                      }}
+                      placeholder="@username"
+                      aria-label={`@${p.tiktokId} の TikTok ID を訂正`}
+                      disabled={busy}
+                      className="input-field min-w-0 flex-1 py-1 font-mono text-xs"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="btn-primary shrink-0 px-2 py-1 text-xs"
+                    >
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditTiktok}
+                      disabled={busy}
+                      className="shrink-0 text-xs text-gray-500 hover:text-white"
+                    >
+                      取消
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startEditTiktok(p)}
+                    disabled={busy}
+                    title="クリックで TikTok ID を訂正(登録ミスの訂正専用)"
+                    aria-label={`@${p.tiktokId} の TikTok ID を訂正`}
+                    className="group flex min-w-0 items-center gap-1 text-left"
+                  >
+                    <span className="truncate font-mono text-xs text-gray-500 group-hover:underline">
+                      @{p.tiktokId}
+                    </span>
+                    <PencilIcon />
+                  </button>
+                )}
               </div>
 
               {teams.length > 0 && (
@@ -401,7 +550,10 @@ export function ParticipantManager({
       <p className="text-xs leading-relaxed text-gray-500">
         参加者を追加すると、その配信者の TikTok Live をイベント終了まで監視する。監視の開始・停止は
         最大60秒ごとの同期で反映される。参加者を外しても、それまでに受信したギフトのデータは消えない。
-        一覧の表示名はペンマークか名前をクリックすると編集できる(TikTok ID は登録し直しになるので変更できない)。
+        一覧の表示名はペンマークか名前をクリックすると編集できる。TikTok ID
+        も同様にペンマークをクリックすると訂正できる(登録ミスの後追い救済専用)。訂正すると
+        監視先が新しい ID に切り替わり、次回の集計から新しい ID の実績で計算し直される
+        (対戦カード・トーナメント表の枠は維持される)。
       </p>
     </div>
   );
