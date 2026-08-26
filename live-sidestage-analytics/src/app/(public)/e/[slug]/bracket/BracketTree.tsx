@@ -1,4 +1,5 @@
 import { fitBracketName } from "@/event/bracket-name-fit";
+import { findSurvivorMatchIds } from "@/event/bracket-survivors";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import {
   formatNumber,
@@ -81,6 +82,12 @@ export function BracketTree({
   const final = index.get(key(roundCount, 0));
   const blocks = groupPlacementBlocks(matches);
 
+  // まだ敗退していない出場者/チームが勝った試合。決勝は専用の枠+優勝バナーを
+  // 既に持つので、決勝の敗者を捕まえる計算には使うが結果には含めない
+  // (findSurvivorMatchIds の finalMatchId 引数)。この集合に入っている試合だけ
+  // MatchCard が生存ツリーの装飾(赤枠+走光)を出す。
+  const survivorMatchIds = findSurvivorMatchIds(matches, final?.id);
+
   // 準決勝のサブツリー。roundCount が 1(参加2組)なら決勝しかないので左右は出さない。
   const hasWings = roundCount >= 2;
 
@@ -91,7 +98,15 @@ export function BracketTree({
 
         {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。 */}
         <div className="flex items-center pt-40">
-          {hasWings && <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} />}
+          {hasWings && (
+            <MatchNode
+              round={roundCount - 1}
+              position={0}
+              mirror={false}
+              index={index}
+              survivorMatchIds={survivorMatchIds}
+            />
+          )}
           {hasWings && <StraightConnector />}
 
           <div className={`relative ${CARD_W} shrink-0`}>
@@ -99,17 +114,27 @@ export function BracketTree({
               <Champion final={final} />
             </div>
             {final ? (
-              <MatchCard match={final} mirror={false} isFinal />
+              <MatchCard match={final} mirror={false} isFinal survivorMatchIds={survivorMatchIds} />
             ) : (
               <EmptyCard isFinal />
             )}
           </div>
 
           {hasWings && <StraightConnector />}
-          {hasWings && <MatchNode round={roundCount - 1} position={1} mirror index={index} />}
+          {hasWings && (
+            <MatchNode
+              round={roundCount - 1}
+              position={1}
+              mirror
+              index={index}
+              survivorMatchIds={survivorMatchIds}
+            />
+          )}
         </div>
 
-        {blocks.length > 0 && <PlacementSection blocks={blocks} index={index} />}
+        {blocks.length > 0 && (
+        <PlacementSection blocks={blocks} index={index} survivorMatchIds={survivorMatchIds} />
+      )}
       </div>
     </BracketScroller>
   );
@@ -160,13 +185,19 @@ function groupPlacementBlocks(matches: BracketMatchDto[]): PlacementBlockView[] 
  * 本体の再帰レイアウトへ差し込まないのは幾何のため — 決勝カードの中心がずれると
  * 左右から来る接続線が刺さらなくなる(ファイル冒頭を参照)。ブロックは同じ座標空間に
  * いるので、`MatchNode` をそのまま根から呼べば完全二分木として正しく描ける。
+ *
+ * `survivorMatchIds` は `MatchNode` の必須 prop なので素通しする。**このブロックの
+ * カードは実際には光らない** — ここへ来る出場者は本選で一度負けて `findSurvivorMatchIds`
+ * の敗退キーに入っているため。順位決定戦は敗者復活ではないので、それが正しい。
  */
 function PlacementSection({
   blocks,
   index,
+  survivorMatchIds,
 }: {
   blocks: PlacementBlockView[];
   index: MatchIndex;
+  survivorMatchIds: Set<string>;
 }) {
   return (
     <div className="mt-10 border-t border-white/10 pt-6">
@@ -194,6 +225,7 @@ function PlacementSection({
                   minRound={block.minRound}
                   mirror={false}
                   index={index}
+                  survivorMatchIds={survivorMatchIds}
                 />
               </div>
             </div>
@@ -320,17 +352,23 @@ function MatchNode({
   mirror,
   index,
   minRound = 1,
+  survivorMatchIds,
 }: {
   round: number;
   position: number;
   mirror: boolean;
   index: MatchIndex;
   minRound?: number;
+  survivorMatchIds: Set<string>;
 }) {
   const match = index.get(key(round, position));
   const card = (
     <div className={`${CARD_W} shrink-0`}>
-      {match ? <MatchCard match={match} mirror={mirror} /> : <EmptyCard mirror={mirror} />}
+      {match ? (
+        <MatchCard match={match} mirror={mirror} survivorMatchIds={survivorMatchIds} />
+      ) : (
+        <EmptyCard mirror={mirror} />
+      )}
     </div>
   );
 
@@ -349,6 +387,7 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
+            survivorMatchIds={survivorMatchIds}
           />
         </div>
         <div className="flex flex-1 items-center py-1.5">
@@ -358,6 +397,7 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
+            survivorMatchIds={survivorMatchIds}
           />
         </div>
       </div>
@@ -483,10 +523,12 @@ function MatchCard({
   match,
   mirror,
   isFinal,
+  survivorMatchIds,
 }: {
   match: BracketMatchDto;
   mirror: boolean;
   isFinal?: boolean;
+  survivorMatchIds: Set<string>;
 }) {
   const decided =
     match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE"
@@ -496,6 +538,9 @@ function MatchCard({
   const byeWinner =
     match.winnerDecidedBy === "BYE" ? match.sides.find((s) => s.isWinner) : undefined;
   const isLive = match.status === "LIVE";
+  // 決勝は対象外(findSurvivorMatchIds が結果集合から除いている)。専用の枠+優勝バナーで
+  // 既に「ここが頂点」を示せているので、この試合カードにさらに走光を重ねない。
+  const isSurvivorWin = survivorMatchIds.has(match.id);
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
   const card = (
@@ -505,11 +550,17 @@ function MatchCard({
           ? `border-red-500/70 bg-gradient-to-b from-red-500/15 to-transparent ${
               isFinal ? "border-2" : ""
             }`
-          : isFinal
-            ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-            : "border-white/10 bg-panel"
+          : isSurvivorWin
+            ? "border-red-500/70 bg-gradient-to-b from-red-500/10 to-transparent"
+            : isFinal
+              ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+              : "border-white/10 bg-panel"
       }`}
     >
+      {/* 生き残っているツリーをひと目で追えるように、勝った試合の上辺だけ光を走らせる。
+          article 自身の clip-path(CARD_CLIP/CARD_CLIP_MIRROR)の内側に置くことで、
+          mirror側の角の切り欠きにも自動で追従する(帯を別コンポーネントで clip し直す必要がない)。 */}
+      {isSurvivorWin && <span className="survivor-track absolute inset-x-0 top-0 h-[3px]" aria-hidden />}
       <div
         className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
           mirror ? "flex-row-reverse" : ""
