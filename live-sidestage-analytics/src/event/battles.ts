@@ -8,9 +8,16 @@ import {
   type MatchCandidate,
   type ReviewReason,
 } from "./match-detect";
-import { isByeRow, isForceFullPeriod, parseLoserFrom } from "./match-status";
+import { isByeRow, isForceFullPeriod, parseLoserFrom, parseWinnerFeeders } from "./match-status";
 import type { TimeRange } from "./scoring";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
+import {
+  buildWinnerFeederGraph,
+  feederOf,
+  BracketInconsistentError,
+  type BracketSlot,
+  type WinnerFeederGraph,
+} from "./winner-feeders";
 
 // analytics で観測されたバトルの取り込みと、対戦カードとの照合。
 //
@@ -126,6 +133,7 @@ function decidedAtOfSlot(
   round: number,
   position: number,
   bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph,
   depth = 0
 ): Date | null {
   if (round < 1 || depth > 32) return null;
@@ -136,8 +144,8 @@ function decidedAtOfSlot(
   if (decided) return decided;
 
   // 不戦勝(バトルが起きていない)行は時刻を持たない。その上流まで遡る。
-  const upstream = upstreamSlots(match)
-    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, depth + 1))
+  const upstream = upstreamSlots(match, graph)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, graph, depth + 1))
     .filter((d): d is Date => !!d);
   if (upstream.length === 0) return null;
   return upstream.reduce((max, d) => (d > max ? d : max));
@@ -146,22 +154,20 @@ function decidedAtOfSlot(
 /**
  * この行に出場者を送り込んでくる上流の座標。
  *
- * 通常は `nextSlot()` の逆（round-1 の position*2 と position*2+1）。
- * **順位決定戦の葉だけは例外**で、`rules.loserFrom`（本選のどの行の敗者が来るか）を見る —
- * 座標の上流には何も無いので、そのままだと制約なし(null)になってしまう。
+ * 通常は `WinnerFeederGraph` 経由(`winnerFeeders` override があればそちら、無ければ
+ * `nextSlot()` の逆算)。**順位決定戦の葉だけは例外**で、`rules.loserFrom`(本選のどの行の
+ * 敗者が来るか)を見る — 座標の上流には何も無いので、そのままだと制約なし(null)になる。
  *
  * 上流のラウンドは必ず自分より小さいので、辿っても循環しない。
  */
-function upstreamSlots(match: MatchWithSides): { round: number; position: number }[] {
+function upstreamSlots(match: MatchWithSides, graph: WinnerFeederGraph): BracketSlot[] {
   const loserFrom = parseLoserFrom(match.rules);
   if (loserFrom) {
-    return loserFrom.filter((slot): slot is { round: number; position: number } => slot !== null);
+    return loserFrom.filter((slot): slot is BracketSlot => slot !== null);
   }
-  if (match.round <= 1) return [];
-  return [
-    { round: match.round - 1, position: match.bracketPosition * 2 },
-    { round: match.round - 1, position: match.bracketPosition * 2 + 1 },
-  ];
+  return [0, 1]
+    .map((sideIndex) => feederOf(graph, match.round, match.bracketPosition, sideIndex))
+    .filter((slot): slot is BracketSlot => slot !== null);
 }
 
 /**
@@ -172,22 +178,36 @@ function upstreamSlots(match: MatchWithSides): { round: number; position: number
  *
  * 順位決定戦でも同じ危険がある — 3位決定戦の枠が埋まった瞬間に、その2人が過去に
  * 行った別のバトルを拾いうる。`upstreamSlots()` が `loserFrom` を見るのはそのため。
+ *
+ * **`match` 自身が `winnerFeeders` override を持つ場合、接続変更時刻(`changedAt`)も
+ * 検知下限に含める**(`max(各feederの決着時刻, changedAt)`)。これが無いと、接続変更
+ * "前" に発生した無関係なバトルが、新しい組み合わせの結果として誤検知される
+ * (`src/event/CLAUDE.md` の「検知の誤爆対策」参照)。override 対象は非bye行に限定されているので、
+ * bye行を透過した先でこの考慮が必要になることはない。
  */
 function feederDecidedAt(
   match: MatchWithSides,
-  bySlot: Map<string, MatchWithSides>
+  bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph
 ): Date | null {
-  const feeders = upstreamSlots(match)
-    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot))
+  const feeders = upstreamSlots(match, graph)
+    .map((slot) => decidedAtOfSlot(slot.round, slot.position, bySlot, graph))
     .filter((d): d is Date => !!d);
-  if (feeders.length === 0) return null;
-  return feeders.reduce((max, d) => (d > max ? d : max));
+
+  const parsedOverride = parseWinnerFeeders(match.rules);
+  const changedAt =
+    parsedOverride && parsedOverride.ok ? new Date(parsedOverride.value.changedAt) : null;
+
+  const candidates = changedAt ? [...feeders, changedAt] : feeders;
+  if (candidates.length === 0) return null;
+  return candidates.reduce((max, d) => (d > max ? d : max));
 }
 
 /** 日程が付いていない対戦(移行前のデータ)は検知しようがないので候補にしない。 */
 function toCandidate(
   match: MatchWithSides,
-  bySlot: Map<string, MatchWithSides>
+  bySlot: Map<string, MatchWithSides>,
+  graph: WinnerFeederGraph
 ): MatchCandidate | null {
   if (!match.session) return null;
   const bySide = [...match.sides].sort((a, b) => a.sideIndex - b.sideIndex);
@@ -199,7 +219,7 @@ function toCandidate(
     sessionEnd: match.session.endAt,
     sideRoomIds: bySide.map((s) => s.participants.map((p) => p.participant.roomId)),
     isBye: isByeRow(match.rules),
-    feederDecidedAt: feederDecidedAt(match, bySlot),
+    feederDecidedAt: feederDecidedAt(match, bySlot, graph),
     lockedBattleId:
       match.detectedBattleId && LOCKED_DETECTION_STATUSES.has(match.status)
         ? match.detectedBattleId
@@ -299,8 +319,16 @@ export async function detectMatches(
 
   // 上流は**全マッチ**から引く(VOID や手動確定の行も上流にはなりうる)。
   const bySlot = bySlotIndex(matches);
+  const roundCount = Math.max(...matches.map((m) => m.round));
+  const feederGraph = buildWinnerFeederGraph(
+    matches.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    roundCount
+  );
+  if (!feederGraph.ok) throw new BracketInconsistentError();
+  const graph = feederGraph.graph;
+
   const candidates = open
-    .map((m) => toCandidate(m, bySlot))
+    .map((m) => toCandidate(m, bySlot, graph))
     .filter((c): c is MatchCandidate => c !== null);
   if (candidates.length === 0) return { detected: 0, missed: 0, invalidated: 0 };
 

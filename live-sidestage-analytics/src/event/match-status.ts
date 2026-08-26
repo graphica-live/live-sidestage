@@ -88,6 +88,62 @@ export function parseLoserFrom(rules: unknown): ({ round: number; position: numb
   });
 }
 
+/**
+ * 勝者フィーダーの override(`EventMatch.rules.winnerFeeders`)。**受け側(target)の行だけが持つ。**
+ *
+ * 通常、勝者の転送先は `nextSlot()` の座標から機械的に決まるが、組み合わせ変更
+ * (winner feeder edge swap, `bracket-swap-apply.ts` の `swapWinnerFeeders()`)は
+ * この座標既定を上書きして「どの座標の勝者がこのスロットに来るか」を明示する。
+ *
+ * `loserFrom` と異なり**厳密な検証を行う**(構造的BYE側を対象から除外しているので
+ * null 要素を許さない)。`changedAt` は接続変更時刻で、`battles.ts` の検知下限
+ * (`max(決着時刻, changedAt)`)に使う。
+ */
+export type WinnerFeeders = {
+  slots: [{ round: number; position: number }, { round: number; position: number }];
+  changedAt: string;
+};
+
+/**
+ * `parseWinnerFeeders()` の戻り値。
+ *
+ * - `null` — `rules` に `winnerFeeders` キー自体が無い(override無し。旧データ・通常の対戦)
+ * - `{ ok: false }` — キーはあるが形式が壊れている。呼び出し側は `BRACKET_INCONSISTENT` で止めること
+ *   (`parseLoserFrom` のように既定へフォールバックしない — fail closed)
+ * - `{ ok: true; value }` — 構文的に正しい override
+ *
+ * **ここで検証するのは構文だけ**(固定2要素・整数・非負position・重複しない2つの座標)。
+ * 意味的な検証(`source.round === target.round - 1`・source実在・全単射)は、複数行を
+ * またぐ判定なので `bracket.ts` の `WinnerFeederGraph` 構築側の責務にする。
+ */
+export type ParseWinnerFeedersResult = { ok: true; value: WinnerFeeders } | { ok: false } | null;
+
+export function parseWinnerFeeders(rules: unknown): ParseWinnerFeedersResult {
+  if (!isPlainObject(rules) || !("winnerFeeders" in rules)) return null;
+
+  const raw = rules.winnerFeeders;
+  if (!isPlainObject(raw)) return { ok: false };
+
+  const { slots, changedAt } = raw as { slots?: unknown; changedAt?: unknown };
+  if (!Array.isArray(slots) || slots.length !== 2) return { ok: false };
+  if (typeof changedAt !== "string" || Number.isNaN(Date.parse(changedAt))) return { ok: false };
+
+  const parsedSlots = slots.map((entry) => {
+    if (!isPlainObject(entry)) return null;
+    const { round, position } = entry;
+    if (typeof round !== "number" || typeof position !== "number") return null;
+    if (!Number.isInteger(round) || !Number.isInteger(position)) return null;
+    if (position < 0) return null;
+    return { round, position };
+  });
+  if (parsedSlots.some((slot) => slot === null)) return { ok: false };
+
+  const [a, b] = parsedSlots as [{ round: number; position: number }, { round: number; position: number }];
+  if (a.round === b.round && a.position === b.position) return { ok: false }; // 重複source
+
+  return { ok: true, value: { slots: [a, b], changedAt } };
+}
+
 export type MatchProgress = {
   status: string;
   winnerDecidedBy: string | null;

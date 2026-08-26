@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import type { DbClient } from "./analytics-db";
 import { advanceBracket } from "./match-results";
+import { BracketInconsistentError } from "./winner-feeders";
 
 type Side = {
   id: string;
@@ -293,5 +294,40 @@ describe("advanceBracket", () => {
 
     expect(participantsOf(b.m21.sides[0])).toEqual(["p5"]);
     expect(participantsOf(b.m30.sides[1])).toEqual(["p5"]);
+  });
+
+  it("winnerFeeders override があれば、nextSlot()の既定ではなくそちらへ転送する", async () => {
+    const b = standardFour();
+    winnerIs(b.m10, "s10a"); // p0
+    winnerIs(b.m11, "s11b"); // p2
+
+    // 既定なら m10(1,0)→m20.side0, m11(1,1)→m20.side1 だが、override で入れ替える。
+    b.m20.rules = {
+      winnerFeeders: {
+        slots: [
+          { round: 1, position: 1 },
+          { round: 1, position: 0 },
+        ],
+        changedAt: "2026-08-26T00:00:00.000Z",
+      },
+    };
+
+    const { tx } = fakeTx(b.all);
+    await advanceBracket(tx, "ev");
+
+    expect(participantsOf(b.m20.sides[0])).toEqual(["p2"]);
+    expect(participantsOf(b.m20.sides[1])).toEqual(["p0"]);
+  });
+
+  it("winnerFeeders override が壊れていたら BracketInconsistentError を投げ、何も書き込まない", async () => {
+    const b = standardFour();
+    winnerIs(b.m10, "s10a");
+    b.m20.rules = {
+      winnerFeeders: { slots: [{ round: 1, position: 0 }], changedAt: "2026-08-26T00:00:00.000Z" },
+    };
+
+    const { tx, writes } = fakeTx(b.all);
+    await expect(advanceBracket(tx, "ev")).rejects.toThrow(BracketInconsistentError);
+    expect(writes.participantCreates).toHaveLength(0);
   });
 });

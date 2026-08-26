@@ -109,6 +109,15 @@ export type MatchRow = {
    */
   placement: { depth: number; rank: number } | null;
   /**
+   * 組み合わせ変更(winner feeder edge swap)の接続override(`EventMatch.rules.winnerFeeders`)。
+   * 値があれば、この枠の勝者フィーダーは座標既定(`nextSlot()`)ではなくここで明示された
+   * 座標から来ている。表示は「接続済み」バッジと、接続をリセットする導線に使う。
+   */
+  winnerFeeders: {
+    slots: [{ round: number; position: number }, { round: number; position: number }];
+    changedAt: string;
+  } | null;
+  /**
    * バトルスコアが出るはずの対戦か(`detectedBattleId` があり `canShowTiktokScore` を通る)。
    *
    * **`side.tiktokScore` が null の理由を2つに分けるために要る。** 帰属できなかった
@@ -159,6 +168,11 @@ const CONFLICT_CODES = new Set([
   "SLOT_LOCKED",
   "DOWNSTREAM_STARTED",
   "BRACKET_INCONSISTENT",
+  // 接続の交換(winner feeder edge swap)。表示していた接続と現在の接続が食い違った /
+  // 不戦勝の枠を対象にした / 既存の接続変更が残っていて葉スワップが使えない。
+  "FEEDER_CHANGED",
+  "BYE_ROW",
+  "FEEDER_OVERRIDDEN",
 ]);
 
 /**
@@ -273,6 +287,43 @@ function SwapNote({ selected }: { selected: boolean }) {
   );
 }
 
+/**
+ * 接続の交換(winner feeder edge swap)モード中の案内。**葉スワップとの違い**を明示する
+ * — こちらは対戦の中身(結果)を一切変えず、まだ実施していない対戦の「相手の供給元」だけを
+ * 交換する。下流が始まっていても使える点が最大の違いなので、それも書く。
+ */
+function FeederSwapNote({ selected, hasOverride }: { selected: boolean; hasOverride: boolean }) {
+  return (
+    <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs leading-relaxed">
+      <p className="font-medium text-amber-300">接続の変更中</p>
+      <ul className="mt-1 space-y-0.5 text-gray-400">
+        <li>
+          ・
+          {selected
+            ? "接続先の枠を押す(ドラッグ中ならそのまま置く)。"
+            : "動かしたい接続をドラッグする(スマホは枠を押してから相手の枠を押す)。"}
+        </li>
+        <li>
+          ・対象は
+          <strong className="text-gray-200">準決勝以降の、まだ実施していない枠</strong>
+          だけ。<strong className="text-gray-200">結果や出場者は一切変わらない</strong>
+          — 「誰の勝者がどちらの枠へ入るか」という接続だけが変わる
+        </li>
+        <li>
+          ・組み合わせの変更(葉スワップ)と違い、
+          <strong className="text-gray-200">下流の対戦がすでに始まっていても使える</strong>
+        </li>
+      </ul>
+      {hasOverride && (
+        <p className="mt-2 text-amber-300/80">
+          接続変更中の枠には「接続変更」バッジが付く。この枠に描かれている接続線は実際の
+          フローとは異なるので、バッジの有無で判断すること。
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function MatchManager({
   eventId,
   eventTitle,
@@ -286,6 +337,7 @@ export function MatchManager({
   rules,
   bracketMethod,
   eventPlacementDepth,
+  feederSwapEnabled,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -307,6 +359,12 @@ export function MatchManager({
    * **既存の表があればそちらが優先**で、これは初回作成時の既定値にしかならない。
    */
   eventPlacementDepth: number;
+  /**
+   * 接続の交換(winner feeder edge swap)機能のfeature flag(`EVENT_WINNER_FEEDER_SWAP=1`)。
+   * **既定オフ**。段階的デプロイ(reader先行→writer/UI後追い)が完了するまで、
+   * このUI導線自体を出さない(`src/event/CLAUDE.md` のデプロイ計画を参照)。
+   */
+  feederSwapEnabled: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -329,6 +387,12 @@ export function MatchManager({
   // 誤操作でカードが動かないよう、明示的にこのモードへ入ったときだけ掴めるようにする。
   const [swapping, setSwapping] = useState(false);
   const [swapSlot, setSwapSlot] = useState<SwapSlotRef | null>(null);
+  // 接続の交換(winner feeder edge swap)。下流が始まっていても、まだ未実施の対戦の
+  // "接続"だけを交換できる。葉スワップ(swapping)とは別のモードとして排他に切り替える
+  // — 両方を同時に有効にすると、ドラッグ操作がどちらの意味か画面上で判別できない。
+  const [feederSwapping, setFeederSwapping] = useState(false);
+  const [feederSwapSlot, setFeederSwapSlot] = useState<SwapSlotRef | null>(null);
+  const [feederResetting, setFeederResetting] = useState(false);
   // 表がまだ無いなら最初のステップから始める。あるなら既存の表を見せるだけ。
   const [step, setStep] = useState<WizardStep | null>(matches.length === 0 ? "session" : null);
   // 手動配置(1回戦の枠に置いたエントリー)。**戻る操作で失わないようここで持つ。**
@@ -644,6 +708,79 @@ export function MatchManager({
     );
   }
 
+  /**
+   * 接続の交換(winner feeder edge swap)で掴んだり置いたりできる枠か。
+   *
+   * 葉スワップ(`slotCardSwappable`)と違い、**サイドに出場者がいるかは見ない**
+   * (交換するのは「勝者の供給元」という接続そのもので、まだ誰も決まっていない
+   * 未実施のスロットが主な対象になる)。1回戦(round<2)は供給元を持たないので対象外、
+   * 不戦勝行(isBye)は片側にしか供給元を持たない構造なので対象外
+   * (`src/event/CLAUDE.md` の「トーナメント表の組み合わせ変更」参照)。
+   */
+  function feederSlotSwappable(match: MatchRow): boolean {
+    return match.round >= 2 && !match.isBye && !isStartedMatch(match) && match.status !== "VOID";
+  }
+
+  function canGrabFeederSlot(match: MatchRow, _sideIndex: number): boolean {
+    return feederSlotSwappable(match);
+  }
+
+  function canDropFeederSlot(match: MatchRow, _sideIndex: number): boolean {
+    if (!feederSwapSlot) return false;
+    if (!feederSlotSwappable(match)) return false;
+    const from = matches.find((m) => m.id === feederSwapSlot.matchId);
+    return !!from && from.round === match.round && from.id !== match.id;
+  }
+
+  /** この枠のsideIndexが「今」受け取っている供給元の座標。override優先、無ければ既定。 */
+  function currentFeederOf(match: MatchRow, sideIndex: number): { round: number; position: number } {
+    if (match.winnerFeeders) return match.winnerFeeders.slots[sideIndex];
+    return { round: match.round - 1, position: match.position * 2 + sideIndex };
+  }
+
+  function buildExpectedFeeder(match: MatchRow, sideIndex: number) {
+    const source = currentFeederOf(match, sideIndex);
+    const sourceMatch = matches.find((m) => m.round === source.round && m.position === source.position);
+    if (!sourceMatch) return null;
+    return {
+      round: source.round,
+      position: source.position,
+      matchId: sourceMatch.id,
+      participantIds: sourceMatch.sides.flatMap((s) => s.participantIds),
+    };
+  }
+
+  async function submitFeederSwap(from: SwapSlotRef, to: SwapSlotRef) {
+    const fromMatch = matches.find((m) => m.id === from.matchId);
+    const toMatch = matches.find((m) => m.id === to.matchId);
+    if (!fromMatch || !toMatch) return;
+
+    const fromFeeder = buildExpectedFeeder(fromMatch, from.sideIndex);
+    const toFeeder = buildExpectedFeeder(toMatch, to.sideIndex);
+    if (!fromFeeder || !toFeeder) return;
+
+    setFeederSwapSlot(null);
+    await send(
+      `/api/events/${eventId}/matches/swap`,
+      {
+        mode: "feeder",
+        a: { matchId: from.matchId, sideIndex: from.sideIndex, expectedFeeder: fromFeeder },
+        b: { matchId: to.matchId, sideIndex: to.sideIndex, expectedFeeder: toFeeder },
+      },
+      "POST",
+      { onConflict: () => router.refresh() }
+    );
+  }
+
+  /** 接続をすべてリセットして既定の`nextSlot()`計算へ戻す。葉スワップの`FEEDER_OVERRIDDEN`解除に使う。 */
+  async function submitFeederReset() {
+    setFeederResetting(true);
+    await send(`/api/events/${eventId}/matches/swap`, { mode: "feeder-reset" }, "POST");
+    setFeederResetting(false);
+  }
+
+  const hasFeederOverride = matches.some((m) => m.winnerFeeders !== null);
+
   async function send(
     url: string,
     body: unknown,
@@ -808,7 +945,7 @@ export function MatchManager({
                 <div className="flex flex-wrap justify-end gap-2">
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || feederSwapping}
                     onClick={() => {
                       // 入れ替えは表モードでしかできない(一覧には枠の位置関係が無い)。
                       if (!swapping) setViewMode("bracket");
@@ -824,6 +961,38 @@ export function MatchManager({
                   >
                     {swapping ? "変更を終える" : "組み合わせを変更"}
                   </button>
+                  {/* 接続の交換(winner feeder edge swap)。feature flag が無効なら出さない
+                      (段階的デプロイが完了するまでUI導線自体を隠す)。 */}
+                  {feederSwapEnabled && format === "TOURNAMENT" && (
+                    <button
+                      type="button"
+                      disabled={busy || swapping}
+                      onClick={() => {
+                        if (!feederSwapping) setViewMode("bracket");
+                        setFeederSwapSlot(null);
+                        setFeederSwapping((on) => !on);
+                        setError(null);
+                      }}
+                      className={
+                        feederSwapping
+                          ? "rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          : "rounded-lg border border-amber-400/40 px-3 py-2 text-sm text-amber-300 transition hover:border-amber-400 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      }
+                    >
+                      {feederSwapping ? "接続変更を終える" : "接続を交換"}
+                    </button>
+                  )}
+                  {feederSwapEnabled && hasFeederOverride && (
+                    <button
+                      type="button"
+                      disabled={busy || feederResetting}
+                      onClick={() => void submitFeederReset()}
+                      className="rounded-lg border border-border px-3 py-2 text-sm text-gray-300 transition hover:border-brand/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      title="変更した接続をすべて元の座標へ戻す"
+                    >
+                      接続をリセット
+                    </button>
+                  )}
                   {/* **参加が2組未満に減っても押せる。** ここへ到達できないと、表を作れない
                       状態のときに公開ページの古い表を消せなくなる。 */}
                   <button
@@ -839,6 +1008,9 @@ export function MatchManager({
             </div>
           </div>
           {swapping && <SwapNote selected={!!swapSlot} />}
+          {feederSwapping && (
+            <FeederSwapNote selected={!!feederSwapSlot} hasOverride={hasFeederOverride} />
+          )}
           {matches.length > 0 && <SessionNote sessions={sessions} />}
         </section>
       )}
@@ -1072,6 +1244,8 @@ export function MatchManager({
                 setViewMode("list");
                 setSwapping(false);
                 setSwapSlot(null);
+                setFeederSwapping(false);
+                setFeederSwapSlot(null);
               }}
               className={`rounded-full px-3 py-1 ${
                 viewMode === "list" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
@@ -1142,6 +1316,7 @@ export function MatchManager({
               swap={
                 swapping
                   ? {
+                      mode: "leaf",
                       canGrab: canGrabSlot,
                       canDrop: canDropSlot,
                       selected: swapSlot,
@@ -1149,7 +1324,17 @@ export function MatchManager({
                       onSwap: (from, to) => void submitSwap(from, to),
                       busy,
                     }
-                  : undefined
+                  : feederSwapping
+                    ? {
+                        mode: "feeder",
+                        canGrab: canGrabFeederSlot,
+                        canDrop: canDropFeederSlot,
+                        selected: feederSwapSlot,
+                        onSelect: setFeederSwapSlot,
+                        onSwap: (from, to) => void submitFeederSwap(from, to),
+                        busy,
+                      }
+                    : undefined
               }
             />
           )}
