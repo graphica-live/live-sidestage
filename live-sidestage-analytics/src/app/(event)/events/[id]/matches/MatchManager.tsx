@@ -116,6 +116,12 @@ export type MatchRow = {
    * 前者だけ「—」を出す。後者にまで出すと「未取得」の意味が薄まる。
    */
   battleScoreExpected: boolean;
+  /**
+   * ⚠️トラブル対処フラグ(`EventMatch.rules.forceFullPeriod`)。有効なら、検知区間の
+   * 代わりに開催日程まるごとが集計対象になる(`loadBattleRangesByRoom`)。バトル検知が
+   * 失敗して手動確定した対戦のダイヤ救済用で、`FINISHED` のときしか意味を持たない。
+   */
+  forceFullPeriod: boolean;
   sides: MatchSideRow[];
 };
 
@@ -2014,6 +2020,67 @@ function MatchCard({
           </button>
         )}
       </div>
+
+      {decided && !match.isBye && (
+        <TroubleShootingSection
+          url={url}
+          forceFullPeriod={match.forceFullPeriod}
+          busy={busy}
+          onSend={onSend}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * ⚠️トラブル対処 — 通常の対戦操作(承認・確定・無効化・検知やり直し)とは意図的に
+ * 見た目で切り離す。バトル検知が失敗してこの対戦のダイヤ集計が正しく反映されない
+ * ときだけ使う緊急救済で、常用する機能ではない。
+ */
+function TroubleShootingSection({
+  url,
+  forceFullPeriod,
+  busy,
+  onSend,
+}: {
+  url: string;
+  forceFullPeriod: boolean;
+  busy: boolean;
+  onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-red-400/30 bg-red-400/[0.04] px-3 py-2">
+      <p className="text-xs font-semibold text-red-300">⚠️ トラブル対処</p>
+      <p className="text-xs leading-relaxed text-gray-400">
+        バトル検知が失敗してこの対戦の集計が正しく反映されない場合の緊急措置。有効にすると、
+        この対戦の出場者について開催日程内に受け取った<strong className="text-gray-200">全ての</strong>
+        ギフトを集計対象にする(通常は検知したバトル区間のみ)。バトル倍率が設定されている場合は
+        全期間に倍率が乗る。「検知をやり直す」「無効にする」を行うとこの設定は自動的に解除される。
+      </p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          if (
+            !forceFullPeriod &&
+            !window.confirm(
+              "本当に有効にするか。この対戦の出場者は、開催日程内に受け取った全てのギフトが集計対象になる(通常のバトル区間限定を上書きする)。"
+            )
+          )
+            return;
+          onSend(url, { action: "forceFullPeriod", enabled: !forceFullPeriod });
+        }}
+        className={
+          forceFullPeriod
+            ? "rounded-lg bg-red-400/20 px-3 py-1.5 text-xs font-medium text-red-200"
+            : "rounded-lg border border-red-400/40 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-400/10"
+        }
+      >
+        {forceFullPeriod
+          ? "有効中 — 無効に戻す"
+          : "開催日程内の全ギフトを集計対象にする"}
+      </button>
     </div>
   );
 }

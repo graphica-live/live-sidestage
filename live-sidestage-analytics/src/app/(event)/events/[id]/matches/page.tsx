@@ -7,7 +7,7 @@ import { parseBracketMethod, parsePlacementDepth } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
-import { isByeRow, parsePlacement } from "@/event/match-status";
+import { isByeRow, isForceFullPeriod, parsePlacement } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
@@ -180,6 +180,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     // バトルスコアが出るはずの対戦か。**上の `filter` と同じ条件にする** — 条件がずれると、
     // そもそも問い合わせていない対戦にまで「未取得」と出る。
     battleScoreExpected: m.detectedBattleId !== null && canShowTiktokScore(m, "admin"),
+    // ⚠️トラブル対処フラグ(集計を開催日程まるごとに強制するか)。isBye と同じ扱い。
+    forceFullPeriod: isForceFullPeriod(m.rules),
     sides: m.sides.map((s) => ({
       id: s.id,
       sideIndex: s.sideIndex,

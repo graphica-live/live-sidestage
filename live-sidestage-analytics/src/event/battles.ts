@@ -8,7 +8,7 @@ import {
   type MatchCandidate,
   type ReviewReason,
 } from "./match-detect";
-import { isByeRow, parseLoserFrom } from "./match-status";
+import { isByeRow, isForceFullPeriod, parseLoserFrom } from "./match-status";
 import type { TimeRange } from "./scoring";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 
@@ -481,6 +481,11 @@ export async function detectMatches(
  *
  * 対象は検知できたマッチのみ。VOID と NO_SHOW は含めない
  * (バトルが成立していないので BATTLE 倍率をかける根拠がない)。
+ *
+ * **`rules.forceFullPeriod`(⚠️トラブル対処)が立っている対戦は例外。** 検知区間
+ * (`detectedStartAt`/`detectedEndAt`)を無視し、割り当てた開催日程まるごとを区間にする。
+ * バトル検知が失敗して手動確定した対戦のダイヤ救済に使う(`match-status.ts` の
+ * `isForceFullPeriod` を参照。設定は `route.ts` が FINISHED の対戦にしか許さない)。
  */
 export async function loadBattleRangesByRoom(
   tx: DbClient,
@@ -490,12 +495,11 @@ export async function loadBattleRangesByRoom(
     where: {
       eventId,
       status: { in: ["LIVE", "DETECTED", "FINISHED"] },
-      detectedStartAt: { not: null },
-      detectedEndAt: { not: null },
     },
     select: {
       detectedStartAt: true,
       detectedEndAt: true,
+      rules: true,
       // 倍率区間は**割り当てた日程で切る**。日程の前から始まったバトルの、日程の外の
       // 部分にまでバトル倍率をかけない(勝敗の集計と同じ扱いに揃える)。
       session: { select: { startAt: true, endAt: true } },
@@ -507,14 +511,24 @@ export async function loadBattleRangesByRoom(
 
   const byRoom = new Map<string, TimeRange[]>();
   for (const match of matches) {
-    const start =
-      match.session && match.detectedStartAt! < match.session.startAt
-        ? match.session.startAt
-        : match.detectedStartAt!;
-    const end =
-      match.session && match.detectedEndAt! > match.session.endAt
-        ? match.session.endAt
-        : match.detectedEndAt!;
+    // 日程を持たない対戦(移行前データ)は、通常経路では detectedStartAt/EndAt を日程で
+    // 切れないため候補外。force_full_period でも日程が正本の区間そのものなので同様に扱う。
+    if (!match.session) continue;
+
+    let start: Date;
+    let end: Date;
+    if (isForceFullPeriod(match.rules)) {
+      start = match.session.startAt;
+      end = match.session.endAt;
+    } else {
+      if (!match.detectedStartAt || !match.detectedEndAt) continue;
+      start =
+        match.detectedStartAt < match.session.startAt
+          ? match.session.startAt
+          : match.detectedStartAt;
+      end =
+        match.detectedEndAt > match.session.endAt ? match.session.endAt : match.detectedEndAt;
+    }
     if (start >= end) continue;
     const range: TimeRange = { start, end };
     for (const side of match.sides) {

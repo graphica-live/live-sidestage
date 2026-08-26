@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isByeRow, isReadyForDetection, isStartedMatch } from "./match-status";
+import { isByeRow, isForceFullPeriod, isReadyForDetection, isStartedMatch } from "./match-status";
 
 const progress = (
   status: string,
@@ -85,5 +85,29 @@ describe("isReadyForDetection", () => {
   it("サイドが2つ揃っていなければ対象にしない", () => {
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [] })).toBe(false);
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"]] })).toBe(false);
+  });
+});
+
+describe("isForceFullPeriod", () => {
+  it("forceFullPeriod: true のときだけ true を返す", () => {
+    expect(isForceFullPeriod({ forceFullPeriod: true })).toBe(true);
+    expect(isForceFullPeriod({ forceFullPeriod: false })).toBe(false);
+    expect(isForceFullPeriod({})).toBe(false);
+    expect(isForceFullPeriod(null)).toBe(false);
+    expect(isForceFullPeriod(undefined)).toBe(false);
+    expect(isForceFullPeriod("forceFullPeriod")).toBe(false);
+  });
+
+  it("既存キー(roundLabel/bye/reviewReason)を潰さずに forceFullPeriod だけ見る", () => {
+    const rules = {
+      roundLabel: "1回戦",
+      bye: false,
+      reviewReason: "PARTIAL",
+      forceFullPeriod: true,
+    };
+    expect(isForceFullPeriod(rules)).toBe(true);
+    expect(isByeRow(rules)).toBe(false);
+    expect(rules.roundLabel).toBe("1回戦");
+    expect(rules.reviewReason).toBe("PARTIAL");
   });
 });
