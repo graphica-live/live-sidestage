@@ -33,6 +33,13 @@ type MatchIndex = Map<string, MatchRow>;
 export type SwapSlotRef = { matchId: string; sideIndex: number };
 
 export type SwapMode = {
+  /**
+   * どちらの操作か。`"leaf"` は既存の葉スワップ(subtree swap、中身を交換する)。
+   * `"feeder"` は接続の交換(winner feeder edge swap、中身は変えず勝者の供給元だけ
+   * 交換する)。表示文言とドラッグ中の見た目だけを分ける — ドラッグ&ドロップの
+   * 仕組み自体はどちらも同じ形(掴む・置く・選択・確定)で表現できる。
+   */
+  mode: "leaf" | "feeder";
   /** 掴める枠か(出場者がいて、そのカードがまだ始まっていない) */
   canGrab: (match: MatchRow, sideIndex: number) => boolean;
   /** 置ける枠か。**空き枠も置き先になる**(片道移動 = その枠を不戦勝にする) */
@@ -442,6 +449,17 @@ function MatchCardOrEmpty({
       >
         {MATCH_STATUS_LABELS[match.status] ?? match.status}
       </span>
+      {/* 接続(winnerFeeders)が座標既定を上書きしている枠であることを示す。
+          この座標を結ぶ接続線は元の位置のままなので、実際のフローと食い違う
+          ("表示上の嘘")。線を描き直す代わりに、このバッジで明示する。 */}
+      {match.winnerFeeders && (
+        <span
+          className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-amber-300/90"
+          title="接続が変更されています。この枠に描かれている接続線は実際のフローと異なります。"
+        >
+          接続変更
+        </span>
+      )}
     </div>
   );
 
@@ -562,12 +580,18 @@ function SideRow({
       aria-label={`${match.roundLabel} ${side.empty ? emptyLabel : side.label}`}
       title={
         grabbable
-          ? "ドラッグして入れ替え(スマホは押してから相手の枠を押す)"
+          ? swap.mode === "feeder"
+            ? "ドラッグして接続を交換(スマホは押してから相手の枠を押す)"
+            : "ドラッグして入れ替え(スマホは押してから相手の枠を押す)"
           : acceptsDrop
-            ? "ここへ入れ替える"
+            ? swap.mode === "feeder"
+              ? "ここへ接続を交換する"
+              : "ここへ入れ替える"
             : side.empty
               ? undefined
-              : "この枠は動かせません"
+              : swap.mode === "feeder"
+                ? "この枠の接続は変更できません"
+                : "この枠は動かせません"
       }
       draggable={grabbable}
       onDragStart={(e) => {

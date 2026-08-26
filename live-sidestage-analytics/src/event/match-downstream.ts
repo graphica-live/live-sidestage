@@ -1,6 +1,6 @@
 import type { DbClient } from "./analytics-db";
-import { nextSlot } from "./bracket";
 import { isByeRow, isStartedMatch, parseLoserFrom } from "./match-status";
+import { buildWinnerFeederGraph, targetOf, BracketInconsistentError } from "./winner-feeders";
 
 /**
  * この枠の下流(次のラウンド以降)がすでに始まっているか。**`anyDownstreamStarted()` の
@@ -65,6 +65,16 @@ export async function anyDownstreamStarted(
   const roundCount = Math.max(...all.map((m) => m.round));
   const bySlot = new Map(all.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
 
+  // 勝者辺の解決マップ。`downstreamStarted()` は `advanceBracket()` と同じグラフを見る
+  // 必要がある — ずれると、override先の実際の受け側とは別の(座標既定の)行だけを見て
+  // 誤ってブロック/素通りする(`winner-feeders.ts` 参照)。
+  const feederGraph = buildWinnerFeederGraph(
+    all.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    roundCount
+  );
+  if (!feederGraph.ok) throw new BracketInconsistentError();
+  const graph = feederGraph.graph;
+
   const loserEdges = new Map<string, string[]>();
   for (const match of all) {
     for (const slot of parseLoserFrom(match.rules) ?? []) {
@@ -79,7 +89,7 @@ export async function anyDownstreamStarted(
 
   const downstreamOf = (r: number, p: number): string[] => {
     const keys: string[] = [];
-    const slot = nextSlot(r, p, roundCount);
+    const slot = targetOf(graph, r, p);
     if (slot) keys.push(`${slot.round}:${slot.position}`);
     keys.push(...(loserEdges.get(`${r}:${p}`) ?? []));
     return keys;

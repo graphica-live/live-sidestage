@@ -14,8 +14,16 @@ import {
 import { acquireEventLock } from "./event-lock";
 import { anyDownstreamStarted, downstreamStarted } from "./match-downstream";
 import { advanceBracket } from "./match-results";
-import { isByeRow, isPlainObject, isStartedMatch, parseLoserFrom, parsePlacement } from "./match-status";
+import {
+  isByeRow,
+  isPlainObject,
+  isStartedMatch,
+  parseLoserFrom,
+  parsePlacement,
+  parseWinnerFeeders,
+} from "./match-status";
 import { MUTATION_TX_OPTIONS, reopenAggregation } from "./reopen-aggregation";
+import { buildWinnerFeederGraph, feederOf, type BracketSlot } from "./winner-feeders";
 
 // トーナメント表の組み合わせ変更(スワップ)。表を破棄せずに、勝ち残っている出場者を
 // 別の枠へ移す。
@@ -46,13 +54,18 @@ export type SwapErrorCode =
   | "SLOT_LOCKED"
   | "DOWNSTREAM_STARTED"
   | "SLOT_CHANGED"
-  | "BRACKET_INCONSISTENT";
+  | "BRACKET_INCONSISTENT"
+  | "FEEDER_OVERRIDDEN"
+  | "FEEDER_CHANGED"
+  | "BYE_ROW";
 
 export class BracketSwapError extends Error {
   constructor(
     message: string,
     readonly code: SwapErrorCode,
-    readonly status: number
+    readonly status: number,
+    /** UIが案内に使える追加情報。例: `FEEDER_OVERRIDDEN` のリセット対象行一覧。 */
+    readonly details?: unknown
   ) {
     super(message);
     this.name = "BracketSwapError";
@@ -143,6 +156,21 @@ export async function applyBracketSwap(
       },
     },
   });
+
+  // **既存の葉スワップ(subtree swap)とエッジスワップ(`winnerFeeders` override)は相互排他。**
+  // 葉スワップは座標(`bracketPosition`)を動かすが、override は座標既定を上書きしたまま
+  // 前提にしているため、両方を同時に成立させる整合設計は取らない。判定は「正常に parse
+  // できた override」ではなく、`rules` に生の `winnerFeeders` キーが存在するかどうかで
+  // 行う(fail closed。パース失敗を理由に見落として素通りさせない)。
+  const overriddenMatches = matches.filter((m) => isPlainObject(m.rules) && "winnerFeeders" in m.rules);
+  if (overriddenMatches.length > 0) {
+    throw new BracketSwapError(
+      "組み合わせの接続が変更されているため、この操作は行えません。先に接続をリセットしてください。",
+      "FEEDER_OVERRIDDEN",
+      409,
+      { matchIds: overriddenMatches.map((m) => m.id) }
+    );
+  }
 
   // 本選の行と順位決定戦の行は座標空間を共有しているが、葉の占有パターン交換の
   // 対象は本選だけ。順位決定戦のブロックは after 側で改めて再計算する(下記)。
@@ -696,4 +724,391 @@ async function reconcilePlacementBlocks(
       data: [0, 1].map((sideIndex) => ({ matchId: created.id, sideIndex })),
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// 組み合わせ変更(接続の交換, winner feeder edge swap)
+// ---------------------------------------------------------------------------
+//
+// 上の「葉スワップ」(`applyBracketSwap`)は下流(順位決定戦を含む)が未開始のときしか使えない。
+// 下流がすでに始まっている場合、対戦の中身(参加者・結果)は一切変えず、**まだ実施していない
+// 対戦(target)について、どの座標の勝者がどちらのサイドへ入るか**という接続だけを、
+// `EventMatch.rules.winnerFeeders`(target行が持つ)として明示的に交換する。
+//
+// `loserFrom`(敗者辺、座標参照で順位決定戦の葉が持つ)と同型の設計。座標
+// (`matchId` / `round` / `bracketPosition`)自体は一切動かさないので、`loserFrom`・
+// `realMatchesInRound()` の出力・過去の結果はすべて不変のまま保たれる。
+// 詳細な設計原則は `src/event/CLAUDE.md` の「トーナメント表の組み合わせ変更」を参照。
+
+/** 参加者登録の上限(200人・チーム100組、`validation.ts`)から見て十分すぎる安全マージン。 */
+const MAX_FEEDER_PARTICIPANTS = 64;
+
+export type FeederSwapSlot = {
+  matchId: string;
+  sideIndex: number;
+  /**
+   * 楽観的排他。**座標だけでは不十分**(round=1の葉スワップは matchId・座標を変えず
+   * 中身だけ変えるため)。ロック内で解決した現在のフィーダーの `{matchId, participantIds}`
+   * まで含めて照合する。
+   */
+  expectedFeeder: {
+    round: number;
+    position: number;
+    matchId: string;
+    participantIds: string[];
+  };
+};
+
+/** `rules` に `winnerFeeders` を上書きしてマージする。他のキー(`roundLabel` 等)は保持する。 */
+function mergeWinnerFeeders(
+  rules: Prisma.JsonValue,
+  winnerFeeders: { slots: [BracketSlot, BracketSlot]; changedAt: string }
+): Prisma.InputJsonObject {
+  const base = isPlainObject(rules) ? { ...rules } : {};
+  return { ...base, winnerFeeders } as Prisma.InputJsonObject;
+}
+
+/** 行から `winnerFeeders` キーを取り除く。他のキーは保持する。 */
+function removeWinnerFeeders(rules: Prisma.JsonValue): Prisma.InputJsonObject {
+  const base = isPlainObject(rules) ? { ...rules } : {};
+  delete base.winnerFeeders;
+  return base as Prisma.InputJsonObject;
+}
+
+/** `applyWinnerFeederSwap()` のトランザクションラッパー(`swapBracketSlots` と同じ形)。 */
+export async function swapWinnerFeeders(
+  eventId: string,
+  a: FeederSwapSlot,
+  b: FeederSwapSlot
+): Promise<void> {
+  await prisma.$transaction(
+    async (tx) => applyWinnerFeederSwap(tx, eventId, a, b),
+    MUTATION_TX_OPTIONS
+  );
+}
+
+/** `applyWinnerFeederReset()` のトランザクションラッパー。 */
+export async function resetWinnerFeeders(eventId: string, matchIds?: string[]): Promise<void> {
+  await prisma.$transaction(
+    async (tx) => applyWinnerFeederReset(tx, eventId, matchIds),
+    MUTATION_TX_OPTIONS
+  );
+}
+
+/**
+ * 接続の交換(winner feeder edge swap)。呼び出し側のトランザクションから使う。
+ *
+ * ロックはこの関数が先頭で取る(`applyBracketSwap` / `[matchId]` API と同じ順序)。
+ */
+export async function applyWinnerFeederSwap(
+  tx: DbClient,
+  eventId: string,
+  a: FeederSwapSlot,
+  b: FeederSwapSlot
+): Promise<void> {
+  await acquireEventLock(tx, eventId);
+
+  const event = await tx.event.findUnique({ where: { id: eventId }, select: { format: true } });
+  if (!event) throw new BracketSwapError("イベントが見つかりません。", "SLOT_NOT_FOUND", 404);
+  if (event.format !== "TOURNAMENT") {
+    throw new BracketSwapError(
+      "組み合わせを変更できるのはバトルトーナメントだけです。",
+      "NOT_TOURNAMENT",
+      400
+    );
+  }
+
+  for (const slot of [a, b]) {
+    if (slot.sideIndex !== 0 && slot.sideIndex !== 1) {
+      throw new BracketSwapError("対戦の枠が見つかりません。", "SLOT_NOT_FOUND", 404);
+    }
+    if (slot.expectedFeeder.participantIds.length > MAX_FEEDER_PARTICIPANTS) {
+      throw new BracketSwapError("対戦の枠が見つかりません。", "SLOT_NOT_FOUND", 404);
+    }
+  }
+
+  const matches: MatchRow[] = await tx.eventMatch.findMany({
+    where: { eventId },
+    orderBy: [{ round: "asc" }, { bracketPosition: "asc" }],
+    select: {
+      id: true,
+      round: true,
+      bracketPosition: true,
+      status: true,
+      winnerSideId: true,
+      winnerDecidedBy: true,
+      rules: true,
+      sessionId: true,
+      sides: {
+        orderBy: { sideIndex: "asc" },
+        select: {
+          id: true,
+          sideIndex: true,
+          teamId: true,
+          participants: { select: { participantId: true } },
+        },
+      },
+    },
+  });
+
+  const mainRows = matches.filter((m) => !parsePlacement(m.rules));
+  const roundCount = mainRows.length > 0 ? Math.max(...mainRows.map((m) => m.round)) : 0;
+
+  const feederGraphResult = buildWinnerFeederGraph(
+    mainRows.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    roundCount
+  );
+  if (!feederGraphResult.ok) {
+    throw new BracketSwapError(
+      "トーナメント表の構造が壊れているため入れ替えられません。表を破棄して作り直してください。",
+      "BRACKET_INCONSISTENT",
+      409
+    );
+  }
+  const graph = feederGraphResult.graph;
+
+  const byId = new Map(mainRows.map((m) => [m.id, m]));
+  const bySlotKey = new Map(mainRows.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
+
+  const resolveTarget = (slot: FeederSwapSlot): MatchRow => {
+    const match = byId.get(slot.matchId);
+    if (!match) throw new BracketSwapError("対戦の枠が見つかりません。", "SLOT_NOT_FOUND", 404);
+    return match;
+  };
+
+  const targetA = resolveTarget(a);
+  const targetB = resolveTarget(b);
+
+  if (targetA.id === targetB.id && a.sideIndex === b.sideIndex) {
+    throw new BracketSwapError("同じ枠です。", "SAME_SLOT", 400);
+  }
+  if (targetA.round !== targetB.round) {
+    throw new BracketSwapError(
+      "入れ替えられるのは同じラウンドの枠どうしだけです。",
+      "ROUND_MISMATCH",
+      400
+    );
+  }
+  if (targetA.round < 2) {
+    throw new BracketSwapError(
+      "1回戦の枠は接続を交換できません。組み合わせの入れ替えを使ってください。",
+      "ROUND_MISMATCH",
+      400
+    );
+  }
+
+  // **両対象が非bye行であること(fable-expert再レビューで指摘されたHigh事項)。**
+  // 動的bye行は `isStartedMatch()` が常に false を返すため「未実施」ガードだけでは
+  // 素通りしてしまうが、bye行は構造的に片側にしかフィーダーを持たず(相手側は永久に空)、
+  // 厳密パース仕様(非null固定2要素)と原理的に両立しない。この除外は同時に、bye行を
+  // 透過した下流へ `changedAt` が伝播しない問題(High2)も解消する — 対象が非bye行に
+  // 限定されるので、決着時刻が必ず `changedAt` より後になり下流は再帰的に安全になる。
+  for (const target of [targetA, targetB]) {
+    const isBye = isByeRow(target.rules) || target.winnerDecidedBy === "BYE";
+    if (isBye) {
+      throw new BracketSwapError("不戦勝の枠は接続を交換できません。", "BYE_ROW", 400);
+    }
+    if (isStartedMatch({ status: target.status, winnerDecidedBy: target.winnerDecidedBy, isBye })) {
+      throw new BracketSwapError(
+        "すでに始まっている対戦の接続は変更できません。",
+        "SLOT_LOCKED",
+        409
+      );
+    }
+    if (target.status === "VOID") {
+      throw new BracketSwapError(
+        "無効にした対戦は接続を交換できません。先に検知をやり直してください。",
+        "SLOT_LOCKED",
+        409
+      );
+    }
+  }
+
+  /**
+   * 現在のsourceを解決し、bye行でないこと・楽観的排他(`expectedFeeder`)を確認する。
+   * 指紋は座標だけでなく `{matchId, participantIds}` まで含める — round=1 の葉スワップ
+   * (`swapSideContents`)は matchId・座標を変えず中身だけ変えるため、座標だけの比較では
+   * その競合を検知できない(fable-expert再レビューで指摘)。
+   */
+  const resolveCurrentSource = (
+    target: MatchRow,
+    sideIndex: number,
+    expected: FeederSwapSlot["expectedFeeder"]
+  ): BracketSlot => {
+    const source = feederOf(graph, target.round, target.bracketPosition, sideIndex);
+    if (!source) throw new BracketSwapError("対戦の枠が見つかりません。", "SLOT_NOT_FOUND", 404);
+
+    const sourceMatch = bySlotKey.get(`${source.round}:${source.position}`);
+    if (!sourceMatch) {
+      throw new BracketSwapError(
+        "トーナメント表の構造が壊れているため入れ替えられません。表を破棄して作り直してください。",
+        "BRACKET_INCONSISTENT",
+        409
+      );
+    }
+    const sourceIsBye = isByeRow(sourceMatch.rules) || sourceMatch.winnerDecidedBy === "BYE";
+    if (sourceIsBye) {
+      throw new BracketSwapError("不戦勝の枠からの接続は交換できません。", "BYE_ROW", 400);
+    }
+
+    const currentParticipantIds = sourceMatch.sides.flatMap((s) =>
+      s.participants.map((p) => p.participantId)
+    );
+    const currentIds = new Set(currentParticipantIds);
+    const expectedIds = new Set(expected.participantIds);
+    const sameParticipants =
+      currentIds.size === expectedIds.size && [...currentIds].every((id) => expectedIds.has(id));
+
+    if (
+      sourceMatch.id !== expected.matchId ||
+      source.round !== expected.round ||
+      source.position !== expected.position ||
+      !sameParticipants
+    ) {
+      throw new BracketSwapError(
+        "この画面を開いた後に対戦表が変わりました。最新の状態を確認してください。",
+        "FEEDER_CHANGED",
+        409
+      );
+    }
+
+    return source;
+  };
+
+  const sourceA = resolveCurrentSource(targetA, a.sideIndex, a.expectedFeeder);
+  const sourceB = resolveCurrentSource(targetB, b.sideIndex, b.expectedFeeder);
+
+  // 下流(順位決定戦を含む)がすでに始まっていないか確認する。
+  if (
+    await anyDownstreamStarted(tx, eventId, [
+      { round: targetA.round, position: targetA.bracketPosition },
+      { round: targetB.round, position: targetB.bracketPosition },
+    ])
+  ) {
+    throw new BracketSwapError(
+      "下流の対戦(順位決定戦を含む)がすでに始まっているため、この接続は変更できません。",
+      "DOWNSTREAM_STARTED",
+      409
+    );
+  }
+
+  // 書き込み: 両targetの `winnerFeeders` をtranspositionで合成する。**「既定座標」ではなく
+  // `WinnerFeederGraph` で解決した"現在の"値から合成する**(fable-expert再レビューで指摘) —
+  // 対象スロットのもう一方のサイドが過去のスワップで既にoverride済みの場合、既定座標を
+  // 書くとその変更が黙って巻き戻るため。**正規化(既定と一致してもキー削除)はしない**
+  // (誤検知リスク期間の記録である `changedAt` を失わないため)。
+  const changedAt = new Date().toISOString();
+
+  const currentSlotsOf = (target: MatchRow): [BracketSlot, BracketSlot] => {
+    const s0 = feederOf(graph, target.round, target.bracketPosition, 0);
+    const s1 = feederOf(graph, target.round, target.bracketPosition, 1);
+    if (!s0 || !s1) {
+      throw new BracketSwapError(
+        "トーナメント表の構造が壊れているため入れ替えられません。表を破棄して作り直してください。",
+        "BRACKET_INCONSISTENT",
+        409
+      );
+    }
+    return [s0, s1];
+  };
+
+  const nextA = currentSlotsOf(targetA);
+  nextA[a.sideIndex] = sourceB;
+  const nextB = currentSlotsOf(targetB);
+  nextB[b.sideIndex] = sourceA;
+
+  await tx.eventMatch.update({
+    where: { id: targetA.id },
+    data: { rules: mergeWinnerFeeders(targetA.rules, { slots: nextA, changedAt }) },
+  });
+  await tx.eventMatch.update({
+    where: { id: targetB.id },
+    data: { rules: mergeWinnerFeeders(targetB.rules, { slots: nextB, changedAt }) },
+  });
+
+  // 勝者を下流へ送り直す(このスワップでは中身は変わらないので通常は無変化だが、
+  // 既存のスワップ操作と手順を揃える)。
+  await advanceBracket(tx, eventId);
+  await reopenAggregation(tx, eventId);
+}
+
+/**
+ * 接続のリセット。`winnerFeeders` override を持つ行から、キー自体を削除して
+ * `nextSlot()` の既定座標へ完全に戻す。
+ *
+ * **葉スワップが `FEEDER_OVERRIDDEN` で拒否されたときの唯一の解除経路**(通常の
+ * transposition では `winnerFeeders` が残り続けるため、元の組み合わせへ戻しても
+ * 葉スワップは解禁されない。fable-expert再レビューで指摘されたHigh事項)。
+ *
+ * `matchIds` を省略するとイベント内の override 行すべてを対象にする。
+ */
+export async function applyWinnerFeederReset(
+  tx: DbClient,
+  eventId: string,
+  matchIds?: string[]
+): Promise<void> {
+  await acquireEventLock(tx, eventId);
+
+  const event = await tx.event.findUnique({ where: { id: eventId }, select: { format: true } });
+  if (!event) throw new BracketSwapError("イベントが見つかりません。", "SLOT_NOT_FOUND", 404);
+  if (event.format !== "TOURNAMENT") {
+    throw new BracketSwapError(
+      "組み合わせを変更できるのはバトルトーナメントだけです。",
+      "NOT_TOURNAMENT",
+      400
+    );
+  }
+
+  const matches: MatchRow[] = await tx.eventMatch.findMany({
+    where: { eventId },
+    select: {
+      id: true,
+      round: true,
+      bracketPosition: true,
+      status: true,
+      winnerSideId: true,
+      winnerDecidedBy: true,
+      rules: true,
+      sessionId: true,
+      sides: {
+        orderBy: { sideIndex: "asc" },
+        select: {
+          id: true,
+          sideIndex: true,
+          teamId: true,
+          participants: { select: { participantId: true } },
+        },
+      },
+    },
+  });
+
+  const targets = matches.filter((m) => {
+    if (!isPlainObject(m.rules) || !("winnerFeeders" in m.rules)) return false;
+    if (matchIds && !matchIds.includes(m.id)) return false;
+    return true;
+  });
+  if (targets.length === 0) return;
+
+  // v1: 対象行が未開始のときに限りリセットを許可する(開始済みは明示的に拒否。
+  // plan の「開始済みの場合の扱い」注記のうち安全側を採用)。
+  for (const target of targets) {
+    const isBye = isByeRow(target.rules) || target.winnerDecidedBy === "BYE";
+    if (isStartedMatch({ status: target.status, winnerDecidedBy: target.winnerDecidedBy, isBye })) {
+      throw new BracketSwapError(
+        "すでに始まっている対戦の接続はリセットできません。",
+        "SLOT_LOCKED",
+        409
+      );
+    }
+  }
+
+  for (const target of targets) {
+    await tx.eventMatch.update({
+      where: { id: target.id },
+      data: { rules: removeWinnerFeeders(target.rules) },
+    });
+  }
+
+  await advanceBracket(tx, eventId);
+  await reopenAggregation(tx, eventId);
 }

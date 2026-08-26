@@ -3,7 +3,7 @@ import { findLiveRoomIds } from "./analytics-db";
 import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-breakdown";
 import { rankByLife } from "./deathmatch";
-import { parsePlacement } from "./match-status";
+import { parsePlacement, parseWinnerFeeders } from "./match-status";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -161,6 +161,11 @@ export type BracketMatchDto = {
    */
   placement: { depth: number; rank: number } | null;
   status: string;
+  /**
+   * 組み合わせ変更(接続の交換)で座標既定を上書きしている枠か。**閲覧者には座標の詳細は
+   * 出さず、真偽値だけ**(この枠に描かれている接続線は実際のフローと異なる、という注記に使う)。
+   */
+  hasFeederOverride: boolean;
   /** この対戦を行う開催日程の表示名(「1日目」「予選」など)。対戦に個別の時刻は無い */
   sessionLabel: string;
   detectedStartAt: string | null;
@@ -256,6 +261,10 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           : `${m.round}回戦`,
       placement: parsePlacement(m.rules),
       status: m.status === "NEEDS_REVIEW" ? "LIVE" : m.status,
+      hasFeederOverride: (() => {
+        const parsed = parseWinnerFeeders(m.rules);
+        return !!parsed && parsed.ok;
+      })(),
       sessionLabel: sessionLabels.get(m.sessionId) ?? "",
       detectedStartAt: m.detectedStartAt?.toISOString() ?? null,
       winnerDecidedBy: m.winnerDecidedBy,

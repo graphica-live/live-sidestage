@@ -662,6 +662,111 @@ UI 側（`AdminBracketTree.tsx`）は編集モードのとき **不戦勝行も�
 `<button>` から `<div>` に切り替える（入れ子のドラッグと競合するため）。**行は増やさない**
 （`CARD_H` 固定が幾何の成立条件）。
 
+### 接続の交換（winner feeder edge swap）— 下流が始まっていても組み合わせを変える
+
+上のスワップ（葉スワップ / subtree swap）は、入れ替え対象の下流（次ラウンド・順位決定戦）が
+**すでに始まっていると使えない**。「下流ノードを丸ごと座標移動する」拡張を検討したが、
+**数学的に不成立と判明した**：順位決定戦（`realMatchesInRound()`）は複数のブロック（東西の
+準決勝など）の結果が合流したものなので、片方のブロックだけを座標移動すると、もう片方の
+参加者の結果が行き場を失う（実データで、動かそうとしたブロック以外の参加者の結果が同じ
+順位決定戦に混在していることを確認済み）。
+
+代わりに、**「まだ対戦していない対戦（round ≥ 2）について、勝者の供給元（フィーダー）の
+接続だけを交換する」**方式を採る。過去の結果（score/winner/loser）・`matchId`・
+`round`/`bracketPosition`・`loserFrom`・`realMatchesInRound()` の出力は一切変更しない。
+
+**構造（行の存在・不戦勝・順位決定戦トポロジー）は座標が正本。フロー（勝者の転送先）は
+座標既定 + `winnerFeeders` によるoverride、という新しい原則で読むこと。** これは
+`loserFrom`（座標で表現できない敗者辺を rules に明示する前例）の延長で、原則の放棄ではない。
+
+`src/event/winner-feeders.ts`（純粋関数）と `bracket-swap-apply.ts` の
+`swapWinnerFeeders()` / `resetWinnerFeeders()`、`POST /api/events/{id}/matches/swap`
+（`mode: "feeder"` / `"feeder-reset"`）。管理画面の「接続を交換」で編集モードに入る。
+
+**データモデル**: 受け側（target）の行の `EventMatch.rules.winnerFeeders` に
+`{ slots: [BracketSlot, BracketSlot], changedAt: ISO8601 }` を持たせる。**`loserFrom` と違い
+厳密パース**（非null固定2要素）— 対象を非bye行に限定しているので null 要素を許す必要がない。
+キーが無い行は従来通り `nextSlot()` の既定計算にフォールバックする。**不正な形式が見つかったら
+`parseLoserFrom()` のようにフォールバックせず `BRACKET_INCONSISTENT` で止める（fail closed）。**
+
+**勝者辺を座標から読む箇所は3つに閉じている。すべて `winner-feeders.ts` の
+`buildWinnerFeederGraph()` が返す `WinnerFeederGraph` を経由すること**（個別に
+「override優先、なければnextSlot」を書き散らすと、追従漏れが「下流巻き戻り」「誤ブロック/
+素通り」「誤検知（3位決定戦で過去に実際に起きたバグと同型）」に直結する）:
+
+- `match-results.ts` の `advanceBracket()`（勝者辺の転送先）
+- `match-downstream.ts` の `anyDownstreamStarted()`（下流判定）
+- `battles.ts` の `upstreamSlots()` / `feederDecidedAt`（検知の feeder 制約）
+
+グラフ構築（`buildWinnerFeederGraph()`）は次を検出したら `{ ok: false }`（呼び出し側は
+`BracketInconsistentError` を投げる）: override の構文不正・`source.round !== target.round-1`・
+source不在（override が実在しない座標を指す）・全単射崩壊（複数targetが同じsourceを指す）・
+孤児source（実在行の勝者辺がどのtargetにも向かわない）。**既定計算（override無し）で
+「誰も来ない」座標（段階的不戦勝方式の bye 行）に当たった場合は source不在エラーにせず
+`null` として扱う** — override はこの読み替えをしない（override 対象は非bye行に限定される
+ため、override が「誰も来ない」座標を指すのは常に異常データ）。
+
+**対象は非bye行のみ。** `isStartedMatch()` は動的bye行に常に `false` を返すため、「未実施
+であること」だけのガードでは bye行（構造的に片側にしかフィーダーを持たない）が対象に紛れ込み、
+厳密パース仕様（非null固定2要素）と原理的に両立しない。**target・source の両方について
+bye行を除外する。** この除外により、bye行を透過した下流へ `changedAt`（下記）が伝播しない
+問題も同時に回避される — 実試合の対象行は決着時刻が必ず `changedAt` より後になるため、
+下流は再帰的に安全になる。
+
+**検知の誤爆対策（`changedAt`）。** 検知下限（`feederDecidedAt`）は元々「フィーダーの決着
+時刻」だけを見ていたが、これだけでは不十分（例: 20:00に準々決勝決着 → 20:10に無関係な
+練習バトル → 20:30に接続変更、という順序だと20:10のバトルが誤って新ペアの結果として検知
+される）。検知下限は **`max(各feederの決着時刻, winnerFeeders.changedAt)`**（`battles.ts`）。
+**正規化（全エントリが座標既定と一致してもキーを削除しない）** — `changedAt` はこの
+誤検知リスク期間の記録そのものなので、通常のtranspositionでは残し続ける。
+
+**楽観的排他は座標だけでは不十分。** 交換対象は参加者ではなくフィーダーの接続なので、
+両sourceが未決着（参加者集合が空）なら `expectedParticipantIds` 相当の比較は意味をなさない。
+`expectedFeeder: { round, position, matchId, participantIds }` を、そのフィーダー行の
+**`{matchId, 現在のparticipantIds}` まで含む指紋**にする — round=1 の葉スワップ
+（`swapSideContents`。matchId・座標は変えず中身だけ変える）との競合を、座標だけでは
+検知できないため。
+
+**既存の葉スワップ（subtree swap）と接続の交換は相互排他。** 判定は「正常にparseできた
+override」ではなく、`rules` に**生の** `winnerFeeders` キーが存在するかどうかで行う
+（fail closed）。拒否コードは `FEEDER_OVERRIDDEN`。**明示的な「接続をリセットする」操作
+（`resetWinnerFeeders()`）だけが `winnerFeeders` キー自体を削除する** — 通常の
+transposition ではキーが残り続ける（`changedAt` を保存するため）ので、「元の組み合わせへ
+戻す」だけでは葉スワップは解禁されない。
+
+**書き込みは同一ラウンド内の2つのtargetスロット間のtranspositionのみ。** 各スロットの
+feederはちょうど1本・各sourceの勝者辺はちょうど1本という全単射が構成的に保たれ、行の存在・
+不戦勝配置・順位決定戦トポロジーへの影響がない。**書き込む `slots` は「既定座標」ではなく
+`WinnerFeederGraph` で解決した"現在の"値から合成する** — 対象スロットの一方が過去のスワップで
+既にoverride済みの場合、既定座標を書くとその変更が黙って巻き戻るため。
+
+**ロック順序・締めは葉スワップと同じ。** `acquireEventLock` を先頭に取り、種目・進行状態・
+構造の検証、`anyDownstreamStarted()` も全部その内側で行い、最後に `advanceBracket()` →
+`reopenAggregation()`。
+
+**集計ワーカーのfail-closedはすでに `aggregateDueEvents()`（`aggregate.ts`）が担保している。**
+「1イベントの失敗で全体を止めない」try/catch が既にイベント単位でループしているので、
+`BracketInconsistentError` が発生しても該当イベントだけが `failed` にカウントされ、他の
+イベントの集計は継続する。新しい対応は不要（実装時に確認済み）。
+
+**デプロイは2段階。feature flag は既定オフ（`EVENT_WINNER_FEEDER_SWAP=1` で有効化）。**
+「`winnerFeeders` 未設定なら従来動作」という後方互換は**新コードが旧データを読む場合のみ**
+保証される。ローリングデプロイ中に新しい書き込み経路（Web）が `winnerFeeders` を書けるように
+なった一方で、まだ更新されていない旧 `event-worker` が同じデータを読むと、新キーを無視して
+固定 `nextSlot()` で参加者を復元し、誤った組み合わせを検知・確定してしまう（advisory lock は
+新旧バイナリの逐次実行を防げない — 既存の「ローリングデプロイ中の新旧event-worker混在」
+[下記のバトル検知セクション参照]と同型のリスク）。手順: ① `WinnerFeederGraph` を読む
+reader（Web・event-worker）を先に全サービスへデプロイ、flag はオフのまま ② 全サービスの
+更新を確認 ③ writer（API）とUIを flag で有効化。**`winnerFeeders` を持つ行が1件でも存在する
+状態での旧バージョンへのロールバックは禁止** — 必要なら先に `resetWinnerFeeders()` で
+明示的にクリアする（開始済みの対戦のクリアは `blocked` 警告が毎周出る可能性があるが、
+データは破壊されない）。
+
+UI（`AdminBracketTree.tsx` / 公開ページの `BracketTree.tsx`）は、接続線自体を固定座標から
+直接計算しているため、override があると実際のフローと線が食い違う（"表示上の嘘"になる）。
+**線を描き直す代わりに、override されている枠に小さいバッジ/マーカーを付けて明示する**
+（管理側は「接続変更」バッジ、公開側は行を増やさない小さいドット。`CARD_H` 固定は維持）。
+
 ### 順位決定戦は本選と同じ座標空間に埋め込んである
 
 3位決定戦・5位決定戦などのブロック（`buildPlacementBlocks()`、`src/event/bracket.ts`）は、

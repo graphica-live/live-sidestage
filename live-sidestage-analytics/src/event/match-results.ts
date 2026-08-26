@@ -1,5 +1,4 @@
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
-import { nextSlot } from "./bracket";
 import { MANUAL_DECISIONS } from "./match-detect";
 import { isByeRow, isStartedMatch, parseLoserFrom } from "./match-status";
 import { intersectWindows, type EventWindow } from "./sessions";
@@ -9,6 +8,9 @@ import {
   scaledPoints,
   type MultiplierInput,
 } from "./scoring";
+import { buildWinnerFeederGraph, targetOf, BracketInconsistentError } from "./winner-feeders";
+
+export { BracketInconsistentError };
 
 // 検知したバトルの勝敗確定と、トーナメント表の進行。
 //
@@ -222,6 +224,15 @@ export async function advanceBracket(
   const roundCount = Math.max(...fresh.map((m) => m.round));
   const slotIndex = new Map(fresh.map((m) => [`${m.round}:${m.bracketPosition}`, m]));
 
+  // 勝者辺の解決マップ。`winnerFeeders` override があればそちらを、無ければ `nextSlot()` の
+  // 既定座標を使う(`winner-feeders.ts` 参照)。壊れていたら fail closed で止める。
+  const feederGraph = buildWinnerFeederGraph(
+    fresh.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    roundCount
+  );
+  if (!feederGraph.ok) throw new BracketInconsistentError();
+  const graph = feederGraph.graph;
+
   type FreshMatch = (typeof fresh)[number];
   type Transfer = {
     target: FreshMatch;
@@ -347,9 +358,9 @@ export async function advanceBracket(
   for (const match of fresh) {
     const transfers: Transfer[] = [];
 
-    // 勝者辺。`nextSlot()` の座標だけで決まる（順位決定戦ブロックも同じ座標空間なので
-    // ブロック内の進行はここで一緒に処理される）。
-    const slot = nextSlot(match.round, match.bracketPosition, roundCount);
+    // 勝者辺。既定は `nextSlot()` の座標(順位決定戦ブロックも同じ座標空間なので
+    // ブロック内の進行はここで一緒に処理される)、`winnerFeeders` override があればそちら。
+    const slot = targetOf(graph, match.round, match.bracketPosition);
     if (slot) {
       const target = slotIndex.get(`${slot.round}:${slot.position}`);
       const targetSide = target?.sides.find((s) => s.sideIndex === slot.sideIndex);

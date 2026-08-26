@@ -7,7 +7,7 @@ import { parseBracketMethod, parsePlacementDepth } from "@/event/bracket-rules";
 import { defaultSeedOrder } from "@/event/tournament";
 import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score";
 import { parseDeathmatchRules } from "@/event/deathmatch";
-import { isByeRow, isForceFullPeriod, parsePlacement } from "@/event/match-status";
+import { isByeRow, isForceFullPeriod, parsePlacement, parseWinnerFeeders } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
@@ -177,6 +177,13 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     // rules を丸ごとクライアントへ流さず、要る値だけ渡す。
     isBye: isByeRow(m.rules),
     placement: parsePlacement(m.rules),
+    // 組み合わせ変更(接続の交換)で座標既定を上書きしている場合だけ値を持つ。
+    // 不正な形式(ok:false)はここでは表示に倒さず null にする — 一覧が壊れるより、
+    // バッジが出ないだけの方が安全(実体の異常検知は書き込み系のfail closedが担う)。
+    winnerFeeders: (() => {
+      const parsed = parseWinnerFeeders(m.rules);
+      return parsed && parsed.ok ? parsed.value : null;
+    })(),
     // バトルスコアが出るはずの対戦か。**上の `filter` と同じ条件にする** — 条件がずれると、
     // そもそも問い合わせていない対戦にまで「未取得」と出る。
     battleScoreExpected: m.detectedBattleId !== null && canShowTiktokScore(m, "admin"),
@@ -237,6 +244,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           rules={parseDeathmatchRules(event.rules)}
           bracketMethod={parseBracketMethod(event.rules)}
           eventPlacementDepth={parsePlacementDepth(event.rules)}
+          feederSwapEnabled={process.env.EVENT_WINNER_FEEDER_SWAP === "1"}
         />
       </div>
 

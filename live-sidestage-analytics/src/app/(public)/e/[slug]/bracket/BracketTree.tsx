@@ -567,8 +567,20 @@ function MatchCard({
           mirror ? "flex-row-reverse" : ""
         }`}
       >
-        {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。 */}
-        <span className="shrink-0 truncate">{match.sessionLabel}</span>
+        {/* 対戦に個別の時刻は無い。行を増やさずに日程名だけ出す(カード高さは据え置き)。
+            組み合わせ変更(接続の交換)で座標既定を上書きしている枠には、行を増やさず
+            小さいマーカーだけを添える — この枠に描かれている接続線は実際のフローと
+            異なる("表示上の嘘")ため(`src/event/CLAUDE.md` 参照)。 */}
+        <span className="flex min-w-0 shrink-0 items-center gap-1 truncate">
+          {match.hasFeederOverride && (
+            <span
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+              title="接続が変更されている枠です。このカードに描かれている接続線は実際のフローと異なります。"
+              aria-label="接続変更あり"
+            />
+          )}
+          {match.sessionLabel}
+        </span>
         <span
           className={`truncate font-semibold ${isLive ? "text-red-400" : decided ? "text-brand" : ""}`}
         >
