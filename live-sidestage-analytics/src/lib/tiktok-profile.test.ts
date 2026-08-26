@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   USER_NOT_FOUND_STATUS_CODE,
   classifyAccountExistence,
+  extractVerifiedNickname,
   isAllowedAvatarUrl,
   parseProfileResponse,
 } from "./tiktok-profile";
@@ -213,6 +214,53 @@ describe("classifyAccountExistence", () => {
   it("想定外の形はすべて判定不能にする", () => {
     for (const body of [null, undefined, "<html>", 123, {}, { statusCode: 0 }, { statusCode: 0, data: {} }, { statusCode: 0, data: { user: null } }]) {
       expect(classifyAccountExistence(body, "x")).toBe("UNVERIFIED");
+    }
+  });
+});
+
+describe("extractVerifiedNickname", () => {
+  it("実在確認と同じ応答から nickname を取り出す(avatar の有無に無関係)", () => {
+    // avatar を一切含まない応答でも取れる — parseProfileResponse とは違い、
+    // avatar URL の allowlist 検証を経由しないことがここでの要点。
+    const body = { statusCode: 0, data: { user: { uniqueId: "tiktok", nickname: "TikTok" } } };
+    expect(extractVerifiedNickname(body, "tiktok")).toBe("TikTok");
+  });
+
+  it("前後の空白を trim する", () => {
+    const body = { statusCode: 0, data: { user: { uniqueId: "x", nickname: "  だれか  " } } };
+    expect(extractVerifiedNickname(body, "x")).toBe("だれか");
+  });
+
+  it("nickname が空・空白のみ・欠損なら null", () => {
+    for (const nickname of ["", "   ", undefined, null, 123]) {
+      const body = { statusCode: 0, data: { user: { uniqueId: "x", nickname } } };
+      expect(extractVerifiedNickname(body, "x")).toBeNull();
+    }
+  });
+
+  it("statusCode が 0 でなければ null(実在確認と矛盾する応答は信用しない)", () => {
+    const body = { statusCode: 10221, data: { user: { uniqueId: "x", nickname: "だれか" } } };
+    expect(extractVerifiedNickname(body, "x")).toBeNull();
+  });
+
+  it("uniqueId が別人なら null(parseProfileResponse と同じ照合方針)", () => {
+    const body = { statusCode: 0, data: { user: { uniqueId: "someone_else", nickname: "だれか" } } };
+    expect(extractVerifiedNickname(body, "target_user")).toBeNull();
+  });
+
+  it("uniqueId の大文字小文字は区別しない", () => {
+    const body = { statusCode: 0, data: { user: { uniqueId: "Target_User", nickname: "だれか" } } };
+    expect(extractVerifiedNickname(body, "target_user")).toBe("だれか");
+  });
+
+  it("uniqueId がレスポンスに無ければ照合しない", () => {
+    const body = { statusCode: 0, data: { user: { nickname: "だれか" } } };
+    expect(extractVerifiedNickname(body, "target_user")).toBe("だれか");
+  });
+
+  it("想定外の形はすべて null", () => {
+    for (const body of [null, undefined, "<html>", 123, {}, { statusCode: 0 }, { statusCode: 0, data: {} }, { statusCode: 0, data: { user: null } }]) {
+      expect(extractVerifiedNickname(body, "x")).toBeNull();
     }
   });
 });

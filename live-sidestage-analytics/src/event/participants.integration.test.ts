@@ -2,7 +2,7 @@
 import { describe, it, expect, afterAll, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { ExistenceChecker } from "@/lib/tiktok-existence";
-import type { AccountExistence } from "@/lib/tiktok-profile";
+import type { AccountExistence, AccountExistenceCheck } from "@/lib/tiktok-profile";
 import { ensureRoomForEvent } from "@/lib/tiktok-room";
 import { ParticipantError, registerParticipant } from "./participants";
 
@@ -13,14 +13,29 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdTiktokIds: string[] = [];
 
-/** 判定を決め打ちする checker。呼び出し回数を数える。 */
+/** 判定を決め打ちする checker。nickname は null。呼び出し回数を数える。 */
 function stubChecker(verdict: AccountExistence): ExistenceChecker & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
     async check(tiktokId: string) {
       calls.push(tiktokId);
-      return verdict;
+      return { verdict, nickname: null };
+    },
+    size: () => 0,
+  };
+}
+
+/** verdict と nickname を両方決め打ちする checker。 */
+function stubCheckerWithNickname(
+  check: AccountExistenceCheck
+): ExistenceChecker & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    async check(tiktokId: string) {
+      calls.push(tiktokId);
+      return check;
     },
     size: () => 0,
   };
@@ -153,6 +168,103 @@ describe("registerParticipant の実在確認", () => {
   });
 });
 
+describe("registerParticipant の表示名フォールバック", () => {
+  it("未入力かつ実在確認でニックネームが取れたら、それを表示名にする", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+
+    const result = await registerParticipant(
+      { eventId: event.id, rawTiktokId: tiktokId },
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者" }) }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe("テスト配信者");
+  });
+
+  it("主催者が表示名を明示したら、ニックネームが取れても明示側を優先する", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+
+    const result = await registerParticipant(
+      {
+        eventId: event.id,
+        rawTiktokId: tiktokId,
+        displayName: "主催者が入れた名前",
+      },
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者" }) }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe("主催者が入れた名前");
+  });
+
+  it("ニックネームが取れなければ TikTok ID にフォールバックする(UNVERIFIED)", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+
+    const result = await registerParticipant(
+      { eventId: event.id, rawTiktokId: tiktokId },
+      { checker: stubChecker("UNVERIFIED") }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe(tiktokId);
+  });
+
+  it("kill switch で実在確認自体を止めていても TikTok ID にフォールバックする", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+
+    const result = await registerParticipant(
+      { eventId: event.id, rawTiktokId: tiktokId },
+      { checker: stubChecker("MISSING"), existenceDisabled: true }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe(tiktokId);
+  });
+
+  it("表示名の上限(60文字)を超えるニックネームは採用せず TikTok ID にフォールバックする", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+    const longNickname = "あ".repeat(61);
+
+    const result = await registerParticipant(
+      { eventId: event.id, rawTiktokId: tiktokId },
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: longNickname }) }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe(tiktokId);
+  });
+
+  it("改行を含むニックネームは採用せず TikTok ID にフォールバックする", async () => {
+    const event = await createEvent();
+    const tiktokId = testTiktokId();
+
+    const result = await registerParticipant(
+      { eventId: event.id, rawTiktokId: tiktokId },
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "改行\n入り" }) }
+    );
+
+    const participant = await prisma.eventParticipant.findUniqueOrThrow({
+      where: { id: result.participantId },
+    });
+    expect(participant.displayName).toBe(tiktokId);
+  });
+});
+
 describe("登録の補償が他の登録の監視を止めないこと", () => {
   it("同じ ID の並行登録で負けた側の補償が、勝った側の monitorUntil を消さない", async () => {
     const event = await createEvent();
@@ -175,7 +287,7 @@ describe("登録の補償が他の登録の監視を止めないこと", () => {
       async check() {
         reached();
         await barrier;
-        return "EXISTS";
+        return { verdict: "EXISTS", nickname: null };
       },
       size: () => 0,
     };

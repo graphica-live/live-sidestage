@@ -259,25 +259,18 @@ export function validateTeamCount(count: number): ValidationResult<number> {
 }
 
 /**
- * 参加者の表示名を決める。空(未入力・空白のみ・null)なら fallback(TikTok ID)へ丸める。
- * 登録時も改名時もこの1箇所を通し、規則の二重定義を作らない。
- *
- * **fallback は長さ検査の対象外にする。** TikTok ID は64文字まで許すのに表示名の上限は
- * 60文字なので、fallback まで検査すると 61〜64文字のハンドルを持つ参加者が
- * 「名前を空にして TikTok ID へ戻す」をできなくなる(登録も通らない)。
- * 上限は主催者が入力した名前にだけ効かせる。
+ * 主催者が明示した表示名だけを検証する。空(未入力・空白のみ・null)なら
+ * まだ確定していないことを示す `value: null` を返す(fallback をいつ・何で埋めるかは
+ * 呼び出し側の責務 — 登録時は TikTok 実在確認の結果を待ってから決めるため)。
  *
  * `raw` は HTTP 境界から来るので `unknown` で受け、文字列以外は弾く。
  */
-export function resolveParticipantDisplayName(
-  raw: unknown,
-  fallback: string
-): ValidationResult<string> {
+export function validateExplicitDisplayName(raw: unknown): ValidationResult<string | null> {
   if (raw !== undefined && raw !== null && typeof raw !== "string") {
     return { ok: false, errors: ["表示名の指定が不正です。"] };
   }
   const name = (raw ?? "").trim();
-  if (!name) return { ok: true, value: fallback };
+  if (!name) return { ok: true, value: null };
   if (name.length > MAX_DISPLAY_NAME_LENGTH) {
     return {
       ok: false,
@@ -285,6 +278,40 @@ export function resolveParticipantDisplayName(
     };
   }
   return { ok: true, value: name };
+}
+
+/**
+ * 参加者の表示名を決める。空(未入力・空白のみ・null)なら fallback(TikTok ID)へ丸める。
+ * 改名時(`updateParticipant`)はこの1箇所を通す。
+ *
+ * **fallback は長さ検査の対象外にする。** TikTok ID は64文字まで許すのに表示名の上限は
+ * 60文字なので、fallback まで検査すると 61〜64文字のハンドルを持つ参加者が
+ * 「名前を空にして TikTok ID へ戻す」をできなくなる(登録も通らない)。
+ * 上限は主催者が入力した名前にだけ効かせる。
+ */
+export function resolveParticipantDisplayName(
+  raw: unknown,
+  fallback: string
+): ValidationResult<string> {
+  const explicit = validateExplicitDisplayName(raw);
+  if (!explicit.ok) return explicit;
+  return { ok: true, value: explicit.value ?? fallback };
+}
+
+/**
+ * TikTok のニックネームを、参加者登録の表示名フォールバックとして採用してよいか判定する。
+ *
+ * 主催者の明示入力とは違い**外部レスポンス由来の信頼できない文字列**なので、より厳しく検査する:
+ * 空・`MAX_DISPLAY_NAME_LENGTH` 超・改行や制御文字を含む場合は不採用にし、呼び出し側で
+ * さらに TikTok ID へフォールバックさせる(切り詰めはしない — 絵文字の途中で切ると壊れるため)。
+ */
+export function sanitizeNicknameFallback(nickname: string | null): string | null {
+  if (!nickname) return null;
+  if (nickname.length > MAX_DISPLAY_NAME_LENGTH) return null;
+  // C0/C1制御文字(改行含む)を含むニックネームは不採用にする。
+  // eslint-disable-next-line no-control-regex -- 意図的な制御文字検査
+  if (/[ --]/.test(nickname)) return null;
+  return nickname;
 }
 
 // 参加者の部分更新(PATCH)。**送られてきたキーだけ**を持つ。

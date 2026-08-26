@@ -744,6 +744,15 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 `TiktokRoom.hostUserId` に保存してよい（バトルスコアの帰属に要る）。ただし取得タイミングは
 アイコンと同じ理由で登録経路から切り離し、event-worker の補完ジョブに任せる。
 
+**表示名の未入力フォールバックだけは、実在確認と同じ応答から `nickname` を読む。**
+`checkAccountExistence()`（`src/lib/tiktok-profile.ts`）が実在確認(`EXISTS`)と同時に返す
+`AccountExistenceCheck.nickname` を `registerParticipant()` が使う（`sanitizeNicknameFallback()`
+で60文字超・制御文字を弾いてから採用、取れなければ従来どおり TikTok ID）。**新規の問い合わせは
+増やしていない** — 実在確認1回のレスポンスを2つの目的に使い回しているだけなので、上の
+「この例外を他へ広げないこと」には抵触しない。**アイコン取得(`fetchTiktokProfile`)経由の
+`parseProfileResponse` は使わない** — あちらは avatar URL の allowlist 検証に落ちると nickname
+ごと null を返すため、CDN ホストが変わると実在確認は生きているのに表示名だけ壊れる結合になる。
+
 ## デスマッチ（フェーズ5）
 
 規則は [docs/EVENT.md](../../docs/EVENT.md) の「デスマッチ」にある。ここには壊しやすい箇所だけ書く。

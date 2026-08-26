@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { AccountExistence } from "./tiktok-profile";
+import type { AccountExistence, AccountExistenceCheck } from "./tiktok-profile";
 import { createExistenceChecker, isExistenceCheckDisabled } from "./tiktok-existence";
 
-/** 呼び出し回数を数えつつ、決め打ちの判定を返す fetch。 */
+/** 呼び出し回数を数えつつ、決め打ちの判定を返す fetch。nickname は常に null。 */
 function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
   const calls: string[] = [];
   const queue = Array.isArray(verdicts) ? [...verdicts] : null;
@@ -10,9 +10,24 @@ function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
 
   return {
     calls,
-    fn: async (tiktokId: string) => {
+    fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
-      return fixed ?? queue!.shift() ?? "UNVERIFIED";
+      const verdict = fixed ?? queue!.shift() ?? "UNVERIFIED";
+      return { verdict, nickname: null };
+    },
+  };
+}
+
+/** verdict と nickname を両方決め打ちできる fetch。キャッシュへの nickname 保持を検証するのに使う。 */
+function stubFetchWithChecks(checks: AccountExistenceCheck[]) {
+  const calls: string[] = [];
+  const queue = [...checks];
+
+  return {
+    calls,
+    fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
+      calls.push(tiktokId);
+      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null };
     },
   };
 }
@@ -31,9 +46,11 @@ function deferredFetch() {
   return {
     calls,
     resolvers,
-    fn: (tiktokId: string) => {
+    fn: (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
-      return new Promise<AccountExistence>((resolve) => resolvers.push(resolve));
+      return new Promise<AccountExistenceCheck>((resolve) => {
+        resolvers.push((verdict) => resolve({ verdict, nickname: null }));
+      });
     },
   };
 }
@@ -43,8 +60,8 @@ describe("createExistenceChecker のキャッシュ", () => {
     const fetcher = stubFetch("EXISTS");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("someone")).toBe("EXISTS");
-    expect(await checker.check("someone")).toBe("EXISTS");
+    expect((await checker.check("someone")).verdict).toBe("EXISTS");
+    expect((await checker.check("someone")).verdict).toBe("EXISTS");
     expect(fetcher.calls).toEqual(["someone"]);
   });
 
@@ -52,8 +69,8 @@ describe("createExistenceChecker のキャッシュ", () => {
     const fetcher = stubFetch("MISSING");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("nobody")).toBe("MISSING");
-    expect(await checker.check("nobody")).toBe("MISSING");
+    expect((await checker.check("nobody")).verdict).toBe("MISSING");
+    expect((await checker.check("nobody")).verdict).toBe("MISSING");
     expect(fetcher.calls).toEqual(["nobody"]);
   });
 
@@ -61,8 +78,8 @@ describe("createExistenceChecker のキャッシュ", () => {
     const fetcher = stubFetch(["UNVERIFIED", "EXISTS"]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("someone")).toBe("UNVERIFIED");
-    expect(await checker.check("someone")).toBe("EXISTS");
+    expect((await checker.check("someone")).verdict).toBe("UNVERIFIED");
+    expect((await checker.check("someone")).verdict).toBe("EXISTS");
     expect(fetcher.calls).toEqual(["someone", "someone"]);
     expect(checker.size()).toBe(1);
   });
@@ -72,18 +89,37 @@ describe("createExistenceChecker のキャッシュ", () => {
     let now = 1_000_000;
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn, now: () => now });
 
-    expect(await checker.check("nobody")).toBe("MISSING");
-    expect(await checker.check("somebody")).toBe("MISSING");
+    expect((await checker.check("nobody")).verdict).toBe("MISSING");
+    expect((await checker.check("somebody")).verdict).toBe("MISSING");
 
     // 10分後: MISSING(5分)は期限切れで引き直す。
     now += 10 * 60 * 1000;
-    expect(await checker.check("nobody")).toBe("EXISTS");
+    expect((await checker.check("nobody")).verdict).toBe("EXISTS");
     expect(fetcher.calls).toEqual(["nobody", "somebody", "nobody"]);
 
     // さらに1時間後でも EXISTS(6時間)は生きている。
     now += 60 * 60 * 1000;
-    expect(await checker.check("nobody")).toBe("EXISTS");
+    expect((await checker.check("nobody")).verdict).toBe("EXISTS");
     expect(fetcher.calls).toHaveLength(3);
+  });
+
+  it("EXISTS のニックネームもキャッシュに残り、2回目のヒットでも同じ値が返る", async () => {
+    const fetcher = stubFetchWithChecks([{ verdict: "EXISTS", nickname: "テスト配信者" }]);
+    const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
+
+    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者" });
+    // キャッシュヒット。fetch を引き直さずに同じ nickname が返る。
+    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者" });
+    expect(fetcher.calls).toEqual(["someone"]);
+  });
+
+  it("MISSING の nickname は常に null で覚える", async () => {
+    const fetcher = stubFetchWithChecks([{ verdict: "MISSING", nickname: null }]);
+    const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
+
+    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null });
+    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null });
+    expect(fetcher.calls).toEqual(["nobody"]);
   });
 
   it("上限を超えたら古い順に捨てる", async () => {
@@ -114,13 +150,8 @@ describe("createExistenceChecker の呼び出し制御", () => {
     expect(fetcher.calls).toEqual(["someone"]);
 
     fetcher.resolvers[0]("EXISTS");
-    expect(await Promise.all(pending)).toEqual([
-      "EXISTS",
-      "EXISTS",
-      "EXISTS",
-      "EXISTS",
-      "EXISTS",
-    ]);
+    const results = await Promise.all(pending);
+    expect(results.map((r) => r.verdict)).toEqual(["EXISTS", "EXISTS", "EXISTS", "EXISTS", "EXISTS"]);
   });
 
   it("枠が埋まっていても、空けば待っていた分を外へ出す(並行POSTで確認を素通しさせない)", async () => {
@@ -139,14 +170,14 @@ describe("createExistenceChecker の呼び出し制御", () => {
 
     // 1本目が終われば枠が空き、待っていた3本目が出る。
     fetcher.resolvers[0]("EXISTS");
-    expect(await pending[0]).toBe("EXISTS");
+    expect((await pending[0]).verdict).toBe("EXISTS");
     await flush();
     expect(fetcher.calls).toEqual(["a", "b", "c"]);
 
     fetcher.resolvers[1]("MISSING");
     fetcher.resolvers[2]("MISSING");
-    expect(await pending[1]).toBe("MISSING");
-    expect(await pending[2]).toBe("MISSING");
+    expect((await pending[1]).verdict).toBe("MISSING");
+    expect((await pending[2]).verdict).toBe("MISSING");
   });
 
   it("待っても枠が空かなければ UNVERIFIED で通す(主催者を待たせ続けない)", async () => {
@@ -159,7 +190,7 @@ describe("createExistenceChecker の呼び出し制御", () => {
 
     const pending = [checker.check("a"), checker.check("b"), checker.check("c")];
 
-    expect(await pending[2]).toBe("UNVERIFIED");
+    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null });
     expect(fetcher.calls).toEqual(["a", "b"]);
 
     fetcher.resolvers[0]("EXISTS");
@@ -173,17 +204,17 @@ describe("createExistenceChecker の呼び出し制御", () => {
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn, now: () => now });
 
     for (const id of ["a", "b", "c", "d", "e"]) {
-      expect(await checker.check(id)).toBe("UNVERIFIED");
+      expect((await checker.check(id)).verdict).toBe("UNVERIFIED");
     }
     expect(fetcher.calls).toHaveLength(5);
 
     // 開いている間は fetch を呼ばない。
-    expect(await checker.check("f")).toBe("UNVERIFIED");
+    expect((await checker.check("f")).verdict).toBe("UNVERIFIED");
     expect(fetcher.calls).toHaveLength(5);
 
     // 5分後に閉じる。
     now += 5 * 60 * 1000 + 1;
-    expect(await checker.check("g")).toBe("UNVERIFIED");
+    expect((await checker.check("g")).verdict).toBe("UNVERIFIED");
     expect(fetcher.calls).toHaveLength(6);
   });
 
@@ -192,7 +223,7 @@ describe("createExistenceChecker の呼び出し制御", () => {
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
     for (const id of ["a", "b", "c", "d", "e", "f", "g"]) {
-      expect(await checker.check(id)).toBe("MISSING");
+      expect((await checker.check(id)).verdict).toBe("MISSING");
     }
     expect(fetcher.calls).toHaveLength(7);
   });
@@ -223,14 +254,14 @@ describe("createExistenceChecker の呼び出し制御", () => {
       },
     });
 
-    expect(await checker.check("someone")).toBe("UNVERIFIED");
+    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null });
   });
 
   it("空のハンドルは外へ出さない", async () => {
     const fetcher = stubFetch("EXISTS");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("")).toBe("UNVERIFIED");
+    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null });
     expect(fetcher.calls).toEqual([]);
   });
 });

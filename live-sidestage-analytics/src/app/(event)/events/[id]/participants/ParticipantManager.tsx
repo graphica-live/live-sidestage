@@ -226,7 +226,7 @@ export function ParticipantManager({
               id="displayName"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="未入力なら TikTok ID をそのまま使う"
+              placeholder="未入力なら TikTok のニックネームを使う(取得できなければ TikTok ID)"
               maxLength={MAX_DISPLAY_NAME_LENGTH}
               className="input-field"
             />

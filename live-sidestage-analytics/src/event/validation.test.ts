@@ -7,7 +7,9 @@ import {
   parseParticipantPatch,
   resolveEventFormatForUpdate,
   resolveParticipantDisplayName,
+  sanitizeNicknameFallback,
   validateEventInput,
+  validateExplicitDisplayName,
   validateTeamCount,
 } from "./validation";
 
@@ -222,6 +224,50 @@ describe("resolveParticipantDisplayName", () => {
     expect(resolveParticipantDisplayName(123, "u").ok).toBe(false);
     expect(resolveParticipantDisplayName(["a"], "u").ok).toBe(false);
     expect(resolveParticipantDisplayName({ a: 1 }, "u").ok).toBe(false);
+  });
+});
+
+describe("validateExplicitDisplayName", () => {
+  it("前後の空白を落とす", () => {
+    expect(validateExplicitDisplayName("  ライバーA  ")).toEqual({ ok: true, value: "ライバーA" });
+  });
+
+  it("空・空白のみ・null・undefined は未確定(null)を返す(fallback を強制しない)", () => {
+    for (const raw of ["", "   ", null, undefined]) {
+      expect(validateExplicitDisplayName(raw)).toEqual({ ok: true, value: null });
+    }
+  });
+
+  it("上限ちょうどは通し、1文字超えたら弾く", () => {
+    expect(validateExplicitDisplayName("あ".repeat(MAX_DISPLAY_NAME_LENGTH)).ok).toBe(true);
+    expect(validateExplicitDisplayName("あ".repeat(MAX_DISPLAY_NAME_LENGTH + 1)).ok).toBe(false);
+  });
+
+  it("文字列以外は弾く", () => {
+    expect(validateExplicitDisplayName(123).ok).toBe(false);
+    expect(validateExplicitDisplayName(["a"]).ok).toBe(false);
+    expect(validateExplicitDisplayName({ a: 1 }).ok).toBe(false);
+  });
+});
+
+describe("sanitizeNicknameFallback", () => {
+  it("通常のニックネームはそのまま通す", () => {
+    expect(sanitizeNicknameFallback("テスト配信者")).toBe("テスト配信者");
+  });
+
+  it("null は null", () => {
+    expect(sanitizeNicknameFallback(null)).toBeNull();
+  });
+
+  it("上限ちょうどは通し、1文字超えたら不採用", () => {
+    expect(sanitizeNicknameFallback("あ".repeat(MAX_DISPLAY_NAME_LENGTH))).not.toBeNull();
+    expect(sanitizeNicknameFallback("あ".repeat(MAX_DISPLAY_NAME_LENGTH + 1))).toBeNull();
+  });
+
+  it("改行・タブなどの制御文字を含むと不採用", () => {
+    expect(sanitizeNicknameFallback("改行\n入り")).toBeNull();
+    expect(sanitizeNicknameFallback("タブ\t入り")).toBeNull();
+    expect(sanitizeNicknameFallback("復帰\r入り")).toBeNull();
   });
 });
 

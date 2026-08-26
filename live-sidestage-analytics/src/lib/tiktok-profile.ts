@@ -232,6 +232,41 @@ async function requestUserRoom(tiktokId: string, timeoutMs: number): Promise<Use
  */
 export type AccountExistence = "EXISTS" | "MISSING" | "UNVERIFIED";
 
+/** 実在確認と同じ応答から取れた結果。 */
+export type AccountExistenceCheck = {
+  verdict: AccountExistence;
+  /**
+   * 実在確認(`EXISTS`)と同じ応答から取れたニックネーム。取れなければ null
+   * (取得失敗ではなく付随情報なので、判定不能とは扱わない)。
+   */
+  nickname: string | null;
+};
+
+/**
+ * `EXISTS` と判定された応答から nickname だけを取り出す。
+ *
+ * **`parseProfileResponse` を経由しない。** あちらは avatar URL の allowlist 検証に落ちると
+ * nickname ごと null を返す(TikTok が画像 CDN のホストを変えると起きる、5.5 と同じ結合の罠)。
+ * ここは呼び出し側で既に `classifyAccountExistence` が `data.user` の存在と uniqueId 照合を
+ * 済ませている前提で、avatar 抜きに nickname だけ読む。
+ */
+export function extractVerifiedNickname(body: unknown, expectedUniqueId: string): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const root = body as { statusCode?: unknown; data?: unknown };
+  if (root.statusCode !== 0) return null;
+
+  const user = readUser(root.data);
+  if (user === null) return null;
+
+  const uniqueId = (user as { uniqueId?: unknown }).uniqueId;
+  if (typeof uniqueId === "string" && uniqueId.toLowerCase() !== expectedUniqueId.toLowerCase()) {
+    return null;
+  }
+
+  const nickname = (user as { nickname?: unknown }).nickname;
+  return typeof nickname === "string" && nickname.trim().length > 0 ? nickname.trim() : null;
+}
+
 /**
  * レスポンス本体から実在を判定する。純粋関数。
  *
@@ -285,7 +320,10 @@ function readUser(data: unknown): object | null {
 }
 
 /**
- * アカウントの実在だけを確認する。**失敗しても例外を投げない。**
+ * アカウントの実在を確認する。**失敗しても例外を投げない。**
+ *
+ * 実在(`EXISTS`)が確認できたときは、同じ応答から nickname も一緒に返す
+ * (参加者登録の表示名フォールバックに使う。登録経路からの新規の問い合わせは増やさない)。
  *
  * 呼び出しの間引き(キャッシュ・同時実行上限・サーキットブレーカ)は
  * `src/lib/tiktok-existence.ts` が持つ。ここは1回の問い合わせと判定だけ。
@@ -293,10 +331,13 @@ function readUser(data: unknown): object | null {
 export async function checkAccountExistence(
   tiktokId: string,
   options: { timeoutMs?: number } = {}
-): Promise<AccountExistence> {
+): Promise<AccountExistenceCheck> {
   const response = await requestUserRoom(tiktokId, options.timeoutMs ?? TIMEOUT_MS);
-  if (response.kind !== "json") return "UNVERIFIED";
-  return classifyAccountExistence(response.body, tiktokId);
+  if (response.kind !== "json") return { verdict: "UNVERIFIED", nickname: null };
+
+  const verdict = classifyAccountExistence(response.body, tiktokId);
+  const nickname = verdict === "EXISTS" ? extractVerifiedNickname(response.body, tiktokId) : null;
+  return { verdict, nickname };
 }
 
 /**

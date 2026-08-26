@@ -12,6 +12,8 @@ import {
   type ParticipantPatchInput,
   normalizeTiktokId,
   resolveParticipantDisplayName,
+  sanitizeNicknameFallback,
+  validateExplicitDisplayName,
 } from "./validation";
 
 // 参加者登録と room 監視要求。`public` 側(TiktokRoom)に副作用が出る唯一の経路なので、
@@ -72,11 +74,12 @@ export async function registerParticipant(
     throw new ParticipantError("TikTok ID の形式が正しくない。", 400);
   }
 
-  const name = resolveParticipantDisplayName(input.displayName, tiktokId);
-  if (!name.ok) {
-    throw new ParticipantError(name.errors[0], 400);
+  // 主催者が明示した表示名はここで検証だけ済ませる(TikTok問い合わせ不要)。空欄のときの
+  // 実際の値(ニックネーム、取れなければTikTok ID)は、下の実在確認の結果を見てから決める。
+  const explicitName = validateExplicitDisplayName(input.displayName);
+  if (!explicitName.ok) {
+    throw new ParticipantError(explicitName.errors[0], 400);
   }
-  const displayName = name.value;
 
   const event = await prisma.event.findUnique({
     where: { id: input.eventId },
@@ -110,12 +113,17 @@ export async function registerParticipant(
   // TikTok への問い合わせは、ローカルで弾ける検証を全部通してから1回だけ行う。
   // (重複・上限・チーム不正で落ちる登録では外へ出さない)
   const existence = await resolveExistence(tiktokId, deps);
-  if (existence === "MISSING") {
+  if (existence.verdict === "MISSING") {
     throw new ParticipantError(
       "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。",
       400
     );
   }
+
+  // 主催者が未入力なら、実在確認と同じ問い合わせで取れたニックネームを使う
+  // (取れない・長すぎる・制御文字を含む場合はさらに TikTok ID へ落とす)。
+  const displayName =
+    explicitName.value ?? sanitizeNicknameFallback(existence.nickname) ?? tiktokId;
 
   const lease = computeLeaseWindow(event.endAt);
 
@@ -166,7 +174,12 @@ export async function registerParticipant(
       roomId: leased.roomId,
       createdRoom: leased.created,
       leaseClamped: lease.clamped,
-      existence: existence === "EXISTS" ? "VERIFIED" : existence === "DISABLED" ? "DISABLED" : "UNVERIFIED",
+      existence:
+        existence.verdict === "EXISTS"
+          ? "VERIFIED"
+          : existence.verdict === "DISABLED"
+            ? "DISABLED"
+            : "UNVERIFIED",
     };
   } catch (err) {
     // event スキーマ側の書き込みが失敗したら、確保した監視要求を戻す。
@@ -188,15 +201,21 @@ export async function registerParticipant(
 /**
  * TikTok にアカウントが実在するか確かめる。**例外は投げない。**
  *
+ * 実在(`EXISTS`)が確認できたときは、同じ問い合わせで取れたニックネームも一緒に返す
+ * (表示名フォールバックに使う。登録経路からの新規の問い合わせは増やさない)。
+ *
  * 間引き(キャッシュ・同時実行上限・サーキットブレーカ)は `tiktok-existence.ts` が持つ。
  * ここは kill switch の解釈だけ。
  */
 async function resolveExistence(
   tiktokId: string,
   deps: { checker?: ExistenceChecker; existenceDisabled?: boolean }
-): Promise<"EXISTS" | "MISSING" | "UNVERIFIED" | "DISABLED"> {
+): Promise<{
+  verdict: "EXISTS" | "MISSING" | "UNVERIFIED" | "DISABLED";
+  nickname: string | null;
+}> {
   const disabled = deps.existenceDisabled ?? isExistenceCheckDisabled();
-  if (disabled) return "DISABLED";
+  if (disabled) return { verdict: "DISABLED", nickname: null };
 
   const checker = deps.checker ?? existenceChecker;
   try {
@@ -204,7 +223,7 @@ async function resolveExistence(
   } catch (err) {
     // checker は例外を投げない契約だが、投げても登録は止めない(fail-open)。
     console.error(`[participants] @${tiktokId} の実在確認に失敗:`, err);
-    return "UNVERIFIED";
+    return { verdict: "UNVERIFIED", nickname: null };
   }
 }
 
