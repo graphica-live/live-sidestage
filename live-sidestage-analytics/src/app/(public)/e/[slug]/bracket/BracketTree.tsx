@@ -21,10 +21,11 @@ import { BracketScroller } from "./BracketScroller";
 // 逆に言うと、カードの中身を可変行数にすると幾何が崩れて線がずれる —
 // だから状態・不戦勝・時刻は1行にまとめ、カードに固定高を与えている(CARD_H)。
 //
-// **バトルスコアは行を増やさず、サイド枠の右上へ絶対配置している。** 通常フローの行にすると、
-// サイドの境目へ絶対配置している「VS」バッジ(高さ18px)が上側のサイドの最終行に7px重なって
-// 数字が読めなくなる(実測で確認済み)。VS は水平中央にいるので、右端へ逃がせば当たらない。
-// おかげで CARD_H も据え置ける。
+// **バトルスコアは行を増やさず、VSバッジを挟むように名前の外側(枠の上端/下端)へ絶対配置している。**
+// 名前を名前枠(NAME_BOX_H)ごと枠の上下中央に置くことで、枠の残り(上下それぞれ)にスコアの
+// 置き場ができる — 対戦カード上側のサイドは枠の下端(VSの直上)、下側のサイドは枠の上端(VSの直下)。
+// 通常フローの行にすると、サイドの境目へ絶対配置している「VS」バッジ(高さ18px)が
+// サイドの最終行に7px重なって数字が読めなくなる(過去に実測で確認済み)。おかげで CARD_H も据え置ける。
 //
 // 決勝カラムの「優勝」バナーを絶対配置にしているのも同じ理由。通常フローに置くと
 // カラムの中心がカードの中心からずれ、左右から来る線が決勝カードに刺さらなくなる。
@@ -529,11 +530,11 @@ function MatchCard({
           この枠の中央にいるので、gap-3 のぶんだけ名前・アイコンから逃げている。 */}
       <div className="relative flex flex-1 flex-col justify-center gap-3">
         {byeWinner ? (
-          <SideRow side={byeWinner} />
+          <SideRow side={byeWinner} position="top" />
         ) : (
           <>
-            {match.sides.map((side) => (
-              <SideRow key={side.id} side={side} />
+            {match.sides.map((side, i) => (
+              <SideRow key={side.id} side={side} position={i === 0 ? "top" : "bottom"} />
             ))}
             <span
               className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${TAG_SKEW} border border-white/15 bg-[#0a0a0a] px-1.5 py-px text-[9px] font-black tracking-wide text-gray-400`}
@@ -552,11 +553,14 @@ function MatchCard({
 }
 
 /**
- * アイコンを枠いっぱいに敷き、名前をその下端へ重ねる。**枠の高さ(SIDE_H)と
+ * アイコンを枠いっぱいに敷き、名前は枠の上下中央に重ねる。**枠の高さ(SIDE_H)と
  * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
  * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
  *
- * 名前は名前枠の中で上下中央に置く。1行と2行が隣り合っても、視線の高さが揃う。
+ * 名前を中央に置くのは見た目のためだけでなく、**VSバッジを挟むスコアの置き場を空けるため**
+ * (ファイル冒頭のコメントを参照)。名前枠の外側、上下に残る余白のうち VS に近い側
+ * (`position`が"top"なら枠の下端、"bottom"なら枠の上端)へスコアを寄せる。
+ *
  * **`overflow-hidden` が要る** — 枠より大きいアイコンのはみ出しをここで切る。付け忘れると
  * 上下のサイドへ顔が侵食する(親カードの overflow-hidden はカードの外しか切らない)。
  *
@@ -564,39 +568,45 @@ function MatchCard({
  * 勝者の色(bg-brand/10)が塗り潰されて勝敗が読めなくなる。
  *
  * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
- * 行を増やさず右上へ絶対配置する(理由はファイル冒頭の VS バッジの件)。アイコンの上に乗るので、
- * 読めるよう背景を敷いている。
  */
-function SideRow({ side }: { side: BracketSideDto }) {
+function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "bottom" }) {
   const hasAvatar = side.entrants.length > 0;
-  const frame = `relative flex ${SIDE_H} flex-col overflow-hidden text-center ${
+  const frame = `relative flex ${SIDE_H} flex-col items-center justify-center overflow-hidden text-center ${
     side.isWinner ? "bg-brand/10 ring-1 ring-inset ring-brand/40" : "bg-white/[0.04]"
   }`;
 
   if (!side.name) {
     return (
-      <div className={`${frame} items-center justify-center`}>
+      <div className={frame}>
         <span className="text-xs text-gray-600">未確定</span>
       </div>
     );
   }
 
   return (
-    <div className={`${frame} ${hasAvatar ? "justify-end" : "justify-center"}`}>
+    <div className={frame}>
       <EntrantAvatars entrants={side.entrants} size="card" />
 
-      {/* 名前はアイコンの上に重なるので、下から黒を差して読めるようにする。 */}
-      <div
-        className={`relative z-10 px-1.5 ${
-          hasAvatar ? "bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-3" : ""
-        }`}
-      >
+      {/* 名前はアイコンの上に重なるので、背後に黒帯を差して読めるようにする。 */}
+      {hasAvatar && (
+        <span
+          className={`pointer-events-none absolute inset-x-0 top-1/2 ${NAME_BOX_H} -translate-y-1/2 bg-black/55`}
+          aria-hidden
+        />
+      )}
+      <div className="relative z-10 px-1.5">
         <FitName name={side.name} boxH={NAME_BOX_H} />
       </div>
 
       {side.tiktokScore !== null && (
-        <span className="absolute right-1 top-1 z-20 rounded-sm bg-black/70 px-1 py-px font-mono text-[10px] leading-none text-gray-300">
-          {formatNumber(side.tiktokScore)}
+        <span
+          className={`absolute inset-x-0 z-20 flex justify-center ${
+            position === "top" ? "bottom-1" : "top-1"
+          }`}
+        >
+          <span className="rounded-sm bg-black/75 px-2 py-0.5 font-mono text-[13px] font-bold leading-none text-white">
+            {formatNumber(side.tiktokScore)}
+          </span>
         </span>
       )}
     </div>
