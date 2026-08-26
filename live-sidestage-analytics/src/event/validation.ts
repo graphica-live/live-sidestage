@@ -1,5 +1,6 @@
 // イベントの入力検証。すべて純粋関数にしてテストで固定する。
 
+import { AVATAR_ZOOM_MAX, AVATAR_ZOOM_MIN } from "./avatar-frame";
 import type { BracketMethod } from "./bracket";
 import { normalizePlacementDepth, parseBracketMethod } from "./bracket-rules";
 import { type MatchRules, parseMatchRules } from "./match-rules";
@@ -287,6 +288,9 @@ export function resolveParticipantDisplayName(
   return { ok: true, value: name };
 }
 
+/** 対戦カードに表示するアバターの切り出し位置・ズーム。3値セットでのみ受け付ける。 */
+export type AvatarFrameInput = { offsetX: number; offsetY: number; zoom: number };
+
 // 参加者の部分更新(PATCH)。**送られてきたキーだけ**を持つ。
 // `undefined` = 触らない、`null` = 明示的に空へ戻す、を型で区別する。
 export type ParticipantPatchInput = {
@@ -294,6 +298,8 @@ export type ParticipantPatchInput = {
   teamId?: string | null;
   /** 表示名。null / 空文字なら TikTok ID へ戻る */
   displayName?: string | null;
+  /** アバターの表示位置。null で現状のデフォルト(50%/30%/等倍)へ戻る */
+  avatarFrame?: AvatarFrameInput | null;
 };
 
 /**
@@ -325,11 +331,48 @@ export function parseParticipantPatch(body: unknown): ValidationResult<Participa
     value.displayName = raw.displayName;
   }
 
-  if (value.teamId === undefined && value.displayName === undefined) {
-    return { ok: false, errors: ["teamId か displayName のどちらかが必要です。"] };
+  if (raw.avatarFrame !== undefined) {
+    const parsed = parseAvatarFrameInput(raw.avatarFrame);
+    if (!parsed.ok) return parsed;
+    value.avatarFrame = parsed.value;
+  }
+
+  if (value.teamId === undefined && value.displayName === undefined && value.avatarFrame === undefined) {
+    return { ok: false, errors: ["teamId か displayName か avatarFrame のいずれかが必要です。"] };
   }
 
   return { ok: true, value };
+}
+
+/** null(デフォルトへリセット) か、offsetX/offsetY/zoom が全て揃った有効な数値のオブジェクトだけを通す。 */
+function parseAvatarFrameInput(raw: unknown): ValidationResult<AvatarFrameInput | null> {
+  if (raw === null) return { ok: true, value: null };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, errors: ["avatarFrame の指定が不正です。"] };
+  }
+
+  const { offsetX, offsetY, zoom } = raw as Record<string, unknown>;
+  if (
+    typeof offsetX !== "number" ||
+    typeof offsetY !== "number" ||
+    typeof zoom !== "number" ||
+    !Number.isFinite(offsetX) ||
+    !Number.isFinite(offsetY) ||
+    !Number.isFinite(zoom)
+  ) {
+    return { ok: false, errors: ["avatarFrame の指定が不正です。"] };
+  }
+  if (offsetX < 0 || offsetX > 100 || offsetY < 0 || offsetY > 100) {
+    return { ok: false, errors: ["avatarFrame の位置は0〜100の範囲で指定してください。"] };
+  }
+  if (zoom < AVATAR_ZOOM_MIN || zoom > AVATAR_ZOOM_MAX) {
+    return {
+      ok: false,
+      errors: [`avatarFrame のズームは${AVATAR_ZOOM_MIN}〜${AVATAR_ZOOM_MAX}の範囲で指定してください。`],
+    };
+  }
+
+  return { ok: true, value: { offsetX, offsetY, zoom } };
 }
 
 // TikTok ID の正規化。analytics の normalizeTiktokId(src/lib/tiktok-room.ts)と

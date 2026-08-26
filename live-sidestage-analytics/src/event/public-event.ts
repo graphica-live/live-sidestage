@@ -121,10 +121,16 @@ export type ContributionDto = {
 /**
  * サイドに出る1人。アイコンは `/api/public/avatar/<participantId>` から引く
  * (URL をここに埋めない — TikTok の avatar URL は署名付きで約2日で失効する)。
+ *
+ * avatarOffsetX/Y/Zoom は表示専用の切り出し設定。null は現状のデフォルト表示
+ * (50%/30%/等倍)で、解決は `src/event/avatar-frame.ts` に閉じる。
  */
 export type BracketEntrantDto = {
   participantId: string;
   displayName: string;
+  avatarOffsetX: number | null;
+  avatarOffsetY: number | null;
+  avatarZoom: number | null;
 };
 
 export type BracketSideDto = {
@@ -197,7 +203,18 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           diamonds: true,
           team: { select: { name: true } },
           participants: {
-            select: { participant: { select: { id: true, displayName: true, roomId: true } } },
+            select: {
+              participant: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  roomId: true,
+                  avatarOffsetX: true,
+                  avatarOffsetY: true,
+                  avatarZoom: true,
+                },
+              },
+            },
           },
         },
       },
@@ -259,6 +276,9 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
           entrants: s.participants.map((p) => ({
             participantId: p.participant.id,
             displayName: p.participant.displayName,
+            avatarOffsetX: p.participant.avatarOffsetX,
+            avatarOffsetY: p.participant.avatarOffsetY,
+            avatarZoom: p.participant.avatarZoom,
           })),
           diamonds: s.diamonds.toString(),
           tiktokScore: tiktokScores.get(s.id) ?? null,

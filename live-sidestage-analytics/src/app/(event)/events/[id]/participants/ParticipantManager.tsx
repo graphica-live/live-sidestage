@@ -2,8 +2,10 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { avatarFrameStyle, resolveAvatarFrame } from "@/event/avatar-frame";
 import { LISTENER_STATUS_CLASSES, LISTENER_STATUS_LABELS } from "@/event/labels";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/event/validation";
+import { AvatarFrameEditor } from "./AvatarFrameEditor";
 
 export type ParticipantRow = {
   id: string;
@@ -18,6 +20,9 @@ export type ParticipantRow = {
   verified: boolean;
   /** analytics 側の TikTok 接続状態。まだ reconcile が来ていなければ null */
   listenerStatus: string | null;
+  avatarOffsetX: number | null;
+  avatarOffsetY: number | null;
+  avatarZoom: number | null;
 };
 
 type Notice = { kind: "info" | "warn" | "error"; text: string };
@@ -27,12 +32,20 @@ export function ParticipantManager({
   status,
   participants,
   teams,
+  isTeamEvent,
 }: {
   eventId: string;
   status: string;
   participants: ParticipantRow[];
   /** チーム戦のときだけ渡す。空配列なら所属の選択欄を出さない */
   teams: { id: string; name: string }[];
+  /**
+   * チーム戦かどうか。チーム戦の対戦カードは複数人の丸アイコンを重ねて表示するため
+   * (BracketTree.tsx の EntrantAvatars、count>=2)、個人の切り出し位置・ズームを
+   * 設定しても対戦カードの見た目には反映されない。混乱を避けるため、
+   * チーム戦では位置合わせの導線自体を出さない。
+   */
+  isTeamEvent: boolean;
 }) {
   const router = useRouter();
   const [tiktokId, setTiktokId] = useState("");
@@ -42,6 +55,8 @@ export function ParticipantManager({
   // 一覧の表示名をその場で編集する。編集中の行は1つだけ。
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // アイコンの位置合わせモーダルを開いている参加者。1つだけ開ける。
+  const [editingAvatarId, setEditingAvatarId] = useState<string | null>(null);
   // busy(state)は非同期に反映されるので、二重送信の抑止には同期的な ref を使う。
   const savingRef = useRef(false);
 
@@ -192,7 +207,10 @@ export function ParticipantManager({
     }
   }
 
+  const editingAvatarParticipant = participants.find((p) => p.id === editingAvatarId) ?? null;
+
   return (
+    <>
     <div className="space-y-6">
       {status === "RUNNING" && (
         <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">
@@ -260,6 +278,9 @@ export function ParticipantManager({
         <ul className="space-y-2">
           {participants.map((p) => (
             <li key={p.id} className="card flex flex-wrap items-center gap-x-3 gap-y-2">
+              {!isTeamEvent && (
+                <AvatarPreview participant={p} onClick={() => setEditingAvatarId(p.id)} />
+              )}
               {/*
                 狭い画面では名前ブロックだけで1行を占め、チーム選択・状態・外すを次の行へ送る。
                 `flex-1` のままだと shrink-0 の3つが幅を食い切って名前が1文字まで潰れ、
@@ -404,6 +425,67 @@ export function ParticipantManager({
         一覧の表示名はペンマークか名前をクリックすると編集できる(TikTok ID は登録し直しになるので変更できない)。
       </p>
     </div>
+
+    {editingAvatarParticipant && (
+      <AvatarFrameEditor
+        eventId={eventId}
+        participantId={editingAvatarParticipant.id}
+        displayName={editingAvatarParticipant.displayName}
+        initialFrame={resolveAvatarFrame(
+          editingAvatarParticipant.avatarOffsetX,
+          editingAvatarParticipant.avatarOffsetY,
+          editingAvatarParticipant.avatarZoom
+        )}
+        onClose={() => setEditingAvatarId(null)}
+        onSaved={() => setEditingAvatarId(null)}
+      />
+    )}
+    </>
+  );
+}
+
+/**
+ * 参加者一覧の各行、名前の左に出す対戦カード表示のミニプレビュー。
+ * BracketTree.tsx の対戦カード(サイド枠)と同じアスペクト比・同じ切り出しスタイルを
+ * 縮小再現する。クリックで位置合わせモーダルを開く。
+ */
+function AvatarPreview({
+  participant,
+  onClick,
+}: {
+  participant: ParticipantRow;
+  onClick: () => void;
+}) {
+  const frame = resolveAvatarFrame(
+    participant.avatarOffsetX,
+    participant.avatarOffsetY,
+    participant.avatarZoom
+  );
+  const style = avatarFrameStyle(frame);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="クリックで対戦カードのアイコン位置を編集"
+      aria-label={`${participant.displayName} の対戦カード表示を編集`}
+      className="relative h-10 w-[76px] shrink-0 overflow-hidden rounded-sm border border-white/10 bg-white/5"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/public/avatar/${participant.id}`}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        style={style}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent"
+        aria-hidden
+      />
+    </button>
   );
 }
 

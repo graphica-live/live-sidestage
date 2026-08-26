@@ -32,6 +32,9 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         status: true,
         teamId: true,
         team: { select: { name: true } },
+        avatarOffsetX: true,
+        avatarOffsetY: true,
+        avatarZoom: true,
       },
     }),
     prisma.eventTeam.findMany({
@@ -64,6 +67,9 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
     registered: links.has(p.roomId),
     verified: links.get(p.roomId)?.verified ?? false,
     listenerStatus: statuses.get(p.roomId)?.listenerStatus ?? null,
+    avatarOffsetX: p.avatarOffsetX,
+    avatarOffsetY: p.avatarOffsetY,
+    avatarZoom: p.avatarZoom,
   }));
 
   const teamRows: TeamRow[] = teams.map((t) => ({
@@ -100,6 +106,7 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         status={event.status}
         participants={rows}
         teams={isTeamEvent ? teamRows.map((t) => ({ id: t.id, name: t.name })) : []}
+        isTeamEvent={isTeamEvent}
       />
 
       <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">

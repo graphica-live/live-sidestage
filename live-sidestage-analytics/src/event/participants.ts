@@ -251,7 +251,13 @@ export async function updateParticipant(input: {
     throw new ParticipantError("参加者が見つからない。", 404);
   }
 
-  const data: { displayName?: string; teamId?: string | null } = {};
+  const data: {
+    displayName?: string;
+    teamId?: string | null;
+    avatarOffsetX?: number | null;
+    avatarOffsetY?: number | null;
+    avatarZoom?: number | null;
+  } = {};
 
   if (input.patch.displayName !== undefined) {
     const name = resolveParticipantDisplayName(input.patch.displayName, participant.tiktokId);
@@ -259,6 +265,14 @@ export async function updateParticipant(input: {
       throw new ParticipantError(name.errors[0], 400);
     }
     data.displayName = name.value;
+  }
+
+  if (input.patch.avatarFrame !== undefined) {
+    // null = デフォルト(50%/30%/等倍)へリセット。表示専用の値なので集計への影響は無い
+    // (reopenAggregation は呼ばない)。
+    data.avatarOffsetX = input.patch.avatarFrame?.offsetX ?? null;
+    data.avatarOffsetY = input.patch.avatarFrame?.offsetY ?? null;
+    data.avatarZoom = input.patch.avatarFrame?.zoom ?? null;
   }
 
   if (input.patch.teamId !== undefined) {
