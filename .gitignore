@@ -4,3 +4,6 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ローカルのマージキュー台帳・ロックファイル・worktree一式（正本は .git/claude-merge-queue/）
+/.claude/
