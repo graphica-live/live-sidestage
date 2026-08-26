@@ -29,6 +29,7 @@ import { AdminBracketTree, type SwapSlotRef } from "./AdminBracketTree";
 import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
 import { ManualBracketBuilder } from "./ManualBracketBuilder";
+import { MatchContributions } from "./MatchContributions";
 
 /**
  * 画面を読み直す間隔。集計ワーカーが10秒周期なので、それより短く引いても新しい値は
@@ -107,6 +108,14 @@ export type MatchRow = {
    * (round で分けると本選の決勝と同じラウンドに並んでしまう)。
    */
   placement: { depth: number; rank: number } | null;
+  /**
+   * バトルスコアが出るはずの対戦か(`detectedBattleId` があり `canShowTiktokScore` を通る)。
+   *
+   * **`side.tiktokScore` が null の理由を2つに分けるために要る。** 帰属できなかった
+   * (hostUserId 未取得など)のか、そもそも出さない状態(検知前・要確認など)なのか。
+   * 前者だけ「—」を出す。後者にまで出すと「未取得」の意味が薄まる。
+   */
+  battleScoreExpected: boolean;
   sides: MatchSideRow[];
 };
 
@@ -1146,8 +1155,9 @@ export function MatchManager({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={() => setSelectedMatchId(null)}
         >
+          {/* 枠ごとのリスナー貢献を横並びで出すので広めに取る(1vs1 で2列、2vs2 で4列)。 */}
           <div
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-panel p-3"
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-panel p-3"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 flex justify-end">
@@ -1862,10 +1872,13 @@ function MatchCard({
             </div>
             <div className="mt-0.5 text-xs text-gray-400">
               {Number(side.diamonds).toLocaleString("ja-JP")} ダイヤ
-              {/* TikTok 側のバトルスコア。勝敗は左のダイヤで決まるので、別物と分かるよう並べる。 */}
-              {side.tiktokScore !== null && (
-                <span className="ml-2 text-gray-500">TikTok {side.tiktokScore}</span>
-              )}
+              {/* TikTok 側のバトルスコア。勝敗は左のダイヤで決まるので、別物と分かるよう並べる。
+                  帰属できていないときに黙って消すと「0」と読めてしまうので「—」を出す。 */}
+              {side.tiktokScore !== null ? (
+                <span className="ml-2 text-gray-500">バトルスコア {side.tiktokScore}</span>
+              ) : match.battleScoreExpected ? (
+                <span className="ml-2 text-gray-600">バトルスコア —</span>
+              ) : null}
               {match.winnerSideId === side.id && (
                 <span className="ml-2 text-brand">勝者</span>
               )}
@@ -1881,6 +1894,21 @@ function MatchCard({
           {match.detectedEndSource && ` — ${END_SOURCE_NOTES[match.detectedEndSource] ?? ""}`}
         </p>
       )}
+
+      {/* 配信者の TikTok userId は event-worker が後追いで埋めるので、待てば出ることがある。 */}
+      {match.battleScoreExpected && match.sides.every((s) => s.tiktokScore === null) && (
+        <p className="text-xs leading-relaxed text-gray-600">
+          バトルスコアは TikTok 側から配信者を特定できたときだけ出る。まだ特定できていないので、
+          しばらく待ってから開き直すこと（勝敗はダイヤで決まるので影響しない）。
+        </p>
+      )}
+
+      <MatchContributions
+        eventId={eventId}
+        matchId={match.id}
+        sides={match.sides.map((s) => ({ sideIndex: s.sideIndex, tiktokScore: s.tiktokScore }))}
+        winnerDecidedBy={match.winnerDecidedBy}
+      />
 
       {match.status === "NEEDS_REVIEW" && (
         <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-xs leading-relaxed text-yellow-200/80">

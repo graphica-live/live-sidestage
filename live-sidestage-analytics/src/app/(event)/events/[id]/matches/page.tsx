@@ -177,6 +177,9 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     // rules を丸ごとクライアントへ流さず、要る値だけ渡す。
     isBye: isByeRow(m.rules),
     placement: parsePlacement(m.rules),
+    // バトルスコアが出るはずの対戦か。**上の `filter` と同じ条件にする** — 条件がずれると、
+    // そもそも問い合わせていない対戦にまで「未取得」と出る。
+    battleScoreExpected: m.detectedBattleId !== null && canShowTiktokScore(m, "admin"),
     sides: m.sides.map((s) => ({
       id: s.id,
       sideIndex: s.sideIndex,
