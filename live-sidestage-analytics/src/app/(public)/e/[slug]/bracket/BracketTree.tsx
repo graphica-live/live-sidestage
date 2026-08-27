@@ -87,7 +87,8 @@ export function BracketTree({
   // まだ敗退していない出場者/チームが勝った試合。決勝は専用の枠+優勝バナーを
   // 既に持つので、決勝の敗者を捕まえる計算には使うが結果には含めない
   // (findSurvivorMatchIds の finalMatchId 引数)。この集合に入っている試合だけ
-  // MatchCard が生存ツリーの装飾(赤枠+走光)を出す。
+  // MatchCard が「勝った側の枠(SideRow)だけ」に生存ツリーの装飾(赤枠+走光)を出す
+  // (カード全体は光らせない — 負けた側まで光ると勝敗が読めなくなるため)。
   const survivorMatchIds = findSurvivorMatchIds(matches, final?.id);
 
   // 準決勝のサブツリー。roundCount が 1(参加2組)なら決勝しかないので左右は出さない。
@@ -546,6 +547,11 @@ function MatchCard({
   const needsSelection = match.needsResultSelection;
   // 決勝は対象外(findSurvivorMatchIds が結果集合から除いている)。専用の枠+優勝バナーで
   // 既に「ここが頂点」を示せているので、この試合カードにさらに走光を重ねない。
+  //
+  // 装飾はカード全体ではなく、勝った側の SideRow だけに掛ける(SideRow の survivorWin prop)。
+  // カード全体(article の border/背景)を光らせると、負けた側の枠まで同じ赤みを帯びて
+  // 「勝った側だけ」に見えなくなるうえ、走光の帯を上辺に固定すると勝者が下側の枠でも
+  // 光がカード上端に出てしまい、どちらが勝ったのか伝わらない。
   const isSurvivorWin = survivorMatchIds.has(match.id);
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
@@ -558,17 +564,11 @@ function MatchCard({
             }`
           : needsSelection
             ? "border-yellow-500/60 bg-gradient-to-b from-yellow-500/10 to-transparent"
-            : isSurvivorWin
-              ? "border-red-500/70 bg-gradient-to-b from-red-500/10 to-transparent"
-              : isFinal
-                ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-                : "border-white/10 bg-panel"
+            : isFinal
+              ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
+              : "border-white/10 bg-panel"
       }`}
     >
-      {/* 生き残っているツリーをひと目で追えるように、勝った試合の上辺だけ光を走らせる。
-          article 自身の clip-path(CARD_CLIP/CARD_CLIP_MIRROR)の内側に置くことで、
-          mirror側の角の切り欠きにも自動で追従する(帯を別コンポーネントで clip し直す必要がない)。 */}
-      {isSurvivorWin && <span className="survivor-track absolute inset-x-0 top-0 h-[3px]" aria-hidden />}
       <div
         className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
           mirror ? "flex-row-reverse" : ""
@@ -604,11 +604,16 @@ function MatchCard({
           この枠の中央にいるので、gap-3 のぶんだけ名前・アイコンから逃げている。 */}
       <div className="relative flex flex-1 flex-col justify-center gap-3">
         {byeWinner ? (
-          <SideRow side={byeWinner} position="top" />
+          <SideRow side={byeWinner} position="top" survivorWin={isSurvivorWin} />
         ) : (
           <>
             {match.sides.map((side, i) => (
-              <SideRow key={side.id} side={side} position={i === 0 ? "top" : "bottom"} />
+              <SideRow
+                key={side.id}
+                side={side}
+                position={i === 0 ? "top" : "bottom"}
+                survivorWin={isSurvivorWin}
+              />
             ))}
             <span
               className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${TAG_SKEW} border border-white/15 bg-[#0a0a0a] px-1.5 py-px text-[9px] font-black tracking-wide text-gray-400`}
@@ -647,15 +652,31 @@ function MatchCard({
  * `hasLiveStreamer` はバトル前(SCHEDULED)の枠にだけ立つ(DTO側で保証済み)。「今まさに配信中」の
  * 目印として緑のリングで発光させる — LIVE中の対戦(カード全体が赤く光る `.live-glow`)と
  * 混同しないよう、こちらは点滅させず静的にしてある。
+ *
+ * `survivorWin` は「この対戦カードが生存ツリーに含まれているか」(`findSurvivorMatchIds`)。
+ * まだ敗退していない出場者の勝利であることを、枠全体ではなく**勝った側の枠だけ**に
+ * 赤リング+走光で示す。負けた側の枠は通常表示のまま変えない — カード全体を光らせると
+ * 負けた側まで同じ色になり「勝った側だけ」に見えなくなるため(BracketTree.tsx冒頭を参照)。
  */
-function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "bottom" }) {
+function SideRow({
+  side,
+  position,
+  survivorWin,
+}: {
+  side: BracketSideDto;
+  position: "top" | "bottom";
+  survivorWin?: boolean;
+}) {
   const hasAvatar = side.entrants.length > 0;
+  const isSurvivorSide = Boolean(survivorWin) && side.isWinner;
   const frame = `relative flex ${SIDE_H} flex-col items-center justify-center overflow-hidden text-center ${
-    side.isWinner
-      ? "bg-brand/10 ring-1 ring-inset ring-brand/40"
-      : side.hasLiveStreamer
-        ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
-        : "bg-white/[0.04]"
+    isSurvivorSide
+      ? "bg-red-500/10 ring-1 ring-inset ring-red-500/70"
+      : side.isWinner
+        ? "bg-brand/10 ring-1 ring-inset ring-brand/40"
+        : side.hasLiveStreamer
+          ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
+          : "bg-white/[0.04]"
   }`;
 
   if (!side.name) {
@@ -668,6 +689,17 @@ function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "
 
   return (
     <div className={frame}>
+      {/* 生き残っているツリーをひと目で追えるように、勝った側の枠の外側の辺だけ光を走らせる
+          (top側は枠の上端、bottom側は枠の下端 = カードの中央寄り)。枠自身が
+          overflow-hidden を持つので、帯もこの枠の中に収まる。 */}
+      {isSurvivorSide && (
+        <span
+          className={`survivor-track absolute inset-x-0 h-[3px] ${
+            position === "top" ? "top-0" : "bottom-0"
+          }`}
+          aria-hidden
+        />
+      )}
       <EntrantAvatars entrants={side.entrants} size="card" />
 
       {/* 名前はアイコンの上に重なるので、背後に黒帯を差して読めるようにする。 */}
