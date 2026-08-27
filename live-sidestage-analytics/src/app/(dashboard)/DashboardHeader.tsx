@@ -56,15 +56,9 @@ export default function DashboardHeader() {
           )}
         </div>
 
-        {/* オーバーレイの設定は /overlays に集約してある。ここに設定パネルを戻さないこと —
-            幅320pxのドロップダウンでは実物のプレビューを見ながら調整できず、
-            種類が増えると置き場所も無くなる。 */}
-        <Link href="/overlays" className="btn-ghost text-xs shrink-0" aria-label="オーバーレイ" title="オーバーレイ">
-          🎯<span className="hidden sm:inline"> オーバーレイ</span>
-        </Link>
-
-        {/* イベント(/events)への導線はここに置かない。表向き別サービスとして分離してあり、
-            analytics 側からイベント側の存在が見えないようにしている。 */}
+        {/* オーバーレイ(/overlays)・イベント(/events)への導線はここに置かない。
+            どちらも表向き別サービスとして分離してあり、analytics 側から
+            存在が見えないようにしている。 */}
         <Link href="/setup" className="btn-ghost text-xs shrink-0" aria-label="設定" title="設定">
           ⚙️<span className="hidden sm:inline"> 設定</span>
         </Link>
