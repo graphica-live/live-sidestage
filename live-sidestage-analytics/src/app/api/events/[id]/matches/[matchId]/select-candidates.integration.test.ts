@@ -6,7 +6,10 @@ import { createHash } from "crypto";
 import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
+import {
+  buildCandidatesFingerprintInput,
+  buildSelectionFingerprintInput,
+} from "@/event/candidates-fingerprint";
 
 const auth = vi.hoisted(() => ({ userId: null as string | null }));
 
@@ -20,9 +23,22 @@ const { PATCH } = await import("./route");
 /** route.ts の computeCandidatesFingerprint と同じ計算(Next.js の route ファイルは
  * HTTPメソッド以外を export できないので、ここで同じロジックを組み立てる)。 */
 function computeCandidatesFingerprint(
-  candidates: { id: string; endedAt: Date | null; confidence: string; ambiguous: boolean }[]
+  candidates: {
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    confidence: string;
+    ambiguous: boolean;
+  }[]
 ): string {
   return createHash("sha256").update(buildCandidatesFingerprintInput(candidates)).digest("hex");
+}
+
+/** route.ts の computeSelectionFingerprint と同じ計算。 */
+function computeSelectionFingerprint(
+  candidates: { id: string; organizerSelected: boolean; combinedGroupId: string | null }[]
+): string {
+  return createHash("sha256").update(buildSelectionFingerprintInput(candidates)).digest("hex");
 }
 
 const PREFIX = "itest_selcand";
@@ -133,7 +149,15 @@ async function addCandidate(params: {
       confidence: "exact",
       endedAtSource: endedAt ? "observed" : null,
     },
-    select: { id: true, endedAt: true, confidence: true, ambiguous: true },
+    select: {
+      id: true,
+      startedAt: true,
+      endedAt: true,
+      confidence: true,
+      ambiguous: true,
+      organizerSelected: true,
+      combinedGroupId: true,
+    },
   });
 }
 
@@ -385,7 +409,9 @@ describe("resetCandidates", () => {
       candidatesFingerprint: fingerprint,
     });
 
-    const res = await patch(eventId, matchId, { action: "resetCandidates" });
+    const afterSelect = await prisma.eventMatchBattleCandidate.findMany({ where: { matchId } });
+    const selectionFingerprint = computeSelectionFingerprint(afterSelect);
+    const res = await patch(eventId, matchId, { action: "resetCandidates", selectionFingerprint });
     expect(res.status).toBe(200);
 
     const match = await prisma.eventMatch.findUniqueOrThrow({ where: { id: matchId } });

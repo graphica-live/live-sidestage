@@ -38,4 +38,18 @@ describe("resolveGameWinner", () => {
     ]);
     expect(winner).toBe("b");
   });
+
+  it("合算グループの候補ごとの部分和を1組のtotalsへ合算してから渡しても、シグネチャは単一候補と同じで判定できる(バトル合算機能)", () => {
+    // resolveMatchSeries() は合算グループのメンバー(候補)ごとの scoreSides() 結果を
+    // groupTotals へ加算してから resolveGameWinner() を1回だけ呼ぶ。ここでは
+    // 「候補Aが70、候補Bが30」を合算した100と、単独候補が80のケースを対比し、
+    // resolveGameWinner() 自体は合算後の1組のtotalsを渡すだけで従来どおり動くことを固定する。
+    const candidateATotals = 70n;
+    const candidateBTotals = 30n;
+    const combinedWinner = resolveGameWinner([
+      { sideId: "a", diamonds: candidateATotals + candidateBTotals },
+      { sideId: "b", diamonds: 80n },
+    ]);
+    expect(combinedWinner).toBe("a");
+  });
 });

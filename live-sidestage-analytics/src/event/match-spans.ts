@@ -60,3 +60,40 @@ export function resolveMatchSpans(
 
   return { status: "ok", spans, provisional };
 }
+
+/**
+ * 合算グループを持つ対戦の検知区間。`resolveMatchSpans()` は `detectedStartAt`〜
+ * `detectedEndAt` を1本の連続区間として扱うため、CUT_SHORT終了〜やり直し開始のような
+ * 「意図的な空白」を挟む合算グループでは、その空白のギフトまで貢献者集計に混入してしまう
+ * (勝敗・順位は `scoreSides()` が候補ごとに個別集計するので影響しない — 貢献者モーダルだけの
+ * 差異)。この関数は選択済み候補(`selected: true`)それぞれの `[startedAt, endedAt)` を
+ * 個別に日程で切ってから結合する。
+ *
+ * **呼び出し側は `combinedGroupId` を持つ選択済み候補が1件でもある対戦だけに限定すること。**
+ * 通常の合算なし対戦(BEST_OF_THREE のゲーム間の空白を含む)は対象外とし、
+ * 従来どおり `resolveMatchSpans()` を使う(合算機能導入前から存在する既知の差異であり、
+ * このスコープを広げてまで直す理由がない)。
+ *
+ * **`selectCandidateGroups` は候補選択の完了(全メンバーの endedAt 確定)を要求する**ため、
+ * この経路に来る時点で対象候補は必ず確定済み — 「進行中(LIVE)の合算グループ」というケース
+ * 自体が発生しない。したがって `provisional` は常に `false` を返す
+ * (`resolveMatchSpans()` が扱う LIVE/duration由来の分岐を持たなくてよい)。
+ */
+export function resolveGroupedMatchSpans(
+  selectedCandidates: { startedAt: Date; endedAt: Date | null }[],
+  windows: EventWindow[],
+  now: Date
+): MatchSpanResult {
+  if (selectedCandidates.length === 0) return { status: "no-detection" };
+
+  const spans: Span[] = [];
+  for (const candidate of selectedCandidates) {
+    if (!candidate.endedAt) return { status: "no-end" };
+    const rawEnd = candidate.endedAt > now ? now : candidate.endedAt;
+    if (candidate.startedAt >= rawEnd) continue;
+    spans.push(...intersectWindows({ start: candidate.startedAt, end: rawEnd }, windows));
+  }
+
+  if (spans.length === 0) return { status: "no-window" };
+  return { status: "ok", spans, provisional: false };
+}

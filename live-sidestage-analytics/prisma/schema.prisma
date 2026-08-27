@@ -855,6 +855,16 @@ model EventMatchBattleCandidate {
   // 含まれるか。loadBattleRangesByRoom() はこの列だけを見る。
   selected Boolean @default(false)
 
+  // 主催者が「合算して1ゲームとして扱う」と判定した候補のグループ印。
+  // null = 単独ゲーム(従来どおり1候補=1ゲーム)。同じ値を持つ候補群は
+  // resolveMatchSeries() がスコアを合算して1ゲームとして扱う。
+  //
+  // **selectCandidateGroups API だけが書く。organizerSelected と対で運用する不変条件**
+  // ("combinedGroupId が非null ⇒ organizerSelected も true"。void/reopen/resetCandidates は
+  // 必ず両方をクリアする)。値そのものに意味はなく、サーバーが crypto.randomUUID() で
+  // 発行する不透明な文字列。同じ matchId 内に複数のグループが同時に存在してよい。
+  combinedGroupId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

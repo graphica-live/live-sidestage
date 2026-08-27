@@ -62,12 +62,14 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           orderBy: { startedAt: "asc" },
           select: {
             id: true,
+            battleId: true,
             startedAt: true,
             endedAt: true,
             confidence: true,
             ambiguous: true,
             organizerSelected: true,
             selected: true,
+            combinedGroupId: true,
           },
         },
         sides: {
@@ -207,12 +209,14 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     isBye: isByeRow(m.rules),
     candidates: m.battleCandidates.map((c) => ({
       id: c.id,
+      battleId: c.battleId,
       startedAt: c.startedAt.toISOString(),
       endedAt: c.endedAt?.toISOString() ?? null,
       confidence: c.confidence,
       ambiguous: c.ambiguous,
       organizerSelected: c.organizerSelected,
       selected: c.selected,
+      combinedGroupId: c.combinedGroupId,
     })),
     placement: parsePlacement(m.rules),
     // 組み合わせ変更(接続の交換)で座標既定を上書きしている場合だけ値を持つ。
@@ -288,6 +292,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           eventPlacementDepth={parsePlacementDepth(event.rules)}
           feederSwapEnabled={process.env.EVENT_WINNER_FEEDER_SWAP === "1"}
           feederFlows={feederFlows}
+          candidateGroupingEnabled={process.env.EVENT_CANDIDATE_GROUPING === "1"}
         />
       </div>
 
