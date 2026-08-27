@@ -11,7 +11,7 @@ void main() {
     // 正規化は JS（TikEffect）と Dart で別々に実装されている。ずれると同じギフトの
     // 表示が端末とデスクトップで食い違うので、ケースは共有資産から読む。
     // live-sidestage-desktop 側のテストも同じファイルを読んでいる。
-    final file = File('../shared/gift-names/normalize-cases.json');
+    final file = File('../shared/gift-name-normalization/normalize-cases.json');
     final cases = (jsonDecode(file.readAsStringSync()) as Map)['cases'] as List;
 
     test('共有テストベクタが読めている', () {

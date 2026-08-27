@@ -33,8 +33,6 @@ const {
     switchBroadcasterId,
 } = tikTokHelpers;
 const { firstDefinedString, normalizeBooleanInput, normalizeHexColor, normalizeEffectText, hasJapaneseText, normalizeWholeNumber, normalizeBroadcasterId } = require('./lib/utils');
-const { getGiftDisplayNameJa, setGiftDisplayNameJa } = require('./lib/gift-name-ja');
-const { GIFT_NAME_JA_REFERENCE_LIST } = require('./lib/gift-name-ja-reference-list');
 const giftCatalogModule = require('./lib/tiktok-gift-catalog');
 const {
     getTikTokGiftImageUrl,
@@ -43,6 +41,10 @@ const {
     normalizeTikTokGiftCatalog,
     buildTikTokGiftCatalogConnectionOptions,
     fetchTikTokGiftCatalog,
+    // ギフト名の日本語表示。TikTok 公式の名前をカタログから同期で引く
+    // （以前あった手作業辞書 gift-name-ja.js は廃止した）。
+    getCatalogNameJa,
+    loadGiftCatalogIndex,
 } = giftCatalogModule;
 const {
     createDefaultCommentFeedSettings,
@@ -1793,7 +1795,7 @@ function setContributorNickname(uniqueId, nickname) {
 }
 
 function hydrateStoredGiftEvent(gift) {
-    const giftNameJa = getGiftDisplayNameJa(gift.giftName);
+    const giftNameJa = getCatalogNameJa(gift.giftName);
 
     if (gift.giftImage) {
         return { ...gift, giftNameJa };
@@ -1921,7 +1923,7 @@ function buildTopGiftSnapshot(dayKey = getTodayDayKey()) {
             nickname: topGift.nickname,
             image: topGift.image,
             giftId: topGift.giftId || '',
-            giftName: getGiftDisplayNameJa(topGift.giftName) || 'ギフト名未取得',
+            giftName: getCatalogNameJa(topGift.giftName) || 'ギフト名未取得',
             giftImage: topGift.giftImage || null,
             giftValue: topGiftAmount,
             totalGifts: Number(topGift.totalGifts || 0),
@@ -2980,9 +2982,6 @@ require('./lib/routes/data')({
     deleteGiftEvent,
     deleteContributor,
     resetContributorsForDay,
-    getGiftDisplayNameJa,
-    setGiftDisplayNameJa,
-    giftNameJaReferenceList: GIFT_NAME_JA_REFERENCE_LIST,
 });
 
 
@@ -3076,6 +3075,11 @@ giftCatalogModule.initGiftCatalog({
     getBroadcasterId,
     getConnectionOptions: () => tiktokConnectionOptions,
 });
+
+// 前回貯めたカタログから日本語表示名の索引を作る。**取得を待たずに引けるようにする**ため。
+// ギフト履歴やウィジェットの表示は同期で名前を解決するので、ここで載せておかないと
+// カタログを取り直すまで英語表記になる（オフライン起動でもそのまま英語のままになる）。
+loadGiftCatalogIndex(getBroadcasterId());
 
 function ensureTikTokConnection() {
     const broadcasterId = getBroadcasterId();
@@ -3215,7 +3219,7 @@ function ensureTikTokConnection() {
                 image: data.profilePictureUrl || '',
                 giftId: data.giftId ? String(data.giftId) : null,
                 giftName: data.giftName || null,
-                giftNameJa: getGiftDisplayNameJa(data.giftName),
+                giftNameJa: getCatalogNameJa(data.giftName),
                 giftImage: resolveLiveGiftImageUrl(data),
                 totalGifts: (Number(data.diamondCount) || 0) * currentRepeat,
                 repeatCount: currentRepeat,

@@ -28,9 +28,6 @@ module.exports = function registerDataRoutes({
     deleteGiftEvent,
     deleteContributor,
     resetContributorsForDay,
-    getGiftDisplayNameJa,
-    setGiftDisplayNameJa,
-    giftNameJaReferenceList,
 }) {
     app.get('/api/days', (req, res) => {
         res.json({
@@ -144,28 +141,9 @@ module.exports = function registerDataRoutes({
         }
     });
 
-    app.get('/api/gift-name-ja/reference-list', (req, res) => {
-        return res.json({ list: giftNameJaReferenceList || [] });
-    });
-
-    app.post('/api/gift-name-ja', (req, res) => {
-        const name = typeof req.body?.name === 'string' ? req.body.name : '';
-        const value = typeof req.body?.value === 'string' ? req.body.value : '';
-
-        if (!name.trim()) {
-            return res.status(400).json({ ok: false, error: 'name is required' });
-        }
-
-        try {
-            const result = setGiftDisplayNameJa(name, value);
-            if (!result.ok) {
-                return res.status(400).json(result);
-            }
-            return res.json({ ok: true, name, nameJa: getGiftDisplayNameJa(name) });
-        } catch (error) {
-            return res.status(500).json({ ok: false, error: error?.message || '保存に失敗しました。' });
-        }
-    });
+    // 対訳エディタ（GET /api/gift-name-ja/reference-list, POST /api/gift-name-ja）は廃止した。
+    // ギフト名の日本語表示は TikTok 公式の名前をカタログから取るようになったので、
+    // 人力で対訳を登録する画面ごと不要になった。
 
     app.patch('/api/contributors', (req, res) => {
         const requestedDayKey = normalizeDayKey(req.body.dayKey);
