@@ -1,0 +1,685 @@
+giftId,nodeGiftListDefault,nodeGiftListJaJp,nodeGiftListRoomScoped,nodeEvent,pythonGiftListDefault,pythonGiftListJaJp,pythonEvent,csharpEvent,directApiDefault,directApiJaJp,diamondCount,isJapanese,diff,giftListVsEventDiff,inRegularCatalog,seenOnlyViaLiveOrRoomScoped
+5269,TikTok,TikTok,TikTok,,TikTok,TikTok,,,TikTok,TikTok,1,false,false,false,true,false
+5338,Unicorn Fantasy,ユニコーン ファンタジー,,,Unicorn Fantasy,ユニコーン ファンタジー,,,Unicorn Fantasy,ユニコーン ファンタジー,5000,true,false,false,true,false
+5487,Finger Heart,フィンガーハート,Finger Heart,,Finger Heart,フィンガーハート,,,Finger Heart,フィンガーハート,5,true,false,false,true,false
+5509,Sunglasses,サングラス,Sunglasses,,Sunglasses,サングラス,,,Sunglasses,サングラス,199,true,false,false,true,false
+5566,Mishka Bear,ミシカ ベア,Mishka Bear,,Mishka Bear,ミシカ ベア,,,Mishka Bear,ミシカ ベア,100,true,false,false,true,false
+5582,Mishka Bear,ミシカ ベア,Mishka Bear,,Mishka Bear,ミシカ ベア,,,Mishka Bear,ミシカ ベア,100,true,false,false,true,false
+5585,Confetti,クラッカー,Confetti,,Confetti,クラッカー,,,Confetti,クラッカー,100,true,false,false,true,false
+5586,Hearts,ハート,Hearts,,Hearts,ハート,,,Hearts,ハート,199,true,false,false,true,false
+5648,Duit Raya,ラヤグリーンパケット,Duit Raya,,Duit Raya,ラヤグリーンパケット,,,Duit Raya,ラヤグリーンパケット,5,true,false,false,true,false
+5655,Rose,バラ,Rose,,Rose,バラ,,,Rose,バラ,1,true,false,false,true,false
+5658,Perfume,香水,Perfume,,Perfume,香水,,,Perfume,香水,20,true,false,false,true,false
+5659,Paper Crane,折り鶴,Paper Crane,,Paper Crane,折り鶴,,,Paper Crane,折り鶴,99,true,false,false,true,false
+5660,Hand Heart,ハートポーズ,Hand Heart,,Hand Heart,ハートポーズ,,,Hand Heart,ハートポーズ,100,true,false,false,true,false
+5680,Disco ball,ミラーボール,Disco ball,,Disco ball,ミラーボール,,,Disco ball,ミラーボール,1000,true,false,false,true,false
+5731,Coral,サンゴ,Coral,,Coral,サンゴ,,,Coral,サンゴ,499,true,false,false,true,false
+5745,Cat Paws,猫の足,Cat Paws,,Cat Paws,猫の足,,,Cat Paws,猫の足,1,true,false,false,true,false
+5765,Motorcycle,オートバイ,Motorcycle,,Motorcycle,オートバイ,,,Motorcycle,オートバイ,2988,true,false,false,true,false
+5767,Private Jet,プライベートジェット,Private Jet,,Private Jet,プライベートジェット,,,Private Jet,プライベートジェット,4888,true,false,false,true,false
+5780,Bouquet Flower,花束,,,Bouquet Flower,花束,,,Bouquet Flower,花束,30,true,false,false,true,false
+5827,Ice Cream Cone,ソフトクリーム,Ice Cream Cone,,Ice Cream Cone,ソフトクリーム,,,Ice Cream Cone,ソフトクリーム,1,true,false,false,true,false
+5879,Doughnut,ドーナッツ,Doughnut,,Doughnut,ドーナッツ,,,Doughnut,ドーナッツ,30,true,false,false,true,false
+5897,Swan,白鳥,Swan,,Swan,白鳥,,,Swan,白鳥,699,true,false,false,true,false
+5978,Train,列車,Train,,Train,列車,,,Train,列車,899,true,false,false,true,false
+6007,Boxing Gloves,進撃グローブ,Boxing Gloves,,Boxing Gloves,進撃グローブ,,,Boxing Gloves,進撃グローブ,299,true,false,false,true,false
+6064,GG,GG,GG,,GG,GG,,,GG,GG,1,false,false,false,true,false
+6089,Sports Car,スポーツカー,Sports Car,,Sports Car,スポーツカー,,,Sports Car,スポーツカー,7000,true,false,false,true,false
+6090,Fireworks,花火,Fireworks,,Fireworks,花火,,,Fireworks,花火,1088,true,false,false,true,false
+6093,Football,サッカー,Football,,Football,サッカー,,,Football,サッカー,1,true,false,false,true,false
+6097,Little Crown,小さな王冠,Little Crown,,Little Crown,小さな王冠,,,Little Crown,小さな王冠,99,true,false,false,true,false
+6104,Cap,キャップ,Cap,,Cap,キャップ,,,Cap,キャップ,99,true,false,false,true,false
+6149,Interstellar,星から星へ,Interstellar,,Interstellar,星から星へ,,,Interstellar,星から星へ,10000,true,false,false,true,false
+6203,Sunset Speedway,夕暮れを背に,Sunset Speedway,,Sunset Speedway,夕暮れを背に,,,Sunset Speedway,夕暮れを背に,10000,true,false,false,true,false
+6233,Travel with You,travel with me,Travel with You,,Travel with You,travel with me,,,Travel with You,travel with me,999,false,false,false,true,false
+6246,Thumbs Up,グッド,Thumbs Up,,Thumbs Up,グッド,,,Thumbs Up,グッド,1,true,false,false,true,false
+6247,Heart,ハート,Heart,,Heart,ハート,,,Heart,ハート,1,true,false,false,true,false
+6267,Corgi,コーギー,Corgi,,Corgi,コーギー,,,Corgi,コーギー,299,true,false,false,true,false
+6369,Lion,ライオン,Lion,,Lion,ライオン,,,Lion,ライオン,29999,true,false,false,true,false
+6427,Hat and Mustache,帽子と口ひげ,Hat and Mustache,,Hat and Mustache,帽子と口ひげ,,,Hat and Mustache,帽子と口ひげ,99,true,false,false,true,false
+6437,Garland Headpiece,花冠,Garland Headpiece,,Garland Headpiece,花冠,,,Garland Headpiece,花冠,199,true,false,false,true,false
+6544,Ice Lolly,アイスバー,Ice Lolly,,Ice Lolly,アイスバー,,,Ice Lolly,アイスバー,10,true,false,false,true,false
+6563,Meteor Shower,流星群,Meteor Shower,,Meteor Shower,流星群,,,Meteor Shower,流星群,3000,true,false,false,true,false
+6646,Leon the Kitten,子猫のレオン,Leon the Kitten,,Leon the Kitten,子猫のレオン,,,Leon the Kitten,子猫のレオン,4888,true,false,false,true,false
+6671,Love You,愛してる,Love You,,Love You,愛してる,,,Love You,愛してる,199,true,false,false,true,false
+6713,Cheer For You,あなたに送る歓声,Cheer For You,,Cheer For You,あなたに送る歓声,,,Cheer For You,あなたに送る歓声,199,true,false,false,true,false
+6751,TikTok Shuttle,TikTokシャトル,TikTok Shuttle,,TikTok Shuttle,TikTokシャトル,,,TikTok Shuttle,TikTokシャトル,20000,true,false,false,true,false
+6784,Cake Slice,ケーキ一切れ,Cake Slice,,Cake Slice,ケーキ一切れ,,,Cake Slice,ケーキ一切れ,1,true,false,false,true,false
+6788,Glow Stick,ペンライト,Glow Stick,,Glow Stick,ペンライト,,,Glow Stick,ペンライト,1,true,false,false,true,false
+6789,Star of Red Carpet,レッドカーペットのスター,Star of Red Carpet,,Star of Red Carpet,レッドカーペットのスター,,,Star of Red Carpet,レッドカーペットのスター,1999,true,false,false,true,false
+6790,Celebration Time,お祝いの時間,Celebration Time,,Celebration Time,お祝いの時間,,,Celebration Time,お祝いの時間,6999,true,false,false,true,false
+6820,Whale Diving,クジラのダイビング,Whale Diving,,Whale Diving,クジラのダイビング,,,Whale Diving,クジラのダイビング,2150,true,false,false,true,false
+6833,Castle Fantasy,幻のキャッスル,Castle Fantasy,,Castle Fantasy,幻のキャッスル,,,Castle Fantasy,幻のキャッスル,20000,true,false,false,true,false
+6862,Cooper Flies Home,クーパー、飛んで帰る,Cooper Flies Home,,Cooper Flies Home,クーパー、飛んで帰る,,,Cooper Flies Home,クーパー、飛んで帰る,1999,true,false,false,true,false
+6890,Love you,愛してる,Love you,,Love you,愛してる,,,Love you,愛してる,1,true,false,false,true,false
+6905,LIVE On Air,ライブなう,LIVE On Air,,LIVE On Air,ライブなう,,,LIVE On Air,ライブなう,99,true,false,false,true,false
+7121,Marvelous Confetti,豪華なクラッカー,Marvelous Confetti,,Marvelous Confetti,豪華なクラッカー,,,Marvelous Confetti,豪華なクラッカー,100,true,false,false,true,false
+7122,Gem Gun,宝石銃,Gem Gun,,Gem Gun,宝石銃,,,Gem Gun,宝石銃,500,true,false,false,true,false
+7123,Shiny Air Balloon,ゆめ気球,Shiny Air Balloon,,Shiny Air Balloon,ゆめ気球,,,Shiny Air Balloon,ゆめ気球,1000,true,false,false,true,false
+7124,Signature Jet,サイン付きジェット機,Signature Jet,,Signature Jet,サイン付きジェット機,,,Signature Jet,サイン付きジェット機,4888,true,false,false,true,false
+7125,Premium Shuttle,プレミアムロケット,Premium Shuttle,,Premium Shuttle,プレミアムロケット,,,Premium Shuttle,プレミアムロケット,20000,true,false,false,true,false
+7153,Old Famous Car,レトロドライブ,Old Famous Car,,Old Famous Car,レトロドライブ,,,Old Famous Car,レトロドライブ,2999,true,false,false,true,false
+7168,Money Gun,マネーガン,Money Gun,,Money Gun,マネーガン,,,Money Gun,マネーガン,500,true,false,false,true,false
+7237,Unicorn Fantasy,幻のユニコーン,Unicorn Fantasy,,Unicorn Fantasy,幻のユニコーン,,,Unicorn Fantasy,幻のユニコーン,5000,true,false,false,true,false
+7312,TikTok Universe+,TikTok Universe+,TikTok Universe+,,TikTok Universe+,TikTok Universe+,,,TikTok Universe+,TikTok Universe+,34999,false,false,false,true,false
+7319,Phoenix,フェニックス,Phoenix,,Phoenix,フェニックス,,,Phoenix,フェニックス,25999,true,false,false,true,false
+7400,Adam’s Dream,アダムの夢,Adam’s Dream,,Adam’s Dream,アダムの夢,,,Adam’s Dream,アダムの夢,25999,true,false,false,true,false
+7467,Chasing the Dream,夢を追いかける,Chasing the Dream,,Chasing the Dream,夢を追いかける,,,Chasing the Dream,夢を追いかける,1500,true,false,false,true,false
+7529,Mystery Firework,不思議な花火,Mystery Firework,,Mystery Firework,不思議な花火,,,Mystery Firework,不思議な花火,1999,true,false,false,true,false
+7610,Dragon Flame,ドラゴンの炎,Dragon Flame,,Dragon Flame,ドラゴンの炎,,,Dragon Flame,ドラゴンの炎,26999,true,false,false,true,false
+7764,Star Throne,スターの玉座,Star Throne,,Star Throne,スターの玉座,,,Star Throne,スターの玉座,7999,true,false,false,true,false
+7823,Leon and Lion,レオンとライオン,Leon and Lion,,Leon and Lion,レオンとライオン,,,Leon and Lion,レオンとライオン,34000,true,false,false,true,false
+7897,Baseball,野球,Baseball,,Baseball,野球,,,Baseball,野球,1,true,false,false,true,false
+7931,Singing Mic,歌用マイク,Singing Mic,,Singing Mic,歌用マイク,,,Singing Mic,歌用マイク,399,true,false,false,true,false
+7934,Heart Me,ハートミー,Heart Me,Heart Me,Heart Me,ハートミー,Heart Me,,Heart Me,ハートミー,1,true,false,false,true,false
+8130,Like-Pop,ハートのバブルガン,Like-Pop,,Like-Pop,ハートのバブルガン,,,Like-Pop,ハートのバブルガン,99,true,false,false,true,false
+8150,Cuddle with Me,ぎゅっとハグ,Cuddle with Me,,Cuddle with Me,ぎゅっとハグ,,,Cuddle with Me,ぎゅっとハグ,500,true,false,false,true,false
+8243,Cheer You Up,元気出して,Cheer You Up,,Cheer You Up,元気出して,,,Cheer You Up,元気出して,9,true,false,false,true,false
+8244,Hands Up,いいね！,Hands Up,,Hands Up,いいね！,,,Hands Up,いいね！,499,true,false,false,true,false
+8245,Here We Go,行くぞ,Here We Go,,Here We Go,行くぞ,,,Here We Go,行くぞ,1799,true,false,false,true,false
+8247,Happy Party,ハッピーパーティー,Happy Party,,Happy Party,ハッピーパーティー,,,Happy Party,ハッピーパーティー,6999,true,false,false,true,false
+8248,Fly Love,飛ぶ愛,Fly Love,,Fly Love,飛ぶ愛,,,Fly Love,飛ぶ愛,19999,true,false,false,true,false
+8277,Love Drop,愛をお届け,Love Drop,,Love Drop,愛をお届け,,,Love Drop,愛をお届け,1800,true,false,false,true,false
+8343,Hand Heart,ハンドハート,Hand Heart,,Hand Heart,ハンドハート,,,Hand Heart,ハンドハート,100,true,false,false,true,false
+8419,Red Lightning,赤い稲光,Red Lightning,,Red Lightning,赤い稲光,,,Red Lightning,赤い稲光,12000,true,false,false,true,false
+8420,Star Throne,スターの玉座,Star Throne,,Star Throne,スターの玉座,,,Star Throne,スターの玉座,7999,true,false,false,true,false
+8469,Wolf,オオカミ,Wolf,,Wolf,オオカミ,,,Wolf,オオカミ,5500,true,false,false,true,false
+8503,Falcon,ハヤブサ,Falcon,,Falcon,ハヤブサ,,,Falcon,ハヤブサ,10999,true,false,false,true,false
+8582,TikTok Stars,TikTok Stars,TikTok Stars,,TikTok Stars,TikTok Stars,,,TikTok Stars,TikTok Stars,39999,false,false,false,true,false
+8603,Leopard,ヒョウ,Leopard,,Leopard,ヒョウ,,,Leopard,ヒョウ,15000,true,false,false,true,false
+8624,Zeus,ゼウス,Zeus,,Zeus,ゼウス,,,Zeus,ゼウス,34000,true,false,false,true,false
+8651,Thunder Falcon,サンダーバード,Thunder Falcon,,Thunder Falcon,サンダーバード,,,Thunder Falcon,サンダーバード,39999,true,false,false,true,false
+8655,Cute Cat,ニャオ,Cute Cat,,Cute Cat,ニャオ,,,Cute Cat,ニャオ,5,true,false,false,true,false
+8835,Summer Fuji Mountain,富士花火,Summer Fuji Mountain,,Summer Fuji Mountain,富士花火,,,Summer Fuji Mountain,富士花火,7999,true,false,false,true,false
+8889,Pink Dream,ピンクドリーム,Pink Dream,,Pink Dream,ピンクドリーム,,,Pink Dream,ピンクドリーム,2988,true,false,false,true,false
+8912,Rosa Nebula,ローザの星雲,Rosa Nebula,,Rosa Nebula,ローザの星雲,,,Rosa Nebula,ローザの星雲,15000,true,false,false,true,false
+8913,Rosa,ローザ,Rosa,,Rosa,ローザ,,,Rosa,ローザ,10,true,false,false,true,false
+8914,Forever Rosa,永遠のローザ,Forever Rosa,,Forever Rosa,永遠のローザ,,,Forever Rosa,永遠のローザ,399,true,false,false,true,false
+8916,Leon and Lili,レオンとリリー,Leon and Lili,,Leon and Lili,レオンとリリー,,,Leon and Lili,レオンとリリー,9699,true,false,false,true,false
+9072,TikTok Universe,TikTok Universe,TikTok Universe,,TikTok Universe,TikTok Universe,,,TikTok Universe,TikTok Universe,44999,false,false,false,true,false
+9092,Fire Phoenix,ファイアフェニックス,Fire Phoenix,,Fire Phoenix,ファイアフェニックス,,,Fire Phoenix,ファイアフェニックス,41999,true,false,false,true,false
+9101,TikTok Universe,TikTok Universe,TikTok Universe,,TikTok Universe,TikTok Universe,,,TikTok Universe,TikTok Universe,44999,false,false,false,true,false
+9138,Trending Figure,スポットライト,Trending Figure,,Trending Figure,スポットライト,,,Trending Figure,スポットライト,999,true,false,false,true,false
+9139,Team Bracelet,チームブレスレット,Team Bracelet,,Team Bracelet,チームブレスレット,,,Team Bracelet,チームブレスレット,2,true,false,false,true,false
+9355,So Cute,かわいい,So Cute,,So Cute,かわいい,,,So Cute,かわいい,1,true,false,false,true,false
+9427,Pegasus,ホワイトペガサス,Pegasus,,Pegasus,ホワイトペガサス,,,Pegasus,ホワイトペガサス,42999,true,false,false,true,false
+9465,Fruit Friends,フルーツの友達,Fruit Friends,,Fruit Friends,フルーツの友達,,,Fruit Friends,フルーツの友達,299,true,false,false,true,false
+9466,Amusement Park,遊園地,Amusement Park,,Amusement Park,遊園地,,,Amusement Park,遊園地,17000,true,false,false,true,false
+9467,Lili the Leopard,ヒョウのリリー,Lili the Leopard,,Lili the Leopard,ヒョウのリリー,,,Lili the Leopard,ヒョウのリリー,6599,true,false,false,true,false
+9468,Rhythmic Bear,リズミカルなクマ,Rhythmic Bear,,Rhythmic Bear,リズミカルなクマ,,,Rhythmic Bear,リズミカルなクマ,2999,true,false,false,true,false
+9498,Blooming Ribbons,金の紙吹雪,Blooming Ribbons,,Blooming Ribbons,金の紙吹雪,,,Blooming Ribbons,金の紙吹雪,1000,true,false,false,true,false
+9500,Flying Jets,空飛ぶジェット機,Flying Jets,,Flying Jets,空飛ぶジェット機,,,Flying Jets,空飛ぶジェット機,5000,true,false,false,true,false
+9532,Shine Bright,シャインブライト,Shine Bright,,Shine Bright,シャインブライト,,,Shine Bright,シャインブライト,4088,true,false,false,true,false
+9608,White Wolf,ホワイトウルフ,White Wolf,,White Wolf,ホワイトウルフ,,,White Wolf,ホワイトウルフ,12000,true,false,false,true,false
+9717,Lucky Airdrop Box,空中投下ラッキーボックス,Lucky Airdrop Box,,Lucky Airdrop Box,空中投下ラッキーボックス,,,Lucky Airdrop Box,空中投下ラッキーボックス,999,true,false,false,true,false
+9824,Lover’s Lock,恋人のロック,Lover’s Lock,,Lover’s Lock,恋人のロック,,,Lover’s Lock,恋人のロック,1500,true,false,false,true,false
+9825,Magic Rhythm,魔法のリズム,Magic Rhythm,,Magic Rhythm,魔法のリズム,,,Magic Rhythm,魔法のリズム,399,true,false,false,true,false
+9909,Greeting Card,メッセージカード,Greeting Card,,Greeting Card,メッセージカード,,,Greeting Card,メッセージカード,1500,true,false,false,true,false
+9947,Friendship Necklace,友情ネックレス,Friendship Necklace,,Friendship Necklace,友情ネックレス,,,Friendship Necklace,友情ネックレス,10,true,false,false,true,false
+9948,You’re Amazing,すばらしい！,You’re Amazing,,You’re Amazing,すばらしい！,,,You’re Amazing,すばらしい！,500,true,false,false,true,false
+10022,Gyeongbokgung,景福宮,Gyeongbokgung,,Gyeongbokgung,景福宮,,,Gyeongbokgung,景福宮,20000,true,false,false,true,false
+10065,Gorilla,ゴリラ,Gorilla,,Gorilla,ゴリラ,,,Gorilla,ゴリラ,30000,true,false,false,true,false
+10165,Diamond Flight,空飛ぶダイヤモンド,Diamond Flight,,Diamond Flight,空飛ぶダイヤモンド,,,Diamond Flight,空飛ぶダイヤモンド,18000,true,false,false,true,false
+10423,Club Music,クラブミュージック,Club Music,,Club Music,クラブミュージック,,,Club Music,クラブミュージック,2000,true,false,false,true,false
+10517,Desert Wolf,砂漠のオオカミ,,,Desert Wolf,砂漠のオオカミ,,,Desert Wolf,砂漠のオオカミ,5500,true,false,false,true,false
+10547,Pinch Face,顔をつねる,Pinch Face,,Pinch Face,顔をつねる,,,Pinch Face,顔をつねる,249,true,false,false,true,false
+10588,Diamond Gun,ダイヤモンドの銃,Diamond Gun,,Diamond Gun,ダイヤモンドの銃,,,Diamond Gun,ダイヤモンドの銃,5000,true,false,false,true,false
+10667,VR Goggles,タイムゴーグル,VR Goggles,,VR Goggles,タイムゴーグル,,,VR Goggles,タイムゴーグル,500,true,false,false,true,false
+10668,Future Encounter,未来との遭遇,Future Encounter,,Future Encounter,未来との遭遇,,,Future Encounter,未来との遭遇,1500,true,false,false,true,false
+10669,Future City,未来からの抱擁,Future City,,Future City,未来からの抱擁,,,Future City,未来からの抱擁,6000,true,false,false,true,false
+10670,Future Journey,未来への旅,Future Journey,,Future Journey,未来への旅,,,Future Journey,未来への旅,15000,true,false,false,true,false
+10672,Sam in New City,サムと未来都市,Sam in New City,,Sam in New City,サムと未来都市,,,Sam in New City,サムと未来都市,6000,true,false,false,true,false
+10716,Blow a kiss,投げキス,Blow a kiss,,Blow a kiss,投げキス,,,Blow a kiss,投げキス,1,true,false,false,true,false
+10994,Bouquet,ブーケ,,,Bouquet,ブーケ,,,Bouquet,ブーケ,100,true,false,false,true,false
+11046,Galaxy,銀河,Galaxy,,Galaxy,銀河,,,Galaxy,銀河,1000,true,false,false,true,false
+11177,Coffee Magic,コーヒーマジック,Coffee Magic,,Coffee Magic,コーヒーマジック,,,Coffee Magic,コーヒーマジック,199,true,false,false,true,false
+11178,Relaxed Goose,リラックスグース,Relaxed Goose,,Relaxed Goose,リラックスグース,,,Relaxed Goose,リラックスグース,399,true,false,false,true,false
+11179,Naughty Chicken,いたずら好きな鶏,Naughty Chicken,,Naughty Chicken,いたずら好きな鶏,,,Naughty Chicken,いたずら好きな鶏,299,true,false,false,true,false
+11180,Love Painting,ラブペインティング,Love Painting,,Love Painting,ラブペインティング,,,Love Painting,ラブペインティング,99,true,false,false,true,false
+11181,Tom's Hug,トムのハグ,Tom's Hug,,Tom's Hug,トムのハグ,,,Tom's Hug,トムのハグ,399,true,false,false,true,false
+11183,Play for You,あなたに演奏,Play for You,,Play for You,あなたに演奏,,,Play for You,あなたに演奏,299,true,false,false,true,false
+11491,,,Giraffe,,,,,,,,1000,false,false,false,false,true
+11583,DJ Glasses,DJメガネ,DJ Glasses,,DJ Glasses,DJメガネ,,,DJ Glasses,DJメガネ,500,true,false,false,true,false
+11584,Under Control,すべてOK,Under Control,,Under Control,すべてOK,,,Under Control,すべてOK,1500,true,false,false,true,false
+11585,Work Hard Play Harder,たくさん働いてたくさん遊ぶ,Work Hard Play Harder,,Work Hard Play Harder,たくさん働いてたくさん遊ぶ,,,Work Hard Play Harder,たくさん働いてたくさん遊ぶ,6000,true,false,false,true,false
+11586,Party On&On,パーティーは続く,Party On&On,,Party On&On,パーティーは続く,,,Party On&On,パーティーは続く,15000,true,false,false,true,false
+11808,Rock Star,ロックスター,Rock Star,,Rock Star,ロックスター,,,Rock Star,ロックスター,299,true,false,false,true,false
+11809,Beating Heart,鼓動するハート,Beating Heart,,Beating Heart,鼓動するハート,,,Beating Heart,鼓動するハート,449,true,false,false,true,false
+11810,Your Concert,あなたのコンサート,Your Concert,,Your Concert,あなたのコンサート,,,Your Concert,あなたのコンサート,4500,true,false,false,true,false
+11811,Animal Band,アニマルバンド,Animal Band,,Animal Band,アニマルバンド,,,Animal Band,アニマルバンド,2500,true,false,false,true,false
+11838,Diamond Gun,ダイヤモンドの銃,Diamond Gun,,Diamond Gun,ダイヤモンドの銃,,,Diamond Gun,ダイヤモンドの銃,5000,true,false,false,true,false
+11945,Dream Team,団結,Dream Team,,Dream Team,団結,,,Dream Team,団結,299,true,false,false,true,false
+12110,Manifesting,Manifesting,Manifesting,,Manifesting,Manifesting,,,Manifesting,Manifesting,500,false,false,false,true,false
+12202,Nice to meet you,初見です,Nice to meet you,,Nice to meet you,初見です,,,Nice to meet you,初見です,1,true,false,false,true,false
+12210,Rosie the Rose Bean,バラのビーンのロージー,Rosie the Rose Bean,,Rosie the Rose Bean,バラのビーンのロージー,,,Rosie the Rose Bean,バラのビーンのロージー,399,true,false,false,true,false
+12211,Jollie the Joy Bean,楽しいビーンのジョリー,Jollie the Joy Bean,,Jollie the Joy Bean,楽しいビーンのジョリー,,,Jollie the Joy Bean,楽しいビーンのジョリー,399,true,false,false,true,false
+12212,Rocky the Rock Bean,ロックビーンのロッキー,Rocky the Rock Bean,,Rocky the Rock Bean,ロックビーンのロッキー,,,Rocky the Rock Bean,ロックビーンのロッキー,399,true,false,false,true,false
+12213,Sage the Smart Bean,スマートビーンのセージ,Sage the Smart Bean,,Sage the Smart Bean,スマートビーンのセージ,,,Sage the Smart Bean,スマートビーンのセージ,399,true,false,false,true,false
+12238,Support,エール,Support,,Support,エール,,,Support,エール,5,true,false,false,true,false
+12290,Glowing Jellyfish,光るクラゲ,Glowing Jellyfish,,Glowing Jellyfish,光るクラゲ,,,Glowing Jellyfish,光るクラゲ,1000,true,false,false,true,false
+12316,Balloon Gift Box,バルーンギフトボックス,,,Balloon Gift Box,バルーンギフトボックス,,,Balloon Gift Box,バルーンギフトボックス,100,true,false,false,true,false
+12355,Club Cheers,応援クラブ,Club Cheers,,Club Cheers,応援クラブ,,,Club Cheers,応援クラブ,1,true,false,false,true,false
+12356,Club Power,団結クラブ,Club Power,,Club Power,団結クラブ,,,Club Power,団結クラブ,9,true,false,false,true,false
+12357,Club Victory,クラブ勝利,Club Victory,,Club Victory,クラブ勝利,,,Club Victory,クラブ勝利,99,true,false,false,true,false
+12414,Lovely Ride,好きになった,Lovely Ride,,Lovely Ride,好きになった,,,Lovely Ride,好きになった,1600,true,false,false,true,false
+12453,Unicorn,ユニコーン,Unicorn,,Unicorn,ユニコーン,,,Unicorn,ユニコーン,2499,true,false,false,true,false
+12577,Manifesting,Manifesting,Manifesting,,Manifesting,Manifesting,,,Manifesting,Manifesting,500,false,false,false,true,false
+12678,Level-up Sparks,ファンケーキ,Level-up Sparks,,Level-up Sparks,ファンケーキ,,,Level-up Sparks,ファンケーキ,99,true,false,false,true,false
+12679,Level-up Spotlight,レベルアップのスポットライト,Level-up Spotlight,,Level-up Spotlight,レベルアップのスポットライト,,,Level-up Spotlight,レベルアップのスポットライト,2999,true,false,false,true,false
+12680,Level-up Spectacle,レベルアップの壮観,Level-up Spectacle,,Level-up Spectacle,レベルアップの壮観,,,Level-up Spectacle,レベルアップの壮観,12999,true,false,false,true,false
+12852,Level Ship,レベルシップ,Level Ship,,Level Ship,レベルシップ,,,Level Ship,レベルシップ,1500,true,false,false,true,false
+12853,Level Ship,レベルシップ,Level Ship,,Level Ship,レベルシップ,,,Level Ship,レベルシップ,21000,true,false,false,true,false
+12892,Crocodile,ワニ,Crocodile,,Crocodile,ワニ,,,Crocodile,ワニ,15000,true,false,false,true,false
+12898,Udon-nou,うどん脳,Udon-nou,,Udon-nou,うどん脳,,,Udon-nou,うどん脳,10,true,false,false,true,false
+12935,Sage's Slash,セージの一攫千金,Sage's Slash,,Sage's Slash,セージの一攫千金,,,Sage's Slash,セージの一攫千金,399,true,false,false,true,false
+12944,Dynamic Music,ダイナミックミュージック,Dynamic Music,,Dynamic Music,ダイナミックミュージック,,,Dynamic Music,ダイナミックミュージック,4888,true,false,false,true,false
+13032,Autumn Picnic,秋のピクニック,Autumn Picnic,,Autumn Picnic,秋のピクニック,,,Autumn Picnic,秋のピクニック,1300,true,false,false,true,false
+13072,Dragon Crown,ドラゴンの冠,Dragon Crown,,Dragon Crown,ドラゴンの冠,,,Dragon Crown,ドラゴンの冠,500,true,false,false,true,false
+13073,Butterfly for You,あなたのための蝶,Butterfly for You,,Butterfly for You,あなたのための蝶,,,Butterfly for You,あなたのための蝶,299,true,false,false,true,false
+13075,Cheering Crab,応援するカニ,Cheering Crab,,Cheering Crab,応援するカニ,,,Cheering Crab,応援するカニ,199,true,false,false,true,false
+13087,Bubble Gum,風船ガム,Bubble Gum,,Bubble Gum,風船ガム,,,Bubble Gum,風船ガム,99,true,false,false,true,false
+13189,Im Just a Hamster,ただのハムスターだよ,Im Just a Hamster,,Im Just a Hamster,ただのハムスターだよ,,,Im Just a Hamster,ただのハムスターだよ,499,true,false,false,true,false
+13263,Umbrella of Love,ラブシェルター,Umbrella of Love,,Umbrella of Love,ラブシェルター,,,Umbrella of Love,ラブシェルター,1200,true,false,false,true,false
+13298,Wink Charm,ウィンクする,Wink Charm,,Wink Charm,ウィンクする,,,Wink Charm,ウィンクする,1,true,false,false,true,false
+13300,Heart Gaze,ハートの視線,Heart Gaze,,Heart Gaze,ハートの視線,,,Heart Gaze,ハートの視線,10,true,false,false,true,false
+13301,Singing Magic,歌って最高,Singing Magic,,Singing Magic,歌って最高,,,Singing Magic,歌って最高,100,true,false,false,true,false
+13302,Sparkle Dance,キラキラダンス,Sparkle Dance,,Sparkle Dance,キラキラダンス,,,Sparkle Dance,キラキラダンス,1000,true,false,false,true,false
+13313,Centre Stage,ステージマイク,Centre Stage,,Centre Stage,ステージマイク,,,Centre Stage,ステージマイク,700,true,false,false,true,false
+13352,Rose Carriage,バラの馬車,Rose Carriage,,Rose Carriage,バラの馬車,,,Rose Carriage,バラの馬車,25000,true,false,false,true,false
+13443,Feather Flock,羽根,Feather Flock,,Feather Flock,羽根,,,Feather Flock,羽根,1000,true,false,false,true,false
+13444,Star Map Polaris,星まつり,Star Map Polaris,,Star Map Polaris,星まつり,,,Star Map Polaris,星まつり,500,true,false,false,true,false
+13469,Henry,Henry,,,Henry,Henry,,,Henry,Henry,10000,false,false,false,true,false
+13521,Seriously,本気,Seriously,,Seriously,本気,,,Seriously,本気,5,true,false,false,true,false
+13523,Genius,天才,Genius,,Genius,天才,,,Genius,天才,50,true,false,false,true,false
+13538,New Year Protection,おまもり,New Year Protection,,New Year Protection,おまもり,,,New Year Protection,おまもり,5,true,false,false,true,false
+13604,Fiery Dragon,ファイアリードラゴン,Fiery Dragon,,Fiery Dragon,ファイアリードラゴン,,,Fiery Dragon,ファイアリードラゴン,4888,true,false,false,true,false
+13651,Go Popular,人気アップ,Go Popular,Popular Vote,Go Popular,人気アップ,Popular Vote,,Go Popular,人気アップ,1,true,true,true,true,false
+13864,Fukkachan,ふっかちゃん,Fukkachan,,Fukkachan,ふっかちゃん,,,Fukkachan,ふっかちゃん,10,true,false,false,true,false
+13987,Feather Mask,羽根のマスク,Feather Mask,,Feather Mask,羽根のマスク,,,Feather Mask,羽根のマスク,300,true,false,false,true,false
+13988,Crystal Dreams,クリスタルドリーム,Crystal Dreams,,Crystal Dreams,クリスタルドリーム,,,Crystal Dreams,クリスタルドリーム,400,true,false,false,true,false
+13999,Wishing Cake,お祝いケーキ,Wishing Cake,,Wishing Cake,お祝いケーキ,,,Wishing Cake,お祝いケーキ,400,true,false,false,true,false
+14000,Bowknot,蝶結び,Bowknot,,Bowknot,蝶結び,,,Bowknot,蝶結び,149,true,false,false,true,false
+14007,Love Balloon,だいすき,Love Balloon,,Love Balloon,だいすき,,,Love Balloon,だいすき,500,true,false,false,true,false
+14109,Mark of Love,愛の印,Mark of Love,,Mark of Love,愛の印,,,Mark of Love,愛の印,99,true,false,false,true,false
+14113,Love Letter,ラブレター,Love Letter,,Love Letter,ラブレター,,,Love Letter,ラブレター,1,true,false,false,true,false
+14214, Let butterfly dances , 蝶が踊る , Let butterfly dances ,, Let butterfly dances , 蝶が踊る ,,, Let butterfly dances , 蝶が踊る ,399,true,false,false,true,false
+14381,Colorful Wings,カラフルな翼,Colorful Wings,,Colorful Wings,カラフルな翼,,,Colorful Wings,カラフルな翼,700,true,false,false,true,false
+14382,Floating Octopus,流れるタコ,Floating Octopus,,Floating Octopus,流れるタコ,,,Floating Octopus,流れるタコ,199,true,false,false,true,false
+14384,Sage’s Venture,セージの冒険,Sage’s Venture,,Sage’s Venture,セージの冒険,,,Sage’s Venture,セージの冒険,4999,true,false,false,true,false
+14397,Fairy Wings,妖精の羽,Fairy Wings,,Fairy Wings,妖精の羽,,,Fairy Wings,妖精の羽,1000,true,false,false,true,false
+14398,Vibrant Stage,活気あふれるステージ,Vibrant Stage,,Vibrant Stage,活気あふれるステージ,,,Vibrant Stage,活気あふれるステージ,1400,true,false,false,true,false
+14399,Flamingo Groove,フラミンゴリズム,Flamingo Groove,,Flamingo Groove,フラミンゴリズム,,,Flamingo Groove,フラミンゴリズム,1000,true,false,false,true,false
+14463,Nebaarukun,ねば〜る君,Nebaarukun,,Nebaarukun,ねば〜る君,,,Nebaarukun,ねば〜る君,10,true,false,false,true,false
+14532,Fully Bloomed Sakura,さくらの宝箱,Fully Bloomed Sakura,,Fully Bloomed Sakura,さくらの宝箱,,,Fully Bloomed Sakura,さくらの宝箱,599,true,false,false,true,false
+14534,Raya Gift Card,ラヤのギフトカード,Raya Gift Card,,Raya Gift Card,ラヤのギフトカード,,,Raya Gift Card,ラヤのギフトカード,1500,true,false,false,true,false
+14543,Congratulations,おめでとうございます,Congratulations,,Congratulations,おめでとうございます,,,Congratulations,おめでとうございます,1,true,false,false,true,false
+14544,Go Home,お家に帰る,Go Home,,Go Home,お家に帰る,,,Go Home,お家に帰る,3999,true,false,false,true,false
+14554,Kitten Kneading,ふみふみする子猫,Kitten Kneading,,Kitten Kneading,ふみふみする子猫,,,Kitten Kneading,ふみふみする子猫,399,true,false,false,true,false
+14555,Flower Headband,花のカチューシャ,Flower Headband,,Flower Headband,花のカチューシャ,,,Flower Headband,花のカチューシャ,199,true,false,false,true,false
+14557,Puppy Kisses,子犬のキス,Puppy Kisses,,Puppy Kisses,子犬のキス,,,Puppy Kisses,子犬のキス,299,true,false,false,true,false
+14562,Battle Champion,バトルチャンピオン,Battle Champion,,Battle Champion,バトルチャンピオン,,,Battle Champion,バトルチャンピオン,15000,true,false,false,true,false
+14568,Shoot the Apple,リンゴを撃つ,Shoot the Apple,,Shoot the Apple,リンゴを撃つ,,,Shoot the Apple,リンゴを撃つ,399,true,false,false,true,false
+14656,Greeting Heart,ハートタッチ,Greeting Heart,,Greeting Heart,ハートタッチ,,,Greeting Heart,ハートタッチ,99,true,false,false,true,false
+14657,Budding Heart,ハートの誕生,Budding Heart,,Budding Heart,ハートの誕生,,,Budding Heart,ハートの誕生,299,true,false,false,true,false
+14658,Blooming Heart,花咲ハート,Blooming Heart,,Blooming Heart,花咲ハート,,,Blooming Heart,花咲ハート,1599,true,false,false,true,false
+14659,Devoted Heart,ハートの絆,Devoted Heart,,Devoted Heart,ハートの絆,,,Devoted Heart,ハートの絆,5999,true,false,false,true,false
+14660,Crystal Heart,きらりハート,Crystal Heart,,Crystal Heart,きらりハート,,,Crystal Heart,きらりハート,14999,true,false,false,true,false
+14661,Infinite Heart,永遠のハート,Infinite Heart,,Infinite Heart,永遠のハート,,,Infinite Heart,永遠のハート,23999,true,false,false,true,false
+14753,Magic Potion,魔力ポーション,Magic Potion,,Magic Potion,魔力ポーション,,,Magic Potion,魔力ポーション,499,true,false,false,true,false
+14788,Blow Rosie Kisses,ロージーの投げキス,Blow Rosie Kisses,,Blow Rosie Kisses,ロージーの投げキス,,,Blow Rosie Kisses,ロージーの投げキス,2199,true,false,false,true,false
+14789,Jollie's Heartland,ジョリーのハートランド,Jollie's Heartland,,Jollie's Heartland,ジョリーのハートランド,,,Jollie's Heartland,ジョリーのハートランド,2199,true,false,false,true,false
+14790,Rocky's Punch,ロッキーのパンチ,Rocky's Punch,,Rocky's Punch,ロッキーのパンチ,,,Rocky's Punch,ロッキーのパンチ,2199,true,false,false,true,false
+14791,Sage's Coinbot,セージのコインボット,Sage's Coinbot,,Sage's Coinbot,セージのコインボット,,,Sage's Coinbot,セージのコインボット,2199,true,false,false,true,false
+14883,XXXL Flowers,XXXL フラワー,,,XXXL Flowers,XXXL フラワー,,,XXXL Flowers,XXXL フラワー,500,true,false,false,true,false
+14940,Stroke Me,なでられ待ち,Stroke Me,,Stroke Me,なでられ待ち,,,Stroke Me,なでられ待ち,2800,true,false,false,true,false
+15048,Bird of Paradise,フウチョウ,,,Bird of Paradise,フウチョウ,,,Bird of Paradise,フウチョウ,8000,true,false,false,true,false
+15063,Journey Pass,ジャーニーパス,Journey Pass,,Journey Pass,ジャーニーパス,,,Journey Pass,ジャーニーパス,10,true,false,false,true,false
+15064,Racing Helmet,レーシングヘルメット,Racing Helmet,,Racing Helmet,レーシングヘルメット,,,Racing Helmet,レーシングヘルメット,500,true,false,false,true,false
+15065,Racing Debut,レースデビュー,Racing Debut,,Racing Debut,レースデビュー,,,Racing Debut,レースデビュー,1500,true,false,false,true,false
+15066,Strong Finish,華麗なフィニッシュ,Strong Finish,,Strong Finish,華麗なフィニッシュ,,,Strong Finish,華麗なフィニッシュ,6000,true,false,false,true,false
+15187,Big Shout Out,ビッグな叫び,Big Shout Out,,Big Shout Out,ビッグな叫び,,,Big Shout Out,ビッグな叫び,149,true,false,false,true,false
+15189,Chatting Popcorn,おしゃべりポップコーン,Chatting Popcorn,,Chatting Popcorn,おしゃべりポップコーン,,,Chatting Popcorn,おしゃべりポップコーン,149,true,false,false,true,false
+15190,Powerful Mind,パワフルマインド,Powerful Mind,,Powerful Mind,パワフルマインド,,,Powerful Mind,パワフルマインド,450,true,false,false,true,false
+15191,Candy Bouquet,キャンディーのブーケ,Candy Bouquet,,Candy Bouquet,キャンディーのブーケ,,,Candy Bouquet,キャンディーのブーケ,249,true,false,false,true,false
+15192,Alien Buddy,エイリアンの仲間,Alien Buddy,,Alien Buddy,エイリアンの仲間,,,Alien Buddy,エイリアンの仲間,399,true,false,false,true,false
+15193,Hat of Joy,楽しい帽子,Hat of Joy,,Hat of Joy,楽しい帽子,,,Hat of Joy,楽しい帽子,450,true,false,false,true,false
+15194,United Heart,つながる心,United Heart,,United Heart,つながる心,,,United Heart,つながる心,299,true,false,false,true,false
+15195,Mic Champ,マイクチャンピオン,Mic Champ,,Mic Champ,マイクチャンピオン,,,Mic Champ,マイクチャンピオン,400,true,false,false,true,false
+15199,Ice Cream Mic,アイスクリームのマイク,Ice Cream Mic,,Ice Cream Mic,アイスクリームのマイク,,,Ice Cream Mic,アイスクリームのマイク,249,true,false,false,true,false
+15205,Flamingo Floaty,フラミンゴの浮き輪,Flamingo Floaty,,Flamingo Floaty,フラミンゴの浮き輪,,,Flamingo Floaty,フラミンゴの浮き輪,999,true,false,false,true,false
+15231,Love you so much,大好き,Love you so much,,Love you so much,大好き,,,Love you so much,大好き,1,true,false,false,true,false
+15232,You're awesome,素晴らしい,You're awesome,,You're awesome,素晴らしい,,,You're awesome,素晴らしい,1,true,false,false,true,false
+15418,Baby Dragon,ベビードラゴン,Baby Dragon,,Baby Dragon,ベビードラゴン,,,Baby Dragon,ベビードラゴン,2000,true,false,false,true,false
+15464,Arcane Card,王者の契,Arcane Card,,Arcane Card,王者の契,,,Arcane Card,王者の契,5000,true,false,false,true,false
+15487,Kicker Challenge,サッカーチャレンジ,Kicker Challenge,,Kicker Challenge,サッカーチャレンジ,,,Kicker Challenge,サッカーチャレンジ,299,true,false,false,true,false
+15563,Fan,うちわ,Fan,,Fan,うちわ,,,Fan,うちわ,1,true,false,false,true,false
+15564,Suprised Fish,びっくりした魚,Suprised Fish,,Suprised Fish,びっくりした魚,,,Suprised Fish,びっくりした魚,1,true,false,false,true,false
+15752,Star Goggles,スターメガネ,Star Goggles,,Star Goggles,スターメガネ,,,Star Goggles,スターメガネ,249,true,false,false,true,false
+15761,Bounce Speakers,跳ねるスピーカー,Bounce Speakers,,Bounce Speakers,跳ねるスピーカー,,,Bounce Speakers,跳ねるスピーカー,400,true,false,false,true,false
+15762,Encore Clap,アンコールの拍手,Encore Clap,,Encore Clap,アンコールの拍手,,,Encore Clap,アンコールの拍手,449,true,false,false,true,false
+15763,Cheer Mic,応援マイク,Cheer Mic,,Cheer Mic,応援マイク,,,Cheer Mic,応援マイク,249,true,false,false,true,false
+15764,Backing Monkey,シンバルの猿,Backing Monkey,,Backing Monkey,シンバルの猿,,,Backing Monkey,シンバルの猿,349,true,false,false,true,false
+15815,Watermelon Party,スイカパーティー,Watermelon Party,,Watermelon Party,スイカパーティー,,,Watermelon Party,スイカパーティー,1000,true,false,false,true,false
+16115,Firelight Kingdom,Firelight王国,Firelight Kingdom,,Firelight Kingdom,Firelight王国,,,Firelight Kingdom,Firelight王国,15000,true,false,false,true,false
+16119,Ramune,ラムネ,Ramune,,Ramune,ラムネ,,,Ramune,ラムネ,200,true,false,false,true,false
+16275,Suitcase,スーツケース,Suitcase,,Suitcase,スーツケース,,,Suitcase,スーツケース,199,true,false,false,true,false
+16282,Viking Hammer,雷鳴のハンマー,Viking Hammer,,Viking Hammer,雷鳴のハンマー,,,Viking Hammer,雷鳴のハンマー,1500,true,false,false,true,false
+16284,Zeus,覇王ゼウス,Zeus,,Zeus,覇王ゼウス,,,Zeus,覇王ゼウス,34000,true,false,false,true,false
+16288,Starlight Sceptre,マスターズの杖,Starlight Sceptre,,Starlight Sceptre,マスターズの杖,,,Starlight Sceptre,マスターズの杖,1200,true,false,false,true,false
+16467,Tiny Diny Float,サマー恐竜,Tiny Diny Float,,Tiny Diny Float,サマー恐竜,,,Tiny Diny Float,サマー恐竜,250,true,false,false,true,false
+16477,Become Kitten,子猫になる,Become Kitten,,Become Kitten,子猫になる,,,Become Kitten,子猫になる,349,true,false,false,true,false
+16478,Music Bubbles,シャボン玉のヘッドホン,Music Bubbles,,Music Bubbles,シャボン玉のヘッドホン,,,Music Bubbles,シャボン玉のヘッドホン,249,true,false,false,true,false
+16479,Masquerade,ミステリーマスク,Masquerade,,Masquerade,ミステリーマスク,,,Masquerade,ミステリーマスク,149,true,false,false,true,false
+16527,LIVE Ranking Crown,グランプリクラウン,LIVE Ranking Crown,,LIVE Ranking Crown,グランプリクラウン,,,LIVE Ranking Crown,グランプリクラウン,299,true,false,false,true,false
+16551,Marked with Love,カラフルな軌跡,Marked with Love,,Marked with Love,カラフルな軌跡,,,Marked with Love,カラフルな軌跡,349,true,false,false,true,false
+16552,Balloon Crown,ハートの風船,Balloon Crown,,Balloon Crown,ハートの風船,,,Balloon Crown,ハートの風船,149,true,false,false,true,false
+16669,Hi! Rosie!,ロージーのスタイル,Hi! Rosie!,,Hi! Rosie!,ロージーのスタイル,,,Hi! Rosie!,ロージーのスタイル,299,true,false,false,true,false
+16670,Fox Legend,尻尾が9本あるキツネ,Fox Legend,,Fox Legend,尻尾が9本あるキツネ,,,Fox Legend,尻尾が9本あるキツネ,1800,true,false,false,true,false
+16671,Rosie's Concert,ロージーのサックス,Rosie's Concert,,Rosie's Concert,ロージーのサックス,,,Rosie's Concert,ロージーのサックス,399,true,false,false,true,false
+16672,Join Butterflies,輝く翼,Join Butterflies,,Join Butterflies,輝く翼,,,Join Butterflies,輝く翼,600,true,false,false,true,false
+16690,Super Popular,スーパー人気,Super Popular,,Super Popular,スーパー人気,,,Super Popular,スーパー人気,9,true,false,false,true,false
+16691,Terminator Face,ターミネーターフェイス,Terminator Face,,Terminator Face,ターミネーターフェイス,,,Terminator Face,ターミネーターフェイス,449,true,false,false,true,false
+16694,XXXL Flowers,XXXL フラワー,XXXL Flowers,,XXXL Flowers,XXXL フラワー,,,XXXL Flowers,XXXL フラワー,500,true,false,false,true,false
+16748,Vinyl Flip,レコードフリップ,Vinyl Flip,,Vinyl Flip,レコードフリップ,,,Vinyl Flip,レコードフリップ,349,true,false,false,true,false
+16749,Grand show,グランドショー,Grand show,,Grand show,グランドショー,,,Grand show,グランドショー,999,true,false,false,true,false
+16896,Rose Hand,ローズハンド,Rose Hand,,Rose Hand,ローズハンド,,,Rose Hand,ローズハンド,199,true,false,false,true,false
+16897,Magic Prop,魔法のアイテム,Magic Prop,,Magic Prop,魔法のアイテム,,,Magic Prop,魔法のアイテム,500,true,false,false,true,false
+16899,Magic World,魔法の世界,Magic World,,Magic World,魔法の世界,,,Magic World,魔法の世界,4088,true,false,false,true,false
+16924,Midsummer Hair,女神の花冠,Midsummer Hair,,Midsummer Hair,女神の花冠,,,Midsummer Hair,女神の花冠,249,true,false,false,true,false
+16933,Ice Cream Truck,アイスクリームトラック,Ice Cream Truck,,Ice Cream Truck,アイスクリームトラック,,,Ice Cream Truck,アイスクリームトラック,2988,true,false,false,true,false
+17004,Rose Hand,ローズハンド,Rose Hand,,Rose Hand,ローズハンド,,,Rose Hand,ローズハンド,199,true,false,false,true,false
+17085,Music  Album,音楽アルバム,Music  Album,,Music  Album,音楽アルバム,,,Music  Album,音楽アルバム,1,true,false,false,true,false
+17100,Feather Tiara,羽のティアラ,Feather Tiara,,Feather Tiara,羽のティアラ,,,Feather Tiara,羽のティアラ,149,true,false,false,true,false
+17101,Coconut Juice,ココナッツジュース,Coconut Juice,,Coconut Juice,ココナッツジュース,,,Coconut Juice,ココナッツジュース,199,true,false,false,true,false
+17102,Palm Breeze,ヤシの木とそよ風,Palm Breeze,,Palm Breeze,ヤシの木とそよ風,,,Palm Breeze,ヤシの木とそよ風,249,true,false,false,true,false
+17103,Juicy Cap,ジュースを飲むキャップ,Juicy Cap,,Juicy Cap,ジュースを飲むキャップ,,,Juicy Cap,ジュースを飲むキャップ,349,true,false,false,true,false
+17104,Forest Elf,森の小人,Forest Elf,,Forest Elf,森の小人,,,Forest Elf,森の小人,249,true,false,false,true,false
+17105,Sundae Bowl,ミニパフェ,Sundae Bowl,,Sundae Bowl,ミニパフェ,,,Sundae Bowl,ミニパフェ,99,true,false,false,true,false
+17151,Surfing Penguin,波乗りペンギン,Surfing Penguin,,Surfing Penguin,波乗りペンギン,,,Surfing Penguin,波乗りペンギン,499,true,false,false,true,false
+17213,Autumn Leaves,紅葉ダンス,Autumn Leaves,,Autumn Leaves,紅葉ダンス,,,Autumn Leaves,紅葉ダンス,500,true,false,false,true,false
+17252,Heart It Out,マイクに想いをのせよう,Heart It Out,,Heart It Out,マイクに想いをのせよう,,,Heart It Out,マイクに想いをのせよう,500,true,false,false,true,false
+17253,Love in Sunset,マジックアワー,Love in Sunset,,Love in Sunset,マジックアワー,,,Love in Sunset,マジックアワー,2999,true,false,false,true,false
+17357,Pirate's Treasure,海賊の宝,Pirate's Treasure,,Pirate's Treasure,海賊の宝,,,Pirate's Treasure,海賊の宝,449,true,false,false,true,false
+17358,Go Hamster,ハムスターに変身,Go Hamster,,Go Hamster,ハムスターに変身,,,Go Hamster,ハムスターに変身,299,true,false,false,true,false
+17359,Caterpillar Chaos,イモムシのカオス,Caterpillar Chaos,,Caterpillar Chaos,イモムシのカオス,,,Caterpillar Chaos,イモムシのカオス,149,true,false,false,true,false
+17360,Chirpy Kisses,小鳥のキス,Chirpy Kisses,,Chirpy Kisses,小鳥のキス,,,Chirpy Kisses,小鳥のキス,199,true,false,false,true,false
+17446,Legendary Aegis,Legendary Aegis,Legendary Aegis,,Legendary Aegis,Legendary Aegis,,,Legendary Aegis,Legendary Aegis,15000,false,false,false,true,false
+17589,Side by Side,隣り合わせ,Side by Side,,Side by Side,隣り合わせ,,,Side by Side,隣り合わせ,199,true,false,false,true,false
+17661,Side by Side,隣り合わせ,,,Side by Side,隣り合わせ,,,Side by Side,隣り合わせ,199,true,false,false,true,false
+17667,Side by Side,隣り合わせ,Side by Side,,Side by Side,隣り合わせ,,,Side by Side,隣り合わせ,199,true,false,false,true,false
+17678,Rocket Game,ミッションチャレンジ,Rocket Game,,Rocket Game,ミッションチャレンジ,,,Rocket Game,ミッションチャレンジ,399,true,false,false,true,false
+17689,Batwing Hat,コウモリ帽子,Batwing Hat,,Batwing Hat,コウモリ帽子,,,Batwing Hat,コウモリ帽子,349,true,false,false,true,false
+17694,Shield Token,栄光のバッジ,Shield Token,,Shield Token,栄光のバッジ,,,Shield Token,栄光のバッジ,30,true,false,false,true,false
+17710,Community Legends,コミュニティレジェンド,Community Legends,,Community Legends,コミュニティレジェンド,,,Community Legends,コミュニティレジェンド,30000,true,false,false,true,false
+17712,Community Heart,コミュニティハート,Community Heart,,Community Heart,コミュニティハート,,,Community Heart,コミュニティハート,1,true,false,false,true,false
+17713,Community Power,コミュニティパワー,Community Power,,Community Power,コミュニティパワー,,,Community Power,コミュニティパワー,5000,true,false,false,true,false
+17762,Party Bus,パーティーバス,Party Bus,,Party Bus,パーティーバス,,,Party Bus,パーティーバス,2999,true,false,false,true,false
+17821,Face-pulling,いたずらおばけ,Face-pulling,,Face-pulling,いたずらおばけ,,,Face-pulling,いたずらおばけ,249,true,false,false,true,false
+17827,Candy Loot,キャンディーをゲット,Candy Loot,,Candy Loot,キャンディーをゲット,,,Candy Loot,キャンディーをゲット,449,true,false,false,true,false
+17844,Catrina,カトリーナ,Catrina,,Catrina,カトリーナ,,,Catrina,カトリーナ,149,true,false,false,true,false
+17845,Bat Headwear,コウモリの帽子,Bat Headwear,,Bat Headwear,コウモリの帽子,,,Bat Headwear,コウモリの帽子,299,true,false,false,true,false
+17846,Halloween Fun Hat,ハロウィンファンハット,Halloween Fun Hat,,Halloween Fun Hat,ハロウィンファンハット,,,Halloween Fun Hat,ハロウィンファンハット,450,true,false,false,true,false
+17922,Charmer Bow,ハートハンターの矢,Charmer Bow,,Charmer Bow,ハートハンターの矢,,,Charmer Bow,ハートハンターの矢,99,true,false,false,true,false
+17923,Joker Ball,ジョーカーのボール,Joker Ball,,Joker Ball,ジョーカーのボール,,,Joker Ball,ジョーカーのボール,199,true,false,false,true,false
+17947,Bubbly Kiss,スイートな陽気,Bubbly Kiss,,Bubbly Kiss,スイートな陽気,,,Bubbly Kiss,スイートな陽気,530,true,false,false,true,false
+17948,Joy Floats,空飛ぶお菓子,Joy Floats,,Joy Floats,空飛ぶお菓子,,,Joy Floats,空飛ぶお菓子,1030,true,false,false,true,false
+17949,You're So Fly,気分は上々！,You're So Fly,,You're So Fly,気分は上々！,,,You're So Fly,気分は上々！,1500,true,false,false,true,false
+17950,Candy Puffs,キャンディパフ,Candy Puffs,,Candy Puffs,キャンディパフ,,,Candy Puffs,キャンディパフ,1030,true,false,false,true,false
+17951,Astrobear,アストロベアー,Astrobear,,Astrobear,アストロベアー,,,Astrobear,アストロベアー,1500,true,false,false,true,false
+17952,Sky Drift,天空ドリフター,Sky Drift,,Sky Drift,天空ドリフター,,,Sky Drift,天空ドリフター,2000,true,false,false,true,false
+17953,By the Glaziers,氷河とグレーズの海,By the Glaziers,,By the Glaziers,氷河とグレーズの海,,,By the Glaziers,氷河とグレーズの海,2380,true,false,false,true,false
+17954,Samfaring Tom,サムとトムの航海,Samfaring Tom,,Samfaring Tom,サムとトムの航海,,,Samfaring Tom,サムとトムの航海,2850,true,false,false,true,false
+17955,Look Up,空を見上げて,Look Up,,Look Up,空を見上げて,,,Look Up,空を見上げて,3350,true,false,false,true,false
+17956,Dream Big,夢は大きく,Dream Big,,Dream Big,夢は大きく,,,Dream Big,夢は大きく,3350,true,false,false,true,false
+17957,Sugar Whiskers,甘党レオン,Sugar Whiskers,,Sugar Whiskers,甘党レオン,,,Sugar Whiskers,甘党レオン,4918,true,false,false,true,false
+17958,Fluffy Buddies,もふもふフレンズ,Fluffy Buddies,,Fluffy Buddies,もふもふフレンズ,,,Fluffy Buddies,もふもふフレンズ,5388,true,false,false,true,false
+17959,Cub on Clouds,雲の上のレオン,Cub on Clouds,,Cub on Clouds,雲の上のレオン,,,Cub on Clouds,雲の上のレオン,5888,true,false,false,true,false
+17960,Valiant Odyssey,勇敢な冒険,Valiant Odyssey,,Valiant Odyssey,勇敢な冒険,,,Valiant Odyssey,勇敢な冒険,5888,true,false,false,true,false
+17961,Majestic Hearts,妖精ジーニー,Majestic Hearts,,Majestic Hearts,妖精ジーニー,,,Majestic Hearts,妖精ジーニー,7238,true,false,false,true,false
+17962,Magic Genie,妖精ジーニー,Magic Genie,,Magic Genie,妖精ジーニー,,,Magic Genie,妖精ジーニー,200,true,false,false,true,false
+17983,Rose Soundwave,ローズサウンドウェーブ,Rose Soundwave,,Rose Soundwave,ローズサウンドウェーブ,,,Rose Soundwave,ローズサウンドウェーブ,499,true,false,false,true,false
+17984,Beach Maracas,ビーチマラカス,Beach Maracas,,Beach Maracas,ビーチマラカス,,,Beach Maracas,ビーチマラカス,349,true,false,false,true,false
+17985,Treasured Voice,大切にされている声,Treasured Voice,,Treasured Voice,大切にされている声,,,Treasured Voice,大切にされている声,249,true,false,false,true,false
+17986,Raving Snail,踊りまくるカタツムリ,Raving Snail,,Raving Snail,踊りまくるカタツムリ,,,Raving Snail,踊りまくるカタツムリ,149,true,false,false,true,false
+18025,Music Conductor,音楽指揮者,Music Conductor,,Music Conductor,音楽指揮者,,,Music Conductor,音楽指揮者,450,true,false,false,true,false
+18026,Melody Glasses,メロディグラス,Melody Glasses,,Melody Glasses,メロディグラス,,,Melody Glasses,メロディグラス,299,true,false,false,true,false
+18107,Style Me Up,おしゃれに変身,Style Me Up,,Style Me Up,おしゃれに変身,,,Style Me Up,おしゃれに変身,10,true,false,false,true,false
+18124,Melodic birds,鳥のさえずり,Melodic birds,,Melodic birds,鳥のさえずり,,,Melodic birds,鳥のさえずり,249,true,false,false,true,false
+18137,Captured Vocals,録音した音,Captured Vocals,,Captured Vocals,録音した音,,,Captured Vocals,録音した音,449,true,false,false,true,false
+18158,Frozen Magic,雪の魔法,Frozen Magic,,Frozen Magic,雪の魔法,,,Frozen Magic,雪の魔法,1299,true,false,false,true,false
+18195,Vintage flight,ヴィンテージフライト,Vintage flight,,Vintage flight,ヴィンテージフライト,,,Vintage flight,ヴィンテージフライト,349,true,false,false,true,false
+18196,Surfing Penguin,波乗りペンギン,Surfing Penguin,,Surfing Penguin,波乗りペンギン,,,Surfing Penguin,波乗りペンギン,249,true,false,false,true,false
+18197,Batting Cutie,キュートなバッター,Batting Cutie,,Batting Cutie,キュートなバッター,,,Batting Cutie,キュートなバッター,449,true,false,false,true,false
+18198,Tiger Lift,タイガーの筋トレ,Tiger Lift,,Tiger Lift,タイガーの筋トレ,,,Tiger Lift,タイガーの筋トレ,399,true,false,false,true,false
+18199,Space Love,宇宙の愛,Space Love,,Space Love,宇宙の愛,,,Space Love,宇宙の愛,449,true,false,false,true,false
+18226,Xmas Tree Hat,クリスマスツリーの帽子,Xmas Tree Hat,,Xmas Tree Hat,クリスマスツリーの帽子,,,Xmas Tree Hat,クリスマスツリーの帽子,449,true,false,false,true,false
+18228,Gingerbread Man,ジンジャーブレッドマン,Gingerbread Man,,Gingerbread Man,ジンジャーブレッドマン,,,Gingerbread Man,ジンジャーブレッドマン,349,true,false,false,true,false
+18229,Reindeer Milk,トナカイのミルク,Reindeer Milk,,Reindeer Milk,トナカイのミルク,,,Reindeer Milk,トナカイのミルク,400,true,false,false,true,false
+18230,Penguin Snowpal,ペンギンと雪だるま,Penguin Snowpal,,Penguin Snowpal,ペンギンと雪だるま,,,Penguin Snowpal,ペンギンと雪だるま,299,true,false,false,true,false
+18231,Santa Owl Surprise,ふくろうサンタのサプライズ,Santa Owl Surprise,,Santa Owl Surprise,ふくろうサンタのサプライズ,,,Santa Owl Surprise,ふくろうサンタのサプライズ,399,true,false,false,true,false
+18232,Cozy Xmas Set,あったかいクリスマスセット,Cozy Xmas Set,,Cozy Xmas Set,あったかいクリスマスセット,,,Cozy Xmas Set,あったかいクリスマスセット,500,true,false,false,true,false
+18298,Exclusive Spark,幕開けの花火,Exclusive Spark,,Exclusive Spark,幕開けの花火,,,Exclusive Spark,幕開けの花火,1099,true,false,false,true,false
+18299,Viking Hammer,覇王のハンマー,Viking Hammer,,Viking Hammer,覇王のハンマー,,,Viking Hammer,覇王のハンマー,1500,true,false,false,true,false
+18337,Invincible Hammer,無敵のハンマー,Invincible Hammer,,Invincible Hammer,無敵のハンマー,,,Invincible Hammer,無敵のハンマー,14999,true,false,false,true,false
+18338,Cyber Roar,サイバーロア,Cyber Roar,,Cyber Roar,サイバーロア,,,Cyber Roar,サイバーロア,25999,true,false,false,true,false
+18339,Julius the Champion,絶対王者ジュリアス,Julius the Champion,,Julius the Champion,絶対王者ジュリアス,,,Julius the Champion,絶対王者ジュリアス,43999,true,false,false,true,false
+18505,Confetti Bear,クラッカーベア,Confetti Bear,,Confetti Bear,クラッカーベア,,,Confetti Bear,クラッカーベア,399,true,false,false,true,false
+18506,Party Blossom,パーティー満開,Party Blossom,,Party Blossom,パーティー満開,,,Party Blossom,パーティー満開,249,true,false,false,true,false
+18507,Candy Bouquet,キャンディーのブーケ,Candy Bouquet,,Candy Bouquet,キャンディーのブーケ,,,Candy Bouquet,キャンディーのブーケ,349,true,false,false,true,false
+18508,Mystery Box,ミステリーボックス,Mystery Box,,Mystery Box,ミステリーボックス,,,Mystery Box,ミステリーボックス,500,true,false,false,true,false
+18509,Celebration Hat,お祝いのハット,Celebration Hat,,Celebration Hat,お祝いのハット,,,Celebration Hat,お祝いのハット,450,true,false,false,true,false
+18605,Dreamy Strings,夢のような音色,Dreamy Strings,,Dreamy Strings,夢のような音色,,,Dreamy Strings,夢のような音色,249,true,false,false,true,false
+18606,Singing Sax,歌うサックス,Singing Sax,,Singing Sax,歌うサックス,,,Singing Sax,歌うサックス,399,true,false,false,true,false
+18607,City Pop,シティポップ,City Pop,,City Pop,シティポップ,,,City Pop,シティポップ,450,true,false,false,true,false
+18608,Rocking Shroom,ロックなマッシュルーム,Rocking Shroom,,Rocking Shroom,ロックなマッシュルーム,,,Rocking Shroom,ロックなマッシュルーム,349,true,false,false,true,false
+18610,Music Mate,音楽の友,Music Mate,,Music Mate,音楽の友,,,Music Mate,音楽の友,299,true,false,false,true,false
+18789,Lucky Pony,しあわせポニー,Lucky Pony,,Lucky Pony,しあわせポニー,,,Lucky Pony,しあわせポニー,10,true,false,false,true,false
+18790,Doll New Year Greeting,盾まろの新年あいさつ,Doll New Year Greeting,,Doll New Year Greeting,盾まろの新年あいさつ,,,Doll New Year Greeting,盾まろの新年あいさつ,1999,true,false,false,true,false
+18791,Ring Of Honor-Cube,開運！栄光の輪,Ring Of Honor-Cube,,Ring Of Honor-Cube,開運！栄光の輪,,,Ring Of Honor-Cube,開運！栄光の輪,2999,true,false,false,true,false
+18792,Golden Gallop,伝説の白馬,Golden Gallop,,Golden Gallop,伝説の白馬,,,Golden Gallop,伝説の白馬,15000,true,false,false,true,false
+19065,League Ball,リーグボール,League Ball,,League Ball,リーグボール,,,League Ball,リーグボール,10,true,false,false,true,false
+19067,League Countdown,リーグカウントダウン,League Countdown,,League Countdown,リーグカウントダウン,,,League Countdown,リーグカウントダウン,199,true,false,false,true,false
+19068,League Trophy,リーグトロフィー,League Trophy,,League Trophy,リーグトロフィー,,,League Trophy,リーグトロフィー,599,true,false,false,true,false
+19071,League Fandom,リーグファンダム,League Fandom,,League Fandom,リーグファンダム,,,League Fandom,リーグファンダム,5000,true,false,false,true,false
+19074,LIVE Ranking Headband,LIVE Ranking Headband,LIVE Ranking Headband,,LIVE Ranking Headband,LIVE Ranking Headband,,,LIVE Ranking Headband,LIVE Ranking Headband,299,false,false,false,true,false
+19131,Chocolate,チョコレート,Chocolate,,Chocolate,チョコレート,,,Chocolate,チョコレート,10,true,false,false,true,false
+19132,Rose Bear,ローズベア,Rose Bear,,Rose Bear,ローズベア,,,Rose Bear,ローズベア,214,true,false,false,true,false
+19133,Love Flight,ラブフライト,Love Flight,,Love Flight,ラブフライト,,,Love Flight,ラブフライト,800,true,false,false,true,false
+19134,Paris,パリ,Paris,,Paris,パリ,,,Paris,パリ,15000,true,false,false,true,false
+19168,Love Glasses,恋のメガネ,Love Glasses,,Love Glasses,恋のメガネ,,,Love Glasses,恋のメガネ,149,true,false,false,true,false
+19306,Cupid Koala,キューピッドのコアラ,Cupid Koala,,Cupid Koala,キューピッドのコアラ,,,Cupid Koala,キューピッドのコアラ,450,true,false,false,true,false
+19307,Heart Guitar,ハートのギター,Heart Guitar,,Heart Guitar,ハートのギター,,,Heart Guitar,ハートのギター,500,true,false,false,true,false
+19308,Sweet Flutter,スイートな蝶,Sweet Flutter,,Sweet Flutter,スイートな蝶,,,Sweet Flutter,スイートな蝶,249,true,false,false,true,false
+19309,Heart Hood,ハートのフード,Heart Hood,,Heart Hood,ハートのフード,,,Heart Hood,ハートのフード,199,true,false,false,true,false
+19310,Smile Latte,スマイルラテ,Smile Latte,,Smile Latte,スマイルラテ,,,Smile Latte,スマイルラテ,199,true,false,false,true,false
+19311,Love Call,ラブコール,Love Call,,Love Call,ラブコール,,,Love Call,ラブコール,299,true,false,false,true,false
+19312,Fairy Locket,妖精ロケット,Fairy Locket,,Fairy Locket,妖精ロケット,,,Fairy Locket,妖精ロケット,399,true,false,false,true,false
+19314,Panda Snap,パンダのスナップ,Panda Snap,,Panda Snap,パンダのスナップ,,,Panda Snap,パンダのスナップ,399,true,false,false,true,false
+19438,Pop,ポップ,Pop,,Pop,ポップ,,,Pop,ポップ,1,true,false,false,true,false
+19439,Oldies,オールディーズ,Oldies,,Oldies,オールディーズ,,,Oldies,オールディーズ,1,true,false,false,true,false
+19441,Freestyle,フリースタイル,Freestyle,,Freestyle,フリースタイル,,,Freestyle,フリースタイル,1,true,false,false,true,false
+19443,Bravo!,ブラボー！,Bravo!,,Bravo!,ブラボー！,,,Bravo!,ブラボー！,15,true,false,false,true,false
+19445,Name shoutout,名前の呼びかけ,Name shoutout,,Name shoutout,名前の呼びかけ,,,Name shoutout,名前の呼びかけ,5,true,false,false,true,false
+19446,Wink wink,ウインク,Wink wink,,Wink wink,ウインク,,,Wink wink,ウインク,1,true,false,false,true,false
+19447,Overreact,オーバーなリアクション,Overreact,,Overreact,オーバーなリアクション,,,Overreact,オーバーなリアクション,5,true,false,false,true,false
+19448,Slow motion,スローモーション,Slow motion,,Slow motion,スローモーション,,,Slow motion,スローモーション,10,true,false,false,true,false
+24964,,,リトルゆきのじょ,リトルゆきのじょ,,,リトルゆきのじょ,,,,1,true,false,false,false,true
+48221,Paw Call,肉球電話,Paw Call,,Paw Call,肉球電話,,,Paw Call,肉球電話,450,true,false,false,true,false
+48224,Fairy Hide,妖精のかくれんぼ,Fairy Hide,,Fairy Hide,妖精のかくれんぼ,,,Fairy Hide,妖精のかくれんぼ,149,true,false,false,true,false
+48225,Party Pony,パーティーポニー,Party Pony,,Party Pony,パーティーポニー,,,Party Pony,パーティーポニー,199,true,false,false,true,false
+48231,Pony Lantern,ポニーのランタン,Pony Lantern,,Pony Lantern,ポニーのランタン,,,Pony Lantern,ポニーのランタン,299,true,false,false,true,false
+48232,Sparkle Pony,ポニーと花火,Sparkle Pony,,Sparkle Pony,ポニーと花火,,,Sparkle Pony,ポニーと花火,349,true,false,false,true,false
+51285,Diamond Shield,ダイヤの盾,Diamond Shield,,Diamond Shield,ダイヤの盾,,,Diamond Shield,ダイヤの盾,7999,true,false,false,true,false
+52616,Party Laser,パーティーレーザー,Party Laser,,Party Laser,パーティーレーザー,,,Party Laser,パーティーレーザー,1300,true,false,false,true,false
+52617,Wild Mic,ワイルドマイク,Wild Mic,,Wild Mic,ワイルドマイク,,,Wild Mic,ワイルドマイク,1500,true,false,false,true,false
+52618,Wave Lights,ウェーブライト,Wave Lights,,Wave Lights,ウェーブライト,,,Wave Lights,ウェーブライト,2200,true,false,false,true,false
+52619,Hip-Hop Hen,ヒップホップのニワトリ,Hip-Hop Hen,,Hip-Hop Hen,ヒップホップのニワトリ,,,Hip-Hop Hen,ヒップホップのニワトリ,3200,true,false,false,true,false
+53761,Arabian Cheetah,アラビアのチーター,Arabian Cheetah,,Arabian Cheetah,アラビアのチーター,,,Arabian Cheetah,アラビアのチーター,15000,true,false,false,true,false
+54294,Lucky Crown,幸運の王冠,Lucky Crown,,Lucky Crown,幸運の王冠,,,Lucky Crown,幸運の王冠,14999,true,false,false,true,false
+54539,Tidecaller Trident,潮呼びトライデント,Tidecaller Trident,,Tidecaller Trident,潮呼びトライデント,,,Tidecaller Trident,潮呼びトライデント,14999,true,false,false,true,false
+54540,Undersea Kingdom,深海王国,Undersea Kingdom,,Undersea Kingdom,深海王国,,,Undersea Kingdom,深海王国,25999,true,false,false,true,false
+54541,Legend Marcellus ,レジェンドのマーセラス,Legend Marcellus ,,Legend Marcellus ,レジェンドのマーセラス,,,Legend Marcellus ,レジェンドのマーセラス,42999,true,false,false,true,false
+54557,Blossom Fairy,花の妖精,Blossom Fairy,,Blossom Fairy,花の妖精,,,Blossom Fairy,花の妖精,399,true,false,false,true,false
+54558,Spring Bouquet,春のブーケ,Spring Bouquet,,Spring Bouquet,春のブーケ,,,Spring Bouquet,春のブーケ,349,true,false,false,true,false
+54560,Superwoman,スーパーウーマン,Superwoman,,Superwoman,スーパーウーマン,,,Superwoman,スーパーウーマン,450,true,false,false,true,false
+54562,Spring Sprout,春の芽吹き,Spring Sprout,,Spring Sprout,春の芽吹き,,,Spring Sprout,春の芽吹き,299,true,false,false,true,false
+54566,Snow Bloom,雪の花,Snow Bloom,,Snow Bloom,雪の花,,,Snow Bloom,雪の花,249,true,false,false,true,false
+54724,Creeper,クリーパー,Creeper,,Creeper,クリーパー,,,Creeper,クリーパー,1,true,false,false,true,false
+54725,Baby Chicks,ぴよぴよバード,Baby Chicks,,Baby Chicks,ぴよぴよバード,,,Baby Chicks,ぴよぴよバード,500,true,false,false,true,false
+54726,Surprise Baby Mob,ちびモブ召喚,Surprise Baby Mob,,Surprise Baby Mob,ちびモブ召喚,,,Surprise Baby Mob,ちびモブ召喚,2999,true,false,false,true,false
+54727,Chick Stampede,ちびモブ大脱走,Chick Stampede,,Chick Stampede,ちびモブ大脱走,,,Chick Stampede,ちびモブ大脱走,6000,true,false,false,true,false
+54728,Sneaky Jockey,ちびゾンビ襲来！,Sneaky Jockey,,Sneaky Jockey,ちびゾンビ襲来！,,,Sneaky Jockey,ちびゾンビ襲来！,15000,true,false,false,true,false
+55700,EID Gift Box,イードのギフトボックス,EID Gift Box,,EID Gift Box,イードのギフトボックス,,,EID Gift Box,イードのギフトボックス,299,true,false,false,true,false
+56080,Surprise Baby Mob,ちびモブ召喚,Surprise Baby Mob,,Surprise Baby Mob,ちびモブ召喚,,,Surprise Baby Mob,ちびモブ召喚,2999,true,false,false,true,false
+56560,My First Rose,最初のバラ,My First Rose,,My First Rose,最初のバラ,,,My First Rose,最初のバラ,1,true,false,false,true,false
+56589,Magic Genie,妖精ジーニー,Magic Genie,,Magic Genie,妖精ジーニー,,,Magic Genie,妖精ジーニー,200,true,false,false,true,false
+56590,Prairie Diny,大草原の恐竜,Prairie Diny,,Prairie Diny,大草原の恐竜,,,Prairie Diny,大草原の恐竜,500,true,false,false,true,false
+56591,Prairie Tom,大草原のトム,Prairie Tom,,Prairie Tom,大草原のトム,,,Prairie Tom,大草原のトム,500,true,false,false,true,false
+56592,Prairie Blitzy,大草原のブリッツ,Prairie Blitzy,,Prairie Blitzy,大草原のブリッツ,,,Prairie Blitzy,大草原のブリッツ,500,true,false,false,true,false
+56593,Prairie Cooper,大草原のクーパー,Prairie Cooper,,Prairie Cooper,大草原のクーパー,,,Prairie Cooper,大草原のクーパー,500,true,false,false,true,false
+56594,Jungle Diny,ジャングルの恐竜,Jungle Diny,,Jungle Diny,ジャングルの恐竜,,,Jungle Diny,ジャングルの恐竜,500,true,false,false,true,false
+56595,Jungle Tom,ジャングルのトム,Jungle Tom,,Jungle Tom,ジャングルのトム,,,Jungle Tom,ジャングルのトム,500,true,false,false,true,false
+56596,Jungle Blitzy,ジャングルのブリッツ,Jungle Blitzy,,Jungle Blitzy,ジャングルのブリッツ,,,Jungle Blitzy,ジャングルのブリッツ,500,true,false,false,true,false
+56597,Jungle Cooper,ジャングルのクーパー,Jungle Cooper,,Jungle Cooper,ジャングルのクーパー,,,Jungle Cooper,ジャングルのクーパー,500,true,false,false,true,false
+56598,Firepit Diny,火山の恐竜,Firepit Diny,,Firepit Diny,火山の恐竜,,,Firepit Diny,火山の恐竜,1000,true,false,false,true,false
+56599,Firepit Tom,火山のトム,Firepit Tom,,Firepit Tom,火山のトム,,,Firepit Tom,火山のトム,1000,true,false,false,true,false
+56600,Firepit Blitzy,火山のブリッツ,Firepit Blitzy,,Firepit Blitzy,火山のブリッツ,,,Firepit Blitzy,火山のブリッツ,1000,true,false,false,true,false
+56601,Firepit Cooper,火山のクーパー,Firepit Cooper,,Firepit Cooper,火山のクーパー,,,Firepit Cooper,火山のクーパー,1000,true,false,false,true,false
+56602,Desert Diny,砂漠の恐竜,Desert Diny,,Desert Diny,砂漠の恐竜,,,Desert Diny,砂漠の恐竜,1000,true,false,false,true,false
+56603,Desert Tom,砂漠のトム,Desert Tom,,Desert Tom,砂漠のトム,,,Desert Tom,砂漠のトム,1000,true,false,false,true,false
+56604,Desert Blitzy,砂漠のブリッツ,Desert Blitzy,,Desert Blitzy,砂漠のブリッツ,,,Desert Blitzy,砂漠のブリッツ,1000,true,false,false,true,false
+56605,Desert Cooper,砂漠のクーパー,Desert Cooper,,Desert Cooper,砂漠のクーパー,,,Desert Cooper,砂漠のクーパー,1000,true,false,false,true,false
+56606,Tundra Diny,ツンドラの恐竜,Tundra Diny,,Tundra Diny,ツンドラの恐竜,,,Tundra Diny,ツンドラの恐竜,1000,true,false,false,true,false
+56607,Tundra Tom,ツンドラのトム,Tundra Tom,,Tundra Tom,ツンドラのトム,,,Tundra Tom,ツンドラのトム,1000,true,false,false,true,false
+56608,Tundra Blitzy,ツンドラのブリッツ,Tundra Blitzy,,Tundra Blitzy,ツンドラのブリッツ,,,Tundra Blitzy,ツンドラのブリッツ,1000,true,false,false,true,false
+56609,Tundra Cooper,ツンドラのクーパー,Tundra Cooper,,Tundra Cooper,ツンドラのクーパー,,,Tundra Cooper,ツンドラのクーパー,1000,true,false,false,true,false
+56610,Sea Diny,海の恐竜,Sea Diny,,Sea Diny,海の恐竜,,,Sea Diny,海の恐竜,3088,true,false,false,true,false
+56611,Sea Tom,海のトム,Sea Tom,,Sea Tom,海のトム,,,Sea Tom,海のトム,3088,true,false,false,true,false
+56612,Sea Blitzy,海のブリッツ,Sea Blitzy,,Sea Blitzy,海のブリッツ,,,Sea Blitzy,海のブリッツ,3088,true,false,false,true,false
+56613,Sea Cooper,海のクーパー,Sea Cooper,,Sea Cooper,海のクーパー,,,Sea Cooper,海のクーパー,3088,true,false,false,true,false
+56855,Festival Bracelet,フェスのブレスレット,Festival Bracelet,,Festival Bracelet,フェスのブレスレット,,,Festival Bracelet,フェスのブレスレット,349,true,false,false,true,false
+56861,Leon's Sigil Cape,レオンの紋章マント,Leon's Sigil Cape,,Leon's Sigil Cape,レオンの紋章マント,,,Leon's Sigil Cape,レオンの紋章マント,5000,true,false,false,true,false
+56862,Prairie Nyota,大草原のNyota,Prairie Nyota,,Prairie Nyota,大草原のNyota,,,Prairie Nyota,大草原のNyota,500,true,false,false,true,false
+56863,Jungle Nyota,ジャングルのNyota,Jungle Nyota,,Jungle Nyota,ジャングルのNyota,,,Jungle Nyota,ジャングルのNyota,500,true,false,false,true,false
+56864,Firepit Nyota,焚き火のNyota,Firepit Nyota,,Firepit Nyota,焚き火のNyota,,,Firepit Nyota,焚き火のNyota,1000,true,false,false,true,false
+56865,Desert Nyota,砂漠のNyota,Desert Nyota,,Desert Nyota,砂漠のNyota,,,Desert Nyota,砂漠のNyota,1000,true,false,false,true,false
+56866,Tundra Nyota,ツンドラのNyota,Tundra Nyota,,Tundra Nyota,ツンドラのNyota,,,Tundra Nyota,ツンドラのNyota,1000,true,false,false,true,false
+56867,Sea Nyota,海のNyota,Sea Nyota,,Sea Nyota,海のNyota,,,Sea Nyota,海のNyota,3088,true,false,false,true,false
+57008,Clover Hat,クローバーハット,Clover Hat,,Clover Hat,クローバーハット,,,Clover Hat,クローバーハット,450,true,false,false,true,false
+57009,Wakey Mallow,お目覚めマロウ,Wakey Mallow,,Wakey Mallow,お目覚めマロウ,,,Wakey Mallow,お目覚めマロウ,299,true,false,false,true,false
+57010,Dreamy Hat,ドリーミーハット,Dreamy Hat,,Dreamy Hat,ドリーミーハット,,,Dreamy Hat,ドリーミーハット,399,true,false,false,true,false
+57011,Starry Fluff,星付きふわふわ帽子,Starry Fluff,,Starry Fluff,星付きふわふわ帽子,,,Starry Fluff,星付きふわふわ帽子,500,true,false,false,true,false
+57593,Hive Escape,巣からお出かけ,Hive Escape,,Hive Escape,巣からお出かけ,,,Hive Escape,巣からお出かけ,549,true,false,false,true,false
+57594,Cheeky Pup,いたずらな子犬,Cheeky Pup,,Cheeky Pup,いたずらな子犬,,,Cheeky Pup,いたずらな子犬,400,true,false,false,true,false
+57595,Sloth Peek,ナマケモノのちら見,Sloth Peek,,Sloth Peek,ナマケモノのちら見,,,Sloth Peek,ナマケモノのちら見,450,true,false,false,true,false
+57596,Sax Groove,サックスグルーヴ,Sax Groove,,Sax Groove,サックスグルーヴ,,,Sax Groove,サックスグルーヴ,299,true,false,false,true,false
+57597,Vocal Bear,マイクベア,Vocal Bear,,Vocal Bear,マイクベア,,,Vocal Bear,マイクベア,399,true,false,false,true,false
+58213,coldy,coldy,coldy,,coldy,coldy,,,coldy,coldy,1,false,false,false,true,false
+58235,Seahorse Pop,タツノオトシゴのポップ,Seahorse Pop,,Seahorse Pop,タツノオトシゴのポップ,,,Seahorse Pop,タツノオトシゴのポップ,649,true,false,false,true,false
+58236,Cactus Shuffle,カクタス・シャッフル,Cactus Shuffle,,Cactus Shuffle,カクタス・シャッフル,,,Cactus Shuffle,カクタス・シャッフル,399,true,false,false,true,false
+58237,Clown Boogie,クラウン・ブギー,Clown Boogie,,Clown Boogie,クラウン・ブギー,,,Clown Boogie,クラウン・ブギー,449,true,false,false,true,false
+58238,Drum Hamster,ドラム・ハムスター,Drum Hamster,,Drum Hamster,ドラム・ハムスター,,,Drum Hamster,ドラム・ハムスター,549,true,false,false,true,false
+59313,Red Lightning,赤い稲妻,Red Lightning,,Red Lightning,赤い稲妻,,,Red Lightning,赤い稲妻,1,true,false,false,true,false
+59314,Banana Peel,バナナの皮,Banana Peel,,Banana Peel,バナナの皮,,,Banana Peel,バナナの皮,10,true,false,false,true,false
+59315,Traffic Cone,カラーコーン,Traffic Cone,,Traffic Cone,カラーコーン,,,Traffic Cone,カラーコーン,20,true,false,false,true,false
+59316,Energy Capsule,エネルギーカプセル,Energy Capsule,,Energy Capsule,エネルギーカプセル,,,Energy Capsule,エネルギーカプセル,30,true,false,false,true,false
+59317,Power Chip,パワーチップ,Power Chip,,Power Chip,パワーチップ,,,Power Chip,パワーチップ,100,true,false,false,true,false
+59318,Scroll,巻物,Scroll,,Scroll,巻物,,,Scroll,巻物,299,true,false,false,true,false
+59319,Health Potion,健康のエキス,Health Potion,,Health Potion,健康のエキス,,,Health Potion,健康のエキス,399,true,false,false,true,false
+59320,Mystery Box,ミステリーボックス,Mystery Box,,Mystery Box,ミステリーボックス,,,Mystery Box,ミステリーボックス,500,true,false,false,true,false
+59321,Magic Potion,魔法の薬,Magic Potion,,Magic Potion,魔法の薬,,,Magic Potion,魔法の薬,1000,true,false,false,true,false
+59322,Summoning Horn,召喚の角笛,Summoning Horn,,Summoning Horn,召喚の角笛,,,Summoning Horn,召喚の角笛,3000,true,false,false,true,false
+59450,Rookies Cup,新人王カチューシャ,Rookies Cup,,Rookies Cup,新人王カチューシャ,,,Rookies Cup,新人王カチューシャ,299,true,false,false,true,false
+59511,Blue Lightning,青い稲妻,Blue Lightning,,Blue Lightning,青い稲妻,,,Blue Lightning,青い稲妻,1,true,false,false,true,false
+59512,Yellow Lightning,黄色い稲妻,Yellow Lightning,,Yellow Lightning,黄色い稲妻,,,Yellow Lightning,黄色い稲妻,1,true,false,false,true,false
+59589,Music Burst,ミュージックバースト,Music Burst,,Music Burst,ミュージックバースト,,,Music Burst,ミュージックバースト,999,true,false,false,true,false
+59710,Chrono Rewinder,クロノリワインダー,Chrono Rewinder,,Chrono Rewinder,クロノリワインダー,,,Chrono Rewinder,クロノリワインダー,14999,true,false,false,true,false
+59711,Light Castle,ライトキャッスル,Light Castle,,Light Castle,ライトキャッスル,,,Light Castle,ライトキャッスル,25999,true,false,false,true,false
+59712,King Leonardo,レオナルド王,King Leonardo,,King Leonardo,レオナルド王,,,King Leonardo,レオナルド王,42999,true,false,false,true,false
+59774,DJ Wave,DJウェーブ,DJ Wave,,DJ Wave,DJウェーブ,,,DJ Wave,DJウェーブ,400,true,false,false,true,false
+59775,Amped Up,ボリュームアップ,Amped Up,,Amped Up,ボリュームアップ,,,Amped Up,ボリュームアップ,249,true,false,false,true,false
+59881,A Shard of Hope,希望のかけら,A Shard of Hope,,A Shard of Hope,希望のかけら,,,A Shard of Hope,希望のかけら,1,true,false,false,true,false
+59882,Shell of a Warrior,ヘッドギア,Shell of a Warrior,,Shell of a Warrior,ヘッドギア,,,Shell of a Warrior,ヘッドギア,500,true,false,false,true,false
+59883,Ignition Check,点火チェック,Ignition Check,,Ignition Check,点火チェック,,,Ignition Check,点火チェック,1500,true,false,false,true,false
+59884,Rust Reforged,眠れる戦士の復活,Rust Reforged,,Rust Reforged,眠れる戦士の復活,,,Rust Reforged,眠れる戦士の復活,6000,true,false,false,true,false
+59885,Rust vs World,眠れる戦士 vs 世界,Rust vs World,,Rust vs World,眠れる戦士 vs 世界,,,Rust vs World,眠れる戦士 vs 世界,18999,true,false,false,true,false
+59994,Crowd Cheering,観客の声援,Crowd Cheering,,Crowd Cheering,観客の声援,,,Crowd Cheering,観客の声援,5000,true,false,false,true,false
+60073,FANDOM Stamp,FANDOMスタンプ,FANDOM Stamp,,FANDOM Stamp,FANDOMスタンプ,,,FANDOM Stamp,FANDOMスタンプ,100,true,false,false,true,false
+60074,FANDOM Fever,FANDOMフィーバー,FANDOM Fever,,FANDOM Fever,FANDOMフィーバー,,,FANDOM Fever,FANDOMフィーバー,400,true,false,false,true,false
+60075,FANDOM Cheer,FANDOM応援団,FANDOM Cheer,,FANDOM Cheer,FANDOM応援団,,,FANDOM Cheer,FANDOM応援団,2500,true,false,false,true,false
+60076,Ultimate FANDOM,最強のFANDOM,Ultimate FANDOM,,Ultimate FANDOM,最強のFANDOM,,,Ultimate FANDOM,最強のFANDOM,8000,true,false,false,true,false
+60077,FANDOM Fan,FANDOMうちわ,FANDOM Fan,,FANDOM Fan,FANDOMうちわ,,,FANDOM Fan,FANDOMうちわ,10,true,false,false,true,false
+60547,Punch Cuddle,パンチ君のハグ,Punch Cuddle,,Punch Cuddle,パンチ君のハグ,,,Punch Cuddle,パンチ君のハグ,400,true,false,false,true,false
+60548,Labor Power,労働パワー,Labor Power,,Labor Power,労働パワー,,,Labor Power,労働パワー,299,true,false,false,true,false
+60549,Craft Dreamer,夢見るアーティスト,Craft Dreamer,,Craft Dreamer,夢見るアーティスト,,,Craft Dreamer,夢見るアーティスト,349,true,false,false,true,false
+60550,Glorious Chef,優れたシェフ,Glorious Chef,,Glorious Chef,優れたシェフ,,,Glorious Chef,優れたシェフ,400,true,false,false,true,false
+60553,Roo Mother,ママカンガルー,Roo Mother,,Roo Mother,ママカンガルー,,,Roo Mother,ママカンガルー,500,true,false,false,true,false
+60554,Mom's Bonnet,ママの帽子,Mom's Bonnet,,Mom's Bonnet,ママの帽子,,,Mom's Bonnet,ママの帽子,349,true,false,false,true,false
+60555,Echo Mom,エコーママ,Echo Mom,,Echo Mom,エコーママ,,,Echo Mom,エコーママ,399,true,false,false,true,false
+62487,Soccer Holo,LIVE Cupカード,Soccer Holo,,Soccer Holo,LIVE Cupカード,,,Soccer Holo,LIVE Cupカード,599,true,false,false,true,false
+62501,Tom Thunderfoot,スーパーカード,Tom Thunderfoot,,Tom Thunderfoot,スーパーカード,,,Tom Thunderfoot,スーパーカード,2499,true,false,false,true,false
+62675,Sing Together,一緒に歌おう,Sing Together,,Sing Together,一緒に歌おう,,,Sing Together,一緒に歌おう,10,true,false,false,true,false
+62816,Community Heart,コミュニティハート,Community Heart,,Community Heart,コミュニティハート,,,Community Heart,コミュニティハート,1,true,false,false,true,false
+62817,Community Style,コミュニティスタイル,Community Style,,Community Style,コミュニティスタイル,,,Community Style,コミュニティスタイル,99,true,false,false,true,false
+62818,Jollie's Community,ジョリーのコミュニティ,Jollie's Community,,Jollie's Community,ジョリーのコミュニティ,,,Jollie's Community,ジョリーのコミュニティ,399,true,false,false,true,false
+62819,Community Rally,コミュニティラリー,Community Rally,,Community Rally,コミュニティラリー,,,Community Rally,コミュニティラリー,2999,true,false,false,true,false
+101198,Frog Conductor,カエルの指揮者,Frog Conductor,,Frog Conductor,カエルの指揮者,,,Frog Conductor,カエルの指揮者,149,true,false,false,true,false
+101384,Fan Cat,ファン猫,Fan Cat,,Fan Cat,ファン猫,,,Fan Cat,ファン猫,199,true,false,false,true,false
+101857,Storm Blade,ストームブレード,Storm Blade,,Storm Blade,ストームブレード,,,Storm Blade,ストームブレード,14999,true,false,false,true,false
+101862,Skyforge Citadel,スカイフォージ要塞,Skyforge Citadel,,Skyforge Citadel,スカイフォージ要塞,,,Skyforge Citadel,スカイフォージ要塞,25999,true,false,false,true,false
+101868,Valerian's Oath,ヴァレリアンの誓い,Valerian's Oath,,Valerian's Oath,ヴァレリアンの誓い,,,Valerian's Oath,ヴァレリアンの誓い,43999,true,false,false,true,false
+105610,Goal Highlight-US,ゴールハイライト：アメリカ,Goal Highlight-US,,Goal Highlight-US,ゴールハイライト：アメリカ,,,Goal Highlight-US,ゴールハイライト：アメリカ,6000,true,false,false,true,false
+105781,Spinning Soccer,サッカー,Spinning Soccer,,Spinning Soccer,サッカー,,,Spinning Soccer,サッカー,5,true,false,false,true,false
+105795,Freestyle,ヘッドストール,Freestyle,,Freestyle,ヘッドストール,,,Freestyle,ヘッドストール,1800,true,false,false,true,false
+105810,Guardian's Pledge,ガーディアンの誓い,Guardian's Pledge,,Guardian's Pledge,ガーディアンの誓い,,,Guardian's Pledge,ガーディアンの誓い,4999,true,false,false,true,false
+105814,Goal Highlight,膝スラ,Goal Highlight,,Goal Highlight,膝スラ,,,Goal Highlight,膝スラ,6000,true,false,false,true,false
+105817,Stadium,熱狂スタジアム,Stadium,,Stadium,熱狂スタジアム,,,Stadium,熱狂スタジアム,15999,true,false,false,true,false
+110506,Rock Cats,ロックキャッツ,Rock Cats,,Rock Cats,ロックキャッツ,,,Rock Cats,ロックキャッツ,400,true,false,false,true,false
+110508,Retro Melody,レトロメロディ,Retro Melody,,Retro Melody,レトロメロディ,,,Retro Melody,レトロメロディ,349,true,false,false,true,false
+115510,umbrella,おさんぽ傘,umbrella,,umbrella,おさんぽ傘,,,umbrella,おさんぽ傘,1,true,false,false,true,false
+115513,Rain Doll,お天気占い,Rain Doll,,Rain Doll,お天気占い,,,Rain Doll,お天気占い,299,true,false,false,true,false
+115516,Hydrangea Sea,あじさいの海,Hydrangea Sea,,Hydrangea Sea,あじさいの海,,,Hydrangea Sea,あじさいの海,1299,true,false,false,true,false
+115518,Dream Ride,君と見る空,Dream Ride,,Dream Ride,君と見る空,,,Dream Ride,君と見る空,15000,true,false,false,true,false
+115520,Stage of ring,雨ふりステージ,Stage of ring,,Stage of ring,雨ふりステージ,,,Stage of ring,雨ふりステージ,4999,true,false,false,true,false
+115543,LIVE Ranking Ticket,LIVE Ranking Ticket,LIVE Ranking Ticket,,LIVE Ranking Ticket,LIVE Ranking Ticket,,,LIVE Ranking Ticket,LIVE Ranking Ticket,10,false,false,false,true,false
+115548,LIVE Ranking Party,LIVE Ranking Party,LIVE Ranking Party,,LIVE Ranking Party,LIVE Ranking Party,,,LIVE Ranking Party,LIVE Ranking Party,3999,false,false,false,true,false
+115549,Red Devil Corgi,Red Devil Corgi,Red Devil Corgi,,Red Devil Corgi,Red Devil Corgi,,,Red Devil Corgi,Red Devil Corgi,20000,false,false,false,true,false
+118812,Divine Fingers,神の指,Divine Fingers,,Divine Fingers,神の指,,,Divine Fingers,神の指,6,true,false,false,true,false
+118814,Poetry Score,詩の楽譜,Poetry Score,,Poetry Score,詩の楽譜,,,Poetry Score,詩の楽譜,249,true,false,false,true,false
+118817,Epic Pianist,最高のピアニスト,Epic Pianist,,Epic Pianist,最高のピアニスト,,,Epic Pianist,最高のピアニスト,800,true,false,false,true,false
+118926,Ukulele Player,ウクレレ演奏者,Ukulele Player,,Ukulele Player,ウクレレ演奏者,,,Ukulele Player,ウクレレ演奏者,349,true,false,false,true,false
+118928,Lost in Your Music,あなたの音楽に夢中,Lost in Your Music,,Lost in Your Music,あなたの音楽に夢中,,,Lost in Your Music,あなたの音楽に夢中,500,true,false,false,true,false
+118939,Electronic Love Song,エレクトロニックのラブソング,Electronic Love Song,,Electronic Love Song,エレクトロニックのラブソング,,,Electronic Love Song,エレクトロニックのラブソング,449,true,false,false,true,false
+121582,Chopin in the Rain,雨の中のショパン,Chopin in the Rain,,Chopin in the Rain,雨の中のショパン,,,Chopin in the Rain,雨の中のショパン,349,true,false,false,true,false
+121583,Cello Romance,チェロロマンス,Cello Romance,,Cello Romance,チェロロマンス,,,Cello Romance,チェロロマンス,299,true,false,false,true,false
+130787,Come On!,頑張れ！,Come On!,,Come On!,頑張れ！,,,Come On!,頑張れ！,299,true,false,false,true,false
+131882,It's Match Time,Matchのお誘い！,It's Match Time,,It's Match Time,Matchのお誘い！,,,It's Match Time,Matchのお誘い！,1,true,false,false,true,false
+131887,Match Master,Matchマスター,Match Master,,Match Master,Matchマスター,,,Match Master,Matchマスター,500,true,false,false,true,false
+131888,Matchtacular!,盛大なMatch！,Matchtacular!,,Matchtacular!,盛大なMatch！,,,Matchtacular!,盛大なMatch！,1000,true,false,false,true,false
+131894,Match Maniac,Matchマニアック,Match Maniac,,Match Maniac,Matchマニアック,,,Match Maniac,Matchマニアック,2999,true,false,false,true,false
+133119,Music on Stage,Music on Stage,Music on Stage,,Music on Stage,Music on Stage,,,Music on Stage,Music on Stage,1,false,false,false,true,false
+133120,Take the Mic,マイクを握ろう,Take the Mic,,Take the Mic,マイクを握ろう,,,Take the Mic,マイクを握ろう,199,true,false,false,true,false
+133121,Rosie on Stage,ステージのロージー,Rosie on Stage,,Rosie on Stage,ステージのロージー,,,Rosie on Stage,ステージのロージー,2999,true,false,false,true,false
+133123,My Dream Stage,夢のステージ,My Dream Stage,,My Dream Stage,夢のステージ,,,My Dream Stage,夢のステージ,5999,true,false,false,true,false
+133359,DJ Set,DJセット,DJ Set,,DJ Set,DJセット,,,DJ Set,DJセット,399,true,false,false,true,false
+133360,Pink Cowboy,ピンクカウボーイ,Pink Cowboy,,Pink Cowboy,ピンクカウボーイ,,,Pink Cowboy,ピンクカウボーイ,450,true,false,false,true,false
+134381,,,Diamond Gun,,,,,,,,5000,false,false,false,false,true
+134396,,,Zeus,,,,,,,,34000,false,false,false,false,true
+139582,Cheering Towel,応援タオル,Cheering Towel,,Cheering Towel,応援タオル,,,Cheering Towel,応援タオル,299,true,false,false,true,false
+139584,Drum Pop,ドラムポップ,Drum Pop,,Drum Pop,ドラムポップ,,,Drum Pop,ドラムポップ,500,true,false,false,true,false
+139586,Celebration Tape,お祝いテープ,Celebration Tape,,Celebration Tape,お祝いテープ,,,Celebration Tape,お祝いテープ,2800,true,false,false,true,false
+153750,Club Cheers,応援クラブ,Club Cheers,,Club Cheers,応援クラブ,,,Club Cheers,応援クラブ,1,true,false,false,true,false
+153751,Club Power,団結クラブ,Club Power,,Club Power,団結クラブ,,,Club Power,団結クラブ,9,true,false,false,true,false
+153753,Club Victory,クラブ勝利,Club Victory,,Club Victory,クラブ勝利,,,Club Victory,クラブ勝利,99,true,false,false,true,false
+166576,Sakura-style DJ,桜スタイルDJ,Sakura-style DJ,,Sakura-style DJ,桜スタイルDJ,,,Sakura-style DJ,桜スタイルDJ,600,true,false,false,true,false
+166578,Singing Frog,歌うカエル,Singing Frog,,Singing Frog,歌うカエル,,,Singing Frog,歌うカエル,249,true,false,false,true,false
+166579,Rock and Roll,ロックンロール,Rock and Roll,,Rock and Roll,ロックンロール,,,Rock and Roll,ロックンロール,449,true,false,false,true,false
+166581,Sound Spell,呪文のサウンド,Sound Spell,,Sound Spell,呪文のサウンド,,,Sound Spell,呪文のサウンド,500,true,false,false,true,false
+166583,Electro Vibes,エレクトロバイブス,Electro Vibes,,Electro Vibes,エレクトロバイブス,,,Electro Vibes,エレクトロバイブス,349,true,false,false,true,false
+170193,Semsemia,セミア,Semsemia,,Semsemia,セミア,,,Semsemia,セミア,200,true,false,false,true,false
+170277,Baglama,バグラマ,Baglama,,Baglama,バグラマ,,,Baglama,バグラマ,200,true,false,false,true,false
+170498,Bloom Brass,フラワーブラス,Bloom Brass,,Bloom Brass,フラワーブラス,,,Bloom Brass,フラワーブラス,199,true,false,false,true,false
+170501,Magic Accordion,マジックアコーディオン,Magic Accordion,,Magic Accordion,マジックアコーディオン,,,Magic Accordion,マジックアコーディオン,400,true,false,false,true,false
+170503,Beat Wings,ビートウィング,Beat Wings,,Beat Wings,ビートウィング,,,Beat Wings,ビートウィング,399,true,false,false,true,false
+170504,Melody Headset,メロディヘッドセット,Melody Headset,,Melody Headset,メロディヘッドセット,,,Melody Headset,メロディヘッドセット,399,true,false,false,true,false
+170505,Retro Headset,レトロヘッドセット,Retro Headset,,Retro Headset,レトロヘッドセット,,,Retro Headset,レトロヘッドセット,349,true,false,false,true,false
+170506,Singing Mushroom,歌うキノコ,Singing Mushroom,,Singing Mushroom,歌うキノコ,,,Singing Mushroom,歌うキノコ,99,true,false,false,true,false
+170507,Bloom Melody,フラワーメロディ,Bloom Melody,,Bloom Melody,フラワーメロディ,,,Bloom Melody,フラワーメロディ,99,true,false,false,true,false
+170508,Rhythm Bot,リズムボット,Rhythm Bot,,Rhythm Bot,リズムボット,,,Rhythm Bot,リズムボット,199,true,false,false,true,false
+191116,Super Dad,スーパーパパ,Super Dad,,Super Dad,スーパーパパ,,,Super Dad,スーパーパパ,400,true,false,false,true,false
+191117,Office Penguin,オフィスペンギン,Office Penguin,,Office Penguin,オフィスペンギン,,,Office Penguin,オフィスペンギン,450,true,false,false,true,false
+191123,Papa Capybara,パパカピバラ,Papa Capybara,,Papa Capybara,パパカピバラ,,,Papa Capybara,パパカピバラ,399,true,false,false,true,false
+223562,Penlight,ペンライト,Penlight,,Penlight,ペンライト,,,Penlight,ペンライト,1599,true,false,false,true,false
+231882,Songs of LIVE,LIVEソング,Songs of LIVE,,Songs of LIVE,LIVEソング,,,Songs of LIVE,LIVEソング,10,true,false,false,true,false
+231955,Good Job,よくできました,Good Job,,Good Job,よくできました,,,Good Job,よくできました,1,true,false,false,true,false
+231956,Clap Clap,拍手,Clap Clap,,Clap Clap,拍手,,,Clap Clap,拍手,1,true,false,false,true,false
+231957,Intimacy,深い関係,Intimacy,,Intimacy,深い関係,,,Intimacy,深い関係,10,true,false,false,true,false
+231958,Mind Blown,衝撃的すぎ,Mind Blown,,Mind Blown,衝撃的すぎ,,,Mind Blown,衝撃的すぎ,10,true,false,false,true,false
+232592,Tempo Flute,テンポフルート,Tempo Flute,,Tempo Flute,テンポフルート,,,Tempo Flute,テンポフルート,149,true,false,false,true,false
+232593,Groove Guitar,グルーヴギター,Groove Guitar,,Groove Guitar,グルーヴギター,,,Groove Guitar,グルーヴギター,99,true,false,false,true,false
+282675,Blast Drum,ブラストドラム,Blast Drum,,Blast Drum,ブラストドラム,,,Blast Drum,ブラストドラム,249,true,false,false,true,false
+282718,Groove Clarinet,グルーブクラリネット,Groove Clarinet,,Groove Clarinet,グルーブクラリネット,,,Groove Clarinet,グルーブクラリネット,149,true,false,false,true,false
+282739,Fiesta Accordion,フィエスタアコーディオン,Fiesta Accordion,,Fiesta Accordion,フィエスタアコーディオン,,,Fiesta Accordion,フィエスタアコーディオン,99,true,false,false,true,false
+282749,Swing Cello,スイングチェロ,Swing Cello,,Swing Cello,スイングチェロ,,,Swing Cello,スイングチェロ,299,true,false,false,true,false
+437561,Pearl Chime,パールチャイム,Pearl Chime,,Pearl Chime,パールチャイム,,,Pearl Chime,パールチャイム,99,true,false,false,true,false
+437599,Aurora Groove,オーロラグルーヴ,Aurora Groove,,Aurora Groove,オーロラグルーヴ,,,Aurora Groove,オーロラグルーヴ,399,true,false,false,true,false
+437629,Butterfly Vibe,バタフライバイブ,Butterfly Vibe,,Butterfly Vibe,バタフライバイブ,,,Butterfly Vibe,バタフライバイブ,349,true,false,false,true,false
+437639,Groove Straw,グルーヴハット,Groove Straw,,Groove Straw,グルーヴハット,,,Groove Straw,グルーヴハット,450,true,false,false,true,false
+437669,Pop Parrot,ポップなオウム,Pop Parrot,,Pop Parrot,ポップなオウム,,,Pop Parrot,ポップなオウム,400,true,false,false,true,false
+437679,Bunny DJ,バニーDJ,Bunny DJ,,Bunny DJ,バニーDJ,,,Bunny DJ,バニーDJ,1200,true,false,false,true,false
+437689,Drum Genius,ドラムの天才,Drum Genius,,Drum Genius,ドラムの天才,,,Drum Genius,ドラムの天才,500,true,false,false,true,false
+437699,Rock Idol,ロックアイドル,Rock Idol,,Rock Idol,ロックアイドル,,,Rock Idol,ロックアイドル,400,true,false,false,true,false
+437709,Key Master,キーマスター,Key Master,,Key Master,キーマスター,,,Key Master,キーマスター,499,true,false,false,true,false
+440687,Kindom of Night,夜の王国,Kindom of Night,,Kindom of Night,夜の王国,,,Kindom of Night,夜の王国,899,true,false,false,true,false
+440699,Forest Beginnings,始まりの森,Forest Beginnings,,Forest Beginnings,始まりの森,,,Forest Beginnings,始まりの森,199,true,false,false,true,false
+440703,Desert Survivals,砂漠のサバイバル,Desert Survivals,,Desert Survivals,砂漠のサバイバル,,,Desert Survivals,砂漠のサバイバル,399,true,false,false,true,false
+440713,Brown Paw,茶色い肉球,Brown Paw,,Brown Paw,茶色い肉球,,,Brown Paw,茶色い肉球,5,true,false,false,true,false
+440717,Black Paw,黒い肉球,Black Paw,,Black Paw,黒い肉球,,,Black Paw,黒い肉球,10,true,false,false,true,false
+444785,Music Cloud,音符雲,Music Cloud,,Music Cloud,音符雲,,,Music Cloud,音符雲,10,true,false,false,true,false
+444819,Rainbow Slide,虹のすべり台,Rainbow Slide,,Rainbow Slide,虹のすべり台,,,Rainbow Slide,虹のすべり台,100,true,false,false,true,false
+444843,Over the Cloud,雲の向こうへ,Over the Cloud,,Over the Cloud,雲の向こうへ,,,Over the Cloud,雲の向こうへ,450,true,false,false,true,false
+444871,Cloud DJ,クラウドDJ,Cloud DJ,,Cloud DJ,クラウドDJ,,,Cloud DJ,クラウドDJ,4000,true,false,false,true,false
+544015,Heart My Earthling,すきすきビーム,Heart My Earthling,,Heart My Earthling,すきすきビーム,,,Heart My Earthling,すきすきビーム,100,true,false,false,true,false
+544253,I Like What I See,メロメロ〜,I Like What I See,,I Like What I See,メロメロ〜,,,I Like What I See,メロメロ〜,10,true,false,false,true,false
+547119,Black Wolf,ブラックウルフ,Black Wolf,,Black Wolf,ブラックウルフ,,,Black Wolf,ブラックウルフ,15000,true,false,false,true,false
+547121,Desert Wolf,砂漠のオオカミ,Desert Wolf,,Desert Wolf,砂漠のオオカミ,,,Desert Wolf,砂漠のオオカミ,5000,true,false,false,true,false
+607157,Spidey Pin,ヒーローの証,Spidey Pin,,Spidey Pin,ヒーローの証,,,Spidey Pin,ヒーローの証,1,true,false,false,true,false
+607161,Hero Landing,スパイダーマン,Hero Landing,,Hero Landing,スパイダーマン,,,Hero Landing,スパイダーマン,299,true,false,false,true,false
+607175,Spider Web,スパイダー盾まろ,Spider Web,,Spider Web,スパイダー盾まろ,,,Spider Web,スパイダー盾まろ,1299,true,false,false,true,false
+607181,Spider Web 2.0,スパイダー盾まろプレミアム,Spider Web 2.0,,Spider Web 2.0,スパイダー盾まろプレミアム,,,Spider Web 2.0,スパイダー盾まろプレミアム,1299,true,false,false,true,false
+607183,Stage of SpiderMan,親愛なる隣人,Stage of SpiderMan,,Stage of SpiderMan,親愛なる隣人,,,Stage of SpiderMan,親愛なる隣人,4999,true,false,false,true,false
+607191,Maro Spider Man,スパイダーマン発見,Maro Spider Man,,Maro Spider Man,スパイダーマン発見,,,Maro Spider Man,スパイダーマン発見,15000,true,false,false,true,false
+626056,Kudos for My Star,推しへの称賛,Kudos for My Star,,Kudos for My Star,推しへの称賛,,,Kudos for My Star,推しへの称賛,15,true,false,false,true,false
+626064,G.O.A.T. Busker,G.O.A.T.バスカー,G.O.A.T. Busker,,G.O.A.T. Busker,G.O.A.T.バスカー,,,G.O.A.T. Busker,G.O.A.T.バスカー,20,true,false,false,true,false
+637990,Treasure Clover,宝のクローバー,Treasure Clover,,Treasure Clover,宝のクローバー,,,Treasure Clover,宝のクローバー,1,true,false,false,true,false
+637996,Gate to Treasure,宝の門,Gate to Treasure,,Gate to Treasure,宝の門,,,Gate to Treasure,宝の門,100,true,false,false,true,false
+638002,Treasure's Key,宝の鍵,Treasure's Key,,Treasure's Key,宝の鍵,,,Treasure's Key,宝の鍵,10,true,false,false,true,false
+638006,Out Pops Jollie!,飛び出すジョリー！,Out Pops Jollie!,,Out Pops Jollie!,飛び出すジョリー！,,,Out Pops Jollie!,飛び出すジョリー！,500,true,false,false,true,false
+657024,Sax Appeal,らぶホーン,Sax Appeal,,Sax Appeal,らぶホーン,,,Sax Appeal,らぶホーン,700,true,false,false,true,false
+657042,Hug It Better,はぎゅっ,Hug It Better,,Hug It Better,はぎゅっ,,,Hug It Better,はぎゅっ,1600,true,false,false,true,false
+657072,Galaxy's Bestest,きゅんジェット,Galaxy's Bestest,,Galaxy's Bestest,きゅんジェット,,,Galaxy's Bestest,きゅんジェット,300,true,false,false,true,false
+677572,LIVE Ranking Ticket,LIVE Ranking Ticket,LIVE Ranking Ticket,,LIVE Ranking Ticket,LIVE Ranking Ticket,,,LIVE Ranking Ticket,LIVE Ranking Ticket,10,false,false,false,true,false
+677594,Corgi's Drone Show,Corgi's Drone Show,Corgi's Drone Show,,Corgi's Drone Show,Corgi's Drone Show,,,Corgi's Drone Show,Corgi's Drone Show,20000,false,false,false,true,false
+738532,LIVE Ranking Party,LIVEランキングのパーティー,LIVE Ranking Party,,LIVE Ranking Party,LIVEランキングのパーティー,,,LIVE Ranking Party,LIVEランキングのパーティー,3999,true,false,false,true,false
+739730,Rhythm Crown,リズムクラウン,Rhythm Crown,,Rhythm Crown,リズムクラウン,,,Rhythm Crown,リズムクラウン,299,true,false,false,true,false
+739740,Djembe Master,ジェンベマスター,Djembe Master,,Djembe Master,ジェンベマスター,,,Djembe Master,ジェンベマスター,349,true,false,false,true,false
+739778,Floral Serenade,フローラルセレナーデ,Floral Serenade,,Floral Serenade,フローラルセレナーデ,,,Floral Serenade,フローラルセレナーデ,399,true,false,false,true,false
+842694,Neon Rockstar,ネオンロックスター,Neon Rockstar,,Neon Rockstar,ネオンロックスター,,,Neon Rockstar,ネオンロックスター,400,true,false,false,true,false
+842698,Meowsic Trumpet,ニャージックトランペット,Meowsic Trumpet,,Meowsic Trumpet,ニャージックトランペット,,,Meowsic Trumpet,ニャージックトランペット,449,true,false,false,true,false
+842704,Spin Seal,DJアザラシ,Spin Seal,,Spin Seal,DJアザラシ,,,Spin Seal,DJアザラシ,349,true,false,false,true,false
+842710,Honey Strummer,ミツバチとギターを鳴らす,Honey Strummer,,Honey Strummer,ミツバチとギターを鳴らす,,,Honey Strummer,ミツバチとギターを鳴らす,500,true,false,false,true,false
+842718,Cow-napping,牛の誘拐,Cow-napping,,Cow-napping,牛の誘拐,,,Cow-napping,牛の誘拐,99,true,false,false,true,false
+842726,Sunny Side Up,目玉焼き,Sunny Side Up,,Sunny Side Up,目玉焼き,,,Sunny Side Up,目玉焼き,199,true,false,false,true,false
+909798,Fantastic Fly Love,不思議な飛ぶ愛,Fantastic Fly Love,,Fantastic Fly Love,不思議な飛ぶ愛,,,Fantastic Fly Love,不思議な飛ぶ愛,19999,true,false,false,true,false
+919320,Talking Heartbeat,思いを伝えるビート,Talking Heartbeat,,Talking Heartbeat,思いを伝えるビート,,,Talking Heartbeat,思いを伝えるビート,199,true,false,false,true,false
+919330,Wind on Kemenche,ケメンチェの風,Wind on Kemenche,,Wind on Kemenche,ケメンチェの風,,,Wind on Kemenche,ケメンチェの風,399,true,false,false,true,false
+919346,Welcome Dallah,ウェルカムダッラ,Welcome Dallah,,Welcome Dallah,ウェルカムダッラ,,,Welcome Dallah,ウェルカムダッラ,1,true,false,false,true,false
+919386,Love in Scent,愛の香り,Love in Scent,,Love in Scent,愛の香り,,,Love in Scent,愛の香り,5,true,false,false,true,false
+946640,LUVX Cheer,参戦チケット,LUVX Cheer,,LUVX Cheer,参戦チケット,,,LUVX Cheer,参戦チケット,1,true,false,false,true,false
+946648,HeartBeats,ハートビート,HeartBeats,,HeartBeats,ハートビート,,,HeartBeats,ハートビート,500,true,false,false,true,false
+946652,Getting Ready,スタンバイ,Getting Ready,,Getting Ready,スタンバイ,,,Getting Ready,スタンバイ,1999,true,false,false,true,false
+946664,Strike a Pose,キメポーズ,Strike a Pose,,Strike a Pose,キメポーズ,,,Strike a Pose,キメポーズ,6000,true,false,false,true,false
+946670,Daylight Debut,デビューステージ,Daylight Debut,,Daylight Debut,デビューステージ,,,Daylight Debut,デビューステージ,13999,true,false,false,true,false
+971136,Spartan Helmet,スパルタン戦士の兜,Spartan Helmet,,Spartan Helmet,スパルタン戦士の兜,,,Spartan Helmet,スパルタン戦士の兜,399,true,false,false,true,false
+972120,Snowmoon Parasol,六花の番傘,Snowmoon Parasol,,Snowmoon Parasol,六花の番傘,,,Snowmoon Parasol,六花の番傘,14999,true,false,false,true,false
+972130,Rin the Snowborn,山神の使い,Rin the Snowborn,,Rin the Snowborn,山神の使い,,,Rin the Snowborn,山神の使い,25999,true,false,false,true,false
+972138,Yuki's Vigilance,雪姫の結界,Yuki's Vigilance,,Yuki's Vigilance,雪姫の結界,,,Yuki's Vigilance,雪姫の結界,42999,true,false,false,true,false
+985636,Funky Hatter,ファンキーハッター,Funky Hatter,,Funky Hatter,ファンキーハッター,,,Funky Hatter,ファンキーハッター,900,true,false,false,true,false
+985642,Heartbeat Keys,ハートビートキー,Heartbeat Keys,,Heartbeat Keys,ハートビートキー,,,Heartbeat Keys,ハートビートキー,400,true,false,false,true,false
+985644,Candy Blast,キャンディいっぱい,Candy Blast,,Candy Blast,キャンディいっぱい,,,Candy Blast,キャンディいっぱい,99,true,false,false,true,false
+985650,Starry Seal,星がきらめくアザラシ,Starry Seal,,Starry Seal,星がきらめくアザラシ,,,Starry Seal,星がきらめくアザラシ,349,true,false,false,true,false
+985682,Brazilian Vibe Cap,ブラジルっぽいキャップ,Brazilian Vibe Cap,,Brazilian Vibe Cap,ブラジルっぽいキャップ,,,Brazilian Vibe Cap,ブラジルっぽいキャップ,299,true,false,false,true,false
+985702,Tropical Mask,トロピカル仮面,Tropical Mask,,Tropical Mask,トロピカル仮面,,,Tropical Mask,トロピカル仮面,299,true,false,false,true,false
+1137702,Encore Ticket,アンコールチケット,Encore Ticket,,Encore Ticket,アンコールチケット,,,Encore Ticket,アンコールチケット,5,true,false,false,true,false
+1137705,Sing in Sync,シンクロして歌う,Sing in Sync,,Sing in Sync,シンクロして歌う,,,Sing in Sync,シンクロして歌う,399,true,false,false,true,false
+1137707,Stage Wiggle,ステージでくねくねする,Stage Wiggle,,Stage Wiggle,ステージでくねくねする,,,Stage Wiggle,ステージでくねくねする,899,true,false,false,true,false
+1137712,Last Riff Roar,終盤のギターリフの轟音,Last Riff Roar,,Last Riff Roar,終盤のギターリフの轟音,,,Last Riff Roar,終盤のギターリフの轟音,6999,true,false,false,true,false
+1143618,Shadebound’s Relic,騎士のヘルム,Shadebound’s Relic,,Shadebound’s Relic,騎士のヘルム,,,Shadebound’s Relic,騎士のヘルム,6000,true,false,false,true,false
+1143619,Royal Lions Scepter,獅子の杖,Royal Lions Scepter,,Royal Lions Scepter,獅子の杖,,,Royal Lions Scepter,獅子の杖,15000,true,false,false,true,false
+1143818,Courage potion,勇気ポーション,Courage potion,,Courage potion,勇気ポーション,,,Courage potion,勇気ポーション,10,true,false,false,true,false
+1143819,Box of destiny,運命宝箱,Box of destiny,,Box of destiny,運命宝箱,,,Box of destiny,運命宝箱,899,true,false,false,true,false
+1143821,The Trial of Sea,試練の海,The Trial of Sea,,The Trial of Sea,試練の海,,,The Trial of Sea,試練の海,4999,true,false,false,true,false
+1143822,Stormwave Armor,荒波の鎧,Stormwave Armor,,Stormwave Armor,荒波の鎧,,,Stormwave Armor,荒波の鎧,8999,true,false,false,true,false
+1143825,Proof of the King,王者の証,Proof of the King,,Proof of the King,王者の証,,,Proof of the King,王者の証,14999,true,false,false,true,false
+1213439,Squirrel,Squirrel,Squirrel,,Squirrel,Squirrel,,,Squirrel,Squirrel,10,false,false,false,true,false
+1213441,Warm Cocoa,Warm Cocoa,Warm Cocoa,,Warm Cocoa,Warm Cocoa,,,Warm Cocoa,Warm Cocoa,30,false,false,false,true,false

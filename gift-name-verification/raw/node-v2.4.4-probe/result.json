@@ -1,0 +1,20 @@
+{
+  "library": "tiktok-live-connector",
+  "libraryVersion": "2.4.4",
+  "tests": {
+    "fetchRoomId": {
+      "ok": true,
+      "roomId": "7678840506193414933"
+    },
+    "fetchAvailableGifts": {
+      "ok": false,
+      "errorName": "SignatureMissingTokensError",
+      "error": "[Empty Payload] [fetchWebcastSignatureFromEulerRoute] Failed to sign a request: This endpoint requires a Business plan. Purchase one at https://www.eulerstream.com/pricing."
+    },
+    "enableExtendedGiftInfo_connect": {
+      "ok": false,
+      "errorName": "SignatureMissingTokensError",
+      "error": "[Empty Payload] [fetchWebcastSignatureFromEulerRoute] Failed to sign a request: This endpoint requires a Business plan. Purchase one at https://www.eulerstream.com/pricing."
+    }
+  }
+}

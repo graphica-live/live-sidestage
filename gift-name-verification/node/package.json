@@ -1,0 +1,10 @@
+{
+  "name": "gift-name-verification-node",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "TikTok LIVE 日本語ギフト名取得方法の比較検証 (Node.js / tiktok-live-connector)",
+  "dependencies": {
+    "tiktok-live-connector": "2.1.1-beta1"
+  }
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "key": "default-en-US",
+    "ok": false,
+    "error": "AvailableGifts empty after connect (waited 10s)"
+  },
+  {
+    "key": "default-en-US",
+    "ok": false,
+    "error": "AvailableGifts empty after connect (waited 10s)"
+  },
+  {
+    "key": "lang-ja-JP",
+    "ok": false,
+    "error": "AvailableGifts empty after connect (waited 10s)"
+  },
+  {
+    "key": "lang-ja",
+    "ok": false,
+    "error": "AvailableGifts empty after connect (waited 10s)"
+  },
+  {
+    "key": "clientparams-webcast_language-ja-JP",
+    "ok": false,
+    "error": "AvailableGifts empty after connect (waited 10s)"
+  }
+]

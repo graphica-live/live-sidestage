@@ -1,0 +1,10 @@
+{
+  "library": "TikTokLiveSharp",
+  "libraryVersion": "0.1.4",
+  "target": "yu_ki_nojo",
+  "mode": "live",
+  "listenSeconds": 900,
+  "connectOk": true,
+  "uniqueGiftIdsObserved": 0,
+  "note": "Node/Pythonは同一配信・同時間帯で giftId 7934/13651/24964 を複数回観測できているのに対し、C# (TikTokLiveSharp 0.1.4) は接続自体は成功する(connected. listening... のログが出る)がOnGiftRecievedイベントが15分間一度も発火しなかった。gift-list取得(AvailableGifts)も別途4パターン全て失敗しており(csharp-giftlist-summary.json)、0.1.4のNuGet版はgift情報関連の機能が実用に耐えないと判断する。"
+}

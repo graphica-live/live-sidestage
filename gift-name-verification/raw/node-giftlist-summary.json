@@ -1,0 +1,343 @@
+{
+  "library": "tiktok-live-connector",
+  "libraryVersion": "2.1.1-beta1",
+  "target": "yu_ki_nojo",
+  "results": [
+    {
+      "key": "default",
+      "ok": true,
+      "elapsedMs": 697,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-ja",
+      "ok": true,
+      "elapsedMs": 530,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-ja-JP",
+      "ok": true,
+      "elapsedMs": 402,
+      "count": 684,
+      "japaneseNameCount": 663,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "ガーディアンの誓い",
+          "describe": "さんがガーディアンの誓い を送りました"
+        },
+        {
+          "id": 12853,
+          "name": "レベルシップ",
+          "describe": "さんがレベルシップ を送りました"
+        },
+        {
+          "id": 12852,
+          "name": "レベルシップ",
+          "describe": "さんがレベルシップ を送りました"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-ja_JP",
+      "ok": true,
+      "elapsedMs": 523,
+      "count": 623,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 9427,
+          "name": "Pegasus",
+          "describe": "sent Pegasus"
+        },
+        {
+          "id": 9092,
+          "name": "Fire Phoenix",
+          "describe": "sent Fire Phoenix"
+        },
+        {
+          "id": 8651,
+          "name": "Thunder Falcon",
+          "describe": "sent Thunder Falcon"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-en",
+      "ok": true,
+      "elapsedMs": 433,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-en-US",
+      "ok": true,
+      "elapsedMs": 617,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "app_language-ja-JP",
+      "ok": true,
+      "elapsedMs": 463,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "browser_language-ja-JP",
+      "ok": true,
+      "elapsedMs": 424,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 7934,
+          "name": "Heart Me",
+          "describe": "sent Heart Me"
+        },
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "region-JP",
+      "ok": true,
+      "elapsedMs": 467,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 7934,
+          "name": "Heart Me",
+          "describe": "sent Heart Me"
+        }
+      ]
+    },
+    {
+      "key": "region-JP_plus_webcast_language-ja-JP",
+      "ok": true,
+      "elapsedMs": 510,
+      "count": 684,
+      "japaneseNameCount": 663,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "ガーディアンの誓い",
+          "describe": "さんがガーディアンの誓い を送りました"
+        },
+        {
+          "id": 12853,
+          "name": "レベルシップ",
+          "describe": "さんがレベルシップ を送りました"
+        },
+        {
+          "id": 12852,
+          "name": "レベルシップ",
+          "describe": "さんがレベルシップ を送りました"
+        }
+      ]
+    },
+    {
+      "key": "accept-language-header-ja-JP",
+      "ok": true,
+      "elapsedMs": 571,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 7934,
+          "name": "Heart Me",
+          "describe": "sent Heart Me"
+        }
+      ]
+    },
+    {
+      "key": "cookie-default-tt-target-idc",
+      "ok": true,
+      "elapsedMs": 493,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "fieldsPresent": [
+        "name",
+        "describe"
+      ],
+      "sample": [
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge",
+          "describe": "sent Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        },
+        {
+          "id": 12852,
+          "name": "Level Ship",
+          "describe": "sent Level Ship"
+        }
+      ]
+    }
+  ]
+}
