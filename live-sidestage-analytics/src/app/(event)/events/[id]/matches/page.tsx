@@ -56,6 +56,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         detectedBattleId: true,
         winnerSideId: true,
         winnerDecidedBy: true,
+        decidedAt: true,
         rules: true,
         battleCandidates: {
           orderBy: { startedAt: "asc" },
@@ -201,6 +202,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     detectedEndSource: m.detectedEndSource,
     winnerSideId: m.winnerSideId,
     winnerDecidedBy: m.winnerDecidedBy,
+    decidedAt: m.decidedAt?.toISOString() ?? null,
     // rules を丸ごとクライアントへ流さず、要る値だけ渡す。
     isBye: isByeRow(m.rules),
     candidates: m.battleCandidates.map((c) => ({

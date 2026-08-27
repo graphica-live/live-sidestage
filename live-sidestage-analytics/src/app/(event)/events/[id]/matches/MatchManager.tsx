@@ -119,6 +119,12 @@ export type MatchRow = {
   detectedEndSource: string | null;
   winnerSideId: string | null;
   winnerDecidedBy: string | null;
+  /**
+   * 決着時刻。デスマッチのライフ適用順と、下流ラウンドのバトル検知の下限
+   * (`feederDecidedAt`)に使われる。手動確定(`confirm`/`draw`)時に主催者が指定できる値の
+   * 現在値をカードに表示し、誤入力を診断できるようにする。
+   */
+  decidedAt: string | null;
   /** 不戦勝行(`EventMatch.rules.bye`)。サーバー側で評価した真偽値だけ受け取る */
   isBye: boolean;
   /**
@@ -195,6 +201,18 @@ function seriesProgressLabel(candidates: MatchCandidateRow[]): string | null {
   const resolved = candidates.filter((c) => c.endedAt !== null).length;
   const pending = candidates.length - resolved;
   return pending > 0 ? `${resolved}試合終了 + 進行中1件` : `${resolved}試合`;
+}
+
+/**
+ * 手動確定フォームを開いたときの決着時刻の初期値。**単純な「今」にしない** —
+ * 検知情報が残っている(部分一致・2vs2等で承認待ちのまま手動確定する)場合は、
+ * その検知情報のほうが実際の対戦終了時刻に近い。候補行(startedAt昇順)の最後に
+ * 終了済みのものがあればそれを、無ければ現在時刻を使う。
+ */
+function defaultDecidedAtInput(match: MatchRow): string {
+  const lastEndedCandidate = [...match.candidates].reverse().find((c) => c.endedAt !== null);
+  const source = match.detectedEndAt ?? lastEndedCandidate?.endedAt ?? null;
+  return toJstInputValue(source ? new Date(source) : new Date());
 }
 
 /**
@@ -2061,6 +2079,11 @@ function MatchCard({
   const [editing, setEditing] = useState(false);
   const [sessionId, setSessionId] = useState(match.sessionId);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  // 手動確定(勝者にする/引き分けにする)ボタンを押すと、決着時刻を入力するミニフォームを開く。
+  // confirm と draw を1つの state で区別するため isDrawDeciding を別に持つ。
+  const [decidingSideId, setDecidingSideId] = useState<string | null>(null);
+  const [isDrawDeciding, setIsDrawDeciding] = useState(false);
+  const [decidedAtDraft, setDecidedAtDraft] = useState("");
 
   const url = `/api/events/${eventId}/matches/${match.id}`;
   const decided = match.status === "FINISHED";
@@ -2091,6 +2114,11 @@ function MatchCard({
         {match.winnerDecidedBy && (
           <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-400">
             {WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy] ?? match.winnerDecidedBy}
+          </span>
+        )}
+        {match.decidedAt && (
+          <span className="text-xs text-gray-500">
+            決着: {formatJst(new Date(match.decidedAt))}
           </span>
         )}
         <span className="text-xs text-gray-500">{sessionLabel(sessions, match.sessionId)}</span>
@@ -2288,8 +2316,9 @@ function MatchCard({
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  if (!window.confirm(`${side.label} を勝者として確定する。`)) return;
-                  onSend(url, { action: "confirm", winnerSideId: side.id });
+                  setDecidingSideId(side.id);
+                  setIsDrawDeciding(false);
+                  setDecidedAtDraft(defaultDecidedAtInput(match));
                 }}
                 className="btn-secondary"
               >
@@ -2303,13 +2332,70 @@ function MatchCard({
             type="button"
             disabled={busy}
             onClick={() => {
-              if (!window.confirm("引き分けとして確定する。")) return;
-              onSend(url, { action: "draw" });
+              setDecidingSideId(null);
+              setIsDrawDeciding(true);
+              setDecidedAtDraft(defaultDecidedAtInput(match));
             }}
             className="btn-secondary"
           >
             引き分けにする
           </button>
+        )}
+
+        {(decidingSideId !== null || isDrawDeciding) && (
+          <div className="w-full space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+            <label className="label">決着時刻</label>
+            <input
+              type="datetime-local"
+              className="input-field"
+              value={decidedAtDraft}
+              onChange={(e) => setDecidedAtDraft(e.target.value)}
+            />
+            {/* feederDecidedAt(下流のバトル検知の下限)・ライフ適用順のどちらに影響するかは
+                種目で異なるので文言を出し分ける。実際に起きた不具合(準決勝の手動確定が翌日に
+                ずれ込み、決勝の正当なバトルが検知対象から除外された)の再発防止の説明。 */}
+            <p className="text-xs leading-relaxed text-gray-400">
+              {format === "DEATHMATCH"
+                ? "デスマッチのライフはこの決着時刻の順に適用されます。実際に対戦が終わった時刻をできるだけ正確に入力してください。"
+                : "この時刻より前に開始したバトルは、次のラウンドの対戦検知の対象になりません。迷ったら早めの時刻を入力してください。"}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  const winnerSide = match.sides.find((s) => s.id === decidingSideId);
+                  const label = isDrawDeciding
+                    ? "引き分けとして確定する。"
+                    : `${winnerSide?.label} を勝者として確定する。`;
+                  if (!window.confirm(label)) return;
+                  const ok = await onSend(
+                    url,
+                    isDrawDeciding
+                      ? { action: "draw", decidedAt: decidedAtDraft }
+                      : { action: "confirm", winnerSideId: decidingSideId, decidedAt: decidedAtDraft }
+                  );
+                  if (ok) {
+                    setDecidingSideId(null);
+                    setIsDrawDeciding(false);
+                  }
+                }}
+                className="btn-secondary"
+              >
+                確定する
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDecidingSideId(null);
+                  setIsDrawDeciding(false);
+                }}
+                className="btn-secondary"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
         )}
 
         {(match.status === "VOID" || match.status === "NO_SHOW" || decided) && (
