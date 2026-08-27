@@ -28,9 +28,6 @@ import {
 // 単位でしか配信されず、リスナー別の内訳が payload に存在しない。サイド合計としてなら
 // `battle-score.ts` が出せるので、UI 側が `MatchSlotRow.sideIndex` で突き合わせる。
 
-/** 1枠あたりに返すリスナーの上限。モーダルなので `MAX_CONTRIBUTION_ROWS`(200) より浅くてよい。 */
-export const MAX_MATCH_LISTENER_ROWS = 20;
-
 /**
  * 結果が確定していない対戦。数字は出すが「参考値」と明示する。
  *
@@ -65,8 +62,6 @@ export type MatchSlotRow = {
   points: string;
   giftCount: number;
   listeners: MatchListenerRow[];
-  /** 上位 `MAX_MATCH_LISTENER_ROWS` 件で打ち切ったか(合計は打ち切り前の全量) */
-  truncated: boolean;
 };
 
 export type MatchContributionResult =
@@ -110,7 +105,7 @@ function compareListeners(a: [string, Bucket], b: [string, Bucket]): number {
  * 集計結果を枠ごとの行に組み立てる。**純粋関数**(DB に触らない)。
  *
  * - 並びは `sideIndex` 昇順 → 渡された順(参加者の登録順)。`Array.sort` は安定なので保たれる
- * - **枠の合計は打ち切り前の全量から出す**(`aggregate.ts` の `sumOf()` と同じ規約)
+ * - リスナーは打ち切らず全件返す(表示側がスクロールで無制限に見せる)
  * - ギフトが1件も無い枠も 0 で必ず載せる(出場している以上、列が消えると横並びが崩れる)
  */
 export function buildSlotRows(
@@ -147,8 +142,7 @@ export function buildSlotRows(
       diamonds: diamonds.toString(),
       points: formatScaledPoints(points),
       giftCount,
-      truncated: rows.length > MAX_MATCH_LISTENER_ROWS,
-      listeners: rows.slice(0, MAX_MATCH_LISTENER_ROWS).map(([uniqueId, bucket]) => ({
+      listeners: rows.map(([uniqueId, bucket]) => ({
         uniqueId,
         // 名前を解決できないリスナーは uniqueId をそのまま出す(`buildContributionRows` と同じ)。
         nickname: profiles.get(uniqueId)?.nickname ?? uniqueId,
