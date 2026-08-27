@@ -559,8 +559,9 @@ model TiktokBattle {
   endedAt        DateTime?
   durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
   hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
-  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
+  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostUserIdsとインデックス対応しない)
   hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
+  hostProfiles   Json      @default("{}") // anchorIdStr -> {displayId, nickName, avatarUrl}。tiktok-battle.tsのHostProfiles
   raw            Json // 受信したpayloadそのもの。実payloadのfixture取得と後追い調査用
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -571,6 +572,25 @@ model TiktokBattle {
   @@index([roomId, startedAt])
   @@index([battleId])
   @@map("tiktok_battles")
+  @@schema("public")
+}
+
+// TikTok(バトル参加者・ギフト送信者)のアバター画像を自前ストレージへ恒久保存したキャッシュ。
+// TikTokの署名付きURL(数十時間で失効)への依存を切るため、圧縮のうえ1回だけダウンロードして
+// Railway Bucketへ置く。roomIdを持たない(uniqueId/anchorIdはグローバルに一意なので、
+// 同じ人物が複数配信者に登場しても1回のダウンロードで済む)。
+model TiktokAvatarAsset {
+  id          String   @id @default(cuid())
+  kind        String // "battle_host" | "gift_sender"
+  subjectId   String // anchorId(battle_host) または uniqueId(gift_sender)
+  storageKey  String
+  contentType String
+  byteSize    Int
+  fetchedAt   DateTime @default(now()) // 30日超で再取得(avatar-storage.ts)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kind, subjectId])
+  @@map("tiktok_avatar_assets")
   @@schema("public")
 }
 

@@ -1,12 +1,12 @@
 // イベントのカバー画像を置く Railway Bucket(S3互換、railway bucket credentials で取得)への
-// アクセス。web プロセス専用(worker/event-workerからは呼ばない)。
+// アクセス。presigned PUTでブラウザから直接アップロードさせるフロー自体はwebページ専用だが、
+// クライアント生成(media-bucket.ts)自体はweb/worker共有(avatar-storage.tsもworkerから使う)。
 //
 // 生の画像URLはDBに保存しない。オブジェクトキーだけ保存し(Event.coverImageKey)、
 // 読み出しのたびに presigned GET を発行する。ページはどれも force-dynamic なので
 // リクエストごとの署名生成で問題ない(署名はローカル演算、ネットワーク往復は無い)。
 
 import {
-  S3Client,
   PutObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -14,37 +14,13 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ALLOWED_COVER_CONTENT_TYPES, MAX_COVER_IMAGE_BYTES } from "@/event/cover-key";
+import { getMediaBucketClient } from "./media-bucket";
 
 const UPLOAD_URL_TTL_SECONDS = 300; // 5分。ブラウザが直後にPUTする前提
 const READ_URL_TTL_SECONDS = 3600; // 1時間。force-dynamicなので都度再発行で足りる
 
-let cached: { client: S3Client; bucket: string } | null | undefined;
-
-function getClient(): { client: S3Client; bucket: string } | null {
-  if (cached !== undefined) return cached;
-
-  const endpoint = process.env.MEDIA_BUCKET_ENDPOINT;
-  const region = process.env.MEDIA_BUCKET_REGION;
-  const bucket = process.env.MEDIA_BUCKET_NAME;
-  const accessKeyId = process.env.MEDIA_BUCKET_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.MEDIA_BUCKET_SECRET_ACCESS_KEY;
-
-  if (!endpoint || !region || !bucket || !accessKeyId || !secretAccessKey) {
-    cached = null;
-    return null;
-  }
-
-  cached = {
-    bucket,
-    client: new S3Client({
-      endpoint,
-      region,
-      // Railway Bucket credentials の urlStyle は "virtual-host"(<bucket>.<host>)。
-      forcePathStyle: false,
-      credentials: { accessKeyId, secretAccessKey },
-    }),
-  };
-  return cached;
+function getClient() {
+  return getMediaBucketClient();
 }
 
 export function isCoverUploadEnabled(): boolean {

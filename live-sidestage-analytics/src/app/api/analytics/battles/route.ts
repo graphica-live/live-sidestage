@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const streamer = await prisma.streamer.findUnique({
     where: { userId: session.user.id },
-    select: { roomId: true, verified: true, room: { select: { tiktokId: true, hostUserId: true } } },
+    select: { id: true, roomId: true, verified: true, room: { select: { tiktokId: true, hostUserId: true } } },
   });
 
   if (!streamer || !streamer.roomId) {
@@ -41,6 +41,6 @@ export async function GET(req: NextRequest) {
     dateRange = { start: range.start.toISOString(), end: range.end.toISOString() };
   }
 
-  const { battles } = await queryBattles(streamer.roomId, range);
+  const { battles } = await queryBattles(streamer.roomId, streamer.id, range);
   return NextResponse.json({ battles, dateRange, verified: streamer.verified });
 }
