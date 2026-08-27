@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { avatarFrameStyle, resolveAvatarFrame } from "@/event/avatar-frame";
 import { fitBracketName } from "@/event/bracket-name-fit";
 import { findSurvivorMatchIds } from "@/event/bracket-survivors";
@@ -5,11 +6,13 @@ import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
 import {
   formatNumber,
   type BracketEntrantDto,
+  type BracketFeederFlowDto,
   type BracketMatchDto,
   type BracketSideDto,
 } from "@/event/public-event";
 import { CARD_CLIP, CARD_CLIP_MIRROR, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BracketScroller } from "./BracketScroller";
+import { FeederFlowOverlay } from "./FeederFlowOverlay";
 
 // 決勝を中央に置き、左右へブロックを分けて描くトーナメント表。
 //
@@ -78,10 +81,14 @@ function key(round: number, position: number): string {
 export function BracketTree({
   roundCount,
   matches,
+  feederFlows,
 }: {
   roundCount: number;
   matches: BracketMatchDto[];
+  /** 座標既定とずれている勝者フロー(接続の交換の矢印可視化専用)。 */
+  feederFlows: BracketFeederFlowDto[];
 }) {
+  const treeRef = useRef<HTMLDivElement>(null);
   const index: MatchIndex = new Map(matches.map((m) => [key(m.round, m.position), m]));
   const final = index.get(key(roundCount, 0));
   const blocks = groupPlacementBlocks(matches);
@@ -98,11 +105,12 @@ export function BracketTree({
 
   return (
     <BracketScroller>
-      <div className="min-w-max">
+      <div ref={treeRef} className="relative min-w-max">
         <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。 */}
-        <div className="flex items-center pt-40">
+        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。
+            東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
+        <div className="flex items-center pt-40" data-bracket-section="main">
           {hasWings && (
             <MatchNode
               round={roundCount - 1}
@@ -114,7 +122,7 @@ export function BracketTree({
           )}
           {hasWings && <StraightConnector />}
 
-          <div className={`relative ${CARD_W} shrink-0`}>
+          <div className={`relative ${CARD_W} shrink-0`} data-bracket-slot={key(roundCount, 0)}>
             <div className="absolute inset-x-0 bottom-full mb-2">
               <Champion final={final} />
             </div>
@@ -140,6 +148,8 @@ export function BracketTree({
         {blocks.length > 0 && (
         <PlacementSection blocks={blocks} index={index} survivorMatchIds={survivorMatchIds} />
       )}
+
+        <FeederFlowOverlay containerRef={treeRef} flows={feederFlows} />
       </div>
     </BracketScroller>
   );
@@ -223,7 +233,10 @@ function PlacementSection({
                   </span>
                 )}
               </div>
-              <div className="flex items-center">
+              <div
+                className="flex items-center"
+                data-bracket-section={`placement-${block.depth}`}
+              >
                 <MatchNode
                   round={block.root.round}
                   position={block.root.position}
@@ -368,7 +381,7 @@ function MatchNode({
 }) {
   const match = index.get(key(round, position));
   const card = (
-    <div className={`${CARD_W} shrink-0`}>
+    <div className={`${CARD_W} shrink-0`} data-bracket-slot={key(round, position)}>
       {match ? (
         <MatchCard match={match} mirror={mirror} survivorMatchIds={survivorMatchIds} />
       ) : (
@@ -688,7 +701,7 @@ function SideRow({
 
   if (!side.name) {
     return (
-      <div className={`${frame} justify-center`}>
+      <div className={`${frame} justify-center`} data-bracket-side={side.sideIndex}>
         <span className="text-xs text-gray-600">未確定</span>
       </div>
     );
@@ -705,7 +718,10 @@ function SideRow({
     "[text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000]";
 
   return (
-    <div className={`${frame} ${isTop ? "justify-start" : "justify-end"}`}>
+    <div
+      className={`${frame} ${isTop ? "justify-start" : "justify-end"}`}
+      data-bracket-side={side.sideIndex}
+    >
       <EntrantAvatars entrants={side.entrants} size="card" />
 
       {/* 名前はアイコンの上に重なるので、背後に黒帯を差して読めるようにする。 */}

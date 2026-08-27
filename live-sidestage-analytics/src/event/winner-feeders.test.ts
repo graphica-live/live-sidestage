@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildWinnerFeederGraph,
   defaultSourceOf,
+  feederFlowEdges,
   feederOf,
   targetOf,
   type WinnerFeederRow,
@@ -190,5 +191,130 @@ describe("feederOf / targetOf", () => {
     if (!result.ok) return;
     expect(feederOf(result.graph, 9, 9, 0)).toBeNull();
     expect(targetOf(result.graph, 9, 9)).toBeNull();
+  });
+});
+
+describe("feederFlowEdges", () => {
+  // 標準8人: round1 4試合、round2 2試合、round3(決勝)1試合。
+  const standardEight: WinnerFeederRow[] = [
+    row(1, 0),
+    row(1, 1),
+    row(1, 2),
+    row(1, 3),
+    row(2, 0),
+    row(2, 1),
+    row(3, 0),
+  ];
+
+  it("overrideが無ければ辺は0本", () => {
+    const result = feederFlowEdges(standardEight, 3);
+    expect(result).toEqual({ ok: true, edges: [] });
+  });
+
+  it("transposition(2つのtarget間の入れ替え)からちょうど2本の差分辺が出る。並びは座標順", () => {
+    const rows = standardEight.map((r) => {
+      if (r.round === 2 && r.bracketPosition === 0) {
+        return withWinnerFeeders(r, [
+          { round: 1, position: 3 },
+          { round: 1, position: 1 },
+        ]);
+      }
+      if (r.round === 2 && r.bracketPosition === 1) {
+        return withWinnerFeeders(r, [
+          { round: 1, position: 2 },
+          { round: 1, position: 0 },
+        ]);
+      }
+      return r;
+    });
+    // (2,0)は側0だけが既定(1,0)から(1,3)へ変わっている(側1の(1,1)は既定のまま)。
+    // (2,1)は側1だけが既定(1,3)から(1,0)へ変わっている(側0の(1,2)は既定のまま)。
+    // 差分が出るのは2本だけ。
+    const result = feederFlowEdges(rows, 3);
+    expect(result).toEqual({
+      ok: true,
+      edges: [
+        { from: { round: 1, position: 3 }, to: { round: 2, position: 0, sideIndex: 0 } },
+        { from: { round: 1, position: 0 }, to: { round: 2, position: 1, sideIndex: 1 } },
+      ],
+    });
+  });
+
+  it("元の組み合わせへ戻すと、キーは残っていても辺は0本になる(raw overrideと実効差分の区別)", () => {
+    // 一度スワップしてから戻した状態を模す: winnerFeeders キー自体はchangedAt保持のため
+    // 残るが、slotsは既定座標と一致する。
+    const rows = standardEight.map((r) =>
+      r.round === 2 && r.bracketPosition === 0
+        ? withWinnerFeeders(r, [
+            { round: 1, position: 0 },
+            { round: 1, position: 1 },
+          ])
+        : r
+    );
+    const result = feederFlowEdges(rows, 3);
+    expect(result).toEqual({ ok: true, edges: [] });
+  });
+
+  it("malformed・source不在・全単射崩壊・孤児sourceでは矢印を1本も出さない", () => {
+    const malformed = standardEight.map((r) =>
+      r.round === 2 && r.bracketPosition === 0
+        ? {
+            ...r,
+            rules: {
+              winnerFeeders: {
+                slots: [{ round: 1, position: 0 }],
+                changedAt: "2026-08-26T00:00:00.000Z",
+              },
+            },
+          }
+        : r
+    );
+    expect(feederFlowEdges(malformed, 3)).toEqual({ ok: false, edges: [] });
+
+    const orphanSource = standardEight.filter((r) => !(r.round === 2 && r.bracketPosition === 0));
+    expect(feederFlowEdges(orphanSource, 3)).toEqual({ ok: false, edges: [] });
+  });
+
+  it("段階的不戦勝方式(staged bye)を含むグラフでも安全に(誤検出せず)動く", () => {
+    const staged: WinnerFeederRow[] = [
+      row(1, 0),
+      row(1, 1),
+      row(1, 2),
+      row(2, 0),
+      row(2, 1, { bye: true }),
+      row(3, 0),
+    ];
+    expect(feederFlowEdges(staged, 3)).toEqual({ ok: true, edges: [] });
+  });
+
+  it("3者以上の連鎖スワップでも全単射を保ったまま辺が重複なく出る", () => {
+    // round1の3枠を3すくみに回す循環transposition: (2,0)のside0/1を(1,1)/(1,2)、
+    // (2,1)のside0を(1,3)、side1は既定のまま(1,2)…ではなく、ここでは
+    // (1,0)→(2,0).0, (1,1)→(2,1).0, (1,2)→(2,0).1 という3本の循環にする。
+    const rows = standardEight.map((r) => {
+      if (r.round === 2 && r.bracketPosition === 0) {
+        return withWinnerFeeders(r, [
+          { round: 1, position: 1 },
+          { round: 1, position: 2 },
+        ]);
+      }
+      if (r.round === 2 && r.bracketPosition === 1) {
+        return withWinnerFeeders(r, [
+          { round: 1, position: 0 },
+          { round: 1, position: 3 },
+        ]);
+      }
+      return r;
+    });
+    const result = feederFlowEdges(rows, 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.edges).toHaveLength(3);
+    // 座標順(target優先)に並んでいる
+    expect(result.edges.map((e) => e.to)).toEqual([
+      { round: 2, position: 0, sideIndex: 0 },
+      { round: 2, position: 0, sideIndex: 1 },
+      { round: 2, position: 1, sideIndex: 0 },
+    ]);
   });
 });

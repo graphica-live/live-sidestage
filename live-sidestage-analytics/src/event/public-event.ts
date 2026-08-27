@@ -4,6 +4,7 @@ import { canShowTiktokScore, loadMatchTiktokScores } from "./battle-score";
 import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-breakdown";
 import { rankByLife } from "./deathmatch";
 import { parsePlacement, parseWinnerFeeders } from "./match-status";
+import { feederFlowEdges } from "./winner-feeders";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -185,9 +186,24 @@ export type BracketMatchDto = {
   sides: BracketSideDto[];
 };
 
+/**
+ * 座標既定(`nextSlot()`)と実際の勝者フローがずれている辺(=「接続の交換」で実効的に
+ * 変わった辺)。管理画面・公開ページの黄色破線矢印だけに使う表示専用フィールドで、
+ * `matchId`・参加者ID・`changedAt`(検知誤爆リスク期間の内部記録)は含めない。
+ *
+ * 座標は表の見た目(どの枠がどこにあるか)から自明であり秘匿情報ではないため、
+ * 従来の「閲覧者には真偽値だけ」方針(`hasFeederOverride`)を最小限だけ緩めている
+ * (`src/event/CLAUDE.md` 参照)。
+ */
+export type BracketFeederFlowDto = {
+  from: { round: number; position: number };
+  to: { round: number; position: number; sideIndex: number };
+};
+
 export type BracketDto = {
   roundCount: number;
   matches: BracketMatchDto[];
+  feederFlows: BracketFeederFlowDto[];
 };
 
 /**
@@ -272,8 +288,23 @@ export async function loadBracket(eventId: string): Promise<BracketDto | null> {
       }))
   );
 
+  // 表示専用の矢印。**正本は `feederFlowEdges()`(内部で `buildWinnerFeederGraph()` を
+  // 呼ぶfail closed経路)。** 独自の緩い解釈は作らず、失敗時は矢印を1本も返さない
+  // (表自体は従来どおり描画を続ける)。対象は本選の行だけ(`bracket-swap-apply.ts` の
+  // `swapWinnerFeeders()` と同じ絞り込み。順位決定戦ブロックは別の座標系として扱わない)。
+  const mainRows = matches.filter((m) => !parsePlacement(m.rules));
+  const mainRoundCount = mainRows.length > 0 ? Math.max(...mainRows.map((m) => m.round)) : 0;
+  const feederFlowResult = feederFlowEdges(
+    mainRows.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    mainRoundCount
+  );
+  const feederFlows: BracketFeederFlowDto[] = feederFlowResult.ok
+    ? feederFlowResult.edges.map((e): BracketFeederFlowDto => ({ from: e.from, to: e.to }))
+    : [];
+
   return {
     roundCount: Math.max(...matches.map((m) => m.round)),
+    feederFlows,
     matches: matches.map((m) => {
       const needsResultSelection =
         typeof (m.rules as { reviewReason?: unknown } | null)?.reviewReason === "string" &&

@@ -167,3 +167,56 @@ export function targetOf(
 ): { round: number; position: number; sideIndex: number } | null {
   return graph.targetOfSource.get(shapeKey(round, position)) ?? null;
 }
+
+/**
+ * 表示専用。座標既定(`nextSlot()`)と実際の勝者フローがずれている辺(=「接続の交換」で
+ * 実効的に変わった辺)だけを列挙する。管理画面・公開ページの矢印可視化が使う。
+ *
+ * **正本は `buildWinnerFeederGraph()`。** 独自の緩い解釈は作らない — 書き込み側が
+ * 不整合として拒否するデータに対して表示側だけ部分的な矢印を描くと「勝者辺の解釈は
+ * このモジュールに閉じる」という不変条件に反する。失敗時は矢印を1本も出さない
+ * (`{ ok: false, edges: [] }`。呼び出し側は矢印なしで表自体は描画を続けること)。
+ *
+ * 一度交換してから元へ戻した行は `changedAt` 保持のため `winnerFeeders` キー自体は
+ * 残るが、解決値が既定と一致するので**ここでは矢印を返さない**(raw override の有無と
+ * 実効差分は別物。バッジ/ドット/リセット導線は raw キーの有無で判定すること)。
+ *
+ * 辺の並びは座標で決定的に固定する(ポーリングのたびに矢印が並び替わらないように)。
+ */
+export type FeederFlowEdge = {
+  from: BracketSlot;
+  to: { round: number; position: number; sideIndex: number };
+};
+
+export type FeederFlowEdgesResult = { ok: true; edges: FeederFlowEdge[] } | { ok: false; edges: [] };
+
+export function feederFlowEdges(rows: WinnerFeederRow[], roundCount: number): FeederFlowEdgesResult {
+  const result = buildWinnerFeederGraph(rows, roundCount);
+  if (!result.ok) return { ok: false, edges: [] };
+
+  const edges: FeederFlowEdge[] = [];
+  const targetKeys = [...result.graph.sourcesOfTarget.keys()].sort(compareShapeKey);
+
+  for (const targetKey of targetKeys) {
+    const [round, position] = targetKey.split(":").map(Number);
+    const sources = result.graph.sourcesOfTarget.get(targetKey)!;
+
+    for (let sideIndex = 0; sideIndex < 2; sideIndex++) {
+      const source = sources[sideIndex];
+      if (!source) continue; // 「誰も来ない」側(bye行の空サイド)は矢印を作らない
+
+      const def = defaultSourceOf(round, position, sideIndex);
+      if (def && source.round === def.round && source.position === def.position) continue; // 既定と一致
+
+      edges.push({ from: source, to: { round, position, sideIndex } });
+    }
+  }
+
+  return { ok: true, edges };
+}
+
+function compareShapeKey(a: string, b: string): number {
+  const [aRound, aPosition] = a.split(":").map(Number);
+  const [bRound, bPosition] = b.split(":").map(Number);
+  return aRound - bRound || aPosition - bPosition;
+}

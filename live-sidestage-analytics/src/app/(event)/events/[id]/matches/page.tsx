@@ -10,6 +10,7 @@ import { parseDeathmatchRules } from "@/event/deathmatch";
 import { parseMatchRules } from "@/event/match-rules";
 import { isByeRow, isForceFullPeriod, parsePlacement, parseWinnerFeeders } from "@/event/match-status";
 import { formatNumber } from "@/event/public-event";
+import { feederFlowEdges } from "@/event/winner-feeders";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
 
@@ -166,6 +167,19 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       }))
   );
 
+  // 表示専用の矢印。**正本は `feederFlowEdges()`(内部で `buildWinnerFeederGraph()` を
+  // 呼ぶfail closed経路)。** クライアント側の `MatchRow.winnerFeeders`(不正データは
+  // 既に null に丸めている)から再構成すると壊れたデータを「override無し」と誤読みし
+  // かねないので、生の `m.rules` を持つここ(サーバー側)で計算する。対象は本選の行だけ
+  // (`bracket-swap-apply.ts` の `swapWinnerFeeders()` と同じ絞り込み)。
+  const mainRows = matches.filter((m) => !parsePlacement(m.rules));
+  const mainRoundCount = mainRows.length > 0 ? Math.max(...mainRows.map((m) => m.round)) : 0;
+  const feederFlowResult = feederFlowEdges(
+    mainRows.map((m) => ({ round: m.round, bracketPosition: m.bracketPosition, rules: m.rules })),
+    mainRoundCount
+  );
+  const feederFlows = feederFlowResult.ok ? feederFlowResult.edges : [];
+
   const rows: MatchRow[] = matches.map((m) => ({
     id: m.id,
     round: m.round,
@@ -206,6 +220,9 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       const parsed = parseWinnerFeeders(m.rules);
       return parsed && parsed.ok ? parsed.value : null;
     })(),
+    // `winnerFeeders` は不正な形式(ok:false)を null に丸めるが、こちらは生キーの
+    // 有無だけを見る(壊れたデータでもリセット導線が消えないように)。
+    hasRawWinnerFeeders: parseWinnerFeeders(m.rules) !== null,
     // バトルスコアが出るはずの対戦か。**上の `filter` と同じ条件にする** — 条件がずれると、
     // そもそも問い合わせていない対戦にまで「未取得」と出る。
     battleScoreExpected: m.detectedBattleId !== null && canShowTiktokScore(m, "admin"),
@@ -268,6 +285,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           winCondition={parseMatchRules(event.rules).winCondition}
           eventPlacementDepth={parsePlacementDepth(event.rules)}
           feederSwapEnabled={process.env.EVENT_WINNER_FEEDER_SWAP === "1"}
+          feederFlows={feederFlows}
         />
       </div>
 

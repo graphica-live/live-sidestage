@@ -764,8 +764,46 @@ reader（Web・event-worker）を先に全サービスへデプロイ、flag は
 
 UI（`AdminBracketTree.tsx` / 公開ページの `BracketTree.tsx`）は、接続線自体を固定座標から
 直接計算しているため、override があると実際のフローと線が食い違う（"表示上の嘘"になる）。
-**線を描き直す代わりに、override されている枠に小さいバッジ/マーカーを付けて明示する**
-（管理側は「接続変更」バッジ、公開側は行を増やさない小さいドット。`CARD_H` 固定は維持）。
+**バッジ/ドット（管理側「接続変更」・公開側の小さいドット。`CARD_H` 固定は維持）に加えて、
+実際の勝ち上がり先を黄色の破線矢印で示す。** どちらも既存の接続線には一切触れない
+（`CARD_H` 等の幾何不変条件はそのまま）。
+
+**矢印は独立した overlay SVG で描く。既存の接続線（`PairConnector` 等の絶対配置span）は
+拡張しない** — あちらは再帰ツリーのサブツリー内でしか座標を持てず、隣接カラムしか結べない
+構造なので、東西ブロック跨ぎや同一ラウンドの遠い枠を結ぶ矢印を描くには使えない。ツリー根
+（`position:relative` を持つコンテナ）の直下に overlay を1枚敷き、カード・サイド行に付けた
+`data-bracket-slot={"round:position"}` / `data-bracket-side={sideIndex}` を実測
+（`offsetLeft`/`offsetTop` の積み上げ。`transform: scale()`＝ズーム/縮小の影響を受けない）
+して矢印を引く。純粋な幾何計算（ベジェ・矢じり・同一カラム時の迂回）は `src/event/bracket-flow.ts`
+に、辺の導出は下の `feederFlowEdges()` に閉じる。実装は `AdminBracketTree.tsx` /
+`BracketTree.tsx` それぞれの `FeederFlowOverlay.tsx`（2ファイル。配色・シェイプ言語が
+最初から揃っていないため共通化していない。共有するのは純粋関数だけ）。
+
+**表示用ロジックも `buildWinnerFeederGraph()` を正本として使う。** 独自の緩い解釈は作らない
+— 書き込み側が不整合として拒否するデータに対して表示側だけ部分的な矢印を描くと、
+「勝者辺の解釈はこのモジュールに閉じる」という上の不変条件に反する。表示専用の
+`feederFlowEdges()`（`winner-feeders.ts`）は内部で `buildWinnerFeederGraph()` を呼び、
+成功時だけ解決済み辺と `defaultSourceOf()` の差分（実効差分）を返す。失敗時は矢印を
+1本も返さない（`{ ok: false, edges: [] }`）。公開画面は矢印なしで表示を続け、管理画面は
+「接続情報を検証できない」の警告を出す。
+
+**raw override（`rules` の生キーの有無）と実効差分（矢印の表示条件）は別物。** 一度
+「接続の交換」をしてから元へ戻しても、`changedAt` 保持のため `winnerFeeders` キー自体は
+残り続ける。この場合 `feederFlowEdges()` の実効差分は空（矢印なし）になるが、既存の
+バッジ／ドット／「接続をリセット」導線は raw キーの有無で判定するため**残り続けるのが
+正しい**（リセット・葉スワップ相互排他の判定は raw キーの有無で行うため）。管理DTO変換
+（`page.tsx`）は不正な `winnerFeeders`（ok:false）を表示上は `null` に丸めているが、
+**`hasRawWinnerFeeders`（生キーの有無だけを見る別フィールド）を分けて持つ** — `winnerFeeders
+!== null` だけで判定すると、壊れたデータのときに「接続をリセット」導線ごと消えて
+（葉スワップ側は raw キーの有無で拒否するため）抜け出せなくなる。
+
+**公開DTO（`BracketDto.feederFlows`）は座標のみを返す。** 従来「閲覧者には座標の詳細は
+出さず真偽値だけ（`hasFeederOverride`）」という方針だったが、矢印を引くには座標が要るため
+最小限だけ緩めた。`matchId`・参加者ID・`changedAt`（検知誤爆リスク期間の内部記録）は
+含めない — 座標は表の見た目から自明で秘匿情報ではないが、それ以外は従来どおり非公開。
+
+**overlay は feature flag を見ない。** `EVENT_WINNER_FEEDER_SWAP` をオフへ戻した後も、
+既存に `winnerFeeders` を持つ行があれば表示は継続する（書き込みAPIだけが止まる）。
 
 ### 順位決定戦は本選と同じ座標空間に埋め込んである
 

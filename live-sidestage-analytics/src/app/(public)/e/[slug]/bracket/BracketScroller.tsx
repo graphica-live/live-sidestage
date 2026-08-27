@@ -1,6 +1,19 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
+
+type NaturalSize = { width: number; height: number };
+
+/**
+ * 表の実寸(px、transform適用前の自然サイズ)。`FeederFlowOverlay` が矢印のSVGの
+ * width/height・座標のclamp範囲に使う。overlayは同じ `transform: scale()` の内側に
+ * 敷くので、スケール値そのものは要らない(拡縮は他のカードと同じくCSSが担う)。
+ */
+const BracketNaturalSizeContext = createContext<NaturalSize | null>(null);
+
+export function useBracketNaturalSize(): NaturalSize | null {
+  return useContext(BracketNaturalSizeContext);
+}
 
 /**
  * トーナメント表の表示枠。
@@ -58,7 +71,11 @@ export function BracketScroller({ children }: { children: React.ReactNode }) {
               : undefined
           }
         >
-          {children}
+          <BracketNaturalSizeContext.Provider
+            value={box ? { width: box.width, height: box.height } : null}
+          >
+            {children}
+          </BracketNaturalSizeContext.Provider>
         </div>
       </div>
     </div>
