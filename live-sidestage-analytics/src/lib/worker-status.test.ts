@@ -21,6 +21,7 @@ function listener(overrides: Partial<ListenerSnapshot> = {}): ListenerSnapshot {
     subscriberCount: 1,
     silentForMs: 1000,
     watchdogTriggerCount: 0,
+    reconnectFailureCount: 0,
     ...overrides,
   };
 }

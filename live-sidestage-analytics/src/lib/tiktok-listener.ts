@@ -131,6 +131,11 @@ interface ListenerInstance {
   watchdogTriggerCount: number;
   // 次にwatchdog起因の強制再接続を許可するepoch ms。now < この値の間はsilentForが閾値を超えていてもスキップする。
   watchdogBackoffUntil: number;
+  // scheduleReconnect()が"user_offline"/"rate_limited"以外の理由(disconnected/stream_end/error/connect_failed)で
+  // 呼ばれた連続回数。EulerStreamの署名取得後に発生する失敗はここでバックオフさせる対象になる
+  // ("user_offline"は署名取得前にUserOfflineErrorで止まるため対象外、"rate_limited"は別の専用ロジックを持つ)。
+  // 接続成功(conn.connect()が解決)すると0にリセットされる。
+  reconnectFailureCount: number;
   // TikTok側が払い出すWebcastChatMessage.common.msgIdの直近受信履歴(FIFO)。
   // 実際の取り出しはresolveMsgId()経由(平坦化済みのdata.msgId)。
   // TikTokのWebSocketは再接続直後やネットワーク瞬断の前後で同一チャットメッセージを
@@ -257,6 +262,25 @@ const OFFLINE_RECONNECT_DELAY_MS = 30_000;
 const RATE_LIMIT_MIN_DELAY_MS = 60_000;
 const RATE_LIMIT_MAX_DELAY_MS = 30 * 60_000;
 const RATE_LIMIT_FALLBACK_DELAY_MS = 10 * 60_000;
+
+// "disconnected"/"stream_end"/"error"/"connect_failed"用の指数バックオフ。
+// これらはEulerStreamへの署名取得が完了した後に発生する失敗("user_offline"はfetchRoomInfoOnConnectの
+// オフライン判定で署名取得前に止まるため対象外)なので、繰り返すたびに新規の署名を消費する。
+// 上限はmobile側のstale判定(listener-liveness.ts、90秒)より短く抑え、バックオフ中のlistenerが
+// 誤って「反応なし」と表示されないようにする。500部屋規模で一斉に同じタイミングへ再試行が
+// 集中しないよう、送信直前に±15%のjitterを乗せる。
+const RECONNECT_BACKOFF_FACTOR = 2;
+// jitter(±15%)の上振れを含めても90秒(mobile側のstale判定、listener-liveness.ts)を
+// 超えないよう、75_000 * 1.15 = 86_250msに収まる値にしている。
+const RECONNECT_BACKOFF_MAX_MS = 75_000;
+const RECONNECT_BACKOFF_JITTER_RATIO = 0.15;
+
+export function nextReconnectBackoffMs(failureCount: number): number {
+  const raw = RECONNECT_DELAY_MS * Math.pow(RECONNECT_BACKOFF_FACTOR, failureCount - 1);
+  const capped = Math.min(RECONNECT_BACKOFF_MAX_MS, raw);
+  const jitter = capped * RECONNECT_BACKOFF_JITTER_RATIO * (Math.random() * 2 - 1);
+  return Math.round(capped + jitter);
+}
 
 // WEB_INTERNAL_URLが設定されているプロセス = Workerプロセス。
 // Webプロセス(またはローカル単一プロセス開発)はこれを設定しないため、
@@ -1209,18 +1233,24 @@ async function connectAndAttach(
   const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey);
   inst.connection = conn;
 
+  // stopListener()やconnectInstance()の再呼び出しでinst.connectionが別物(または null)に
+  // 置き換わった後も、このconnのイベントハンドラは残り得る(disconnect()はCONNECTING中の
+  // 接続を確実には中断しない)。stale化したconnからのイベントで別接続の状態(reconnectFailureCount等)を
+  // 書き換えないよう、各ハンドラの先頭で「自分がまだ現役か」を確認する。
+  const isCurrent = () => inst.connection === conn;
+
   conn.on("disconnected", () => {
-    if (inst.connectPromise) return;
+    if (!isCurrent() || inst.connectPromise) return;
     scheduleReconnect(roomId, "disconnected");
   });
 
   conn.on("streamEnd", () => {
-    if (inst.connectPromise) return;
+    if (!isCurrent() || inst.connectPromise) return;
     scheduleReconnect(roomId, "stream_end");
   });
 
   conn.on("error", (err: unknown) => {
-    if (inst.connectPromise) return;
+    if (!isCurrent() || inst.connectPromise) return;
     const rateLimit = parseSignatureRateLimitError(err);
     if (rateLimit.isRateLimited) {
       scheduleReconnect(roomId, "rate_limited", rateLimit.retryAfterMs ?? undefined);
@@ -1471,8 +1501,16 @@ async function connectAndAttach(
 
   try {
     await conn.connect();
+    if (!isCurrent()) {
+      // 待っている間にstopListener()や次のconnectInstance()でinst.connectionが
+      // 差し替わった。もう誰も参照しないconnをここで確実に切断する。
+      try { conn.disconnect?.(); } catch {}
+      return;
+    }
+    inst.reconnectFailureCount = 0;
     updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
   } catch (err) {
+    if (!isCurrent()) return;
     if (isAlreadyConnectedError(err)) {
       updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
       return;
@@ -1499,15 +1537,25 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
   if (!inst || inst.stopped) return;
   if (inst.reconnectTimer) return;
 
-  const delay =
-    reason === "rate_limited"
-      ? Math.min(
-          RATE_LIMIT_MAX_DELAY_MS,
-          Math.max(RATE_LIMIT_MIN_DELAY_MS, retryAfterMs ?? RATE_LIMIT_FALLBACK_DELAY_MS)
-        )
-      : reason === "user_offline"
-        ? OFFLINE_RECONNECT_DELAY_MS
-        : RECONNECT_DELAY_MS;
+  let delay: number;
+  if (reason === "rate_limited") {
+    delay = Math.min(
+      RATE_LIMIT_MAX_DELAY_MS,
+      Math.max(RATE_LIMIT_MIN_DELAY_MS, retryAfterMs ?? RATE_LIMIT_FALLBACK_DELAY_MS)
+    );
+  } else if (reason === "user_offline") {
+    delay = OFFLINE_RECONNECT_DELAY_MS;
+  } else {
+    // disconnected/stream_end/error/connect_failed: 署名取得後の失敗として連続回数に応じてバックオフする。
+    inst.reconnectFailureCount += 1;
+    delay = nextReconnectBackoffMs(inst.reconnectFailureCount);
+  }
+
+  // EulerStream署名消費の実測用。"user_offline"はfetchRoomInfoOnConnectのオフライン判定で
+  // 署名取得前に終わるため実質消費なし、それ以外の理由は署名取得後の失敗として計上する。
+  console.log(
+    `[listener] scheduleReconnect: @${inst.state.tiktokId} reason=${reason} delay=${delay}ms reconnectFailureCount=${inst.reconnectFailureCount}`
+  );
 
   // メッセージは**そのままユーザーへ出す**。以前の `再接続待機中... (connect_failed)` は
   // 開発者向けで、モバイルのステータス欄に出しても何も伝わらなかった。
@@ -1567,6 +1615,7 @@ export async function startListener(
     lastEventAt: Date.now(),
     watchdogTriggerCount: 0,
     watchdogBackoffUntil: 0,
+    reconnectFailureCount: 0,
     recentChatMsgIds: new Set(),
     recentChatMsgIdOrder: [],
     recentGiftMsgIds: new Set(),
@@ -1671,6 +1720,8 @@ export type ListenerSnapshot = {
   /** 最後に実イベント(chat/gift/member等)を受け取ってからの経過ms。watchdogの判断材料と同じ値。 */
   silentForMs: number;
   watchdogTriggerCount: number;
+  /** 署名取得後の失敗(disconnected/stream_end/error/connect_failed)によるscheduleReconnect()の連続回数。 */
+  reconnectFailureCount: number;
 };
 
 export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot[] {
@@ -1683,6 +1734,7 @@ export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot
     subscriberCount: inst.subscriberIds.size,
     silentForMs: Math.max(0, now - inst.lastEventAt),
     watchdogTriggerCount: inst.watchdogTriggerCount,
+    reconnectFailureCount: inst.reconnectFailureCount,
   }));
 }
 
