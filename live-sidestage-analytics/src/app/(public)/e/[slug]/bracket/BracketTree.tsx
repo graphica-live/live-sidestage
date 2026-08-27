@@ -109,14 +109,16 @@ export function BracketTree({
         <div ref={treeRef} className="relative min-w-max">
           <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-          {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。
+          {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(トロフィー画像 + 見出し + 枠 + mb-5 で約228px)。
               東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
-          <div className="flex items-center pt-40" data-bracket-section="main">
+          <div className="flex items-center pt-[228px]" data-bracket-section="main">
             {hasWings && <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} />}
             {hasWings && <StraightConnector />}
 
             <div className={`relative ${CARD_W} shrink-0`} data-bracket-slot={key(roundCount, 0)}>
-              <div className="absolute inset-x-0 bottom-full mb-2">
+              {/* 決勝カードとの間隔(mb-5)を優勝バナーぶんより広く取り、決勝カードの一部に
+                  見えてしまわないよう物理的に離す。 */}
+              <div className="absolute inset-x-0 bottom-full mb-5">
                 <Champion final={final} />
               </div>
               {final ? <MatchCard match={final} mirror={false} isFinal /> : <EmptyCard isFinal />}
@@ -433,9 +435,17 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
   const hasAvatar = (winner?.entrants.length ?? 0) > 0;
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1.5">
+      {/* 未確定でも同じ高さの枠を保つ都合上(CHAMPION_BOX_H のコメント参照)、
+          優勝が決まっているかに関わらず常に表示する。 */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/trophy.png"
+        alt=""
+        aria-hidden
+        className="h-16 w-auto drop-shadow-[0_8px_16px_rgba(0,0,0,0.55)]"
+      />
       <span className="flex items-center gap-1.5 text-xs font-black tracking-[0.25em] text-brand">
-        <TrophyIcon />
         優勝
       </span>
       {winner?.name ? (
@@ -468,14 +478,6 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
         </div>
       )}
     </div>
-  );
-}
-
-function TrophyIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width={13} height={13} fill="currentColor" aria-hidden>
-      <path d="M6 2h12v2h3v3a4 4 0 0 1-4 4h-.35A6.02 6.02 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1A6.02 6.02 0 0 1 7.35 11H7a4 4 0 0 1-4-4V4h3V2Zm0 4H5v1a2 2 0 0 0 2 2V6Zm12 0v3a2 2 0 0 0 2-2V6h-2Z" />
-    </svg>
   );
 }
 
