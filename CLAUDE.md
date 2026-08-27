@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 一時期6プロジェクトあり、6番目の `live-sidestage-event`（TikTok Live のイベント運営サービス）だけはモノレポ内で新規に作ったものだったが、**analytics へ統合して `live-sidestage-analytics/src/event/` に移した**（詳細は [live-sidestage-analytics/CLAUDE.md](live-sidestage-analytics/CLAUDE.md)）。
 
+その後 `live-sidestage-mydesktop`（配信者個人専用のツール置き場、製品名 MyDesktop）をモノレポ内で新規に作り、現在は6プロジェクト。desktop（TikEffect）と同じくローカル完結の Electron アプリだが、desktop 本体のコード・DB には触れず、常駐している desktop（ポート38100固定）へ socket.io-client で接続するだけの軽量な観測者アプリ。統合前の独立リポジトリは存在しない。
+
 - git 操作はリポジトリルートで行う。サブディレクトリに `.git` はもう存在しない
 - npm / flutter / wrangler などの**ビルド系コマンドは必ず各プロジェクトディレクトリ内で実行する**。ルートに統合 `package.json` はなく、npm workspaces も使っていない（Electron の native module が hoisting で壊れるため意図的に分離している）
 - **各プロジェクトのコマンド一覧・アーキテクチャの詳細はそのプロジェクトの CLAUDE.md にある。作業対象のプロジェクトへ入ったら必ずそちらも読むこと**（PRODUCT.md / DESIGN.md がある場合も同様）
@@ -17,18 +19,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --- | --- | --- | --- | --- |
 | [live-sidestage-analytics](live-sidestage-analytics/CLAUDE.md) | LIVE Sidestage Analytics（イベント運営機能を含む） | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
 | [live-sidestage-desktop](live-sidestage-desktop/CLAUDE.md) | TikEffect | `tikeffect` | `graphica-live/TikEffect` | `main` |
+| [live-sidestage-mydesktop](live-sidestage-mydesktop/CLAUDE.md) | MyDesktop | `live-sidestage-mydesktop` | なし(モノレポ内で新規) | `main` |
 | [live-sidestage-mobile](live-sidestage-mobile/CLAUDE.md) | LIVE Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
 | [TikCaption](TikCaption/CLAUDE.md) | TikCaption | `tikcaption` | `graphica-live/TikCaption` | `master` |
 | [TikRIng](TikRIng/CLAUDE.md) | TikRing | `profileimagefitservice` | `graphica-live/frame` | `main` |
 
 統合前の履歴もサブディレクトリのパスに書き換えて取り込んであるので、`git log -- live-sidestage-analytics/` のようにパス指定で従来どおり追える。モノレポの既定ブランチは `main`。**統合前は desktop と TikRIng が `main`、他3つが `master` だった**ので、各プロジェクトのCLAUDE.mdやスクリプトに `master` 前提の記述が残っていないか、触るときに確認する。
 
-## 5プロジェクトの関係
+## 6プロジェクトの関係
 
-TikRIng を除く4つは TikTok Live 配信者向けで、`tiktok-live-connector` によるギフト/コメント受信を共通の土台にしている。
+TikRIng を除く4つ（analytics / desktop / mobile / TikCaption）は TikTok Live 配信者向けで、`tiktok-live-connector` によるギフト/コメント受信を共通の土台にしている。mydesktop は desktop 専属の追加アプリで、他プロジェクトとは連携しない。
 
 - **live-sidestage-analytics** — Next.js 14 + Prisma/PostgreSQL + socket.io。Railway ホスティングの Web サービス本体。ギフト集計・ランキング・OBS 用貢献者オーバーレイを提供し、モバイルとデスクトップ両方のバックエンドを兼ねる。**イベント（大会）運営機能もここに入っている**
 - **live-sidestage-desktop** — Electron + Express + better-sqlite3。**ローカル完結**の OBS ウィジェット（演出オーバーレイ）アプリ。analytics とは API キー経由の一方向連携のみ
+- **live-sidestage-mydesktop** — Electron のみ（自前サーバーなし）。desktop の派生で、配信者個人専用の機能ページを持つ。desktop の socket.io（ポート38100固定）へ接続するだけの軽量な観測者アプリで、SQLite・TikTok接続・動画保存ロジックは持たない。desktop が起動していないと機能しない
 - **live-sidestage-mobile** — Flutter (Android)。analytics のクライアント。受信コメントをオンデバイス VOICEVOX で読み上げる
 - **TikCaption** — Electron + Python ASR。マイク音声を文字起こしして字幕オーバーレイを出す独立プロダクト（analytics とは繋がっていない）
 - **TikRIng** — Cloudflare Pages + Functions。透過フレームをアップロードしてリスナー向けの着せ替え URL を発行する Web サービス。他3つとはコード上の連携がない独立プロダクト
@@ -38,6 +42,7 @@ TikRIng を除く4つは TikTok Live 配信者向けで、`tiktok-live-connector
 - **desktop → analytics**: `GET /api/analytics/monthly-contributors?month=YYYY-MM`。先月の MVP/TOP5 を取り込む
 - **mobile → analytics**: Google認証 → JWT → apiKey 取得 → socket.io `chat:{streamerId}` ルームでコメント受信
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
+- **mydesktop → desktop**: `http://localhost:38100` へ `socket.io-client` で接続し `effects:video-playing` を購読するだけの一方向連携。認証なし・CORS全開放（desktop側の既存仕様）。詳細は [live-sidestage-mydesktop/CLAUDE.md](live-sidestage-mydesktop/CLAUDE.md)
 
 ## 共通資産 `shared/`
 
