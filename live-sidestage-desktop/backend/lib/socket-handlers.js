@@ -90,6 +90,11 @@ module.exports = function registerSocketHandlers({
         socket.on('effects:playback:dropped', ({ playbackIds } = {}) => {
             notifyLiveStudioPlaybackDropped(playbackIds);
         });
+        // オーバーレイ側で動画の描画が実際に始まった瞬間（playing）を、
+        // mydesktop等の観測者クライアントへ中継する（LIVE Studio連携とは無関係）。
+        socket.on('effects:video-playing', (payload) => {
+            socket.broadcast.emit('effects:video-playing', payload);
+        });
         socket.emit('widgets:push-pull:snapshot', buildPushPullSnapshot());
         const pendingUpdateInfo = getPendingUpdateInfo();
         if (pendingUpdateInfo) {
