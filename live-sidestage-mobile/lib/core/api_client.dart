@@ -83,6 +83,11 @@ class GiftCandidate {
   /// 画面に出す表記（TikTok の元の大文字小文字）。
   final String label;
 
+  /// TikTok 公式の日本語表示名。カタログに無いギフト（部屋固有のサブスクギフト、
+  /// 自由入力）や、まだ日本語化されていないギフトでは null。
+  /// **表示専用。[name] の代わりに保存してはいけない。**
+  final String? labelJa;
+
   /// この名前で存在しうるコイン数の下限。
   final int minDiamondCount;
 
@@ -104,6 +109,7 @@ class GiftCandidate {
     required this.maxDiamondCount,
     this.seen = false,
     this.imageUrl,
+    this.labelJa,
   });
 
   /// コイン数が1種類しかない候補。自由入力やテストから作るとき用。
@@ -113,6 +119,7 @@ class GiftCandidate {
     required int diamondCount,
     this.seen = false,
     this.imageUrl,
+    this.labelJa,
   })  : minDiamondCount = diamondCount,
         maxDiamondCount = diamondCount;
 
@@ -139,9 +146,13 @@ class GiftCandidate {
     final min = rawMin is int && rawMin >= 0 ? rawMin : base;
     final max = rawMax is int && rawMax >= 0 ? rawMax : base;
 
+    // 旧サーバーは labelJa を返さない。欠落は null（英語表記のまま）として扱う。
+    final labelJa = value['labelJa'];
+
     return GiftCandidate(
       name: name,
       label: label is String && label.isNotEmpty ? label : name,
+      labelJa: labelJa is String && labelJa.isNotEmpty ? labelJa : null,
       // 壊れた組み合わせ（min > max）が来ても順序だけは保証する。
       minDiamondCount: min <= max ? min : max,
       maxDiamondCount: min <= max ? max : min,
@@ -161,6 +172,17 @@ class GiftCandidate {
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
     return value;
   }
+}
+
+/// 候補一覧から「一致キー（英語）→ 日本語表示名」を作る。[GiftNameJa.updateFromServer] へ渡す用。
+///
+/// 日本語名を持たない候補は落とす。落としても [GiftNameJa] 側は既存の値を消さないので、
+/// 一部のギフトだけ日本語化されていない状態でも他の日本語名は保たれる。
+Map<String, String> giftLabelJaMap(Iterable<GiftCandidate> gifts) {
+  return {
+    for (final gift in gifts)
+      if (gift.labelJa != null && gift.labelJa!.isNotEmpty) gift.name: gift.labelJa!,
+  };
 }
 
 class LiveAnalyticsApi {

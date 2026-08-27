@@ -19,11 +19,12 @@ void startCallback() {
 }
 
 Future<void> main() async {
-  // ギフト名辞書はアセットなので rootBundle が要る。
   WidgetsFlutterBinding.ensureInitialized();
+  // ギフトの日本語名キャッシュは FlutterForegroundTask のストレージに置いてある。
   FlutterForegroundTask.initCommunicationPort();
-  // 25KB ほどの JSON を1度だけ読む。以降はどの画面からも同期で引ける。
-  // 読めなくても英語名のまま動くので、失敗しても起動は止めない。
+  // 端末に貯めた日本語名を1度だけ読む。以降はどの画面からも同期で引ける。
+  // 読めなくても英語名のまま動くので、失敗しても起動は止めない
+  // （サーバーから取り直すのはサウンドタブとギフトピッカー）。
   await GiftNameJa.ensureLoaded();
   runApp(const LiveSidestageApp());
 }

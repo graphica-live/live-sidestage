@@ -17,12 +17,14 @@ const SHARED_DIR = path.join(REPO_ROOT, 'shared', 'gift-names');
 const SYNC_SCRIPT = path.join(SHARED_DIR, 'sync.mjs');
 
 // 共通資産の正本と、各プロジェクトへ配られた生成コピー。
+//
+// **live-sidestage-mobile のコピーはもう無い。** モバイルは TikTok 公式の日本語名を
+// サーバーから取って端末へ貯める方式へ移した（lib/core/gift_name_ja.dart）。
 const MANAGED_FILES = [
     path.join(SHARED_DIR, 'gift-names-ja.json'),
     path.join(SHARED_DIR, 'gift-names-ja-reference.json'),
     path.join(REPO_ROOT, 'live-sidestage-desktop', 'backend', 'lib', 'gift-names', 'gift-names-ja.json'),
-    path.join(REPO_ROOT, 'live-sidestage-desktop', 'backend', 'lib', 'gift-names', 'gift-names-ja-reference.json'),
-    path.join(REPO_ROOT, 'live-sidestage-mobile', 'assets', 'gift_names', 'gift_names_ja.json')
+    path.join(REPO_ROOT, 'live-sidestage-desktop', 'backend', 'lib', 'gift-names', 'gift-names-ja-reference.json')
 ];
 
 function runSyncCheck() {

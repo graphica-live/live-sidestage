@@ -24,10 +24,13 @@ const DICTIONARY = 'gift-names-ja.json';
 const REFERENCE = 'gift-names-ja-reference.json';
 
 // 配布先。プロジェクトを増やすときはここに1行足す。
+//
+// **live-sidestage-mobile は外した。** モバイルは TikTok 公式の日本語名を
+// サーバー(GET /api/mobile/gifts の labelJa)から取って端末へ貯める方式へ移した
+// (lib/core/gift_name_ja.dart)。desktop も同じ方向へ移行中で、完了したらこの辞書ごと消す。
 const TARGETS = [
     { from: DICTIONARY, to: 'live-sidestage-desktop/backend/lib/gift-names/gift-names-ja.json' },
     { from: REFERENCE, to: 'live-sidestage-desktop/backend/lib/gift-names/gift-names-ja-reference.json' },
-    { from: DICTIONARY, to: 'live-sidestage-mobile/assets/gift_names/gift_names_ja.json' },
 ];
 
 const NORMALIZATION = 'trim -> unify apostrophes -> collapse whitespace -> lowercase';
@@ -45,6 +48,18 @@ export function normalizeGiftNameKey(raw) {
         .replace(WHITESPACE, ' ')
         .trim()
         .toLowerCase();
+}
+
+/**
+ * 改行コードの違いを無視して内容を比べる。
+ *
+ * **Windows の `core.autocrlf` でチェックアウトされた作業コピーは CRLF になる。**
+ * 生成テキストは常に LF なので、生の文字列比較だと「整形が崩れています」と誤検出して
+ * pre-commit を通れなくなる（git worktree を切った直後がまさにこの状態になる）。
+ * 書き出しは従来どおり LF のままで、比較だけ寛容にする。
+ */
+function sameIgnoringEol(a, b) {
+    return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 }
 
 function readJson(absPath) {
@@ -180,7 +195,7 @@ function main() {
     // 正本自身の整形崩れも直す（--check では検出だけ）。
     for (const [name, text] of Object.entries(canonical)) {
         const absPath = path.join(HERE, name);
-        if (fs.readFileSync(absPath, 'utf8') === text) continue;
+        if (sameIgnoringEol(fs.readFileSync(absPath, 'utf8'), text)) continue;
         if (checkOnly) {
             stale.push(`shared/gift-names/${name}（整形が崩れています）`);
         } else {
@@ -193,7 +208,7 @@ function main() {
         const absPath = path.join(REPO_ROOT, target.to);
         const text = canonical[target.from];
         const current = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : null;
-        if (current === text) continue;
+        if (current !== null && sameIgnoringEol(current, text)) continue;
         if (checkOnly) {
             stale.push(`${target.to}（${current === null ? '未生成' : '正本と不一致'}）`);
         } else {

@@ -10,13 +10,11 @@ on:
     paths:
       - "shared/gift-names/**"
       - "live-sidestage-desktop/backend/lib/gift-names/**"
-      - "live-sidestage-mobile/assets/gift_names/**"
       - ".github/workflows/shared-gift-names.yml"
   pull_request:
     paths:
       - "shared/gift-names/**"
       - "live-sidestage-desktop/backend/lib/gift-names/**"
-      - "live-sidestage-mobile/assets/gift_names/**"
       - ".github/workflows/shared-gift-names.yml"
 
 jobs:
