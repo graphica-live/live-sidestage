@@ -2134,7 +2134,7 @@ function MatchCard({
             </div>
             <div className="mt-0.5 text-xs text-gray-400">
               {Number(side.diamonds).toLocaleString("ja-JP")} ダイヤ
-              {/* TikTok 側のバトルスコア。勝敗は左のダイヤで決まるので、別物と分かるよう並べる。
+              {/* TikTok 側のバトルスコア。左のダイヤ集計とは別の数値なので、区別できるよう並べる。
                   帰属できていないときに黙って消すと「0」と読めてしまうので「—」を出す。 */}
               {side.tiktokScore !== null ? (
                 <span className="ml-2 text-gray-500">バトルスコア {side.tiktokScore}</span>
@@ -2167,7 +2167,7 @@ function MatchCard({
       {match.battleScoreExpected && match.sides.every((s) => s.tiktokScore === null) && (
         <p className="text-xs leading-relaxed text-gray-600">
           バトルスコアは TikTok 側から配信者を特定できたときだけ出る。まだ特定できていないので、
-          しばらく待ってから開き直すこと（勝敗はダイヤで決まるので影響しない）。
+          しばらく待ってから開き直すこと（最終的な勝敗は運営判断で確定するため影響しない）。
         </p>
       )}
 
