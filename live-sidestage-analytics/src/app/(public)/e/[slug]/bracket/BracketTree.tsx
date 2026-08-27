@@ -633,7 +633,7 @@ function MatchCard({
  * 混同しないよう、こちらは点滅させず静的にしてある。
  *
  * `loser` は「決着済みで、かつ自分が勝者ではない」側。**勝った側を光らせる演出は廃止した**
- * (BracketTree.tsx冒頭を参照) — 代わりに負けた側のプロフィール画像だけを暗くする。
+ * (BracketTree.tsx冒頭を参照) — 代わりに負けた側のプロフィール画像と名前を暗くする。
  * まだ勝者が決まっていない対戦(両サイドとも `isWinner=false`)では両方とも通常表示のまま。
  */
 function SideRow({ side, loser }: { side: BracketSideDto; loser: boolean }) {
@@ -664,7 +664,7 @@ function SideRow({ side, loser }: { side: BracketSideDto; loser: boolean }) {
         />
       )}
 
-      <div className="relative z-10 px-1.5">
+      <div className={`relative z-10 px-1.5 ${loser ? "brightness-[0.55]" : ""}`}>
         <FitName name={side.name} boxH={NAME_BOX_H} />
       </div>
     </div>
