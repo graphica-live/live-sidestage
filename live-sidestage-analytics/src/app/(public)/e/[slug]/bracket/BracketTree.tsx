@@ -23,9 +23,11 @@ import { BracketScroller } from "./BracketScroller";
 // 逆に言うと、カードの中身を可変行数にすると幾何が崩れて線がずれる —
 // だから状態・不戦勝・時刻は1行にまとめ、カードに固定高を与えている(CARD_H)。
 //
-// **バトルスコアは行を増やさず、VSバッジを挟むように名前の外側(枠の上端/下端)へ絶対配置している。**
-// 名前を名前枠(NAME_BOX_H)ごと枠の上下中央に置くことで、枠の残り(上下それぞれ)にスコアの
-// 置き場ができる — 対戦カード上側のサイドは枠の下端(VSの直上)、下側のサイドは枠の上端(VSの直下)。
+// **名前とバトルスコアは互いに逆向きへ寄せ、行を増やさずサイド枠の中で分離している。**
+// 名前は名前枠(NAME_BOX_H)ごとサイド枠の外側の端(上側のサイドは枠の上端、下側のサイドは
+// 枠の下端)へ寄せる。スコアは逆にVSバッジを挟む内側の端(上側のサイドは枠の下端 = VSの直上、
+// 下側のサイドは枠の上端 = VSの直下)へ絶対配置する。互いに反対の端にいるので重ならず、
+// 上側=赤字・下側=青字の色分けと合わせて上下どちらのスコアかが一目でわかる。
 // 通常フローの行にすると、サイドの境目へ絶対配置している「VS」バッジ(高さ18px)が
 // サイドの最終行に7px重なって数字が読めなくなる(過去に実測で確認済み)。おかげで CARD_H も据え置ける。
 //
@@ -627,13 +629,16 @@ function MatchCard({
 }
 
 /**
- * アイコンを枠いっぱいに敷き、名前は枠の上下中央に重ねる。**枠の高さ(SIDE_H)と
- * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
- * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
+ * アイコンを枠いっぱいに敷き、名前は枠の外側の端(`position`が"top"なら枠の上端、"bottom"なら
+ * 枠の下端)へ寄せる。**枠の高さ(SIDE_H)と名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字
+ * サイズだけが長さに応じて変わる(`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、
+ * 枠の高さは動かない。
  *
- * 名前を中央に置くのは見た目のためだけでなく、**VSバッジを挟むスコアの置き場を空けるため**
- * (ファイル冒頭のコメントを参照)。名前枠の外側、上下に残る余白のうち VS に近い側
- * (`position`が"top"なら枠の下端、"bottom"なら枠の上端)へスコアを寄せる。
+ * 名前を外側の端へ寄せるのは見た目のためだけでなく、**VSバッジを挟むスコアの置き場を
+ * 名前と重ならせないため**(ファイル冒頭のコメントを参照)。スコアは名前と逆に VS に近い側
+ * (`position`が"top"なら枠の下端、"bottom"なら枠の上端)へ寄せる。スコアの文字色は上側を
+ * 赤・下側を青にして対戦の上下を色でも区別し、黒縁取り(text-shadow)を足してアイコン画像の
+ * 上でもスマホの小さい画面で読めるようにしている。
  *
  * **`overflow-hidden` が要る** — 枠より大きいアイコンのはみ出しをここで切る。付け忘れると
  * 上下のサイドへ顔が侵食する(親カードの overflow-hidden はカードの外しか切らない)。
@@ -650,7 +655,7 @@ function MatchCard({
  */
 function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "bottom" }) {
   const hasAvatar = side.entrants.length > 0;
-  const frame = `relative flex ${SIDE_H} flex-col items-center justify-center overflow-hidden text-center ${
+  const frame = `relative flex ${SIDE_H} flex-col items-center overflow-hidden text-center ${
     side.isWinner
       ? "bg-brand/10 ring-1 ring-inset ring-brand/40"
       : side.hasLiveStreamer
@@ -660,20 +665,30 @@ function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "
 
   if (!side.name) {
     return (
-      <div className={frame}>
+      <div className={`${frame} justify-center`}>
         <span className="text-xs text-gray-600">未確定</span>
       </div>
     );
   }
 
+  // 名前は枠の外側の端(VSバッジから遠い側)、スコアは内側の端(VSバッジに近い側)へ寄せる。
+  // 反対の端にいるので重ならない(詳細はファイル冒頭とこの関数のコメントを参照)。
+  const isTop = position === "top";
+  const nameEdge = isTop ? "top-0" : "bottom-0";
+  const scoreColor = isTop ? "text-red-400" : "text-blue-400";
+  // 縁取り(黒のtext-shadowを4方向へ)。色付きスコアがアイコン画像の上に乗ってもスマホの
+  // 小さい画面で読めるようにするための処理。
+  const scoreStroke =
+    "[text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000]";
+
   return (
-    <div className={frame}>
+    <div className={`${frame} ${isTop ? "justify-start" : "justify-end"}`}>
       <EntrantAvatars entrants={side.entrants} size="card" />
 
       {/* 名前はアイコンの上に重なるので、背後に黒帯を差して読めるようにする。 */}
       {hasAvatar && (
         <span
-          className={`pointer-events-none absolute inset-x-0 top-1/2 ${NAME_BOX_H} -translate-y-1/2 bg-black/55`}
+          className={`pointer-events-none absolute inset-x-0 ${nameEdge} ${NAME_BOX_H} bg-black/55`}
           aria-hidden
         />
       )}
@@ -683,11 +698,11 @@ function SideRow({ side, position }: { side: BracketSideDto; position: "top" | "
 
       {side.tiktokScore !== null && (
         <span
-          className={`absolute inset-x-0 z-20 flex justify-center ${
-            position === "top" ? "bottom-1" : "top-1"
-          }`}
+          className={`absolute inset-x-0 z-20 flex justify-center ${isTop ? "bottom-1" : "top-1"}`}
         >
-          <span className="rounded-sm bg-black/75 px-2 py-0.5 font-mono text-[13px] font-bold leading-none text-white">
+          <span
+            className={`rounded-sm bg-black/80 px-2 py-0.5 font-mono text-[13px] font-bold leading-none ${scoreColor} ${scoreStroke}`}
+          >
             {formatNumber(side.tiktokScore)}
           </span>
         </span>
