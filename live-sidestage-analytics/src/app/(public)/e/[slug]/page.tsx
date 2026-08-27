@@ -160,7 +160,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
           <section>
             <SectionHeading>トーナメント表</SectionHeading>
             <p className="mt-2 text-sm text-gray-400">
-              最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。
+              最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。対戦カードをタップすると、そのバトルの詳細を確認できる。
             </p>
             {/* トップは表があるときだけセクションを出す。表が消えたら中身も消える
                 (見出しだけ残るが、破棄は開催中に起きる操作ではない)。 */}
