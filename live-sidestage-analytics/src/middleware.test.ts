@@ -71,6 +71,7 @@ describe("middleware の matcher", () => {
       "/api/analytics/monthly-contributors",
       "/api/overlay/settings",
       "/overlay/contribution",
+      "/images/trophy.png", // public/images 配下の静的画像(公開トーナメント表の優勝トロフィー等)
       "/_next/static/chunks/main.js",
       "/_next/image",
       "/favicon.ico",
@@ -91,6 +92,7 @@ describe("middleware の matcher", () => {
       "/overlays", // オーバーレイ管理ページ(要ログイン)。OBS用の公開パス `overlay` に食われてはいけない
       "/api/publicity", // `api/public` に食われてはいけない
       "/api/internally", // `api/internal` に食われてはいけない
+      "/imageshop", // `images` に食われてはいけない
     ]) {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
