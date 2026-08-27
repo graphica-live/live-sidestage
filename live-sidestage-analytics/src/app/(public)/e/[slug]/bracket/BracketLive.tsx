@@ -80,6 +80,7 @@ export function BracketLive({
   return (
     <BracketTree
       key={bracket.roundCount}
+      slug={slug}
       roundCount={bracket.roundCount}
       matches={bracket.matches}
       // ローリングデプロイ中、旧インスタンスの応答には `feederFlows` が無い可能性がある。
