@@ -5,6 +5,7 @@ import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
 import { acquireEventLock } from "@/event/event-lock";
+import { parseJstLocal } from "@/event/datetime";
 import { downstreamStarted } from "@/event/match-downstream";
 import { advanceBracket, resolveMatchSeries } from "@/event/match-results";
 import { seriesRequirement, parseMatchRules, type MatchRules } from "@/event/match-rules";
@@ -59,6 +60,23 @@ const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN"]);
 function reviewReasonOf(rules: unknown): string {
   if (!isPlainObject(rules)) return "";
   return typeof rules.reviewReason === "string" ? rules.reviewReason : "";
+}
+
+/**
+ * 手動確定(confirm/draw)時に主催者が指定する決着時刻をパースする。
+ *
+ * 未指定・空文字列は `value: undefined`(呼び出し側が `match.decidedAt ?? new Date()` に
+ * フォールバックする、既存の後方互換挙動)。**未来時刻の上限は設けない** — イベント進行の
+ * 押し・延びは予測できないため、主催者の裁量を優先する設計判断(2026-08-27)。
+ * 無効な形式は `ok: false` を返し、呼び出し側が 400 にする(黙って `new Date()` に
+ * フォールバックすると、入力したはずの時刻が捨てられて元のバグが無言で再現するため)。
+ */
+function parseDecidedAtInput(raw: unknown): { ok: true; value: Date | undefined } | { ok: false } {
+  if (raw === undefined || raw === null || raw === "") return { ok: true, value: undefined };
+  if (typeof raw !== "string") return { ok: false };
+  const parsed = parseJstLocal(raw);
+  if (!parsed) return { ok: false };
+  return { ok: true, value: parsed };
 }
 
 /** 承認・確定・無効化のあとに承認待ちの理由を消す(古い理由をカードに残さない)。 */
@@ -211,6 +229,7 @@ export async function PATCH(
     candidateIds?: unknown;
     candidatesFingerprint?: unknown;
     enabled?: unknown;
+    decidedAt?: unknown;
   } | null;
 
   const action = body?.action as Action | undefined;
@@ -319,6 +338,10 @@ export async function PATCH(
           if (!winnerSideId || !match.sides.some((s) => s.id === winnerSideId)) {
             return { error: "この対戦のサイドを勝者に指定してください。", status: 400 };
           }
+          const decidedAtInput = parseDecidedAtInput(body?.decidedAt);
+          if (!decidedAtInput.ok) {
+            return { error: "決着時刻の形式が正しくありません。", status: 400 };
+          }
           // **特定できていない検知は捨ててから確定する。** 残したままだと、
           // 別のバトルかもしれない区間にバトル倍率が乗り、スコア表示も食い違う。
           const dropDetection = UNAPPROVABLE_REASONS.has(reviewReasonOf(match.rules));
@@ -327,11 +350,14 @@ export async function PATCH(
             // 決着時刻を残す。デスマッチのライフはこの順に適用するので、
             // 検知できていない対戦でも「いつ決まったか」が要る。
             // **すでに確定済みなら動かさない**(同じ操作の再送でライフの順序を変えない)。
+            // 主催者が指定した決着時刻(decidedAtInput.value)は、既存の検知結果が
+            // 無い場合の new Date() フォールバックより優先する — こちらのほうが実際の
+            // 対戦終了時刻に近く、下流ラウンドの feederDecidedAt(検知の下限)の精度が上がる。
             data: {
               status: "FINISHED",
               winnerSideId,
               winnerDecidedBy: "MANUAL",
-              decidedAt: match.decidedAt ?? new Date(),
+              decidedAt: match.decidedAt ?? decidedAtInput.value ?? new Date(),
               rules: withCandidatesConfirmedByOrganizer(
                 clearReviewReason(match.rules),
                 false
@@ -364,6 +390,10 @@ export async function PATCH(
           if (event?.format !== "DEATHMATCH") {
             return { error: "引き分けで確定できるのはデスマッチだけです。", status: 400 };
           }
+          const decidedAtInput = parseDecidedAtInput(body?.decidedAt);
+          if (!decidedAtInput.ok) {
+            return { error: "決着時刻の形式が正しくありません。", status: 400 };
+          }
           // **`confirm` と同じく、特定できていない検知は捨ててから確定する。**
           // 残したままだと、どのバトルか決まっていない区間が
           // `loadBattleRangesByRoom()`(FINISHED かつ両端あり)に拾われて、
@@ -376,7 +406,7 @@ export async function PATCH(
               status: "FINISHED",
               winnerSideId: null,
               winnerDecidedBy: "DRAW",
-              decidedAt: match.decidedAt ?? new Date(),
+              decidedAt: match.decidedAt ?? decidedAtInput.value ?? new Date(),
               rules: withCandidatesConfirmedByOrganizer(
                 clearReviewReason(match.rules),
                 false
