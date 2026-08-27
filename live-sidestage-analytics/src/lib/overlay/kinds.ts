@@ -10,7 +10,17 @@
 // ただし設定の保存は /api/streamer/overlay-settings が contribution 固定なので、
 // 設定が要る種類を足すときはその API の設計から必要になる(hasSettings を参照)。
 
-export const OVERLAY_KINDS = ["contribution"] as const;
+// desktop(TikEffect)の5ウィジェット移植で "coin-list"/"top-gift"/"like-contribution"/
+// "tap-list"/"timer" を追加。kind名はdesktop側のウィジェットファイル名と一致させてある
+// (backend/public/widgets/<name>.html)。サポート対応時にdesktop版と混同なく照合できる。
+export const OVERLAY_KINDS = [
+  "contribution",
+  "coin-list",
+  "top-gift",
+  "like-contribution",
+  "tap-list",
+  "timer",
+] as const;
 export type OverlayKind = (typeof OVERLAY_KINDS)[number];
 
 export type OverlayKindMeta = {
@@ -32,6 +42,46 @@ export const OVERLAY_KIND_META: Record<OverlayKind, OverlayKindMeta> = {
     description: "設定したコイン数を超えたリスナーを、超えた順に並べて表示します。",
     path: "/overlay/contribution",
     snapshotEvent: "overlay:contribution:snapshot",
+    hasSettings: true,
+  },
+  "coin-list": {
+    kind: "coin-list",
+    label: "コイン数一覧",
+    description: "本日のコイン貢献者を金額順に一覧表示します。",
+    path: "/overlay/coin-list",
+    snapshotEvent: "overlay:coin-list:snapshot",
+    hasSettings: true,
+  },
+  "top-gift": {
+    kind: "top-gift",
+    label: "本日最高ギフト",
+    description: "本日届いた単価最高のギフトを表示します。",
+    path: "/overlay/top-gift",
+    snapshotEvent: "overlay:top-gift:snapshot",
+    hasSettings: true,
+  },
+  "like-contribution": {
+    kind: "like-contribution",
+    label: "Like貢献通知",
+    description: "いいねが一定数貯まるごとにポップアップで通知します。",
+    path: "/overlay/like-contribution",
+    snapshotEvent: "overlay:like-contribution:snapshot",
+    hasSettings: true,
+  },
+  "tap-list": {
+    kind: "tap-list",
+    label: "Like数一覧",
+    description: "本日のいいね数ランキングを一覧表示します。",
+    path: "/overlay/tap-list",
+    snapshotEvent: "overlay:tap-list:snapshot",
+    hasSettings: true,
+  },
+  timer: {
+    kind: "timer",
+    label: "タイマー",
+    description: "カウントダウンタイマーを表示します。ギフト受信で時間を増減できます。",
+    path: "/overlay/timer",
+    snapshotEvent: "overlay:timer:snapshot",
     hasSettings: true,
   },
 };

@@ -1,9 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { OVERLAY_KIND_LIST, overlayUrlFor, type OverlayKind } from "@/lib/overlay/kinds";
 import ContributionSettings from "./ContributionSettings";
 import { useOverlaySettings } from "./useOverlaySettings";
+import CoinListSettings from "./CoinListSettings";
+import TopGiftSettings from "./TopGiftSettings";
+import LikeContributionSettings from "./LikeContributionSettings";
+import TapListSettings from "./TapListSettings";
+import TimerSettings from "./TimerSettings";
+
+// contribution以外のkindは独自に設定を読み書きする(useOverlayKindSettings経由)ため
+// propsを取らない。ContributionSettingsだけは既存のsettings/update propsパターンを維持する。
+const NON_CONTRIBUTION_SETTINGS_PANEL: Partial<Record<OverlayKind, ComponentType>> = {
+  "coin-list": CoinListSettings,
+  "top-gift": TopGiftSettings,
+  "like-contribution": LikeContributionSettings,
+  "tap-list": TapListSettings,
+  timer: TimerSettings,
+};
 
 // オーバーレイの管理ページ。種類は kinds.ts の一覧から出しているので、
 // 表示系の種類を足すとカードも自動で増える。
@@ -89,7 +104,30 @@ export default function OverlaysPage() {
           </p>
         </div>
 
-        {loading ? (
+        {selectedKind !== "contribution" ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {(() => {
+              const Panel = NON_CONTRIBUTION_SETTINGS_PANEL[selectedKind];
+              return Panel ? <Panel /> : null;
+            })()}
+
+            <div>
+              <span className="label">プレビュー</span>
+              {overlayUrl ? (
+                <iframe
+                  src={`${overlayUrl}&preview=1`}
+                  title={`${meta.label}のプレビュー`}
+                  className="w-full h-[420px] rounded-xl border border-border bg-black/40"
+                />
+              ) : (
+                <div className="w-full h-[420px] rounded-xl border border-border bg-black/40" />
+              )}
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                見やすいように暗い背景を敷いています。実際の配信では背景は透明になります。
+              </p>
+            </div>
+          </div>
+        ) : loading ? (
           <p className="text-sm text-gray-400">読み込み中...</p>
         ) : settings ? (
           <div className="grid gap-6 lg:grid-cols-2">

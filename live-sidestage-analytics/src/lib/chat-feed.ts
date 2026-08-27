@@ -319,6 +319,19 @@ export async function emitChatGift(input: ChatGiftInput): Promise<boolean> {
   };
 
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:gift", payload);
+
+  // タイマーのギフト連動(desktop 5ウィジェット移植)。emitChatGiftは「コンボのdedupと
+  // tickごとの正味増分(delta)」をWebプロセス単独で確定させる唯一の場所であり、
+  // タイマー側もこの「正しく1回だけ数えられた増分」を必要とするためここへ相乗りする。
+  // 動的importにしてあるのは (a) chat-feed.test.ts はprismaモックなしの純unitテストで、
+  // 静的importするとテストのたびに実DB接続試行が走るため (b) overlay/timer.server.ts が
+  // server-kinds.ts経由でこのファイルに戻ってくる循環を避けるため。
+  import("./overlay/timer.server")
+    .then(({ applyTimerGiftRule }) =>
+      applyTimerGiftRule({ streamerId: input.streamerId, giftName: input.giftName, units: delta })
+    )
+    .catch((err) => console.error("[timer] gift rule apply error:", err));
+
   return true;
 }
 

@@ -7,6 +7,11 @@
 
 import { OVERLAY_KIND_META, type OverlayKind } from "./kinds";
 import { buildOverlaySnapshot } from "./contribution.server";
+import { buildCoinListSnapshot } from "./coin-list.server";
+import { buildTopGiftSnapshot } from "./top-gift.server";
+import { buildLikeContributionSnapshot } from "./like-contribution.server";
+import { buildTapListSnapshot } from "./tap-list.server";
+import { buildTimerSnapshot } from "./timer.server";
 
 export type OverlayKindServer = {
   /** socket.io で流すイベント名。kinds.ts の値をそのまま使う(2箇所に書かない) */
@@ -19,5 +24,25 @@ export const OVERLAY_KIND_SERVER = {
   contribution: {
     snapshotEvent: OVERLAY_KIND_META.contribution.snapshotEvent,
     buildSnapshot: buildOverlaySnapshot,
+  },
+  "coin-list": {
+    snapshotEvent: OVERLAY_KIND_META["coin-list"].snapshotEvent,
+    buildSnapshot: buildCoinListSnapshot,
+  },
+  "top-gift": {
+    snapshotEvent: OVERLAY_KIND_META["top-gift"].snapshotEvent,
+    buildSnapshot: buildTopGiftSnapshot,
+  },
+  "like-contribution": {
+    snapshotEvent: OVERLAY_KIND_META["like-contribution"].snapshotEvent,
+    buildSnapshot: buildLikeContributionSnapshot,
+  },
+  "tap-list": {
+    snapshotEvent: OVERLAY_KIND_META["tap-list"].snapshotEvent,
+    buildSnapshot: buildTapListSnapshot,
+  },
+  timer: {
+    snapshotEvent: OVERLAY_KIND_META.timer.snapshotEvent,
+    buildSnapshot: buildTimerSnapshot,
   },
 } satisfies Record<OverlayKind, OverlayKindServer>;

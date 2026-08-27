@@ -157,10 +157,11 @@ model TiktokRoom {
   // (updateManyのwhereでhostUserId: nullを条件にして構造的に保証する)。
   hostUserId String?
 
-  streamers Streamer[]
-  gifts     Gift[]
-  battles   TiktokBattle[]
-  watches   AgencyWatch[]
+  streamers   Streamer[]
+  gifts       Gift[]
+  battles     TiktokBattle[]
+  watches     AgencyWatch[]
+  likeTallies LikeTally[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
@@ -255,7 +256,180 @@ model Streamer {
   room      TiktokRoom? @relation(fields: [roomId], references: [id])
   giftEdits GiftEdit[]
 
+  // desktopの5ウィジェット移植で追加。既存のoverlay*列(contribution専用)とは分離し、
+  // 種類ごとに1テーブルへ寄せてある(Streamerへ列を積み増し続けると肥大化するため)。
+  overlayCoinListSettings         OverlayCoinListSettings?
+  overlayTopGiftSettings          OverlayTopGiftSettings?
+  overlayTapListSettings          OverlayTapListSettings?
+  overlayLikeContributionSettings OverlayLikeContributionSettings?
+  overlayTimerSettings            OverlayTimerSettings?
+  overlayTimerState               OverlayTimerState?
+
   @@index([roomId])
+  @@schema("public")
+}
+
+// TikTokの「いいね」日次累計。単発イベントのログは保持しない方針
+// (like-contribution/tap-listウィジェットの要件: 累積カウンタのみで十分)。
+// GiftとおなじくroomId単位で共有される(同じtiktokIdを複数Streamerが登録していれば
+// 同じ行を参照する)。likeイベント自体には金銭的価値がなく再送/重複の実害が
+// Giftより小さいため、Giftのような(roomId, orderId)unique制約やmsgId時間窓dedupまでは持たない
+// — 増分はWorker側の秒単位コアレッシング+プロセス内msgId FIFOでのみ弾く。
+model LikeTally {
+  id              String   @id @default(cuid())
+  roomId          String
+  dayKey          String // jstDateKey()、Giftと同じ形式
+  uniqueId        String
+  nickname        String
+  profileImageUrl String?
+  totalLikes      Int      @default(0)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // (roomId, dayKey, uniqueId)のunique indexが(roomId, dayKey)検索もprefixでカバーするため、
+  // 別途の@@indexは追加しない。
+  @@unique([roomId, dayKey, uniqueId])
+  @@map("like_tallies")
+  @@schema("public")
+}
+
+model OverlayCoinListSettings {
+  streamerId   String   @id
+  fontKey      String   @default("default")
+  textStyleKey String   @default("gold-night")
+  strokeWidth  Int      @default(4)
+  bgStyle      String   @default("transparent") // "transparent" | "semi"
+  sortOrder    String   @default("desc") // "asc" | "desc"
+  maxEntries   Int      @default(20) // 1-100
+  rowGap       Int      @default(8)
+  updatedAt    DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_coin_list_settings")
+  @@schema("public")
+}
+
+model OverlayTopGiftSettings {
+  streamerId        String   @id
+  fontKey           String   @default("default")
+  textStyleKey      String   @default("gold-night")
+  strokeWidth       Int      @default(4)
+  title             String   @default("本日最高ギフト")
+  senderDisplayMode String   @default("latest") // "latest" | "all"
+  glowEnabled       Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_top_gift_settings")
+  @@schema("public")
+}
+
+model OverlayTapListSettings {
+  streamerId   String   @id
+  fontKey      String   @default("default")
+  textStyleKey String   @default("gold-night")
+  strokeWidth  Int      @default(4)
+  bgStyle      String   @default("transparent")
+  maxEntries   Int      @default(20)
+  rowGap       Int      @default(8)
+  updatedAt    DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_tap_list_settings")
+  @@schema("public")
+}
+
+model OverlayLikeContributionSettings {
+  streamerId       String   @id
+  fontKey          String   @default("default")
+  textStyleKey     String   @default("gold-night")
+  strokeWidth      Int      @default(4)
+  title            String   @default("Likeありがとう！")
+  interval         Int      @default(50)
+  soundVolume      Int      @default(100)
+  balloonDesignKey String   @default("dark-glass")
+  countFontSize    Int      @default(42)
+  nameFontSize     Int      @default(34)
+  updatedAt        DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_like_contribution_settings")
+  @@schema("public")
+}
+
+// タイマーオーバーレイの設定。1配信者(Streamer)につき1行。
+// desktopのtimer-state.js DEFAULT_TIMER_SETTINGSを踏襲。音源は任意URLではなく
+// プリセットキーで持つ(OBSブラウザソースに外部URLを無条件fetchさせないため。
+// src/lib/overlay/sound-presets.ts 参照)。
+model OverlayTimerSettings {
+  streamerId String @id
+
+  durationMinutes Int    @default(10) // start/reset時の初期値(分)
+  durationSeconds Int    @default(0) // start/reset時の初期値(秒、0-59)
+  headingText     String @default("カウントダウン")
+
+  endSoundKey    String? // sound-presets.tsのキー。nullは無音
+  endSoundVolume Int     @default(100) // 0-100
+
+  minFloorMinutes   Int @default(0) // 短縮下限(分)。0=無制限に短縮可
+  maxCeilingMinutes Int @default(0) // 延長上限(分)。0=無制限に延長可
+
+  countdownSoundEnabled          Boolean @default(false)
+  countdownSoundThresholdSeconds Int     @default(5)
+  countdownSoundKey              String?
+  countdownSoundVolume           Int     @default(100)
+
+  fontKey      String @default("default")
+  textStyleKey String @default("gold-night")
+  strokeWidth  Int    @default(4)
+
+  updatedAt DateTime @updatedAt
+
+  streamer  Streamer               @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+  giftRules OverlayTimerGiftRule[]
+
+  @@map("overlay_timer_settings")
+  @@schema("public")
+}
+
+// ギフト連動: 「このギフト名を受け取ったら±分数」のマッピング。複数登録可能。
+// 一致キーはgiftIdではなく名前(trim+小文字化) — 既存のギフト照合規約に合わせる。
+model OverlayTimerGiftRule {
+  id           String   @id @default(cuid())
+  streamerId   String
+  giftName     String // trim+小文字化済みで保存
+  minutesDelta Float // 1コンボ単位あたりの加減算量(分)。マイナスで短縮
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  settings OverlayTimerSettings @relation(fields: [streamerId], references: [streamerId], onDelete: Cascade)
+
+  // streamerId単位のルール件数は少数(多くて数十件)想定のため、
+  // (streamerId, enabled)の追加indexは持たない — @@uniqueのprefixで十分。
+  @@unique([streamerId, giftName])
+  @@map("overlay_timer_gift_rules")
+  @@schema("public")
+}
+
+// タイマーの実行時状態。running/endsAt/remainingMsのみを永続化する。
+// 発火(終了音等)はサーバーのsetTimeoutではなくクライアント側のローカル計算で行うため、
+// ここにはタイムアウトハンドル相当の状態は一切持たない。
+model OverlayTimerState {
+  streamerId  String    @id
+  running     Boolean   @default(false)
+  endsAt      DateTime? // running=trueのときのみ意味を持つ(絶対時刻)
+  remainingMs Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_timer_state")
   @@schema("public")
 }
 

@@ -55,7 +55,13 @@ vi.mock("tiktok-live-connector", () => ({
 }));
 
 const emitOverlaySnapshotMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("./overlay", () => ({ emitOverlaySnapshot: emitOverlaySnapshotMock }));
+vi.mock("./overlay", () => ({
+  emitOverlaySnapshot: emitOverlaySnapshotMock,
+  // notifyOverlayUpdate()はgift受信のたびにemitGiftDrivenOverlayUpdates()を呼ぶ
+  // (contribution/coin-list/top-giftをまとめて更新する facade)。既存テストの
+  // 「購読者全員に通知される」検証をそのまま活かすため、同じモック関数を共有する。
+  emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
+}));
 
 async function createStreamer(tiktokId: string, emailPrefix: string) {
   const user = await prisma.user.create({
