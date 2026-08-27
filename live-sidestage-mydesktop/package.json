@@ -1,0 +1,19 @@
+{
+  "name": "live-sidestage-mydesktop",
+  "version": "0.1.0",
+  "description": "TikEffect(live-sidestage-desktop)に接続する配信者個人専用のElectronアプリ。最初の機能はエフェクト予告(effect preview)。",
+  "author": "graphica-live",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:windows": "electron-builder --win --x64 --config electron-builder.config.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -616,7 +616,20 @@ function buildEffectOverlayHtml(slot, config, options = null) {
             socket.emit('effects:playback-error', info);
         }
 
-        video.addEventListener('playing', () => clearStallWatchdog('video'));
+        let videoPlayingNotifiedFor = null;
+        video.addEventListener('playing', () => {
+            clearStallWatchdog('video');
+            // mydesktop等の観測者クライアント向けに、実際に描画が始まった瞬間を1playbackId1回だけ通知する。
+            if (activePlaybackId && videoPlayingNotifiedFor !== activePlaybackId) {
+                videoPlayingNotifiedFor = activePlaybackId;
+                socket.emit('effects:video-playing', {
+                    playbackId: activePlaybackId,
+                    eventId: activePlaybackEventId,
+                    screen: slot,
+                    videoUrl: activeVideoUrl
+                });
+            }
+        });
         audio.addEventListener('playing', () => clearStallWatchdog('audio'));
 
         video.addEventListener('ended', () => {

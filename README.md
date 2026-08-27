@@ -6,6 +6,7 @@ TikTok Live 配信者向けプロダクト群のモノレポ。統合前は5つ�
 | --- | --- | --- | --- |
 | [live-sidestage-analytics](live-sidestage-analytics/) | LiveAnalytics / LIVE Sidestage Event | Next.js 14 + Prisma/PostgreSQL + socket.io | Railway |
 | [live-sidestage-desktop](live-sidestage-desktop/) | TikEffect | Electron + Express + better-sqlite3 | ローカル（NSIS インストーラ） |
+| [live-sidestage-mydesktop](live-sidestage-mydesktop/) | MyDesktop | Electron（自前サーバーなし） | ローカル（NSIS インストーラ） |
 | [live-sidestage-mobile](live-sidestage-mobile/) | LIVE Sidestage (Android) | Flutter | APK |
 | [TikCaption](TikCaption/) | TikCaption | Electron + Python ASR | ローカル（NSIS インストーラ） |
 | [TikRIng](TikRIng/) | TikRing | React 19 + Vite + Cloudflare Pages Functions | Cloudflare Pages |
@@ -17,6 +18,7 @@ TikTok Live 配信者向けプロダクト群のモノレポ。統合前は5つ�
 ```bash
 cd live-sidestage-analytics && npm ci
 cd live-sidestage-desktop   && npm ci
+cd live-sidestage-mydesktop && npm ci
 cd TikCaption               && npm ci
 cd TikRIng                  && npm ci
 cd live-sidestage-mobile    && flutter pub get

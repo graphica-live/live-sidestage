@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src http://localhost:38100; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>MyDesktop</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar">
+      <div class="sidebar-title">MyDesktop</div>
+      <ul class="nav-list">
+        <li class="nav-item active" data-page="effects-preview">
+          <span class="nav-icon" aria-hidden="true">&#127909;</span>
+          <span class="nav-label">エフェクト予告</span>
+        </li>
+      </ul>
+    </nav>
+
+    <main class="content">
+      <section id="page-effects-preview" class="page active">
+        <header class="page-header">
+          <h1>エフェクト予告</h1>
+          <span id="connection-badge" class="badge badge-disconnected">未接続</span>
+        </header>
+
+        <div class="controls">
+          <label class="control">
+            <span class="control-label">監視するscreen</span>
+            <select id="screen-select"></select>
+          </label>
+          <label class="control">
+            <span class="control-label">オフセット秒数</span>
+            <input id="offset-input" type="number" min="0" step="0.1" value="0">
+          </label>
+        </div>
+        <p class="hint">短すぎるオフセット(概ね1秒未満)は動画の読み込みが間に合わない場合があります。</p>
+
+        <div class="preview-area">
+          <div id="preview-placeholder" class="preview-message">この画面にはまだ何も表示されていません</div>
+          <div id="preview-loading" class="preview-message" hidden>読み込み中…</div>
+          <div id="preview-error" class="preview-message preview-message-error" hidden></div>
+          <video id="preview-video" class="preview-video" muted playsinline hidden></video>
+          <div id="reconnect-banner" class="reconnect-banner" hidden>TikEffectとの接続待ち…</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="effects-preview.js"></script>
+</body>
+</html>
