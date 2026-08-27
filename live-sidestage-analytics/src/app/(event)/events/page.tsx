@@ -14,24 +14,45 @@ import type { EntryMode, EventFormat, EventStatus, Visibility } from "@/event/va
 
 export const dynamic = "force-dynamic";
 
+// トップに並べるのは直近開催分だけで十分なので、無制限に増え続けないよう上限を切る。
+const PUBLIC_EVENTS_LIMIT = 30;
+
 export default async function EventsPage() {
   const session = await getServerSession(authOptions);
-  const events = await prisma.event.findMany({
-    where: { ownerUserId: session!.user.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      format: true,
-      entryMode: true,
-      status: true,
-      visibility: true,
-      startAt: true,
-      endAt: true,
-      _count: { select: { participants: true, sessions: true } },
-    },
-  });
+  const [events, publicEvents] = await Promise.all([
+    prisma.event.findMany({
+      where: { ownerUserId: session!.user.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        format: true,
+        entryMode: true,
+        status: true,
+        visibility: true,
+        startAt: true,
+        endAt: true,
+        _count: { select: { participants: true, sessions: true } },
+      },
+    }),
+    prisma.event.findMany({
+      where: { visibility: "PUBLIC" },
+      orderBy: { startAt: "desc" },
+      take: PUBLIC_EVENTS_LIMIT,
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        format: true,
+        entryMode: true,
+        status: true,
+        startAt: true,
+        endAt: true,
+        _count: { select: { participants: true, sessions: true } },
+      },
+    }),
+  ]);
 
   return (
     <div>
@@ -93,6 +114,50 @@ export default async function EventsPage() {
           ))}
         </ul>
       )}
+
+      <section className="mt-10">
+        <h2 className="mb-4 text-lg font-bold">公開中のイベント</h2>
+
+        {publicEvents.length === 0 ? (
+          <div className="card text-center">
+            <p className="text-sm text-gray-400">現在公開されているイベントはない。</p>
+          </div>
+        ) : (
+          <ul className="grid gap-3">
+            {publicEvents.map((event) => (
+              <li key={event.id}>
+                <Link
+                  href={`/e/${event.slug}`}
+                  className="card block transition-colors hover:border-brand/40"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-white">{event.title}</h3>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {FORMAT_LABELS[event.format as EventFormat]} ・{" "}
+                        {ENTRY_MODE_LABELS[event.entryMode as EntryMode]} ・ 参加 {event._count.participants} 人
+                      </p>
+                      <p className="mt-1 font-mono text-xs text-gray-500">
+                        {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
+                        {event._count.sessions > 1 && (
+                          <span className="ml-2 font-sans text-gray-400">
+                            全 {event._count.sessions} 日程
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${STATUS_CLASSES[event.status as EventStatus]}`}
+                    >
+                      {STATUS_LABELS[event.status as EventStatus]}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
