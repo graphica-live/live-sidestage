@@ -182,18 +182,19 @@ export function EventAdminControls({
           </div>
 
           {/* 開催準備中から RUNNING 以外の遷移を足したときに、ここから黙って消えないようにする。 */}
-          {transitions
-            .filter((t) => t.to !== "RUNNING")
-            .map(({ to, label }) => (
-              <button
-                key={to}
-                onClick={() => changeStatus(to)}
-                disabled={busy}
-                className="btn-ghost mt-3 text-xs"
-              >
-                {label}
-              </button>
-            ))}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {transitions
+              .filter((t) => t.to !== "RUNNING")
+              .map(({ to, label }) => (
+                <button key={to} onClick={() => changeStatus(to)} disabled={busy} className="btn-ghost text-xs">
+                  {label}
+                </button>
+              ))}
+            {/* 削除は他の遷移ボタンと同じ並びに置く。詳細ページの奥底に隠すと存在に気づかれない。 */}
+            <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-400">
+              このイベントを削除する
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
@@ -225,6 +226,10 @@ export function EventAdminControls({
               </button>
             );
           })}
+          {/* 削除は他の遷移ボタンと同じ並びに置く。詳細ページの奥底に隠すと存在に気づかれない。 */}
+          <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-400">
+            このイベントを削除する
+          </button>
         </div>
       )}
 
@@ -251,12 +256,6 @@ export function EventAdminControls({
           </a>
         </div>
         {notice && <p className="mt-2 text-xs text-amber-400">{notice}</p>}
-      </div>
-
-      <div className="mt-4 border-t border-border pt-4">
-        <button onClick={remove} disabled={busy} className="text-xs text-red-400 hover:underline">
-          このイベントを削除する
-        </button>
       </div>
     </div>
   );
