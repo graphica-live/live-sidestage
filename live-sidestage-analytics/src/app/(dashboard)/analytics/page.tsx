@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 
 type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
 type HistorySortKey = "time" | "diamonds" | "user" | "gift";
 type SortOrder = "asc" | "desc";
-type ViewMode = "ranking" | "history";
+type ViewMode = "ranking" | "history" | "battles";
 
 interface GiftUser {
   uniqueId: string;
@@ -45,6 +45,44 @@ interface HistoryData {
   total: { count: number; diamonds: number };
   verified?: boolean;
 }
+
+type BattleStatus = "live" | "finished" | "cut_short" | "unknown";
+
+interface BattleListItem {
+  battleId: string;
+  startedAt: string;
+  status: BattleStatus;
+  opponent: { tiktokId: string | null; count: number } | null;
+  selfScore: string | null;
+  opponentScore: string | null;
+}
+
+interface BattlesData {
+  battles: BattleListItem[];
+  dateRange: { start: string; end: string };
+  verified?: boolean;
+}
+
+interface BattleContributor {
+  uniqueId: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  giftCount: number;
+  totalDiamonds: number;
+  lastGiftAt: string;
+}
+
+interface BattleContributorsData {
+  contributors: BattleContributor[];
+  status: BattleStatus;
+}
+
+const BATTLE_STATUS_LABELS: Record<BattleStatus, string> = {
+  live: "進行中",
+  finished: "終了",
+  cut_short: "中断",
+  unknown: "判定不可",
+};
 
 const SORT_LABELS: Record<SortKey, string> = {
   diamonds: "コイン数",
@@ -185,8 +223,15 @@ export default function AnalyticsPage() {
   const [filter, setFilter] = useState("");
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [historyData, setHistoryData] = useState<HistoryData | null>(null);
+  const [battlesData, setBattlesData] = useState<BattlesData | null>(null);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [battlesLoading, setBattlesLoading] = useState(false);
+  const [expandedBattleId, setExpandedBattleId] = useState<string | null>(null);
+  const [contributorsByBattleId, setContributorsByBattleId] = useState<
+    Record<string, BattleContributorsData | undefined>
+  >({});
+  const [contributorsLoading, setContributorsLoading] = useState<string | null>(null);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -253,13 +298,56 @@ export default function AnalyticsPage() {
     }
   }, [customStart, customEnd]);
 
+  const fetchBattles = useCallback(async (p: Period, d: string, silent = false) => {
+    if (!silent) setBattlesLoading(true);
+    try {
+      let url: string;
+      if (p === "custom") {
+        url = `/api/analytics/battles?startDatetime=${encodeURIComponent(new Date(customStart).toISOString())}&endDatetime=${encodeURIComponent(new Date(customEnd).toISOString())}`;
+      } else {
+        url = `/api/analytics/battles?period=${p}&date=${d}`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const json = await res.json();
+        setBattlesData(json);
+        if (typeof json.verified === "boolean") setVerified(json.verified);
+        setLastRefreshed(new Date());
+      }
+    } finally {
+      if (!silent) setBattlesLoading(false);
+    }
+  }, [customStart, customEnd]);
+
+  const toggleBattleExpand = useCallback(async (battleId: string) => {
+    if (expandedBattleId === battleId) {
+      setExpandedBattleId(null);
+      return;
+    }
+    setExpandedBattleId(battleId);
+    if (contributorsByBattleId[battleId]) return;
+
+    setContributorsLoading(battleId);
+    try {
+      const res = await fetch(`/api/analytics/battles/${encodeURIComponent(battleId)}/contributors`);
+      if (res.ok) {
+        const json = await res.json();
+        setContributorsByBattleId((prev) => ({ ...prev, [battleId]: json }));
+      }
+    } finally {
+      setContributorsLoading(null);
+    }
+  }, [expandedBattleId, contributorsByBattleId]);
+
   useEffect(() => {
     if (viewMode === "ranking") {
       fetchData(period, currentDate);
-    } else {
+    } else if (viewMode === "history") {
       fetchHistory(period, currentDate);
+    } else {
+      fetchBattles(period, currentDate);
     }
-  }, [period, currentDate, viewMode, fetchData, fetchHistory]);
+  }, [period, currentDate, viewMode, fetchData, fetchHistory, fetchBattles]);
 
   useEffect(() => {
     if (!showCalendar) return;
@@ -276,6 +364,8 @@ export default function AnalyticsPage() {
   fetchDataRef.current = fetchData;
   const fetchHistoryRef = useRef(fetchHistory);
   fetchHistoryRef.current = fetchHistory;
+  const fetchBattlesRef = useRef(fetchBattles);
+  fetchBattlesRef.current = fetchBattles;
   const viewModeRef = useRef(viewMode);
   viewModeRef.current = viewMode;
 
@@ -296,8 +386,10 @@ export default function AnalyticsPage() {
         console.log("[poll] triggering data refresh");
         if (viewModeRef.current === "ranking") {
           fetchDataRef.current(period, currentDate, true);
-        } else {
+        } else if (viewModeRef.current === "history") {
           fetchHistoryRef.current(period, currentDate, true);
+        } else {
+          fetchBattlesRef.current(period, currentDate, true);
         }
       }
     }
@@ -356,6 +448,13 @@ export default function AnalyticsPage() {
 
     return events;
   }, [historyData, filter, historySortKey, historySortOrder]);
+
+  const filteredBattles = useMemo(() => {
+    if (!battlesData) return [];
+    const q = filter.toLowerCase();
+    if (!q) return battlesData.battles;
+    return battlesData.battles.filter((b) => b.opponent?.tiktokId?.toLowerCase().includes(q));
+  }, [battlesData, filter]);
 
   const giftNameSuggestions = useMemo(() => {
     if (!historyData) return [];
@@ -492,7 +591,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
-            {(["ranking", "history"] as ViewMode[]).map((m) => (
+            {(["ranking", "history", "battles"] as ViewMode[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
@@ -502,7 +601,7 @@ export default function AnalyticsPage() {
                     : "text-gray-400 hover:text-white"
                 }`}
               >
-                {m === "ranking" ? "ユーザー別コイン数" : "ギフト履歴"}
+                {m === "ranking" ? "ユーザー別コイン数" : m === "history" ? "ギフト履歴" : "バトル履歴"}
               </button>
             ))}
           </div>
@@ -560,7 +659,13 @@ export default function AnalyticsPage() {
             </svg>
             <input
               type="text"
-              placeholder={viewMode === "history" ? "ユーザー・ギフト名で絞り込み..." : "ユーザーを絞り込み..."}
+              placeholder={
+                viewMode === "history"
+                  ? "ユーザー・ギフト名で絞り込み..."
+                  : viewMode === "battles"
+                    ? "対戦相手を絞り込み..."
+                    : "ユーザーを絞り込み..."
+              }
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="input-field pl-9 text-sm"
@@ -624,24 +729,26 @@ export default function AnalyticsPage() {
               </>
             )}
 
-            <button
-              onClick={() => {
-                if (viewMode === "ranking") {
-                  downloadCSV(sortedFiltered, period, currentDate);
-                } else {
-                  downloadHistoryCSV(filteredEvents, period, currentDate);
+            {viewMode !== "battles" && (
+              <button
+                onClick={() => {
+                  if (viewMode === "ranking") {
+                    downloadCSV(sortedFiltered, period, currentDate);
+                  } else {
+                    downloadHistoryCSV(filteredEvents, period, currentDate);
+                  }
+                }}
+                disabled={
+                  verified === false ||
+                  (viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0)
                 }
-              }}
-              disabled={
-                verified === false ||
-                (viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0)
-              }
-              className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
-              title={verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
-            >
-              <DownloadIcon />
-              <span className="hidden sm:inline">CSV</span>
-            </button>
+                className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
+                title={verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
+              >
+                <DownloadIcon />
+                <span className="hidden sm:inline">CSV</span>
+              </button>
+            )}
 
             {viewMode === "ranking" && (
               <button
@@ -709,6 +816,21 @@ export default function AnalyticsPage() {
               合計{" "}
               {filteredEvents.reduce((s, e) => s + e.totalDiamonds, 0).toLocaleString()}{" "}
               コイン
+            </span>
+            {lastRefreshed && (
+              <span className="ml-auto">
+                更新 {lastRefreshed.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
+          </div>
+        )}
+
+        {viewMode === "battles" && battlesData && (
+          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+            <span>
+              {filter
+                ? `${filteredBattles.length} / ${battlesData.battles.length} 件`
+                : `${battlesData.battles.length} 件`}
             </span>
             {lastRefreshed && (
               <span className="ml-auto">
@@ -935,6 +1057,131 @@ export default function AnalyticsPage() {
                   <option key={c} value={c} />
                 ))}
               </datalist>
+            </div>
+          )
+        )}
+
+        {/* Battles Table */}
+        {viewMode === "battles" && (
+          battlesLoading ? (
+            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+          ) : filteredBattles.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              {filter ? "一致するバトルなし" : "この期間のバトルなし"}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-gray-400">
+                    <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
+                    <th className="py-2.5 px-3 text-left">対戦相手</th>
+                    <th className="py-2.5 px-3 text-right">スコア</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap">状態</th>
+                    <th className="py-2.5 px-3 text-center w-10">貢献者</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBattles.map((battle) => {
+                    const expanded = expandedBattleId === battle.battleId;
+                    const contributors = contributorsByBattleId[battle.battleId];
+                    const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
+                    const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
+                    const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
+
+                    return (
+                      <Fragment key={battle.battleId}>
+                        <tr className="border-b border-border/50 hover:bg-white/[0.02] transition-colors">
+                          <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                            {formatEventTime(battle.startedAt, period)}
+                          </td>
+                          <td className="py-2 px-3">
+                            {battle.opponent === null ? (
+                              <span className="text-gray-500">対戦相手不明</span>
+                            ) : battle.opponent.count > 1 ? (
+                              <span className="text-gray-400">複数人バトル({battle.opponent.count + 1}人)</span>
+                            ) : battle.opponent.tiktokId ? (
+                              <span className="font-medium">@{battle.opponent.tiktokId}</span>
+                            ) : (
+                              <span className="text-gray-500">対戦相手不明</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                            {battle.selfScore === null ? (
+                              "-"
+                            ) : (
+                              <span className={win ? "text-brand font-semibold" : ""}>
+                                {Number(battle.selfScore).toLocaleString()}
+                              </span>
+                            )}
+                            {" / "}
+                            {battle.opponentScore === null ? (
+                              "-"
+                            ) : (
+                              <span className={lose ? "text-red-400 font-semibold" : ""}>
+                                {Number(battle.opponentScore).toLocaleString()}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
+                            <span
+                              className={
+                                battle.status === "live"
+                                  ? "text-brand"
+                                  : battle.status === "cut_short"
+                                    ? "text-red-400"
+                                    : "text-gray-400"
+                              }
+                            >
+                              {BATTLE_STATUS_LABELS[battle.status]}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              onClick={() => toggleBattleExpand(battle.battleId)}
+                              className="btn-ghost p-1.5"
+                              title={expanded ? "閉じる" : "貢献者一覧を見る"}
+                            >
+                              {expanded ? "▲" : "▼"}
+                            </button>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="border-b border-border/50 bg-white/[0.02]">
+                            <td colSpan={5} className="p-3">
+                              {contributorsLoading === battle.battleId ? (
+                                <div className="text-center py-4 text-gray-500 text-xs">読み込み中...</div>
+                              ) : !contributors || contributors.contributors.length === 0 ? (
+                                <div className="text-center py-4 text-gray-500 text-xs">
+                                  {contributors?.status === "unknown"
+                                    ? "バトル区間を確定できないため集計できません"
+                                    : "このバトルへの貢献者なし"}
+                                </div>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {contributors.contributors
+                                    .slice()
+                                    .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
+                                    .map((c) => (
+                                      <div key={c.uniqueId} className="flex items-center gap-2 text-xs">
+                                        <Avatar src={c.profileImageUrl} alt={c.nickname} />
+                                        <span className="font-medium truncate max-w-[160px]">{c.nickname}</span>
+                                        <span className="text-gray-500">@{c.uniqueId}</span>
+                                        <span className="ml-auto font-mono">
+                                          💎{c.totalDiamonds.toLocaleString()} ({c.giftCount}件)
+                                        </span>
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )
         )}
