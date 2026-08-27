@@ -25,6 +25,15 @@ export default function OverlaysHeader() {
           <span className="text-gray-400 font-medium text-sm">Overlays</span>
         </Link>
 
+        <Link
+          href="/overlays/settings"
+          className="btn-ghost text-xs shrink-0"
+          aria-label="設定"
+          title="設定"
+        >
+          ⚙️<span className="hidden sm:inline"> 設定</span>
+        </Link>
+
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="btn-ghost text-xs shrink-0"

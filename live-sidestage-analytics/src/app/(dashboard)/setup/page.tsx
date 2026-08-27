@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Step = "input" | "code_issued" | "verifying" | "verified" | "already_verified";
 
@@ -15,11 +16,19 @@ export default function SetupPage() {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [issuedApiKey, setIssuedApiKey] = useState("");
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [plan, setPlan] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/streamer/api-key")
       .then((r) => r.json())
       .then((data) => setHasApiKey(Boolean(data.hasApiKey)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/billing/subscription")
+      .then((r) => r.json())
+      .then((data) => setPlan(data.plan ?? "FREE"))
       .catch(() => {});
   }, []);
 
@@ -288,6 +297,16 @@ export default function SetupPage() {
           >
             {apiKeyLoading ? "処理中..." : hasApiKey ? "APIキーを再発行する" : "APIキーを発行する"}
           </button>
+        </div>
+
+        <div className="card space-y-3 mt-4">
+          <div>
+            <p className="text-sm text-gray-300 font-semibold">現在のプラン</p>
+            <p className="mt-1 text-lg font-bold text-brand">{plan ?? "…"}</p>
+          </div>
+          <Link href="/billing" className="btn-ghost block w-full text-center text-sm">
+            プランを管理する
+          </Link>
         </div>
       </div>
     </div>
