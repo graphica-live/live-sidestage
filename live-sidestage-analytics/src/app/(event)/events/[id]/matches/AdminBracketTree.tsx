@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MATCH_STATUS_CLASSES, MATCH_STATUS_LABELS } from "@/event/labels";
+import type { FeederFlowEdge } from "@/event/winner-feeders";
+import { FeederFlowOverlay } from "./FeederFlowOverlay";
 import type { MatchRow } from "./MatchManager";
 
 // 管理画面のトーナメント表(表モード)。公開ページの BracketTree.tsx と
@@ -61,10 +63,13 @@ function sameSlot(a: SwapSlotRef | null, b: SwapSlotRef): boolean {
 
 export function AdminBracketTree({
   matches,
+  feederFlows,
   onSelect,
   swap,
 }: {
   matches: MatchRow[];
+  /** 座標既定とずれている勝者フロー(接続の交換の矢印可視化専用)。 */
+  feederFlows: FeederFlowEdge[];
   onSelect: (matchId: string) => void;
   /** 編集モードのときだけ渡す。渡さなければ従来どおりの表示専用。 */
   swap?: SwapMode;
@@ -148,11 +153,17 @@ export function AdminBracketTree({
         <div style={{ width: treeSize.width * zoom, height: treeSize.height * zoom }}>
           <div
             ref={treeRef}
-            style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: "max-content" }}
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+              width: "max-content",
+              position: "relative",
+            }}
           >
             <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-            <div className="flex items-center pt-2">
+            {/* 東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
+            <div className="flex items-center pt-2" data-bracket-section="main">
               {hasWings && (
                 <MatchNode
                   round={roundCount - 1}
@@ -165,7 +176,7 @@ export function AdminBracketTree({
               )}
               {hasWings && <StraightConnector />}
 
-              <div className={`${CARD_W} shrink-0`}>
+              <div className={`${CARD_W} shrink-0`} data-bracket-slot={key(roundCount, 0)}>
                 <MatchCardOrEmpty
                   match={index.get(key(roundCount, 0))}
                   mirror={false}
@@ -190,6 +201,8 @@ export function AdminBracketTree({
             {blocks.length > 0 && (
               <PlacementSection blocks={blocks} index={index} onSelect={onSelect} />
             )}
+
+            <FeederFlowOverlay containerRef={treeRef} flows={feederFlows} bounds={treeSize} />
           </div>
         </div>
       </div>
@@ -266,7 +279,7 @@ function MatchNode({
   minRound?: number;
 }) {
   const card = (
-    <div className={`${CARD_W} shrink-0`}>
+    <div className={`${CARD_W} shrink-0`} data-bracket-slot={key(round, position)}>
       <MatchCardOrEmpty
         match={index.get(key(round, position))}
         mirror={mirror}
@@ -366,7 +379,7 @@ function PlacementSection({
         {blocks.map((block) => (
           <div key={block.depth}>
             <div className="mb-2 text-xs font-semibold text-gray-300">{block.rank}位決定戦</div>
-            <div className="flex items-center">
+            <div className="flex items-center" data-bracket-section={`placement-${block.depth}`}>
               <MatchNode
                 round={block.root.round}
                 position={block.root.position}
@@ -457,10 +470,10 @@ function MatchCardOrEmpty({
       {/* 接続(winnerFeeders)が座標既定を上書きしている枠であることを示す。
           この座標を結ぶ接続線は元の位置のままなので、実際のフローと食い違う
           ("表示上の嘘")。線を描き直す代わりに、このバッジで明示する。 */}
-      {match.winnerFeeders && (
+      {match.hasRawWinnerFeeders && (
         <span
           className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-amber-300/90"
-          title="接続が変更されています。この枠に描かれている接続線は実際のフローと異なります。"
+          title="接続が変更されています。黄色の破線矢印が実際の勝ち上がり先です。"
         >
           接続変更
         </span>
@@ -560,7 +573,11 @@ function SideRow({
   } ${mirror ? "flex-row-reverse" : ""}`;
 
   if (!swap) {
-    return <div className={base}>{content}</div>;
+    return (
+      <div className={base} data-bracket-side={side.sideIndex}>
+        {content}
+      </div>
+    );
   }
 
   const ref: SwapSlotRef = { matchId: match.id, sideIndex: side.sideIndex };
@@ -586,6 +603,7 @@ function SideRow({
     <div
       role="button"
       tabIndex={grabbable || acceptsDrop ? 0 : -1}
+      data-bracket-side={side.sideIndex}
       aria-label={`${match.roundLabel} ${side.empty ? emptyLabel : side.label}`}
       title={
         grabbable

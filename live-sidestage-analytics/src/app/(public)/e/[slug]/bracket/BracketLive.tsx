@@ -82,6 +82,8 @@ export function BracketLive({
       key={bracket.roundCount}
       roundCount={bracket.roundCount}
       matches={bracket.matches}
+      // ローリングデプロイ中、旧インスタンスの応答には `feederFlows` が無い可能性がある。
+      feederFlows={bracket.feederFlows ?? []}
     />
   );
 }

@@ -28,6 +28,7 @@ import {
   type PlacementRound,
 } from "@/event/bracket";
 import { isStartedMatch } from "@/event/match-status";
+import type { FeederFlowEdge } from "@/event/winner-feeders";
 import { AdminBracketTree, type SwapSlotRef } from "./AdminBracketTree";
 import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
 import { DestroyBracketDialog, type BracketSummary } from "./DestroyBracketDialog";
@@ -136,6 +137,15 @@ export type MatchRow = {
     slots: [{ round: number; position: number }, { round: number; position: number }];
     changedAt: string;
   } | null;
+  /**
+   * `rules` に `winnerFeeders` キーが存在するか(形式の正否を問わない)。
+   *
+   * **`winnerFeeders !== null` とは区別する。** `winnerFeeders` は不正な形式(ok:false)を
+   * 表示に倒さず `null` に丸めているため、それだけで判定すると壊れたデータのときに
+   * 「接続をリセット」導線ごと消えてしまう(葉スワップ側は生キーの有無で拒否するため、
+   * リセットせずに抜け出す手段がなくなる)。
+   */
+  hasRawWinnerFeeders: boolean;
   /**
    * バトルスコアが出るはずの対戦か(`detectedBattleId` があり `canShowTiktokScore` を通る)。
    *
@@ -393,6 +403,7 @@ export function MatchManager({
   winCondition,
   eventPlacementDepth,
   feederSwapEnabled,
+  feederFlows,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -422,6 +433,12 @@ export function MatchManager({
    * このUI導線自体を出さない(`src/event/CLAUDE.md` のデプロイ計画を参照)。
    */
   feederSwapEnabled: boolean;
+  /**
+   * 座標既定とずれている勝者フロー(=「接続の交換」で実効的に変わった辺)。
+   * 黄色破線矢印の可視化専用で、feature flagは見ない — フラグをオフへ戻した後も、
+   * 既存のoverrideがある限り表示は続ける(書き込みAPIだけが止まる)。
+   */
+  feederFlows: FeederFlowEdge[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -836,7 +853,9 @@ export function MatchManager({
     setFeederResetting(false);
   }
 
-  const hasFeederOverride = matches.some((m) => m.winnerFeeders !== null);
+  // `winnerFeeders !== null` ではなく生キーの有無で判定する(壊れたデータでもリセット
+  // 導線が消えないように。上の `hasRawWinnerFeeders` のコメントを参照)。
+  const hasFeederOverride = matches.some((m) => m.hasRawWinnerFeeders);
 
   async function send(
     url: string,
@@ -1372,6 +1391,7 @@ export function MatchManager({
           ) : (
             <AdminBracketTree
               matches={matches}
+              feederFlows={feederFlows}
               onSelect={setSelectedMatchId}
               swap={
                 swapping
