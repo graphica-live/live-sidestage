@@ -49,7 +49,10 @@ vi.mock("tiktok-live-connector", () => ({
 }));
 
 const emitOverlaySnapshotMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("./overlay", () => ({ emitOverlaySnapshot: emitOverlaySnapshotMock }));
+vi.mock("./overlay", () => ({
+  emitOverlaySnapshot: emitOverlaySnapshotMock,
+  emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
+}));
 
 // 無応答検知の閾値(WATCHDOG_SILENCE_MS = 60_000)より確実に大きい経過時間。
 const SILENCE_MS = 60_000;

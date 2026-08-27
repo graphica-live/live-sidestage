@@ -32,7 +32,14 @@ export type {
 
 export { generateOverlayToken, resolveStreamerIdByOverlayToken, ensureOverlayToken } from "./token";
 export { buildOverlaySnapshot } from "./contribution.server";
-export { emitOverlayUpdate, overlayRoom, __resetOverlayEmitStateForTest } from "./emit";
+export {
+  emitOverlayUpdate,
+  overlayRoom,
+  emitLikeMilestone,
+  emitTimerEvent,
+  __resetOverlayEmitStateForTest,
+} from "./emit";
+export type { LikeMilestoneEvent, TimerEvent, TimerRuntimePayload } from "./emit";
 
 import { emitOverlayUpdate } from "./emit";
 
@@ -42,4 +49,21 @@ import { emitOverlayUpdate } from "./emit";
 // この名前をモックしている。**消すと呼び出し側とテストの両方を書き換えることになる。**
 export function emitOverlaySnapshot(streamerId: string): Promise<void> {
   return emitOverlayUpdate(streamerId, "contribution");
+}
+
+// desktop 5ウィジェット移植で追加。「giftイベントが起きた」という既存の事実通知
+// (emitOverlay: true / notifyOverlayUpdate)の呼び先をこれに差し替えるだけで、
+// contributionに加えてcoin-list/top-giftも一緒に更新する。Worker→Webのプロトコルは
+// 変更しない(overlayKindsのようなリストをWorkerに持たせない)ことで、
+// 新Web稼働中に旧Workerが動いていても即座に効き、Webだけロールバックしても
+// contributionの更新が止まらない。
+export async function emitGiftDrivenOverlayUpdates(streamerId: string): Promise<void> {
+  // 現状は3kind分それぞれが独立にfetchDayGiftsする(3-0節の負荷注記)。
+  // 将来的に負荷が問題になれば、ここで1回だけfetchしてbuildSnapshotへ注入する形に
+  // 最適化する余地がある(初期実装ではシンプルさを優先)。
+  await Promise.all([
+    emitOverlayUpdate(streamerId, "contribution"),
+    emitOverlayUpdate(streamerId, "coin-list"),
+    emitOverlayUpdate(streamerId, "top-gift"),
+  ]);
 }

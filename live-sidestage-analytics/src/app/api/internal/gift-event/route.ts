@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendGiftLog, type GiftLogEntry } from "@/lib/tiktok-listener";
-import { emitOverlaySnapshot } from "@/lib/overlay";
+import { emitGiftDrivenOverlayUpdates } from "@/lib/overlay";
+import { applyLikeEventInProcess } from "@/lib/overlay/like.server";
 import {
   emitChatComment,
   emitChatFollow,
@@ -26,6 +27,8 @@ const MAX_STREAMER_IDS = 200;
 // TikTokのコンボは実際には数百程度だが、壊れた入力で巨大なdeltaが出ないよう上限を置く。
 const MAX_REPEAT_COUNT = 100_000;
 const MAX_DIAMOND_COUNT = 10_000_000;
+// Worker側で1秒コアレッシングしてから送られてくるlikeCount(合算値)の上限ガード。
+const MAX_LIKE_COUNT = 100_000;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= MAX_STRING_LENGTH;
@@ -98,6 +101,31 @@ function parseFollowEvent(value: unknown): Omit<ChatFollowInput, "streamerId"> |
   };
 }
 
+function parseLikeEvent(value: unknown): {
+  roomId: string;
+  uniqueId: string;
+  nickname: string;
+  profilePictureUrl: string | null;
+  likeCount: number;
+} | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+
+  if (!isNonEmptyString(v.roomId)) return null;
+  if (!isNonEmptyString(v.uniqueId)) return null;
+  if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
+  if (!isOptionalString(v.profilePictureUrl)) return null;
+  if (!isBoundedInt(v.likeCount, MAX_LIKE_COUNT)) return null;
+
+  return {
+    roomId: v.roomId,
+    uniqueId: v.uniqueId,
+    nickname: v.nickname,
+    profilePictureUrl: v.profilePictureUrl,
+    likeCount: v.likeCount,
+  };
+}
+
 function parseListenerEvent(value: unknown): Omit<ChatListenerInput, "streamerId"> | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
@@ -141,6 +169,7 @@ export async function POST(req: NextRequest) {
     chatGiftEvent?: unknown;
     chatFollowEvent?: unknown;
     listenerEvent?: unknown;
+    likeEvent?: unknown;
   } | null;
 
   if (!body) {
@@ -153,7 +182,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.emitOverlay && body.streamerId) {
-    await emitOverlaySnapshot(body.streamerId).catch((err) =>
+    await emitGiftDrivenOverlayUpdates(body.streamerId).catch((err) =>
       console.error("[internal/gift-event] overlay emit error:", err)
     );
   }
@@ -213,6 +242,20 @@ export async function POST(req: NextRequest) {
       });
       if (!delivered) return ioUnavailable();
     }
+  }
+
+  // いいね(desktop 5ウィジェット移植分)。streamerIdsは購読中の全員(streamerIdごとに
+  // 複製して呼ばない — LikeTallyはroomId軸で共有されるため、複製すると合計が
+  // 購読者数倍になる)。
+  if (body.likeEvent !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    const like = parseLikeEvent(body.likeEvent);
+    if (!streamerIds || !like) {
+      return NextResponse.json({ error: "Invalid likeEvent" }, { status: 400 });
+    }
+    await applyLikeEventInProcess({ streamerIds, ...like }).catch((err) =>
+      console.error("[internal/gift-event] like apply error:", err)
+    );
   }
 
   return NextResponse.json({ ok: true });

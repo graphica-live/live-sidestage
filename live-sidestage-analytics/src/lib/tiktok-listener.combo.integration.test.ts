@@ -44,7 +44,10 @@ vi.mock("tiktok-live-connector", () => ({
   }),
 }));
 
-vi.mock("./overlay", () => ({ emitOverlaySnapshot: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("./overlay", () => ({
+  emitOverlaySnapshot: vi.fn().mockResolvedValue(undefined),
+  emitGiftDrivenOverlayUpdates: vi.fn().mockResolvedValue(undefined),
+}));
 
 let seq = 0;
 function suffix() {

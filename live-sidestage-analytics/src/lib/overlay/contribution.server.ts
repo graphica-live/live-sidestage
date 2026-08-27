@@ -10,6 +10,7 @@ import {
   type OverlaySnapshot,
 } from "./contracts";
 import { jstDateKey, resolveOverlayDayKey } from "./day-key";
+import { fetchDayGifts } from "./gift-day";
 
 type ContributorTally = {
   uniqueId: string;
@@ -43,17 +44,7 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
   // 「貢献しきい値到達順」で並べるため、集計済みの合計ではなくギフト1件ずつを時系列で
   // 積み上げ、各ユーザーが初めて閾値を超えた瞬間(receivedAt)を qualifiedAt として記録する。
   // ギフトデータはTikTokアカウント(roomId)単位で共有される。表示設定はStreamer(閲覧者本人)から読む。
-  const gifts = await prisma.gift.findMany({
-    where: { roomId: streamer.roomId, dayKey },
-    orderBy: { receivedAt: "asc" },
-    select: {
-      uniqueId: true,
-      nickname: true,
-      profileImageUrl: true,
-      totalDiamonds: true,
-      receivedAt: true,
-    },
-  });
+  const gifts = await fetchDayGifts(streamer.roomId, dayKey);
 
   const tallies = new Map<string, ContributorTally>();
 

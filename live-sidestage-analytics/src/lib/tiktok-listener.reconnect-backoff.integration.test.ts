@@ -52,7 +52,10 @@ vi.mock("tiktok-live-connector", () => ({
 }));
 
 const emitOverlaySnapshotMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("./overlay", () => ({ emitOverlaySnapshot: emitOverlaySnapshotMock }));
+vi.mock("./overlay", () => ({
+  emitOverlaySnapshot: emitOverlaySnapshotMock,
+  emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
+}));
 
 async function createStreamer(tiktokId: string, emailPrefix: string) {
   const user = await prisma.user.create({

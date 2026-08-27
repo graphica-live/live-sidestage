@@ -3,7 +3,8 @@ import { ProxyAgent } from "proxy-agent";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
-import { emitOverlaySnapshot } from "./overlay";
+import { emitGiftDrivenOverlayUpdates } from "./overlay";
+import { applyLikeEventInProcess } from "./overlay/like.server";
 import {
   emitChatComment,
   emitChatFollow,
@@ -149,6 +150,15 @@ interface ListenerInstance {
   // (comboはdelta=0になるので元々弾かれる)。実データで1件確認済み。
   recentGiftMsgIds: Set<string>;
   recentGiftMsgIdOrder: string[];
+  // like版のdedup FIFO。desktop 5ウィジェット移植で追加。
+  recentLikeMsgIds: Set<string>;
+  recentLikeMsgIdOrder: string[];
+  // uniqueIdごとの1秒コアレッシングバッファ。likeは視聴者全員が連打するため、
+  // イベントごとに転送するとforwardToWebの共有キュー(同時4/待ち行列256)を占有し、
+  // 優先度の高いgiftイベントが落ちるリスクがある。likeCountは加算的な増分なので
+  // 合算しても無損失。
+  pendingLikes: Map<string, { uniqueId: string; nickname: string; profilePictureUrl: string | null; likeCount: number }>;
+  likeFlushTimer: NodeJS.Timeout | null;
 }
 
 // ack未達等によるTikTok側の再送バッチは、盛り上がっている配信だと直近のコメントとの間隔が
@@ -158,6 +168,12 @@ const CHAT_DEDUP_CACHE_SIZE = 3000;
 
 // ギフトはコメントよりずっと流量が少ないので、同じ再送バッチを覆うのに必要な枠も小さい。
 const GIFT_DEDUP_CACHE_SIZE = 1000;
+
+// likeはchat並み以上に流量が多いので、CHAT_DEDUP_CACHE_SIZEと同水準にする。
+const LIKE_DEDUP_CACHE_SIZE = 3000;
+
+// likeイベントをuniqueIdごとに合算してから転送するまでの待機時間。
+const LIKE_COALESCE_WINDOW_MS = 1000;
 
 // msgIdのFIFOキャッシュ。未登録なら記録してtrueを返し、既に入っていれば(=再送)falseを返す。
 function rememberMsgId(
@@ -461,7 +477,7 @@ async function notifyGiftLog(logEntry: GiftLogEntry) {
 
 async function notifyOverlayUpdate(streamerId: string) {
   if (!isWorkerProcess) {
-    emitOverlaySnapshot(streamerId).catch((err) => console.error("[overlay] emit error:", err));
+    emitGiftDrivenOverlayUpdates(streamerId).catch((err) => console.error("[overlay] emit error:", err));
     return;
   }
   await forwardToWeb({ streamerId, emitOverlay: true });
@@ -487,6 +503,25 @@ async function notifyChatGift(streamerIds: string[], gift: Omit<ChatGiftInput, "
     return;
   }
   await forwardToWeb({ streamerIds, chatGiftEvent: gift });
+}
+
+// notifyChatGiftと同型 — 1イベント(コアレッシング済みの合算値)につき1リクエスト。
+// **streamerIdごとに複製して呼んではいけない**(LikeTallyはroomId軸で共有されるため、
+// 複製すると合計が購読者数倍になる)。
+async function notifyLikeEvent(
+  streamerIds: string[],
+  roomId: string,
+  like: { uniqueId: string; nickname: string; profilePictureUrl: string | null; likeCount: number }
+) {
+  if (streamerIds.length === 0) return;
+
+  if (!isWorkerProcess) {
+    applyLikeEventInProcess({ streamerIds, roomId, ...like }).catch((err) =>
+      console.error("[like] apply error:", err)
+    );
+    return;
+  }
+  await forwardToWeb({ streamerIds, likeEvent: { roomId, ...like } });
 }
 
 async function notifyChatFollow(streamerIds: string[], follow: Omit<ChatFollowInput, "streamerId">) {
@@ -1273,6 +1308,40 @@ async function connectAndAttach(
   conn.on("social", markAlive);
   conn.on("like", markAlive);
 
+  // Like数一覧/Like貢献通知(desktop 5ウィジェット移植)向け。likeCountは「このtickでの増分」
+  // であって累計(totalLikeCount)ではない点に注意。uniqueIdごとに1秒コアレッシングしてから
+  // まとめて転送する(理由はLIKE_COALESCE_WINDOW_MSの定義コメント参照)。
+  conn.on("like", (data: Record<string, unknown>) => {
+    const msgId = resolveMsgId(data);
+    if (msgId && !rememberMsgId(inst.recentLikeMsgIds, inst.recentLikeMsgIdOrder, msgId, LIKE_DEDUP_CACHE_SIZE)) {
+      return; // プロセス内再送のみ弾く(非金銭的データのためgiftほど厳密にはしない)
+    }
+    const uniqueId = String(data.uniqueId || "");
+    const likeCount = Math.max(0, Number(data.likeCount) || 0);
+    if (!uniqueId || likeCount <= 0) return;
+
+    const existing = inst.pendingLikes.get(uniqueId);
+    const nickname = String(data.nickname || "");
+    const profilePictureUrl = data.profilePictureUrl ? String(data.profilePictureUrl) : null;
+    inst.pendingLikes.set(uniqueId, {
+      uniqueId,
+      nickname: nickname || existing?.nickname || "",
+      profilePictureUrl: profilePictureUrl || existing?.profilePictureUrl || null,
+      likeCount: (existing?.likeCount ?? 0) + likeCount,
+    });
+
+    if (!inst.likeFlushTimer) {
+      inst.likeFlushTimer = setTimeout(() => {
+        inst.likeFlushTimer = null;
+        const batch = Array.from(inst.pendingLikes.values());
+        inst.pendingLikes.clear();
+        for (const like of batch) {
+          notifyLikeEvent(Array.from(inst.subscriberIds), roomId, like);
+        }
+      }, LIKE_COALESCE_WINDOW_MS);
+    }
+  });
+
   // バトル中はチャットが流れない配信もあるので、バトルのイベントもwatchdogの生存判定に含める。
   conn.on("linkMicBattle", (data: unknown) => {
     markAlive();
@@ -1620,6 +1689,10 @@ export async function startListener(
     recentChatMsgIdOrder: [],
     recentGiftMsgIds: new Set(),
     recentGiftMsgIdOrder: [],
+    recentLikeMsgIds: new Set(),
+    recentLikeMsgIdOrder: [],
+    pendingLikes: new Map(),
+    likeFlushTimer: null,
   };
 
   listeners.set(roomId, inst);
