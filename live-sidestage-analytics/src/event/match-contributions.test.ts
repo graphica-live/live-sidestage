@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildSlotRows,
-  MAX_MATCH_LISTENER_ROWS,
-  type Bucket,
-  type SlotInput,
-} from "./match-contributions";
+import { buildSlotRows, type Bucket, type SlotInput } from "./match-contributions";
 import type { ListenerProfile } from "./analytics-db";
 
 /** ダイヤ d を等倍(x1.00)で積んだバケツ。 */
@@ -83,29 +78,19 @@ describe("buildSlotRows", () => {
     expect(rows[0].listeners.map((l) => l.uniqueId)).toEqual(["adam", "zoe"]);
   });
 
-  it("上位で打ち切っても枠の合計は全量から出す", () => {
+  it("リスナーが多くても打ち切らず全件返す", () => {
+    const listenerCount = 25;
     const listeners = new Map<string, Bucket>();
-    for (let i = 0; i < MAX_MATCH_LISTENER_ROWS + 5; i++) {
-      // 100, 200, ... と増やして、打ち切られるのが下位になるようにする。
+    for (let i = 0; i < listenerCount; i++) {
       listeners.set(`u${String(i).padStart(2, "0")}`, bucket(BigInt((i + 1) * 100), 2));
     }
     const total = [...listeners.values()].reduce((sum, b) => sum + b.diamonds, 0n);
 
     const rows = buildSlotRows([slot("p1", 0)], new Map([["p1", listeners]]), NO_PROFILES);
 
-    expect(rows[0].listeners).toHaveLength(MAX_MATCH_LISTENER_ROWS);
-    expect(rows[0].truncated).toBe(true);
+    expect(rows[0].listeners).toHaveLength(listenerCount);
     expect(rows[0].diamonds).toBe(total.toString());
-    expect(rows[0].giftCount).toBe((MAX_MATCH_LISTENER_ROWS + 5) * 2);
-  });
-
-  it("打ち切りが起きなければ truncated は false", () => {
-    const rows = buildSlotRows(
-      [slot("p1", 0)],
-      new Map([["p1", new Map([["alice", bucket(100n)]])]]),
-      NO_PROFILES
-    );
-    expect(rows[0].truncated).toBe(false);
+    expect(rows[0].giftCount).toBe(listenerCount * 2);
   });
 
   it("ギフトが1件も無い枠も0で載せる（横並びの列が消えない）", () => {
@@ -121,7 +106,6 @@ describe("buildSlotRows", () => {
       diamonds: "0",
       points: "0.00",
       giftCount: 0,
-      truncated: false,
     });
     expect(rows[1].listeners).toEqual([]);
   });

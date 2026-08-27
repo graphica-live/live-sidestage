@@ -224,7 +224,7 @@ function SlotColumn({
       {slot.listeners.length === 0 ? (
         <p className="mt-2 text-xs text-gray-600">この区間のギフトなし</p>
       ) : (
-        <ol className="mt-2 space-y-1">
+        <ol className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
           {slot.listeners.map((listener, index) => (
             <li key={listener.uniqueId} className="flex items-center gap-1.5 text-xs">
               <span className="w-4 shrink-0 text-right text-gray-500">{index + 1}</span>
@@ -249,10 +249,6 @@ function SlotColumn({
             </li>
           ))}
         </ol>
-      )}
-
-      {slot.truncated && (
-        <p className="mt-1 text-xs text-gray-600">上位 {slot.listeners.length} 件</p>
       )}
     </div>
   );
