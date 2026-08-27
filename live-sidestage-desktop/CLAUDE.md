@@ -1,21 +1,3 @@
-## Commit Rule
-
-**MANDATORY**: 修正・機能追加・設定変更が完了するたびに即座に `git commit` すること。スキップ禁止。
-
-- prefix: `fix:` / `feat:` / `chore:` / `refactor:`
-- メッセージは変更内容を端的に記述
-- 複数ファイルの変更でも、論理的に1単位なら1コミットでOK
-
-## Build Rule
-
-`npm run build:windows` 実行前に node/electron プロセスを全停止すること。
-
-```powershell
-Get-Process | Where-Object { $_.Name -match '^(electron|node)$' } | Stop-Process -Force
-```
-
-**Why:** `better_sqlite3.node` がロックされたままだと gyp clean で `EPERM: operation not permitted, unlink` が出てビルド失敗する。
-
 ## Widget Preview Background Rule
 
 新規ウィジェットに iframe プレビューを追加するとき:
@@ -63,46 +45,6 @@ npm run build:publish       # ビルド + Cloudflare R2 へ publish
 
 - analytics との連携は `GET /api/analytics/monthly-contributors?month=YYYY-MM`（[backend/lib/monthly-mvp-client.js](backend/lib/monthly-mvp-client.js)）。baseUrl と apiKey は称号ウィジェット設定として SQLite に保存され、先月の MVP/TOP5 を取り込む
 - モノレポ化以前は `C:\dev\tiktok-app` にあった。`.mcp.json` の `cwd` と `.claude/settings.json` の hooks が旧パスを指したままで実在しない（code-review-graph MCP はこの状態では動かない）
-
-## 並行作業ルール（複数タブ）
-
-**コード変更を伴うタスクを開始する際は、ユーザーに確認せず自動的に `EnterWorktree` ツールを使って作業ブランチを分離すること。** 同一ディレクトリを複数タブで同時編集すると、Editツールの内容衝突や意図しない上書きが発生するため。
-
-- `EnterWorktree` は `.claude/worktrees/` 配下に新規ブランチを作成しセッションの作業ディレクトリを切り替える。`node_modules` は設定済みのsymlinkDirectoriesにより自動共有される
-- 単純な確認・調査のみのタスク（コード変更なし）では不要
-- ユーザーからの明示的な指示がなくても、このCLAUDE.mdの指示によりworktree使用がトリガーされる（EnterWorktreeツールの仕様）
-
-### 片付け（ExitWorktree）
-
-`ExitWorktree` はツール仕様上「ユーザーが明示的に頼んだ時のみ呼ぶ」制約があり、CLAUDE.mdの指示だけでは自動発動しない（未コミット変更やブランチを誤って消さないための安全策）。そのためユーザーに確認なしで黙って削除することはしない。代わりに以下を徹底する：
-
-- コミット完了・PR作成・マージ完了など「このworktreeでの作業が一区切りついた」タイミングを検知したら、ユーザーに聞かれる前にこちらから `keep`/`remove` をワンクリックで選べる形で確認を出す（ユーザーが「片付けて」と言うのを待たない）
-- タブを閉じるだけの場合はセッション終了時にkeep/removeの確認が自動で出る仕様のため、追加対応は不要
-
-**Why:** 複数タブが同じディレクトリを共有すると、ファイル競合や意図しない上書きが起きる。タスク開始時に自動でworktree分離すれば、ユーザーが毎回コマンドを打つ必要がなく、他タブの完了を待たずに真の並行作業ができる。
-
-### worktree作成に失敗した場合
-
-`EnterWorktree`が失敗した場合（すでにworktreeセッション内にいる／新規ブランチ名が既存ブランチと衝突している／対象worktreeが`locked`状態、など）、**黙ってmainを直接編集しない**。
-
-- 失敗を検知したら `AskUserQuestion` でユーザーに状況（失敗理由・衝突したブランチ名やlocked中のworktreeパスなど）を伝え、対応方針を確認する。選択肢の例:
-  - 別名で `EnterWorktree` を再試行する
-  - 関連する既存worktreeに `path` 指定で切り替えて作業する
-  - 今回に限り明示的な許可を得た上でmainを直接編集する
-- ユーザーの回答を待たずにmain編集へフォールバックしてはならない。
-
-### マージキュー方式
-
-worktreeでのタスクが完了（コミット済み）しても、mainへは**即マージしない**。代わりに「マージキュー」に積んでおき、ユーザーからのマージ指示があった時点でキューをまとめて消化する。
-
-- キューは `.claude/merge-queue.md` で管理する（存在しなければ作成）。1行1エントリで `- <branch> — <タスク概要> (<完了日時>)` の形式。
-- worktreeタスクのコミットが完了したら、mainのcheckoutでマージする代わりに、このキューファイルにエントリを追加する。
-- ユーザーが「マージして」「キュー消化して」「たまってるやつマージして」等の指示を出したら、キューにあるブランチを上から順に main の checkout から `git merge --no-ff <branch> -m "..."` でマージし、成功したエントリをキューファイルから削除する。
-- 各マージ成功後、worktreeのkeep/remove確認をAskUserQuestionで出す（[片付け（ExitWorktree）](#片付けexitworktree)のルールに従う）。
-- コンフリクトなど消化中に問題が起きたら、そのエントリはキューに残したまま処理を止めてユーザーに報告する。
-- ユーザーが特定タスクで「今回はすぐマージして」等、明示的に即時マージを指示した場合はキューを経由せずその場でマージしてよい（例外）。
-
-**Why:** 複数タブで並行してworktreeタスクを進めていると、都度mainへ自動マージするとタイミングによってはユーザーが把握していないマージが積み重なる。マージ作業をユーザーの明示的な指示に紐づけることで、いつ・何がmainに入るかをユーザー側でコントロールできるようにする。
 
 ## フロントエンドの完了条件
 
