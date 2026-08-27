@@ -87,12 +87,7 @@ function MatchSides({ detail }: { detail: PublicMatchDetail }) {
   return (
     <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
       {detail.sides.map((side) => (
-        <div
-          key={side.id}
-          className={`min-w-0 border p-2.5 sm:p-3 ${CARD_CLIP} ${
-            side.isWinner ? "border-brand/50 bg-brand/[0.06]" : "border-white/10 bg-panel"
-          }`}
-        >
+        <div key={side.id} className={`min-w-0 border border-white/10 bg-panel p-2.5 sm:p-3 ${CARD_CLIP}`}>
           <div className="flex items-center gap-1.5 sm:gap-2">
             {side.entrants.slice(0, 4).map((e) => (
               // eslint-disable-next-line @next/next/no-img-element

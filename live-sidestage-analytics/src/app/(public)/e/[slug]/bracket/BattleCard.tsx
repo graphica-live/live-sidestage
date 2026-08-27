@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { BattleContributionSlot, BattleDetail, PublicMatchDetail } from "@/event/match-detail";
 import { formatJstStamp } from "@/event/datetime";
 import { formatNumber } from "@/event/public-event";
-import { CARD_CLIP } from "../battle-ui";
+import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 
 // バトル内訳カード。スマホでは対戦相手2枚を横並びにしつつ、貢献者一覧までは
 // 横に並べる余白が無いため、対戦相手カードをタップして選択中のサイドの貢献者一覧だけを
@@ -56,13 +56,20 @@ export function BattleCard({
                   type="button"
                   onClick={() => sideIndex !== null && setSelectedSideIndex(sideIndex)}
                   aria-pressed={isSelected}
-                  className={`min-w-0 border p-2.5 text-left sm:cursor-default ${CARD_CLIP} ${
-                    battle.calculatedWinnerSideId === s.sideId
-                      ? "border-brand/50 bg-brand/[0.06]"
-                      : "border-white/10 bg-black/20"
-                  } ${isSelected ? "ring-1 ring-inset ring-brand/60 sm:ring-0" : ""}`}
+                  className={`min-w-0 border border-white/10 bg-black/20 p-2.5 text-left sm:cursor-default ${CARD_CLIP} ${
+                    isSelected ? "ring-1 ring-inset ring-brand/60 sm:ring-0" : ""
+                  }`}
                 >
-                  <p className="truncate text-sm font-medium">{sideName(s.sideId)}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="min-w-0 flex-1 truncate text-sm font-medium">{sideName(s.sideId)}</p>
+                    {battle.calculatedWinnerSideId === s.sideId && (
+                      <span
+                        className={`shrink-0 border border-brand/50 bg-brand/10 px-1.5 py-0.5 text-[9px] font-bold text-brand ${TAG_SKEW}`}
+                      >
+                        <span className={`inline-block ${TAG_UNSKEW}`}>勝者</span>
+                      </span>
+                    )}
+                  </div>
                   {battle.tiktokScores[s.sideId] && (
                     <p className="font-mono text-base font-bold tabular-nums text-white">
                       {formatNumber(battle.tiktokScores[s.sideId]!)}{" "}
