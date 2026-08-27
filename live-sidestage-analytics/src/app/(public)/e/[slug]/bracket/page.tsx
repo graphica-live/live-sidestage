@@ -50,9 +50,7 @@ export default async function BracketPage({ params }: { params: { slug: string }
       ) : (
         <>
           <p className="mt-2 text-sm text-gray-400">
-            勝敗は当サービスが受信したギフトのダイヤで決まる。バトル中に投げられたぶんが対象。
-            カードの数字は<strong className="font-semibold text-gray-300">TikTok側のバトルスコア</strong>
-            で、勝敗の判定に使う集計とは別物。
+            最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。
           </p>
 
           {/* 決勝を中央に置き、左右へブロックを分けて描く。狭い画面では初期表示を
