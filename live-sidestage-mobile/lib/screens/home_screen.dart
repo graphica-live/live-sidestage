@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
+import '../core/api_client.dart' show LiveAnalyticsApi, giftLabelJaMap;
 import '../core/app_config_store.dart';
 import '../core/comment_feed.dart' show SocketStatus;
 import '../core/feature_status.dart';
+import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
 import '../models/comment.dart';
+import 'gift_sound_edit_screen.dart' show fetchGiftCandidatesWithRefresh;
 import 'tabs/settings_tab.dart';
 import 'tabs/sound_tab.dart';
 import 'tabs/tts_tab.dart';
@@ -110,6 +113,32 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     FlutterForegroundTask.addTaskDataCallback(_onTaskData);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGiftNames());
+  }
+
+  /// 起動時に一度だけ、サーバーからギフトの日本語名を取り直して端末へ貯める。
+  ///
+  /// **保存済みの効果音設定を日本語表示へ移行するのはこの経路。** ギフトピッカーを
+  /// 開かないユーザーでも、アプリを起動するだけで一覧が日本語になる。
+  ///
+  /// 失敗は無視する。表示を良くするためだけの取得なので、貯めてあるぶんで描いて
+  /// 次の起動かピッカーで取り直せばよい。
+  Future<void> _refreshGiftNames() async {
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+    try {
+      final gifts = await fetchGiftCandidatesWithRefresh(
+        api: LiveAnalyticsApi(),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      await GiftNameJa.updateFromServer(giftLabelJaMap(gifts));
+      if (!mounted) return;
+      setState(() {}); // 貯めた日本語名で一覧を描き直す
+    } catch (_) {
+      // 通信断・401・サーバー障害。英語表記のままで動く。
+    }
   }
 
   // ── サービスの状態と設定フラグの同期 ────────────────────────────────────────

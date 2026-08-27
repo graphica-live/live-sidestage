@@ -16,6 +16,10 @@
 //    既存行の更新時には発火しないため、これを怠ると MAX(fetchedAt) が永久に進まない
 //  - `imageUrl`(ピッカーに出すギフトのアイコン)は検証を通ったURLだけ入れる。取れなくても
 //    エントリは捨てない。TTL内でも1回だけ前倒しで取り直す条件があるので shouldBackfillImages() を参照
+//  - **`gift/list/` を英語版と日本語版の2回叩く。** 日本語表示名(`labelJa`)をTikTok公式から
+//    取るため。`name`(一致キー)と `label` は必ず英語版から採り、日本語は `labelJa` にだけ入れる。
+//    ここを混ぜると効果音が無言で鳴らなくなる — 詳細は mergeLocalizedCatalog() のコメント。
+//    日本語版の取得は表示にしか効かないので、失敗してもカタログ更新は通す
 import { WebcastPushConnection } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
 import { Prisma } from "@prisma/client";
@@ -53,6 +57,28 @@ export interface CatalogEntry {
   imageUrl: string | null;
 }
 
+/** [CatalogEntry] に日本語表示名を足したもの。DBへ書くのはこの形。 */
+export interface LocalizedCatalogEntry extends CatalogEntry {
+  /**
+   * TikTok公式の日本語表示名。**表示専用で、一致キーには絶対に使わない。**
+   * 日本語版の取得に失敗した / 日本語版に存在しないgiftIdでは null。
+   */
+  labelJa: string | null;
+}
+
+/**
+ * `gift/list/` を叩くときのロケール。
+ *
+ * - `default`: 言語パラメータを渡さない(connectorの既定 = en)。**`name` / `label` の供給元**
+ * - `ja`: `webcast_language: "ja-JP"`。**`labelJa` の供給元**
+ *
+ * 実測(2026-08-27): 日本語名を返させる条件は `webcast_language=ja-JP` ただ1つ。
+ * `ja`(2文字)では効かず、`app_language` / `browser_language` / `region` / `tz_name` /
+ * `Accept-Language` ヘッダ / Cookie / room_id はいずれも無関係。地域にも依存しない
+ * (Railway本番のSingaporeから `region=DE` のままでも日本語が返る)。
+ */
+export type CatalogLocale = "default" | "ja";
+
 /** カタログ取得に使う部屋の情報。使い捨て接続のconstructorへそのまま渡す。 */
 export interface GiftCatalogSource {
   tiktokId: string;
@@ -61,7 +87,7 @@ export interface GiftCatalogSource {
 }
 
 export interface GiftCatalogDeps {
-  fetchGifts: (source: GiftCatalogSource) => Promise<unknown>;
+  fetchGifts: (source: GiftCatalogSource, locale: CatalogLocale) => Promise<unknown>;
   now: () => number;
 }
 
@@ -160,6 +186,31 @@ export function normalizeCatalogEntries(raw: unknown): CatalogEntry[] {
   return Array.from(byGiftId.values()).sort((a, b) => a.giftId - b.giftId);
 }
 
+/**
+ * 英語版と日本語版のカタログを giftId で突き合わせる。
+ *
+ * **英語版が土台。** `name`(一致キー) と `label` は必ず英語版から採る。ここを日本語に
+ * すると、効果音の一致キーが「バラ」になる一方で `chat:gift` は英語小文字の `"rose"` を
+ * 送り続けるので、**例外もログも出ないまま全ユーザーの効果音が鳴らなくなる**
+ * (LIVEのgiftイベントはWSのprotobuf由来で英語固定。実機で確認済み)。
+ *
+ * 突合の規則:
+ *  - 両方にある → `labelJa` は日本語版の表記
+ *  - 英語版のみ → `labelJa` は null。2回の取得は別接続・別時刻なので集合ずれは構造的に起きる
+ *  - 日本語版のみ → **捨てる**。英語の一致キーが作れないので、入れても効果音に結び付けられない
+ *
+ * 日本語版が英語と同じ文字列でも null にせずそのまま入れる。日本語環境でも英語表記のままの
+ * ギフト(`GG` / `TikTok Universe+` など実測20件)で、モバイルが `giftLabel` を持たない
+ * 旧設定の正式表記を復元できなくなるため。
+ */
+export function mergeLocalizedCatalog(
+  base: CatalogEntry[],
+  ja: CatalogEntry[]
+): LocalizedCatalogEntry[] {
+  const jaByGiftId = new Map(ja.map((e) => [e.giftId, e.label]));
+  return base.map((entry) => ({ ...entry, labelJa: jaByGiftId.get(entry.giftId) ?? null }));
+}
+
 // ---------------------------------------------------------------------------
 // 取得
 // ---------------------------------------------------------------------------
@@ -175,7 +226,10 @@ function describeError(err: unknown): string {
   return redact(String(err));
 }
 
-async function fetchGiftsFromTikTok(source: GiftCatalogSource): Promise<unknown> {
+async function fetchGiftsFromTikTok(
+  source: GiftCatalogSource,
+  locale: CatalogLocale
+): Promise<unknown> {
   // WebSocketは張らない。HTTPで `gift/list/` を1回叩くためだけの使い捨て接続。
   const conn = new WebcastPushConnection(`@${source.tiktokId}`, {
     processInitialData: false,
@@ -186,9 +240,11 @@ async function fetchGiftsFromTikTok(source: GiftCatalogSource): Promise<unknown>
     authenticateWs: false,
     sessionId: undefined,
     webClientParams: {
-      app_language: "ja",
       device_platform: "web",
       device_id: source.deviceId,
+      // **`webcast_language` だけが効く。** 以前ここには `app_language: "ja"` が入っていたが、
+      // 実測でこのパラメータは名前のロケールに一切影響しなかった([CatalogLocale] のコメント参照)。
+      ...(locale === "ja" ? { webcast_language: "ja-JP" } : {}),
     },
     // ライブ接続と同じegress IPを通す。Railwayの素のIPを晒さないため。
     ...(source.proxyUrl
@@ -224,12 +280,15 @@ let lastFailureAt = 0;
 // `imageUrl` 列を足したあとの前倒し取得を、**プロセスごとに1回だけ**に絞るフラグ。
 // 詳細は shouldBackfillImages() のコメント。
 let imageBackfillDone = false;
+// `labelJa` 列を足したあとの前倒し取得を、同じくプロセスごとに1回だけに絞るフラグ。
+let jaLabelBackfillDone = false;
 
 /** テスト用。モジュールスコープの状態を初期化する。 */
 export function __resetGiftCatalogStateForTest() {
   inFlight = null;
   lastFailureAt = 0;
   imageBackfillDone = false;
+  jaLabelBackfillDone = false;
 }
 
 /**
@@ -255,22 +314,44 @@ async function shouldBackfillImages(): Promise<boolean> {
   return true;
 }
 
-async function writeCatalog(entries: CatalogEntry[], fetchedAt: Date): Promise<void> {
+/**
+ * TTL内でも取り直すべきか(`labelJa` の前倒しバックフィル)。
+ *
+ * 理由も打ち切りの規律も [shouldBackfillImages] と同じ。列を足した直後はカタログが
+ * 「新鮮」なので、TTLだけ見ていると最大24時間 `labelJa` が null のまま = ピッカーが
+ * 英語のままになる。
+ */
+async function shouldBackfillJaLabels(): Promise<boolean> {
+  if (jaLabelBackfillDone) return false;
+  const withJa = await prisma.tiktokGiftCatalog.count({ where: { labelJa: { not: null } } });
+  if (withJa > 0) {
+    jaLabelBackfillDone = true;
+    return false;
+  }
+  return true;
+}
+
+async function writeCatalog(entries: LocalizedCatalogEntry[], fetchedAt: Date): Promise<void> {
   // multiSchemaでは raw SQL が自動修飾されないので完全修飾する。
   //
   // **1文で書き切る。** 複数文をトランザクション無しで流すと、先頭だけ更新された時点で
   // 他プロセスに新しい MAX(fetchedAt) が見えてしまい、途中で失敗しても24時間成功扱いになる。
   const values = entries.map(
     (e) =>
-      Prisma.sql`(${e.giftId}, ${e.name}, ${e.label}, ${e.diamondCount}, ${e.imageUrl}, ${fetchedAt})`
+      Prisma.sql`(${e.giftId}, ${e.name}, ${e.label}, ${e.labelJa}, ${e.diamondCount}, ${e.imageUrl}, ${fetchedAt})`
   );
 
+  // **`labelJa` だけ COALESCE で守る。** 日本語版の取得は英語版と独立に失敗しうるので、
+  // 素直に EXCLUDED を入れると TikTok 側の一時不調1回で全行の日本語名が消え、
+  // 次の成功(最短24時間後)まで英語表示に戻ってしまう。他の列は英語版の取得が成功した
+  // 場合にしかここへ来ないので、そのまま上書きしてよい。
   await prisma.$executeRaw`
-    INSERT INTO public."tiktok_gift_catalog" ("giftId", "name", "label", "diamondCount", "imageUrl", "fetchedAt")
+    INSERT INTO public."tiktok_gift_catalog" ("giftId", "name", "label", "labelJa", "diamondCount", "imageUrl", "fetchedAt")
     VALUES ${Prisma.join(values)}
     ON CONFLICT ("giftId") DO UPDATE SET
       "name" = EXCLUDED."name",
       "label" = EXCLUDED."label",
+      "labelJa" = COALESCE(EXCLUDED."labelJa", public."tiktok_gift_catalog"."labelJa"),
       "diamondCount" = EXCLUDED."diamondCount",
       "imageUrl" = EXCLUDED."imageUrl",
       "fetchedAt" = EXCLUDED."fetchedAt"
@@ -300,22 +381,40 @@ export async function refreshGiftCatalogIfStale(
       const latest = await prisma.tiktokGiftCatalog.aggregate({ _max: { fetchedAt: true } });
       const fetchedAt = latest._max.fetchedAt;
       const fresh = fetchedAt !== null && startedAt - fetchedAt.getTime() < CATALOG_TTL_MS;
-      if (fresh && !(await shouldBackfillImages())) return;
+      if (fresh && !(await shouldBackfillImages()) && !(await shouldBackfillJaLabels())) return;
 
       const source = await resolveSource();
       if (!source) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
 
-      const entries = normalizeCatalogEntries(await deps.fetchGifts(source));
-      if (entries.length === 0) {
+      // **英語版は必須。** `name`(一致キー)と `label` の供給元なので、ここが取れないなら
+      // カタログを更新する意味がない。
+      const base = normalizeCatalogEntries(await deps.fetchGifts(source, "default"));
+      if (base.length === 0) {
         // 空・全件不正を成功扱いにしない。成功にすると壊れたレスポンスで24時間沈黙する。
         throw new Error("gift/list/ returned no usable entries");
       }
 
+      // **日本語版は表示専用なので、落ちてもカタログ更新そのものは通す。** 失敗扱いにすると
+      // 名前・価格・画像の更新まで24時間止まる。既存の `labelJa` は writeCatalog() の
+      // COALESCE が守るので、ここが空でも日本語表示は消えない。
+      let ja: CatalogEntry[] = [];
+      try {
+        ja = normalizeCatalogEntries(await deps.fetchGifts(source, "ja"));
+      } catch (err) {
+        console.warn(
+          "[gift-catalog] ja fetch failed (keeping existing labelJa):",
+          describeError(err)
+        );
+      }
+
+      const entries = mergeLocalizedCatalog(base, ja);
       await writeCatalog(entries, new Date(deps.now()));
       lastFailureAt = 0;
-      // 画像が取れたかどうかに関わらず消費する(取れなければ通常のTTLへ戻す)。
+      // 画像・日本語名が取れたかどうかに関わらず消費する(取れなければ通常のTTLへ戻す)。
       imageBackfillDone = true;
-      console.log(`[gift-catalog] refreshed ${entries.length} gift(s)`);
+      jaLabelBackfillDone = true;
+      const localized = entries.filter((e) => e.labelJa !== null).length;
+      console.log(`[gift-catalog] refreshed ${entries.length} gift(s), ${localized} localized`);
     } catch (err) {
       lastFailureAt = deps.now();
       console.error("[gift-catalog] refresh failed:", describeError(err));

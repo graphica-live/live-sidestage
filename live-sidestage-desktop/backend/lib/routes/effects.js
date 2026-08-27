@@ -1,7 +1,7 @@
 'use strict';
 
 const { repairMojibakeFilename } = require('../utils');
-const { getGiftDisplayNameJa } = require('../gift-name-ja');
+const { getCatalogNameJa } = require('../tiktok-gift-catalog');
 const { listMidiOutputDevices } = require('../midi-helpers');
 const { searchMyinstants, downloadMyinstantsSound } = require('../myinstants');
 const { searchSoundEffectLab, downloadSoundEffectLabSound, SOUNDEFFECT_LAB_HOST } = require('../soundeffect-lab');
@@ -262,7 +262,7 @@ module.exports = function registerEffectsRoutes({
                 String(gift.name || '').trim().toLowerCase() === trigger.giftName);
 
             map[trigger.id] = {
-                giftName: matchedGift?.nameJa || getGiftDisplayNameJa(trigger.giftName),
+                giftName: matchedGift?.nameJa || getCatalogNameJa(trigger.giftName),
                 giftImageUrl: matchedGift?.imageUrl || ''
             };
         });
@@ -354,7 +354,7 @@ module.exports = function registerEffectsRoutes({
                 const matchedGift = catalogGifts.find((gift) =>
                     String(gift.name || '').trim().toLowerCase() === trigger.giftName);
                 const giftNameKey = String(matchedGift?.name || trigger.giftName || '').trim().toLowerCase();
-                const giftNameJa = matchedGift?.nameJa || getGiftDisplayNameJa(trigger.giftName);
+                const giftNameJa = matchedGift?.nameJa || getCatalogNameJa(trigger.giftName);
 
                 return {
                     id: trigger.id,

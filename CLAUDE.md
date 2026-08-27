@@ -43,8 +43,9 @@ TikRIng を除く4つは TikTok Live 配信者向けで、`tiktok-live-connector
 
 プロジェクトをまたいで同じデータを使う場合だけ、ルート直下の `shared/` に正本を置く。コードは共有しない（言語もランタイムも揃っていないため）。
 
-- **`shared/gift-names/`** — TikTok ギフト名（英語）→日本語表示名の辞書。TikEffect と mobile が参照する。正本は `gift-names-ja.json` / `gift-names-ja-reference.json` **だけ**で、各プロジェクトの配布コピーは `node shared/gift-names/sync.mjs` が生成する生成物（直接編集しない）。**表示専用** — ギフトの一致判定（効果音のトリガ、集計キー）は TikTok が送ってくる英語名のまま行うので、辞書の日本語→英語の逆引きをして保存すると鳴らなくなる
-- 追加ルール・正規化仕様・検証コマンド・配布先一覧は [shared/gift-names/README.md](shared/gift-names/README.md) にすべて書いてある。辞書を修正するときは必ずそちらを読むこと
+- **`shared/gift-name-normalization/`** — ギフト名キーの正規化（アポストロフィ統一→空白畳み込み→trim→小文字化）を JS と Dart で揃えるための共有テストベクタ。desktop の jest と mobile の flutter test が両方これを読む。仕様と経緯は [shared/gift-name-normalization/README.md](shared/gift-name-normalization/README.md)
+- **ギフト名の日本語表示は TikTok 公式から取る。** 以前ここにあった手作業辞書 `shared/gift-names/`（553エントリ、`sync.mjs` が desktop と mobile へ配布）は 2026-08-27 に廃止した。`gift/list/` に **`webcast_language=ja-JP`**（`ja` では効かない）を渡すと公式の日本語名が返り、671 giftId 中 651 件をカバーする。desktop は `backend/lib/tiktok-gift-catalog.js` が英語版と日本語版を突き合わせて SQLite に貯め、mobile は analytics の `GET /api/mobile/gifts` が返す `labelJa` を端末に貯める
+- **日本語は表示専用。** ギフトの一致判定（効果音のトリガ、集計キー）は TikTok が実際に送ってくる名前で行う。LIVE の gift イベントは英語で届くので、日本語を一致キーに保存すると**例外もログも出ないまま鳴らなくなる**。ただし配信者ごとのサブスクギフトは TikTok 自身が日本語名で送ってくる（例:「わやハグ」）ので、「一致キーは常に英語」ではない
 
 ## CI (GitHub Actions)
 

@@ -16,7 +16,6 @@
     "loader": "chcp 65001>nul & node loader-server/index.js",
     "prerun": "powershell -ExecutionPolicy Bypass -File .\\scripts\\kill-installed-loader.ps1",
     "run": "concurrently -n loader,electron -c yellow,cyan \"npm:loader\" \"npm:electron\"",
-    "run:jp": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-jp.ps1",
     "preelectron": "powershell -ExecutionPolicy Bypass -File .\\scripts\\prepare-electron.ps1",
     "electron": "chcp 65001>nul & electron .",
     "preelectron:dev": "powershell -ExecutionPolicy Bypass -File .\\scripts\\prepare-electron.ps1",

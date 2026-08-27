@@ -115,6 +115,25 @@ function createDbStore(options) {
 
         CREATE INDEX IF NOT EXISTS idx_raw_gift_events_broadcaster_created
         ON raw_gift_events (broadcaster_id, created_at);
+
+        -- TikTok のギフトカタログ。gift/list/ を英語版と ja-JP 版の2回叩いて突き合わせた結果。
+        --
+        -- **name は英語（トリガの一致キーと同じ表記）、name_ja は表示専用**。
+        -- ここを混ぜるとトリガが無言で発火しなくなる（LIVE のギフトイベントは英語で届く）。
+        --
+        -- 永続化しているのは、辞書アセットを廃止したあとの「起動直後・オフラインでも
+        -- 日本語名を出せる」供給源がここしかないため。broadcaster ごとに分けるのは
+        -- 部屋固有のサブスクギフトが混ざるのを避けるため（メモリキャッシュも同じ単位）。
+        CREATE TABLE IF NOT EXISTS tiktok_gift_catalog (
+            broadcaster_id TEXT NOT NULL,
+            gift_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            name_ja TEXT,
+            diamond_count INTEGER NOT NULL DEFAULT 0,
+            image_url TEXT,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (broadcaster_id, gift_id)
+        );
     `);
 
     const dailyContributorColumns = new Set(
@@ -420,6 +439,33 @@ function createDbStore(options) {
         GROUP BY LOWER(TRIM(gift_name))
     `);
 
+    const giftCatalogStmt = db.prepare(`
+        SELECT
+            gift_id AS giftId,
+            name,
+            name_ja AS nameJa,
+            diamond_count AS diamondCount,
+            image_url AS imageUrl,
+            fetched_at AS fetchedAt
+        FROM tiktok_gift_catalog
+        WHERE broadcaster_id = ?
+        ORDER BY diamond_count ASC, name COLLATE NOCASE ASC
+    `);
+
+    // **name_ja だけ COALESCE で守る。** 日本語版の取得は英語版と独立に失敗しうるので、
+    // 素直に上書きすると TikTok 側の一時不調1回で貯めた日本語名が全部消える。
+    const upsertGiftCatalogStmt = db.prepare(`
+        INSERT INTO tiktok_gift_catalog
+            (broadcaster_id, gift_id, name, name_ja, diamond_count, image_url, fetched_at)
+        VALUES (@broadcasterId, @giftId, @name, @nameJa, @diamondCount, @imageUrl, @fetchedAt)
+        ON CONFLICT (broadcaster_id, gift_id) DO UPDATE SET
+            name = excluded.name,
+            name_ja = COALESCE(excluded.name_ja, tiktok_gift_catalog.name_ja),
+            diamond_count = excluded.diamond_count,
+            image_url = excluded.image_url,
+            fetched_at = excluded.fetched_at
+    `);
+
     const recentGiftSendersStmt = db.prepare(`
         SELECT
             dc.unique_id AS uniqueId,
@@ -516,6 +562,49 @@ function createDbStore(options) {
         },
         getGiftCoinTotalsByDay(dayKey, broadcasterId) {
             return giftCoinTotalsByDayStmt.all(broadcasterId, dayKey);
+        },
+        getGiftCatalog(broadcasterId) {
+            if (!broadcasterId) {
+                return [];
+            }
+
+            return giftCatalogStmt.all(broadcasterId);
+        },
+        /**
+         * カタログを丸ごと入れ替える（upsert のみ。行は消さない）。
+         *
+         * 消さないのは analytics 側と同じ理由で、TikTok の A/B や地域差で一時的に
+         * 欠けたギフトを候補から落としたくないため。実体は「観測したカタログの和集合」。
+         */
+        saveGiftCatalog(broadcasterId, gifts) {
+            if (!broadcasterId || !Array.isArray(gifts) || gifts.length === 0) {
+                return 0;
+            }
+
+            const fetchedAt = new Date().toISOString();
+            const rows = gifts
+                .filter((gift) => gift && gift.id && gift.name)
+                .map((gift) => ({
+                    broadcasterId,
+                    giftId: String(gift.id),
+                    name: String(gift.name),
+                    nameJa: gift.nameJa ? String(gift.nameJa) : null,
+                    diamondCount: Number.isFinite(Number(gift.diamondCount)) ? Number(gift.diamondCount) : 0,
+                    imageUrl: gift.imageUrl ? String(gift.imageUrl) : null,
+                    fetchedAt
+                }));
+
+            if (rows.length === 0) {
+                return 0;
+            }
+
+            db.transaction((entries) => {
+                for (const entry of entries) {
+                    upsertGiftCatalogStmt.run(entry);
+                }
+            })(rows);
+
+            return rows.length;
         },
         getRecentGiftSenders(broadcasterId, sinceDay, limit = 200) {
             return recentGiftSendersStmt.all(broadcasterId, sinceDay, Number(limit) || 200);

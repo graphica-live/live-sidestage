@@ -26,6 +26,7 @@ const {
     WIDGET_GOAL_GIFT_LIKE_UNIQUE_SEEN_STATE_KEY,
 } = require('./constants');
 const { firstDefinedString, normalizeBooleanInput, normalizeEffectText, normalizeWholeNumber, normalizeBroadcasterId } = require('./utils');
+const { getCatalogNameJa } = require('./tiktok-gift-catalog');
 
 module.exports = function({
     dbStore, getScopedStateValue, setScopedStateValue, getTodayDayKey,
@@ -877,6 +878,10 @@ function buildGoalGiftProgressSnapshot(
             return {
                 slot: index + 1,
                 ...item,
+                // ウィジェットは `displayName || giftName` で描く。giftName は一致キー（英語）
+                // なので、手入力の displayName が無いと英語のまま出ていた。
+                // TikTok 公式の日本語名をここで補う（手入力があればそちらが優先）。
+                displayName: item.displayName || getCatalogNameJa(item.giftName),
                 giftImage: latestGiftImage,
                 currentCount,
                 observedCount,

@@ -42,6 +42,10 @@ interface Candidate {
   // 画像の採用元にした行のgiftId。**labelの代表(最小giftId)とは別に持つ** —
   // 最小giftIdの行が画像を持たないとき、同名の別行にある画像を取りこぼさないため。
   imageGiftId: number;
+  // TikTok公式の日本語表示名。カタログにしか無いので、履歴由来だけの候補では null。
+  labelJa: string | null;
+  // 日本語名の採用元にした行のgiftId。画像と同じ理由で label の代表とは別に持つ。
+  labelJaGiftId: number;
 }
 
 function widen(candidate: Candidate, coins: number) {
@@ -65,6 +69,17 @@ function adoptImage(candidate: Candidate, url: unknown, giftId: number) {
   candidate.imageGiftId = giftId;
 }
 
+// 日本語名の採否。画像と同じく**「日本語名を持つ行のうち最小giftId」**を採る。
+//
+// **単純な「最小giftIdの行のlabelJa」にしない。** 同じ英語名に複数のgiftIdがあり、かつ
+// 日本語名が枝分かれするケースが実測で8件ある(`zeus` → 「ゼウス」/「覇王ゼウス」など)。
+// 最小giftIdの行がまだ日本語化されていないと、同名の別行にある訳を取りこぼす。
+function adoptLabelJa(candidate: Candidate, labelJa: string | null, giftId: number) {
+  if (!labelJa || giftId >= candidate.labelJaGiftId) return;
+  candidate.labelJa = labelJa;
+  candidate.labelJaGiftId = giftId;
+}
+
 export async function GET(req: NextRequest) {
   const auth = resolveUserByMobileToken(req);
   if (!auth) {
@@ -83,7 +98,14 @@ export async function GET(req: NextRequest) {
 
   const [catalogRows, historyRows] = await Promise.all([
     prisma.tiktokGiftCatalog.findMany({
-      select: { giftId: true, name: true, label: true, diamondCount: true, imageUrl: true },
+      select: {
+        giftId: true,
+        name: true,
+        label: true,
+        labelJa: true,
+        diamondCount: true,
+        imageUrl: true,
+      },
     }),
     // 部屋が未割り当てならまだ1件も受け取っていない。カタログだけで返す。
     //
@@ -122,13 +144,17 @@ export async function GET(req: NextRequest) {
         catalogGiftId: row.giftId,
         imageUrl: null,
         imageGiftId: Number.MAX_SAFE_INTEGER,
+        labelJa: null,
+        labelJaGiftId: Number.MAX_SAFE_INTEGER,
       };
       adoptImage(created, row.imageUrl, row.giftId);
+      adoptLabelJa(created, row.labelJa, row.giftId);
       byName.set(name, created);
       continue;
     }
     widen(existing, row.diamondCount);
     adoptImage(existing, row.imageUrl, row.giftId);
+    adoptLabelJa(existing, row.labelJa, row.giftId);
     if (row.giftId < existing.catalogGiftId) {
       existing.catalogGiftId = row.giftId;
       existing.label = row.label || existing.label;
@@ -169,6 +195,10 @@ export async function GET(req: NextRequest) {
         catalogGiftId: Number.MAX_SAFE_INTEGER,
         imageUrl: null,
         imageGiftId: Number.MAX_SAFE_INTEGER,
+        // 日本語名の供給元はカタログだけ。履歴にしか無いギフト(部屋固有のサブスクギフト、
+        // カタログから消えた旧ギフト)は null のまま = クライアントは元表記を出す。
+        labelJa: null,
+        labelJaGiftId: Number.MAX_SAFE_INTEGER,
       };
       adoptImage(created, row.giftPictureUrl, HISTORY_IMAGE_RANK);
       byName.set(name, created);
@@ -197,6 +227,9 @@ export async function GET(req: NextRequest) {
     .map((c) => ({
       name: c.name,
       label: c.label,
+      // TikTok公式の日本語表示名。クライアントは「labelJa があればそれ、無ければ label」で描く。
+      // **一致キーは name のまま**なので、ここが日本語でも効果音の照合には影響しない。
+      labelJa: c.labelJa,
       // 旧クライアント互換。min/maxを知らないクライアントには下限を1つの価格として見せる
       // (上限を見せると「大物ギフト」と誤解させるため)。
       diamondCount: c.minDiamondCount,

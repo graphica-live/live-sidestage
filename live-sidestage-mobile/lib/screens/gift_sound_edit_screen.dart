@@ -109,6 +109,10 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
       _draft = _draft.copyWith(
         giftName: selected.name,
         giftLabel: selected.label,
+        // 日本語名も一緒に控える。表示の本線は GiftNameJa のキャッシュだが、
+        // それが空のとき（アプリのデータを消した直後など）の保険になる。
+        // 日本語名の無いギフトを選び直したら前の日本語名は消す。
+        giftLabelJa: selected.labelJa ?? '',
         // 画像の無いギフトを選び直したら前の絵は消す。
         giftImageUrl: selected.imageUrl,
       );
@@ -468,8 +472,27 @@ bool matchesGiftQuery(GiftCandidate gift, String query) {
   if (q.isEmpty) return true;
   if (gift.name.toLowerCase().contains(q)) return true;
   if (gift.label.toLowerCase().contains(q)) return true;
-  return GiftNameJa.display(gift.name, fallback: gift.label).toLowerCase().contains(q);
+  return giftDisplayName(gift).toLowerCase().contains(q);
 }
+
+/// 候補をピッカーに出すときの表示名。
+///
+/// 端末に貯めた日本語名 → サーバーが今回返した `labelJa` → 元表記（英語）の順。
+/// 貯めたぶんを先に見るのは、[GiftNameJa] のキーが正規化済みで表記ゆれに強いため。
+/// `labelJa` を fallback に置くことで、キャッシュがまだ空の初回表示でも日本語で出る。
+String giftDisplayName(GiftCandidate gift) {
+  return GiftNameJa.display(gift.name, fallback: gift.labelJa ?? gift.label);
+}
+
+/// かな・カタカナ・漢字を含むか。**自由入力の注意表示にだけ使う。**
+///
+/// 一覧が日本語表示になったぶん、ユーザーは日本語で登録しようとしやすい。一致キーは
+/// TikTok が送ってくる名前なので、普通のギフトを日本語で登録すると無言で鳴らなくなる。
+/// ただし配信者ごとのサブスクギフトは TikTok 自身が日本語名で送ってくるため、
+/// 日本語の一致キーが正しいケースが実在する。だから**判定するのは文言だけで、登録は止めない**。
+bool looksJapanese(String text) => _japaneseChars.hasMatch(text);
+
+final RegExp _japaneseChars = RegExp(r'[぀-ヿ一-鿿ｦ-ﾝ]');
 
 /// ギフト候補のピッカー。
 ///
@@ -585,6 +608,12 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       );
       if (!mounted) return;
       setState(() => _candidates = gifts);
+      // 取れた日本語名を端末へ貯める。**保存済みの効果音設定の表示にも効く**ので、
+      // ピッカーを開くこと自体が「一覧の日本語化」の更新手段になっている。
+      // 1件も日本語名が無ければ updateFromServer 側が何もしない（既存を空で潰さない）。
+      await GiftNameJa.updateFromServer(giftLabelJaMap(gifts));
+      if (!mounted) return;
+      setState(() {}); // 貯めた日本語名で行タイトルを描き直す
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -681,11 +710,26 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                 ),
               if (showRawEntry)
                 ListTile(
-                  leading: const Icon(Icons.edit_outlined),
+                  leading: Icon(
+                    Icons.edit_outlined,
+                    color: looksJapanese(query) ? Theme.of(context).colorScheme.error : null,
+                  ),
                   title: Text('「$query」を使う'),
                   // 鳴らすときの照合は TikTok が送ってくる英語名で行う。日本語で
-                  // 登録しても一致しないので、ここだけは英語名を入れてもらう。
-                  subtitle: const Text('一覧にないギフト名として登録（TikTokの英語名で入力してください）'),
+                  // 登録しても普通は一致しないので、その場合だけ強めに注意する。
+                  //
+                  // **禁止はしない。** 配信者ごとのサブスクギフトは日本語名そのものが
+                  // TikTok から届くので（例:「わやハグ」）、日本語の一致キーが正しい
+                  // ケースが実在する。一覧に無いそれを登録できる導線はここだけ。
+                  subtitle: Text(
+                    looksJapanese(query)
+                        ? '一覧から選ぶのがおすすめです。日本語で登録して鳴るのは、'
+                            'この配信者だけのギフトのように TikTok が日本語名で送ってくるものだけです'
+                        : '一覧にないギフト名として登録（TikTokの英語名で入力してください）',
+                    style: looksJapanese(query)
+                        ? TextStyle(color: Theme.of(context).colorScheme.error)
+                        : null,
+                  ),
                   onTap: _useQueryAsIs,
                 ),
               const Divider(height: 1),
@@ -776,7 +820,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
       itemCount: filtered.length,
       itemBuilder: (_, index) {
         final gift = filtered[index];
-        final displayName = GiftNameJa.display(gift.name, fallback: gift.label);
+        final displayName = giftDisplayName(gift);
         // 日本語名を出したときだけ英語名を添える（同じなら二度書かない）。
         // 配信画面や他ツールでは英語名で出ることがあるので、対応を隠さない。
         final coinLabel = _coinLabel(gift);

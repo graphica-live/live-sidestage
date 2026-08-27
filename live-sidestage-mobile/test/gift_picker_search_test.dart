@@ -7,13 +7,21 @@ import 'package:live_sidestage_mobile/screens/gift_sound_edit_screen.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(() async {
+  setUp(() {
+    // 日本語名の供給元は端末に貯めたサーバー由来のキャッシュ。テストでは直接差し込む。
     GiftNameJa.resetForTest();
-    await GiftNameJa.ensureLoaded();
+    GiftNameJa.seedForTest({'rose': 'バラ'});
   });
 
   const rose = GiftCandidate.single(name: 'rose', label: 'Rose', diamondCount: 1);
   const universe = GiftCandidate.single(name: 'tiktok universe+', label: 'TikTok Universe+', diamondCount: 44999);
+  // キャッシュがまだ空でも、サーバーが返した labelJa で日本語検索できる。
+  const perfume = GiftCandidate.single(
+    name: 'perfume',
+    label: 'Perfume',
+    diamondCount: 20,
+    labelJa: '香水',
+  );
 
   test('空の検索文字列は全件一致', () {
     expect(matchesGiftQuery(rose, ''), isTrue);
@@ -35,13 +43,32 @@ void main() {
     expect(matchesGiftQuery(rose, '  バラ  '), isTrue);
   });
 
-  test('辞書に日本語訳が無くても英語名で引ける', () {
+  test('日本語名が無くても英語名で引ける', () {
     expect(matchesGiftQuery(universe, 'universe'), isTrue);
     expect(matchesGiftQuery(universe, 'ユニバース'), isFalse);
+  });
+
+  test('キャッシュに無くてもサーバーが返した labelJa で引ける', () {
+    expect(matchesGiftQuery(perfume, '香水'), isTrue);
+    expect(matchesGiftQuery(perfume, 'perfume'), isTrue);
   });
 
   test('無関係な語では一致しない', () {
     expect(matchesGiftQuery(rose, 'ライオン'), isFalse);
     expect(matchesGiftQuery(rose, 'lion'), isFalse);
+  });
+
+  group('looksJapanese', () {
+    test('かな・カタカナ・漢字を検出する', () {
+      expect(looksJapanese('バラ'), isTrue);
+      expect(looksJapanese('わやハグ'), isTrue);
+      expect(looksJapanese('香水'), isTrue);
+    });
+
+    test('英数字だけなら false', () {
+      expect(looksJapanese('Rose'), isFalse);
+      expect(looksJapanese('TikTok Universe+'), isFalse);
+      expect(looksJapanese(''), isFalse);
+    });
   });
 }

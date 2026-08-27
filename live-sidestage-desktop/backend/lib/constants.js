@@ -320,10 +320,16 @@ const GOAL_GIFT_SYSTEM_IMAGE_DATA_URLS = {
         </svg>
     `)}`
 };
+// TikTok を日本語ロケールで見るためのクライアントパラメータ。
+//
+// **ギフト名の日本語化に効くのは `webcast_language` だけで、値は `ja-JP` でないといけない。**
+// `ja`（2文字）では英語のまま返る。他のキー（app_language / browser_language / region /
+// tz_name）は名前のロケールに一切影響しない（2026-08-27 に実ルームで実測）。
+// 地域にも依存せず、`region` が DE のままでも `webcast_language=ja-JP` だけで日本語が返る。
 const TIKTOK_JA_LOCALE_CLIENT_PARAMS = {
     app_language: 'ja',
     browser_language: 'ja-JP',
-    webcast_language: 'ja',
+    webcast_language: 'ja-JP',
     priority_region: 'JP',
     region: 'JP',
     tz_name: 'Asia/Tokyo'

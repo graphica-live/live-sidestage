@@ -345,7 +345,12 @@ model GiftEdit {
 model TiktokGiftCatalog {
   giftId       Int      @id // gift/list/ の gift.id
   name         String // 一致キー。trim + 小文字化済み(chat:giftのgiftNameと同じ正規化)
-  label        String // 表示用。カタログの元表記
+  label        String // 表示用。カタログの元表記(英語)
+  // TikTok公式の日本語表示名。`webcast_language=ja-JP` で叩いた gift/list/ から採る。
+  // **表示専用。一致キーには使わない**(LIVEのgiftイベントは英語で来るため)。
+  // 日本語版の取得に失敗した場合や、日本語環境でも英語表記のギフト以外で埋まらない場合は null。
+  // 一時的な取得失敗で消えないよう、upsert時は COALESCE で既存値を守る。
+  labelJa      String?
   diamondCount Int      @default(0)
   // ギフトのアイコン。gift/list/ の `image.url_list` から isAllowedAvatarUrl() を通ったURLだけを入れる。
   // avatar と違って**署名(x-expires)が付かないので永続化しても腐らない**。取れなければ null。

@@ -58,6 +58,16 @@ class GiftSound {
   /// 一致判定には使わない。
   final String giftLabel;
 
+  /// 選んだ時点での TikTok 公式の日本語表示名。一致判定には使わない。
+  ///
+  /// 日本語表示の本線は [GiftNameJa]（サーバーから取って端末へ貯めるキャッシュ）で、
+  /// こちらはそれが空のとき用の保険。キャッシュはアプリのデータを消すと失われるが、
+  /// 設定と一緒に保存してあれば選び直さずに日本語で出せる。
+  ///
+  /// **新しいキーだが [AppConfig.currentSchemaVersion] は上げない**（旧アプリは無視するだけ。
+  /// 上げると旧アプリが未来バージョンと判定して設定の保存を止める）。
+  final String giftLabelJa;
+
   /// 選んだギフトの絵（TikTok の画像 CDN の https URL）。
   /// 画像を持たないギフト・自由入力・「どのギフトでも」では null。
   final String? giftImageUrl;
@@ -79,6 +89,7 @@ class GiftSound {
     required this.giftName,
     required this.fileName,
     this.giftLabel = '',
+    this.giftLabelJa = '',
     this.giftImageUrl,
     this.soundName = '',
     this.enabled = true,
@@ -87,8 +98,9 @@ class GiftSound {
     this.volume = 100,
   });
 
-  /// 一覧で使う表記。giftLabel が空なら giftName、それも空なら「すべてのギフト」。
+  /// 一覧で使う表記。日本語 → 元表記 → 一致キー → 「すべてのギフト」の順。
   String get displayGiftName {
+    if (giftLabelJa.isNotEmpty) return giftLabelJa;
     if (giftLabel.isNotEmpty) return giftLabel;
     if (giftName.isNotEmpty) return giftName;
     return 'すべてのギフト';
@@ -99,6 +111,7 @@ class GiftSound {
         'enabled': enabled,
         'giftName': giftName,
         'giftLabel': giftLabel,
+        'giftLabelJa': giftLabelJa,
         'giftImageUrl': giftImageUrl,
         'fileName': fileName,
         'soundName': soundName,
@@ -119,6 +132,8 @@ class GiftSound {
       enabled: json['enabled'] != false,
       giftName: _string(json['giftName'], maxLength: 80).trim().toLowerCase(),
       giftLabel: _string(json['giftLabel'], maxLength: 80),
+      // 旧バージョンの設定はキー自体を持たない。空文字で読み、表示は giftLabel へ落ちる。
+      giftLabelJa: _string(json['giftLabelJa'], maxLength: 80),
       giftImageUrl: _httpsUrl(json['giftImageUrl']),
       fileName: fileName,
       soundName: _string(json['soundName'], maxLength: 120),
@@ -145,6 +160,7 @@ class GiftSound {
     bool? enabled,
     String? giftName,
     String? giftLabel,
+    String? giftLabelJa,
     Object? giftImageUrl = _unset,
     String? fileName,
     String? soundName,
@@ -157,6 +173,7 @@ class GiftSound {
       enabled: enabled ?? this.enabled,
       giftName: giftName ?? this.giftName,
       giftLabel: giftLabel ?? this.giftLabel,
+      giftLabelJa: giftLabelJa ?? this.giftLabelJa,
       giftImageUrl: identical(giftImageUrl, _unset)
           ? this.giftImageUrl
           : giftImageUrl as String?,
@@ -179,6 +196,7 @@ class GiftSound {
       enabled: enabled,
       giftName: giftName,
       giftLabel: giftLabel,
+      giftLabelJa: giftLabelJa,
       giftImageUrl: giftImageUrl,
       fileName: fileName,
       soundName: soundName,
