@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { useRef } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import { avatarFrameStyle, resolveAvatarFrame } from "@/event/avatar-frame";
 import { fitBracketName } from "@/event/bracket-name-fit";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
@@ -12,6 +11,7 @@ import type {
 import { CARD_CLIP, CARD_CLIP_MIRROR, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BracketScroller } from "./BracketScroller";
 import { FeederFlowOverlay } from "./FeederFlowOverlay";
+import { MatchDetailModal } from "./MatchDetailModal";
 
 // 決勝を中央に置き、左右へブロックを分けて描くトーナメント表。
 //
@@ -26,7 +26,7 @@ import { FeederFlowOverlay } from "./FeederFlowOverlay";
 // だから状態・不戦勝・時刻は1行にまとめ、カードに固定高を与えている(CARD_H)。
 //
 // **名前は全サイド共通でサイド枠の下端(NAME_BOX_H)へ寄せる。** バトルスコアは表からは
-// 出さない(タップして開く対戦詳細ページの担当)。カード上に残るのは状態・不戦勝・時刻の
+// 出さない(タップして開く対戦詳細モーダルの担当)。カード上に残るのは状態・不戦勝・時刻の
 // 1行だけなので、上下でスコアの位置を分ける必要がなくなった — スコア削除前の版は名前と
 // スコアを互いに逆向きの端へ寄せて重なりを避けていたが、その配慮ごと不要になっている。
 //
@@ -74,13 +74,20 @@ function key(round: number, position: number): string {
   return `${round}:${position}`;
 }
 
+/**
+ * 対戦カードのタップを詳細モーダルへ橋渡しする。表には対戦カードが多数あり、
+ * `MatchNode`/`PlacementSection` は座標の再帰にしか使わないので、開閉ハンドラを
+ * props として全階層へ通す代わりに context 一本で `MatchCard` まで届ける。
+ */
+const MatchClickContext = createContext<(matchId: string) => void>(() => {});
+
 export function BracketTree({
   slug,
   roundCount,
   matches,
   feederFlows,
 }: {
-  /** タップした対戦カードの詳細ページ(`/e/{slug}/bracket/{matchId}`)へのリンクに使う。 */
+  /** タップした対戦カードの詳細モーダルが叩く公開API(`/api/public/events/{slug}/bracket/{matchId}`)に使う。 */
   slug: string;
   roundCount: number;
   matches: BracketMatchDto[];
@@ -88,6 +95,7 @@ export function BracketTree({
   feederFlows: BracketFeederFlowDto[];
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
+  const [openMatchId, setOpenMatchId] = useState<string | null>(null);
   const index: MatchIndex = new Map(matches.map((m) => [key(m.round, m.position), m]));
   const final = index.get(key(roundCount, 0));
   const blocks = groupPlacementBlocks(matches);
@@ -96,40 +104,39 @@ export function BracketTree({
   const hasWings = roundCount >= 2;
 
   return (
-    <BracketScroller>
-      <div ref={treeRef} className="relative min-w-max">
-        <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
+    <MatchClickContext.Provider value={setOpenMatchId}>
+      <BracketScroller>
+        <div ref={treeRef} className="relative min-w-max">
+          <RoundHeadings roundCount={roundCount} index={index} hasWings={hasWings} />
 
-        {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。
-            東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
-        <div className="flex items-center pt-40" data-bracket-section="main">
-          {hasWings && (
-            <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} slug={slug} />
-          )}
-          {hasWings && <StraightConnector />}
+          {/* pt は決勝の上に絶対配置する「優勝」バナーのぶん(見出し + 枠 + mb-2 で約146px)。
+              東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
+          <div className="flex items-center pt-40" data-bracket-section="main">
+            {hasWings && <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} />}
+            {hasWings && <StraightConnector />}
 
-          <div className={`relative ${CARD_W} shrink-0`} data-bracket-slot={key(roundCount, 0)}>
-            <div className="absolute inset-x-0 bottom-full mb-2">
-              <Champion final={final} />
+            <div className={`relative ${CARD_W} shrink-0`} data-bracket-slot={key(roundCount, 0)}>
+              <div className="absolute inset-x-0 bottom-full mb-2">
+                <Champion final={final} />
+              </div>
+              {final ? <MatchCard match={final} mirror={false} isFinal /> : <EmptyCard isFinal />}
             </div>
-            {final ? (
-              <MatchCard match={final} mirror={false} isFinal slug={slug} />
-            ) : (
-              <EmptyCard isFinal />
-            )}
+
+            {hasWings && <StraightConnector />}
+            {hasWings && <MatchNode round={roundCount - 1} position={1} mirror index={index} />}
           </div>
 
-          {hasWings && <StraightConnector />}
-          {hasWings && (
-            <MatchNode round={roundCount - 1} position={1} mirror index={index} slug={slug} />
-          )}
+          {blocks.length > 0 && <PlacementSection blocks={blocks} index={index} />}
+
+          <FeederFlowOverlay containerRef={treeRef} flows={feederFlows} />
         </div>
+      </BracketScroller>
 
-        {blocks.length > 0 && <PlacementSection blocks={blocks} index={index} slug={slug} />}
-
-        <FeederFlowOverlay containerRef={treeRef} flows={feederFlows} />
-      </div>
-    </BracketScroller>
+      {/* BracketScroller の外に置く。あちらは狭い画面で `transform: scale()` を掛けており、
+          transform を持つ祖先は position:fixed の containing block になってしまうため、
+          スケール中に内側から fixed で全画面オーバーレイを出そうとすると縮小・位置ずれする。 */}
+      <MatchDetailModal slug={slug} matchId={openMatchId} onClose={() => setOpenMatchId(null)} />
+    </MatchClickContext.Provider>
   );
 }
 
@@ -178,17 +185,13 @@ function groupPlacementBlocks(matches: BracketMatchDto[]): PlacementBlockView[] 
  * 本体の再帰レイアウトへ差し込まないのは幾何のため — 決勝カードの中心がずれると
  * 左右から来る接続線が刺さらなくなる(ファイル冒頭を参照)。ブロックは同じ座標空間に
  * いるので、`MatchNode` をそのまま根から呼べば完全二分木として正しく描ける。
- *
- * `slug` は `MatchNode` の必須 prop(詳細ページへのリンク組み立て)なので素通しする。
  */
 function PlacementSection({
   blocks,
   index,
-  slug,
 }: {
   blocks: PlacementBlockView[];
   index: MatchIndex;
-  slug: string;
 }) {
   return (
     <div className="mt-10 border-t border-white/10 pt-6">
@@ -219,7 +222,6 @@ function PlacementSection({
                   minRound={block.minRound}
                   mirror={false}
                   index={index}
-                  slug={slug}
                 />
               </div>
             </div>
@@ -346,19 +348,17 @@ function MatchNode({
   mirror,
   index,
   minRound = 1,
-  slug,
 }: {
   round: number;
   position: number;
   mirror: boolean;
   index: MatchIndex;
   minRound?: number;
-  slug: string;
 }) {
   const match = index.get(key(round, position));
   const card = (
     <div className={`${CARD_W} shrink-0`} data-bracket-slot={key(round, position)}>
-      {match ? <MatchCard match={match} mirror={mirror} slug={slug} /> : <EmptyCard mirror={mirror} />}
+      {match ? <MatchCard match={match} mirror={mirror} /> : <EmptyCard mirror={mirror} />}
     </div>
   );
 
@@ -377,7 +377,6 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
-            slug={slug}
           />
         </div>
         <div className="flex flex-1 items-center py-1.5">
@@ -387,7 +386,6 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
-            slug={slug}
           />
         </div>
       </div>
@@ -513,14 +511,12 @@ function MatchCard({
   match,
   mirror,
   isFinal,
-  slug,
 }: {
   match: BracketMatchDto;
   mirror: boolean;
   isFinal?: boolean;
-  /** タップ時の遷移先(`/e/{slug}/bracket/{matchId}`)の組み立てに使う。 */
-  slug: string;
 }) {
+  const onOpen = useContext(MatchClickContext);
   const decided =
     match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE"
       ? WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy]
@@ -609,13 +605,13 @@ function MatchCard({
   // clip-path を持たないラッパへ当てる(理由は globals.css の .live-glow)。
   const glowed = isLive ? <div className="live-glow">{card}</div> : card;
 
-  // タップで対戦詳細ページへ。**`prefetch={false}` が必須** — 表には対戦カードが多数
-  // 並ぶため、既定のビューポート内プリフェッチのままだと画面内の全カードぶんの詳細API
-  // (ギフト集計を伴う)が一斉に走ってしまう(設計レビューで指摘された負荷経路)。
+  // タップで対戦詳細モーダルを開く。表には対戦カードが多数並ぶが、詳細API(ギフト集計を
+  // 伴いうる)はタップされたカードの分しか叩かない(以前の `prefetch={false}` と同じ
+  // 負荷対策を、フェッチそのものをタップ時まで遅延させることでさらに徹底している)。
   return (
-    <Link href={`/e/${slug}/bracket/${match.id}`} prefetch={false} className="block">
+    <button type="button" onClick={() => onOpen(match.id)} className="block w-full text-left">
       {glowed}
-    </Link>
+    </button>
   );
 }
 
@@ -624,7 +620,7 @@ function MatchCard({
  * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
  * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
  *
- * バトルスコアは表からは出さない(タップして開く対戦詳細ページの担当)。
+ * バトルスコアは表からは出さない(タップして開く対戦詳細モーダルの担当)。
  *
  * **`overflow-hidden` が要る** — 枠より大きいアイコンのはみ出しをここで切る。付け忘れると
  * 上下のサイドへ顔が侵食する(親カードの overflow-hidden はカードの外しか切らない)。
