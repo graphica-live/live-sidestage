@@ -6,6 +6,7 @@ import {
   type ListenerProfile,
 } from "./analytics-db";
 import { resolveSideTiktokScores, type BattleScoreRow, type ScoreSideInput } from "./battle-score";
+import { groupByCombinedGroup, sortCandidatesDeterministically } from "./candidate-groups";
 import { buildSlotRows, type Bucket, type MatchListenerRow, type SlotInput } from "./match-contributions";
 import { resolveGameWinner } from "./match-results";
 import { parseMatchRules, seriesRequirement, type WinCondition } from "./match-rules";
@@ -96,6 +97,154 @@ export type BattleDetail = {
   contributions: BattleContributionSlot[] | null;
 };
 
+/**
+ * 検知バトル候補を「合算グループ」単位でまとめたゲーム1件。**候補の合算(バトル候補の
+ * 合算機能)を導入した後の表示側の正本。** `battles`(候補単位、無改修)はそのまま残し、
+ * `games` はそれを合算グループへ組み替えたもの。
+ *
+ * **`selected: true` の候補だけを対象にグループ化する。** 全候補を対象にすると、
+ * 「途中終了A+やり直しCを合算し、間に挟まったゴミ検知Bを非選択で除外」のようなケースで
+ * A・Cが非隣接になり、`groupByCombinedGroup` が2つの偽の単独ゲームに分断してしまう
+ * (`selected` は `resolveMatchSeries()` が計算する実効ゲーム集合で、
+ * `validateCandidateGroups` が保証する連続性も選択集合内での連続性のため、定義域を
+ * 一致させる必要がある)。
+ */
+export type GameDetail = {
+  /** グループ内先頭候補(startedAt最小)の candidateId。Reactキー等の一意性に使う。 */
+  gameKey: string;
+  /** このゲームを構成する検知バトルの候補ID。合算なら2件以上、通常は1件(startedAt昇順)。 */
+  candidateIds: string[];
+  startedAt: string;
+  /** グループ内で最後に終了した候補の endedAt。 */
+  endedAt: string | null;
+  /** グループの全メンバーが completed でなければ false。 */
+  completed: boolean;
+  /** 合算後の総ダイヤで再計算したこのゲームの勝者。 */
+  calculatedWinnerSideId: string | null;
+  sides: BattleSideBreakdown[] | null;
+  contributions: BattleContributionSlot[] | null;
+};
+
+/** Decimal 文字列("250.50")を100倍された bigint へ戻す(`formatScaledPoints()` の逆演算)。 */
+function parseScaledPoints(decimal: string): bigint {
+  const negative = decimal.startsWith("-");
+  const abs = negative ? decimal.slice(1) : decimal;
+  const [intPart, fracPart = ""] = abs.split(".");
+  const scaled = BigInt(intPart || "0") * FACTOR_SCALE + BigInt((fracPart + "00").slice(0, 2) || "0");
+  return negative ? -scaled : scaled;
+}
+
+/**
+ * 合算グループのメンバー(候補)ごとのサイド内訳を1つに合算する。BigInt で正確に加算し、
+ * 保存直前だけ `formatScaledPoints()` で Decimal 文字列に戻す(`number` を経由しない)。
+ */
+function sumSideBreakdowns(memberSides: BattleSideBreakdown[][]): BattleSideBreakdown[] {
+  const totals = new Map<string, { diamonds: bigint; points: bigint }>();
+  for (const sides of memberSides) {
+    for (const s of sides) {
+      const acc = totals.get(s.sideId) ?? { diamonds: 0n, points: 0n };
+      acc.diamonds += BigInt(s.diamonds);
+      acc.points += parseScaledPoints(s.points);
+      totals.set(s.sideId, acc);
+    }
+  }
+  return [...totals.entries()].map(([sideId, t]) => ({
+    sideId,
+    diamonds: t.diamonds.toString(),
+    points: formatScaledPoints(t.points),
+  }));
+}
+
+/**
+ * 合算グループのメンバー(候補)ごとの貢献者内訳を1つに合算する。participantId 単位で
+ * diamonds/points/giftCount を合算し、listeners は uniqueId 単位でさらに合算した上で
+ * 打ち切り(`MAX_BATTLE_LISTENER_ROWS`)をやり直す。並びは `match-contributions.ts` の
+ * `compareListeners` と同じ規則(ポイント降順 → ダイヤ降順 → uniqueId 昇順)。
+ */
+function mergeContributionSlots(
+  memberContributions: BattleContributionSlot[][]
+): BattleContributionSlot[] {
+  type SlotAcc = {
+    participantId: string;
+    displayName: string;
+    sideIndex: number;
+    diamonds: bigint;
+    points: bigint;
+    giftCount: number;
+    listeners: Map<
+      string,
+      { nickname: string; profileImageUrl: string | null; diamonds: bigint; points: bigint; giftCount: number }
+    >;
+  };
+  const bySlot = new Map<string, SlotAcc>();
+
+  for (const contributions of memberContributions) {
+    for (const c of contributions) {
+      let slot = bySlot.get(c.participantId);
+      if (!slot) {
+        slot = {
+          participantId: c.participantId,
+          displayName: c.displayName,
+          sideIndex: c.sideIndex,
+          diamonds: 0n,
+          points: 0n,
+          giftCount: 0,
+          listeners: new Map(),
+        };
+        bySlot.set(c.participantId, slot);
+      }
+      slot.diamonds += BigInt(c.diamonds);
+      slot.points += parseScaledPoints(c.points);
+      slot.giftCount += c.giftCount;
+      for (const l of c.listeners) {
+        let listener = slot.listeners.get(l.uniqueId);
+        if (!listener) {
+          listener = {
+            nickname: l.nickname,
+            profileImageUrl: l.profileImageUrl,
+            diamonds: 0n,
+            points: 0n,
+            giftCount: 0,
+          };
+          slot.listeners.set(l.uniqueId, listener);
+        }
+        listener.diamonds += BigInt(l.diamonds);
+        listener.points += parseScaledPoints(l.points);
+        listener.giftCount += l.giftCount;
+      }
+    }
+  }
+
+  return [...bySlot.values()].map((slot) => {
+    const listenerEntries = [...slot.listeners.entries()].sort((a, b) => {
+      if (a[1].points !== b[1].points) return a[1].points > b[1].points ? -1 : 1;
+      if (a[1].diamonds !== b[1].diamonds) return a[1].diamonds > b[1].diamonds ? -1 : 1;
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+    });
+    const truncated = listenerEntries.length > MAX_BATTLE_LISTENER_ROWS;
+    const listeners: MatchListenerRow[] = (
+      truncated ? listenerEntries.slice(0, MAX_BATTLE_LISTENER_ROWS) : listenerEntries
+    ).map(([uniqueId, l]) => ({
+      uniqueId,
+      nickname: l.nickname,
+      profileImageUrl: l.profileImageUrl,
+      diamonds: l.diamonds.toString(),
+      points: formatScaledPoints(l.points),
+      giftCount: l.giftCount,
+    }));
+    return {
+      participantId: slot.participantId,
+      displayName: slot.displayName,
+      sideIndex: slot.sideIndex,
+      diamonds: slot.diamonds.toString(),
+      points: formatScaledPoints(slot.points),
+      giftCount: slot.giftCount,
+      listeners,
+      truncated,
+    };
+  });
+}
+
 export type PublicMatchSideDto = {
   id: string;
   sideIndex: number;
@@ -123,7 +272,10 @@ export type PublicMatchDetail = {
   winsNeeded: number;
   battleState: MatchBattleState;
   sides: PublicMatchSideDto[];
+  /** 検知バトル候補単位。無改修・後方互換(既存の公開API利用者が読んでいる)。 */
   battles: BattleDetail[];
+  /** 合算グループ単位。UIはこちらを描画する。 */
+  games: GameDetail[];
   /** この応答を組み立てた時刻。長期キャッシュを避けているのでいつでも「ほぼ現在」。 */
   dataAsOf: string;
 };
@@ -281,6 +433,7 @@ type MatchRow = {
     endedAt: Date | null;
     confidence: string;
     selected: boolean;
+    combinedGroupId: string | null;
   }[];
 };
 
@@ -333,7 +486,15 @@ export async function loadPublicMatchDetail(
       },
       battleCandidates: {
         orderBy: { startedAt: "asc" },
-        select: { id: true, battleId: true, startedAt: true, endedAt: true, confidence: true, selected: true },
+        select: {
+          id: true,
+          battleId: true,
+          startedAt: true,
+          endedAt: true,
+          confidence: true,
+          selected: true,
+          combinedGroupId: true,
+        },
       },
     },
   })) as MatchRow | null;
@@ -378,6 +539,7 @@ export async function loadPublicMatchDetail(
   }));
 
   let battles: BattleDetail[] = [];
+  let games: GameDetail[] = [];
 
   if (battleState === "AVAILABLE") {
     const windows: EventWindow[] = session
@@ -506,6 +668,42 @@ export async function loadPublicMatchDetail(
         };
       })
     );
+
+    // **games は selected な候補だけを対象にグループ化する。** 全候補を対象にすると、
+    // 合算グループのメンバーが非選択候補を挟んで非隣接になった場合に分断されてしまう
+    // (GameDetail の型コメント参照)。
+    const selectedCandidates = match.battleCandidates.filter((c) => c.selected);
+    const groups = groupByCombinedGroup(sortCandidatesDeterministically(selectedCandidates));
+    const battleByCandidateId = new Map(battles.map((b) => [b.candidateId, b]));
+
+    games = groups.map((group) => {
+      const members = group.map((c) => battleByCandidateId.get(c.id)!);
+      const completed = members.every((m) => m.completed);
+      const sides = completed
+        ? sumSideBreakdowns(
+            members.map((m) => m.sides).filter((s): s is BattleSideBreakdown[] => s !== null)
+          )
+        : null;
+      const contributions = completed
+        ? mergeContributionSlots(
+            members
+              .map((m) => m.contributions)
+              .filter((c): c is BattleContributionSlot[] => c !== null)
+          )
+        : null;
+      return {
+        gameKey: group[0].id,
+        candidateIds: group.map((c) => c.id),
+        startedAt: group[0].startedAt.toISOString(),
+        endedAt: group[group.length - 1].endedAt?.toISOString() ?? null,
+        completed,
+        calculatedWinnerSideId: sides
+          ? resolveGameWinner(sides.map((s) => ({ sideId: s.sideId, diamonds: BigInt(s.diamonds) })))
+          : null,
+        sides,
+        contributions,
+      };
+    });
   }
 
   return {
@@ -532,6 +730,7 @@ export async function loadPublicMatchDetail(
     battleState,
     sides,
     battles,
+    games,
     dataAsOf: params.now.toISOString(),
   };
 }

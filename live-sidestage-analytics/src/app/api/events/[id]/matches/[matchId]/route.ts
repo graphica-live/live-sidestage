@@ -1,15 +1,20 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
-import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
+import {
+  buildCandidatesFingerprintInput,
+  buildSelectionFingerprintInput,
+} from "@/event/candidates-fingerprint";
+import { validateCandidateGroups } from "@/event/candidate-groups";
 import { acquireEventLock } from "@/event/event-lock";
 import { parseJstLocal } from "@/event/datetime";
 import { downstreamStarted } from "@/event/match-downstream";
 import { advanceBracket, resolveMatchSeries } from "@/event/match-results";
 import { seriesRequirement, parseMatchRules, type MatchRules } from "@/event/match-rules";
 import {
+  canAdjustCandidates,
   isByeRow,
   isCandidatesConfirmedByOrganizer,
   isPlainObject,
@@ -112,20 +117,41 @@ type Action =
   | "reopen"
   | "assignSession"
   | "selectCandidates"
+  | "selectCandidateGroups"
   | "resetCandidates"
   | "forceFullPeriod";
 
 /**
- * 候補一覧の「見た目」の指紋。楽観的排他に使う。
+ * 候補一覧の「見た目」の指紋。楽観的排他に使う。検知データ(startedAt/endedAt/confidence/
+ * ambiguous)の鮮度を守るためのもので、選択状態(organizerSelected/combinedGroupId)は
+ * 見ない(`computeSelectionFingerprint` が別に守る)。
  *
  * **Next.js の route ファイルは HTTP メソッド以外を export できない**ため、テストは
  * 同じ入力文字列(`buildCandidatesFingerprintInput`、`@/event/candidates-fingerprint`)を
  * 使って自前でハッシュ化する(このファイル内の関数は呼べない)。
  */
 function computeCandidatesFingerprint(
-  candidates: { id: string; endedAt: Date | null; confidence: string; ambiguous: boolean }[]
+  candidates: {
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    confidence: string;
+    ambiguous: boolean;
+  }[]
 ): string {
   return createHash("sha256").update(buildCandidatesFingerprintInput(candidates)).digest("hex");
+}
+
+/**
+ * 「主催者が下した選択(organizerSelected/combinedGroupId)」の指紋。`resetCandidates` と、
+ * 既に candidatesConfirmedByOrganizer 済みの対戦への再 `selectCandidateGroups` は、
+ * `computeCandidatesFingerprint` に加えてこちらも照合する(選択結果を古いタブから
+ * 上書き・消去させないため)。
+ */
+function computeSelectionFingerprint(
+  candidates: { id: string; organizerSelected: boolean; combinedGroupId: string | null }[]
+): string {
+  return createHash("sha256").update(buildSelectionFingerprintInput(candidates)).digest("hex");
 }
 
 /** `resolveMatchSeries()` に要る、イベント全体で共通の入力(1トランザクション内で使い回す)。 */
@@ -203,6 +229,7 @@ async function loadMatchForSeries(tx: DbClient, matchId: string) {
           confidence: true,
           ambiguous: true,
           organizerSelected: true,
+          combinedGroupId: true,
         },
       },
     },
@@ -227,7 +254,9 @@ export async function PATCH(
     winnerSideId?: unknown;
     sessionId?: unknown;
     candidateIds?: unknown;
+    groups?: unknown;
     candidatesFingerprint?: unknown;
+    selectionFingerprint?: unknown;
     enabled?: unknown;
     decidedAt?: unknown;
   } | null;
@@ -269,7 +298,16 @@ export async function PATCH(
           rules: true,
           battleCandidates: {
             orderBy: { startedAt: "asc" },
-            select: { id: true, endedAt: true, confidence: true, ambiguous: true },
+            select: {
+              id: true,
+              battleId: true,
+              startedAt: true,
+              endedAt: true,
+              confidence: true,
+              ambiguous: true,
+              organizerSelected: true,
+              combinedGroupId: true,
+            },
           },
           sides: { select: { id: true, sideIndex: true } },
         },
@@ -282,6 +320,7 @@ export async function PATCH(
         action === "void" ||
         action === "reopen" ||
         action === "selectCandidates" ||
+        action === "selectCandidateGroups" ||
         action === "resetCandidates";
 
       // 不戦勝行は主催者が結果を操作する対象ではない(対戦が起きていないので勝者確定・
@@ -376,6 +415,14 @@ export async function PATCH(
           // 手動確定は検知を丸ごと捨てる(既存方針)。候補バトルも複数ゲームぶんまとめて消す。
           if (dropDetection) {
             await tx.eventMatchBattleCandidate.deleteMany({ where: { matchId: match.id } });
+          } else {
+            // 検知情報は残すが、主催者の選択(organizerSelected/combinedGroupId)は
+            // MANUAL 確定によって意味を失う(resolveMatchSeries は MANUAL_DECISIONS を
+            // 対象外にする)ので、不変条件を単純に保つためここでもクリアしておく。
+            await tx.eventMatchBattleCandidate.updateMany({
+              where: { matchId: match.id },
+              data: { organizerSelected: false, combinedGroupId: null },
+            });
           }
           break;
         }
@@ -424,6 +471,11 @@ export async function PATCH(
           });
           if (dropDetection) {
             await tx.eventMatchBattleCandidate.deleteMany({ where: { matchId: match.id } });
+          } else {
+            await tx.eventMatchBattleCandidate.updateMany({
+              where: { matchId: match.id },
+              data: { organizerSelected: false, combinedGroupId: null },
+            });
           }
           break;
         }
@@ -449,9 +501,11 @@ export async function PATCH(
           // **候補行は削除しない。** `reopen` すれば再検知の余地を残す
           // (VOID は「無効化」であって「検知をやり直す」ではない)。ただし
           // loadBattleRangesByRoom には一切現れないよう selected は倒しておく。
+          // combinedGroupId も一緒にクリアする(不変条件「非null ⇒ organizerSelected も
+          // true」を保つ fail-safe)。
           await tx.eventMatchBattleCandidate.updateMany({
             where: { matchId: match.id },
-            data: { selected: false, organizerSelected: false },
+            data: { selected: false, organizerSelected: false, combinedGroupId: null },
           });
           break;
         }
@@ -569,14 +623,170 @@ export async function PATCH(
           break;
         }
 
+        case "selectCandidateGroups": {
+          // 段階的デプロイ用フラグ(src/event/CLAUDE.md「候補調整モード」参照)。
+          // EVENT_WINNER_FEEDER_SWAP と同じパターン: 列追加→reader配布→旧worker消滅確認
+          // →writer/UI有効化。フラグが立つまではこの action を常に拒否し、旧クライアントの
+          // selectCandidates(合算なし)だけが実働する状態を保つ。
+          if (process.env.EVENT_CANDIDATE_GROUPING !== "1") {
+            return { error: "未知の action です。", status: 400 };
+          }
+
+          // CANDIDATES_EXCEEDED(強制フロー)に加えて、下流未着手・候補2件以上の対戦
+          // (canAdjustCandidates)から主催者が任意に開ける「候補調整モード」もこの action で
+          // 受け付ける。超過判定の式(resolveMatchSeries側)自体は変更しない — この action は
+          // 「主催者が候補群を確定する」という書き込みの起点を増やすだけ。
+          const forced =
+            match.status === "NEEDS_REVIEW" && reviewReasonOf(match.rules) === "CANDIDATES_EXCEEDED";
+          if (
+            !forced &&
+            !canAdjustCandidates({
+              status: match.status,
+              winnerDecidedBy: match.winnerDecidedBy,
+              candidateCount: match.battleCandidates.length,
+            })
+          ) {
+            return { error: "候補を調整できる対戦ではありません。", status: 400 };
+          }
+
+          const rawIds = body?.candidateIds;
+          if (!Array.isArray(rawIds) || rawIds.some((v) => typeof v !== "string")) {
+            return { error: "candidateIds が不正です。", status: 400 };
+          }
+          const candidateIds = rawIds as string[];
+          if (new Set(candidateIds).size !== candidateIds.length) {
+            return { error: "candidateIds に重複があります。", status: 400 };
+          }
+
+          const byId = new Map(match.battleCandidates.map((c) => [c.id, c]));
+          if (!candidateIds.every((id) => byId.has(id))) {
+            return { error: "このマッチに存在しない候補が含まれています。", status: 400 };
+          }
+          const now = new Date();
+          // **未来終了・未終了の候補は選ばせない。** resolveMatchSeries() 側の
+          // pool-then-group 化(グループ全体が確定していないと確定させない)と合わせた
+          // 二重防御。ここで弾けば、未来終了候補を含むグループが organizerSelected として
+          // 保存されること自体を未然に防げる。
+          if (
+            candidateIds.some((id) => {
+              const c = byId.get(id)!;
+              return c.endedAt === null || c.endedAt > now;
+            })
+          ) {
+            return { error: "終了が確定していない候補は選べません。", status: 400 };
+          }
+
+          const validated = validateCandidateGroups(
+            body?.groups,
+            candidateIds,
+            new Map(candidateIds.map((id) => [id, byId.get(id)!]))
+          );
+          if (!validated.ok) {
+            const messages: Record<string, string> = {
+              INVALID_SHAPE: "groups が不正です。",
+              GROUP_DUPLICATE_ID: "groups 内で候補IDが重複しています。",
+              GROUP_ID_MISMATCH: "groups が candidateIds と一致しません。",
+              GROUP_NOT_CONTIGUOUS: "合算グループは連続したバトルでなければなりません。",
+            };
+            return {
+              error: messages[validated.error.code],
+              code: validated.error.code,
+              status: 400,
+            };
+          }
+          const { groups } = validated;
+
+          const { matchRules } = await loadSeriesInputs(tx, params.id);
+          const { maxGames } = seriesRequirement(matchRules.winCondition);
+          if (groups.length < 1 || groups.length > maxGames) {
+            return { error: `合算後のゲーム数は1〜${maxGames}件にしてください。`, status: 400 };
+          }
+
+          // 楽観的排他: 検知データの指紋(既存)+選択状態の指紋(新規)。
+          const expectedCandidatesFingerprint =
+            typeof body?.candidatesFingerprint === "string" ? body.candidatesFingerprint : "";
+          if (computeCandidatesFingerprint(match.battleCandidates) !== expectedCandidatesFingerprint) {
+            return {
+              error: "この画面を開いた後に候補の内容が変わりました。最新の状態を確認してください。",
+              code: "CANDIDATES_CHANGED",
+              status: 409,
+            };
+          }
+          const expectedSelectionFingerprint =
+            typeof body?.selectionFingerprint === "string" ? body.selectionFingerprint : "";
+          if (computeSelectionFingerprint(match.battleCandidates) !== expectedSelectionFingerprint) {
+            return {
+              error: "この画面を開いた後に選択状態が変わりました。最新の状態を確認してください。",
+              code: "SELECTION_CHANGED",
+              status: 409,
+            };
+          }
+
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id },
+            data: { organizerSelected: false, combinedGroupId: null },
+          });
+          await tx.eventMatchBattleCandidate.updateMany({
+            where: { matchId: match.id, id: { in: candidateIds } },
+            data: { organizerSelected: true },
+          });
+          for (const group of groups) {
+            if (group.length < 2) continue; // 単独は combinedGroupId=null のままでよい
+            await tx.eventMatchBattleCandidate.updateMany({
+              where: { matchId: match.id, id: { in: group } },
+              data: { combinedGroupId: randomUUID() },
+            });
+          }
+          await tx.eventMatch.update({
+            where: { id: match.id },
+            data: {
+              rules: withCandidatesConfirmedByOrganizer(
+                match.rules,
+                true
+              ) as Prisma.InputJsonObject,
+            },
+          });
+
+          {
+            const { multipliers, windows } = await loadSeriesInputs(tx, params.id);
+            const refreshed = await loadMatchForSeries(tx, match.id);
+            await resolveMatchSeries(tx, {
+              match: refreshed,
+              matchRules,
+              multipliers,
+              windows,
+              now,
+              downstreamStarted: await downstreamStarted(
+                tx,
+                params.id,
+                match.round,
+                match.bracketPosition
+              ),
+            });
+          }
+          break;
+        }
+
         case "resetCandidates": {
           if (match.battleCandidates.length === 0) {
             return { error: "候補が1件もありません。", status: 400 };
           }
 
+          // **選択状態の楽観的排他。** 主催者の判断(organizerSelected/combinedGroupId)を
+          // 別タブ・古い画面から無条件に消せないようにする。
+          const expectedSelectionFingerprint =
+            typeof body?.selectionFingerprint === "string" ? body.selectionFingerprint : "";
+          if (computeSelectionFingerprint(match.battleCandidates) !== expectedSelectionFingerprint) {
+            return {
+              error: "この画面を開いた後に選択状態が変わりました。最新の状態を確認してください。",
+              code: "SELECTION_CHANGED",
+              status: 409,
+            };
+          }
+
           await tx.eventMatchBattleCandidate.updateMany({
             where: { matchId: match.id },
-            data: { organizerSelected: false, selected: false },
+            data: { organizerSelected: false, selected: false, combinedGroupId: null },
           });
           await tx.eventMatch.update({
             where: { id: match.id },

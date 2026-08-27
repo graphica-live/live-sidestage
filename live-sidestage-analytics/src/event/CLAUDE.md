@@ -1109,6 +1109,223 @@ duration から終了時刻を計算した OPEN 状態のバトルは、`endedAt
 勝者を上書きしうる）。ロジック変更（`detectMatches`/`resolveMatchResults` 書き換え）を含む
 デプロイの前に `event-worker` を一度止めるのが安全。
 
+## 候補調整モード — 検知バトル候補の「合算」（途中終了+やり直しの救済）
+
+TikTok Live のバトルは熱暴走・通信トラブルで途中終了することがある。運用慣例は
+「2戦目を行い、1戦目の途中終了したバトルのスコアを加算して勝敗をジャッジする」。
+これを実現するため、`EventMatchBattleCandidate.combinedGroupId`（nullable String）を主催者が
+明示的に書き込むことで、複数の候補バトルを1ゲームとして合算できる。設計は2回の独立レビュー
+（1回目Codex・2回目fable-expert、Codex利用制限のためフォールバック）を経て確定している。
+ここには壊しやすい箇所だけ書く。
+
+### `combinedGroupId` — 合算グループの印
+
+- null = 単独ゲーム（従来どおり1候補=1ゲーム）。同じ値を持つ候補群は
+  `resolveMatchSeries()` がスコアを合算して1ゲームとして扱う
+- **`selectCandidateGroups` API だけが書く。`organizerSelected` と対で運用する不変条件**
+  （「非null ⇒ `organizerSelected` も true」。`void`/`reopen`/`resetCandidates`、および
+  `confirm`/`draw` の検知破棄しないパスは必ず両方をクリアする）
+- 値そのものに意味はない不透明な文字列（サーバーが `crypto.randomUUID()` で発行）。
+  同じ `matchId` 内に複数のグループが同時に存在してよい
+
+### 候補調整モード — `CANDIDATES_EXCEEDED` とは別の入口
+
+生候補数がちょうど `maxGames`（勝利条件の要求本数）に収まると、`resolveMatchSeries()` の
+超過判定（`!organizerCurated && resolvedGroups.length > maxGames`）に一度も引っかからず、
+そのまま複数ゲームとして自動確定してしまう。**これは合算機能が最も必要になる典型ケース
+そのもの**（例: BEST_OF_THREE で「途中終了A+やり直しB=1本」「正常終了C=1本」の生候補3件は
+`maxGames=3` とちょうど一致し `CANDIDATES_EXCEEDED` を経由しない）。
+
+そこで `canAdjustCandidates()`（`src/event/match-status.ts`）を判定基準の1箇所にし、
+**API・UI・低ダイヤ計算のスコープ絞り込みの3箇所すべてがこれを参照する**
+（`isReadyForDetection()` が検知経路の唯一の判定基準になっているのと同じ思想）。
+
+```ts
+export function canAdjustCandidates(match: {
+  status: string;
+  winnerDecidedBy: string | null;
+  candidateCount: number;
+}): boolean {
+  if (match.candidateCount < 2) return false;
+  if (match.status === "VOID" || match.status === "NO_SHOW") return false;
+  if (match.winnerDecidedBy && MANUAL_DECISION_WINNER_KINDS.has(match.winnerDecidedBy)) return false;
+  return true;
+}
+```
+
+- **`CANDIDATES_EXCEEDED`(強制)**: 既存どおり `status === "NEEDS_REVIEW" && reviewReason
+  === "CANDIDATES_EXCEEDED"` のとき、候補選択UIは強制的に開いたまま(既存挙動)
+- **候補調整モード(任意)**: それ以外で `canAdjustCandidates()` が true の対戦
+  （自動確定済みの BEST_OF_THREE を含む）に、「候補を調整する」ボタンを新設し、
+  主催者が能動的に開く
+
+**超過判定の式自体は変更しない。** 候補調整モードは「主催者が明示的に
+`organizerSelected`/`combinedGroupId` を書き込んで `candidatesConfirmedByOrganizer=true` に
+する」という書き込みの起点を増やすだけであり、`resolveMatchSeries()` 側は
+「`organizerCurated` になったかどうか」しか見ない。
+
+`⚠️トラブル対処`（`forceFullPeriod`、赤枠・確認ダイアログ必須）とは性格が異なるため
+視覚的に分離する（黄枠、確認ダイアログなし）。合算は異常対応ではなく仕様どおりの通常操作。
+
+### pool-then-group化 — グルーピングは未来終了フィルタより前に行う
+
+`resolveMatchSeries()`（`match-results.ts`）は、先に `resolved`（終了確定済み）へ絞ってから
+グループ化すると、グループの1メンバーだけ未来終了（duration由来のLIVE）のときにそのメンバー
+だけ静かに脱落し、「完了済みメンバーだけの偽の1件グループ」として確定してしまう。
+
+**必ず `pool` 全体を先にグループ化してから、グループ単位で完了判定する**：
+
+```ts
+const orderedPool = sortCandidatesDeterministically(pool);
+const groupedPool = groupByCombinedGroup(orderedPool);
+const isGroupResolved = (g) => g.every((c) => c.endedAt !== null && c.endedAt <= now);
+const resolvedGroups = groupedPool.filter(isGroupResolved);
+const pendingGroups = groupedPool.filter((g) => !isGroupResolved(g));
+```
+
+候補数超過判定・実効ゲーム集合の計算（`scoreSides()` をグループのメンバー分ループして合算
+してから `resolveGameWinner()` を1回呼ぶ）・未決着時の `pending` 判定は、すべて
+`resolved`/`pending`（フラット化した配列）ではなく `resolvedGroups`/`pendingGroups` を基準にする。
+
+**API側（`selectCandidateGroups`）でも二重防御を入れる**: 候補IDバリデーション時に
+`endedAt === null || endedAt > now` の候補を含む選択は400で拒否する。これにより未来終了候補を
+含むグループが `organizerSelected` として保存されること自体を未然に防ぐ。
+
+### `validateCandidateGroups()` — groupsは「候補の厳密な分割」でなければならない
+
+`src/event/candidate-groups.ts`。**「平坦化した集合が candidateIds の集合と一致」だけでは
+不十分** — `[[a,b],[b,c]]` のような重複ID混入を検出できず、`b` が後勝ちのUUIDで上書きされて
+検証したグループ数とDB上の結果が食い違う。各IDが全グループを通じてちょうど1回だけ現れる
+ことを構造的に検証し、各グループが `startedAt→battleId` 順で連続区間を成すことも確認する。
+
+UI側（`MatchManager.tsx` の `deriveGroupsFromSelection()`）は「checkedIds」と
+「mergeWithPreviousIds（前の候補と合算する）」の2集合から groups を導出することで、
+**構造的にグループの厳密な分割しか作れない**（id重複・非連続が原理的に発生しない）。
+`selectedCandidateIds` と `mergedGroups` を別々の state として個別管理しない — 重複所属・
+チェック解除・低ダイヤ非表示との不整合を構造的に防ぐため。
+
+### `selectCandidateGroups` — 新しいaction、既存`selectCandidates`は無改修のまま
+
+ローリングデプロイ対策として、既存の `selectCandidates` に `groups` パラメータを追加する
+のではなく、**新しいaction名 `selectCandidateGroups` を新設し、既存 `selectCandidates` は
+無改修のまま残す**（旧クライアントの安全な着地点）。旧Webサーバーが未知の `groups` を無視して
+`candidateIds` を独立ゲームとして受理してしまう、旧event-workerが `combinedGroupId` を読まず
+独立ゲームとして再計算してしまう、という誤判定を避けるため。
+
+デプロイは `EVENT_WINNER_FEEDER_SWAP` と同じ2段階パターンを踏襲する
+（feature flag: `EVENT_CANDIDATE_GROUPING`、既定オフ）:
+
+1. **列追加**: `combinedGroupId` を `prisma db push`。既存行は全部 `null`
+2. **reader配布**: `resolveMatchSeries()` のグループ対応版を event-worker と Web の両方へ
+   デプロイ。フラグは未設定(オフ)のまま。DB上は `combinedGroupId` が依然全部 `null` なので、
+   `groupByCombinedGroup()` は「候補1件=グループ1件」に退化し、新旧ロジックは出力が完全に
+   一致する（既存integrationテストがそのまま回帰確認になる）。`selectCandidateGroups`
+   ハンドラのコードも同時にデプロイしてよい（フラグチェックで即400を返すため実害はない）
+3. **旧event-worker消滅確認**: event-worker Railwayサービスのローリング再起動が完了し、
+   新ビルドの1リビジョンのみが稼働していることを確認する
+4. **writer/UI有効化**: Webの `EVENT_CANDIDATE_GROUPING=1` を設定
+
+**`combinedGroupId` を持つ行が1件でも存在する状態での旧バージョンへのロールバックは禁止**
+（`winnerFeeders` と同じ注記）。ロールバックが必要な場合は、対象マッチに `resetCandidates`
+（`combinedGroupId` を明示的に全クリア）してから行う。
+
+**フラグOFF期間中のUIフォールバックを忘れないこと。** `MatchManager.tsx` の確定ボタンは
+`candidateGroupingEnabled` が false のとき常に旧action（`selectCandidates`、合算UIなし）へ
+フォールバックする。段階的デプロイの reader配布〜writer有効化の間（旧event-worker消滅確認を
+挟むため数時間〜数日）は、サーバー側が `selectCandidateGroups` を常に400で拒否するため、
+フォールバックが無いとその間 `CANDIDATES_EXCEEDED` を主催者が一切確定できなくなる
+（2回目レビューで発見された欠陥。既存機能の一時停止を招くため必須）。
+
+低ダイヤ非表示フィルタ（次節）はこのフラグの対象**外**とする — DBの新規書き込みを伴わない
+純粋な表示フィルタであり、event-workerのバージョン不整合とは無関係なため、通常のデプロイで
+そのまま有効化してよい。
+
+### 楽観的排他 — `candidatesFingerprint` と `selectionFingerprint` の2本立て
+
+`buildCandidatesFingerprintInput()`（`src/event/candidates-fingerprint.ts`）に `startedAt`
+が要る。検知ワーカーは候補の `startedAt` を更新しうる（`battles.ts` の upsert）が、合算の
+連続性・順序判定はこの値に依存するため、含めないと画面を開いた後に検知データが動いても
+気づけない。
+
+`resetCandidates` と、既に `candidatesConfirmedByOrganizer` 済みの対戦への再
+`selectCandidateGroups` は、検知データの指紋に加えて**新規 `buildSelectionFingerprintInput()`
+（選択状態: `organizerSelected`/`combinedGroupId`）も照合する** — 主催者の判断を古いタブ・
+別画面から無条件に上書き・消去させないため。`combinedGroupId` はサーバー発行UUIDで再選択の
+たびに値が変わるので、生の値ではなく「そのグループの先頭候補ID」を代表値として正規化してから
+比較する（同じ分割なら同じ指紋になる）。
+
+### 公開API — `games`（合算グループ単位）は`battles`（候補単位）に加算する
+
+`match-detail.ts` の `PublicMatchDetail.battles`（既存、`BattleDetail[]`）は**現状のフィールド
+構成のまま無改修**にする。認証不要の公開API（`/api/public/events/[slug]/bracket/[matchId]`）が
+これをそのまま返すため、既存の外部利用者にフィールド追加以外の変更を発生させないための設計
+判断（APIバージョニングは導入しない）。
+
+新規に `games: GameDetail[]`（合算グループ単位）を**加算**する。`loadPublicMatchDetail()` は
+既存の `battles` 計算結果を再利用して組み立てる（2回目のギフト集計は発生させない）。
+
+**`games` のグループ化は `selected: true` の候補だけを対象にすること。** 全候補を対象にすると、
+中心シナリオ（「途中終了A(21:00)+やり直しC(22:00)を合算し、間に挟まったゴミ検知B(21:30)を
+非選択で除外」）で全候補のソート列がA,B,Cとなり、合算グループのメンバーA,Cが非隣接になる。
+`groupByCombinedGroup()` は隣接一致しかまとめないため、Gが「A単独」「C単独」という2つの
+偽のゲームに分断されて公開表示されてしまう（2回目レビューで発見された欠陥。合算機能そのものの
+正しさを壊す）。`selected` 列は `resolveMatchSeries()` が計算する「現在の実効ゲーム集合」で、
+`validateCandidateGroups()` が保証する連続性も選択集合内での連続性なので、選択後の `selected`
+列を定義域にすることで書き込み時の検証と表示時のグループ化が一致する。
+
+`games` の組み立ては `battleState === "AVAILABLE"` 分岐の内側で行うこと（外だと候補0件・
+VOID・NO_SHOW等で `battleByCandidateId.get(c.id)!` が `undefined` になる）。`games` に含まれない
+候補（非選択・承認待ち等）は `battles` 側にそのまま残るので、表示側（`match-detail-ui.tsx`,
+`BattleCard.tsx`）は `games` をメインに描画しつつ `battles` のうち `games` のどの
+`candidateIds` にも含まれない候補を別枠（`UnselectedBattleNote`）で表示する。「候補単位の
+TikTokスコアと『結果に未反映』の表示を失わない」という要件を満たすため。
+
+TikTokスコア（hostScore）は候補単位のまま合算しない（`GameDetail` に `tiktokScores` フィールド
+自体を持たせていない）。単一候補のゲームでは `BattleCard.tsx` が対応する `BattleDetail` から
+表示し、合算グループ（候補2件以上）では表示しない。
+
+### `match-contributions.ts` — 合算グループを持つ対戦だけ候補区間unionに切り替える
+
+`resolveMatchSpans()`（`match-spans.ts`）は `detectedStartAt`〜`detectedEndAt` を1本の連続
+区間として扱うため、合算グループを持つ対戦ではCUT_SHORT終了〜やり直し開始の空白ギフトが
+貢献者モーダルにだけ混入し、勝敗・順位の対象区間（`scoreSides()` が候補ごとに個別集計する
+区間）とズレる。
+
+`combinedGroupId` を持つ選択済み候補が1件でもある対戦だけ、`resolveGroupedMatchSpans()`
+（各 `selected: true` 候補の `[startedAt, endedAt)` を個別に日程で切ってから結合）へ分岐する。
+**通常のBO3（合算なしのゲーム間の空白）は対象外とし、既存の連続区間のまま維持する**（合算機能
+導入前から存在する別の既知差異であり、本機能のスコープを広げてまで直す理由がない）。
+
+`selectCandidateGroups` は候補選択の完了（全メンバーの `endedAt` 確定）を要求するため、この
+経路に来る時点で対象候補は必ず確定済み — 「進行中(LIVE)の合算グループ」というケース自体が
+発生しない。したがって `resolveGroupedMatchSpans()` の `provisional` は常に `false` でよい。
+
+### 低ダイヤ候補の非表示フィルタ — オンデマンドAPI（page.tsx の事前計算にしない）
+
+候補選択UIの「1000ダイヤ以下のバトルを隠す」トグル（初期状態でON）用の生ダイヤ集計は、
+`page.tsx`（対戦一覧のサーバーコンポーネント）で事前計算**しない**。
+
+理由: `canAdjustCandidates()` は「候補調整モードの入口」として、確定済みBEST_OF_THREE
+（FINISHED・AGGREGATE、候補2件以上）も意図的にtrueを返す設計（指摘1の救済対象そのものの
+ため除外できない）。この述語を低ダイヤ計算の対象絞り込みにそのまま使うと「確定済み対戦は
+対象から外れる」という前提が成立せず、`MatchManager.tsx` は10秒ポーリングで再描画されるため、
+大きめのブラケットでは毎ポーリングごとに大量の候補別ギフト集計が走りうる（2回目レビューで
+発見された欠陥）。
+
+代わりに、候補選択パネル/候補調整パネルを開いたときにだけ叩く新規GETエンドポイント
+（`GET /api/events/{id}/matches/{matchId}/candidate-diamonds`、ロジックは
+`src/event/candidate-diamonds.ts` の `loadCandidateDiamonds()`）に切り出した:
+
+- ダイヤは倍率適用前の生値（`resolveGameWinner()` が倍率適用前ダイヤで勝者を決めているのと
+  同じ考え方）。`scoreSides()` に `multipliers: []` を渡せば倍率がかからない
+- 区間は対戦固有の `EventSession` 単体を使う（日程未割り当ての旧データだけ
+  `resolveEventWindows(event)` へフォールバック、「期間の正本はEventSession」の不変条件を
+  満たす）
+- 未来終了(duration由来のLIVE)候補は計算せず `diamonds: null` を返す（進行中候補が低ダイヤ
+  扱いで隠れる事故を防ぐ）
+- **fail-open**: 集計に失敗した候補は該当候補だけ `diamonds: null` を返し、API全体・対戦
+  全体は落とさない
+
 ## 未実装（計画上のフェーズ）
 
 現在はフェーズ5まで。

@@ -4,7 +4,7 @@ import {
   type DbClient,
   type ListenerProfile,
 } from "./analytics-db";
-import { resolveMatchSpans, type MatchSpanResult } from "./match-spans";
+import { resolveGroupedMatchSpans, resolveMatchSpans, type MatchSpanResult } from "./match-spans";
 import { resolveEventWindows, type EventWindow } from "./sessions";
 import {
   buildRateSegments,
@@ -220,7 +220,19 @@ export async function loadMatchContributions(
       ]
     : resolveEventWindows(event);
 
-  const span = resolveMatchSpans(match, windows, params.now);
+  // **合算グループを持つ対戦だけ、候補区間の union で区間を解決する。** 通常の合算なし対戦
+  // (BEST_OF_THREE のゲーム間の空白を含む)は resolveMatchSpans() の連続区間のまま維持する
+  // (合算機能導入前から存在する既知の差異であり、このスコープを広げてまで直さない)。
+  const selectedCandidates = await client.eventMatchBattleCandidate.findMany({
+    where: { matchId: params.matchId, selected: true },
+    orderBy: { startedAt: "asc" },
+    select: { startedAt: true, endedAt: true, combinedGroupId: true },
+  });
+  const hasCombinedGroup = selectedCandidates.some((c) => c.combinedGroupId !== null);
+
+  const span = hasCombinedGroup
+    ? resolveGroupedMatchSpans(selectedCandidates, windows, params.now)
+    : resolveMatchSpans(match, windows, params.now);
   if (span.status !== "ok") return span;
 
   const slots: SlotInput[] = [];

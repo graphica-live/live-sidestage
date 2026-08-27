@@ -537,6 +537,117 @@ describe("loadMatchContributions", () => {
     expect(result.slots[0].diamonds).toBe("500");
   });
 
+  it("合算グループを持つ対戦は候補区間unionで集計され、CUT_SHORT〜やり直し間の空白ギフトが含まれない", async () => {
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    // 候補1: 13:10-13:12(途中終了)、候補2: 13:20-13:22(やり直し)。間(13:12-13:20)は
+    // 空白のはずで、そこに置いたギフトは union に含まれてはいけない。
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 100,
+      receivedAt: new Date("2026-09-01T13:11:00.000Z"),
+    });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 999,
+      receivedAt: new Date("2026-09-01T13:15:00.000Z"),
+    });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 200,
+      receivedAt: new Date("2026-09-01T13:21:00.000Z"),
+    });
+
+    const matchId = await createMatch({
+      eventId: event.id,
+      sessionId: event.sessionId,
+      detectedStartAt: new Date("2026-09-01T13:10:00.000Z"),
+      detectedEndAt: new Date("2026-09-01T13:22:00.000Z"),
+      sides: [[a.id], [b.id]],
+    });
+
+    // createMatch() が自動作成した単一候補を、合算グループの2候補に置き換える。
+    await prisma.eventMatchBattleCandidate.deleteMany({ where: { matchId } });
+    const groupId = "grp-union";
+    await prisma.eventMatchBattleCandidate.create({
+      data: {
+        matchId,
+        battleId: `${PREFIX}_battle_${uniqueSuffix()}`,
+        startedAt: new Date("2026-09-01T13:10:00.000Z"),
+        endedAt: new Date("2026-09-01T13:12:00.000Z"),
+        endedAtSource: "observed",
+        confidence: "exact",
+        selected: true,
+        combinedGroupId: groupId,
+      },
+    });
+    await prisma.eventMatchBattleCandidate.create({
+      data: {
+        matchId,
+        battleId: `${PREFIX}_battle_${uniqueSuffix()}`,
+        startedAt: new Date("2026-09-01T13:20:00.000Z"),
+        endedAt: new Date("2026-09-01T13:22:00.000Z"),
+        endedAtSource: "observed",
+        confidence: "exact",
+        selected: true,
+        combinedGroupId: groupId,
+      },
+    });
+
+    const result = await loadMatchContributions(prisma, { eventId: event.id, matchId, now: NOW });
+    expect(result?.status).toBe("ok");
+    if (result?.status !== "ok") return;
+    // 100 + 200 = 300。間の999は空白として除外される。
+    expect(result.slots[0].diamonds).toBe("300");
+  });
+
+  it("合算なしの通常BO3は従来どおり連続区間のまま(意図的な非変更の固定)", async () => {
+    const event = await newEvent();
+    const a = await newParticipant(event.id, "a");
+    const b = await newParticipant(event.id, "b");
+
+    // ゲーム間(13:12-13:20)にギフトを入れる。合算グループが無い対戦では、
+    // resolveMatchSpans() のミラー列連続区間の挙動どおり、この空白ギフトも含まれる。
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 100,
+      receivedAt: new Date("2026-09-01T13:11:00.000Z"),
+    });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 999,
+      receivedAt: new Date("2026-09-01T13:15:00.000Z"),
+    });
+    await insertGift({
+      roomId: a.roomId,
+      uniqueId: "alice",
+      diamonds: 200,
+      receivedAt: new Date("2026-09-01T13:21:00.000Z"),
+    });
+
+    const matchId = await createMatch({
+      eventId: event.id,
+      sessionId: event.sessionId,
+      detectedStartAt: new Date("2026-09-01T13:10:00.000Z"),
+      detectedEndAt: new Date("2026-09-01T13:22:00.000Z"),
+      sides: [[a.id], [b.id]],
+    });
+    // createMatch() が作る既定の単一候補(combinedGroupId=null)をそのまま使う。
+
+    const result = await loadMatchContributions(prisma, { eventId: event.id, matchId, now: NOW });
+    expect(result?.status).toBe("ok");
+    if (result?.status !== "ok") return;
+    // 100 + 999 + 200 = 1299。連続区間なので間のギフトも含まれる(既存挙動)。
+    expect(result.slots[0].diamonds).toBe("1299");
+  });
+
   it("他のイベントの対戦IDでは引けない", async () => {
     const event = await newEvent();
     const other = await newEvent();

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  canAdjustCandidates,
   isByeRow,
   isForceFullPeriod,
   isReadyForDetection,
@@ -91,6 +92,38 @@ describe("isReadyForDetection", () => {
   it("サイドが2つ揃っていなければ対象にしない", () => {
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [] })).toBe(false);
     expect(isReadyForDetection({ isBye: false, sideRoomIds: [["a"]] })).toBe(false);
+  });
+});
+
+describe("canAdjustCandidates", () => {
+  const base = (overrides: Partial<{ status: string; winnerDecidedBy: string | null; candidateCount: number }> = {}) => ({
+    status: "FINISHED",
+    winnerDecidedBy: "AGGREGATE",
+    candidateCount: 2,
+    ...overrides,
+  });
+
+  it("候補が2件未満なら false", () => {
+    expect(canAdjustCandidates(base({ candidateCount: 0 }))).toBe(false);
+    expect(canAdjustCandidates(base({ candidateCount: 1 }))).toBe(false);
+  });
+
+  it("VOID・NO_SHOW は false", () => {
+    expect(canAdjustCandidates(base({ status: "VOID" }))).toBe(false);
+    expect(canAdjustCandidates(base({ status: "NO_SHOW" }))).toBe(false);
+  });
+
+  it("主催者が確定した結果(MANUAL/DRAW/BYE)は false", () => {
+    expect(canAdjustCandidates(base({ winnerDecidedBy: "MANUAL" }))).toBe(false);
+    expect(canAdjustCandidates(base({ winnerDecidedBy: "DRAW" }))).toBe(false);
+    expect(canAdjustCandidates(base({ winnerDecidedBy: "BYE" }))).toBe(false);
+  });
+
+  it("それ以外で候補が2件以上あれば true(自動確定済みのBEST_OF_THREEも含む)", () => {
+    expect(canAdjustCandidates(base())).toBe(true);
+    expect(canAdjustCandidates(base({ status: "NEEDS_REVIEW", winnerDecidedBy: null }))).toBe(true);
+    expect(canAdjustCandidates(base({ status: "LIVE", winnerDecidedBy: null }))).toBe(true);
+    expect(canAdjustCandidates(base({ candidateCount: 3 }))).toBe(true);
   });
 });
 

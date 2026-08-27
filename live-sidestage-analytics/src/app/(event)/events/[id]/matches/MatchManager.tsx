@@ -12,7 +12,15 @@ import {
   formatJst,
   toJstInputValue,
 } from "@/event/labels";
-import { buildCandidatesFingerprintInput } from "@/event/candidates-fingerprint";
+import {
+  buildCandidatesFingerprintInput,
+  buildSelectionFingerprintInput,
+} from "@/event/candidates-fingerprint";
+import {
+  deriveGroupsFromSelection,
+  groupByCombinedGroup,
+  sortCandidatesDeterministically,
+} from "@/event/candidate-groups";
 import type { DeathmatchRules } from "@/event/deathmatch";
 import { seriesRequirement, type WinCondition } from "@/event/match-rules";
 import {
@@ -27,7 +35,7 @@ import {
   type PlacementOption,
   type PlacementRound,
 } from "@/event/bracket";
-import { isStartedMatch } from "@/event/match-status";
+import { canAdjustCandidates, isStartedMatch } from "@/event/match-status";
 import type { FeederFlowEdge } from "@/event/winner-feeders";
 import { AdminBracketTree, type SwapSlotRef } from "./AdminBracketTree";
 import { BracketBuildMethodDiagram } from "./BracketBuildMethodDiagram";
@@ -90,6 +98,8 @@ export type MatchSideRow = {
 /** 検知した候補バトル1件。勝利条件(1本勝負/2本先取)が複数試合を要求するときに複数件になる。 */
 export type MatchCandidateRow = {
   id: string;
+  /** `sortCandidatesDeterministically` のタイブレークと `deriveGroupsFromSelection` に要る。 */
+  battleId: string;
   startedAt: string;
   /** null はまだ終了を観測できていない(選択の対象にならない) */
   endedAt: string | null;
@@ -97,10 +107,12 @@ export type MatchCandidateRow = {
   /** サーバー側の fingerprint 計算(candidatesFingerprint)と項目を揃えるためだけに持つ。
    * CANDIDATES_EXCEEDED 状態の候補は通常 false(true なら先に AMBIGUOUS になっているため)。 */
   ambiguous: boolean;
-  /** 主催者が「候補過多」画面で選んだプール。selectCandidates 後だけ意味を持つ */
+  /** 主催者が「候補過多」画面で選んだプール。selectCandidates/selectCandidateGroups 後だけ意味を持つ */
   organizerSelected: boolean;
   /** 現在の実効ゲーム集合(サーバーが計算した、集計に使われている候補) */
   selected: boolean;
+  /** 主催者が合算した候補のグループ印。null = 単独ゲーム。`candidate-groups.ts` 参照 */
+  combinedGroupId: string | null;
 };
 
 export type MatchRow = {
@@ -198,9 +210,16 @@ const UNAPPROVABLE_REASONS = new Set(["AMBIGUOUS", "END_UNKNOWN", "CANDIDATES_EX
  * `EventMatchSide.diamonds` から出る最終結果)。ここでは「何本消化したか」だけ見せる。 */
 function seriesProgressLabel(candidates: MatchCandidateRow[]): string | null {
   if (candidates.length < 2) return null;
-  const resolved = candidates.filter((c) => c.endedAt !== null).length;
-  const pending = candidates.length - resolved;
-  return pending > 0 ? `${resolved}試合終了 + 進行中1件` : `${resolved}試合`;
+  // **合算対応**: 「何試合消化したか」は selected な候補を合算グループ単位で数える
+  // (1候補=1グループなら従来どおりの件数と一致する)。pending(未終了)の判定は
+  // 従来どおり endedAt の有無で行う。
+  const selectedGroups = groupByCombinedGroup(
+    sortCandidatesDeterministically(candidates.filter((c) => c.selected))
+  );
+  const pending = candidates.filter((c) => c.endedAt === null).length;
+  return pending > 0
+    ? `${selectedGroups.length}試合終了 + 進行中1件`
+    : `${selectedGroups.length}試合`;
 }
 
 /**
@@ -225,9 +244,29 @@ async function computeCandidatesFingerprint(candidates: MatchCandidateRow[]): Pr
   const raw = buildCandidatesFingerprintInput(
     candidates.map((c) => ({
       id: c.id,
+      startedAt: new Date(c.startedAt),
       endedAt: c.endedAt ? new Date(c.endedAt) : null,
       confidence: c.confidence,
       ambiguous: c.ambiguous,
+    }))
+  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * 「主催者が下した選択(organizerSelected/combinedGroupId)」の指紋。サーバー側
+ * (`route.ts` の `computeSelectionFingerprint`)と同じ入力文字列を使うこと。
+ * `resetCandidates`/`selectCandidateGroups` の楽観的排他に使う。
+ */
+async function computeSelectionFingerprint(candidates: MatchCandidateRow[]): Promise<string> {
+  const raw = buildSelectionFingerprintInput(
+    candidates.map((c) => ({
+      id: c.id,
+      organizerSelected: c.organizerSelected,
+      combinedGroupId: c.combinedGroupId,
     }))
   );
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
@@ -255,6 +294,10 @@ const CONFLICT_CODES = new Set([
   "FEEDER_CHANGED",
   "BYE_ROW",
   "FEEDER_OVERRIDDEN",
+  // バトル候補の合算(候補調整モード)。画面を開いた後に検知データが変わった /
+  // 選択状態(organizerSelected/combinedGroupId)が別タブ・古い画面から変わった。
+  "CANDIDATES_CHANGED",
+  "SELECTION_CHANGED",
 ]);
 
 /**
@@ -422,6 +465,7 @@ export function MatchManager({
   eventPlacementDepth,
   feederSwapEnabled,
   feederFlows,
+  candidateGroupingEnabled,
 }: {
   eventId: string;
   /** 表を破棄するときの確認に入力させる文字列 */
@@ -457,6 +501,13 @@ export function MatchManager({
    * 既存のoverrideがある限り表示は続ける(書き込みAPIだけが止まる)。
    */
   feederFlows: FeederFlowEdge[];
+  /**
+   * 候補バトルの合算機能(候補調整モード)のfeature flag(`EVENT_CANDIDATE_GROUPING=1`)。
+   * **既定オフ**。段階的デプロイ(reader先行→旧worker消滅確認→writer/UI後追い)が完了する
+   * までは、確定ボタンが必ず旧action(`selectCandidates`、合算UIなし)へフォールバックする
+   * (`src/event/CLAUDE.md` の「候補調整モード」デプロイ計画を参照)。
+   */
+  candidateGroupingEnabled: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -974,6 +1025,7 @@ export function MatchManager({
                 busy={busy}
                 onSend={send}
                 winCondition={winCondition}
+                candidateGroupingEnabled={candidateGroupingEnabled}
               />
             ))}
           </section>
@@ -1376,6 +1428,7 @@ export function MatchManager({
                       busy={busy}
                       onSend={send}
                       winCondition={winCondition}
+                      candidateGroupingEnabled={candidateGroupingEnabled}
                     />
                   ))}
                 </section>
@@ -1399,6 +1452,7 @@ export function MatchManager({
                           busy={busy}
                           onSend={send}
                           winCondition={winCondition}
+                          candidateGroupingEnabled={candidateGroupingEnabled}
                         />
                       ))}
                     </section>
@@ -1466,6 +1520,7 @@ export function MatchManager({
               busy={busy}
               onSend={send}
               winCondition={winCondition}
+              candidateGroupingEnabled={candidateGroupingEnabled}
             />
           </div>
         </div>
@@ -2057,6 +2112,9 @@ function SingleMatchBuilder({
   );
 }
 
+/** 候補選択パネルで「1000ダイヤ以下」を隠すトグルのしきい値。 */
+const LOW_DIAMOND_THRESHOLD = 1000n;
+
 function MatchCard({
   eventId,
   match,
@@ -2065,6 +2123,7 @@ function MatchCard({
   busy,
   onSend,
   winCondition,
+  candidateGroupingEnabled,
 }: {
   eventId: string;
   match: MatchRow;
@@ -2072,13 +2131,33 @@ function MatchCard({
   /** 開催日程。カードの表示と、割り当ての変更に使う */
   sessions: SessionRow[];
   busy: boolean;
-  onSend: (url: string, body: unknown, method?: string) => Promise<boolean>;
+  onSend: (
+    url: string,
+    body: unknown,
+    method?: string,
+    options?: { onConflict?: (code: string | null) => void }
+  ) => Promise<boolean>;
   /** 勝利条件(1本勝負/2本先取)。候補選択の上限本数(maxGames)を決める */
   winCondition: WinCondition;
+  /** 候補バトルの合算機能(候補調整モード)のfeature flag。フラグOFFなら合算UIを出さず、
+   * 確定ボタンは常に旧action(selectCandidates)へフォールバックする。 */
+  candidateGroupingEnabled: boolean;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [sessionId, setSessionId] = useState(match.sessionId);
-  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  // **候補選択の状態は「チェック済み」と「前の候補と合算する」の2集合から導出する。**
+  // groups(送信データ)は deriveGroupsFromSelection() で常に導出し、別々の state として
+  // 個別管理しない(重複所属・チェック解除・低ダイヤ非表示との不整合を構造的に防ぐ)。
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [mergeWithPreviousIds, setMergeWithPreviousIds] = useState<Set<string>>(new Set());
+  // 候補調整モード(CANDIDATES_EXCEEDEDでない対戦から主催者が能動的に開くパネル)の開閉。
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  // 低ダイヤ非表示トグル。初期状態でON(要望どおり)。ダイヤ未取得の候補は
+  // diamonds !== null をガードにしているため、取得が終わるまでは何も隠れない。
+  const [hideLowDiamond, setHideLowDiamond] = useState(true);
+  const [candidateDiamonds, setCandidateDiamonds] = useState<Map<string, string | null>>(new Map());
+  const [diamondsLoading, setDiamondsLoading] = useState(false);
   // 手動確定(勝者にする/引き分けにする)ボタンを押すと、決着時刻を入力するミニフォームを開く。
   // confirm と draw を1つの state で区別するため isDrawDeciding を別に持つ。
   const [decidingSideId, setDecidingSideId] = useState<string | null>(null);
@@ -2096,10 +2175,46 @@ function MatchCard({
   const isLive = match.status === "LIVE";
   // 検知した候補バトルが勝利条件の最大試合数を超えた。「詳細画面の前の競合解消画面」に
   // 相当する候補選択リストを、通常のカード内容より先に出す(専用モーダルは無いため)。
-  const needsCandidateSelection =
+  const forcedSelection =
     match.status === "NEEDS_REVIEW" && match.reviewReason === "CANDIDATES_EXCEEDED";
+  // 候補調整モード: CANDIDATES_EXCEEDED を経由せず、下流未着手・候補2件以上の対戦から
+  // 主催者が任意に開ける(典型例: BEST_OF_THREE で生候補数がちょうどmaxGamesに収まり
+  // 超過判定に引っかからず自動確定済みのケース)。フラグOFFなら常に false。
+  const adjustable =
+    candidateGroupingEnabled &&
+    canAdjustCandidates({
+      status: match.status,
+      winnerDecidedBy: match.winnerDecidedBy,
+      candidateCount: match.candidates.length,
+    });
+  const showCandidatePanel = forcedSelection || (adjustable && adjustOpen);
   const { maxGames } = seriesRequirement(winCondition);
   const progressLabel = seriesProgressLabel(match.candidates);
+
+  // groups は checkedIds/mergeWithPreviousIds から常に導出する(単一の正本)。
+  const groups = deriveGroupsFromSelection(match.candidates, checkedIds, mergeWithPreviousIds);
+  const effectiveGameCount = groups.length;
+
+  // 候補選択パネルを開いたときにだけ、候補ごとの生ダイヤをオンデマンドで取得する。
+  useEffect(() => {
+    if (!showCandidatePanel) return;
+    let cancelled = false;
+    setDiamondsLoading(true);
+    fetch(`/api/events/${eventId}/matches/${match.id}/candidate-diamonds`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { candidates: { id: string; diamonds: string | null }[] } | null) => {
+        if (cancelled || !data) return;
+        setCandidateDiamonds(new Map(data.candidates.map((c) => [c.id, c.diamonds])));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setDiamondsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCandidatePanel, eventId, match.id]);
 
   return (
     <div className={`card space-y-3 ${isLive ? "border-red-500/70 live-glow" : ""}`}>
@@ -2238,59 +2353,150 @@ function MatchCard({
         </p>
       )}
 
+      {/* 候補調整モード(CANDIDATES_EXCEEDEDでない対戦から任意に開ける)の開閉ボタン。
+          forcedSelection のときは常時展開なのでボタン自体を出さない。 */}
+      {adjustable && !forcedSelection && (
+        <button
+          type="button"
+          onClick={() => setAdjustOpen((v) => !v)}
+          className="self-start rounded-lg border border-yellow-400/20 bg-yellow-400/[0.02] px-3 py-1.5 text-xs text-yellow-200/70 hover:bg-yellow-400/5"
+        >
+          {adjustOpen ? "候補の調整を閉じる" : "候補を調整する"}
+        </button>
+      )}
+
       {/* 「詳細画面の前の競合解消画面」に相当する候補選択リスト。専用モーダルは無いため、
           このカード内(通常のボタン群より前)に直接出す。 */}
-      {needsCandidateSelection && (
+      {showCandidatePanel && (
         <div className="space-y-2 rounded-lg border border-yellow-400/30 bg-yellow-400/[0.03] p-3">
           <p className="text-xs text-yellow-200/80">
             判定対象にするバトルを選ぶ(勝利条件: {WIN_CONDITION_LABELS[winCondition]}、最大
-            {maxGames}件)。
+            {maxGames}件)。途中終了して2戦目を行った場合は、両方にチェックを入れて
+            「前の候補と合算する」を押すと1ゲームとして扱われる。
           </p>
-          <ul className="space-y-1">
-            {match.candidates.map((c) => {
-              const pending = c.endedAt === null;
-              const atLimit =
-                !selectedCandidateIds.includes(c.id) && selectedCandidateIds.length >= maxGames;
-              return (
-                <li key={c.id} className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    disabled={pending || atLimit}
-                    checked={selectedCandidateIds.includes(c.id)}
-                    onChange={(e) =>
-                      setSelectedCandidateIds((prev) =>
-                        e.target.checked
-                          ? [...prev, c.id]
-                          : prev.filter((id) => id !== c.id)
-                      )
-                    }
-                  />
-                  <span className={pending ? "text-gray-500" : "text-gray-300"}>
-                    {formatJst(new Date(c.startedAt))}
-                    {c.endedAt ? ` 〜 ${formatJst(new Date(c.endedAt))}` : " (進行中・選択不可)"}
-                    {c.confidence === "partial" && " · 部分一致"}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+
+          <label className="flex items-center gap-2 text-xs text-gray-400">
+            <input
+              type="checkbox"
+              checked={hideLowDiamond}
+              onChange={(e) => setHideLowDiamond(e.target.checked)}
+            />
+            1000ダイヤ以下のバトルを隠す
+          </label>
+
+          {(() => {
+            const sorted = sortCandidatesDeterministically(match.candidates);
+            const hiddenCount = sorted.filter((c) => {
+              const diamonds = candidateDiamonds.get(c.id) ?? null;
+              return hideLowDiamond && diamonds !== null && BigInt(diamonds) <= LOW_DIAMOND_THRESHOLD;
+            }).length;
+            return (
+              <>
+                {hiddenCount > 0 && (
+                  <p className="text-xs text-gray-500">
+                    1000ダイヤ以下の候補を{hiddenCount}件非表示中(トグルで表示)
+                  </p>
+                )}
+                <ul className="space-y-1">
+                  {sorted.map((c, index) => {
+                    const pending = c.endedAt === null;
+                    const checked = checkedIds.has(c.id);
+                    const diamonds = candidateDiamonds.get(c.id) ?? null;
+                    const isLow =
+                      diamonds !== null && BigInt(diamonds) <= LOW_DIAMOND_THRESHOLD;
+                    if (hideLowDiamond && isLow) return null;
+                    const canMergeWithPrevious = index > 0 && checked;
+                    return (
+                      <li key={c.id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          disabled={pending}
+                          checked={checked}
+                          onChange={(e) => {
+                            setCheckedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(c.id);
+                              else next.delete(c.id);
+                              return next;
+                            });
+                            if (!e.target.checked) {
+                              setMergeWithPreviousIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(c.id);
+                                return next;
+                              });
+                            }
+                          }}
+                        />
+                        <span className={pending ? "text-gray-500" : "text-gray-300"}>
+                          {formatJst(new Date(c.startedAt))}
+                          {c.endedAt ? ` 〜 ${formatJst(new Date(c.endedAt))}` : " (進行中・選択不可)"}
+                          {c.confidence === "partial" && " · 部分一致"}
+                          {diamonds !== null && ` ・ ${Number(diamonds).toLocaleString("ja-JP")}ダイヤ`}
+                          {diamonds === null && !pending && diamondsLoading && " ・ 集計中"}
+                        </span>
+                        {canMergeWithPrevious && (
+                          <label className="flex items-center gap-1 text-gray-500">
+                            <input
+                              type="checkbox"
+                              checked={mergeWithPreviousIds.has(c.id)}
+                              onChange={(e) =>
+                                setMergeWithPreviousIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(c.id);
+                                  else next.delete(c.id);
+                                  return next;
+                                })
+                              }
+                            />
+                            ◀ 前の候補と合算する
+                          </label>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            );
+          })()}
+
+          <p className="text-xs text-gray-400">
+            実効ゲーム数: {effectiveGameCount} / 上限 {maxGames}
+          </p>
+
           <button
             type="button"
-            disabled={
-              busy || selectedCandidateIds.length < 1 || selectedCandidateIds.length > maxGames
-            }
+            disabled={busy || effectiveGameCount < 1 || effectiveGameCount > maxGames}
             onClick={async () => {
+              const candidateIds = [...checkedIds];
               const candidatesFingerprint = await computeCandidatesFingerprint(match.candidates);
-              const ok = await onSend(url, {
-                action: "selectCandidates",
-                candidateIds: selectedCandidateIds,
-                candidatesFingerprint,
-              });
-              if (ok) setSelectedCandidateIds([]);
+              // **フラグOFF時は必ず旧action(selectCandidates、合算UIなし)へフォールバックする。**
+              // 段階的デプロイの過渡期間(reader配布〜writer有効化)は、サーバー側が
+              // selectCandidateGroups を常に400で拒否するため、フォールバックが無いと
+              // その間 CANDIDATES_EXCEEDED を主催者が一切確定できなくなる。
+              const ok = candidateGroupingEnabled
+                ? await onSend(
+                    url,
+                    {
+                      action: "selectCandidateGroups",
+                      candidateIds,
+                      groups,
+                      candidatesFingerprint,
+                      selectionFingerprint: await computeSelectionFingerprint(match.candidates),
+                    },
+                    undefined,
+                    { onConflict: () => router.refresh() }
+                  )
+                : await onSend(url, { action: "selectCandidates", candidateIds, candidatesFingerprint });
+              if (ok) {
+                setCheckedIds(new Set());
+                setMergeWithPreviousIds(new Set());
+                setAdjustOpen(false);
+              }
             }}
             className="btn-secondary"
           >
-            この選択で確定する
+            この内容で確定する
           </button>
         </div>
       )}
@@ -2415,9 +2621,15 @@ function MatchCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
+            onClick={async () => {
               if (!window.confirm("選択済みの候補をリセットして再集計する。")) return;
-              onSend(url, { action: "resetCandidates" });
+              const selectionFingerprint = await computeSelectionFingerprint(match.candidates);
+              onSend(
+                url,
+                { action: "resetCandidates", selectionFingerprint },
+                undefined,
+                { onConflict: () => router.refresh() }
+              );
             }}
             className="btn-secondary"
           >

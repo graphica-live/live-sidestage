@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { aggregateGiftsBySegment, type DbClient } from "./analytics-db";
+import { groupByCombinedGroup, sortCandidatesDeterministically } from "./candidate-groups";
 import { MANUAL_DECISIONS } from "./match-detect";
 import {
   isByeRow,
@@ -58,7 +59,7 @@ export type MatchResultSummary = {
   advanced: number;
 };
 
-type SideRow = {
+export type SideRow = {
   id: string;
   sideIndex: number;
   teamId: string | null;
@@ -74,6 +75,7 @@ type CandidateRow = {
   confidence: string;
   ambiguous: boolean;
   organizerSelected: boolean;
+  combinedGroupId: string | null;
 };
 
 type MatchWithCandidates = {
@@ -143,6 +145,7 @@ export async function resolveMatchResults(
           confidence: true,
           ambiguous: true,
           organizerSelected: true,
+          combinedGroupId: true,
         },
       },
     },
@@ -302,15 +305,32 @@ export async function resolveMatchSeries(
   const organizerCurated = isCandidatesConfirmedByOrganizer(match.rules);
   const pool = organizerCurated ? candidates.filter((c) => c.organizerSelected) : candidates;
 
+  // **グルーピングは「未来終了フィルタより前」に行う。** 先に resolved へ絞ってから
+  // グループ化すると、グループ内の1メンバーだけ未来終了(duration由来のLIVE)のときに
+  // そのメンバーだけ静かに脱落し、グループが「完了済みメンバーだけの偽の1件グループ」
+  // として確定してしまう。pool は startedAt 昇順の保証がない(呼び出し元の select 順に
+  // 依存する既存の前提)ので、決定的な順序に揃えてからグループ化する。
+  const orderedPool = sortCandidatesDeterministically(pool);
+  const groupedPool: CandidateRow[][] = groupByCombinedGroup(orderedPool);
+
   // **終了時刻が確定していても、その時刻がまだ未来なら「進行中」として扱う。**
   // duration から終了時刻を計算した OPEN 状態のバトル(旧 detectMatches の
   // `a.endedAt > params.now` 判定を踏襲)。ここで resolved に含めて採点してしまうと、
   // まだ終わっていないバトルの結果を先取りして確定させてしまう。
-  const resolved = pool.filter((c) => c.endedAt !== null && c.endedAt <= now);
-  const pending = pool.filter((c) => c.endedAt === null || c.endedAt > now);
+  // **グループ全体が確定しているかで判定する。** 1件でも endedAt===null または
+  // endedAt>now のメンバーがいれば、そのグループ全体を pending 扱いにする
+  // (グループの一部だけを確定させない)。
+  const isGroupResolved = (g: CandidateRow[]) => g.every((c) => c.endedAt !== null && c.endedAt <= now);
+  const resolvedGroups = groupedPool.filter(isGroupResolved);
+  const pendingGroups = groupedPool.filter((g) => !isGroupResolved(g));
+  const resolved = resolvedGroups.flat();
+  const pending = pendingGroups.flat();
 
-  // 7. 候補数超過(主催者確定前だけ判定する)。
-  if (!organizerCurated && resolved.length > maxGames) {
+  // 7. 候補数超過(主催者確定前だけ判定する)。**「候補」ではなく「グループ」の個数で
+  //    判定する。** combinedGroupId が全部 null の既存データでは groupedPool は
+  //    「候補1件=グループ1件」になるため resolvedGroups.length === resolved.length と
+  //    完全に一致し、既存の振る舞い・既存integrationテストと後方互換。
+  if (!organizerCurated && resolvedGroups.length > maxGames) {
     if (downstreamStarted) {
       // 下流が既に進んでいる。上流下流の不整合を避けるため、差し戻さず既存結果を維持する。
       return { decided: false, tied: false };
@@ -359,44 +379,61 @@ export async function resolveMatchSeries(
     return { decided: false, tied: false };
   }
 
-  // 9. 実効ゲーム集合(effectiveGames)を計算する。**毎回 scoreSides() で採点する**
-  //    (キャッシュしない)。どちらかが winsNeeded に達した時点で打ち切り、それ以降の
-  //    resolved 候補は無視する(誤って多すぎる候補が紛れても決着時刻がずれないため)。
+  // 9. 実効ゲーム集合(effectiveGames)を計算する。**「1候補グループ=1ゲーム」**
+  //    (combinedGroupId が同じ隣接候補は合算して1ゲームとして扱う。通常は1候補=1グループ)。
+  //    **毎回 scoreSides() で採点する**(キャッシュしない)。どちらかが winsNeeded に
+  //    達した時点で打ち切り、それ以降の resolvedGroups は無視する(誤って多すぎる候補が
+  //    紛れても決着時刻がずれないため)。
   const sideTotals = new Map<string, { diamonds: bigint; points: bigint }>(
     match.sides.map((s) => [s.id, { diamonds: 0n, points: 0n }])
   );
   const sideWins = new Map<string, number>();
-  const effectiveGames: CandidateRow[] = [];
+  const effectiveGames: CandidateRow[][] = [];
   let decidedWinnerSideId: string | null = null;
 
-  for (const candidate of resolved) {
-    const totals = await scoreSides(tx, {
-      sides: match.sides,
-      start: candidate.startedAt,
-      end: candidate.endedAt!,
-      windows: match.session
-        ? [
-            {
-              id: null,
-              start: match.session.startAt,
-              end: match.session.endAt,
-              name: match.session.name,
-            },
-          ]
-        : windows,
-      multipliers,
-    });
+  for (const group of resolvedGroups) {
+    const groupTotals = new Map<string, { diamonds: bigint; points: bigint }>(
+      match.sides.map((s) => [s.id, { diamonds: 0n, points: 0n }])
+    );
 
-    effectiveGames.push(candidate);
-    for (const t of totals) {
-      const acc = sideTotals.get(t.sideId);
-      if (!acc) continue;
-      acc.diamonds += t.diamonds;
-      acc.points += t.points;
+    for (const candidate of group) {
+      const totals = await scoreSides(tx, {
+        sides: match.sides,
+        start: candidate.startedAt,
+        end: candidate.endedAt!,
+        windows: match.session
+          ? [
+              {
+                id: null,
+                start: match.session.startAt,
+                end: match.session.endAt,
+                name: match.session.name,
+              },
+            ]
+          : windows,
+        multipliers,
+      });
+
+      for (const t of totals) {
+        const acc = groupTotals.get(t.sideId);
+        if (!acc) continue;
+        acc.diamonds += t.diamonds;
+        acc.points += t.points;
+      }
     }
 
-    // 個々のゲームの勝者は倍率適用前のダイヤで決める(match-results.ts 冒頭のコメント参照)。
-    const gameWinnerSideId = resolveGameWinner(totals);
+    effectiveGames.push(group);
+    for (const [sideId, totals] of groupTotals) {
+      const acc = sideTotals.get(sideId);
+      if (!acc) continue;
+      acc.diamonds += totals.diamonds;
+      acc.points += totals.points;
+    }
+
+    // ゲーム(合算後)の勝者は倍率適用前の合算ダイヤで決める(match-results.ts 冒頭のコメント参照)。
+    const gameWinnerSideId = resolveGameWinner(
+      [...groupTotals.entries()].map(([sideId, t]) => ({ sideId, diamonds: t.diamonds }))
+    );
 
     if (gameWinnerSideId) {
       const wins = (sideWins.get(gameWinnerSideId) ?? 0) + 1;
@@ -409,7 +446,7 @@ export async function resolveMatchSeries(
   }
 
   // 10. selected を effectiveGames に一本化する(loadBattleRangesByRoom はこの列だけを見る)。
-  const effectiveIds = new Set(effectiveGames.map((g) => g.id));
+  const effectiveIds = new Set(effectiveGames.flatMap((group) => group.map((c) => c.id)));
   await tx.eventMatchBattleCandidate.updateMany({
     where: { matchId: match.id },
     data: { selected: false },
@@ -429,9 +466,13 @@ export async function resolveMatchSeries(
   }
 
   if (decidedWinnerSideId) {
-    // 11. 決着した。
-    const firstGame = effectiveGames[0];
-    const lastGame = effectiveGames[effectiveGames.length - 1];
+    // 11. 決着した。firstGame は最初のグループの最初の候補(startedAt最小)。lastGame は
+    // 最後のグループの最後のメンバー(startedAt昇順で最後 = 決定事項3「グループ内で最後に
+    // 終了した候補」— 同じ対戦の候補どうしは時間的に重ならないため、startedAt昇順の末尾は
+    // 常に endedAt も最大になる)。
+    const firstGame = effectiveGames[0][0];
+    const lastGroup = effectiveGames[effectiveGames.length - 1];
+    const lastGame = lastGroup[lastGroup.length - 1];
     await tx.eventMatch.update({
       where: { id: match.id },
       data: {
@@ -454,7 +495,7 @@ export async function resolveMatchSeries(
   const sessionEnded = match.session ? match.session.endAt <= now : false;
   let status: string;
   let reviewReason: string | null = null;
-  if (pending.length > 0) {
+  if (pendingGroups.length > 0) {
     if (sessionEnded) {
       status = "NEEDS_REVIEW";
       reviewReason = "END_UNKNOWN";
@@ -488,7 +529,7 @@ export async function resolveMatchSeries(
     },
   });
 
-  return { decided: false, tied: pending.length === 0 && effectiveGames.length > 0 };
+  return { decided: false, tied: pendingGroups.length === 0 && effectiveGames.length > 0 };
 }
 
 /**
@@ -747,7 +788,7 @@ function resolveLoser(match: {
   return match.sides.find((s) => s.id !== match.winnerSideId) ?? null;
 }
 
-type SideTotal = { sideId: string; diamonds: bigint; points: bigint };
+export type SideTotal = { sideId: string; diamonds: bigint; points: bigint };
 
 /**
  * サイド別のダイヤ合計から、1ゲームの勝者を決める。**倍率適用前のダイヤで決める**
@@ -770,8 +811,12 @@ export function resolveGameWinner(totals: { sideId: string; diamonds: bigint }[]
  * **開催日程の外にはみ出したぶんは数えない。** バトルは日程の終わりをまたぐことがあり
  * (22:59 開始 → 23:04 終了)、そのまま数えると「イベントの順位には入らないギフトが
  * 勝敗とデスマッチのライフには効く」という食い違いになる。
+ *
+ * **候補ごとの低ダイヤ集計API(`candidate-diamonds/route.ts`)からも呼ぶ。** 表示専用の
+ * 生ダイヤ判定に、勝敗確定と同じ「日程で切ってから集計する」ロジックを再利用するため
+ * (`multipliers: []` を渡せば倍率をかけず生ダイヤのまま返る)。
  */
-async function scoreSides(
+export async function scoreSides(
   tx: DbClient,
   params: {
     sides: SideRow[];

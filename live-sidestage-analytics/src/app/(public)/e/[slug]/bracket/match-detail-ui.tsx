@@ -9,7 +9,7 @@ import {
 } from "@/event/labels";
 import { formatNumber } from "@/event/public-event";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
-import { BattleCard } from "./BattleCard";
+import { BattleCard, UnselectedBattleNote } from "./BattleCard";
 
 // 対戦詳細の表示部分。専用ページ([matchId]/page.tsx)とモーダル(MatchDetailModal.tsx)の
 // 両方から使う共通コンポーネント。フックを持たないので client/server どちらの
@@ -131,7 +131,7 @@ function BattleBreakdownSection({ detail }: { detail: PublicMatchDetail }) {
     );
   }
 
-  if (detail.battles.length === 0) {
+  if (detail.games.length === 0 && detail.battles.length === 0) {
     return (
       <p className={`mt-4 border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
         まだバトルを検知できていない。
@@ -139,11 +139,32 @@ function BattleBreakdownSection({ detail }: { detail: PublicMatchDetail }) {
     );
   }
 
+  // **`games` に含まれない候補(非選択・承認待ち等)も別枠で残す。** 「候補単位の
+  // TikTokスコアと『結果に未反映』の表示を失わない」ための表示(BattleCard.tsx参照)。
+  const gameCandidateIds = new Set(detail.games.flatMap((g) => g.candidateIds));
+  const unselectedBattles = detail.battles.filter((b) => !gameCandidateIds.has(b.candidateId));
+
   return (
     <div className="mt-4 space-y-4">
-      {detail.battles.map((battle, i) => (
-        <BattleCard key={battle.candidateId} battle={battle} index={i} sides={detail.sides} />
+      {detail.games.map((game, i) => (
+        <BattleCard
+          key={game.gameKey}
+          game={game}
+          battles={game.candidateIds
+            .map((id) => detail.battles.find((b) => b.candidateId === id))
+            .filter((b): b is (typeof detail.battles)[number] => b !== undefined)}
+          index={i}
+          sides={detail.sides}
+        />
       ))}
+      {unselectedBattles.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">結果に反映されていない検知バトル</p>
+          {unselectedBattles.map((battle) => (
+            <UnselectedBattleNote key={battle.candidateId} battle={battle} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -214,3 +214,34 @@ export function isReadyForDetection(match: { isBye: boolean; sideRoomIds: string
   // `every` は空配列に true を返すので、サイドが揃っていること自体も確かめる。
   return match.sideRoomIds.length === 2 && match.sideRoomIds.every((side) => side.length > 0);
 }
+
+/**
+ * `match-detect.ts` の `MANUAL_DECISIONS` と意味的に同じ集合(主催者が決めた結果、または
+ * 対戦なしで決まった結果)。**このファイルは何も import しない制約があるため、
+ * `match-detect.ts` から逆 import せずここで直接持つ**(値がずれたら両方を直す)。
+ */
+const MANUAL_DECISION_WINNER_KINDS = new Set(["MANUAL", "DRAW", "BYE"]);
+
+/**
+ * 候補バトルの「合算」を含む選択(候補調整モード)を主催者が開けるか。
+ *
+ * `CANDIDATES_EXCEEDED`(候補過多で `NEEDS_REVIEW` になった強制フロー)とは別に、
+ * 生候補数がちょうど `maxGames` に収まって超過判定に引っかからないまま自動確定した
+ * 対戦(典型例: BEST_OF_THREE で「途中終了+やり直し=1本、正常終了=1本」の生候補3件)にも、
+ * 主催者が任意のタイミングで候補選択画面を開けるようにするための判定。
+ *
+ * **API・UI・低ダイヤ計算のスコープ絞り込みの3箇所すべてがこの1関数を参照する**
+ * (`isReadyForDetection()` が検知経路の唯一の判定基準になっているのと同じ思想)。
+ * 条件は `resolveMatchSeries()` が実際に評価対象とする対戦(VOID・手動確定を除外する条件)と
+ * 完全に一致させてある。
+ */
+export function canAdjustCandidates(match: {
+  status: string;
+  winnerDecidedBy: string | null;
+  candidateCount: number;
+}): boolean {
+  if (match.candidateCount < 2) return false;
+  if (match.status === "VOID" || match.status === "NO_SHOW") return false;
+  if (match.winnerDecidedBy && MANUAL_DECISION_WINNER_KINDS.has(match.winnerDecidedBy)) return false;
+  return true;
+}
