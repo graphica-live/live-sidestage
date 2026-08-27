@@ -153,6 +153,27 @@ export const CONFIDENCE_NOTES: Record<string, string> = {
     "片側の配信しか観測できなかった。相手が参加者でない配信とのバトルだった可能性があるため、確認してから確定すること。",
 };
 
+// 承認待ちの理由(EventMatch.rules.reviewReason)。公開ページの対戦詳細向けの短い説明で、
+// 主催者向け(MatchManager.tsx の REVIEW_REASON_NOTES)と違い「次にすべき操作」は書かない
+// (閲覧者は操作できないため)。
+export const PUBLIC_REVIEW_REASON_LABELS: Record<string, string> = {
+  PARTIAL: "片側の配信しか検知できなかった",
+  TEAM_BATTLE: "2vs2の組み合わせを運営が確認中",
+  AMBIGUOUS: "同じ組み合わせの候補が複数あり、運営が確認中",
+  END_UNKNOWN: "バトルの終了を確認できないまま日程が終了した",
+  CANDIDATES_EXCEEDED: "検知した候補が勝利条件の本数を超えたため、運営が選定中",
+};
+
+// 対戦詳細ページのバトル内訳をどこまで出せるか(src/event/match-detail.ts の MatchBattleState)。
+export const MATCH_BATTLE_STATE_LABELS: Record<string, string> = {
+  VOID: "この対戦は無効になっている",
+  NO_SHOW: "この対戦は実施されなかった",
+  BYE: "不戦勝のため対戦は発生していない",
+  NO_DETECTED_BATTLE: "バトルを検知できていない",
+  MANUAL_WITHOUT_BATTLE_BREAKDOWN: "運営が結果を確定した(バトルの内訳は無い)",
+  AVAILABLE: "",
+};
+
 // analytics 側の TiktokRoom.listenerStatus(src/lib/tiktok-listener.ts の ListenerStatus)。
 // 配信していない配信者への接続は失敗して retrying を繰り返すので、
 // retrying は異常ではなく「監視はしているが、まだ配信が始まっていない」状態を指す。

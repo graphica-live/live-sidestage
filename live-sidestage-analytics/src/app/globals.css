@@ -70,23 +70,6 @@ body {
   .live-glow {
     animation: live-glow-pulse 1.6s ease-in-out infinite;
   }
-
-  /* 公開トーナメント表で、まだ敗退していない出場者/チームが勝った側の枠(SideRow)の
-     外側の辺に敷く帯(BracketTree.tsx)。カード全体ではなく勝った側の枠だけに付ける
-     ことで「勝った側だけ光る」表現にする。中を走る光は ::after 側で作る。 */
-  .survivor-track {
-    position: relative;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  .survivor-track::after {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 -35%;
-    width: 35%;
-    background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.95), transparent);
-    animation: survivor-track-run 2.4s linear infinite;
-  }
 }
 
 @keyframes live-glow-pulse {
@@ -99,25 +82,9 @@ body {
   }
 }
 
-@keyframes survivor-track-run {
-  from {
-    left: -35%;
-  }
-  to {
-    left: 100%;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .live-glow {
     animation: none;
     filter: drop-shadow(0 0 7px rgba(239, 68, 68, 0.8));
-  }
-
-  .survivor-track::after {
-    animation: none;
-    left: 0;
-    width: 100%;
-    background: rgba(239, 68, 68, 0.85);
   }
 }

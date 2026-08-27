@@ -396,9 +396,7 @@ export async function resolveMatchSeries(
     }
 
     // 個々のゲームの勝者は倍率適用前のダイヤで決める(match-results.ts 冒頭のコメント参照)。
-    const best = totals.reduce((a, b) => (b.diamonds > a.diamonds ? b : a), totals[0]);
-    const tie = totals.filter((t) => t.diamonds === best.diamonds).length > 1;
-    const gameWinnerSideId = tie || best.diamonds === 0n ? null : best.sideId;
+    const gameWinnerSideId = resolveGameWinner(totals);
 
     if (gameWinnerSideId) {
       const wins = (sideWins.get(gameWinnerSideId) ?? 0) + 1;
@@ -750,6 +748,21 @@ function resolveLoser(match: {
 }
 
 type SideTotal = { sideId: string; diamonds: bigint; points: bigint };
+
+/**
+ * サイド別のダイヤ合計から、1ゲームの勝者を決める。**倍率適用前のダイヤで決める**
+ * (`points` は無視する)。同点、または全サイド0なら勝者なし(null)。
+ *
+ * 対戦カード1件分の決着判定(このファイル内)だけでなく、対戦詳細ページのバトル単位の
+ * 内訳表示(`match-detail.ts`)からも呼ぶ純粋関数。決着判定と表示側で勝者の定義が
+ * ずれると閲覧者の見る「勝敗」と実際の決着が食い違うため、ロジックをここに一本化する。
+ */
+export function resolveGameWinner(totals: { sideId: string; diamonds: bigint }[]): string | null {
+  if (totals.length === 0) return null;
+  const best = totals.reduce((a, b) => (b.diamonds > a.diamonds ? b : a), totals[0]);
+  const tie = totals.filter((t) => t.diamonds === best.diamonds).length > 1;
+  return tie || best.diamonds === 0n ? null : best.sideId;
+}
 
 /**
  * 検知区間のギフトをサイドごとに集計する。

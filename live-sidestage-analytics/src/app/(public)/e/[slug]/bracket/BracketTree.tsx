@@ -1,14 +1,13 @@
+import Link from "next/link";
 import { useRef } from "react";
 import { avatarFrameStyle, resolveAvatarFrame } from "@/event/avatar-frame";
 import { fitBracketName } from "@/event/bracket-name-fit";
-import { findSurvivorMatchIds } from "@/event/bracket-survivors";
 import { MATCH_STATUS_LABELS, WINNER_DECIDED_BY_LABELS } from "@/event/labels";
-import {
-  formatNumber,
-  type BracketEntrantDto,
-  type BracketFeederFlowDto,
-  type BracketMatchDto,
-  type BracketSideDto,
+import type {
+  BracketEntrantDto,
+  BracketFeederFlowDto,
+  BracketMatchDto,
+  BracketSideDto,
 } from "@/event/public-event";
 import { CARD_CLIP, CARD_CLIP_MIRROR, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BracketScroller } from "./BracketScroller";
@@ -26,13 +25,10 @@ import { FeederFlowOverlay } from "./FeederFlowOverlay";
 // 逆に言うと、カードの中身を可変行数にすると幾何が崩れて線がずれる —
 // だから状態・不戦勝・時刻は1行にまとめ、カードに固定高を与えている(CARD_H)。
 //
-// **名前とバトルスコアは互いに逆向きへ寄せ、行を増やさずサイド枠の中で分離している。**
-// 名前は名前枠(NAME_BOX_H)ごとサイド枠の外側の端(上側のサイドは枠の上端、下側のサイドは
-// 枠の下端)へ寄せる。スコアは逆にVSバッジを挟む内側の端(上側のサイドは枠の下端 = VSの直上、
-// 下側のサイドは枠の上端 = VSの直下)へ絶対配置する。互いに反対の端にいるので重ならず、
-// 上側=赤字・下側=青字の色分けと合わせて上下どちらのスコアかが一目でわかる。
-// 通常フローの行にすると、サイドの境目へ絶対配置している「VS」バッジ(高さ18px)が
-// サイドの最終行に7px重なって数字が読めなくなる(過去に実測で確認済み)。おかげで CARD_H も据え置ける。
+// **名前は全サイド共通でサイド枠の下端(NAME_BOX_H)へ寄せる。** バトルスコアは表からは
+// 出さない(タップして開く対戦詳細ページの担当)。カード上に残るのは状態・不戦勝・時刻の
+// 1行だけなので、上下でスコアの位置を分ける必要がなくなった — スコア削除前の版は名前と
+// スコアを互いに逆向きの端へ寄せて重なりを避けていたが、その配慮ごと不要になっている。
 //
 // 決勝カラムの「優勝」バナーを絶対配置にしているのも同じ理由。通常フローに置くと
 // カラムの中心がカードの中心からずれ、左右から来る線が決勝カードに刺さらなくなる。
@@ -79,10 +75,13 @@ function key(round: number, position: number): string {
 }
 
 export function BracketTree({
+  slug,
   roundCount,
   matches,
   feederFlows,
 }: {
+  /** タップした対戦カードの詳細ページ(`/e/{slug}/bracket/{matchId}`)へのリンクに使う。 */
+  slug: string;
   roundCount: number;
   matches: BracketMatchDto[];
   /** 座標既定とずれている勝者フロー(接続の交換の矢印可視化専用)。 */
@@ -92,13 +91,6 @@ export function BracketTree({
   const index: MatchIndex = new Map(matches.map((m) => [key(m.round, m.position), m]));
   const final = index.get(key(roundCount, 0));
   const blocks = groupPlacementBlocks(matches);
-
-  // まだ敗退していない出場者/チームが勝った試合。決勝は専用の枠+優勝バナーを
-  // 既に持つので、決勝の敗者を捕まえる計算には使うが結果には含めない
-  // (findSurvivorMatchIds の finalMatchId 引数)。この集合に入っている試合だけ
-  // MatchCard が「勝った側の枠(SideRow)だけ」に生存ツリーの装飾(赤枠+走光)を出す
-  // (カード全体は光らせない — 負けた側まで光ると勝敗が読めなくなるため)。
-  const survivorMatchIds = findSurvivorMatchIds(matches, final?.id);
 
   // 準決勝のサブツリー。roundCount が 1(参加2組)なら決勝しかないので左右は出さない。
   const hasWings = roundCount >= 2;
@@ -112,13 +104,7 @@ export function BracketTree({
             東西両翼は必ず同じセクション扱いにする(分けると東西を跨ぐ矢印が消える)。 */}
         <div className="flex items-center pt-40" data-bracket-section="main">
           {hasWings && (
-            <MatchNode
-              round={roundCount - 1}
-              position={0}
-              mirror={false}
-              index={index}
-              survivorMatchIds={survivorMatchIds}
-            />
+            <MatchNode round={roundCount - 1} position={0} mirror={false} index={index} slug={slug} />
           )}
           {hasWings && <StraightConnector />}
 
@@ -127,7 +113,7 @@ export function BracketTree({
               <Champion final={final} />
             </div>
             {final ? (
-              <MatchCard match={final} mirror={false} isFinal survivorMatchIds={survivorMatchIds} />
+              <MatchCard match={final} mirror={false} isFinal slug={slug} />
             ) : (
               <EmptyCard isFinal />
             )}
@@ -135,19 +121,11 @@ export function BracketTree({
 
           {hasWings && <StraightConnector />}
           {hasWings && (
-            <MatchNode
-              round={roundCount - 1}
-              position={1}
-              mirror
-              index={index}
-              survivorMatchIds={survivorMatchIds}
-            />
+            <MatchNode round={roundCount - 1} position={1} mirror index={index} slug={slug} />
           )}
         </div>
 
-        {blocks.length > 0 && (
-        <PlacementSection blocks={blocks} index={index} survivorMatchIds={survivorMatchIds} />
-      )}
+        {blocks.length > 0 && <PlacementSection blocks={blocks} index={index} slug={slug} />}
 
         <FeederFlowOverlay containerRef={treeRef} flows={feederFlows} />
       </div>
@@ -201,18 +179,16 @@ function groupPlacementBlocks(matches: BracketMatchDto[]): PlacementBlockView[] 
  * 左右から来る接続線が刺さらなくなる(ファイル冒頭を参照)。ブロックは同じ座標空間に
  * いるので、`MatchNode` をそのまま根から呼べば完全二分木として正しく描ける。
  *
- * `survivorMatchIds` は `MatchNode` の必須 prop なので素通しする。**このブロックの
- * カードは実際には光らない** — ここへ来る出場者は本選で一度負けて `findSurvivorMatchIds`
- * の敗退キーに入っているため。順位決定戦は敗者復活ではないので、それが正しい。
+ * `slug` は `MatchNode` の必須 prop(詳細ページへのリンク組み立て)なので素通しする。
  */
 function PlacementSection({
   blocks,
   index,
-  survivorMatchIds,
+  slug,
 }: {
   blocks: PlacementBlockView[];
   index: MatchIndex;
-  survivorMatchIds: Set<string>;
+  slug: string;
 }) {
   return (
     <div className="mt-10 border-t border-white/10 pt-6">
@@ -243,7 +219,7 @@ function PlacementSection({
                   minRound={block.minRound}
                   mirror={false}
                   index={index}
-                  survivorMatchIds={survivorMatchIds}
+                  slug={slug}
                 />
               </div>
             </div>
@@ -370,23 +346,19 @@ function MatchNode({
   mirror,
   index,
   minRound = 1,
-  survivorMatchIds,
+  slug,
 }: {
   round: number;
   position: number;
   mirror: boolean;
   index: MatchIndex;
   minRound?: number;
-  survivorMatchIds: Set<string>;
+  slug: string;
 }) {
   const match = index.get(key(round, position));
   const card = (
     <div className={`${CARD_W} shrink-0`} data-bracket-slot={key(round, position)}>
-      {match ? (
-        <MatchCard match={match} mirror={mirror} survivorMatchIds={survivorMatchIds} />
-      ) : (
-        <EmptyCard mirror={mirror} />
-      )}
+      {match ? <MatchCard match={match} mirror={mirror} slug={slug} /> : <EmptyCard mirror={mirror} />}
     </div>
   );
 
@@ -405,7 +377,7 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
-            survivorMatchIds={survivorMatchIds}
+            slug={slug}
           />
         </div>
         <div className="flex flex-1 items-center py-1.5">
@@ -415,7 +387,7 @@ function MatchNode({
             mirror={mirror}
             index={index}
             minRound={minRound}
-            survivorMatchIds={survivorMatchIds}
+            slug={slug}
           />
         </div>
       </div>
@@ -541,12 +513,13 @@ function MatchCard({
   match,
   mirror,
   isFinal,
-  survivorMatchIds,
+  slug,
 }: {
   match: BracketMatchDto;
   mirror: boolean;
   isFinal?: boolean;
-  survivorMatchIds: Set<string>;
+  /** タップ時の遷移先(`/e/{slug}/bracket/{matchId}`)の組み立てに使う。 */
+  slug: string;
 }) {
   const decided =
     match.winnerDecidedBy && match.winnerDecidedBy !== "AGGREGATE"
@@ -560,14 +533,6 @@ function MatchCard({
   // LIVE に読み替えて隠す」既存方針の唯一の例外(public-event.ts)なので、ここに届いた時点
   // で常に視聴者に見せてよい状態。LIVE の赤発光とは演出の強さを分ける(live-glow は使わない)。
   const needsSelection = match.needsResultSelection;
-  // 決勝は対象外(findSurvivorMatchIds が結果集合から除いている)。専用の枠+優勝バナーで
-  // 既に「ここが頂点」を示せているので、この試合カードにさらに走光を重ねない。
-  //
-  // 装飾はカード全体ではなく、勝った側の SideRow だけに掛ける(SideRow の survivorWin prop)。
-  // カード全体(article の border/背景)を光らせると、負けた側の枠まで同じ赤みを帯びて
-  // 「勝った側だけ」に見えなくなるうえ、走光の帯を上辺に固定すると勝者が下側の枠でも
-  // 光がカード上端に出てしまい、どちらが勝ったのか伝わらない。
-  const isSurvivorWin = survivorMatchIds.has(match.id);
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
 
   const card = (
@@ -619,15 +584,14 @@ function MatchCard({
           この枠の中央にいるので、gap-3 のぶんだけ名前・アイコンから逃げている。 */}
       <div className="relative flex flex-1 flex-col justify-center gap-3">
         {byeWinner ? (
-          <SideRow side={byeWinner} position="top" survivorWin={isSurvivorWin} />
+          <SideRow side={byeWinner} loser={false} />
         ) : (
           <>
-            {match.sides.map((side, i) => (
+            {match.sides.map((side) => (
               <SideRow
                 key={side.id}
                 side={side}
-                position={i === 0 ? "top" : "bottom"}
-                survivorWin={isSurvivorWin}
+                loser={!side.isWinner && match.sides.some((s) => s.isWinner)}
               />
             ))}
             <span
@@ -643,60 +607,45 @@ function MatchCard({
 
   // clip-path を持つ要素に filter を書くと影ごと切り落とされるので、外へにじむ赤い光は
   // clip-path を持たないラッパへ当てる(理由は globals.css の .live-glow)。
-  return isLive ? <div className="live-glow">{card}</div> : card;
+  const glowed = isLive ? <div className="live-glow">{card}</div> : card;
+
+  // タップで対戦詳細ページへ。**`prefetch={false}` が必須** — 表には対戦カードが多数
+  // 並ぶため、既定のビューポート内プリフェッチのままだと画面内の全カードぶんの詳細API
+  // (ギフト集計を伴う)が一斉に走ってしまう(設計レビューで指摘された負荷経路)。
+  return (
+    <Link href={`/e/${slug}/bracket/${match.id}`} prefetch={false} className="block">
+      {glowed}
+    </Link>
+  );
 }
 
 /**
- * アイコンを枠いっぱいに敷き、名前は枠の外側の端(`position`が"top"なら枠の上端、"bottom"なら
- * 枠の下端)へ寄せる。**枠の高さ(SIDE_H)と名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字
- * サイズだけが長さに応じて変わる(`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、
- * 枠の高さは動かない。
+ * アイコンを枠いっぱいに敷き、名前は枠の下端(NAME_BOX_H)へ寄せる。**枠の高さ(SIDE_H)と
+ * 名前枠の高さ(NAME_BOX_H)は固定**で、名前の文字サイズだけが長さに応じて変わる
+ * (`fitBracketName`)。1行で収まらない長さになると2行へ折れるが、枠の高さは動かない。
  *
- * 名前を外側の端へ寄せるのは見た目のためだけでなく、**VSバッジを挟むスコアの置き場を
- * 名前と重ならせないため**(ファイル冒頭のコメントを参照)。スコアは名前と逆に VS に近い側
- * (`position`が"top"なら枠の下端、"bottom"なら枠の上端)へ寄せる。スコアの文字色は上側を
- * 赤・下側を青にして対戦の上下を色でも区別し、黒縁取り(text-shadow)を足してアイコン画像の
- * 上でもスマホの小さい画面で読めるようにしている。
+ * バトルスコアは表からは出さない(タップして開く対戦詳細ページの担当)。
  *
  * **`overflow-hidden` が要る** — 枠より大きいアイコンのはみ出しをここで切る。付け忘れると
  * 上下のサイドへ顔が侵食する(親カードの overflow-hidden はカードの外しか切らない)。
  *
  * 出場者がまだ居ない枠にはアイコンを敷かない。敷くものが無いところへ下地だけ広げると、
- * 勝者の色(bg-brand/10)が塗り潰されて勝敗が読めなくなる。
- *
- * バトルスコアは TikTok 側の集計値。**帰属できたサイドにしか出さない**ので、片側だけ出ることがある。
- * アイコンの上に乗るので、読めるよう背景を敷いている。
+ * 決着済みかどうかの色分けが塗り潰されて読めなくなる。
  *
  * `hasLiveStreamer` はバトル前(SCHEDULED)の枠にだけ立つ(DTO側で保証済み)。「今まさに配信中」の
  * 目印として緑のリングで発光させる — LIVE中の対戦(カード全体が赤く光る `.live-glow`)と
  * 混同しないよう、こちらは点滅させず静的にしてある。
  *
- * `survivorWin` は「この対戦カードが生存ツリーに含まれているか」(`findSurvivorMatchIds`)。
- * まだ敗退していない出場者の勝利であることを、枠全体ではなく**勝った側の枠だけ**に
- * 赤リング+走光で示す。負けた側の枠は通常表示のまま変えない — カード全体を光らせると
- * 負けた側まで同じ色になり「勝った側だけ」に見えなくなるため(BracketTree.tsx冒頭を参照)。
+ * `loser` は「決着済みで、かつ自分が勝者ではない」側。**勝った側を光らせる演出は廃止した**
+ * (BracketTree.tsx冒頭を参照) — 代わりに負けた側のプロフィール画像だけを暗くする。
+ * まだ勝者が決まっていない対戦(両サイドとも `isWinner=false`)では両方とも通常表示のまま。
  */
-function SideRow({
-  side,
-  position,
-  survivorWin,
-}: {
-  side: BracketSideDto;
-  position: "top" | "bottom";
-  survivorWin?: boolean;
-}) {
+function SideRow({ side, loser }: { side: BracketSideDto; loser: boolean }) {
   const hasAvatar = side.entrants.length > 0;
-  const isSurvivorSide = Boolean(survivorWin) && side.isWinner;
-  // 縦の寄せ(justify-*)はここに含めない。名前を枠のどちらの端へ寄せるかが `position` で
-  // 変わるので、frame を使う各所で付ける(未確定の枠だけは中央寄せのまま)。
   const frame = `relative flex ${SIDE_H} flex-col items-center overflow-hidden text-center ${
-    isSurvivorSide
-      ? "bg-red-500/10 ring-1 ring-inset ring-red-500/70"
-      : side.isWinner
-        ? "bg-brand/10 ring-1 ring-inset ring-brand/40"
-        : side.hasLiveStreamer
-          ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
-          : "bg-white/[0.04]"
+    side.hasLiveStreamer
+      ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
+      : "bg-white/[0.04]"
   }`;
 
   if (!side.name) {
@@ -707,42 +656,14 @@ function SideRow({
     );
   }
 
-  // 名前は枠の外側の端(VSバッジから遠い側)、スコアは内側の端(VSバッジに近い側)へ寄せる。
-  // 反対の端にいるので重ならない(詳細はファイル冒頭とこの関数のコメントを参照)。
-  const isTop = position === "top";
-  const nameEdge = isTop ? "top-0" : "bottom-0";
-  const scoreColor = isTop ? "text-red-400" : "text-blue-400";
-  // 縁取り(黒のtext-shadowを4方向へ)。色付きスコアがアイコン画像の上に乗ってもスマホの
-  // 小さい画面で読めるようにするための処理。
-  const scoreStroke =
-    "[text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000]";
-
   return (
-    <div
-      className={`${frame} ${isTop ? "justify-start" : "justify-end"}`}
-      data-bracket-side={side.sideIndex}
-    >
-      <EntrantAvatars entrants={side.entrants} size="card" />
+    <div className={`${frame} justify-end`} data-bracket-side={side.sideIndex}>
+      <EntrantAvatars entrants={side.entrants} size="card" dimmed={loser} />
 
       {/* 名前はアイコンの上に重なるので、背後に黒帯を差して読めるようにする。 */}
       {hasAvatar && (
         <span
-          className={`pointer-events-none absolute inset-x-0 ${nameEdge} ${NAME_BOX_H} bg-black/55`}
-          aria-hidden
-        />
-      )}
-
-      {/* 生き残っているツリーをひと目で追えるように、勝った側の枠の外側の辺だけ光を走らせる
-          (top側は枠の上端、bottom側は枠の下端)。枠自身が overflow-hidden を持つので、
-          帯もこの枠の中に収まる。
-
-          **名前の黒帯より後ろに置くこと。** 名前も同じ外側の端(nameEdge)へ寄っていて、その背後の
-          黒帯(bg-black/55, NAME_BOX_H=36px)がこの3pxの帯を丸ごと覆う位置にある。黒帯より前に
-          置くと走光が55%沈んで見えなくなる。逆に z-index は付けない — 名前本体(z-10)より下に
-          居させることで、2行に折れた長い名前が端まで来ても文字が帯に食われない。 */}
-      {isSurvivorSide && (
-        <span
-          className={`survivor-track absolute inset-x-0 h-[3px] ${isTop ? "top-0" : "bottom-0"}`}
+          className={`pointer-events-none absolute inset-x-0 bottom-0 ${NAME_BOX_H} bg-black/55`}
           aria-hidden
         />
       )}
@@ -750,18 +671,6 @@ function SideRow({
       <div className="relative z-10 px-1.5">
         <FitName name={side.name} boxH={NAME_BOX_H} />
       </div>
-
-      {side.tiktokScore !== null && (
-        <span
-          className={`absolute inset-x-0 z-20 flex justify-center ${isTop ? "bottom-1" : "top-1"}`}
-        >
-          <span
-            className={`rounded-sm bg-black/80 px-2 py-0.5 font-mono text-[13px] font-bold leading-none ${scoreColor} ${scoreStroke}`}
-          >
-            {formatNumber(side.tiktokScore)}
-          </span>
-        </span>
-      )}
     </div>
   );
 }
@@ -791,12 +700,16 @@ function SideRow({
 function EntrantAvatars({
   entrants,
   size,
+  dimmed,
 }: {
   entrants: BracketEntrantDto[];
   /** card = 対戦カードの中、champion = 決勝の上の「優勝」バナー(一回り大きい)。 */
   size: "card" | "champion";
+  /** 決着済みで負けた側のプロフィール画像を少し暗くする(勝った側の枠を光らせる代わりの演出)。 */
+  dimmed?: boolean;
 }) {
   const champion = size === "champion";
+  const dimClass = dimmed ? "brightness-[0.55]" : "";
   const shown = entrants.slice(0, 2);
   const rest = entrants.length - shown.length;
   // 実際に横へ並ぶ数(+N のバッジも1つと数える)。
@@ -815,7 +728,7 @@ function EntrantAvatars({
         title={only.displayName}
         width={champion ? 176 : 156}
         height={champion ? 176 : 156}
-        className="absolute inset-0 h-full w-full bg-white/5 object-cover"
+        className={`absolute inset-0 h-full w-full bg-white/5 object-cover ${dimClass}`}
         style={avatarFrameStyle(frame)}
         loading="lazy"
         decoding="async"
@@ -847,7 +760,7 @@ function EntrantAvatars({
           title={e.displayName}
           width={px}
           height={px}
-          className={`${box} shrink-0 rounded-full border border-panel bg-white/5 object-cover`}
+          className={`${box} shrink-0 rounded-full border border-panel bg-white/5 object-cover ${dimClass}`}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
