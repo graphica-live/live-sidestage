@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./overlay.css";
 import OverlayBodyClass from "./OverlayBodyClass";
@@ -8,6 +9,13 @@ import OverlayBodyClass from "./OverlayBodyClass";
 // `src/app/(overlay)/overlay/contribution/page.tsx` へ移しても同じ URL のままで、
 // 配信者が OBS に設定済みの URL を壊さない。新しい種類も同じ階層に置けば
 // 背景・パラメータの扱いをここから受け取れる。
+
+// metadata はフィールド単位の浅いマージなので、title だけ上書きすると
+// ルート layout.tsx の description がそのまま継承される。両方書く。
+export const metadata: Metadata = {
+  title: "LIVE Sidestage Overlays",
+  description: "TikTok Live overlay",
+};
 
 // body のクラス付けを hydration より前に済ませるための inline script。
 // useEffect でしか付けないと、初回ロードと OBS の再接続のたびに
