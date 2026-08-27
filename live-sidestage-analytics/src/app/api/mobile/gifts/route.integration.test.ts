@@ -97,13 +97,17 @@ async function addCatalog(
   giftId: number,
   label: string,
   diamondCount: number,
-  imageUrl?: string | null
+  imageUrl?: string | null,
+  labelJa?: string | null
 ) {
   return prisma.tiktokGiftCatalog.create({
     data: {
       giftId,
+      // 本番の tiktok-gift-catalog.ts と同じ規則。**一致キーは英語版から作る**ので、
+      // labelJa を渡しても name には影響しない。
       name: label.trim().toLowerCase(),
       label: label.trim(),
+      labelJa: labelJa ?? null,
       diamondCount,
       imageUrl: imageUrl ?? null,
     },
@@ -119,6 +123,7 @@ function request(bearer?: string) {
 interface GiftCandidate {
   name: string;
   label: string;
+  labelJa: string | null;
   diamondCount: number;
   minDiamondCount: number;
   maxDiamondCount: number;
@@ -374,5 +379,55 @@ describe("GET /api/mobile/gifts — アイコン", () => {
     await addCatalog(70040, "NoPic", 10);
     const { gifts } = await fetchGifts(token);
     expect(find(gifts, "nopic").imageUrl).toBeNull();
+  });
+});
+
+// TikTok公式の日本語表示名。**一致キー(`name`)は英語のまま**で、`labelJa` は表示専用。
+// ここが日本語になると、モバイルが保存する `GiftSound.giftName` が日本語になり、
+// 英語で届く `chat:gift` と永久に一致しなくなる(無言で鳴らなくなる)。
+describe("GET /api/mobile/gifts — 日本語表示名", () => {
+  it("カタログの labelJa を返す。一致キーは英語のまま", async () => {
+    await addCatalog(80001, "Rose", 1, null, "バラ");
+    const { gifts } = await fetchGifts(token);
+    const hit = find(gifts, "rose");
+    expect(hit.name).toBe("rose");
+    expect(hit.label).toBe("Rose");
+    expect(hit.labelJa).toBe("バラ");
+  });
+
+  it("日本語名が無いカタログ行は labelJa が null(候補自体は消えない)", async () => {
+    await addCatalog(80010, "Untranslated", 1);
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "untranslated").labelJa).toBeNull();
+  });
+
+  it("同名複数行では、日本語名を持つ行のうち最小giftIdを採る", async () => {
+    // ラベルの代表(最小giftId=80020)がまだ日本語化されていないケース。
+    // 単純に「最小giftIdの行の labelJa」を見ると訳を取りこぼす。
+    await addCatalog(80020, "Zeus", 34000, null, null);
+    await addCatalog(80022, "zeus", 34000, null, "覇王ゼウス");
+    await addCatalog(80021, "ZEUS", 34000, null, "ゼウス");
+
+    const { gifts } = await fetchGifts(token);
+    const hit = find(gifts, "zeus");
+    expect(hit.label).toBe("Zeus"); // ラベルの規則は変わらない(最小giftId)
+    expect(hit.labelJa).toBe("ゼウス"); // 日本語名は 80021(日本語を持つ行の最小giftId)
+  });
+
+  it("受信履歴にしか無いギフトは labelJa が null", async () => {
+    // 部屋固有のサブスクギフトや、カタログから消えた旧ギフト。
+    await addGift("HistOnly", 5, new Date("2026-08-20T14:00:00Z"));
+    const { gifts } = await fetchGifts(token);
+    expect(find(gifts, "histonly").labelJa).toBeNull();
+  });
+
+  it("履歴とカタログの両方にあるギフトでも、カタログの日本語名が付く", async () => {
+    await addCatalog(80030, "Perfume", 20, null, "香水");
+    await addGift("Perfume", 20, new Date("2026-08-20T14:10:00Z"));
+
+    const { gifts } = await fetchGifts(token);
+    const hit = find(gifts, "perfume");
+    expect(hit.seen).toBe(true);
+    expect(hit.labelJa).toBe("香水");
   });
 });
