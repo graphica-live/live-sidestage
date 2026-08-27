@@ -71,9 +71,9 @@ body {
     animation: live-glow-pulse 1.6s ease-in-out infinite;
   }
 
-  /* 公開トーナメント表で、まだ敗退していない出場者/チームが勝った試合の上辺に敷く帯。
-     カード自身の clip-path を持つ article の内側の子として置く想定(BracketTree.tsx)
-     なので、mirror側の角の切り欠きにも自動で追従する。中を走る光は ::after 側で作る。 */
+  /* 公開トーナメント表で、まだ敗退していない出場者/チームが勝った側の枠(SideRow)の
+     外側の辺に敷く帯(BracketTree.tsx)。カード全体ではなく勝った側の枠だけに付ける
+     ことで「勝った側だけ光る」表現にする。中を走る光は ::after 側で作る。 */
   .survivor-track {
     position: relative;
     overflow: hidden;
