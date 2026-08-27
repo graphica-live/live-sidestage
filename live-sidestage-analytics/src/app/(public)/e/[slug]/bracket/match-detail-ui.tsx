@@ -7,7 +7,7 @@ import {
   WIN_CONDITION_LABELS,
   WINNER_DECIDED_BY_LABELS,
 } from "@/event/labels";
-import { formatNumber, formatPoints } from "@/event/public-event";
+import { formatNumber } from "@/event/public-event";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 
 // 対戦詳細の表示部分。専用ページ([matchId]/page.tsx)とモーダル(MatchDetailModal.tsx)の
@@ -190,17 +190,15 @@ function BattleCard({
                 }`}
               >
                 <p className="truncate text-sm font-medium">{sideName(s.sideId)}</p>
-                <p className="font-mono text-sm tabular-nums text-gray-300">
-                  {formatNumber(s.diamonds)} <span className="text-xs text-gray-500">ダイヤ</span>
-                </p>
-                {s.points !== s.diamonds && (
-                  <p className="font-mono text-xs tabular-nums text-gray-500">{formatPoints(s.points)} pt</p>
-                )}
                 {battle.tiktokScores[s.sideId] && (
-                  <p className="font-mono text-xs tabular-nums text-gray-500">
-                    バトルスコア {formatNumber(battle.tiktokScores[s.sideId]!)}
+                  <p className="font-mono text-base font-bold tabular-nums text-white">
+                    {formatNumber(battle.tiktokScores[s.sideId]!)}{" "}
+                    <span className="text-xs font-normal text-gray-400">バトルスコア</span>
                   </p>
                 )}
+                <p className="font-mono text-xs tabular-nums text-gray-500">
+                  {formatNumber(s.diamonds)} <span className="text-gray-600">ダイヤ</span>
+                </p>
               </div>
             ))}
           </div>
