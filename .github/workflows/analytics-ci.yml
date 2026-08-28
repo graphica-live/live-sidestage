@@ -118,6 +118,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # このジョブは checkout しないので、ワークフロー冒頭の
+    # defaults.run.working-directory: live-sidestage-analytics を打ち消す必要がある
+    # (打ち消さないと存在しないディレクトリでシェルを起動しようとして落ちる)。
+    defaults:
+      run:
+        working-directory: .
     concurrency:
       group: analytics-railway-deploy
       cancel-in-progress: false
