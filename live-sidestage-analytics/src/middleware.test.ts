@@ -130,4 +130,20 @@ describe("middleware の matcher", () => {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
   });
+
+  it("Stripe Webhookは署名検証で保護されるためNextAuthセッションを要求しない", () => {
+    for (const path of ["/api/webhooks/stripe", "/api/webhooks/stripe/"]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("課金ページと似た文字列のWebhookパスは保護されたままになる", () => {
+    for (const path of [
+      "/billing", // 共通課金ページ(要ログイン)
+      "/api/webhooks/stripe-evil", // `api/webhooks/stripe` に食われてはいけない
+      "/api/webhooks", // 境界より手前
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
 });

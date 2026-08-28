@@ -32,9 +32,41 @@ model User {
   password      String?
   createdAt     DateTime  @default(now())
 
-  accounts Account[]
-  sessions Session[]
-  streamer Streamer?
+  accounts     Account[]
+  sessions     Session[]
+  streamer     Streamer?
+  subscription Subscription?
+
+  @@schema("public")
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  ULTRA
+
+  @@schema("public")
+}
+
+// User単位の課金プラン。行が無いUser = FREE扱い(全Userに先回りして作らない)。
+// event機能はUser.idへの生FKを張らない方針(Event.ownerUserId参照)なので、
+// event側からもこのモデルをuserIdの一致だけで参照する。
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  plan                 PlanTier  @default(FREE)
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  status               String? // Stripeのsubscription.statusをそのまま保存(active/past_due/canceled等)
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // onDelete: Cascadeで行ごと消える = Stripe側の課金は残ったままDB上の紐付けだけ失う。
+  // User削除機能は現状無いが、将来足す場合はStripe側のsubscription解約も併せて行うこと。
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }

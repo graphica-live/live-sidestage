@@ -25,6 +25,15 @@ export default function EventHeader() {
           <span className="text-gray-400 font-medium text-sm">Event</span>
         </Link>
 
+        <Link
+          href="/events/settings"
+          className="btn-ghost text-xs shrink-0"
+          aria-label="設定"
+          title="設定"
+        >
+          ⚙️<span className="hidden sm:inline"> 設定</span>
+        </Link>
+
         <button
           onClick={() => signOut({ callbackUrl: "/event/login" })}
           className="btn-ghost text-xs shrink-0"
