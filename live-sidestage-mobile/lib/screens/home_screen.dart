@@ -88,7 +88,14 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+/// アプリを開いている間、音を出さずに socket だけ張る「待機」サービスを立てるか。
+///
+/// **問題が出たら false にすれば、待機を入れる前の挙動へ即座に戻せる。**
+/// 待機はギフト受信での自動更新を成立させるためのもので、無くてもタブ切替と
+/// 手動更新で数字は取れる（反映が遅いだけ）。
+const bool _idleServiceEnabled = true;
+
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<Comment> _comments = [];
   final ScrollController _scrollController = ScrollController();
 
@@ -118,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGiftNames());
   }
@@ -147,22 +155,76 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// 待機サービスの寿命を「アプリを開いている間」に限る。
+  ///
+  /// **Android は待機を常駐させてはいけない。** stopWithTask: false のサービスは
+  /// START_STICKY で復活し、タスクスワイプにも再起動アラームが仕掛けられる。
+  /// 停止ボタンが音を止めるだけになった今、常駐させると**ユーザーがサービスを
+  /// 止める手段が設定アプリの強制停止しか無くなる**。
+  ///
+  /// iOS は背面でプロセスごと suspend されるので、こちらから止める必要はない。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_idleServiceEnabled) return;
+
+    if (state == AppLifecycleState.resumed) {
+      // 背面にいた間に socket が切れている。ping timeout を待つと数十秒空くので、
+      // 背景へ張り直しを促す（背景 Isolate は自分が背面かを知れない）。
+      FlutterForegroundTask.sendDataToTask({'command': 'lifecycle', 'state': 'resumed'});
+      unawaited(_resumeIdleService());
+      return;
+    }
+
+    if (Platform.isAndroid && state == AppLifecycleState.paused) {
+      unawaited(_stopIdleServiceIfIdle());
+    }
+  }
+
+  /// 前面へ戻ったのにサービスが居なければ待機を立て直す。
+  Future<void> _resumeIdleService() async {
+    if (await FlutterForegroundTask.isRunningService) return;
+    if (!mounted) return;
+    await _syncRunningStatus();
+  }
+
+  /// 背面へ回るとき、音を出していないなら待機は畳む。
+  Future<void> _stopIdleServiceIfIdle() async {
+    if (!mounted) return;
+    final store = context.read<AppConfigStore>();
+    if (store.config.ttsEnabled || store.sound.enabled) return;
+    if (!await FlutterForegroundTask.isRunningService) return;
+    await _stopService();
+  }
+
   // ── サービスの状態と設定フラグの同期 ────────────────────────────────────────
 
-  /// **不変条件: `serviceRunning == (ttsEnabled || soundEnabled)`。**
+  /// **不変条件: `機能有効 ⇒ サービス稼働`（逆は成り立たない）。**
+  ///
+  /// 以前は両向きの一致（`serviceRunning == (tts || sound)`）だったが、socket を
+  /// 常に1本に保つため「音を出さずに socket だけ張る待機」を足した。サービスが
+  /// 動いていても機能が両方 OFF のことがある。
   ///
   /// サービスが止まっているなら、どの機能も動いていない。保存値を実態へ合わせておかないと
   /// 「停止中なのに保存値は両方ON」という状態が残り、そこから片方だけ開始したつもりでも
   /// もう片方まで一緒に起動する。[AppConfig] の既定値が両方 true なので、初回起動の
   /// 既存ユーザーもここで正規化される。
+  ///
+  /// **正規化してから待機を立てること。** 順序を逆にすると、既定値の両方 true のまま
+  /// サービスが起動して、アプリを開いただけで読み上げと効果音が走り出す。
   Future<void> _syncRunningStatus() async {
     final store = context.read<AppConfigStore>();
     final running = await FlutterForegroundTask.isRunningService;
     if (!mounted) return;
     setState(() => _serviceRunning = running);
-    if (!running) {
-      await store.setFeatureMask(tts: false, sound: false);
-    }
+    if (running) return;
+
+    await store.setFeatureMask(tts: false, sound: false);
+    if (!mounted || !_idleServiceEnabled) return;
+
+    final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
+    final started = await _startService(apiKey: apiKey, store: store, idle: true);
+    if (!mounted) return;
+    setState(() => _serviceRunning = started);
   }
 
   /// 開始/停止ボタンの実体。**設定の保存とサービス遷移を1本の直列処理にまとめる。**
@@ -213,6 +275,12 @@ class _HomeScreenState extends State<HomeScreen> {
             sound: isTts ? store.sound.enabled : false,
           );
           await _refreshNotification(store);
+        } else if (_idleServiceEnabled) {
+          // 最後の機能を止めても**サービスは残す**。socket を1本保ったままにして、
+          // 貢献・ギフト履歴タブの自動更新を続けるため。ACK を返す相手が生き続けるので、
+          // 保存してから通知文を追従させる順序でよい。
+          await store.setFeatureMask(tts: false, sound: false);
+          await _refreshNotification(store);
         } else {
           // 最後の機能を止める。**先にサービスを止めてから保存する。**
           // 逆順にすると AppConfigStore が「稼働中」と判断して背景へ applyConfig を送り、
@@ -231,16 +299,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 稼働中はForeground Serviceで画面オフ/バックグラウンドでも継続する。
   // 停止中はサービスを完全に止め、アプリがタスクKillされても問題ない状態にする。
-  Future<bool> _startService({required String? apiKey, required AppConfigStore store}) async {
+  ///
+  /// [idle] は「読み上げも効果音も無効なまま、socket のためだけに立てる」起動。
+  /// **権限を要求せず、失敗しても何も言わない。** アプリを開いただけで許可ダイアログが
+  /// 出るのは第一印象として悪いし、待機は「あれば貢献タブが自動更新される」という
+  /// 上乗せなので、立てられなければ黙って諦めてよい(タブ切替と手動更新は生きている)。
+  Future<bool> _startService({
+    required String? apiKey,
+    required AppConfigStore store,
+    bool idle = false,
+  }) async {
     if (apiKey == null) {
-      _showMessage('TikTokアカウントの登録が完了していないため開始できません。');
+      if (!idle) _showMessage('TikTokアカウントの登録が完了していないため開始できません。');
       return false;
     }
 
     // iOSは通知を出さない設定(iosNotificationOptions.showNotification: false)なので
     // 許可を求める意味がなく、バッテリー最適化の除外はAndroid専用API。
     // iOSでの生存は UIBackgroundModes: audio と無音ループが担う。
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid && !idle) {
       if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
         await FlutterForegroundTask.requestNotificationPermission();
       }
@@ -596,6 +673,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    WidgetsBinding.instance.removeObserver(this);
     _roomSwitchTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
