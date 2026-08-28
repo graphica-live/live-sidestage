@@ -1,0 +1,579 @@
+[
+  {
+    "key": "Viking Hammer|1500",
+    "entries": [
+      {
+        "giftId": 18299,
+        "englishName": "Viking Hammer",
+        "japaneseName": "覇王のハンマー",
+        "diamondCount": 1500,
+        "iconUri": "webcast-sg/resource/5b95101816bc9f61f65bd265641ef4d6.png",
+        "primaryEffectId": 7006,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 16282,
+        "englishName": "Viking Hammer",
+        "japaneseName": "雷鳴のハンマー",
+        "diamondCount": 1500,
+        "iconUri": "webcast-sg/resource/5b95101816bc9f61f65bd265641ef4d6.png",
+        "primaryEffectId": 7006,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": true,
+    "sameIcon": true
+  },
+  {
+    "key": "LIVE Ranking Party|3999",
+    "entries": [
+      {
+        "giftId": 115548,
+        "englishName": "LIVE Ranking Party",
+        "japaneseName": "LIVE Ranking Party",
+        "diamondCount": 3999,
+        "iconUri": "webcast-sg/resource/018a62473f7a3989a19ced0af369a99e.png",
+        "primaryEffectId": 23490,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 738532,
+        "englishName": "LIVE Ranking Party",
+        "japaneseName": "LIVEランキングのパーティー",
+        "diamondCount": 3999,
+        "iconUri": "webcast-sg/resource/c80a4a0b3db25e46894ab9d46fe3f85d.png",
+        "primaryEffectId": 33337,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": true,
+    "sameIcon": false
+  },
+  {
+    "key": "Zeus|34000",
+    "entries": [
+      {
+        "giftId": 8624,
+        "englishName": "Zeus",
+        "japaneseName": "ゼウス",
+        "diamondCount": 34000,
+        "iconUri": "webcast-va/resource/01793f9afe15f5037a9dc10435c37c85.png",
+        "primaryEffectId": 6401,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 16284,
+        "englishName": "Zeus",
+        "japaneseName": "覇王ゼウス",
+        "diamondCount": 34000,
+        "iconUri": "webcast-sg/resource/01793f9afe15f5037a9dc10435c37c85.png",
+        "primaryEffectId": 6401,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": true,
+    "sameIcon": false
+  },
+  {
+    "key": "Unicorn Fantasy|5000",
+    "entries": [
+      {
+        "giftId": 5338,
+        "englishName": "Unicorn Fantasy",
+        "japaneseName": "ユニコーン ファンタジー",
+        "diamondCount": 5000,
+        "iconUri": "webcast-va/483c644e67e9bb1dd5970f2df00b7576",
+        "primaryEffectId": 9379,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 7237,
+        "englishName": "Unicorn Fantasy",
+        "japaneseName": "幻のユニコーン",
+        "diamondCount": 5000,
+        "iconUri": "webcast-va/483c644e67e9bb1dd5970f2df00b7576",
+        "primaryEffectId": 9379,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": true,
+    "sameIcon": true
+  },
+  {
+    "key": "Hand Heart|100",
+    "entries": [
+      {
+        "giftId": 5660,
+        "englishName": "Hand Heart",
+        "japaneseName": "ハートポーズ",
+        "diamondCount": 100,
+        "iconUri": "webcast-sg/resource/374dfe46d5b09ce1db19be06202d34f5.png",
+        "primaryEffectId": 23531,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 8343,
+        "englishName": "Hand Heart",
+        "japaneseName": "ハンドハート",
+        "diamondCount": 100,
+        "iconUri": "webcast-va/47e9081623cdae9faa55f4d0d67908bf",
+        "primaryEffectId": 7356,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": true,
+    "sameIcon": false
+  },
+  {
+    "key": "XXXL Flowers|500",
+    "entries": [
+      {
+        "giftId": 16694,
+        "englishName": "XXXL Flowers",
+        "japaneseName": "XXXL フラワー",
+        "diamondCount": 500,
+        "iconUri": "webcast-sg/resource/f1ead695e8281b7387e40d48fc6b1fb0.png",
+        "primaryEffectId": 13309,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 14883,
+        "englishName": "XXXL Flowers",
+        "japaneseName": "XXXL フラワー",
+        "diamondCount": 500,
+        "iconUri": "webcast-sg/resource/f1ead695e8281b7387e40d48fc6b1fb0.png",
+        "primaryEffectId": 13309,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Manifesting|500",
+    "entries": [
+      {
+        "giftId": 12110,
+        "englishName": "Manifesting",
+        "japaneseName": "Manifesting",
+        "diamondCount": 500,
+        "iconUri": "webcast-va/resource/ca11566ae5a41ec8971cc00b51f78dac.png",
+        "primaryEffectId": 6930,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 12577,
+        "englishName": "Manifesting",
+        "japaneseName": "Manifesting",
+        "diamondCount": 500,
+        "iconUri": "webcast-va/resource/ca11566ae5a41ec8971cc00b51f78dac.png",
+        "primaryEffectId": 6930,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Diamond Gun|5000",
+    "entries": [
+      {
+        "giftId": 11838,
+        "englishName": "Diamond Gun",
+        "japaneseName": "ダイヤモンドの銃",
+        "diamondCount": 5000,
+        "iconUri": "webcast-va/resource/651e705c26b704d03bc9c06d841808f1.png",
+        "primaryEffectId": 7148,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 10588,
+        "englishName": "Diamond Gun",
+        "japaneseName": "ダイヤモンドの銃",
+        "diamondCount": 5000,
+        "iconUri": "webcast-va/resource/651e705c26b704d03bc9c06d841808f1.png",
+        "primaryEffectId": 7148,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Community Heart|1",
+    "entries": [
+      {
+        "giftId": 17712,
+        "englishName": "Community Heart",
+        "japaneseName": "コミュニティハート",
+        "diamondCount": 1,
+        "iconUri": "webcast-sg/resource/dad7a63955f98891958e37071bb067f3.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 62816,
+        "englishName": "Community Heart",
+        "japaneseName": "コミュニティハート",
+        "diamondCount": 1,
+        "iconUri": "webcast-sg/resource/8d2a21bead102d4cc1ffade117c9dc46.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Side by Side|199",
+    "entries": [
+      {
+        "giftId": 17661,
+        "englishName": "Side by Side",
+        "japaneseName": "隣り合わせ",
+        "diamondCount": 199,
+        "iconUri": "webcast-sg/resource/14b52e1933131d94a2634acf1625559d.png",
+        "primaryEffectId": 8845,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 17667,
+        "englishName": "Side by Side",
+        "japaneseName": "隣り合わせ",
+        "diamondCount": 199,
+        "iconUri": "webcast-sg/resource/14b52e1933131d94a2634acf1625559d.png",
+        "primaryEffectId": 8845,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 17589,
+        "englishName": "Side by Side",
+        "japaneseName": "隣り合わせ",
+        "diamondCount": 199,
+        "iconUri": "webcast-sg/resource/14b52e1933131d94a2634acf1625559d.png",
+        "primaryEffectId": 8845,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Surprise Baby Mob|2999",
+    "entries": [
+      {
+        "giftId": 54726,
+        "englishName": "Surprise Baby Mob",
+        "japaneseName": "ちびモブ召喚",
+        "diamondCount": 2999,
+        "iconUri": "webcast-sg/resource/f074f1f73a40902e6087c6ccc747b88f.png",
+        "primaryEffectId": 22216,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 56080,
+        "englishName": "Surprise Baby Mob",
+        "japaneseName": "ちびモブ召喚",
+        "diamondCount": 2999,
+        "iconUri": "webcast-sg/resource/abd6c56f59d4f7e097fd7dcd32995ef6.png",
+        "primaryEffectId": 22292,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "LIVE Ranking Ticket|10",
+    "entries": [
+      {
+        "giftId": 677572,
+        "englishName": "LIVE Ranking Ticket",
+        "japaneseName": "LIVE Ranking Ticket",
+        "diamondCount": 10,
+        "iconUri": "webcast-sg/resource/12b4de4a4a9ab015bdaa49858610bc9e.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 115543,
+        "englishName": "LIVE Ranking Ticket",
+        "japaneseName": "LIVE Ranking Ticket",
+        "diamondCount": 10,
+        "iconUri": "webcast-sg/resource/4c307f79c6296df713c00c31e044e161.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Mishka Bear|100",
+    "entries": [
+      {
+        "giftId": 5566,
+        "englishName": "Mishka Bear",
+        "japaneseName": "ミシカ ベア",
+        "diamondCount": 100,
+        "iconUri": "webcast-va/d78ed6496fd57286b42ac033acbee299.png",
+        "primaryEffectId": 9635,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 5582,
+        "englishName": "Mishka Bear",
+        "japaneseName": "ミシカ ベア",
+        "diamondCount": 100,
+        "iconUri": "webcast-va/d78ed6496fd57286b42ac033acbee299.png",
+        "primaryEffectId": 9635,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "TikTok Universe|44999",
+    "entries": [
+      {
+        "giftId": 9101,
+        "englishName": "TikTok Universe",
+        "japaneseName": "TikTok Universe",
+        "diamondCount": 44999,
+        "iconUri": "webcast-va/8f471afbcebfda3841a6cc515e381f58",
+        "primaryEffectId": 7305,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": false
+      },
+      {
+        "giftId": 9072,
+        "englishName": "TikTok Universe",
+        "japaneseName": "TikTok Universe",
+        "diamondCount": 44999,
+        "iconUri": "webcast-va/8f471afbcebfda3841a6cc515e381f58",
+        "primaryEffectId": 7306,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Star Throne|7999",
+    "entries": [
+      {
+        "giftId": 7764,
+        "englishName": "Star Throne",
+        "japaneseName": "スターの玉座",
+        "diamondCount": 7999,
+        "iconUri": "webcast-va/30063f6bc45aecc575c49ff3dbc33831",
+        "primaryEffectId": 7657,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 8420,
+        "englishName": "Star Throne",
+        "japaneseName": "スターの玉座",
+        "diamondCount": 7999,
+        "iconUri": "webcast-va/30063f6bc45aecc575c49ff3dbc33831",
+        "primaryEffectId": 7378,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Mystery Box|500",
+    "entries": [
+      {
+        "giftId": 18508,
+        "englishName": "Mystery Box",
+        "japaneseName": "ミステリーボックス",
+        "diamondCount": 500,
+        "iconUri": "webcast-sg/resource/17667837f58f77f6e189617880315f7c.png",
+        "primaryEffectId": 21443,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 59320,
+        "englishName": "Mystery Box",
+        "japaneseName": "ミステリーボックス",
+        "diamondCount": 500,
+        "iconUri": "webcast-sg/resource/072142399e6e37c05107a687b274b91b.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Magic Genie|200",
+    "entries": [
+      {
+        "giftId": 17962,
+        "englishName": "Magic Genie",
+        "japaneseName": "妖精ジーニー",
+        "diamondCount": 200,
+        "iconUri": "webcast-sg/resource/3d306be32f7d6d52c4e74df15a063d45.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 56589,
+        "englishName": "Magic Genie",
+        "japaneseName": "妖精ジーニー",
+        "diamondCount": 200,
+        "iconUri": "webcast-sg/resource/c750548817a633185d2c46391cc64214.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Rose Hand|199",
+    "entries": [
+      {
+        "giftId": 16896,
+        "englishName": "Rose Hand",
+        "japaneseName": "ローズハンド",
+        "diamondCount": 199,
+        "iconUri": "webcast-sg/resource/805e6b8051d50ca6e6c9b74d5fc89045.png",
+        "primaryEffectId": 16331,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 17004,
+        "englishName": "Rose Hand",
+        "japaneseName": "ローズハンド",
+        "diamondCount": 199,
+        "iconUri": "webcast-sg/resource/805e6b8051d50ca6e6c9b74d5fc89045.png",
+        "primaryEffectId": 16331,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": true
+  },
+  {
+    "key": "Club Victory|99",
+    "entries": [
+      {
+        "giftId": 12357,
+        "englishName": "Club Victory",
+        "japaneseName": "クラブ勝利",
+        "diamondCount": 99,
+        "iconUri": "webcast-va/resource/6639eb3590a59052babc9cb772ae4f5b.png",
+        "primaryEffectId": 10973,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 153753,
+        "englishName": "Club Victory",
+        "japaneseName": "クラブ勝利",
+        "diamondCount": 99,
+        "iconUri": "webcast-sg/resource/078faaebda61db576a163aedcd32b980.png",
+        "primaryEffectId": 24213,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Club Power|9",
+    "entries": [
+      {
+        "giftId": 12356,
+        "englishName": "Club Power",
+        "japaneseName": "団結クラブ",
+        "diamondCount": 9,
+        "iconUri": "webcast-va/resource/fb8da877eabca4ae295483f7cdfe7d31.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 153751,
+        "englishName": "Club Power",
+        "japaneseName": "団結クラブ",
+        "diamondCount": 9,
+        "iconUri": "webcast-sg/resource/d560ca406897466cf88965fc13098e15.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  },
+  {
+    "key": "Club Cheers|1",
+    "entries": [
+      {
+        "giftId": 12355,
+        "englishName": "Club Cheers",
+        "japaneseName": "応援クラブ",
+        "diamondCount": 1,
+        "iconUri": "webcast-va/resource/6a934c90e5533a4145bed7eae66d71bd.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      },
+      {
+        "giftId": 153750,
+        "englishName": "Club Cheers",
+        "japaneseName": "応援クラブ",
+        "diamondCount": 1,
+        "iconUri": "webcast-sg/resource/ef892165e333be97bd98978ec2593f43.png",
+        "primaryEffectId": 0,
+        "isDisplayedOnPanel": false,
+        "isGlobalGift": true
+      }
+    ],
+    "japaneseNameDiffers": false,
+    "sameIcon": false
+  }
+]

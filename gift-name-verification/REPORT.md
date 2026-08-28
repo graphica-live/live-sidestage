@@ -72,6 +72,8 @@ room_id の取得(`fetchRoomId`)自体は成功するが、gift/list 取得が s
 
 一方、**GiftList(カタログ)と GiftEvent(実LIVE受信)を比較すると、1件だけ食い違いが見つかった**(詳細は7節)。`gift-name-differences.json` にはこの1件のみが記録されている。
 
+これとは別の切り口として、**「同じ英語名・同じ値段なのに giftId が複数存在する」重複が684件中21組ある**(こちらは giftId が異なるので `gift-comparison.json` の DIFF フラグには乗らない)。詳細と一覧は7節「発見4」および[duplicate-gift-groups.json](duplicate-gift-groups.json)を参照。
+
 ---
 
 ## 5. locale パラメータ変更による名称変化
@@ -129,6 +131,33 @@ room_id付き取得ではこの他に `Giraffe`(11491)/`Diamond Gun`(134381)/`Ze
 - **GiftEvent購読**: `OnGiftRecieved` イベントハンドラを登録し15分間LIVE接続を維持したが(`connected. listening...` のログは出る=WebSocket接続自体は成立)、**イベントが一度も発火しなかった**(`raw/csharp-live-summary.json`)。同時間帯にNode/Pythonは同じ配信で計18件前後のギフトイベントを観測できているため、配信側の送信頻度の問題ではなく **TikTokLiveSharp 0.1.4(NuGet版)側の実装不備** と判断する。
 - 加えて実装上の制約として、同一プロセス内で2つ目の `TikTokLiveClient` を生成すると `Timeout cannot be set after client has been initalised` で例外になる(HttpClientの使い回しに起因すると推測、GitHub上のmasterブランチは0.1.4とAPIが大きく異なっており正確な原因コードは特定できなかった)。この制約を回避するため、検証は「1プロセス1回のクライアント生成」に設計を変更し、外側をコマンド呼び出しループにして対応した。
 
+**発見4: 同一ギフト(同アイコン・同エフェクト・同額)が別giftIdで重複登録されているケースが684件中21組(42+ giftId)ある。うち5組は日本語名まで別物になる**
+
+ユーザー報告(実運用): 「モバイルのギフトパネルには "ユニコーンファンタジー" が表示されるが "幻のユニコーン" は表示されない。しかし実際に配信に入ると "幻のユニコーン" しか投げられない」という現象を、`find-duplicate-gifts.js` でカタログ全体を機械的に洗い出して裏付けた([duplicate-gift-groups.json](duplicate-gift-groups.json))。
+
+英語名`"Unicorn Fantasy"` + `diamond_count=5000` の条件で該当するギフトが2件存在する:
+
+| giftId | 日本語名 | icon.uri | primary_effect_id | is_displayed_on_panel | is_global_gift |
+|--------|---------|----------|--------------------|-----------------------|-----------------|
+| 5338 | ユニコーン ファンタジー | `483c644e...`(同一) | 9379(同一) | false | false |
+| 7237 | 幻のユニコーン | `483c644e...`(同一) | 9379(同一) | false | false |
+
+アイコン画像・エフェクトID・値段が完全に一致しており、**事実上同一のギフトが2つのgiftIdとして重複登録されている**。`is_displayed_on_panel` / `is_global_gift` はどちらも一致しない(該当グループ21件を全数確認したが、常に `false`/`false` か、値がバラバラで一貫しない)ため、**`gift/list` のレスポンスに含まれるフラグからは「どちらが実際に配信で使われる現行IDか」を判別できない**。
+
+同種の重複は21組見つかり、うち5組は日本語名も別物になっている(単なるID重複ではなく、TikTok側で別々にローカライズ名が付けられている):
+
+```
+Viking Hammer|1500  → 18299:覇王のハンマー / 16282:雷鳴のハンマー
+LIVE Ranking Party|3999 → 115548:LIVE Ranking Party / 738532:LIVEランキングのパーティー
+Zeus|34000          → 8624:ゼウス / 16284:覇王ゼウス
+Unicorn Fantasy|5000 → 5338:ユニコーン ファンタジー / 7237:幻のユニコーン
+Hand Heart|100      → 5660:ハートポーズ / 8343:ハンドハート
+```
+
+残り16組は日本語名も同一(XXXL Flowers/Manifesting/Diamond Gun/Community Heart/Side by Side(3件)/LIVE Ranking Party系/Surprise Baby Mob/LIVE Ranking Ticket/Mishka Bear/TikTok Universe/Star Throne/Mystery Box/Magic Genie/Rose Hand/Club Victory/Club Power/Club Cheers)で、表示名としての実害は無いが、`gift/list` レスポンス自体に**廃止済み・地域限定・キャンペーン終了済みと見られる旧IDが生きたまま残り続けている**ことを示している。
+
+**実務上の含意**: analytics本体([tiktok-gift-catalog.ts](../live-sidestage-analytics/src/lib/tiktok-gift-catalog.ts))は既にこの問題を認識しており(「670件中29の名前が複数giftIdを持つ」とCLAUDE.mdに明記)、**一致キーをgiftIdではなく名前(英語・小文字化)にする**ことでLIVEイベントとの突合を守っている。今回の実測はこの設計判断の妥当性を裏付ける一方、**giftIdをそのままカタログの主キーとして「選択肢の一覧」に使う経路(モバイルのギフトピッカー等)がもしあれば、廃止済みの旧ID側(本例では5338)が誤って選択肢に残り、実際に使われる現行ID(7237)が出てこない、という表示不具合を起こしうる**ことを示している。この経路が実際にLIVE Sidestageのどこかに存在するかは本検証の範囲外(本体コード非改変の制約)のため、別途確認が必要。
+
 ---
 
 ## 8. 日本版TikTokに最適な方法
@@ -141,10 +170,11 @@ room_id付き取得ではこの他に `Giraffe`(11491)/`Diamond Gun`(134381)/`Ze
 
 ## 9. LIVE Sidestage で採用すべき方法
 
-既存実装([tiktok-gift-catalog.ts](../live-sidestage-analytics/src/lib/tiktok-gift-catalog.ts))が採用している「英語版(既定)とja-JP版を2回叩いてgiftIdで突合する」設計は、今回の検証結果からも妥当と確認できた。追加の改善余地としては:
+既存実装([tiktok-gift-catalog.ts](../live-sidestage-analytics/src/lib/tiktok-gift-catalog.ts))が採用している「英語版(既定)とja-JP版を2回叩いてgiftIdで突合する」設計は、今回の検証結果からも妥当と確認できた。本体のCLAUDE.mdによれば、**効果音マッチング等の一致キーは `giftId` ではなく「名前(英語・trim・小文字化)」** で、根拠として「670件中29の名前が複数giftIdを持ち、giftId自体もレスポンス内で重複する」ことが明記されている。今回の実測(発見4: 21組・42+ giftIdの重複)はこの設計判断が正しいことを裏付けた。追加の考察・改善余地:
 
 - **room_id を渡しての追加取得**を組み合わせれば、community_gift(配信者固有ギフト)もカタログに正しく含められる。既存コードのコメントにもこの想定が書かれており、実測でも動作を確認できた。
-- **giftId=13651 のようなカタログ名≠イベント名のケース**が存在するため、「一致判定・集計キーはLIVEイベントの `giftId`(数値)で行い、表示名はイベントの `giftName` をそのまま使う」という現行方針(CLAUDE.md記載)を維持するのが安全。カタログの名前をイベント表示に流用すると、この1件のようなズレが混入するリスクがある。
+- **giftId=13651 のようなカタログ名≠イベント名のケース**は、名前ベースの一致キーにとって死角になりうる。カタログ上は`"Go Popular"`(小文字化キー`"go popular"`)で登録されているが、LIVEイベントの`giftName`は`"Popular Vote"`(キー`"popular vote"`)で届くため、素朴な文字列一致では両者が別ギフト扱いになる。実害があるかは「このgiftIdの効果音が現在意図通り鳴っているか」を別途確認しないと判断できない。
+- **重複giftId(発見4)のうち、モバイル等でギフトを選ぶ側のUIがgiftId単位で選択肢を出す設計になっている場合**、廃止済みの旧ID(本例では"ユニコーンファンタジー"=5338)が選択肢に残り、実際に配信で使われる現行ID(7237)が出てこない、という表示不具合を起こしうる。これは`tiktok-gift-catalog.ts`(カタログ取得・保存)自体の問題ではなく、それを消費する側(表示・選択UI)の設計次第で顕在化するため、該当UIの実装を個別に確認する必要がある。
 
 ## 10. フォールバック順の提案
 
