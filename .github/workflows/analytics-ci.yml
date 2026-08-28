@@ -43,6 +43,8 @@ jobs:
     env:
       DATABASE_URL: "postgresql://liveanalytics:liveanalytics@localhost:5432/liveanalytics_test"
       NEXTAUTH_SECRET: "ci-only"
+      WORKER_COUNT: "1"
+      WORKER_INDEX: "0"
 
     steps:
       - uses: actions/checkout@v4
