@@ -9,6 +9,7 @@ import '../core/api_client.dart' show LiveAnalyticsApi, giftLabelJaMap;
 import '../core/app_config_store.dart';
 import '../core/comment_feed.dart' show SocketStatus;
 import '../core/feature_status.dart';
+import '../core/gift_activity.dart';
 import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
@@ -394,6 +395,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final map = Map<String, dynamic>.from(data);
 
     switch (map['type']) {
+      // ギフトが届いた。貢献・ギフト履歴タブが取り直すきっかけにするだけで、
+      // ここでは何も描き直さない（setState 不要）。
+      case 'gift':
+        context.read<GiftActivityNotifier>().onGiftTick();
       case 'status':
         setState(() {
           _status = SocketStatus.values.firstWhere(
@@ -554,16 +559,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   busy: _serviceBusy,
                   onToggle: (enable) => _toggleFeature(isTts: false, enable: enable),
                 ),
+                // TikTok ID変更時に旧IDのデータを残さないよう、tiktokIdをkeyにしてStateごと作り直す。
+                //
+                // **並びは下の destinations と1対1で対応させること。** ここの順番と
+                // `_tabIndex == n` がずれると、開いていないタブが読み込みを始めたり、
+                // 開いているタブが読み込まなくなったりする（例外は出ない）。
+                ContributionTab(key: ValueKey('contribution-$tiktokId'), active: _tabIndex == 2),
+                GiftHistoryTab(key: ValueKey('gift-history-$tiktokId'), active: _tabIndex == 3),
+                BattleHistoryTab(key: ValueKey('battle-history-$tiktokId'), active: _tabIndex == 4),
                 SettingsTab(
                   speech: _speech,
                   busy: _serviceBusy,
                   onChangeTiktokId: changeTiktokId,
                   onBeforeLogout: _stopService,
                 ),
-                // TikTok ID変更時に旧IDのデータを残さないよう、tiktokIdをkeyにしてStateごと作り直す。
-                ContributionTab(key: ValueKey('contribution-$tiktokId'), active: _tabIndex == 3),
-                GiftHistoryTab(key: ValueKey('gift-history-$tiktokId'), active: _tabIndex == 4),
-                BattleHistoryTab(key: ValueKey('battle-history-$tiktokId'), active: _tabIndex == 5),
               ],
             ),
           ),
@@ -575,10 +584,10 @@ class _HomeScreenState extends State<HomeScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.record_voice_over_outlined), selectedIcon: Icon(Icons.record_voice_over), label: 'TTS'),
           NavigationDestination(icon: Icon(Icons.music_note_outlined), selectedIcon: Icon(Icons.music_note), label: 'サウンド'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '設定'),
           NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: '貢献'),
           NavigationDestination(icon: Icon(Icons.card_giftcard_outlined), selectedIcon: Icon(Icons.card_giftcard), label: 'ギフト'),
           NavigationDestination(icon: Icon(Icons.bolt_outlined), selectedIcon: Icon(Icons.bolt), label: 'バトル'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '設定'),
         ],
       ),
     );

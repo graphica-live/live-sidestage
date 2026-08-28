@@ -107,6 +107,11 @@ class AppConfigStore extends ChangeNotifier {
     return _mutate((c) => c.ttsVolume == clamped ? null : c.bumped(ttsVolume: clamped));
   }
 
+  Future<void> setTtsSpeed(int value) {
+    final clamped = value.clamp(50, 200);
+    return _mutate((c) => c.ttsSpeed == clamped ? null : c.bumped(ttsSpeed: clamped));
+  }
+
   Future<void> updateSound(SoundConfig Function(SoundConfig current) transform) {
     return _mutate((c) => c.bumped(sound: transform(c.sound)));
   }

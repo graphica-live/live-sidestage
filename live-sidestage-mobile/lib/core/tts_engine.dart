@@ -62,7 +62,7 @@ Future<TtsAssetPaths> extractTtsAssets() async {
 // isolate境界を越えて確実に送受信できるプリミティブ型のみで構成する
 // (独自クラスのインスタンスは送受信可否が不確実なため使わない)。
 //
-// メインisolate → ワーカーisolate: ['synthesize', id, text, styleId]
+// メインisolate → ワーカーisolate: ['synthesize', id, text, styleId, speedScale]
 // ワーカーisolate → メインisolate:
 //   ['ready', metasJson]
 //   ['init_error', message]
@@ -116,11 +116,15 @@ class TtsEngine {
     await readyCompleter.future;
   }
 
-  Future<Uint8List> synthesize(String text, int styleId) {
+  /// [speedScale] は VOICEVOX の再生速度。1.0 が等速。
+  ///
+  /// **音量と違い合成時にしか効かせられない。** 呼び出し側が先読みしている場合、
+  /// 変更が効き始めるのは次の次から。
+  Future<Uint8List> synthesize(String text, int styleId, {double speedScale = 1.0}) {
     final id = _nextId++;
     final completer = Completer<Uint8List>();
     _pending[id] = completer;
-    _workerSendPort!.send(['synthesize', id, text, styleId]);
+    _workerSendPort!.send(['synthesize', id, text, styleId, speedScale]);
     return completer.future;
   }
 
@@ -198,6 +202,8 @@ void _isolateMain(List<dynamic> args) {
     final id = message[1] as int;
     final text = message[2] as String;
     final styleId = message[3] as int;
+    // 旧い形式のメッセージ(4要素)でも落とさない。
+    final speedScale = message.length > 4 ? (message[4] as num).toDouble() : 1.0;
 
     final queryResult = synthesizer.createAudioQuery(text, styleId);
     if (queryResult.result != VOICEVOX_RESULT_OK) {
@@ -207,7 +213,7 @@ void _isolateMain(List<dynamic> args) {
 
     final query = jsonDecode(queryResult.audioQueryJson) as Map<String, dynamic>;
     query['volumeScale'] = 0.8;
-    query['speedScale'] = 1.0;
+    query['speedScale'] = speedScale;
     query['prePhonemeLength'] = 0;
     query['postPhonemeLength'] = 0;
 

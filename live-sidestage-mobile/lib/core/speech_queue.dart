@@ -66,6 +66,9 @@ class SpeechQueueController extends ChangeNotifier {
   /// 先読みしているので、合成時に適用すると音量変更が1件遅れて効く。
   int _volume = 100;
 
+  /// 読み上げ速度(%)。50-200。合成時に渡すので、**先読み済みの1件には効かない**。
+  int speed = 100;
+
   int get volume => _volume;
 
   set volume(int value) {
@@ -139,7 +142,9 @@ class SpeechQueueController extends ChangeNotifier {
 
       Uint8List wav;
       try {
-        wav = (prefetchedFor == comment) ? await prefetched! : await _engine.synthesize(comment.comment, styleId);
+        wav = (prefetchedFor == comment)
+            ? await prefetched!
+            : await _engine.synthesize(comment.comment, styleId, speedScale: speed / 100.0);
       } catch (e) {
         errorMessage = '読み上げに失敗しました: $e';
         notifyListeners();
@@ -151,7 +156,7 @@ class SpeechQueueController extends ChangeNotifier {
         final next = _queue.first;
         final nextStyleId = pool.effectiveStyleId(next.uniqueId);
         prefetchedFor = next;
-        prefetched = _engine.synthesize(next.comment, nextStyleId);
+        prefetched = _engine.synthesize(next.comment, nextStyleId, speedScale: speed / 100.0);
       } else {
         prefetchedFor = null;
         prefetched = null;

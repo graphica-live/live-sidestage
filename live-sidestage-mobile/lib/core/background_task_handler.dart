@@ -115,6 +115,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // それ自体が配信中の証拠**なので、push/poll を待たずに反映する。
     _commentFeed.onComment.listen((_) => _markEventReceived());
     _commentFeed.onGift.listen((_) => _markEventReceived());
+    // 貢献・ギフト履歴タブが取り直すきっかけ。**数値は送らない** — 数字の正は
+    // サーバーの集計だけで、端末で積算するとDBと恒久的にズレる（gift_activity.dart）。
+    // 契約を増やさないため type だけの最小ペイロードにしてある。
+    _commentFeed.onGift.listen((_) => FlutterForegroundTask.sendDataToMain({'type': 'gift'}));
     _commentFeed.onFollow.listen((_) => _markEventReceived());
 
     _listenerSub = _commentFeed.onListener.listen(_applyListener);
@@ -236,6 +240,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _speechQueue.randomVoice = config.randomVoice;
     _speechQueue.fixedStyleId = config.fixedStyleId;
     _speechQueue.volume = config.ttsVolume;
+    _speechQueue.speed = config.ttsSpeed;
 
     // VOICEVOXの初期化は重い。TTSがOFFのままサウンドだけ使う運用では走らせない。
     if (config.ttsEnabled && !_speechQueue.initialized) {

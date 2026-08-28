@@ -28,7 +28,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> {
   BattleListResult? _result;
   String? _error;
   bool _loading = false;
-  bool _startedLoad = false;
   int _requestGeneration = 0;
 
   @override
@@ -40,11 +39,13 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> {
   @override
   void didUpdateWidget(covariant BattleHistoryTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active && !_startedLoad) _load();
+    // **一度きりにしない。** 見ていない間にバトルが進んでいるので、タブへ戻るたび取り直す。
+    // ギフトと違い `chat:battle` に相当する socket イベントが無いので、自動更新の
+    // きっかけはこれと pull-to-refresh だけ。
+    if (!oldWidget.active && widget.active) _load();
   }
 
   Future<void> _load() async {
-    _startedLoad = true;
     final generation = ++_requestGeneration;
 
     final sessions = context.read<SessionController>();

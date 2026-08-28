@@ -44,9 +44,22 @@ Future<void> _pumpSettings(WidgetTester tester, AuthProvider provider) async {
   );
 }
 
+/// アカウント行は一覧の下のほうにあり、項目が増えると初期表示に入らない。
+/// ListView は見えている範囲しか組み立てないので、**スクロールしないと
+/// 「無い」と判定される**（画面に出ていないだけで、行は存在する）。
+Future<void> _scrollToAccount(WidgetTester tester) async {
+  await tester.dragUntilVisible(
+    find.byIcon(Icons.account_circle_outlined),
+    find.byType(ListView),
+    const Offset(0, -100),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Google でログインしていれば Google アカウントと出す', (tester) async {
     await _pumpSettings(tester, AuthProvider.google);
+    await _scrollToAccount(tester);
 
     expect(find.text('Googleアカウント'), findsOneWidget);
     expect(find.text('Appleアカウント'), findsNothing);
@@ -55,6 +68,7 @@ void main() {
 
   testWidgets('Apple でログインしていれば Apple アカウントと出す', (tester) async {
     await _pumpSettings(tester, AuthProvider.apple);
+    await _scrollToAccount(tester);
 
     expect(find.text('Appleアカウント'), findsOneWidget);
     expect(find.text('Googleアカウント'), findsNothing);

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
+import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
 import '../gift_sound_edit_screen.dart' show GiftThumbnail;
 import '../widgets/analytics_status.dart';
@@ -19,40 +20,87 @@ class GiftHistoryTab extends StatefulWidget {
   State<GiftHistoryTab> createState() => _GiftHistoryTabState();
 }
 
-class _GiftHistoryTabState extends State<GiftHistoryTab> {
+class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObserver {
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
   GiftHistoryResult? _result;
   String? _error;
   bool _loading = false;
-  bool _startedLoad = false;
+
+  /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
+  bool _dirty = false;
+  bool _resumed = true;
+
   int _requestGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    context.read<GiftActivityNotifier>().addListener(_onGiftActivity);
     if (widget.active) _load();
+  }
+
+  @override
+  void dispose() {
+    context.read<GiftActivityNotifier>().removeListener(_onGiftActivity);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _resumed) return;
+    _resumed = resumed;
+    if (resumed) _flushDirty();
   }
 
   @override
   void didUpdateWidget(covariant GiftHistoryTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active && !_startedLoad) _load();
+    // **一度きりにしない。** 見ていない間に配信が進んでいるので、タブへ戻るたび取り直す。
+    if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  Future<void> _load() async {
-    _startedLoad = true;
+  void _onGiftActivity() {
+    switch (giftAutoReloadAction(
+      active: widget.active,
+      resumed: _resumed,
+      containsToday: _selection.containsJstToday(),
+    )) {
+      case GiftAutoReloadAction.ignore:
+        break;
+      case GiftAutoReloadAction.defer:
+        _dirty = true;
+      case GiftAutoReloadAction.reload:
+        _load(silent: true);
+    }
+  }
+
+  void _flushDirty() {
+    if (!_dirty || !widget.active || !_selection.containsJstToday()) return;
+    _dirty = false;
+    _load(silent: true);
+  }
+
+  /// [silent] はギフト受信による自動更新。**読み込み中の表示を出さない。**
+  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
+  Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
 
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
     if (token == null) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final result = await withTokenRefresh(
@@ -71,6 +119,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> {
       });
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
+      if (silent) {
+        debugPrint('[gift-history] 自動更新に失敗: ${e.message}');
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;

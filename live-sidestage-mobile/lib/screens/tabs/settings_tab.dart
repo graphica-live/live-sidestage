@@ -66,10 +66,27 @@ class SettingsTab extends StatelessWidget {
           enabled: canEdit,
           onChanged: store.setTtsVolume,
         ),
+        // 速度は合成時にしか効かせられないので、変えても**先読み済みの1件には
+        // 反映されない**（次の次から効く）。音量と違って即座には変わらない。
+        _VolumeSlider(
+          title: '読み上げの速さ',
+          value: store.config.ttsSpeed,
+          enabled: canEdit,
+          onChanged: store.setTtsSpeed,
+          min: 50,
+          max: 200,
+          divisions: 30,
+          suffix: '%',
+        ),
         const _SectionHeader('効果音'),
         // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
+        //
+        // 以前は「全体の音量」という表示だったが、**読み上げには一切かかっていない**
+        // (sound_engine.dart: gift.volume * masterVolume)。名前だけが「全体」を
+        // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
+        // 保存済み設定のキーなので変えない。
         _VolumeSlider(
-          title: '全体の音量',
+          title: '効果音の音量',
           value: store.sound.masterVolume,
           enabled: canEdit,
           onChanged: (value) =>
@@ -215,7 +232,8 @@ class _VoicePickerSheet extends StatelessWidget {
   }
 }
 
-/// 0-100 の音量。
+/// 整数のつまみ。既定は 0-100 の音量で、読み上げ速度のように範囲が違うものは
+/// [min] / [max] / [divisions] を渡す。
 ///
 /// ドラッグ中は手元の値で追従させ、**指を離したときにだけ保存する**。
 /// `onChanged` ごとに永続化すると、1回のドラッグで数十回の書き込みと背景 Isolate への
@@ -226,12 +244,22 @@ class _VolumeSlider extends StatefulWidget {
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.min = 0,
+    this.max = 100,
+    this.divisions = 20,
+    this.suffix = '',
   });
 
   final String title;
   final int value;
   final bool enabled;
   final ValueChanged<int> onChanged;
+  final int min;
+  final int max;
+  final int divisions;
+
+  /// 数値の後ろに出す単位。音量は無単位、速度は「%」。
+  final String suffix;
 
   @override
   State<_VolumeSlider> createState() => _VolumeSliderState();
@@ -249,9 +277,10 @@ class _VolumeSliderState extends State<_VolumeSlider> {
       title: Text(widget.title),
       subtitle: Slider(
         value: value.toDouble(),
-        max: 100,
-        divisions: 20,
-        label: '$value',
+        min: widget.min.toDouble(),
+        max: widget.max.toDouble(),
+        divisions: widget.divisions,
+        label: '$value${widget.suffix}',
         onChanged:
             widget.enabled ? (v) => setState(() => _dragging = v.round()) : null,
         onChangeEnd: (v) {
@@ -259,7 +288,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
           widget.onChanged(v.round());
         },
       ),
-      trailing: Text('$value'),
+      trailing: Text('$value${widget.suffix}'),
     );
   }
 }
