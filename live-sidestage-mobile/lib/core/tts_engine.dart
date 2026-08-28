@@ -137,12 +137,28 @@ void _isolateMain(List<dynamic> args) {
   final workerReceivePort = ReceivePort();
   mainSendPort.send(workerReceivePort.sendPort);
 
-  // voicevox_coreパッケージのAndroidデフォルトファイル名には"lib"接頭辞が付かず、
-  // 実際にjniLibsへ配置したファイル名(lib*.so)と一致しないため明示的に指定する。
-  VoicevoxCoreDynamicLibraryService().set('core', 'libvoicevox_core.so');
-  VoicevoxCoreDynamicLibraryService().set('onnxruntime', 'libvoicevox_onnxruntime.so');
+  if (Platform.isAndroid) {
+    // voicevox_coreパッケージのAndroidデフォルトファイル名には"lib"接頭辞が付かず、
+    // 実際にjniLibsへ配置したファイル名(lib*.so)と一致しないため明示的に指定する。
+    VoicevoxCoreDynamicLibraryService().set('core', 'libvoicevox_core.so');
+    VoicevoxCoreDynamicLibraryService().set('onnxruntime', 'libvoicevox_onnxruntime.so');
+  } else if (Platform.isIOS) {
+    // iOSはbare dylibではなく ios/VoicevoxNative の xcframework を Runner.app へ
+    // Embedしたものを開く。パスはバンドル内のframework相対で解決される。
+    // 'onnxruntime'キーは設定しない。このキーは voicevoxxOnnxruntimeLoadOnce() が
+    // options.filename として渡すためだけのもので、iOSで使う init_once 経路では
+    // 参照されない。ONNX Runtime本体は voicevox_core が @rpath で直接リンクして
+    // いるので、同じFrameworksディレクトリに同梱されていればdyldが解決する。
+    VoicevoxCoreDynamicLibraryService().set('core', 'voicevox_core.framework/voicevox_core');
+  }
 
-  final onnxResult = voicevoxxOnnxruntimeLoadOnce();
+  // iOS向けにリリースされている voicevox_core は ONNX Runtime をリンク済みで
+  // ビルドされており、voicevox_onnxruntime_load_once シンボルを持たない
+  // (nmで確認済み。iOSスライスにあるのは voicevox_onnxruntime_init_once のみ)。
+  // 呼び分けないとiOSではシンボル解決に失敗する。戻り値のレコード型は同一。
+  final onnxResult = Platform.isIOS
+      ? voicevoxxOnnxruntimeInitOnce()
+      : voicevoxxOnnxruntimeLoadOnce();
   if (onnxResult.result != VOICEVOX_RESULT_OK) {
     mainSendPort.send(['init_error', 'ONNX Runtimeの読み込みに失敗しました (code=${onnxResult.result})']);
     return;

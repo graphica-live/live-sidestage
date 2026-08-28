@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -159,11 +160,61 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     }
   }
 
+  /// iOS で選ばせる拡張子。**動的に組み立てないこと。**
+  ///
+  /// file_picker は拡張子を UTI へ変換し、解決できなかったものを黙って捨てる。
+  /// **全滅すると空配列で UIDocumentPickerViewController を初期化して例外になり、
+  /// プラグインが応答を返さないまま Future が永久に未解決になる**
+  /// (FilePickerPlugin.m の @catch が _result を握り潰す)。mp3 のように必ず解決する
+  /// 拡張子を含む固定リストにしておけば、この経路には入らない。
+  ///
+  /// `sound_library.dart` の受け入れ拡張子とは**わざと一致させていない**。
+  /// あちらにある `ogg` をここから外してあるのは、iOS の AVPlayer
+  /// (audioplayers のバックエンド)が Ogg Vorbis を再生できないため。
+  /// 選べてしまうと取り込みは成功し、**配信中にギフトが飛んで初めて鳴らない**
+  /// という最悪のタイミングで失敗が露見する。入口で弾く。
+  static const _iosAudioExtensions = ['mp3', 'wav', 'm4a', 'aac', 'flac'];
+
   Future<void> _importLocalFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final FilePickerResult? result;
+    try {
+      // **Android の `FileType.audio` は変えない。** iOS では同じ指定が
+      // ミュージックライブラリ(MPMediaPickerController)を開いてしまい、
+      // ダウンロード済みの効果音ファイルを選べない。iOS だけ拡張子指定にすると
+      // ファイルアプリ(UIDocumentPickerViewController)が開く。
+      //
+      // **iOS で `FileType.audio` を呼んではいけない。**MPMediaPickerController は
+      // メディアライブラリのプライバシー保護対象APIで、`NSAppleMusicUsageDescription`
+      // が Info.plist に無いと iOS がプロセスを即 kill する。用途説明を足す対処は
+      // 採らない（「ミュージックライブラリが開く」という用途違いの方を直せないため）。
+      // file_picker 側でこの経路をビルドから外すこともできない: podspec には
+      // PICKER_AUDIO のスイッチがあるが、**このアプリの file_picker は
+      // Swift Package Manager 経由**（CocoaPods を通るのは SPM 非対応の
+      // flutter_foreground_task と flutter_secure_storage だけ）で、
+      // Package.swift は PICKER_AUDIO を無条件に define している。
+      // つまり守れるのはこの分岐だけ。
+      result = Platform.isIOS
+          ? await FilePicker.platform.pickFiles(
+              type: FileType.custom,
+              allowedExtensions: _iosAudioExtensions,
+            )
+          : await FilePicker.platform.pickFiles(type: FileType.audio);
+    } catch (e) {
+      // ピッカー自体の失敗(二重起動など)。`_runImport` の catch は取り込み処理しか
+      // 覆っていないので、ここで拾わないと unhandled async exception になる。
+      if (mounted) setState(() => _error = 'ファイルを選べませんでした: $e');
+      return;
+    }
+
     final path = result?.files.single.path;
     if (path == null || !mounted) return;
 
+    // iOS では選んだファイルは一時ディレクトリへコピーされたもので、iCloud 上の
+    // 未ダウンロードファイルもピッカー内でダウンロードが完了してから返る。
+    // **`FilePicker.platform.clearTemporaryFiles()` を呼んではいけない** ――
+    // NSTemporaryDirectory を丸ごと消す実装で、無音キープアライブの wav
+    // (ios_audio_keepalive.dart)や読み上げの一時 wav (speech_queue.dart)も
+    // 巻き添えになる。
     await _runImport(() => _library.importLocalFile(
           sourcePath: path,
           displayName: result!.files.single.name,

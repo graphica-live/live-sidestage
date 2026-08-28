@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Live Sidestage Mobile</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>live_sidestage_mobile</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<!-- Googleサインイン: 認証を終えた Google からアプリへ戻ってくるための URL スキーム。
+	     値は下の GIDClientID を前後反転させたもので、Google Cloud Console の
+	     iOS クライアント画面に「iOS URL スキーム」として表示されるものと同じ。
+	     **GIDClientID と対で変える**こと。片方だけ変えると、認証は通るのに
+	     アプリへ戻って来られず、ログインが完了しないまま固まる。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.515259769901-q7nogebvghseknaek122tq611tad1jto</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Googleサインインの **iOS 用** クライアントID。Android 用ともサーバー(ウェブ)用とも別物。
+	     Google Cloud Console のプロジェクト 515259769901 に、種類=iOS /
+	     バンドルID=com.liveanalytics.live-sidestage-mobile で登録したもの。
+	     Android の applicationId はアンダースコア区切り(live_sidestage_mobile)の
+	     別値なので混同しないこと。
+
+	     Dart 側の GoogleSignIn には clientId を渡していない。渡さない場合、
+	     プラグインは configuration を組み立てず GIDSignIn が この Info.plist を読む
+	     (google_sign_in_ios の FLTGoogleSignInPlugin.m: initializeSignInWithParameters)。
+	     そのため iOS の Google 設定はこのファイルに集約される。
+
+	     **iOS が発行する idToken の aud はこの値になる。**Android は Dart から渡した
+	     serverClientId(ウェブ用ID)が aud になるので、サーバーは 2 つの aud を
+	     許可する必要がある。src/app/api/mobile/auth/google/route.ts を参照。 -->
+	<key>GIDClientID</key>
+	<string>515259769901-q7nogebvghseknaek122tq611tad1jto.apps.googleusercontent.com</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>
