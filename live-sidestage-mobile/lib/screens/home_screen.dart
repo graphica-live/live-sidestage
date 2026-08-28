@@ -162,7 +162,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 停止ボタンが音を止めるだけになった今、常駐させると**ユーザーがサービスを
   /// 止める手段が設定アプリの強制停止しか無くなる**。
   ///
-  /// iOS は背面でプロセスごと suspend されるので、こちらから止める必要はない。
+  /// **iOS でも同じように畳む。** suspend されれば動作は止まるが、socket は明示的に
+  /// 閉じないのでサーバーからは繋がったままに見える。音を出していないなら接続を
+  /// 残す理由が無いので、こちらから切る。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_idleServiceEnabled) return;
@@ -175,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (Platform.isAndroid && state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused) {
       unawaited(_stopIdleServiceIfIdle());
     }
   }
@@ -188,6 +190,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// 背面へ回るとき、音を出していないなら待機は畳む。
+  ///
+  /// **読み上げ・効果音が動いているときは触らない。** それが画面オフ継続そのもので、
+  /// ここで止めたら必須要件が壊れる。
   Future<void> _stopIdleServiceIfIdle() async {
     if (!mounted) return;
     final store = context.read<AppConfigStore>();
