@@ -69,13 +69,29 @@ function adoptImage(candidate: Candidate, url: unknown, giftId: number) {
   candidate.imageGiftId = giftId;
 }
 
-// 日本語名の採否。画像と同じく**「日本語名を持つ行のうち最小giftId」**を採る。
+// 「最小giftId優先」では実配信と逆の表記が選ばれることが実測で判明した名前の例外リスト。
+// キーは正規化済みnameで、値は実配信で確認できた(=実際にこの日本語名で届く)giftId。
+// gift-name-verification/REPORT.md(2026-08-28)より: "unicorn fantasy" は5338(廃止済み旧ID、
+// 未ローカライズなら「ユニコーン ファンタジー」)ではなく7237(「幻のユニコーン」)が実配信で使われる。
+const LABEL_JA_PREFERRED_GIFT_ID: Record<string, number> = {
+  "unicorn fantasy": 7237,
+};
+
+// 日本語名の採否。既定は画像と同じく**「日本語名を持つ行のうち最小giftId」**を採る。
 //
 // **単純な「最小giftIdの行のlabelJa」にしない。** 同じ英語名に複数のgiftIdがあり、かつ
 // 日本語名が枝分かれするケースが実測で8件ある(`zeus` → 「ゼウス」/「覇王ゼウス」など)。
 // 最小giftIdの行がまだ日本語化されていないと、同名の別行にある訳を取りこぼす。
+//
+// ただし上の例外リストに載っている名前は、最小giftIdではなく実測済みのgiftIdを優先する。
 function adoptLabelJa(candidate: Candidate, labelJa: string | null, giftId: number) {
-  if (!labelJa || giftId >= candidate.labelJaGiftId) return;
+  if (!labelJa) return;
+  const preferredGiftId = LABEL_JA_PREFERRED_GIFT_ID[candidate.name];
+  if (preferredGiftId !== undefined) {
+    if (giftId !== preferredGiftId) return;
+  } else if (giftId >= candidate.labelJaGiftId) {
+    return;
+  }
   candidate.labelJa = labelJa;
   candidate.labelJaGiftId = giftId;
 }
