@@ -71,4 +71,42 @@ void main() {
       expect(looksJapanese(''), isFalse);
     });
   });
+
+  group('isBlockedGift', () {
+    test('登録済みのブロックワードを含むギフトは弾く', () {
+      const gift = GiftCandidate.single(
+        name: 'song gift',
+        label: 'Song Gift',
+        diamondCount: 199,
+        labelJa: 'ちんこソング',
+      );
+      expect(isBlockedGift(gift), isTrue);
+    });
+
+    test('ひらがな・カタカナの違いを無視して一致する', () {
+      // 'アナル' はカタカナで登録。ひらがな表記のギフト名でも弾けること。
+      const hiraganaMatch = GiftCandidate.single(name: 'x', label: 'X', diamondCount: 1, labelJa: 'あなるパーティ');
+      expect(isBlockedGift(hiraganaMatch), isTrue);
+
+      // 'ちんこ' はひらがなで登録。カタカナ表記のギフト名でも弾けること。
+      const katakanaMatch = GiftCandidate.single(name: 'y', label: 'Y', diamondCount: 1, labelJa: 'チンコフィーバー');
+      expect(isBlockedGift(katakanaMatch), isTrue);
+    });
+
+    test('無関係なギフトは通す', () {
+      expect(isBlockedGift(rose), isFalse);
+      expect(isBlockedGift(perfume), isFalse);
+    });
+
+    test('ブロックリストを空にすると何も弾かない', () {
+      const gift = GiftCandidate.single(name: 'x', label: 'X', diamondCount: 1, labelJa: 'ちんこ');
+      expect(isBlockedGift(gift, blockedKeywords: const {}), isFalse);
+    });
+
+    test('blockedKeywords を差し替えれば任意の語で弾ける', () {
+      const gift = GiftCandidate.single(name: 'lion', label: 'Lion', diamondCount: 1);
+      expect(isBlockedGift(gift, blockedKeywords: const {'lion'}), isTrue);
+      expect(isBlockedGift(rose, blockedKeywords: const {'lion'}), isFalse);
+    });
+  });
 }
