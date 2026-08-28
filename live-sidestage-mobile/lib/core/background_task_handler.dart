@@ -10,6 +10,7 @@ import '../models/listener_status.dart';
 import 'api_client.dart';
 import 'app_config_store.dart';
 import 'comment_feed.dart';
+import 'ios_audio_keepalive.dart';
 import 'sound_engine.dart';
 import 'sound_library.dart';
 import 'sound_player_pool.dart';
@@ -24,6 +25,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
   final SpeechQueueController _speechQueue = SpeechQueueController();
   final SoundLibrary _soundLibrary = SoundLibrary();
   final SoundPlayerPool _soundPlayers = SoundPlayerPool();
+
+  /// iOS専用。無音を流し続けて AVAudioSession を保持し、コメントが途切れている間も
+  /// プロセスを生かす。Androidは Foreground Service が生存を担うので使わない。
+  final IosAudioKeepAlive _keepAlive = IosAudioKeepAlive();
 
   SoundEngine? _soundEngine;
   Directory? _soundsDir;
@@ -125,6 +130,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // **socket 接続より後、かつ await しない。** HTTPのタイムアウトは20秒あるので、
     // ここで待つとコメント受信の開始がそのぶん遅れる。
     _scheduleReconcile(Duration.zero);
+
+    // iOSは音が鳴っている間しかバックグラウンド実行が続かない。コメントの
+    // 切れ間で止まらないよう、サービス稼働中は無音を流し続ける。
+    if (Platform.isIOS) unawaited(_keepAlive.start());
 
     _pushStatus();
     _pushSpeechState();
@@ -249,6 +258,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _reconcileTimer = null;
     await _listenerSub?.cancel();
     await _connectedSub?.cancel();
+
+    // 停止したら無音ループも確実に止める。残すとバッテリーを食い続けるうえ、
+    // 「可聴コンテンツのためのバックグラウンド音声」という位置づけからも外れる。
+    if (Platform.isIOS) await _keepAlive.stop();
 
     _commentFeed.disconnect();
     _speechQueue.dispose();
