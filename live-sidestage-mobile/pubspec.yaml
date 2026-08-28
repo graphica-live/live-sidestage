@@ -61,6 +61,8 @@ dependencies:
   # Android 11 以降は AndroidManifest の <queries> に https の VIEW intent が無いと
   # 起動先を解決できないので、そちらもセットで必要。
   url_launcher: ^6.3.1
+  # 起動時のバージョン取得(強制アップデート判定・X-App-Versionヘッダー)に使う。
+  package_info_plus: ^8.1.2
 
 dev_dependencies:
   flutter_test:

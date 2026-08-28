@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import jwt from "jsonwebtoken";
+import { prisma } from "@/lib/prisma";
 
 export interface MobileTokenPayload {
   userId: string;
@@ -64,4 +65,24 @@ export function resolveUserByMobileToken(req: NextRequest): { userId: string } |
   if (!payload) return null;
 
   return { userId: payload.userId };
+}
+
+/**
+ * resolveUserByMobileToken() に加えて、DB上にそのUserが実在することまで確認する。
+ *
+ * トークンの署名・期限だけを見る resolveUserByMobileToken() は、退会・削除済みの
+ * Userが持っていた旧トークンでも「認証OK」を返してしまう(90日有効なstatelessトークンで
+ * 失効機構が無いため)。entitlement判定(実効プラン・機能可否)の起点はこちらを使う。
+ *
+ * 既存のgifts/streamer等の各APIは resolveUserByMobileToken() のままでよい —
+ * 削除済みUserのuserIdで問い合わせても、紐づくデータが無ければ自然に404/空応答になる。
+ */
+export async function resolveActiveMobileUser(req: NextRequest): Promise<{ userId: string } | null> {
+  const auth = resolveUserByMobileToken(req);
+  if (!auth) return null;
+
+  const user = await prisma.user.findUnique({ where: { id: auth.userId }, select: { id: true } });
+  if (!user) return null;
+
+  return { userId: auth.userId };
 }

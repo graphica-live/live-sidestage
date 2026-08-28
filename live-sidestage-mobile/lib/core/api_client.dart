@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/account_status.dart';
 import '../models/auth_session.dart';
 import '../models/listener_status.dart';
+import 'app_version.dart';
 
 /// バックエンドのベースURL。既定は Railway 本番。
 ///
@@ -59,12 +61,17 @@ class ApiException implements Exception {
   final String message;
 
   /// HTTPステータス。通信自体に失敗した場合は null。
-  /// 401/403 を「一覧が取れない」ではなく「再ログインが必要」として扱うために使う。
   final int? statusCode;
 
   ApiException(this.message, {this.statusCode});
 
-  bool get isUnauthorized => statusCode == 401 || statusCode == 403;
+  /// トークンが無効・期限切れ。再ログイン(またはトークン再取得)が必要。
+  bool get isUnauthorized => statusCode == 401;
+
+  /// トークンは有効だが、その操作を行う権限(プラン等)が無い。
+  /// **再ログインでは解決しない。** isUnauthorizedと混同すると、権限不足なだけの
+  /// 操作でGoogleの無言サインインを繰り返し試みることになる。
+  bool get isForbidden => statusCode == 403;
 
   @override
   String toString() => message;
@@ -266,6 +273,16 @@ class LiveAnalyticsApi {
     return ListenerStatus.tryParse(Map<String, dynamic>.from(listener));
   }
 
+  /// 実効プラン・機能可否・強制アップデート判定に使う起動時の状態。
+  ///
+  /// **これはUIの出し分け用の参照情報であって、権限の最終防衛線ではない。**
+  /// 実際の機能可否は毎回サーバー側が判定する(このAPIの値をキャッシュして
+  /// クライアント側だけで権限判定に使わないこと)。
+  Future<AccountStatus> fetchAccountStatus({required String token}) async {
+    final data = await _send('GET', '/api/mobile/me', null, token: token);
+    return AccountStatus.fromJson(data);
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }
@@ -284,6 +301,9 @@ class LiveAnalyticsApi {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
         'x-api-key': ?apiKey,
+        // 偽装可能な自己申告値なので権限判定には使わない(サーバー側も現状読まない)。
+        // 将来「このバージョン未満は拒否」を足すときの配管として、まず送る側だけ用意する。
+        'X-App-Version': ?AppVersion.current,
       };
       final encodedBody = body == null ? null : jsonEncode(body);
       final request = switch (method) {
