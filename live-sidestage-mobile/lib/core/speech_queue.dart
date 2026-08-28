@@ -115,15 +115,17 @@ class SpeechQueueController extends ChangeNotifier {
 
   void _enqueue(Comment comment) {
     if (!initialized || !enabled) return;
-    // 本文が空のコメント(エモートだけの発言)はVOICEVOXに渡さない。空文字を合成すると
-    // 中身の無いwavになり、再生時に PlatformException で落ちる。**Android/iOS 共通の経路。**
-    // エモート自体は読み上げない — 連打されると読み上げがそれだけで埋まる。
-    // 画面には [Comment.displayText] が「[エモート]」と出すので、消えたようには見えない。
+    // 読み上げる中身が無いコメントはVOICEVOXに渡さない。エモートだけの発言、
+    // TikTokの絵文字 `[微笑]` だけ、素の絵文字だけ、はすべてここで落ちる
+    // ([Comment.speechText] 参照)。空文字を合成すると中身の無いwavになり、
+    // 再生時に PlatformException で落ちる。**Android/iOS 共通の経路。**
     //
-    // **_processQueue 側ではなくここで止めること。** 先読み合成
-    // (`_engine.synthesize(next.comment, ...)`) は次の1件を先に合成するので、
-    // 向こうで弾いても空文字が合成へ渡る経路が残る。
-    if (comment.comment.trim().isEmpty) return;
+    // 読み上げないだけで、画面には [Comment.displayText] がもとの本文を出すので
+    // 消えたようには見えない。
+    //
+    // **_processQueue 側ではなくここで止めること。** 先読み合成は次の1件を先に
+    // 合成するので、向こうで弾いても空文字が合成へ渡る経路が残る。
+    if (comment.speechText.isEmpty) return;
     _queue.add(comment);
     unawaited(_processQueue());
   }
@@ -144,7 +146,18 @@ class SpeechQueueController extends ChangeNotifier {
       try {
         wav = (prefetchedFor == comment)
             ? await prefetched!
-            : await _engine.synthesize(comment.comment, styleId, speedScale: speed / 100.0);
+            : await _engine.synthesize(comment.speechText, styleId, speedScale: speed / 100.0);
+      } on TtsSynthesisException catch (e) {
+        // 読み方を作れなかっただけなら黙って飛ばす。[Comment.speechText] の
+        // 絵文字除去は正規表現なので取りこぼしがあり、**新しい絵文字が来るたびに
+        // 配信中へ赤いエラーを出すことになる**。次のコメントは普通に読める。
+        if (e.isUnreadableText) {
+          debugPrint('[tts] 読み方を作れないコメントを飛ばしました: ${comment.speechText}');
+          continue;
+        }
+        errorMessage = '読み上げに失敗しました: $e';
+        notifyListeners();
+        continue;
       } catch (e) {
         errorMessage = '読み上げに失敗しました: $e';
         notifyListeners();
@@ -156,7 +169,7 @@ class SpeechQueueController extends ChangeNotifier {
         final next = _queue.first;
         final nextStyleId = pool.effectiveStyleId(next.uniqueId);
         prefetchedFor = next;
-        prefetched = _engine.synthesize(next.comment, nextStyleId, speedScale: speed / 100.0);
+        prefetched = _engine.synthesize(next.speechText, nextStyleId, speedScale: speed / 100.0);
       } else {
         prefetchedFor = null;
         prefetched = null;

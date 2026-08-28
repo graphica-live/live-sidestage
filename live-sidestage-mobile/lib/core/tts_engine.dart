@@ -67,7 +67,26 @@ Future<TtsAssetPaths> extractTtsAssets() async {
 //   ['ready', metasJson]
 //   ['init_error', message]
 //   ['result', id, wavBytes]
-//   ['result_error', id, message]
+//   ['result_error', id, message, code]
+
+/// 合成に失敗したときの例外。**VOICEVOX の結果コードを保持する。**
+///
+/// 呼び出し側が「読めない文字だった」（[isUnreadableText]）と、それ以外の故障を
+/// 区別するために要る。全部まとめて画面へ出すと、絵文字だけのコメントが来るたびに
+/// エラー表示が出て、**本当の故障に気づけなくなる**。
+class TtsSynthesisException implements Exception {
+  TtsSynthesisException(this.message, this.code);
+
+  final String message;
+  final int? code;
+
+  /// テキストの解析に失敗した。読み方を持たない文字だけのコメントで起きる。
+  /// このコメントを飛ばせば済む話で、次のコメントは普通に読める。
+  bool get isUnreadableText => code == VOICEVOX_RESULT_ANALYZE_TEXT_ERROR;
+
+  @override
+  String toString() => message;
+}
 
 class TtsEngine {
   final ReceivePort _receivePort = ReceivePort();
@@ -103,7 +122,9 @@ class TtsEngine {
         case 'result_error':
           final id = message[1] as int;
           final completer = _pending.remove(id);
-          completer?.completeError(Exception(message[2] as String));
+          // 旧い形式(3要素)でも落とさない。
+          final code = message.length > 3 ? message[3] as int : null;
+          completer?.completeError(TtsSynthesisException(message[2] as String, code));
       }
     });
 
@@ -207,7 +228,8 @@ void _isolateMain(List<dynamic> args) {
 
     final queryResult = synthesizer.createAudioQuery(text, styleId);
     if (queryResult.result != VOICEVOX_RESULT_OK) {
-      mainSendPort.send(['result_error', id, 'AudioQuery生成失敗 (code=${queryResult.result})']);
+      mainSendPort.send(
+          ['result_error', id, 'AudioQuery生成失敗 (code=${queryResult.result})', queryResult.result]);
       return;
     }
 
@@ -219,7 +241,8 @@ void _isolateMain(List<dynamic> args) {
 
     final synthesisResult = synthesizer.synthesis(jsonEncode(query), styleId);
     if (synthesisResult.result != VOICEVOX_RESULT_OK) {
-      mainSendPort.send(['result_error', id, '音声合成失敗 (code=${synthesisResult.result})']);
+      mainSendPort.send(
+          ['result_error', id, '音声合成失敗 (code=${synthesisResult.result})', synthesisResult.result]);
       return;
     }
 

@@ -33,6 +33,20 @@ class CommentEmote {
       };
 }
 
+/// `[微笑]` のような TikTok の絵文字トークン。入れ子は想定しない。
+final RegExp _bracketToken = RegExp(r'\[[^\[\]]*\]');
+
+/// 絵文字と記号。読み方を持たないので読み上げから落とす。
+/// 日本語・英数字の範囲には掛からないようにしてある。
+final RegExp _emoji = RegExp(
+  r'[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}'
+  r'\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{FE00}-\u{FE0F}'
+  r'\u{200D}\u{20E3}\u{00A9}\u{00AE}\u{2122}\u{3030}\u{303D}]',
+  unicode: true,
+);
+
+final RegExp _whitespace = RegExp(r'\s+');
+
 class Comment {
   final String streamerId;
   final String uniqueId;
@@ -40,7 +54,7 @@ class Comment {
   final String? profilePictureUrl;
 
   /// TikTokが送ってきた**生の本文**。エモートの印は混ざっていない。
-  /// 読み上げにはこちらを使う（[displayText] ではない）。
+  /// 読み上げるのはこれではなく [speechText]（絵文字などを落としたもの）。
   final String comment;
   final DateTime receivedAt;
 
@@ -67,6 +81,26 @@ class Comment {
     final label = emotes.length > 1 ? '[エモート×${emotes.length}]' : '[エモート]';
     return comment.isEmpty ? label : '$comment $label';
   }
+
+  /// 読み上げに渡す文字列。**表示（[displayText]）とは別物。**
+  ///
+  /// 次の2つを落とす。どちらも「見えていてほしいが、読まれると邪魔」なもの。
+  ///
+  /// 1. `[微笑]` のような角括弧の塊。**TikTok の絵文字**が本文にこの形で入ってくる。
+  ///    そのまま読むと「かっこ びしょう かっこ」になる
+  /// 2. 絵文字そのもの。VOICEVOX は読み方を作れず
+  ///    `VOICEVOX_RESULT_ANALYZE_TEXT_ERROR`(code=11) で失敗する
+  ///
+  /// 落とした結果が空になったコメントは読み上げない（[SpeechQueueController] が捨てる）。
+  /// 画面にはもとの [comment] が出るので、消えたようには見えない。
+  ///
+  /// **正規表現で絵文字を完全には落としきれない。** 新しい絵文字は範囲外にありうるので、
+  /// 読み上げ側にも「解析できなかったら黙って飛ばす」保険を残してある。
+  String get speechText => comment
+      .replaceAll(_bracketToken, ' ')
+      .replaceAll(_emoji, ' ')
+      .replaceAll(_whitespace, ' ')
+      .trim();
 
   /// 解析できない場合は null を返す。
   ///
