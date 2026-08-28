@@ -3,7 +3,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/auth_session.dart';
+import '../models/battle_summary.dart';
+import '../models/gift_history_event.dart';
+import '../models/gift_ranking_entry.dart';
 import '../models/listener_status.dart';
+import 'url_validation.dart';
 
 /// バックエンドのベースURL。既定は Railway 本番。
 ///
@@ -157,20 +161,8 @@ class GiftCandidate {
       minDiamondCount: min <= max ? min : max,
       maxDiamondCount: min <= max ? max : min,
       seen: value['seen'] == true,
-      imageUrl: _parseImageUrl(value['imageUrl']),
+      imageUrl: parseImageUrl(value['imageUrl']),
     );
-  }
-
-  /// 画像URLとして受け入れてよい値か。
-  ///
-  /// サーバーが TikTok の画像 CDN に限定して返しているが、`Image.network` へそのまま
-  /// 渡る値なので https だけは端末側でも確かめる（多層防御）。旧サーバーはキー自体を
-  /// 返さないので、欠落は null として扱う。
-  static String? _parseImageUrl(Object? value) {
-    if (value is! String || value.isEmpty) return null;
-    final uri = Uri.tryParse(value);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
-    return value;
   }
 }
 
@@ -183,6 +175,57 @@ Map<String, String> giftLabelJaMap(Iterable<GiftCandidate> gifts) {
     for (final gift in gifts)
       if (gift.labelJa != null && gift.labelJa!.isNotEmpty) gift.name: gift.labelJa!,
   };
+}
+
+typedef DateRange = ({String start, String end});
+
+DateRange _parseDateRange(Object? value) {
+  final map = value is Map ? value : const {};
+  return (start: map['start'] as String? ?? '', end: map['end'] as String? ?? '');
+}
+
+class GiftRankingResult {
+  final List<GiftRankingEntry> users;
+  final DateRange dateRange;
+  final ({int giftCount, int totalDiamonds}) total;
+  final bool verified;
+
+  const GiftRankingResult({
+    required this.users,
+    required this.dateRange,
+    required this.total,
+    required this.verified,
+  });
+}
+
+class GiftHistoryResult {
+  final List<GiftHistoryEvent> events;
+  final DateRange dateRange;
+  final ({int count, int diamonds}) total;
+  final bool hasMore;
+  final bool verified;
+
+  const GiftHistoryResult({
+    required this.events,
+    required this.dateRange,
+    required this.total,
+    required this.hasMore,
+    required this.verified,
+  });
+}
+
+class BattleListResult {
+  final List<BattleSummary> battles;
+  final DateRange dateRange;
+  final bool hasMore;
+  final bool verified;
+
+  const BattleListResult({
+    required this.battles,
+    required this.dateRange,
+    required this.hasMore,
+    required this.verified,
+  });
 }
 
 class LiveAnalyticsApi {
@@ -253,6 +296,82 @@ class LiveAnalyticsApi {
     final gifts = data['gifts'];
     if (gifts is! List) return const [];
     return gifts.map(GiftCandidate.tryParse).whereType<GiftCandidate>().toList();
+  }
+
+  /// 貢献タブ(ユーザー別コイン数ランキング)。[users] は既にコイン数降順でソート済み
+  /// (配列インデックス+1がそのまま順位になる)。
+  Future<GiftRankingResult> fetchGiftRanking({
+    required String token,
+    required String period,
+    required String date,
+  }) async {
+    final query = Uri(queryParameters: {'period': period, 'date': date}).query;
+    final data = await _send('GET', '/api/mobile/analytics/ranking?$query', null, token: token);
+    final users = data['users'];
+    return GiftRankingResult(
+      users: users is List ? users.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList() : const [],
+      dateRange: _parseDateRange(data['dateRange']),
+      total: (
+        giftCount: (data['total']?['giftCount'] as int?) ?? 0,
+        totalDiamonds: (data['total']?['totalDiamonds'] as int?) ?? 0,
+      ),
+      verified: data['verified'] == true,
+    );
+  }
+
+  /// ギフト履歴タブ。[hasMore] が true なら「期間全体」ではなく「直近[limit]件」であることを示す。
+  Future<GiftHistoryResult> fetchGiftHistory({
+    required String token,
+    required String period,
+    required String date,
+    int limit = 50,
+  }) async {
+    final query = Uri(queryParameters: {'period': period, 'date': date, 'limit': '$limit'}).query;
+    final data = await _send('GET', '/api/mobile/analytics/gift-history?$query', null, token: token);
+    final events = data['events'];
+    return GiftHistoryResult(
+      events: events is List ? events.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList() : const [],
+      dateRange: _parseDateRange(data['dateRange']),
+      total: (
+        count: (data['total']?['count'] as int?) ?? 0,
+        diamonds: (data['total']?['diamonds'] as int?) ?? 0,
+      ),
+      hasMore: data['hasMore'] == true,
+      verified: data['verified'] == true,
+    );
+  }
+
+  /// バトル履歴タブの一覧。
+  Future<BattleListResult> fetchBattles({
+    required String token,
+    required String period,
+    required String date,
+  }) async {
+    final query = Uri(queryParameters: {'period': period, 'date': date}).query;
+    final data = await _send('GET', '/api/mobile/analytics/battles?$query', null, token: token);
+    final battles = data['battles'];
+    return BattleListResult(
+      battles: battles is List ? battles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList() : const [],
+      dateRange: _parseDateRange(data['dateRange']),
+      hasMore: data['hasMore'] == true,
+      verified: data['verified'] == true,
+    );
+  }
+
+  /// バトル区間の貢献者展開。貢献タブ(ランキング)と同じ形状のデータを返す。
+  Future<List<GiftRankingEntry>> fetchBattleContributors({
+    required String token,
+    required String battleId,
+  }) async {
+    final data = await _send(
+      'GET',
+      '/api/mobile/analytics/battles/${Uri.encodeComponent(battleId)}/contributors',
+      null,
+      token: token,
+    );
+    final contributors = data['contributors'];
+    if (contributors is! List) return const [];
+    return contributors.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList();
   }
 
   /// TikTok Live 接続の状態。socket の `chat:listener` が落ちても収束させるための保険。

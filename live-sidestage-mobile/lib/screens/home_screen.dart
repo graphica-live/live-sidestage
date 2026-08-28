@@ -13,6 +13,9 @@ import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
 import '../models/comment.dart';
 import 'gift_sound_edit_screen.dart' show fetchGiftCandidatesWithRefresh;
+import 'tabs/battle_history_tab.dart';
+import 'tabs/contribution_tab.dart';
+import 'tabs/gift_history_tab.dart';
 import 'tabs/settings_tab.dart';
 import 'tabs/sound_tab.dart';
 import 'tabs/tts_tab.dart';
@@ -87,6 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Comment> _comments = [];
   final ScrollController _scrollController = ScrollController();
 
+  // 0=TTS, 1=サウンド, 2=設定, 3=貢献, 4=ギフト履歴, 5=バトル履歴
   int _tabIndex = 0;
 
   SocketStatus _status = SocketStatus.disconnected;
@@ -509,6 +513,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final store = context.watch<AppConfigStore>();
     final ttsEnabled = store.config.ttsEnabled;
     final soundEnabled = store.sound.enabled;
+    final tiktokId = session?.streamer?.tiktokId;
 
     return Scaffold(
       appBar: AppBar(title: Text('@${session?.streamer?.tiktokId ?? ''}')),
@@ -549,6 +554,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   onChangeTiktokId: changeTiktokId,
                   onBeforeLogout: _stopService,
                 ),
+                // TikTok ID変更時に旧IDのデータを残さないよう、tiktokIdをkeyにしてStateごと作り直す。
+                ContributionTab(key: ValueKey('contribution-$tiktokId'), active: _tabIndex == 3),
+                GiftHistoryTab(key: ValueKey('gift-history-$tiktokId'), active: _tabIndex == 4),
+                BattleHistoryTab(key: ValueKey('battle-history-$tiktokId'), active: _tabIndex == 5),
               ],
             ),
           ),
@@ -561,6 +570,9 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(icon: Icon(Icons.record_voice_over_outlined), selectedIcon: Icon(Icons.record_voice_over), label: 'TTS'),
           NavigationDestination(icon: Icon(Icons.music_note_outlined), selectedIcon: Icon(Icons.music_note), label: 'サウンド'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '設定'),
+          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: '貢献'),
+          NavigationDestination(icon: Icon(Icons.card_giftcard_outlined), selectedIcon: Icon(Icons.card_giftcard), label: 'ギフト'),
+          NavigationDestination(icon: Icon(Icons.bolt_outlined), selectedIcon: Icon(Icons.bolt), label: 'バトル'),
         ],
       ),
     );
