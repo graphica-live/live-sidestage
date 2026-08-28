@@ -33,7 +33,17 @@ import 'package:path_provider/path_provider.dart';
 class IosAudioKeepAlive {
   AudioPlayer? _player;
   Timer? _watchdog;
-  bool _starting = false;
+
+  /// 進行中の start / stop。**必ずこの鎖に繋いで直列化する。**
+  ///
+  /// 以前は `_starting` フラグで start の二重実行だけを防いでいたが、それだと
+  /// **start の最中に stop が来たときに stop が先に抜ける**。あとから start が
+  /// 完了して `_player` を書き戻すので、「停止したのに無音ループが鳴り続ける」
+  /// 状態になる。バッテリーの無駄であるうえ、可聴コンテンツを伴わない
+  /// バックグラウンド音声は App Store 2.5.4 の要件からも外れる。
+  ///
+  /// 機能のON/OFFに紐づけると連打でこの経路を踏みやすくなるので、順序を保証する。
+  Future<void> _chain = Future.value();
 
   static const Duration _watchdogInterval = Duration(seconds: 30);
 
@@ -49,9 +59,21 @@ class IosAudioKeepAlive {
 
   bool get isRunning => _player != null;
 
-  Future<void> start() async {
-    if (!Platform.isIOS || _player != null || _starting) return;
-    _starting = true;
+  Future<void> start() => _serialize(_start);
+
+  Future<void> stop() => _serialize(_stop);
+
+  /// 直前の start / stop が終わってから走らせる。1つが失敗しても鎖は切らない。
+  Future<void> _serialize(Future<void> Function() action) {
+    final next = _chain.then((_) => action()).catchError((Object e) {
+      debugPrint('[keepalive] 処理に失敗: $e');
+    });
+    _chain = next;
+    return next;
+  }
+
+  Future<void> _start() async {
+    if (!Platform.isIOS || _player != null) return;
     try {
       final file = await _ensureSilenceFile();
       final player = AudioPlayer();
@@ -79,12 +101,10 @@ class IosAudioKeepAlive {
       // 落とさずログだけ残す。
       debugPrint('[keepalive] 無音ループを開始できませんでした: $e');
       await _disposePlayer();
-    } finally {
-      _starting = false;
     }
   }
 
-  Future<void> stop() async {
+  Future<void> _stop() async {
     _watchdog?.cancel();
     _watchdog = null;
     await _disposePlayer();

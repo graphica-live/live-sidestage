@@ -135,10 +135,6 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // ここで待つとコメント受信の開始がそのぶん遅れる。
     _scheduleReconcile(Duration.zero);
 
-    // iOSは音が鳴っている間しかバックグラウンド実行が続かない。コメントの
-    // 切れ間で止まらないよう、サービス稼働中は無音を流し続ける。
-    if (Platform.isIOS) unawaited(_keepAlive.start());
-
     _pushStatus();
     _pushSpeechState();
     _pushSoundState();
@@ -241,6 +237,23 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _speechQueue.fixedStyleId = config.fixedStyleId;
     _speechQueue.volume = config.ttsVolume;
     _speechQueue.speed = config.ttsSpeed;
+
+    // **無音キープアライブはサービスの稼働ではなく「音を出す機能」に紐づける。**
+    //
+    // iOS の flutter_foreground_task は Android の Foreground Service のような
+    // 生存保証を持たない（ios/Classes/service/ForegroundTask.swift はアプリ内の
+    // headless エンジンとタイマーだけ）。画面オフ中の生存を実際に支えているのは
+    // `UIBackgroundModes: audio` と、この無音ループが AVAudioSession を握り続けて
+    // いることだけ。したがって紐づけ先をここへ移しても、画面オフ継続の因果は
+    // 変わらない（開始ボタン＝必ず前面、で start される点も同じ）。
+    //
+    // 逆に、音を出さない待機状態で鳴らし続けてはいけない。バッテリーの無駄で
+    // あるうえ、App Store 2.5.4 の「バックグラウンド音声は可聴コンテンツのため」
+    // という位置づけから外れる。
+    if (Platform.isIOS) {
+      final wantsAudio = config.ttsEnabled || config.sound.enabled;
+      unawaited(wantsAudio ? _keepAlive.start() : _keepAlive.stop());
+    }
 
     // VOICEVOXの初期化は重い。TTSがOFFのままサウンドだけ使う運用では走らせない。
     if (config.ttsEnabled && !_speechQueue.initialized) {
