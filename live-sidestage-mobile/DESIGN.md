@@ -55,7 +55,7 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 **Key Characteristics:**
 - Material3のColorScheme/TextThemeにほぼ全面依存し、独自トークンをほとんど持たない
 - 状態(接続・読み上げ・エラー)を色で即座に伝える、機能的な色使い
-- ホームは3タブのボトムナビ(TTS / サウンド / 設定)。各タブの中身は単一目的の縦積みを保つ
+- ホームは6タブのボトムナビ(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)。各タブの中身は単一目的の縦積みを保つ
 - 装飾的なshadow・アニメーション・カスタムフォントは無い
 
 ## Colors
@@ -92,9 +92,11 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Layout
 
-アプリ全体の遷移はAuthGateによる状態駆動(未ログイン→オンボーディング→ホーム)。ホーム画面のみ、Material3 `NavigationBar`による3タブ構成(TTS / サウンド / 設定)を持つ。
+アプリ全体の遷移はAuthGateによる状態駆動(未ログイン→オンボーディング→ホーム)。ホーム画面のみ、Material3 `NavigationBar`による6タブ構成(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)を持つ。
 
-ホームのシェルは「AppBar → 接続ステータスバー → 開始/停止ボタン → `IndexedStack`(3タブ) → NavigationBar」の縦積み。`IndexedStack`にしているのは、タブを切り替えてもコメントリストのスクロール位置と`ScrollController`を失わないため。Foreground Serviceからの状態受信(`addTaskDataCallback`)もシェルに集約し、タブ側は表示だけを担う。
+ホームのシェルは「AppBar → 接続ステータスバー → 開始/停止ボタン → `IndexedStack`(6タブ) → NavigationBar」の縦積み。`IndexedStack`にしているのは、タブを切り替えてもコメントリストのスクロール位置と`ScrollController`を失わないため。Foreground Serviceからの状態受信(`addTaskDataCallback`)もシェルに集約し、タブ側は表示だけを担う。
+
+**貢献/ギフト履歴/バトル履歴の3タブはanalyticsサーバーへのプル型API呼び出しを行うタブで、TTS/サウンド/設定とは性質が異なる。** `IndexedStack`は全タブを起動時に同時マウントするため、`active`(自分が選択中のタブか)が最初に`true`になった時点で1回だけ読み込む。TikTok ID変更時に旧IDのデータを見せ続けないよう、`ValueKey(tiktokId)`をこの3タブに付けてStateごと作り直している。
 
 タブより深い階層(ギフトと音の編集、外部サイト検索)は`Navigator.push`のフルスクリーンページとして積む。ボトムナビはホーム階層にのみ存在し、pushしたページには出ない。
 
@@ -128,7 +130,7 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 
 ### Navigation
 
-- **Bottom Nav:** Material3 `NavigationBar`。TTS(`Icons.record_voice_over`) / サウンド(`Icons.music_note`) / 設定(`Icons.settings`)の3タブ固定。タブは増やさない前提で設計している。
+- **Bottom Nav:** Material3 `NavigationBar`。TTS(`Icons.record_voice_over`) / サウンド(`Icons.music_note`) / 設定(`Icons.settings`) / 貢献(`Icons.emoji_events`) / ギフト(`Icons.card_giftcard`) / バトル(`Icons.bolt`)の6タブ固定。元は「タブは増やさない前提」で3タブ固定としていたが、2026-08にanalyticsの貢献/ギフト履歴/バトル履歴をネイティブUIで見せる要望に応じ、例外的に3タブ追加した。ラベルは幅の都合で短縮形にしている(正式名称はタブ内見出しで示す)。今後さらに増やす際は、この例外を重ねてよいかを再検討すること。
 - **Deeper pages:** タブから`Navigator.push`する全画面ページ(ギフトと音の編集、外部サイト検索)。戻る導線は標準AppBarのback。
 
 ### Selection Controls
@@ -183,7 +185,7 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Do** 状態色(green/orange/red/grey)は接続・読み上げ・エラー状態の伝達にのみ使う。
 - **Do** 主要アクションは`FilledButton`、破壊的/停止アクションのみ赤背景でオーバーライドする。
 - **Do** Material3のロールトークン・tonal elevationに任せ、固定hexやカスタムshadowを増やさない。
-- **Do** 新しい画面も各ページ内は「単一目的の縦積み」構造を踏襲する。深い階層が要るときはボトムナビを増やさず`Navigator.push`で積む。
+- **Do** 新しい画面も各ページ内は「単一目的の縦積み」構造を踏襲する。深い階層が要るときは原則ボトムナビを増やさず`Navigator.push`で積む(2026-08の貢献/ギフト履歴/バトル履歴タブ追加は例外的にボトムナビを増やした判断で、今後の追加はまず`Navigator.push`を検討する)。
 - **Do** 破壊的操作(削除)は必ず`AlertDialog`で確認し、失われるものを具体的に書く。
 
 ### Don't:
@@ -191,6 +193,6 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 - **Don't** 装飾目的で新しい色を追加しない。状態を表さない色は原則Material3のロールトークン(surface/onSurface等)から取る。
 - **Don't** ダークテーマは現状未対応(`ThemeData`に`darkTheme`指定なし)。対応するまでは、ダーク前提の配色決め打ちを行わない。
 - **Don't** タブレット・横画面・レスポンシブ分岐は未検証。対応するまでは固定幅前提のレイアウトを増やさない。
-- **Don't** ボトムナビのタブを4つ以上に増やさない。機能が増える場合は既存3タブのいずれかの配下へpushする。
+- **Don't** ボトムナビのタブを安易に増やさない。2026-08に貢献/ギフト履歴/バトル履歴の3タブを例外的に追加して6タブになったが、これは「タブは増やさない」原則からの明示的な逸脱であり通例ではない。さらに増やしたくなったら、まず既存6タブのいずれかの配下へpushできないかを疑う。
 - **Don't** 設定項目をTTSタブ・サウンドタブへ置かない。設定は設定タブへ集約する(Layout参照)。運用画面に置きたくなったら、それが本当に「今の状態」ではなく「設定」なのかをまず疑う。
 - **Don't** サウンド設定に中間階層(カテゴリ、トリガー、共有音源ライブラリ)を戻さない。desktop(TikEffect)には全部あるが、モバイルは配信中に片手で触る道具なので「ギフト → 音」の1階層に閉じる。条件を増やしたくなったら、まず既存の1行で表現できないかを疑う。
