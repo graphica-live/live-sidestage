@@ -442,10 +442,11 @@ enum _CoinRange {
   tier2('10〜49', 10, 49),
   tier3('50〜99', 50, 99),
   tier4('100〜199', 100, 199),
-  tier5('200〜999', 200, 999),
-  tier6('1000〜4999', 1000, 4999),
-  tier7('5000〜9999', 5000, 9999),
-  tier8('10000以上', 10000, null);
+  tier5('200〜499', 200, 499),
+  tier6('500〜999', 500, 999),
+  tier7('1000〜4999', 1000, 4999),
+  tier8('5000〜9999', 5000, 9999),
+  tier9('10000以上', 10000, null);
 
   const _CoinRange(this.label, this.min, this.max);
 
@@ -473,6 +474,42 @@ bool matchesGiftQuery(GiftCandidate gift, String query) {
   if (gift.name.toLowerCase().contains(q)) return true;
   if (gift.label.toLowerCase().contains(q)) return true;
   return giftDisplayName(gift).toLowerCase().contains(q);
+}
+
+/// 表示させたくないギフトの名前ブロックリスト。
+///
+/// TikTok の gift API には「このギフトを隠すべきか」を示すフィールドが無い
+/// （`giftType` はコンボ可否判定にのみ使われている）ため、名前ベースの部分一致で弾く。
+const Set<String> _blockedGiftNameKeywords = {
+  'セックス',
+  'ちたんたん',
+  'ちんこ',
+  'ちんぽ',
+  'ポコチン',
+  'まんこ',
+  'アナル',
+};
+
+/// カタカナをひらがなへ寄せる。ブロック判定をひらがな・カタカナ問わず効かせるために使う
+/// （全角カタカナ ァ〜ヶ とひらがなは同じ並びで 0x60 ずれているだけなので引き算で変換できる）。
+String _toHiragana(String s) {
+  final buffer = StringBuffer();
+  for (final rune in s.runes) {
+    buffer.writeCharCode(rune >= 0x30A1 && rune <= 0x30F6 ? rune - 0x60 : rune);
+  }
+  return buffer.toString();
+}
+
+/// [gift] がブロックワードに一致するか。一覧にも検索結果にも出さない。
+bool isBlockedGift(GiftCandidate gift, {Set<String> blockedKeywords = _blockedGiftNameKeywords}) {
+  if (blockedKeywords.isEmpty) return false;
+  final haystacks = <String>[
+    gift.name,
+    gift.label,
+    if (gift.labelJa != null) gift.labelJa!,
+  ].map((s) => _toHiragana(s.toLowerCase()));
+  final needles = blockedKeywords.map((w) => _toHiragana(w.toLowerCase()));
+  return needles.any((word) => haystacks.any((h) => h.contains(word)));
 }
 
 /// 候補をピッカーに出すときの表示名。
@@ -542,6 +579,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
   String? _error;
   bool _needsRelogin = false;
   _CoinRange _coinRange = _CoinRange.all;
+  bool _coinRangeAscending = true;
 
   @override
   void initState() {
@@ -563,10 +601,15 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
   List<GiftCandidate> get _filtered {
     final all = _candidates ?? const <GiftCandidate>[];
     final query = _query;
-    return all
+    final list = all
         .where(_coinRange.matches)
+        .where((g) => !isBlockedGift(g))
         .where((g) => matchesGiftQuery(g, query))
-        .toList(growable: false);
+        .toList();
+    list.sort((a, b) => _coinRangeAscending
+        ? a.minDiamondCount.compareTo(b.minDiamondCount)
+        : b.minDiamondCount.compareTo(a.minDiamondCount));
+    return list;
   }
 
   void _pick(GiftCandidate gift) => Navigator.of(context).pop(gift);
@@ -691,7 +734,15 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                       ChoiceChip(
                         label: Text(range.label),
                         selected: _coinRange == range,
-                        onSelected: (_) => setState(() => _coinRange = range),
+                        // 同じ帯をもう一度選んだら昇順/降順を反転。違う帯を選んだら昇順に戻す。
+                        onSelected: (_) => setState(() {
+                          if (_coinRange == range) {
+                            _coinRangeAscending = !_coinRangeAscending;
+                          } else {
+                            _coinRange = range;
+                            _coinRangeAscending = true;
+                          }
+                        }),
                       ),
                       const SizedBox(width: 8),
                     ],
@@ -804,6 +855,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                 onPressed: () => setState(() {
                   _searchController.clear();
                   _coinRange = _CoinRange.all;
+                  _coinRangeAscending = true;
                 }),
                 icon: const Icon(Icons.filter_alt_off_outlined),
                 label: const Text('絞り込みを解除'),
