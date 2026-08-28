@@ -72,6 +72,25 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // **OSが勝手に復活させたサービスは、待機状態なら即座に自分で終わる。**
+    //
+    // Android は stopWithTask: false のとき START_STICKY で再起動し、タスクを
+    // スワイプで消しても1秒後の再起動アラームが仕掛けられる(プラグインの
+    // ForegroundService.kt)。読み上げも効果音も無効な「待機」でこれが起きると、
+    // ユーザーが止める手段の無い無音の常駐サービスが残る。
+    //
+    // developer 起動(アプリからの明示的な開始)は対象外。ここで止めると
+    // 待機起動そのものができなくなる。
+    if (starter == TaskStarter.system) {
+      final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
+      final config = AppConfig.tryDecode(raw);
+      if (config != null && !config.ttsEnabled && !config.sound.enabled) {
+        debugPrint('[service] 待機状態でOSに再起動されたため自分で停止します');
+        await FlutterForegroundTask.stopService();
+        return;
+      }
+    }
+
     // 購読を先に張ってから接続する。逆順にすると、接続直後に届いたイベントを
     // 取りこぼす小さなraceが残る。
     _commentFeed.addListener(_pushStatus);
@@ -214,6 +233,19 @@ class CommentSpeechTaskHandler extends TaskHandler {
   void onReceiveData(Object data) {
     if (data is! Map) return;
     switch (data['command']) {
+      // UI から「前面へ戻った」と教わる。背景 Isolate には lifecycle が配られない
+      // (headless エンジンなので)ため、知る手段がこれしかない。
+      //
+      // iOS は背面で suspend されるので、復帰直後は socket が切れているか、
+      // 切れたことにまだ気づいていない。ping timeout を待つと数十秒空くので、
+      // ここで張り直しと状態の取り直しを促す。
+      case 'lifecycle':
+        if (data['state'] != 'resumed') return;
+        final apiKey = _apiKey;
+        if (apiKey != null && _commentFeed.status != SocketStatus.connected) {
+          _commentFeed.connect(apiKey);
+        }
+        _scheduleReconcile(Duration.zero);
       case 'applyConfig':
         final revision = data['revision'];
         final json = data['json'];
