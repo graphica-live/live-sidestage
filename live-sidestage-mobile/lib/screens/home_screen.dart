@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -231,11 +232,16 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
 
-    if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
-      await FlutterForegroundTask.requestNotificationPermission();
-    }
-    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    // iOSは通知を出さない設定(iosNotificationOptions.showNotification: false)なので
+    // 許可を求める意味がなく、バッテリー最適化の除外はAndroid専用API。
+    // iOSでの生存は UIBackgroundModes: audio と無音ループが担う。
+    if (Platform.isAndroid) {
+      if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
+        await FlutterForegroundTask.requestNotificationPermission();
+      }
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
     }
 
     await FlutterForegroundTask.saveData(key: 'apiKey', value: apiKey);
