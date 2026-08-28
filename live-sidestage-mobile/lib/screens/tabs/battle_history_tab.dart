@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
+import '../../core/battle_activity.dart';
 import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
@@ -12,6 +13,10 @@ import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
 /// バトル履歴タブ。行をタップするとそのバトル区間の貢献者一覧をボトムシートで開く。
+///
+/// バトル終了(またはEND後のスコア確定)を受け取ると[BattleActivityNotifier]経由で
+/// 取り直す。**端末側でスコア等を積まない** — 正はサーバー(REST の queryBattles)
+/// だけ(理由は battle_activity.dart / gift_activity.dart と同じ)。
 class BattleHistoryTab extends StatefulWidget {
   const BattleHistoryTab({super.key, required this.active});
 
@@ -21,7 +26,7 @@ class BattleHistoryTab extends StatefulWidget {
   State<BattleHistoryTab> createState() => _BattleHistoryTabState();
 }
 
-class _BattleHistoryTabState extends State<BattleHistoryTab> {
+class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBindingObserver {
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
@@ -30,32 +35,82 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> {
   bool _loading = false;
   int _requestGeneration = 0;
 
+  /// 見えていない間に届いた通知。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
+  bool _dirty = false;
+  bool _resumed = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    context.read<BattleActivityNotifier>().addListener(_onBattleActivity);
     if (widget.active) _load();
+  }
+
+  @override
+  void dispose() {
+    context.read<BattleActivityNotifier>().removeListener(_onBattleActivity);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _resumed) return;
+    _resumed = resumed;
+    if (resumed) _flushDirty();
   }
 
   @override
   void didUpdateWidget(covariant BattleHistoryTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     // **一度きりにしない。** 見ていない間にバトルが進んでいるので、タブへ戻るたび取り直す。
-    // ギフトと違い `chat:battle` に相当する socket イベントが無いので、自動更新の
-    // きっかけはこれと pull-to-refresh だけ。
-    if (!oldWidget.active && widget.active) _load();
+    if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  Future<void> _load() async {
+  void _onBattleActivity() {
+    final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
+    switch (battleAutoReloadAction(
+      active: widget.active,
+      resumed: _resumed,
+      // 「今日」ではなく**バトルの開始日**で判定する。深夜0時をまたぐバトルが
+      // 「今日」判定だと自動更新の対象から漏れるため。
+      containsStartedDate: startedDateKey != null && _selection.containsJstToday(today: startedDateKey),
+    )) {
+      case BattleAutoReloadAction.ignore:
+        break;
+      case BattleAutoReloadAction.defer:
+        _dirty = true;
+      case BattleAutoReloadAction.reload:
+        _load(silent: true);
+    }
+  }
+
+  void _flushDirty() {
+    final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
+    if (!_dirty || !widget.active) return;
+    if (startedDateKey == null || !_selection.containsJstToday(today: startedDateKey)) return;
+    _dirty = false;
+    _load(silent: true);
+  }
+
+  /// [silent] はバトル終了通知による自動更新。**読み込み中の表示を出さない。**
+  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  /// 失敗も黙って捨てる(既存の表示を残す) — 次の通知か手動更新で拾い直せる。
+  Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
 
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
     if (token == null) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final result = await withTokenRefresh(
@@ -74,6 +129,10 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> {
       });
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
+      if (silent) {
+        debugPrint('[battle] 自動更新に失敗: ${e.message}');
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
