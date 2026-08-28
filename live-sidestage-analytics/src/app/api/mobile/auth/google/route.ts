@@ -5,6 +5,26 @@ import { mobileAuthResponseBody } from "@/lib/mobile-oauth";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+/// idToken の `aud` として許容するクライアントID。
+///
+/// **プラットフォームごとに aud が違う。**
+/// - Android: Dart から渡した `serverClientId`(= ウェブ用の `GOOGLE_CLIENT_ID`)
+/// - iOS: アプリ自身の **iOS 用クライアントID**
+///
+/// iOS でも `serverClientId` は渡しているが、google_sign_in_ios はそれを
+/// serverAuthCode の取得にしか使わず、idToken の aud は `Info.plist` の
+/// `GIDClientID` になる(FLTGoogleSignInPlugin.m: configurationWithClientIdentifier)。
+/// Android の `requestIdToken(serverClientId)` とは挙動が違うので、
+/// **ウェブ用の1つだけを許容すると iOS のログインが必ず 401 になる。**
+///
+/// `GOOGLE_IOS_CLIENT_ID` は iOS 版を出すときだけ設定する。未設定なら従来どおり
+/// ウェブ用の1つだけを許容するので、**Android の挙動は変わらない**。
+function allowedAudiences(): string[] {
+  const web = process.env.GOOGLE_CLIENT_ID?.trim();
+  const ios = process.env.GOOGLE_IOS_CLIENT_ID?.trim();
+  return [web, ios].filter((value): value is string => !!value);
+}
+
 export async function POST(req: NextRequest) {
   const { idToken } = await req.json();
 
@@ -12,12 +32,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "idTokenが必要です" }, { status: 400 });
   }
 
+  // 空配列のまま verifyIdToken へ渡すと aud を検証しないので、設定漏れは
+  // 通信を試す前に fail closed で止める(Apple 版 `../apple/route.ts` と同じ方針)。
+  const audience = allowedAudiences();
+  if (audience.length === 0) {
+    return NextResponse.json({ error: "Google認証が設定されていません" }, { status: 503 });
+  }
+
   let payload;
   try {
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const ticket = await client.verifyIdToken({ idToken, audience });
     payload = ticket.getPayload();
   } catch {
     return NextResponse.json({ error: "Google認証トークンの検証に失敗しました" }, { status: 401 });
