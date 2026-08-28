@@ -72,6 +72,25 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // **OSが勝手に復活させたサービスは、待機状態なら即座に自分で終わる。**
+    //
+    // Android は stopWithTask: false のとき START_STICKY で再起動し、タスクを
+    // スワイプで消しても1秒後の再起動アラームが仕掛けられる(プラグインの
+    // ForegroundService.kt)。読み上げも効果音も無効な「待機」でこれが起きると、
+    // ユーザーが止める手段の無い無音の常駐サービスが残る。
+    //
+    // developer 起動(アプリからの明示的な開始)は対象外。ここで止めると
+    // 待機起動そのものができなくなる。
+    if (starter == TaskStarter.system) {
+      final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
+      final config = AppConfig.tryDecode(raw);
+      if (config != null && !config.ttsEnabled && !config.sound.enabled) {
+        debugPrint('[service] 待機状態でOSに再起動されたため自分で停止します');
+        await FlutterForegroundTask.stopService();
+        return;
+      }
+    }
+
     // 購読を先に張ってから接続する。逆順にすると、接続直後に届いたイベントを
     // 取りこぼす小さなraceが残る。
     _commentFeed.addListener(_pushStatus);
@@ -115,6 +134,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // それ自体が配信中の証拠**なので、push/poll を待たずに反映する。
     _commentFeed.onComment.listen((_) => _markEventReceived());
     _commentFeed.onGift.listen((_) => _markEventReceived());
+    // 貢献・ギフト履歴タブが取り直すきっかけ。**数値は送らない** — 数字の正は
+    // サーバーの集計だけで、端末で積算するとDBと恒久的にズレる（gift_activity.dart）。
+    // 契約を増やさないため type だけの最小ペイロードにしてある。
+    _commentFeed.onGift.listen((_) => FlutterForegroundTask.sendDataToMain({'type': 'gift'}));
     _commentFeed.onFollow.listen((_) => _markEventReceived());
 
     _listenerSub = _commentFeed.onListener.listen(_applyListener);
@@ -130,10 +153,6 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // **socket 接続より後、かつ await しない。** HTTPのタイムアウトは20秒あるので、
     // ここで待つとコメント受信の開始がそのぶん遅れる。
     _scheduleReconcile(Duration.zero);
-
-    // iOSは音が鳴っている間しかバックグラウンド実行が続かない。コメントの
-    // 切れ間で止まらないよう、サービス稼働中は無音を流し続ける。
-    if (Platform.isIOS) unawaited(_keepAlive.start());
 
     _pushStatus();
     _pushSpeechState();
@@ -214,6 +233,19 @@ class CommentSpeechTaskHandler extends TaskHandler {
   void onReceiveData(Object data) {
     if (data is! Map) return;
     switch (data['command']) {
+      // UI から「前面へ戻った」と教わる。背景 Isolate には lifecycle が配られない
+      // (headless エンジンなので)ため、知る手段がこれしかない。
+      //
+      // iOS は背面で suspend されるので、復帰直後は socket が切れているか、
+      // 切れたことにまだ気づいていない。ping timeout を待つと数十秒空くので、
+      // ここで張り直しと状態の取り直しを促す。
+      case 'lifecycle':
+        if (data['state'] != 'resumed') return;
+        final apiKey = _apiKey;
+        if (apiKey != null && _commentFeed.status != SocketStatus.connected) {
+          _commentFeed.connect(apiKey);
+        }
+        _scheduleReconcile(Duration.zero);
       case 'applyConfig':
         final revision = data['revision'];
         final json = data['json'];
@@ -236,6 +268,24 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _speechQueue.randomVoice = config.randomVoice;
     _speechQueue.fixedStyleId = config.fixedStyleId;
     _speechQueue.volume = config.ttsVolume;
+    _speechQueue.speed = config.ttsSpeed;
+
+    // **無音キープアライブはサービスの稼働ではなく「音を出す機能」に紐づける。**
+    //
+    // iOS の flutter_foreground_task は Android の Foreground Service のような
+    // 生存保証を持たない（ios/Classes/service/ForegroundTask.swift はアプリ内の
+    // headless エンジンとタイマーだけ）。画面オフ中の生存を実際に支えているのは
+    // `UIBackgroundModes: audio` と、この無音ループが AVAudioSession を握り続けて
+    // いることだけ。したがって紐づけ先をここへ移しても、画面オフ継続の因果は
+    // 変わらない（開始ボタン＝必ず前面、で start される点も同じ）。
+    //
+    // 逆に、音を出さない待機状態で鳴らし続けてはいけない。バッテリーの無駄で
+    // あるうえ、App Store 2.5.4 の「バックグラウンド音声は可聴コンテンツのため」
+    // という位置づけから外れる。
+    if (Platform.isIOS) {
+      final wantsAudio = config.ttsEnabled || config.sound.enabled;
+      unawaited(wantsAudio ? _keepAlive.start() : _keepAlive.stop());
+    }
 
     // VOICEVOXの初期化は重い。TTSがOFFのままサウンドだけ使う運用では走らせない。
     if (config.ttsEnabled && !_speechQueue.initialized) {
@@ -327,6 +377,9 @@ class CommentSpeechTaskHandler extends TaskHandler {
       'profilePictureUrl': c.profilePictureUrl,
       'comment': c.comment,
       'receivedAt': c.receivedAt.toIso8601String(),
+      // メインisolate側は同じ Comment.tryParse で復元する。ここを足し忘れると
+      // 画面に出る側だけエモートが消える(受信自体は成功しているので気づきにくい)。
+      'emotes': c.emotesToMaps(),
     });
   }
 }

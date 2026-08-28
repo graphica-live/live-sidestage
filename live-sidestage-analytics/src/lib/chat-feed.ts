@@ -2,6 +2,15 @@ import type { Server as SocketIOServer } from "socket.io";
 
 export const CHAT_EVENT_SCHEMA_VERSION = 1;
 
+/** コメントに含まれるエモート(絵文字スタンプ)1件。 */
+export interface ChatCommentEmote {
+  emoteId: string;
+  /** 取得できなければnull。**idさえあれば「エモート」と表示できる**ので、URL欠落で捨てない。 */
+  imageUrl: string | null;
+  /** 本文中の挿入位置。無ければnull(末尾扱い)。画像表示を作るときに使う。 */
+  placeInComment: number | null;
+}
+
 export interface ChatCommentPayload {
   streamerId: string;
   uniqueId: string;
@@ -13,6 +22,86 @@ export interface ChatCommentPayload {
   // connectorのsimplifyObject()がcommonを平坦化するため、listener側では data.msgId として読む
   // (tiktok-listener.ts の resolveMsgId 参照)。
   msgId: string | null;
+  /**
+   * エモート。**無いときはフィールドごと省く**(空配列を送らない)。
+   *
+   * **`comment` には絶対に混ぜない。** 既に世に出ているアプリは `comment` を
+   * そのまま表示し、そのままVOICEVOXへ渡す。desktop([comment-feed.js]の
+   * `buildCommentFeedTextWithInlineEmotes`)は本文にトークンを差し込む方式だが、
+   * あれはサーバーとUIが必ず同時に更新されるローカル完結アプリだから成立する。
+   * こちらで同じことをすると**旧アプリの画面に生のトークンが出て、音読される**。
+   *
+   * 表示文字列の組み立ては端末側の責務(`Comment.displayText`)。「エモート」という
+   * 語はUIの関心事で、ここに置くと文言を変えるだけでサーバーのデプロイが要る。
+   *
+   * optionalな追加なので [CHAT_EVENT_SCHEMA_VERSION] は上げない。そもそも
+   * `chat:comment` はモバイル側が `requireSchemaVersion: false` で受けており、
+   * 旧アプリはこのフィールドも schemaVersion も読まずに無視する。
+   */
+  emotes?: ChatCommentEmote[];
+}
+
+/** 1コメントあたりのエモート上限。TikTokのUI上これを超える現実的な入力は無い。 */
+const MAX_CHAT_COMMENT_EMOTES = 10;
+/** id / URL の長さ上限。内部APIの他フィールドと揃えてある。 */
+const MAX_CHAT_COMMENT_EMOTE_FIELD_LENGTH = 500;
+
+function firstNonEmptyString(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) return trimmed.slice(0, MAX_CHAT_COMMENT_EMOTE_FIELD_LENGTH);
+  }
+  return null;
+}
+
+/**
+ * connectorが渡す chat イベントの生データからエモートを取り出す。
+ *
+ * **入れ子の形が一定しない。** connectorのsimplifyObjectがどこまで平坦化するかは
+ * バージョンとイベント種別で変わるため、候補を順に試す(desktopの
+ * `getCommentFeedEmoteImageUrl` が6通り試しているのと同じ理由)。1つの形だけを
+ * 見に行くと、**例外もログも出ないまま静かに全件落ちる**。
+ *
+ * `chat:comment` の検証点はこの関数だけ。内部API `/api/internal/gift-event` は
+ * chatEvent を素通しする設計(旧Workerの複数形を受け続けるため)なので、
+ * 上限とサニタイズをここへ寄せている。
+ */
+export function normalizeChatCommentEmotes(data: Record<string, unknown>): ChatCommentEmote[] {
+  const raw = Array.isArray(data.emotes) ? data.emotes : [];
+  const result: ChatCommentEmote[] = [];
+
+  for (const item of raw) {
+    if (result.length >= MAX_CHAT_COMMENT_EMOTES) break;
+    if (typeof item !== "object" || item === null) continue;
+
+    const entry = item as Record<string, unknown>;
+    const nested = (entry.emote ?? {}) as Record<string, unknown>;
+    const image = (entry.image ?? {}) as Record<string, unknown>;
+    const nestedImage = (nested.image ?? {}) as Record<string, unknown>;
+
+    const emoteId = firstNonEmptyString([entry.emoteId, nested.emoteId]);
+    if (!emoteId) continue;
+
+    const imageUrl = firstNonEmptyString([
+      entry.emoteImageUrl,
+      image.imageUrl,
+      nestedImage.imageUrl,
+      Array.isArray(image.urlList) ? image.urlList[0] : undefined,
+      Array.isArray(nestedImage.urlList) ? nestedImage.urlList[0] : undefined,
+    ]);
+
+    const place = entry.placeInComment;
+
+    result.push({
+      emoteId,
+      // httpsに限る。将来クライアントが実際に画像を取りに行くため、平文URLを渡さない。
+      imageUrl: imageUrl && imageUrl.startsWith("https:") ? imageUrl : null,
+      placeInComment: typeof place === "number" && Number.isInteger(place) && place >= 0 ? place : null,
+    });
+  }
+
+  return result;
 }
 
 /**

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
+import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/period_selector.dart';
@@ -11,8 +12,11 @@ import '../widgets/ranking_list_tile.dart';
 
 /// 貢献タブ(ユーザー別コイン数ランキング)。
 ///
-/// `IndexedStack`で他タブと同時にマウントされるため、[active]が最初に true に
-/// なった時点で1回だけ読み込む(常駐3タブぶんの無駄なAPI呼び出しを避ける)。
+/// `IndexedStack`で他タブと同時にマウントされるため、[active]になるまで読み込まない
+/// (常駐3タブぶんの無駄なAPI呼び出しを避ける)。
+///
+/// ギフトを受け取ると[GiftActivityNotifier]経由で取り直す。**端末側で数字を積まない** —
+/// 数字の正はサーバーの集計だけで、積むとDBと恒久的にズレる(理由はgift_activity.dart)。
 class ContributionTab extends StatefulWidget {
   const ContributionTab({super.key, required this.active});
 
@@ -22,14 +26,17 @@ class ContributionTab extends StatefulWidget {
   State<ContributionTab> createState() => _ContributionTabState();
 }
 
-class _ContributionTabState extends State<ContributionTab> {
+class _ContributionTabState extends State<ContributionTab> with WidgetsBindingObserver {
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
   GiftRankingResult? _result;
   String? _error;
   bool _loading = false;
-  bool _startedLoad = false;
+
+  /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
+  bool _dirty = false;
+  bool _resumed = true;
 
   // 期間切替・◀/▶・pull-to-refreshが短時間に連続すると、先に投げたリクエストが
   // 後から完了して新しい選択結果を上書きしうる。世代が一致する応答だけ反映する。
@@ -38,27 +45,70 @@ class _ContributionTabState extends State<ContributionTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    context.read<GiftActivityNotifier>().addListener(_onGiftActivity);
     if (widget.active) _load();
+  }
+
+  @override
+  void dispose() {
+    context.read<GiftActivityNotifier>().removeListener(_onGiftActivity);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _resumed) return;
+    _resumed = resumed;
+    if (resumed) _flushDirty();
   }
 
   @override
   void didUpdateWidget(covariant ContributionTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active && !_startedLoad) _load();
+    // **一度きりにしない。** 見ていない間に配信が進んでいるので、タブへ戻るたび取り直す。
+    if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  Future<void> _load() async {
-    _startedLoad = true;
+  void _onGiftActivity() {
+    switch (giftAutoReloadAction(
+      active: widget.active,
+      resumed: _resumed,
+      containsToday: _selection.containsJstToday(),
+    )) {
+      case GiftAutoReloadAction.ignore:
+        break;
+      case GiftAutoReloadAction.defer:
+        _dirty = true;
+      case GiftAutoReloadAction.reload:
+        _load(silent: true);
+    }
+  }
+
+  void _flushDirty() {
+    if (!_dirty || !widget.active || !_selection.containsJstToday()) return;
+    _dirty = false;
+    _load(silent: true);
+  }
+
+  /// [silent] はギフト受信による自動更新。**読み込み中の表示を出さない。**
+  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
+  Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
 
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
     if (token == null) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final result = await withTokenRefresh(
@@ -77,6 +127,10 @@ class _ContributionTabState extends State<ContributionTab> {
       });
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
+      if (silent) {
+        debugPrint('[contribution] 自動更新に失敗: ${e.message}');
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;

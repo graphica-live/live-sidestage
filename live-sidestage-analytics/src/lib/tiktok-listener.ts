@@ -10,6 +10,7 @@ import {
   emitChatFollow,
   emitChatGift,
   emitChatListener,
+  normalizeChatCommentEmotes,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
@@ -1373,6 +1374,11 @@ async function connectAndAttach(
     }
 
     const { time: eventTime } = resolveEventTime(data);
+    // エモートだけのコメントは comment が空で届く。**空のまま配信すると、モバイルは
+    // 画面に何も出せず、読み上げも空文字をVOICEVOXへ渡して例外になる。**
+    // comment 自体は生テキストのまま変えず、別フィールドで足す(理由は
+    // chat-feed.ts の ChatCommentPayload.emotes のコメント)。
+    const emotes = normalizeChatCommentEmotes(data);
     const payload = {
       uniqueId: String(data.uniqueId || ""),
       nickname: String(data.nickname || ""),
@@ -1380,6 +1386,7 @@ async function connectAndAttach(
       comment: String(data.comment || ""),
       receivedAt: eventTime.toISOString(),
       msgId,
+      ...(emotes.length > 0 ? { emotes } : {}),
     };
     // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
     for (const streamerId of Array.from(inst.subscriberIds)) {

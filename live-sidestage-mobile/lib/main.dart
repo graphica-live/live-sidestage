@@ -6,6 +6,7 @@ import 'core/account_status_store.dart';
 import 'core/app_config_store.dart';
 import 'core/app_version.dart';
 import 'core/background_task_handler.dart';
+import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
 import 'core/session_controller.dart';
 import 'core/version_compare.dart';
@@ -46,6 +47,8 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
         ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
         ChangeNotifierProvider(create: (_) => AccountStatusStore()),
+        // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
+        ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
       ],
       child: MaterialApp(
         title: 'LIVE Sidestage',

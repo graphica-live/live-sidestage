@@ -575,6 +575,13 @@ class AppConfig {
   /// 合成音声は先読みするので、合成時に掛けると変更が次の1件に効かない。
   final int ttsVolume;
 
+  /// 読み上げ速度。50-200(%)。VOICEVOX の `speedScale` にそのまま渡す。
+  ///
+  /// **音量と違い、合成時にしか効かせられない。** そのため先読み済みの1件には
+  /// 反映されず、変更が効き始めるのは次の次の読み上げから。合成をやり直す作りに
+  /// すると、変更のたびに読み上げが途切れる。
+  final int ttsSpeed;
+
   final SoundConfig sound;
 
   const AppConfig({
@@ -584,6 +591,7 @@ class AppConfig {
     this.randomVoice = true,
     this.fixedStyleId = VoiceCatalog.defaultStyleId,
     this.ttsVolume = 100,
+    this.ttsSpeed = 100,
     this.sound = SoundConfig.initial,
   });
 
@@ -594,6 +602,7 @@ class AppConfig {
         'randomVoice': randomVoice,
         'fixedStyleId': fixedStyleId,
         'ttsVolume': ttsVolume,
+        'ttsSpeed': ttsSpeed,
         'sound': sound.toJson(),
       };
 
@@ -644,6 +653,8 @@ class AppConfig {
         // 実在しなくなった styleId も、ここで既定へ落とす。
         fixedStyleId: _knownStyleId(json['fixedStyleId']),
         ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
+        // キーが無い旧設定は等速。追加しただけなのでスキーマ版は上げていない。
+        ttsSpeed: _clampInt(json['ttsSpeed'], min: 50, max: 200, fallback: 100),
         sound: SoundConfig.fromJson(soundJson),
       );
     } catch (_) {
@@ -679,6 +690,7 @@ class AppConfig {
     bool? randomVoice,
     int? fixedStyleId,
     int? ttsVolume,
+    int? ttsSpeed,
     SoundConfig? sound,
   }) {
     return AppConfig(
@@ -688,6 +700,7 @@ class AppConfig {
       randomVoice: randomVoice ?? this.randomVoice,
       fixedStyleId: fixedStyleId ?? this.fixedStyleId,
       ttsVolume: ttsVolume ?? this.ttsVolume,
+      ttsSpeed: ttsSpeed ?? this.ttsSpeed,
       sound: sound ?? this.sound,
     );
   }
@@ -698,6 +711,7 @@ class AppConfig {
     bool? randomVoice,
     int? fixedStyleId,
     int? ttsVolume,
+    int? ttsSpeed,
     SoundConfig? sound,
   }) {
     return copyWith(
@@ -706,6 +720,7 @@ class AppConfig {
       randomVoice: randomVoice,
       fixedStyleId: fixedStyleId,
       ttsVolume: ttsVolume,
+      ttsSpeed: ttsSpeed,
       sound: sound,
     );
   }

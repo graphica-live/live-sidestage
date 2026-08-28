@@ -41,6 +41,39 @@ class AnalyticsPeriodSelection {
     return AnalyticsPeriodSelection(period: AnalyticsPeriod.day, date: jstTodayDateKey());
   }
 
+  /// 表示中の期間が「JSTの今日」を含むか。
+  ///
+  /// **ギフト受信での自動更新は、これが true のときだけ行うこと。** 先月や昨日を
+  /// 見ているときに取り直すと、過去の数字が勝手に動いたように見える。
+  ///
+  /// 判定はサーバー `gift-analytics.ts` の `getDateRange` と**同じ規則**にしてある。
+  /// week は月曜起点（日曜は -6 補正）、month は暦月。ここがずれると、週の境目だけ
+  /// 自動更新されない／されすぎる、という気づきにくい食い違いになる。
+  ///
+  /// サーバー応答の期間には頼らない。初回ロード前は手元に無いし、期間を切り替えた
+  /// 直後は古い応答が残っている。
+  bool containsJstToday({String? today}) {
+    final t = today ?? jstTodayDateKey();
+    switch (period) {
+      case AnalyticsPeriod.day:
+        return date == t;
+      case AnalyticsPeriod.week:
+        final base = _parse(date);
+        final weekday = base.weekday; // DateTime は月=1..日=7
+        final monday = base.subtract(Duration(days: weekday - 1));
+        final sunday = monday.add(const Duration(days: 6));
+        final target = _parse(t);
+        return !target.isBefore(monday) && !target.isAfter(sunday);
+      case AnalyticsPeriod.month:
+        return date.substring(0, 7) == t.substring(0, 7);
+    }
+  }
+
+  static DateTime _parse(String date) {
+    final parts = date.split('-').map(int.parse).toList();
+    return DateTime.utc(parts[0], parts[1], parts[2]);
+  }
+
   AnalyticsPeriodSelection withPeriod(AnalyticsPeriod newPeriod) {
     return AnalyticsPeriodSelection(period: newPeriod, date: date);
   }
