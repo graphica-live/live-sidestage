@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   BATTLE_ACTION,
+  battleNotifyDecision,
   mergeBattleState,
   parseArmiesEvent,
   parseBattleEvent,
@@ -401,5 +402,125 @@ describe("mergeBattleState", () => {
     const twice = mergeBattleState(once, parsed, new Date(now.getTime() + 5000));
 
     expect(twice).toEqual(once);
+  });
+});
+
+describe("battleNotifyDecision", () => {
+  it("初回のEND遷移は ended", () => {
+    // 受信時刻はEND_MSより前(=まだ設定上の終了時刻を過ぎていない)にする。
+    // mergeBattleStateは「設定値の終了時刻をすでに過ぎている」場合、
+    // START扱いの受信でもendedAtを自動で立てる(途中接続でFINISHを逃した救済)ため、
+    // ここでその救済が誤発火すると意図した「まだ終わっていない状態」が作れない。
+    const opened = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!,
+      new Date(START_MS)
+    );
+    const finished = mergeBattleState(
+      opened,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+
+    expect(battleNotifyDecision(opened, finished)).toBe("ended");
+  });
+
+  it("previous=nullでも(途中接続で最初からENDが取れた場合)endedを返す", () => {
+    const alreadyEnded = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+
+    expect(battleNotifyDecision(null, alreadyEnded)).toBe("ended");
+  });
+
+  it("二重FINISH(スコア不変)は通知しない", () => {
+    const finished = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+    const finishedAgain = mergeBattleState(
+      finished,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS + 2000)
+    );
+
+    expect(battleNotifyDecision(finished, finishedAgain)).toBeNull();
+  });
+
+  it("CUT_SHORTのあとにFINISHが遅れて届いても(スコア不変なら)通知しない", () => {
+    const opened = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!,
+      new Date(START_MS)
+    );
+    const cutShort = mergeBattleState(
+      opened,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.CUT_SHORT))!,
+      new Date(END_MS)
+    );
+    const lateFinish = mergeBattleState(
+      cutShort,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS + 2000)
+    );
+
+    expect(battleNotifyDecision(cutShort, lateFinish)).toBeNull();
+  });
+
+  it("END後にスコア更新が届いたら score_updated", () => {
+    const finished = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+    const scoreUpdated = mergeBattleState(
+      finished,
+      parseArmiesEvent({
+        battleId: "7300000000000000000",
+        battleItems: { "111": { anchorIdStr: "111", hostScore: "9999" } },
+      })!,
+      new Date(END_MS + 3000)
+    );
+
+    expect(battleNotifyDecision(finished, scoreUpdated)).toBe("score_updated");
+  });
+
+  it("END後にスコアが変化しなければ通知しない", () => {
+    const finished = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.FINISH))!,
+      new Date(END_MS)
+    );
+    const sameScoreAgain = mergeBattleState(
+      finished,
+      parseArmiesEvent({
+        battleId: "7300000000000000000",
+        battleItems: { "111": { anchorIdStr: "111", hostScore: "5000" } },
+      })!,
+      new Date(END_MS + 3000)
+    );
+
+    expect(battleNotifyDecision(finished, sameScoreAgain)).toBeNull();
+  });
+
+  it("バトルが終わっていなければ通知しない", () => {
+    const opened = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!,
+      new Date(START_MS)
+    );
+    const stillOpen = mergeBattleState(
+      opened,
+      parseArmiesEvent({
+        battleId: "7300000000000000000",
+        battleItems: { "111": { anchorIdStr: "111", hostScore: "6000" } },
+      })!,
+      new Date(START_MS + 3000)
+    );
+
+    expect(battleNotifyDecision(opened, stillOpen)).toBeNull();
   });
 });
