@@ -112,6 +112,15 @@ class SpeechQueueController extends ChangeNotifier {
 
   void _enqueue(Comment comment) {
     if (!initialized || !enabled) return;
+    // 本文が空のコメント(エモートだけの発言)はVOICEVOXに渡さない。空文字を合成すると
+    // 中身の無いwavになり、再生時に PlatformException で落ちる。**Android/iOS 共通の経路。**
+    // エモート自体は読み上げない — 連打されると読み上げがそれだけで埋まる。
+    // 画面には [Comment.displayText] が「[エモート]」と出すので、消えたようには見えない。
+    //
+    // **_processQueue 側ではなくここで止めること。** 先読み合成
+    // (`_engine.synthesize(next.comment, ...)`) は次の1件を先に合成するので、
+    // 向こうで弾いても空文字が合成へ渡る経路が残る。
+    if (comment.comment.trim().isEmpty) return;
     _queue.add(comment);
     unawaited(_processQueue());
   }

@@ -327,6 +327,9 @@ class CommentSpeechTaskHandler extends TaskHandler {
       'profilePictureUrl': c.profilePictureUrl,
       'comment': c.comment,
       'receivedAt': c.receivedAt.toIso8601String(),
+      // メインisolate側は同じ Comment.tryParse で復元する。ここを足し忘れると
+      // 画面に出る側だけエモートが消える(受信自体は成功しているので気づきにくい)。
+      'emotes': c.emotesToMaps(),
     });
   }
 }

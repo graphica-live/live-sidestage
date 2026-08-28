@@ -104,7 +104,9 @@ class TtsTab extends StatelessWidget {
                         child: c.profilePictureUrl == null ? const Icon(Icons.person) : null,
                       ),
                       title: Text(c.nickname),
-                      subtitle: Text(c.comment),
+                      // c.comment ではなく displayText。エモートだけのコメントは
+                      // 本文が空で届くので、生のまま出すと行が空白になる。
+                      subtitle: Text(c.displayText),
                     );
                   },
                 ),
