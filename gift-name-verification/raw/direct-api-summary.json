@@ -1,0 +1,94 @@
+{
+  "source": "direct-http",
+  "endpoint": "https://webcast.tiktok.com/webcast/gift/list/",
+  "results": [
+    {
+      "key": "default-no-cookie",
+      "ok": true,
+      "status": 200,
+      "elapsedMs": 473,
+      "count": 684,
+      "japaneseNameCount": 0,
+      "sample": [
+        {
+          "id": 7934,
+          "name": "Heart Me"
+        },
+        {
+          "id": 105810,
+          "name": "Guardian's Pledge"
+        },
+        {
+          "id": 12853,
+          "name": "Level Ship"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-ja-JP-no-cookie",
+      "ok": true,
+      "status": 200,
+      "elapsedMs": 391,
+      "count": 684,
+      "japaneseNameCount": 663,
+      "sample": [
+        {
+          "id": 105810,
+          "name": "ガーディアンの誓い"
+        },
+        {
+          "id": 12853,
+          "name": "レベルシップ"
+        },
+        {
+          "id": 12852,
+          "name": "レベルシップ"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-ja-JP-with-cookie",
+      "ok": true,
+      "status": 200,
+      "elapsedMs": 380,
+      "count": 684,
+      "japaneseNameCount": 663,
+      "sample": [
+        {
+          "id": 105810,
+          "name": "ガーディアンの誓い"
+        },
+        {
+          "id": 12853,
+          "name": "レベルシップ"
+        },
+        {
+          "id": 12852,
+          "name": "レベルシップ"
+        }
+      ]
+    },
+    {
+      "key": "webcast_language-en-JP-region",
+      "ok": true,
+      "status": 200,
+      "elapsedMs": 408,
+      "count": 684,
+      "japaneseNameCount": 663,
+      "sample": [
+        {
+          "id": 105810,
+          "name": "ガーディアンの誓い"
+        },
+        {
+          "id": 12853,
+          "name": "レベルシップ"
+        },
+        {
+          "id": 12852,
+          "name": "レベルシップ"
+        }
+      ]
+    }
+  ]
+}

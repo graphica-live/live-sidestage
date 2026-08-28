@@ -54,6 +54,7 @@ export default async function middleware(req: NextRequest) {
 //   api/health        — ヘルスチェック
 //   api/debug         — token 保護のデバッグ用
 //   api/internal      — INTERNAL_API_SECRET 保護の Worker → Web
+//   api/webhooks/stripe — Stripe → Web(署名検証で保護。NextAuthセッションを要求できない)
 //   api/analytics/monthly-contributors — デスクトップ版(APIキー保護)
 //   api/agency/gifts  — 企業向けAPI(x-api-keyヘッダ認証)専用のサブツリー。認可はroute内の
 //                       resolveAgencyByApiKey()が唯一の境界になる。事務所セッションで守る
@@ -64,6 +65,6 @@ export default async function middleware(req: NextRequest) {
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };

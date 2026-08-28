@@ -28,8 +28,22 @@ function battlePayload(action: number, overrides: Record<string, unknown> = {}) 
       "222": { anchorIdStr: "222", hostScore: "4200", userArmy: [] },
     },
     anchorInfo: {
-      "111": { user: { userId: "111", nickName: "配信者A", displayId: "hostA" } },
-      "222": { user: { userId: "222", nickName: "配信者B", displayId: "hostB" } },
+      "111": {
+        user: {
+          userId: "111",
+          nickName: "配信者A",
+          displayId: "hostA",
+          avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/a.webp", "https://p19.example/a.jpeg"] },
+        },
+      },
+      "222": {
+        user: {
+          userId: "222",
+          nickName: "配信者B",
+          displayId: "hostB",
+          avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/b.webp"] },
+        },
+      },
     },
     ...overrides,
   };
@@ -70,6 +84,39 @@ describe("parseBattleEvent", () => {
     expect(parsed?.hostUserIds).toEqual(["111", "222"]);
     expect(parsed?.hostDisplayIds).toEqual(["hostA", "hostB"]);
     expect(parsed?.hostScores).toEqual({ "111": "5000", "222": "4200" });
+  });
+
+  it("anchorIdごとにnickName/displayId/avatarUrlをRecordで集める", () => {
+    const parsed = parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN));
+
+    expect(parsed?.hostProfiles).toEqual({
+      "111": {
+        displayId: "hostA",
+        nickName: "配信者A",
+        avatarUrl: "https://p16-common-sign.tiktokcdn.com/a.webp",
+      },
+      "222": {
+        displayId: "hostB",
+        nickName: "配信者B",
+        avatarUrl: "https://p16-common-sign.tiktokcdn.com/b.webp",
+      },
+    });
+  });
+
+  it("avatarThumb.urlが無い/空でもavatarUrlはnullで他は取れる", () => {
+    const parsed = parseBattleEvent(
+      battlePayload(BATTLE_ACTION.OPEN, {
+        anchorInfo: {
+          "111": { user: { userId: "111", nickName: "配信者A", displayId: "hostA" } },
+        },
+      })
+    );
+
+    expect(parsed?.hostProfiles["111"]).toEqual({
+      displayId: "hostA",
+      nickName: "配信者A",
+      avatarUrl: null,
+    });
   });
 
   it("armiesやanchorInfoが配列で来ても読める", () => {
@@ -182,6 +229,7 @@ describe("mergeBattleState", () => {
       hostUserIds: [],
       hostDisplayIds: [],
       hostScores: {},
+      hostProfiles: {},
     };
 
     const state = mergeBattleState(
@@ -207,6 +255,7 @@ describe("mergeBattleState", () => {
       hostUserIds: ["111"],
       hostDisplayIds: [],
       hostScores: { "111": "100" },
+      hostProfiles: {},
     };
 
     const state = mergeBattleState(confirmed, parseArmiesEvent({ battleId: "abc" })!, now);
@@ -263,6 +312,29 @@ describe("mergeBattleState", () => {
     expect(second.hostScores).toEqual({ "111": "9999", "222": "4200" });
     expect(second.hostUserIds).toEqual(["111", "222"]);
     expect(second.durationSec).toBe(300);
+  });
+
+  it("hostProfilesは後続イベントがnickNameを持たなくても既存値を潰さない", () => {
+    const first = mergeBattleState(
+      null,
+      parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN))!,
+      now
+    );
+    // armiesイベントはanchorInfoを持たないため、hostProfilesは空({})で来る。
+    const second = mergeBattleState(
+      first,
+      parseArmiesEvent({
+        battleId: "7300000000000000000",
+        battleItems: { "111": { anchorIdStr: "111", hostScore: "9999" } },
+      })!,
+      now
+    );
+
+    expect(second.hostProfiles["111"]).toEqual({
+      displayId: "hostA",
+      nickName: "配信者A",
+      avatarUrl: "https://p16-common-sign.tiktokcdn.com/a.webp",
+    });
   });
 
   it("終了を観測した後にOPENが遅れて届いても巻き戻さない", () => {

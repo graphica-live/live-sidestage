@@ -1,19 +1,21 @@
 import { prisma } from "@/lib/prisma";
-import { BATTLE_ACTION } from "@/lib/tiktok-battle";
+import { BATTLE_ACTION, type HostProfiles } from "@/lib/tiktok-battle";
 import { getDateRange } from "@/lib/gift-analytics";
-import { queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
+import { queryGifts, resolveHiddenGiftIds, type GiftAnalyticsUser } from "@/lib/gift-analytics";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
 // バトル履歴タブの集計ロジック。
 //
-// **相手の TikTok ハンドルは payload に含まれない**(tiktok-battle.ts 参照)。相手の識別は
-// 「同じ battleId を持つ別 room の行」を検索する以外に手段がなく、相手も analytics に
-// 登録されている場合しか room までは分からない。
+// **相手のTikTokハンドル・表示名・アイコンは、相手が analytics 未登録でも取れる。**
+// `linkMicBattle`/`linkMicArmies` の `anchorInfo` は両サイド分が同時に配信されるため、
+// 自分の room の `TiktokBattle.hostProfiles`(tiktok-battle.ts)だけで解決できる
+// (2026-08-27 に本番データで実証済み)。「同じ battleId を持つ別 room の行」を検索するのは、
+// 相手が analytics に登録済みかどうか(= 自platform内リンクに使えるtiktokId)を知るためだけに残す。
 //
 // **スコアは消去法で解決する。** TiktokRoom.hostUserId が分かっているのは基本的に自分の room
 // だけ(相手が未登録なら相手の hostUserId は永遠に埋まらない)。同じ battleId の全 room 行から
 // hostUserIds をマージして重複排除した集合がちょうど2件で、自分の hostUserId がその一方なら、
-// **もう一方が相手の anchorId** だと機械的に決まる。相手の room が見つからなくても、
-// hostScores から相手のスコアだけは出せる。3人以上(2vs2 等)はサイド分割の情報が
+// **もう一方が相手の anchorId** だと機械的に決まる。3人以上(2vs2 等)はサイド分割の情報が
 // payload に無く敵味方を区別できないため、自分のスコアだけ出す。
 
 /** 保存できる形の hostScore か。"12.5" や "1e+21" を BigInt() に渡して落ちないようにする。 */
@@ -152,21 +154,77 @@ export function jstDateRangeToUtc(period: string, date: string): { start: Date; 
   return { start: start_, end: endExclusive };
 }
 
+export type BattleOpponent = {
+  /** 相手が登録済みならそのtiktokId。未登録ならnull(補助情報)。 */
+  tiktokId: string | null;
+  /** anchorInfo由来のTikTokハンドル。相手が未登録でも取れる。ID併記用。 */
+  displayId: string | null;
+  /** 表示名。UIのメイン表示。 */
+  nickName: string | null;
+  /** 自前ストレージのpresigned GET URL。無ければnull。 */
+  avatarUrl: string | null;
+  count: number;
+};
+
 export type BattleListItem = {
   battleId: string;
   startedAt: string;
   status: BattleWindow["status"];
-  opponent: { tiktokId: string | null; count: number } | null;
+  opponent: BattleOpponent | null;
   selfScore: string | null;
   opponentScore: string | null;
+  /** 自分が受け取った実ダイヤ合計。区間が確定できない(unknown、end===nullのcut_short)場合は0。 */
+  selfTotalDiamonds: number;
 };
 
 /**
- * roomId の観測済みバトル一覧を返す。固定4クエリ(N+1にしない):
- * (1) 自 room のバトル (2) 同 battleId の他 room 行 (3) 他 room の TiktokRoom (4) 自 room の hostUserId。
+ * 同じbattleIdの行から、windowごとのダイヤ合計を求める。純粋関数。
+ *
+ * giftsはreceivedAt昇順にソート済みで渡すこと。各windowについて開始位置を二分探索してから
+ * 線形に集計する(素朴なG×W走査を避ける)。windowはroomが同時に複数バトルへ参加できない
+ * 性質上ほとんど重ならないが、重なっても正しく集計される(重複走査になるだけ)。
+ */
+export function sumDiamondsPerWindow(
+  gifts: { receivedAt: Date; totalDiamonds: number }[],
+  windows: { battleId: string; start: Date; end: Date }[]
+): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const w of windows) result.set(w.battleId, 0);
+
+  const receivedAtMs = gifts.map((g) => g.receivedAt.getTime());
+
+  function lowerBound(target: number): number {
+    let lo = 0;
+    let hi = receivedAtMs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (receivedAtMs[mid] < target) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  for (const w of windows) {
+    const endMs = w.end.getTime();
+    let sum = 0;
+    for (let i = lowerBound(w.start.getTime()); i < gifts.length && receivedAtMs[i] <= endMs; i++) {
+      sum += gifts[i].totalDiamonds;
+    }
+    result.set(w.battleId, sum);
+  }
+
+  return result;
+}
+
+/**
+ * roomId の観測済みバトル一覧を返す。固定7クエリ(N+1にしない):
+ * (1) 自 room のバトル (2) 同 battleId の他 room 行 (3) 他 room の TiktokRoom (4) 自 room の hostUserId
+ * (5) 非表示ギフトID (6) ダイヤ集計対象のGift (7) 相手アイコンのTiktokAvatarAsset。
+ * (5)〜(7)はダイヤ集計対象・相手アイコンが1件も無ければ実行しない。
  */
 export async function queryBattles(
   roomId: string,
+  viewerStreamerId: string,
   range: { start: Date; end: Date },
   now: Date = new Date()
 ): Promise<{ battles: BattleListItem[] }> {
@@ -188,6 +246,7 @@ export async function queryBattles(
       durationSec: true,
       hostUserIds: true,
       hostScores: true,
+      hostProfiles: true,
     },
   });
 
@@ -216,7 +275,51 @@ export async function queryBattles(
     else otherRowsByBattleId.set(row.battleId, [row]);
   }
 
-  const battles = ownBattles.map((own): BattleListItem => {
+  // ダイヤ集計対象のwindowを集める。unknown、end===nullのcut_shortは対象外(後で0扱い)。
+  // liveはwindow.end=nowなので現時点までの累計になる。
+  const windowInfoByBattleId = new Map<string, BattleWindow>();
+  const diamondWindows: { battleId: string; start: Date; end: Date }[] = [];
+  for (const own of ownBattles) {
+    const windowInfo = resolveBattleWindow(own, now);
+    windowInfoByBattleId.set(own.battleId, windowInfo);
+    if (windowInfo.window !== null && windowInfo.window.end !== null) {
+      diamondWindows.push({ battleId: own.battleId, start: windowInfo.window.start, end: windowInfo.window.end });
+    }
+  }
+
+  let diamondsByBattleId = new Map<string, number>();
+  if (diamondWindows.length > 0) {
+    const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
+    const gifts = await prisma.gift.findMany({
+      where: {
+        roomId,
+        OR: diamondWindows.map((w) => ({ receivedAt: { gte: w.start, lte: w.end } })),
+        ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
+      },
+      select: { receivedAt: true, totalDiamonds: true },
+      orderBy: { receivedAt: "asc" },
+    });
+    diamondsByBattleId = sumDiamondsPerWindow(gifts, diamondWindows);
+  }
+
+  type PendingItem = {
+    battleId: string;
+    startedAt: string;
+    status: BattleWindow["status"];
+    selfScore: string | null;
+    opponentScore: string | null;
+    selfTotalDiamonds: number;
+    opponentTiktokId: string | null;
+    opponentDisplayId: string | null;
+    opponentNickName: string | null;
+    opponentAnchorId: string | null;
+    opponentCount: number | null;
+  };
+
+  // 1v1に解決できたバトルの相手anchorIdをdistinctで集め、アイコンをまとめて1回だけ解決する。
+  const opponentAnchorIds = new Set<string>();
+
+  const pending: PendingItem[] = ownBattles.map((own): PendingItem => {
     const others = otherRowsByBattleId.get(own.battleId) ?? [];
     const rows: BattleRow[] = [
       { battleId: own.battleId, hostUserIds: own.hostUserIds, hostScores: own.hostScores },
@@ -224,36 +327,73 @@ export async function queryBattles(
     ];
 
     const resolved = resolveBattleScore({ rows, selfHostUserId: selfRoom?.hostUserId ?? null });
-    const windowInfo = resolveBattleWindow(own, now);
-
-    let opponent: BattleListItem["opponent"] = null;
-    let opponentScore: string | null = null;
+    const windowInfo = windowInfoByBattleId.get(own.battleId)!;
     const selfScore: string | null = resolved.selfScore;
+
+    let opponentTiktokId: string | null = null;
+    let opponentDisplayId: string | null = null;
+    let opponentNickName: string | null = null;
+    let opponentAnchorId: string | null = null;
+    let opponentCount: number | null = null;
+    let opponentScore: string | null = null;
 
     if (resolved.kind === "1v1") {
       opponentScore = resolved.opponentScore;
+      opponentAnchorId = resolved.opponentAnchorId;
+      opponentAnchorIds.add(resolved.opponentAnchorId);
+
+      const profile = (own.hostProfiles as HostProfiles | null)?.[resolved.opponentAnchorId];
+      opponentDisplayId = profile?.displayId ?? null;
+      opponentNickName = profile?.nickName ?? null;
+
       const opponentRoom = others.find((o) => o.hostUserIds.includes(resolved.opponentAnchorId));
-      const tiktokId = opponentRoom ? otherRoomById.get(opponentRoom.roomId)?.tiktokId ?? null : null;
-      opponent = { tiktokId, count: 1 };
+      opponentTiktokId = opponentRoom ? otherRoomById.get(opponentRoom.roomId)?.tiktokId ?? null : null;
+      opponentCount = 1;
     } else if (resolved.kind === "multi") {
-      opponent = { tiktokId: null, count: resolved.participantCount - 1 };
+      opponentCount = resolved.participantCount - 1;
     } else if (others.length > 0) {
       // anchorId ベースでは解決できなくても(hostUserId未解決・別人room混在等)、別 room の
       // 観測があれば相手候補として名前だけ出す。スコア対比は anchorId が特定できないので出さない。
       const firstOther = others[0];
-      const tiktokId = otherRoomById.get(firstOther.roomId)?.tiktokId ?? null;
-      opponent = { tiktokId, count: otherRoomIds.length };
+      opponentTiktokId = otherRoomById.get(firstOther.roomId)?.tiktokId ?? null;
+      opponentCount = otherRoomIds.length;
     }
 
     return {
       battleId: own.battleId,
       startedAt: own.startedAt.toISOString(),
       status: windowInfo.status,
-      opponent,
       selfScore,
       opponentScore,
+      selfTotalDiamonds: diamondsByBattleId.get(own.battleId) ?? 0,
+      opponentTiktokId,
+      opponentDisplayId,
+      opponentNickName,
+      opponentAnchorId,
+      opponentCount,
     };
   });
+
+  const opponentAvatarUrls = await resolveAvatarUrls("battle_host", [...opponentAnchorIds]);
+
+  const battles: BattleListItem[] = pending.map((p) => ({
+    battleId: p.battleId,
+    startedAt: p.startedAt,
+    status: p.status,
+    opponent:
+      p.opponentCount === null
+        ? null
+        : {
+            tiktokId: p.opponentTiktokId,
+            displayId: p.opponentDisplayId,
+            nickName: p.opponentNickName,
+            avatarUrl: p.opponentAnchorId ? opponentAvatarUrls.get(p.opponentAnchorId) ?? null : null,
+            count: p.opponentCount,
+          },
+    selfScore: p.selfScore,
+    opponentScore: p.opponentScore,
+    selfTotalDiamonds: p.selfTotalDiamonds,
+  }));
 
   return { battles };
 }

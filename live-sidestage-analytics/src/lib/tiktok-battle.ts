@@ -21,6 +21,24 @@ export const BATTLE_ACTION = {
 
 export type BattlePhase = "START" | "END" | "PROGRESS";
 
+/**
+ * anchorId(=hostUserIds の要素)ごとのプロフィール情報。
+ *
+ * **`hostUserIds`/`hostDisplayIds` の配列は互いにインデックス対応していない**
+ * (armies 走査と anchorInfo 走査が別ループで、順序保証がない)。anchorId をキーにした
+ * Record にすることで、この既存の弱点を新規フィールドへ持ち込まない。
+ */
+export type HostProfile = {
+  displayId: string | null;
+  nickName: string | null;
+  /**
+   * avatarThumb.url[0] 相当。署名付き TikTok CDN URL で数十時間~で失効する。
+   * 恒久表示には使わず、avatar-storage.ts の再保存処理の入力としてのみ使う。
+   */
+  avatarUrl: string | null;
+};
+export type HostProfiles = Record<string /* anchorId */, HostProfile>;
+
 export type ParsedBattle = {
   battleId: string;
   /** 最後に観測した BattleAction。armies イベントには action が無いので null */
@@ -33,10 +51,12 @@ export type ParsedBattle = {
   durationSec: number | null;
   /** anchorIdStr(数値文字列)の一覧 */
   hostUserIds: string[];
-  /** anchorInfo[].user.displayId(ハンドル相当・実 payload で未検証) */
+  /** anchorInfo[].user.displayId(ハンドル相当。実データで検証済み、393/394件で取得できている) */
   hostDisplayIds: string[];
   /** anchorIdStr -> hostScore。TikTok 側の集計値なので文字列のまま持つ */
   hostScores: Record<string, string>;
+  /** anchorIdStr -> {displayId, nickName, avatarUrl}。相手が analytics 未登録でも取れる */
+  hostProfiles: HostProfiles;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -96,7 +116,18 @@ function findArmies(data: Record<string, unknown>): Record<string, unknown>[] {
   return armies.length > 0 ? armies : toEntries(data.battleItems);
 }
 
-function collectHosts(data: Record<string, unknown>) {
+/** avatarThumb.url は解像度違いの複数URLが並ぶ配列。先頭の1件を代表として使う。 */
+function firstAvatarUrl(user: Record<string, unknown>): string | null {
+  const avatarThumb = asRecord(user.avatarThumb);
+  if (!avatarThumb) return null;
+  const urls = avatarThumb.url;
+  if (!Array.isArray(urls)) return null;
+  const first = urls.find((u) => typeof u === "string" && u.length > 0);
+  return typeof first === "string" ? first : null;
+}
+
+/** バックフィルスクリプト(既存raw JSONの再解釈)からも使うのでexportする。 */
+export function collectHosts(data: Record<string, unknown>) {
   const hostUserIds: string[] = [];
   const hostScores: Record<string, string> = {};
 
@@ -110,10 +141,11 @@ function collectHosts(data: Record<string, unknown>) {
   }
 
   const hostDisplayIds: string[] = [];
+  const hostProfiles: HostProfiles = {};
   for (const info of toEntries(data.anchorInfo)) {
     // simplifyObject が足す battleUsers ではなく、生の anchorInfo を読む。
-    // BattleBaseUserInfo には uniqueId が無く displayId しか無いため、
-    // これを TikTok ハンドルとして使えるかは実 payload での検証待ち。
+    // BattleBaseUserInfo には uniqueId が無く displayId しか無いが、実データで
+    // TikTok ハンドルとして使える値であることを確認済み(2026-08-27)。
     const user = asRecord(info.user) ?? info;
     const displayId = nonEmptyString(user.displayId);
     if (displayId !== null && !hostDisplayIds.includes(displayId)) {
@@ -121,9 +153,17 @@ function collectHosts(data: Record<string, unknown>) {
     }
     const userId = nonEmptyString(user.userId);
     if (userId !== null && !hostUserIds.includes(userId)) hostUserIds.push(userId);
+
+    if (userId !== null) {
+      hostProfiles[userId] = {
+        displayId,
+        nickName: nonEmptyString(user.nickName),
+        avatarUrl: firstAvatarUrl(user),
+      };
+    }
   }
 
-  return { hostUserIds, hostDisplayIds, hostScores };
+  return { hostUserIds, hostDisplayIds, hostScores, hostProfiles };
 }
 
 /**
@@ -195,7 +235,27 @@ export type BattleRecordState = {
   hostUserIds: string[];
   hostDisplayIds: string[];
   hostScores: Record<string, string>;
+  hostProfiles: HostProfiles;
 };
+
+/**
+ * anchorIdごとにフィールド単位でマージする。オブジェクト丸ごとの spread は使わない
+ * (後続イベントで nickName が取れなかった場合に非nullが null で潰れてしまうため)。
+ * displayId/nickName は非nullを保持し、avatarUrl は「新しいほど失効までの猶予がある」
+ * ため新しい非null値を優先する。
+ */
+export function mergeHostProfiles(existing: HostProfiles, next: HostProfiles): HostProfiles {
+  const merged: HostProfiles = { ...existing };
+  for (const [anchorId, profile] of Object.entries(next)) {
+    const prev = merged[anchorId];
+    merged[anchorId] = {
+      displayId: profile.displayId ?? prev?.displayId ?? null,
+      nickName: profile.nickName ?? prev?.nickName ?? null,
+      avatarUrl: profile.avatarUrl ?? prev?.avatarUrl ?? null,
+    };
+  }
+  return merged;
+}
 
 /**
  * 既存レコード(なければ null)と新しい観測から、保存すべき状態を作る。
@@ -273,5 +333,6 @@ export function mergeBattleState(
     hostDisplayIds: mergeIds(existing?.hostDisplayIds ?? [], parsed.hostDisplayIds),
     // スコアは最新の値で上書きする(増えていくので最後の観測が正しい)。
     hostScores: { ...(existing?.hostScores ?? {}), ...parsed.hostScores },
+    hostProfiles: mergeHostProfiles(existing?.hostProfiles ?? {}, parsed.hostProfiles),
   };
 }

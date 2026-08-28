@@ -32,9 +32,41 @@ model User {
   password      String?
   createdAt     DateTime  @default(now())
 
-  accounts Account[]
-  sessions Session[]
-  streamer Streamer?
+  accounts     Account[]
+  sessions     Session[]
+  streamer     Streamer?
+  subscription Subscription?
+
+  @@schema("public")
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  ULTRA
+
+  @@schema("public")
+}
+
+// User単位の課金プラン。行が無いUser = FREE扱い(全Userに先回りして作らない)。
+// event機能はUser.idへの生FKを張らない方針(Event.ownerUserId参照)なので、
+// event側からもこのモデルをuserIdの一致だけで参照する。
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  plan                 PlanTier  @default(FREE)
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  status               String? // Stripeのsubscription.statusをそのまま保存(active/past_due/canceled等)
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // onDelete: Cascadeで行ごと消える = Stripe側の課金は残ったままDB上の紐付けだけ失う。
+  // User削除機能は現状無いが、将来足す場合はStripe側のsubscription解約も併せて行うこと。
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -559,8 +591,9 @@ model TiktokBattle {
   endedAt        DateTime?
   durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
   hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
-  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
+  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostUserIdsとインデックス対応しない)
   hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
+  hostProfiles   Json      @default("{}") // anchorIdStr -> {displayId, nickName, avatarUrl}。tiktok-battle.tsのHostProfiles
   raw            Json // 受信したpayloadそのもの。実payloadのfixture取得と後追い調査用
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -571,6 +604,25 @@ model TiktokBattle {
   @@index([roomId, startedAt])
   @@index([battleId])
   @@map("tiktok_battles")
+  @@schema("public")
+}
+
+// TikTok(バトル参加者・ギフト送信者)のアバター画像を自前ストレージへ恒久保存したキャッシュ。
+// TikTokの署名付きURL(数十時間で失効)への依存を切るため、圧縮のうえ1回だけダウンロードして
+// Railway Bucketへ置く。roomIdを持たない(uniqueId/anchorIdはグローバルに一意なので、
+// 同じ人物が複数配信者に登場しても1回のダウンロードで済む)。
+model TiktokAvatarAsset {
+  id          String   @id @default(cuid())
+  kind        String // "battle_host" | "gift_sender"
+  subjectId   String // anchorId(battle_host) または uniqueId(gift_sender)
+  storageKey  String
+  contentType String
+  byteSize    Int
+  fetchedAt   DateTime @default(now()) // 30日超で再取得(avatar-storage.ts)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kind, subjectId])
+  @@map("tiktok_avatar_assets")
   @@schema("public")
 }
 

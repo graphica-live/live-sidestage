@@ -1,0 +1,274 @@
+{
+  "library": "tiktok-live-connector",
+  "libraryVersion": "2.1.1-beta1",
+  "target": "yu_ki_nojo",
+  "connectOk": true,
+  "availableGiftsCount": 680,
+  "sample": [
+    {
+      "batch_gift_info": {
+        "available_counts": [
+          5,
+          20,
+          50,
+          100
+        ],
+        "can_batch_send": true
+      },
+      "biz_extra": {},
+      "can_put_in_gift_box": false,
+      "color_infos": [],
+      "combo": true,
+      "describe": "sent リトルゆきのじょ",
+      "diamond_count": 1,
+      "disable_gallery_banner": false,
+      "duration": 1000,
+      "expiration_timestamp": 0,
+      "for_linkmic": false,
+      "gift_label_type": 0,
+      "gift_panel_banner": {
+        "banner_lynx_extra": "",
+        "banner_lynx_url": "sslocal://webcast_lynxview_card?pageId=gift_panel_banner_community_gift_unlocked&backgroundColor=%23551C00&ltrLeftImageSize=36px&ltrRightIcon=https%3A%2F%2Fsf16-va.tiktokcdn.com%2Fobj%2Feden-va2%2Fu01t_lcps_rvarpa%2FljhwZthlaukjlkulzlp%2Fgift-hub%2Fgift-box-banner-right-icon.png&textClassName=P2-Regular%20text-color-TextSecondary-dark&text=Unite+the+community+with+its+unique+Gift%21&textColor=%23F6F6F6&clickOpenScheme=aweme%3A%2F%2Froma_redirect%2F%3Fspark_page%3Dcommunity_gift%26enter_from%3Dgift_panel_top_banner&url=https%3A%2F%2Flf16-gecko-source.tiktokcdn.com%2Fobj%2Fbyte-gurd-source-sg%2Fmusically%2Ffe%2Flive%2Ftiktok_live_revenue_low_code%2Fpages%2FgiftPanelBanner%2Ftemplate.js&bdhm_bid=tiktok_live_revenue_low_code&bdhm_pid=gift_panel_banner&gift_id=24964&ltrLeftImage=https%3A%2F%2Fp16-webcast.tiktokcdn.com%2Fimg%2Falisg%2Fwebcast-sg%2Fresource%2Fsaliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png~tplv-obj.image",
+        "banner_priority": 400,
+        "bg_color_values": [],
+        "deprecated": "",
+        "schema_url": ""
+      },
+      "gift_rank_recommend_info": "",
+      "gift_resources": {},
+      "gift_skin_to_gift_texts_infos": [],
+      "gift_skins": [],
+      "gift_struct_hash": "",
+      "gift_sub_type": 0,
+      "gift_texts": [],
+      "gift_vertical_scenarios": [
+        36
+      ],
+      "gold_effect": "",
+      "group_in_tab": 0,
+      "icon": {
+        "avg_color": "#A3C4CC",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "id": 24964,
+      "image": {
+        "avg_color": "#CECEEB",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/saliency_seg_1767731748364_0.8fc3516cb9d797fff930840a59ade57e.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "is_box_gift": false,
+      "is_broadcast_gift": false,
+      "is_displayed_on_panel": false,
+      "is_effect_befview": false,
+      "is_gallery_gift": false,
+      "is_global_gift": true,
+      "is_random_gift": false,
+      "lock_info": {
+        "gift_level": 0,
+        "highlight_enabled": true,
+        "lock": true,
+        "lock_type": 10,
+        "unlock_button_text": "",
+        "unlock_schema": "aweme://roma_redirect/?spark_page=community_gift_send&enter_from=gift_list"
+      },
+      "name": "リトルゆきのじょ",
+      "primary_effect_id": 0,
+      "resource_id": 0,
+      "strategy_event": "",
+      "tracker_params": {
+        "community_gift_status": "unlocked_no_fan_club",
+        "gift_subtype": "community_gift"
+      },
+      "type": 1
+    },
+    {
+      "biz_extra": {},
+      "can_put_in_gift_box": false,
+      "color_infos": [],
+      "combo": true,
+      "describe": "sent Guardian's Pledge",
+      "diamond_count": 4999,
+      "disable_gallery_banner": false,
+      "duration": 1000,
+      "expiration_timestamp": 0,
+      "for_linkmic": false,
+      "gift_label_type": 0,
+      "gift_rank_recommend_info": "",
+      "gift_resources": {},
+      "gift_skin_to_gift_texts_infos": [],
+      "gift_skins": [],
+      "gift_struct_hash": "",
+      "gift_sub_type": 0,
+      "gift_texts": [],
+      "gift_vertical_scenarios": [
+        0,
+        14
+      ],
+      "gold_effect": "",
+      "group_in_tab": 0,
+      "icon": {
+        "avg_color": "#7A5353",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "id": 105810,
+      "image": {
+        "avg_color": "#FFF8EB",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/1fc62b695705581a91cc2f7902eba1d2.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "is_box_gift": false,
+      "is_broadcast_gift": false,
+      "is_displayed_on_panel": false,
+      "is_effect_befview": false,
+      "is_gallery_gift": false,
+      "is_global_gift": true,
+      "is_random_gift": false,
+      "lock_info": {
+        "gift_level": 0,
+        "highlight_enabled": false,
+        "lock": false,
+        "lock_type": 0,
+        "unlock_button_text": "",
+        "unlock_schema": ""
+      },
+      "name": "Guardian's Pledge",
+      "primary_effect_id": 27957,
+      "resource_id": 12062,
+      "strategy_event": "",
+      "tracker_params": {},
+      "type": 2
+    },
+    {
+      "batch_gift_info": {
+        "available_counts": [
+          3,
+          5,
+          8
+        ],
+        "can_batch_send": true
+      },
+      "biz_extra": {},
+      "can_put_in_gift_box": false,
+      "color_infos": [],
+      "combo": true,
+      "describe": "sent Level Ship",
+      "diamond_count": 21000,
+      "disable_gallery_banner": false,
+      "duration": 1000,
+      "expiration_timestamp": 0,
+      "for_linkmic": true,
+      "gift_label_icon": {
+        "avg_color": "#373752",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/32fb177b684f680b526fe0f684a26ac7",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/32fb177b684f680b526fe0f684a26ac7~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/32fb177b684f680b526fe0f684a26ac7~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "gift_label_type": 12,
+      "gift_rank_recommend_info": "",
+      "gift_resources": {},
+      "gift_skin_to_gift_texts_infos": [],
+      "gift_skins": [],
+      "gift_struct_hash": "",
+      "gift_sub_type": 2,
+      "gift_texts": [],
+      "gift_vertical_scenarios": [
+        0,
+        6,
+        14
+      ],
+      "gold_effect": "",
+      "group_in_tab": 0,
+      "icon": {
+        "avg_color": "#FFF1EB",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "id": 12853,
+      "image": {
+        "avg_color": "#FAE6DC",
+        "height": 0,
+        "image_type": 0,
+        "is_animated": false,
+        "open_web_url": "",
+        "uri": "webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png",
+        "url_list": [
+          "https://p16-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png~tplv-obj.webp",
+          "https://p19-webcast.tiktokcdn.com/img/alisg/webcast-sg/resource/aca72c59f99d08b0c0d1cd6cc79dbb16.png~tplv-obj.webp"
+        ],
+        "width": 0
+      },
+      "is_box_gift": false,
+      "is_broadcast_gift": false,
+      "is_displayed_on_panel": false,
+      "is_effect_befview": false,
+      "is_gallery_gift": false,
+      "is_global_gift": true,
+      "is_random_gift": false,
+      "lock_info": {
+        "gift_level": 0,
+        "highlight_enabled": false,
+        "lock": false,
+        "lock_type": 0,
+        "unlock_button_text": "",
+        "unlock_schema": ""
+      },
+      "name": "Level Ship",
+      "primary_effect_id": 12230,
+      "resource_id": 4074,
+      "strategy_event": "",
+      "tracker_params": {
+        "gift_property": "audio_gift"
+      },
+      "type": 2
+    }
+  ]
+}
