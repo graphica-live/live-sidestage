@@ -7,7 +7,7 @@ Map<String, dynamic> base({Object? emotes, String comment = 'こんにちは'}) 
       'nickname': 'なまえ',
       'comment': comment,
       'receivedAt': '2026-08-28T10:00:00.000Z',
-      if (emotes != null) 'emotes': emotes,
+      'emotes': ?emotes,
     };
 
 void main() {
