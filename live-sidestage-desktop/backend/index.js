@@ -393,7 +393,7 @@ const {
     persistGiftJarCustomProfiles, persistCustomJarConfig, persistPushPullConfig, persistPushPullState,
     normalizeGiftJarProfile, normalizeGiftJarCustomProfiles,
     buildCustomJarPayload, saveCustomJarImageFile, deleteCustomJarImageFile,
-    normalizePushPullGifts, buildPushPullSnapshot,
+    normalizePushPullGifts, buildPushPullSnapshot, findPushPullMatch,
 } = require('./lib/gift-jar-config-state')({ dbStore, PUBLIC_DIRECTORY, getPushPullWidgetTextAppearance: (...args) => getPushPullWidgetTextAppearance(...args) });
 
 const effectMediaUpload = multer({
@@ -2123,6 +2123,7 @@ function normalizeGiftEvent(data) {
         giftId: giftId ? String(giftId) : null,
         giftName: giftName || null,
         giftImage: resolveLiveGiftImageUrl(data) || null,
+        diamondCount: Number(diamondCount) || 0,
         repeatCount: Number(repeatCount) || 1,
         totalGifts,
         rawPayload: JSON.stringify(data),
@@ -3289,17 +3290,16 @@ function ensureTikTokConnection() {
         }
 
         // Push-pull: check if this gift matches a configured push or pull gift
+        // (giftId完全一致優先、無ければ名前+価格でも重複giftIdの相方を救済する。詳細はfindPushPullMatch参照)
         if (normalizedEvent.giftId) {
-            const giftId = String(normalizedEvent.giftId);
             const repeatCount = normalizedEvent.repeatCount || 1;
-            const pushMatch = pushPullConfig.pushGifts.find((g) => g.giftId === giftId);
-            const pullMatch = !pushMatch && pushPullConfig.pullGifts.find((g) => g.giftId === giftId);
-            if (pushMatch) {
-                pushPullState.pushPoints += pushMatch.points * repeatCount;
+            const match = findPushPullMatch(pushPullConfig.pushGifts, pushPullConfig.pullGifts, normalizedEvent);
+            if (match?.side === 'push') {
+                pushPullState.pushPoints += match.gift.points * repeatCount;
                 persistPushPullState();
                 io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
-            } else if (pullMatch) {
-                pushPullState.pullPoints += pullMatch.points * repeatCount;
+            } else if (match?.side === 'pull') {
+                pushPullState.pullPoints += match.gift.points * repeatCount;
                 persistPushPullState();
                 io.emit('widgets:push-pull:updated', buildPushPullSnapshot());
             }

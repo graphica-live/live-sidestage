@@ -1,0 +1,21 @@
+[
+  {
+    "giftId": 13651,
+    "nodeGiftListDefault": "Go Popular",
+    "nodeGiftListJaJp": "人気アップ",
+    "nodeGiftListRoomScoped": "Go Popular",
+    "nodeEvent": "Popular Vote",
+    "pythonGiftListDefault": "Go Popular",
+    "pythonGiftListJaJp": "人気アップ",
+    "pythonEvent": "Popular Vote",
+    "csharpEvent": null,
+    "directApiDefault": "Go Popular",
+    "directApiJaJp": "人気アップ",
+    "diamondCount": 1,
+    "isJapanese": true,
+    "diff": true,
+    "giftListVsEventDiff": true,
+    "inRegularCatalog": true,
+    "seenOnlyViaLiveOrRoomScoped": false
+  }
+]

@@ -1,4 +1,33 @@
 const path = require('path');
+const { normalizeGiftNameKey } = require('./tiktok-gift-catalog');
+
+// TikTokのgift/listカタログには絵柄・価格が同じでもgiftIdだけ異なる重複ギフトが存在する。
+// 配信者がPush/Pull設定で「実際には配信されない方のgiftId」を選んでいても、
+// 名前+価格が一致すれば同一ギフトとして救済する。giftId一致を必ず名前一致より優先すること
+// （名前一致を先に評価すると、push/pullどちらか一方が誤って先に一致してしまう）。
+function findPushPullMatch(pushGifts, pullGifts, event) {
+    const giftId = String(event.giftId || '');
+    const matchesId = (g) => g.giftId === giftId;
+
+    let pushMatch = pushGifts.find(matchesId);
+    let pullMatch = !pushMatch && pullGifts.find(matchesId);
+    if (pushMatch || pullMatch) {
+        return { side: pushMatch ? 'push' : 'pull', gift: pushMatch || pullMatch };
+    }
+
+    const nameKey = normalizeGiftNameKey(event.giftName);
+    const diamondCount = Number(event.diamondCount) || 0;
+    if (!nameKey || diamondCount <= 0) {
+        return null;
+    }
+    const matchesNamePrice = (g) => g.diamondCount === diamondCount
+        && normalizeGiftNameKey(g.giftName) === nameKey;
+
+    pushMatch = pushGifts.find(matchesNamePrice);
+    pullMatch = !pushMatch && pullGifts.find(matchesNamePrice);
+    if (!pushMatch && !pullMatch) return null;
+    return { side: pushMatch ? 'push' : 'pull', gift: pushMatch || pullMatch };
+}
 
 module.exports = function({ dbStore, PUBLIC_DIRECTORY, getPushPullWidgetTextAppearance }) {
 
@@ -223,6 +252,7 @@ function normalizePushPullGifts(items) {
         giftId: String(item.giftId || '').trim(),
         giftName: String(item.giftName || '').trim(),
         giftImage: String(item.giftImage || '').trim(),
+        diamondCount: Math.max(0, Number(item.diamondCount) || 0),
         points: Math.max(1, Math.min(99999, Math.round(Number(item.points) || 1))),
     })).filter((item) => item.giftId.length > 0);
 }
@@ -321,5 +351,10 @@ function persistPushPullState() {
         deleteCustomJarImageFile,
         normalizePushPullGifts,
         buildPushPullSnapshot,
+        findPushPullMatch,
     };
 };
+
+// dbStore等に依存しない純粋関数なので、factory呼び出し(dbStoreのモック)なしに
+// unit testから直接requireできるよう、モジュール自体にも直接生やす。
+module.exports.findPushPullMatch = findPushPullMatch;

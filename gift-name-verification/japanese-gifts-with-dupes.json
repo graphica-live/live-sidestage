@@ -1,0 +1,4109 @@
+[
+  {
+    "giftId": 5655,
+    "name": "バラ",
+    "englishName": "Rose",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 5745,
+    "name": "猫の足",
+    "englishName": "Cat Paws",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 5827,
+    "name": "ソフトクリーム",
+    "englishName": "Ice Cream Cone",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6093,
+    "name": "サッカー",
+    "englishName": "Football",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6246,
+    "name": "グッド",
+    "englishName": "Thumbs Up",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6247,
+    "name": "ハート",
+    "englishName": "Heart",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6784,
+    "name": "ケーキ一切れ",
+    "englishName": "Cake Slice",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6788,
+    "name": "ペンライト",
+    "englishName": "Glow Stick",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 6890,
+    "name": "愛してる",
+    "englishName": "Love you",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 7897,
+    "name": "野球",
+    "englishName": "Baseball",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 7934,
+    "name": "ハートミー",
+    "englishName": "Heart Me",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 9355,
+    "name": "かわいい",
+    "englishName": "So Cute",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 10716,
+    "name": "投げキス",
+    "englishName": "Blow a kiss",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 12202,
+    "name": "初見です",
+    "englishName": "Nice to meet you",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 12355,
+    "name": "応援クラブ",
+    "englishName": "Club Cheers",
+    "diamondCount": 1,
+    "duplicateOf": [
+      153750
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 13298,
+    "name": "ウィンクする",
+    "englishName": "Wink Charm",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 13651,
+    "name": "人気アップ",
+    "englishName": "Go Popular",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 14113,
+    "name": "ラブレター",
+    "englishName": "Love Letter",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 14543,
+    "name": "おめでとうございます",
+    "englishName": "Congratulations",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 15231,
+    "name": "大好き",
+    "englishName": "Love you so much",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 15232,
+    "name": "素晴らしい",
+    "englishName": "You're awesome",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 15563,
+    "name": "うちわ",
+    "englishName": "Fan",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 15564,
+    "name": "びっくりした魚",
+    "englishName": "Suprised Fish",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 17085,
+    "name": "音楽アルバム",
+    "englishName": "Music  Album",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 17712,
+    "name": "コミュニティハート",
+    "englishName": "Community Heart",
+    "diamondCount": 1,
+    "duplicateOf": [
+      62816
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 19438,
+    "name": "ポップ",
+    "englishName": "Pop",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 19439,
+    "name": "オールディーズ",
+    "englishName": "Oldies",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 19441,
+    "name": "フリースタイル",
+    "englishName": "Freestyle",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 19446,
+    "name": "ウインク",
+    "englishName": "Wink wink",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 24964,
+    "name": "リトルゆきのじょ",
+    "englishName": null,
+    "diamondCount": 1
+  },
+  {
+    "giftId": 54724,
+    "name": "クリーパー",
+    "englishName": "Creeper",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 56560,
+    "name": "最初のバラ",
+    "englishName": "My First Rose",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 59313,
+    "name": "赤い稲妻",
+    "englishName": "Red Lightning",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 59511,
+    "name": "青い稲妻",
+    "englishName": "Blue Lightning",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 59512,
+    "name": "黄色い稲妻",
+    "englishName": "Yellow Lightning",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 59881,
+    "name": "希望のかけら",
+    "englishName": "A Shard of Hope",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 62816,
+    "name": "コミュニティハート",
+    "englishName": "Community Heart",
+    "diamondCount": 1,
+    "duplicateOf": [
+      17712
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 115510,
+    "name": "おさんぽ傘",
+    "englishName": "umbrella",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 131882,
+    "name": "Matchのお誘い！",
+    "englishName": "It's Match Time",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 153750,
+    "name": "応援クラブ",
+    "englishName": "Club Cheers",
+    "diamondCount": 1,
+    "duplicateOf": [
+      12355
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 231955,
+    "name": "よくできました",
+    "englishName": "Good Job",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 231956,
+    "name": "拍手",
+    "englishName": "Clap Clap",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 607157,
+    "name": "ヒーローの証",
+    "englishName": "Spidey Pin",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 637990,
+    "name": "宝のクローバー",
+    "englishName": "Treasure Clover",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 919346,
+    "name": "ウェルカムダッラ",
+    "englishName": "Welcome Dallah",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 946640,
+    "name": "参戦チケット",
+    "englishName": "LUVX Cheer",
+    "diamondCount": 1
+  },
+  {
+    "giftId": 9139,
+    "name": "チームブレスレット",
+    "englishName": "Team Bracelet",
+    "diamondCount": 2
+  },
+  {
+    "giftId": 5487,
+    "name": "フィンガーハート",
+    "englishName": "Finger Heart",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 5648,
+    "name": "ラヤグリーンパケット",
+    "englishName": "Duit Raya",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 8655,
+    "name": "ニャオ",
+    "englishName": "Cute Cat",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 12238,
+    "name": "エール",
+    "englishName": "Support",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 13521,
+    "name": "本気",
+    "englishName": "Seriously",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 13538,
+    "name": "おまもり",
+    "englishName": "New Year Protection",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 19445,
+    "name": "名前の呼びかけ",
+    "englishName": "Name shoutout",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 19447,
+    "name": "オーバーなリアクション",
+    "englishName": "Overreact",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 105781,
+    "name": "サッカー",
+    "englishName": "Spinning Soccer",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 440713,
+    "name": "茶色い肉球",
+    "englishName": "Brown Paw",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 919386,
+    "name": "愛の香り",
+    "englishName": "Love in Scent",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 1137702,
+    "name": "アンコールチケット",
+    "englishName": "Encore Ticket",
+    "diamondCount": 5
+  },
+  {
+    "giftId": 118812,
+    "name": "神の指",
+    "englishName": "Divine Fingers",
+    "diamondCount": 6
+  },
+  {
+    "giftId": 8243,
+    "name": "元気出して",
+    "englishName": "Cheer You Up",
+    "diamondCount": 9
+  },
+  {
+    "giftId": 12356,
+    "name": "団結クラブ",
+    "englishName": "Club Power",
+    "diamondCount": 9,
+    "duplicateOf": [
+      153751
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 16690,
+    "name": "スーパー人気",
+    "englishName": "Super Popular",
+    "diamondCount": 9
+  },
+  {
+    "giftId": 153751,
+    "name": "団結クラブ",
+    "englishName": "Club Power",
+    "diamondCount": 9,
+    "duplicateOf": [
+      12356
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 6544,
+    "name": "アイスバー",
+    "englishName": "Ice Lolly",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 8913,
+    "name": "ローザ",
+    "englishName": "Rosa",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 9947,
+    "name": "友情ネックレス",
+    "englishName": "Friendship Necklace",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 12898,
+    "name": "うどん脳",
+    "englishName": "Udon-nou",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 13300,
+    "name": "ハートの視線",
+    "englishName": "Heart Gaze",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 13864,
+    "name": "ふっかちゃん",
+    "englishName": "Fukkachan",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 14463,
+    "name": "ねば〜る君",
+    "englishName": "Nebaarukun",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 15063,
+    "name": "ジャーニーパス",
+    "englishName": "Journey Pass",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 18107,
+    "name": "おしゃれに変身",
+    "englishName": "Style Me Up",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 18789,
+    "name": "しあわせポニー",
+    "englishName": "Lucky Pony",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 19065,
+    "name": "リーグボール",
+    "englishName": "League Ball",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 19131,
+    "name": "チョコレート",
+    "englishName": "Chocolate",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 19448,
+    "name": "スローモーション",
+    "englishName": "Slow motion",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 59314,
+    "name": "バナナの皮",
+    "englishName": "Banana Peel",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 60077,
+    "name": "FANDOMうちわ",
+    "englishName": "FANDOM Fan",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 62675,
+    "name": "一緒に歌おう",
+    "englishName": "Sing Together",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 231882,
+    "name": "LIVEソング",
+    "englishName": "Songs of LIVE",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 231957,
+    "name": "深い関係",
+    "englishName": "Intimacy",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 231958,
+    "name": "衝撃的すぎ",
+    "englishName": "Mind Blown",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 440717,
+    "name": "黒い肉球",
+    "englishName": "Black Paw",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 444785,
+    "name": "音符雲",
+    "englishName": "Music Cloud",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 544253,
+    "name": "メロメロ〜",
+    "englishName": "I Like What I See",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 638002,
+    "name": "宝の鍵",
+    "englishName": "Treasure's Key",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 1143818,
+    "name": "勇気ポーション",
+    "englishName": "Courage potion",
+    "diamondCount": 10
+  },
+  {
+    "giftId": 19443,
+    "name": "ブラボー！",
+    "englishName": "Bravo!",
+    "diamondCount": 15
+  },
+  {
+    "giftId": 626056,
+    "name": "推しへの称賛",
+    "englishName": "Kudos for My Star",
+    "diamondCount": 15
+  },
+  {
+    "giftId": 5658,
+    "name": "香水",
+    "englishName": "Perfume",
+    "diamondCount": 20
+  },
+  {
+    "giftId": 59315,
+    "name": "カラーコーン",
+    "englishName": "Traffic Cone",
+    "diamondCount": 20
+  },
+  {
+    "giftId": 626064,
+    "name": "G.O.A.T.バスカー",
+    "englishName": "G.O.A.T. Busker",
+    "diamondCount": 20
+  },
+  {
+    "giftId": 5780,
+    "name": "花束",
+    "englishName": "Bouquet Flower",
+    "diamondCount": 30
+  },
+  {
+    "giftId": 5879,
+    "name": "ドーナッツ",
+    "englishName": "Doughnut",
+    "diamondCount": 30
+  },
+  {
+    "giftId": 17694,
+    "name": "栄光のバッジ",
+    "englishName": "Shield Token",
+    "diamondCount": 30
+  },
+  {
+    "giftId": 59316,
+    "name": "エネルギーカプセル",
+    "englishName": "Energy Capsule",
+    "diamondCount": 30
+  },
+  {
+    "giftId": 13523,
+    "name": "天才",
+    "englishName": "Genius",
+    "diamondCount": 50
+  },
+  {
+    "giftId": 5659,
+    "name": "折り鶴",
+    "englishName": "Paper Crane",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 6097,
+    "name": "小さな王冠",
+    "englishName": "Little Crown",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 6104,
+    "name": "キャップ",
+    "englishName": "Cap",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 6427,
+    "name": "帽子と口ひげ",
+    "englishName": "Hat and Mustache",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 6905,
+    "name": "ライブなう",
+    "englishName": "LIVE On Air",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 8130,
+    "name": "ハートのバブルガン",
+    "englishName": "Like-Pop",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 11180,
+    "name": "ラブペインティング",
+    "englishName": "Love Painting",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 12357,
+    "name": "クラブ勝利",
+    "englishName": "Club Victory",
+    "diamondCount": 99,
+    "duplicateOf": [
+      153753
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 12678,
+    "name": "ファンケーキ",
+    "englishName": "Level-up Sparks",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 13087,
+    "name": "風船ガム",
+    "englishName": "Bubble Gum",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 14109,
+    "name": "愛の印",
+    "englishName": "Mark of Love",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 14656,
+    "name": "ハートタッチ",
+    "englishName": "Greeting Heart",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 17105,
+    "name": "ミニパフェ",
+    "englishName": "Sundae Bowl",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 17922,
+    "name": "ハートハンターの矢",
+    "englishName": "Charmer Bow",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 62817,
+    "name": "コミュニティスタイル",
+    "englishName": "Community Style",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 153753,
+    "name": "クラブ勝利",
+    "englishName": "Club Victory",
+    "diamondCount": 99,
+    "duplicateOf": [
+      12357
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 170506,
+    "name": "歌うキノコ",
+    "englishName": "Singing Mushroom",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 170507,
+    "name": "フラワーメロディ",
+    "englishName": "Bloom Melody",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 232593,
+    "name": "グルーヴギター",
+    "englishName": "Groove Guitar",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 282739,
+    "name": "フィエスタアコーディオン",
+    "englishName": "Fiesta Accordion",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 437561,
+    "name": "パールチャイム",
+    "englishName": "Pearl Chime",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 842718,
+    "name": "牛の誘拐",
+    "englishName": "Cow-napping",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 985644,
+    "name": "キャンディいっぱい",
+    "englishName": "Candy Blast",
+    "diamondCount": 99
+  },
+  {
+    "giftId": 5566,
+    "name": "ミシカ ベア",
+    "englishName": "Mishka Bear",
+    "diamondCount": 100,
+    "duplicateOf": [
+      5582
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 5582,
+    "name": "ミシカ ベア",
+    "englishName": "Mishka Bear",
+    "diamondCount": 100,
+    "duplicateOf": [
+      5566
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 5585,
+    "name": "クラッカー",
+    "englishName": "Confetti",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 5660,
+    "name": "ハートポーズ",
+    "englishName": "Hand Heart",
+    "diamondCount": 100,
+    "duplicateOf": [
+      8343
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 7121,
+    "name": "豪華なクラッカー",
+    "englishName": "Marvelous Confetti",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 8343,
+    "name": "ハンドハート",
+    "englishName": "Hand Heart",
+    "diamondCount": 100,
+    "duplicateOf": [
+      5660
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 10994,
+    "name": "ブーケ",
+    "englishName": "Bouquet",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 12316,
+    "name": "バルーンギフトボックス",
+    "englishName": "Balloon Gift Box",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 13301,
+    "name": "歌って最高",
+    "englishName": "Singing Magic",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 59317,
+    "name": "パワーチップ",
+    "englishName": "Power Chip",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 60073,
+    "name": "FANDOMスタンプ",
+    "englishName": "FANDOM Stamp",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 444819,
+    "name": "虹のすべり台",
+    "englishName": "Rainbow Slide",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 544015,
+    "name": "すきすきビーム",
+    "englishName": "Heart My Earthling",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 637996,
+    "name": "宝の門",
+    "englishName": "Gate to Treasure",
+    "diamondCount": 100
+  },
+  {
+    "giftId": 14000,
+    "name": "蝶結び",
+    "englishName": "Bowknot",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 15187,
+    "name": "ビッグな叫び",
+    "englishName": "Big Shout Out",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 15189,
+    "name": "おしゃべりポップコーン",
+    "englishName": "Chatting Popcorn",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 16479,
+    "name": "ミステリーマスク",
+    "englishName": "Masquerade",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 16552,
+    "name": "ハートの風船",
+    "englishName": "Balloon Crown",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 17100,
+    "name": "羽のティアラ",
+    "englishName": "Feather Tiara",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 17359,
+    "name": "イモムシのカオス",
+    "englishName": "Caterpillar Chaos",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 17844,
+    "name": "カトリーナ",
+    "englishName": "Catrina",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 17986,
+    "name": "踊りまくるカタツムリ",
+    "englishName": "Raving Snail",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 19168,
+    "name": "恋のメガネ",
+    "englishName": "Love Glasses",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 48224,
+    "name": "妖精のかくれんぼ",
+    "englishName": "Fairy Hide",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 101198,
+    "name": "カエルの指揮者",
+    "englishName": "Frog Conductor",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 232592,
+    "name": "テンポフルート",
+    "englishName": "Tempo Flute",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 282718,
+    "name": "グルーブクラリネット",
+    "englishName": "Groove Clarinet",
+    "diamondCount": 149
+  },
+  {
+    "giftId": 5509,
+    "name": "サングラス",
+    "englishName": "Sunglasses",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 5586,
+    "name": "ハート",
+    "englishName": "Hearts",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 6437,
+    "name": "花冠",
+    "englishName": "Garland Headpiece",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 6671,
+    "name": "愛してる",
+    "englishName": "Love You",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 6713,
+    "name": "あなたに送る歓声",
+    "englishName": "Cheer For You",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 11177,
+    "name": "コーヒーマジック",
+    "englishName": "Coffee Magic",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 13075,
+    "name": "応援するカニ",
+    "englishName": "Cheering Crab",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 14382,
+    "name": "流れるタコ",
+    "englishName": "Floating Octopus",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 14555,
+    "name": "花のカチューシャ",
+    "englishName": "Flower Headband",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 16275,
+    "name": "スーツケース",
+    "englishName": "Suitcase",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 16896,
+    "name": "ローズハンド",
+    "englishName": "Rose Hand",
+    "diamondCount": 199,
+    "duplicateOf": [
+      17004
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 17004,
+    "name": "ローズハンド",
+    "englishName": "Rose Hand",
+    "diamondCount": 199,
+    "duplicateOf": [
+      16896
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 17101,
+    "name": "ココナッツジュース",
+    "englishName": "Coconut Juice",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 17360,
+    "name": "小鳥のキス",
+    "englishName": "Chirpy Kisses",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 17589,
+    "name": "隣り合わせ",
+    "englishName": "Side by Side",
+    "diamondCount": 199,
+    "duplicateOf": [
+      17661,
+      17667
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 17661,
+    "name": "隣り合わせ",
+    "englishName": "Side by Side",
+    "diamondCount": 199,
+    "duplicateOf": [
+      17667,
+      17589
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 17667,
+    "name": "隣り合わせ",
+    "englishName": "Side by Side",
+    "diamondCount": 199,
+    "duplicateOf": [
+      17661,
+      17589
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 17923,
+    "name": "ジョーカーのボール",
+    "englishName": "Joker Ball",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 19067,
+    "name": "リーグカウントダウン",
+    "englishName": "League Countdown",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 19309,
+    "name": "ハートのフード",
+    "englishName": "Heart Hood",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 19310,
+    "name": "スマイルラテ",
+    "englishName": "Smile Latte",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 48225,
+    "name": "パーティーポニー",
+    "englishName": "Party Pony",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 101384,
+    "name": "ファン猫",
+    "englishName": "Fan Cat",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 133120,
+    "name": "マイクを握ろう",
+    "englishName": "Take the Mic",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 170498,
+    "name": "フラワーブラス",
+    "englishName": "Bloom Brass",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 170508,
+    "name": "リズムボット",
+    "englishName": "Rhythm Bot",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 440699,
+    "name": "始まりの森",
+    "englishName": "Forest Beginnings",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 842726,
+    "name": "目玉焼き",
+    "englishName": "Sunny Side Up",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 919320,
+    "name": "思いを伝えるビート",
+    "englishName": "Talking Heartbeat",
+    "diamondCount": 199
+  },
+  {
+    "giftId": 16119,
+    "name": "ラムネ",
+    "englishName": "Ramune",
+    "diamondCount": 200
+  },
+  {
+    "giftId": 17962,
+    "name": "妖精ジーニー",
+    "englishName": "Magic Genie",
+    "diamondCount": 200,
+    "duplicateOf": [
+      56589
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 56589,
+    "name": "妖精ジーニー",
+    "englishName": "Magic Genie",
+    "diamondCount": 200,
+    "duplicateOf": [
+      17962
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 170193,
+    "name": "セミア",
+    "englishName": "Semsemia",
+    "diamondCount": 200
+  },
+  {
+    "giftId": 170277,
+    "name": "バグラマ",
+    "englishName": "Baglama",
+    "diamondCount": 200
+  },
+  {
+    "giftId": 19132,
+    "name": "ローズベア",
+    "englishName": "Rose Bear",
+    "diamondCount": 214
+  },
+  {
+    "giftId": 10547,
+    "name": "顔をつねる",
+    "englishName": "Pinch Face",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 15191,
+    "name": "キャンディーのブーケ",
+    "englishName": "Candy Bouquet",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 15199,
+    "name": "アイスクリームのマイク",
+    "englishName": "Ice Cream Mic",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 15752,
+    "name": "スターメガネ",
+    "englishName": "Star Goggles",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 15763,
+    "name": "応援マイク",
+    "englishName": "Cheer Mic",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 16478,
+    "name": "シャボン玉のヘッドホン",
+    "englishName": "Music Bubbles",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 16924,
+    "name": "女神の花冠",
+    "englishName": "Midsummer Hair",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 17102,
+    "name": "ヤシの木とそよ風",
+    "englishName": "Palm Breeze",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 17104,
+    "name": "森の小人",
+    "englishName": "Forest Elf",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 17821,
+    "name": "いたずらおばけ",
+    "englishName": "Face-pulling",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 17985,
+    "name": "大切にされている声",
+    "englishName": "Treasured Voice",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 18124,
+    "name": "鳥のさえずり",
+    "englishName": "Melodic birds",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 18196,
+    "name": "波乗りペンギン",
+    "englishName": "Surfing Penguin",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 18506,
+    "name": "パーティー満開",
+    "englishName": "Party Blossom",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 18605,
+    "name": "夢のような音色",
+    "englishName": "Dreamy Strings",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 19308,
+    "name": "スイートな蝶",
+    "englishName": "Sweet Flutter",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 54566,
+    "name": "雪の花",
+    "englishName": "Snow Bloom",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 59775,
+    "name": "ボリュームアップ",
+    "englishName": "Amped Up",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 118814,
+    "name": "詩の楽譜",
+    "englishName": "Poetry Score",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 166578,
+    "name": "歌うカエル",
+    "englishName": "Singing Frog",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 282675,
+    "name": "ブラストドラム",
+    "englishName": "Blast Drum",
+    "diamondCount": 249
+  },
+  {
+    "giftId": 16467,
+    "name": "サマー恐竜",
+    "englishName": "Tiny Diny Float",
+    "diamondCount": 250
+  },
+  {
+    "giftId": 6007,
+    "name": "進撃グローブ",
+    "englishName": "Boxing Gloves",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 6267,
+    "name": "コーギー",
+    "englishName": "Corgi",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 9465,
+    "name": "フルーツの友達",
+    "englishName": "Fruit Friends",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 11179,
+    "name": "いたずら好きな鶏",
+    "englishName": "Naughty Chicken",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 11183,
+    "name": "あなたに演奏",
+    "englishName": "Play for You",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 11808,
+    "name": "ロックスター",
+    "englishName": "Rock Star",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 11945,
+    "name": "団結",
+    "englishName": "Dream Team",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 13073,
+    "name": "あなたのための蝶",
+    "englishName": "Butterfly for You",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 14557,
+    "name": "子犬のキス",
+    "englishName": "Puppy Kisses",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 14657,
+    "name": "ハートの誕生",
+    "englishName": "Budding Heart",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 15194,
+    "name": "つながる心",
+    "englishName": "United Heart",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 15487,
+    "name": "サッカーチャレンジ",
+    "englishName": "Kicker Challenge",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 16527,
+    "name": "グランプリクラウン",
+    "englishName": "LIVE Ranking Crown",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 16669,
+    "name": "ロージーのスタイル",
+    "englishName": "Hi! Rosie!",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 17358,
+    "name": "ハムスターに変身",
+    "englishName": "Go Hamster",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 17845,
+    "name": "コウモリの帽子",
+    "englishName": "Bat Headwear",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 18026,
+    "name": "メロディグラス",
+    "englishName": "Melody Glasses",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 18230,
+    "name": "ペンギンと雪だるま",
+    "englishName": "Penguin Snowpal",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 18610,
+    "name": "音楽の友",
+    "englishName": "Music Mate",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 19311,
+    "name": "ラブコール",
+    "englishName": "Love Call",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 48231,
+    "name": "ポニーのランタン",
+    "englishName": "Pony Lantern",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 54562,
+    "name": "春の芽吹き",
+    "englishName": "Spring Sprout",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 55700,
+    "name": "イードのギフトボックス",
+    "englishName": "EID Gift Box",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 57009,
+    "name": "お目覚めマロウ",
+    "englishName": "Wakey Mallow",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 57596,
+    "name": "サックスグルーヴ",
+    "englishName": "Sax Groove",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 59318,
+    "name": "巻物",
+    "englishName": "Scroll",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 59450,
+    "name": "新人王カチューシャ",
+    "englishName": "Rookies Cup",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 60548,
+    "name": "労働パワー",
+    "englishName": "Labor Power",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 115513,
+    "name": "お天気占い",
+    "englishName": "Rain Doll",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 121583,
+    "name": "チェロロマンス",
+    "englishName": "Cello Romance",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 130787,
+    "name": "頑張れ！",
+    "englishName": "Come On!",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 139582,
+    "name": "応援タオル",
+    "englishName": "Cheering Towel",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 282749,
+    "name": "スイングチェロ",
+    "englishName": "Swing Cello",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 607161,
+    "name": "スパイダーマン",
+    "englishName": "Hero Landing",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 739730,
+    "name": "リズムクラウン",
+    "englishName": "Rhythm Crown",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 985682,
+    "name": "ブラジルっぽいキャップ",
+    "englishName": "Brazilian Vibe Cap",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 985702,
+    "name": "トロピカル仮面",
+    "englishName": "Tropical Mask",
+    "diamondCount": 299
+  },
+  {
+    "giftId": 13987,
+    "name": "羽根のマスク",
+    "englishName": "Feather Mask",
+    "diamondCount": 300
+  },
+  {
+    "giftId": 657072,
+    "name": "きゅんジェット",
+    "englishName": "Galaxy's Bestest",
+    "diamondCount": 300
+  },
+  {
+    "giftId": 15764,
+    "name": "シンバルの猿",
+    "englishName": "Backing Monkey",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 16477,
+    "name": "子猫になる",
+    "englishName": "Become Kitten",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 16551,
+    "name": "カラフルな軌跡",
+    "englishName": "Marked with Love",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 16748,
+    "name": "レコードフリップ",
+    "englishName": "Vinyl Flip",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 17103,
+    "name": "ジュースを飲むキャップ",
+    "englishName": "Juicy Cap",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 17689,
+    "name": "コウモリ帽子",
+    "englishName": "Batwing Hat",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 17984,
+    "name": "ビーチマラカス",
+    "englishName": "Beach Maracas",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 18195,
+    "name": "ヴィンテージフライト",
+    "englishName": "Vintage flight",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 18228,
+    "name": "ジンジャーブレッドマン",
+    "englishName": "Gingerbread Man",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 18507,
+    "name": "キャンディーのブーケ",
+    "englishName": "Candy Bouquet",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 18608,
+    "name": "ロックなマッシュルーム",
+    "englishName": "Rocking Shroom",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 48232,
+    "name": "ポニーと花火",
+    "englishName": "Sparkle Pony",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 54558,
+    "name": "春のブーケ",
+    "englishName": "Spring Bouquet",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 56855,
+    "name": "フェスのブレスレット",
+    "englishName": "Festival Bracelet",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 60549,
+    "name": "夢見るアーティスト",
+    "englishName": "Craft Dreamer",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 60554,
+    "name": "ママの帽子",
+    "englishName": "Mom's Bonnet",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 110508,
+    "name": "レトロメロディ",
+    "englishName": "Retro Melody",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 118926,
+    "name": "ウクレレ演奏者",
+    "englishName": "Ukulele Player",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 121582,
+    "name": "雨の中のショパン",
+    "englishName": "Chopin in the Rain",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 166583,
+    "name": "エレクトロバイブス",
+    "englishName": "Electro Vibes",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 170505,
+    "name": "レトロヘッドセット",
+    "englishName": "Retro Headset",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 437629,
+    "name": "バタフライバイブ",
+    "englishName": "Butterfly Vibe",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 739740,
+    "name": "ジェンベマスター",
+    "englishName": "Djembe Master",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 842704,
+    "name": "DJアザラシ",
+    "englishName": "Spin Seal",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 985650,
+    "name": "星がきらめくアザラシ",
+    "englishName": "Starry Seal",
+    "diamondCount": 349
+  },
+  {
+    "giftId": 7931,
+    "name": "歌用マイク",
+    "englishName": "Singing Mic",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 8914,
+    "name": "永遠のローザ",
+    "englishName": "Forever Rosa",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 9825,
+    "name": "魔法のリズム",
+    "englishName": "Magic Rhythm",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 11178,
+    "name": "リラックスグース",
+    "englishName": "Relaxed Goose",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 11181,
+    "name": "トムのハグ",
+    "englishName": "Tom's Hug",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 12210,
+    "name": "バラのビーンのロージー",
+    "englishName": "Rosie the Rose Bean",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 12211,
+    "name": "楽しいビーンのジョリー",
+    "englishName": "Jollie the Joy Bean",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 12212,
+    "name": "ロックビーンのロッキー",
+    "englishName": "Rocky the Rock Bean",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 12213,
+    "name": "スマートビーンのセージ",
+    "englishName": "Sage the Smart Bean",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 12935,
+    "name": "セージの一攫千金",
+    "englishName": "Sage's Slash",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 14214,
+    "name": " 蝶が踊る ",
+    "englishName": " Let butterfly dances ",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 14554,
+    "name": "ふみふみする子猫",
+    "englishName": "Kitten Kneading",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 14568,
+    "name": "リンゴを撃つ",
+    "englishName": "Shoot the Apple",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 15192,
+    "name": "エイリアンの仲間",
+    "englishName": "Alien Buddy",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 16671,
+    "name": "ロージーのサックス",
+    "englishName": "Rosie's Concert",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 17678,
+    "name": "ミッションチャレンジ",
+    "englishName": "Rocket Game",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 18198,
+    "name": "タイガーの筋トレ",
+    "englishName": "Tiger Lift",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 18231,
+    "name": "ふくろうサンタのサプライズ",
+    "englishName": "Santa Owl Surprise",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 18505,
+    "name": "クラッカーベア",
+    "englishName": "Confetti Bear",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 18606,
+    "name": "歌うサックス",
+    "englishName": "Singing Sax",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 19312,
+    "name": "妖精ロケット",
+    "englishName": "Fairy Locket",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 19314,
+    "name": "パンダのスナップ",
+    "englishName": "Panda Snap",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 54557,
+    "name": "花の妖精",
+    "englishName": "Blossom Fairy",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 57010,
+    "name": "ドリーミーハット",
+    "englishName": "Dreamy Hat",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 57597,
+    "name": "マイクベア",
+    "englishName": "Vocal Bear",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 58236,
+    "name": "カクタス・シャッフル",
+    "englishName": "Cactus Shuffle",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 59319,
+    "name": "健康のエキス",
+    "englishName": "Health Potion",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 60555,
+    "name": "エコーママ",
+    "englishName": "Echo Mom",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 62818,
+    "name": "ジョリーのコミュニティ",
+    "englishName": "Jollie's Community",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 133359,
+    "name": "DJセット",
+    "englishName": "DJ Set",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 170503,
+    "name": "ビートウィング",
+    "englishName": "Beat Wings",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 170504,
+    "name": "メロディヘッドセット",
+    "englishName": "Melody Headset",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 191123,
+    "name": "パパカピバラ",
+    "englishName": "Papa Capybara",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 437599,
+    "name": "オーロラグルーヴ",
+    "englishName": "Aurora Groove",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 440703,
+    "name": "砂漠のサバイバル",
+    "englishName": "Desert Survivals",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 739778,
+    "name": "フローラルセレナーデ",
+    "englishName": "Floral Serenade",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 919330,
+    "name": "ケメンチェの風",
+    "englishName": "Wind on Kemenche",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 971136,
+    "name": "スパルタン戦士の兜",
+    "englishName": "Spartan Helmet",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 1137705,
+    "name": "シンクロして歌う",
+    "englishName": "Sing in Sync",
+    "diamondCount": 399
+  },
+  {
+    "giftId": 13988,
+    "name": "クリスタルドリーム",
+    "englishName": "Crystal Dreams",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 13999,
+    "name": "お祝いケーキ",
+    "englishName": "Wishing Cake",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 15195,
+    "name": "マイクチャンピオン",
+    "englishName": "Mic Champ",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 15761,
+    "name": "跳ねるスピーカー",
+    "englishName": "Bounce Speakers",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 18229,
+    "name": "トナカイのミルク",
+    "englishName": "Reindeer Milk",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 57594,
+    "name": "いたずらな子犬",
+    "englishName": "Cheeky Pup",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 59774,
+    "name": "DJウェーブ",
+    "englishName": "DJ Wave",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 60074,
+    "name": "FANDOMフィーバー",
+    "englishName": "FANDOM Fever",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 60547,
+    "name": "パンチ君のハグ",
+    "englishName": "Punch Cuddle",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 60550,
+    "name": "優れたシェフ",
+    "englishName": "Glorious Chef",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 110506,
+    "name": "ロックキャッツ",
+    "englishName": "Rock Cats",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 170501,
+    "name": "マジックアコーディオン",
+    "englishName": "Magic Accordion",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 191116,
+    "name": "スーパーパパ",
+    "englishName": "Super Dad",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 437669,
+    "name": "ポップなオウム",
+    "englishName": "Pop Parrot",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 437699,
+    "name": "ロックアイドル",
+    "englishName": "Rock Idol",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 842694,
+    "name": "ネオンロックスター",
+    "englishName": "Neon Rockstar",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 985642,
+    "name": "ハートビートキー",
+    "englishName": "Heartbeat Keys",
+    "diamondCount": 400
+  },
+  {
+    "giftId": 11809,
+    "name": "鼓動するハート",
+    "englishName": "Beating Heart",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 15762,
+    "name": "アンコールの拍手",
+    "englishName": "Encore Clap",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 16691,
+    "name": "ターミネーターフェイス",
+    "englishName": "Terminator Face",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 17357,
+    "name": "海賊の宝",
+    "englishName": "Pirate's Treasure",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 17827,
+    "name": "キャンディーをゲット",
+    "englishName": "Candy Loot",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 18137,
+    "name": "録音した音",
+    "englishName": "Captured Vocals",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 18197,
+    "name": "キュートなバッター",
+    "englishName": "Batting Cutie",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 18199,
+    "name": "宇宙の愛",
+    "englishName": "Space Love",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 18226,
+    "name": "クリスマスツリーの帽子",
+    "englishName": "Xmas Tree Hat",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 58237,
+    "name": "クラウン・ブギー",
+    "englishName": "Clown Boogie",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 118939,
+    "name": "エレクトロニックのラブソング",
+    "englishName": "Electronic Love Song",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 166579,
+    "name": "ロックンロール",
+    "englishName": "Rock and Roll",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 842698,
+    "name": "ニャージックトランペット",
+    "englishName": "Meowsic Trumpet",
+    "diamondCount": 449
+  },
+  {
+    "giftId": 15190,
+    "name": "パワフルマインド",
+    "englishName": "Powerful Mind",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 15193,
+    "name": "楽しい帽子",
+    "englishName": "Hat of Joy",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 17846,
+    "name": "ハロウィンファンハット",
+    "englishName": "Halloween Fun Hat",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 18025,
+    "name": "音楽指揮者",
+    "englishName": "Music Conductor",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 18509,
+    "name": "お祝いのハット",
+    "englishName": "Celebration Hat",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 18607,
+    "name": "シティポップ",
+    "englishName": "City Pop",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 19306,
+    "name": "キューピッドのコアラ",
+    "englishName": "Cupid Koala",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 48221,
+    "name": "肉球電話",
+    "englishName": "Paw Call",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 54560,
+    "name": "スーパーウーマン",
+    "englishName": "Superwoman",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 57008,
+    "name": "クローバーハット",
+    "englishName": "Clover Hat",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 57595,
+    "name": "ナマケモノのちら見",
+    "englishName": "Sloth Peek",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 133360,
+    "name": "ピンクカウボーイ",
+    "englishName": "Pink Cowboy",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 191117,
+    "name": "オフィスペンギン",
+    "englishName": "Office Penguin",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 437639,
+    "name": "グルーヴハット",
+    "englishName": "Groove Straw",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 444843,
+    "name": "雲の向こうへ",
+    "englishName": "Over the Cloud",
+    "diamondCount": 450
+  },
+  {
+    "giftId": 5731,
+    "name": "サンゴ",
+    "englishName": "Coral",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 8244,
+    "name": "いいね！",
+    "englishName": "Hands Up",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 13189,
+    "name": "ただのハムスターだよ",
+    "englishName": "Im Just a Hamster",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 14753,
+    "name": "魔力ポーション",
+    "englishName": "Magic Potion",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 17151,
+    "name": "波乗りペンギン",
+    "englishName": "Surfing Penguin",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 17983,
+    "name": "ローズサウンドウェーブ",
+    "englishName": "Rose Soundwave",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 437709,
+    "name": "キーマスター",
+    "englishName": "Key Master",
+    "diamondCount": 499
+  },
+  {
+    "giftId": 7122,
+    "name": "宝石銃",
+    "englishName": "Gem Gun",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 7168,
+    "name": "マネーガン",
+    "englishName": "Money Gun",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 8150,
+    "name": "ぎゅっとハグ",
+    "englishName": "Cuddle with Me",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 9948,
+    "name": "すばらしい！",
+    "englishName": "You’re Amazing",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 10667,
+    "name": "タイムゴーグル",
+    "englishName": "VR Goggles",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 11583,
+    "name": "DJメガネ",
+    "englishName": "DJ Glasses",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 13072,
+    "name": "ドラゴンの冠",
+    "englishName": "Dragon Crown",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 13444,
+    "name": "星まつり",
+    "englishName": "Star Map Polaris",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 14007,
+    "name": "だいすき",
+    "englishName": "Love Balloon",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 14883,
+    "name": "XXXL フラワー",
+    "englishName": "XXXL Flowers",
+    "diamondCount": 500,
+    "duplicateOf": [
+      16694
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 15064,
+    "name": "レーシングヘルメット",
+    "englishName": "Racing Helmet",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 16694,
+    "name": "XXXL フラワー",
+    "englishName": "XXXL Flowers",
+    "diamondCount": 500,
+    "duplicateOf": [
+      14883
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 16897,
+    "name": "魔法のアイテム",
+    "englishName": "Magic Prop",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 17213,
+    "name": "紅葉ダンス",
+    "englishName": "Autumn Leaves",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 17252,
+    "name": "マイクに想いをのせよう",
+    "englishName": "Heart It Out",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 18232,
+    "name": "あったかいクリスマスセット",
+    "englishName": "Cozy Xmas Set",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 18508,
+    "name": "ミステリーボックス",
+    "englishName": "Mystery Box",
+    "diamondCount": 500,
+    "duplicateOf": [
+      59320
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 19307,
+    "name": "ハートのギター",
+    "englishName": "Heart Guitar",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 54725,
+    "name": "ぴよぴよバード",
+    "englishName": "Baby Chicks",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56590,
+    "name": "大草原の恐竜",
+    "englishName": "Prairie Diny",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56591,
+    "name": "大草原のトム",
+    "englishName": "Prairie Tom",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56592,
+    "name": "大草原のブリッツ",
+    "englishName": "Prairie Blitzy",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56593,
+    "name": "大草原のクーパー",
+    "englishName": "Prairie Cooper",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56594,
+    "name": "ジャングルの恐竜",
+    "englishName": "Jungle Diny",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56595,
+    "name": "ジャングルのトム",
+    "englishName": "Jungle Tom",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56596,
+    "name": "ジャングルのブリッツ",
+    "englishName": "Jungle Blitzy",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56597,
+    "name": "ジャングルのクーパー",
+    "englishName": "Jungle Cooper",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56862,
+    "name": "大草原のNyota",
+    "englishName": "Prairie Nyota",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 56863,
+    "name": "ジャングルのNyota",
+    "englishName": "Jungle Nyota",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 57011,
+    "name": "星付きふわふわ帽子",
+    "englishName": "Starry Fluff",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 59320,
+    "name": "ミステリーボックス",
+    "englishName": "Mystery Box",
+    "diamondCount": 500,
+    "duplicateOf": [
+      18508
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 59882,
+    "name": "ヘッドギア",
+    "englishName": "Shell of a Warrior",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 60553,
+    "name": "ママカンガルー",
+    "englishName": "Roo Mother",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 118928,
+    "name": "あなたの音楽に夢中",
+    "englishName": "Lost in Your Music",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 131887,
+    "name": "Matchマスター",
+    "englishName": "Match Master",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 139584,
+    "name": "ドラムポップ",
+    "englishName": "Drum Pop",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 166581,
+    "name": "呪文のサウンド",
+    "englishName": "Sound Spell",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 437689,
+    "name": "ドラムの天才",
+    "englishName": "Drum Genius",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 638006,
+    "name": "飛び出すジョリー！",
+    "englishName": "Out Pops Jollie!",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 842710,
+    "name": "ミツバチとギターを鳴らす",
+    "englishName": "Honey Strummer",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 946648,
+    "name": "ハートビート",
+    "englishName": "HeartBeats",
+    "diamondCount": 500
+  },
+  {
+    "giftId": 17947,
+    "name": "スイートな陽気",
+    "englishName": "Bubbly Kiss",
+    "diamondCount": 530
+  },
+  {
+    "giftId": 57593,
+    "name": "巣からお出かけ",
+    "englishName": "Hive Escape",
+    "diamondCount": 549
+  },
+  {
+    "giftId": 58238,
+    "name": "ドラム・ハムスター",
+    "englishName": "Drum Hamster",
+    "diamondCount": 549
+  },
+  {
+    "giftId": 14532,
+    "name": "さくらの宝箱",
+    "englishName": "Fully Bloomed Sakura",
+    "diamondCount": 599
+  },
+  {
+    "giftId": 19068,
+    "name": "リーグトロフィー",
+    "englishName": "League Trophy",
+    "diamondCount": 599
+  },
+  {
+    "giftId": 62487,
+    "name": "LIVE Cupカード",
+    "englishName": "Soccer Holo",
+    "diamondCount": 599
+  },
+  {
+    "giftId": 16672,
+    "name": "輝く翼",
+    "englishName": "Join Butterflies",
+    "diamondCount": 600
+  },
+  {
+    "giftId": 166576,
+    "name": "桜スタイルDJ",
+    "englishName": "Sakura-style DJ",
+    "diamondCount": 600
+  },
+  {
+    "giftId": 58235,
+    "name": "タツノオトシゴのポップ",
+    "englishName": "Seahorse Pop",
+    "diamondCount": 649
+  },
+  {
+    "giftId": 5897,
+    "name": "白鳥",
+    "englishName": "Swan",
+    "diamondCount": 699
+  },
+  {
+    "giftId": 13313,
+    "name": "ステージマイク",
+    "englishName": "Centre Stage",
+    "diamondCount": 700
+  },
+  {
+    "giftId": 14381,
+    "name": "カラフルな翼",
+    "englishName": "Colorful Wings",
+    "diamondCount": 700
+  },
+  {
+    "giftId": 657024,
+    "name": "らぶホーン",
+    "englishName": "Sax Appeal",
+    "diamondCount": 700
+  },
+  {
+    "giftId": 19133,
+    "name": "ラブフライト",
+    "englishName": "Love Flight",
+    "diamondCount": 800
+  },
+  {
+    "giftId": 118817,
+    "name": "最高のピアニスト",
+    "englishName": "Epic Pianist",
+    "diamondCount": 800
+  },
+  {
+    "giftId": 5978,
+    "name": "列車",
+    "englishName": "Train",
+    "diamondCount": 899
+  },
+  {
+    "giftId": 440687,
+    "name": "夜の王国",
+    "englishName": "Kindom of Night",
+    "diamondCount": 899
+  },
+  {
+    "giftId": 1137707,
+    "name": "ステージでくねくねする",
+    "englishName": "Stage Wiggle",
+    "diamondCount": 899
+  },
+  {
+    "giftId": 1143819,
+    "name": "運命宝箱",
+    "englishName": "Box of destiny",
+    "diamondCount": 899
+  },
+  {
+    "giftId": 985636,
+    "name": "ファンキーハッター",
+    "englishName": "Funky Hatter",
+    "diamondCount": 900
+  },
+  {
+    "giftId": 9138,
+    "name": "スポットライト",
+    "englishName": "Trending Figure",
+    "diamondCount": 999
+  },
+  {
+    "giftId": 9717,
+    "name": "空中投下ラッキーボックス",
+    "englishName": "Lucky Airdrop Box",
+    "diamondCount": 999
+  },
+  {
+    "giftId": 15205,
+    "name": "フラミンゴの浮き輪",
+    "englishName": "Flamingo Floaty",
+    "diamondCount": 999
+  },
+  {
+    "giftId": 16749,
+    "name": "グランドショー",
+    "englishName": "Grand show",
+    "diamondCount": 999
+  },
+  {
+    "giftId": 59589,
+    "name": "ミュージックバースト",
+    "englishName": "Music Burst",
+    "diamondCount": 999
+  },
+  {
+    "giftId": 5680,
+    "name": "ミラーボール",
+    "englishName": "Disco ball",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 7123,
+    "name": "ゆめ気球",
+    "englishName": "Shiny Air Balloon",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 9498,
+    "name": "金の紙吹雪",
+    "englishName": "Blooming Ribbons",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 11046,
+    "name": "銀河",
+    "englishName": "Galaxy",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 12290,
+    "name": "光るクラゲ",
+    "englishName": "Glowing Jellyfish",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 13302,
+    "name": "キラキラダンス",
+    "englishName": "Sparkle Dance",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 13443,
+    "name": "羽根",
+    "englishName": "Feather Flock",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 14397,
+    "name": "妖精の羽",
+    "englishName": "Fairy Wings",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 14399,
+    "name": "フラミンゴリズム",
+    "englishName": "Flamingo Groove",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 15815,
+    "name": "スイカパーティー",
+    "englishName": "Watermelon Party",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56598,
+    "name": "火山の恐竜",
+    "englishName": "Firepit Diny",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56599,
+    "name": "火山のトム",
+    "englishName": "Firepit Tom",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56600,
+    "name": "火山のブリッツ",
+    "englishName": "Firepit Blitzy",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56601,
+    "name": "火山のクーパー",
+    "englishName": "Firepit Cooper",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56602,
+    "name": "砂漠の恐竜",
+    "englishName": "Desert Diny",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56603,
+    "name": "砂漠のトム",
+    "englishName": "Desert Tom",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56604,
+    "name": "砂漠のブリッツ",
+    "englishName": "Desert Blitzy",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56605,
+    "name": "砂漠のクーパー",
+    "englishName": "Desert Cooper",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56606,
+    "name": "ツンドラの恐竜",
+    "englishName": "Tundra Diny",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56607,
+    "name": "ツンドラのトム",
+    "englishName": "Tundra Tom",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56608,
+    "name": "ツンドラのブリッツ",
+    "englishName": "Tundra Blitzy",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56609,
+    "name": "ツンドラのクーパー",
+    "englishName": "Tundra Cooper",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56864,
+    "name": "焚き火のNyota",
+    "englishName": "Firepit Nyota",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56865,
+    "name": "砂漠のNyota",
+    "englishName": "Desert Nyota",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 56866,
+    "name": "ツンドラのNyota",
+    "englishName": "Tundra Nyota",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 59321,
+    "name": "魔法の薬",
+    "englishName": "Magic Potion",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 131888,
+    "name": "盛大なMatch！",
+    "englishName": "Matchtacular!",
+    "diamondCount": 1000
+  },
+  {
+    "giftId": 17948,
+    "name": "空飛ぶお菓子",
+    "englishName": "Joy Floats",
+    "diamondCount": 1030
+  },
+  {
+    "giftId": 17950,
+    "name": "キャンディパフ",
+    "englishName": "Candy Puffs",
+    "diamondCount": 1030
+  },
+  {
+    "giftId": 6090,
+    "name": "花火",
+    "englishName": "Fireworks",
+    "diamondCount": 1088
+  },
+  {
+    "giftId": 18298,
+    "name": "幕開けの花火",
+    "englishName": "Exclusive Spark",
+    "diamondCount": 1099
+  },
+  {
+    "giftId": 13263,
+    "name": "ラブシェルター",
+    "englishName": "Umbrella of Love",
+    "diamondCount": 1200
+  },
+  {
+    "giftId": 16288,
+    "name": "マスターズの杖",
+    "englishName": "Starlight Sceptre",
+    "diamondCount": 1200
+  },
+  {
+    "giftId": 437679,
+    "name": "バニーDJ",
+    "englishName": "Bunny DJ",
+    "diamondCount": 1200
+  },
+  {
+    "giftId": 18158,
+    "name": "雪の魔法",
+    "englishName": "Frozen Magic",
+    "diamondCount": 1299
+  },
+  {
+    "giftId": 115516,
+    "name": "あじさいの海",
+    "englishName": "Hydrangea Sea",
+    "diamondCount": 1299
+  },
+  {
+    "giftId": 607175,
+    "name": "スパイダー盾まろ",
+    "englishName": "Spider Web",
+    "diamondCount": 1299
+  },
+  {
+    "giftId": 607181,
+    "name": "スパイダー盾まろプレミアム",
+    "englishName": "Spider Web 2.0",
+    "diamondCount": 1299
+  },
+  {
+    "giftId": 13032,
+    "name": "秋のピクニック",
+    "englishName": "Autumn Picnic",
+    "diamondCount": 1300
+  },
+  {
+    "giftId": 52616,
+    "name": "パーティーレーザー",
+    "englishName": "Party Laser",
+    "diamondCount": 1300
+  },
+  {
+    "giftId": 14398,
+    "name": "活気あふれるステージ",
+    "englishName": "Vibrant Stage",
+    "diamondCount": 1400
+  },
+  {
+    "giftId": 7467,
+    "name": "夢を追いかける",
+    "englishName": "Chasing the Dream",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 9824,
+    "name": "恋人のロック",
+    "englishName": "Lover’s Lock",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 9909,
+    "name": "メッセージカード",
+    "englishName": "Greeting Card",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 10668,
+    "name": "未来との遭遇",
+    "englishName": "Future Encounter",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 11584,
+    "name": "すべてOK",
+    "englishName": "Under Control",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 12852,
+    "name": "レベルシップ",
+    "englishName": "Level Ship",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 14534,
+    "name": "ラヤのギフトカード",
+    "englishName": "Raya Gift Card",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 15065,
+    "name": "レースデビュー",
+    "englishName": "Racing Debut",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 16282,
+    "name": "雷鳴のハンマー",
+    "englishName": "Viking Hammer",
+    "diamondCount": 1500,
+    "duplicateOf": [
+      18299
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 17949,
+    "name": "気分は上々！",
+    "englishName": "You're So Fly",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 17951,
+    "name": "アストロベアー",
+    "englishName": "Astrobear",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 18299,
+    "name": "覇王のハンマー",
+    "englishName": "Viking Hammer",
+    "diamondCount": 1500,
+    "duplicateOf": [
+      16282
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 52617,
+    "name": "ワイルドマイク",
+    "englishName": "Wild Mic",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 59883,
+    "name": "点火チェック",
+    "englishName": "Ignition Check",
+    "diamondCount": 1500
+  },
+  {
+    "giftId": 14658,
+    "name": "花咲ハート",
+    "englishName": "Blooming Heart",
+    "diamondCount": 1599
+  },
+  {
+    "giftId": 223562,
+    "name": "ペンライト",
+    "englishName": "Penlight",
+    "diamondCount": 1599
+  },
+  {
+    "giftId": 12414,
+    "name": "好きになった",
+    "englishName": "Lovely Ride",
+    "diamondCount": 1600
+  },
+  {
+    "giftId": 657042,
+    "name": "はぎゅっ",
+    "englishName": "Hug It Better",
+    "diamondCount": 1600
+  },
+  {
+    "giftId": 8245,
+    "name": "行くぞ",
+    "englishName": "Here We Go",
+    "diamondCount": 1799
+  },
+  {
+    "giftId": 8277,
+    "name": "愛をお届け",
+    "englishName": "Love Drop",
+    "diamondCount": 1800
+  },
+  {
+    "giftId": 16670,
+    "name": "尻尾が9本あるキツネ",
+    "englishName": "Fox Legend",
+    "diamondCount": 1800
+  },
+  {
+    "giftId": 105795,
+    "name": "ヘッドストール",
+    "englishName": "Freestyle",
+    "diamondCount": 1800
+  },
+  {
+    "giftId": 6789,
+    "name": "レッドカーペットのスター",
+    "englishName": "Star of Red Carpet",
+    "diamondCount": 1999
+  },
+  {
+    "giftId": 6862,
+    "name": "クーパー、飛んで帰る",
+    "englishName": "Cooper Flies Home",
+    "diamondCount": 1999
+  },
+  {
+    "giftId": 7529,
+    "name": "不思議な花火",
+    "englishName": "Mystery Firework",
+    "diamondCount": 1999
+  },
+  {
+    "giftId": 18790,
+    "name": "盾まろの新年あいさつ",
+    "englishName": "Doll New Year Greeting",
+    "diamondCount": 1999
+  },
+  {
+    "giftId": 946652,
+    "name": "スタンバイ",
+    "englishName": "Getting Ready",
+    "diamondCount": 1999
+  },
+  {
+    "giftId": 10423,
+    "name": "クラブミュージック",
+    "englishName": "Club Music",
+    "diamondCount": 2000
+  },
+  {
+    "giftId": 15418,
+    "name": "ベビードラゴン",
+    "englishName": "Baby Dragon",
+    "diamondCount": 2000
+  },
+  {
+    "giftId": 17952,
+    "name": "天空ドリフター",
+    "englishName": "Sky Drift",
+    "diamondCount": 2000
+  },
+  {
+    "giftId": 6820,
+    "name": "クジラのダイビング",
+    "englishName": "Whale Diving",
+    "diamondCount": 2150
+  },
+  {
+    "giftId": 14788,
+    "name": "ロージーの投げキス",
+    "englishName": "Blow Rosie Kisses",
+    "diamondCount": 2199
+  },
+  {
+    "giftId": 14789,
+    "name": "ジョリーのハートランド",
+    "englishName": "Jollie's Heartland",
+    "diamondCount": 2199
+  },
+  {
+    "giftId": 14790,
+    "name": "ロッキーのパンチ",
+    "englishName": "Rocky's Punch",
+    "diamondCount": 2199
+  },
+  {
+    "giftId": 14791,
+    "name": "セージのコインボット",
+    "englishName": "Sage's Coinbot",
+    "diamondCount": 2199
+  },
+  {
+    "giftId": 52618,
+    "name": "ウェーブライト",
+    "englishName": "Wave Lights",
+    "diamondCount": 2200
+  },
+  {
+    "giftId": 17953,
+    "name": "氷河とグレーズの海",
+    "englishName": "By the Glaziers",
+    "diamondCount": 2380
+  },
+  {
+    "giftId": 12453,
+    "name": "ユニコーン",
+    "englishName": "Unicorn",
+    "diamondCount": 2499
+  },
+  {
+    "giftId": 62501,
+    "name": "スーパーカード",
+    "englishName": "Tom Thunderfoot",
+    "diamondCount": 2499
+  },
+  {
+    "giftId": 11811,
+    "name": "アニマルバンド",
+    "englishName": "Animal Band",
+    "diamondCount": 2500
+  },
+  {
+    "giftId": 60075,
+    "name": "FANDOM応援団",
+    "englishName": "FANDOM Cheer",
+    "diamondCount": 2500
+  },
+  {
+    "giftId": 14940,
+    "name": "なでられ待ち",
+    "englishName": "Stroke Me",
+    "diamondCount": 2800
+  },
+  {
+    "giftId": 139586,
+    "name": "お祝いテープ",
+    "englishName": "Celebration Tape",
+    "diamondCount": 2800
+  },
+  {
+    "giftId": 17954,
+    "name": "サムとトムの航海",
+    "englishName": "Samfaring Tom",
+    "diamondCount": 2850
+  },
+  {
+    "giftId": 5765,
+    "name": "オートバイ",
+    "englishName": "Motorcycle",
+    "diamondCount": 2988
+  },
+  {
+    "giftId": 8889,
+    "name": "ピンクドリーム",
+    "englishName": "Pink Dream",
+    "diamondCount": 2988
+  },
+  {
+    "giftId": 16933,
+    "name": "アイスクリームトラック",
+    "englishName": "Ice Cream Truck",
+    "diamondCount": 2988
+  },
+  {
+    "giftId": 7153,
+    "name": "レトロドライブ",
+    "englishName": "Old Famous Car",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 9468,
+    "name": "リズミカルなクマ",
+    "englishName": "Rhythmic Bear",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 12679,
+    "name": "レベルアップのスポットライト",
+    "englishName": "Level-up Spotlight",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 17253,
+    "name": "マジックアワー",
+    "englishName": "Love in Sunset",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 17762,
+    "name": "パーティーバス",
+    "englishName": "Party Bus",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 18791,
+    "name": "開運！栄光の輪",
+    "englishName": "Ring Of Honor-Cube",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 54726,
+    "name": "ちびモブ召喚",
+    "englishName": "Surprise Baby Mob",
+    "diamondCount": 2999,
+    "duplicateOf": [
+      56080
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 56080,
+    "name": "ちびモブ召喚",
+    "englishName": "Surprise Baby Mob",
+    "diamondCount": 2999,
+    "duplicateOf": [
+      54726
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 62819,
+    "name": "コミュニティラリー",
+    "englishName": "Community Rally",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 131894,
+    "name": "Matchマニアック",
+    "englishName": "Match Maniac",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 133121,
+    "name": "ステージのロージー",
+    "englishName": "Rosie on Stage",
+    "diamondCount": 2999
+  },
+  {
+    "giftId": 6563,
+    "name": "流星群",
+    "englishName": "Meteor Shower",
+    "diamondCount": 3000
+  },
+  {
+    "giftId": 59322,
+    "name": "召喚の角笛",
+    "englishName": "Summoning Horn",
+    "diamondCount": 3000
+  },
+  {
+    "giftId": 56610,
+    "name": "海の恐竜",
+    "englishName": "Sea Diny",
+    "diamondCount": 3088
+  },
+  {
+    "giftId": 56611,
+    "name": "海のトム",
+    "englishName": "Sea Tom",
+    "diamondCount": 3088
+  },
+  {
+    "giftId": 56612,
+    "name": "海のブリッツ",
+    "englishName": "Sea Blitzy",
+    "diamondCount": 3088
+  },
+  {
+    "giftId": 56613,
+    "name": "海のクーパー",
+    "englishName": "Sea Cooper",
+    "diamondCount": 3088
+  },
+  {
+    "giftId": 56867,
+    "name": "海のNyota",
+    "englishName": "Sea Nyota",
+    "diamondCount": 3088
+  },
+  {
+    "giftId": 52619,
+    "name": "ヒップホップのニワトリ",
+    "englishName": "Hip-Hop Hen",
+    "diamondCount": 3200
+  },
+  {
+    "giftId": 17955,
+    "name": "空を見上げて",
+    "englishName": "Look Up",
+    "diamondCount": 3350
+  },
+  {
+    "giftId": 17956,
+    "name": "夢は大きく",
+    "englishName": "Dream Big",
+    "diamondCount": 3350
+  },
+  {
+    "giftId": 14544,
+    "name": "お家に帰る",
+    "englishName": "Go Home",
+    "diamondCount": 3999
+  },
+  {
+    "giftId": 738532,
+    "name": "LIVEランキングのパーティー",
+    "englishName": "LIVE Ranking Party",
+    "diamondCount": 3999,
+    "duplicateOf": [
+      115548
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 444871,
+    "name": "クラウドDJ",
+    "englishName": "Cloud DJ",
+    "diamondCount": 4000
+  },
+  {
+    "giftId": 9532,
+    "name": "シャインブライト",
+    "englishName": "Shine Bright",
+    "diamondCount": 4088
+  },
+  {
+    "giftId": 16899,
+    "name": "魔法の世界",
+    "englishName": "Magic World",
+    "diamondCount": 4088
+  },
+  {
+    "giftId": 11810,
+    "name": "あなたのコンサート",
+    "englishName": "Your Concert",
+    "diamondCount": 4500
+  },
+  {
+    "giftId": 5767,
+    "name": "プライベートジェット",
+    "englishName": "Private Jet",
+    "diamondCount": 4888
+  },
+  {
+    "giftId": 6646,
+    "name": "子猫のレオン",
+    "englishName": "Leon the Kitten",
+    "diamondCount": 4888
+  },
+  {
+    "giftId": 7124,
+    "name": "サイン付きジェット機",
+    "englishName": "Signature Jet",
+    "diamondCount": 4888
+  },
+  {
+    "giftId": 12944,
+    "name": "ダイナミックミュージック",
+    "englishName": "Dynamic Music",
+    "diamondCount": 4888
+  },
+  {
+    "giftId": 13604,
+    "name": "ファイアリードラゴン",
+    "englishName": "Fiery Dragon",
+    "diamondCount": 4888
+  },
+  {
+    "giftId": 17957,
+    "name": "甘党レオン",
+    "englishName": "Sugar Whiskers",
+    "diamondCount": 4918
+  },
+  {
+    "giftId": 14384,
+    "name": "セージの冒険",
+    "englishName": "Sage’s Venture",
+    "diamondCount": 4999
+  },
+  {
+    "giftId": 105810,
+    "name": "ガーディアンの誓い",
+    "englishName": "Guardian's Pledge",
+    "diamondCount": 4999
+  },
+  {
+    "giftId": 115520,
+    "name": "雨ふりステージ",
+    "englishName": "Stage of ring",
+    "diamondCount": 4999
+  },
+  {
+    "giftId": 607183,
+    "name": "親愛なる隣人",
+    "englishName": "Stage of SpiderMan",
+    "diamondCount": 4999
+  },
+  {
+    "giftId": 1143821,
+    "name": "試練の海",
+    "englishName": "The Trial of Sea",
+    "diamondCount": 4999
+  },
+  {
+    "giftId": 5338,
+    "name": "ユニコーン ファンタジー",
+    "englishName": "Unicorn Fantasy",
+    "diamondCount": 5000,
+    "duplicateOf": [
+      7237
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 7237,
+    "name": "幻のユニコーン",
+    "englishName": "Unicorn Fantasy",
+    "diamondCount": 5000,
+    "duplicateOf": [
+      5338
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 9500,
+    "name": "空飛ぶジェット機",
+    "englishName": "Flying Jets",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 10588,
+    "name": "ダイヤモンドの銃",
+    "englishName": "Diamond Gun",
+    "diamondCount": 5000,
+    "duplicateOf": [
+      11838
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 11838,
+    "name": "ダイヤモンドの銃",
+    "englishName": "Diamond Gun",
+    "diamondCount": 5000,
+    "duplicateOf": [
+      10588
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 15464,
+    "name": "王者の契",
+    "englishName": "Arcane Card",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 17713,
+    "name": "コミュニティパワー",
+    "englishName": "Community Power",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 19071,
+    "name": "リーグファンダム",
+    "englishName": "League Fandom",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 56861,
+    "name": "レオンの紋章マント",
+    "englishName": "Leon's Sigil Cape",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 59994,
+    "name": "観客の声援",
+    "englishName": "Crowd Cheering",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 547121,
+    "name": "砂漠のオオカミ",
+    "englishName": "Desert Wolf",
+    "diamondCount": 5000
+  },
+  {
+    "giftId": 17958,
+    "name": "もふもふフレンズ",
+    "englishName": "Fluffy Buddies",
+    "diamondCount": 5388
+  },
+  {
+    "giftId": 8469,
+    "name": "オオカミ",
+    "englishName": "Wolf",
+    "diamondCount": 5500
+  },
+  {
+    "giftId": 10517,
+    "name": "砂漠のオオカミ",
+    "englishName": "Desert Wolf",
+    "diamondCount": 5500
+  },
+  {
+    "giftId": 17959,
+    "name": "雲の上のレオン",
+    "englishName": "Cub on Clouds",
+    "diamondCount": 5888
+  },
+  {
+    "giftId": 17960,
+    "name": "勇敢な冒険",
+    "englishName": "Valiant Odyssey",
+    "diamondCount": 5888
+  },
+  {
+    "giftId": 14659,
+    "name": "ハートの絆",
+    "englishName": "Devoted Heart",
+    "diamondCount": 5999
+  },
+  {
+    "giftId": 133123,
+    "name": "夢のステージ",
+    "englishName": "My Dream Stage",
+    "diamondCount": 5999
+  },
+  {
+    "giftId": 10669,
+    "name": "未来からの抱擁",
+    "englishName": "Future City",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 10672,
+    "name": "サムと未来都市",
+    "englishName": "Sam in New City",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 11585,
+    "name": "たくさん働いてたくさん遊ぶ",
+    "englishName": "Work Hard Play Harder",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 15066,
+    "name": "華麗なフィニッシュ",
+    "englishName": "Strong Finish",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 54727,
+    "name": "ちびモブ大脱走",
+    "englishName": "Chick Stampede",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 59884,
+    "name": "眠れる戦士の復活",
+    "englishName": "Rust Reforged",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 105610,
+    "name": "ゴールハイライト：アメリカ",
+    "englishName": "Goal Highlight-US",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 105814,
+    "name": "膝スラ",
+    "englishName": "Goal Highlight",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 946664,
+    "name": "キメポーズ",
+    "englishName": "Strike a Pose",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 1143618,
+    "name": "騎士のヘルム",
+    "englishName": "Shadebound’s Relic",
+    "diamondCount": 6000
+  },
+  {
+    "giftId": 9467,
+    "name": "ヒョウのリリー",
+    "englishName": "Lili the Leopard",
+    "diamondCount": 6599
+  },
+  {
+    "giftId": 6790,
+    "name": "お祝いの時間",
+    "englishName": "Celebration Time",
+    "diamondCount": 6999
+  },
+  {
+    "giftId": 8247,
+    "name": "ハッピーパーティー",
+    "englishName": "Happy Party",
+    "diamondCount": 6999
+  },
+  {
+    "giftId": 1137712,
+    "name": "終盤のギターリフの轟音",
+    "englishName": "Last Riff Roar",
+    "diamondCount": 6999
+  },
+  {
+    "giftId": 6089,
+    "name": "スポーツカー",
+    "englishName": "Sports Car",
+    "diamondCount": 7000
+  },
+  {
+    "giftId": 17961,
+    "name": "妖精ジーニー",
+    "englishName": "Majestic Hearts",
+    "diamondCount": 7238
+  },
+  {
+    "giftId": 7764,
+    "name": "スターの玉座",
+    "englishName": "Star Throne",
+    "diamondCount": 7999,
+    "duplicateOf": [
+      8420
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 8420,
+    "name": "スターの玉座",
+    "englishName": "Star Throne",
+    "diamondCount": 7999,
+    "duplicateOf": [
+      7764
+    ],
+    "duplicateJaDiffers": false
+  },
+  {
+    "giftId": 8835,
+    "name": "富士花火",
+    "englishName": "Summer Fuji Mountain",
+    "diamondCount": 7999
+  },
+  {
+    "giftId": 51285,
+    "name": "ダイヤの盾",
+    "englishName": "Diamond Shield",
+    "diamondCount": 7999
+  },
+  {
+    "giftId": 15048,
+    "name": "フウチョウ",
+    "englishName": "Bird of Paradise",
+    "diamondCount": 8000
+  },
+  {
+    "giftId": 60076,
+    "name": "最強のFANDOM",
+    "englishName": "Ultimate FANDOM",
+    "diamondCount": 8000
+  },
+  {
+    "giftId": 1143822,
+    "name": "荒波の鎧",
+    "englishName": "Stormwave Armor",
+    "diamondCount": 8999
+  },
+  {
+    "giftId": 8916,
+    "name": "レオンとリリー",
+    "englishName": "Leon and Lili",
+    "diamondCount": 9699
+  },
+  {
+    "giftId": 6149,
+    "name": "星から星へ",
+    "englishName": "Interstellar",
+    "diamondCount": 10000
+  },
+  {
+    "giftId": 6203,
+    "name": "夕暮れを背に",
+    "englishName": "Sunset Speedway",
+    "diamondCount": 10000
+  },
+  {
+    "giftId": 8503,
+    "name": "ハヤブサ",
+    "englishName": "Falcon",
+    "diamondCount": 10999
+  },
+  {
+    "giftId": 8419,
+    "name": "赤い稲光",
+    "englishName": "Red Lightning",
+    "diamondCount": 12000
+  },
+  {
+    "giftId": 9608,
+    "name": "ホワイトウルフ",
+    "englishName": "White Wolf",
+    "diamondCount": 12000
+  },
+  {
+    "giftId": 12680,
+    "name": "レベルアップの壮観",
+    "englishName": "Level-up Spectacle",
+    "diamondCount": 12999
+  },
+  {
+    "giftId": 946670,
+    "name": "デビューステージ",
+    "englishName": "Daylight Debut",
+    "diamondCount": 13999
+  },
+  {
+    "giftId": 14660,
+    "name": "きらりハート",
+    "englishName": "Crystal Heart",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 18337,
+    "name": "無敵のハンマー",
+    "englishName": "Invincible Hammer",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 54294,
+    "name": "幸運の王冠",
+    "englishName": "Lucky Crown",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 54539,
+    "name": "潮呼びトライデント",
+    "englishName": "Tidecaller Trident",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 59710,
+    "name": "クロノリワインダー",
+    "englishName": "Chrono Rewinder",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 101857,
+    "name": "ストームブレード",
+    "englishName": "Storm Blade",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 972120,
+    "name": "六花の番傘",
+    "englishName": "Snowmoon Parasol",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 1143825,
+    "name": "王者の証",
+    "englishName": "Proof of the King",
+    "diamondCount": 14999
+  },
+  {
+    "giftId": 8603,
+    "name": "ヒョウ",
+    "englishName": "Leopard",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 8912,
+    "name": "ローザの星雲",
+    "englishName": "Rosa Nebula",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 10670,
+    "name": "未来への旅",
+    "englishName": "Future Journey",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 11586,
+    "name": "パーティーは続く",
+    "englishName": "Party On&On",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 12892,
+    "name": "ワニ",
+    "englishName": "Crocodile",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 14562,
+    "name": "バトルチャンピオン",
+    "englishName": "Battle Champion",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 16115,
+    "name": "Firelight王国",
+    "englishName": "Firelight Kingdom",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 18792,
+    "name": "伝説の白馬",
+    "englishName": "Golden Gallop",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 19134,
+    "name": "パリ",
+    "englishName": "Paris",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 53761,
+    "name": "アラビアのチーター",
+    "englishName": "Arabian Cheetah",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 54728,
+    "name": "ちびゾンビ襲来！",
+    "englishName": "Sneaky Jockey",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 115518,
+    "name": "君と見る空",
+    "englishName": "Dream Ride",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 547119,
+    "name": "ブラックウルフ",
+    "englishName": "Black Wolf",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 607191,
+    "name": "スパイダーマン発見",
+    "englishName": "Maro Spider Man",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 1143619,
+    "name": "獅子の杖",
+    "englishName": "Royal Lions Scepter",
+    "diamondCount": 15000
+  },
+  {
+    "giftId": 105817,
+    "name": "熱狂スタジアム",
+    "englishName": "Stadium",
+    "diamondCount": 15999
+  },
+  {
+    "giftId": 9466,
+    "name": "遊園地",
+    "englishName": "Amusement Park",
+    "diamondCount": 17000
+  },
+  {
+    "giftId": 10165,
+    "name": "空飛ぶダイヤモンド",
+    "englishName": "Diamond Flight",
+    "diamondCount": 18000
+  },
+  {
+    "giftId": 59885,
+    "name": "眠れる戦士 vs 世界",
+    "englishName": "Rust vs World",
+    "diamondCount": 18999
+  },
+  {
+    "giftId": 8248,
+    "name": "飛ぶ愛",
+    "englishName": "Fly Love",
+    "diamondCount": 19999
+  },
+  {
+    "giftId": 909798,
+    "name": "不思議な飛ぶ愛",
+    "englishName": "Fantastic Fly Love",
+    "diamondCount": 19999
+  },
+  {
+    "giftId": 6751,
+    "name": "TikTokシャトル",
+    "englishName": "TikTok Shuttle",
+    "diamondCount": 20000
+  },
+  {
+    "giftId": 6833,
+    "name": "幻のキャッスル",
+    "englishName": "Castle Fantasy",
+    "diamondCount": 20000
+  },
+  {
+    "giftId": 7125,
+    "name": "プレミアムロケット",
+    "englishName": "Premium Shuttle",
+    "diamondCount": 20000
+  },
+  {
+    "giftId": 10022,
+    "name": "景福宮",
+    "englishName": "Gyeongbokgung",
+    "diamondCount": 20000
+  },
+  {
+    "giftId": 12853,
+    "name": "レベルシップ",
+    "englishName": "Level Ship",
+    "diamondCount": 21000
+  },
+  {
+    "giftId": 14661,
+    "name": "永遠のハート",
+    "englishName": "Infinite Heart",
+    "diamondCount": 23999
+  },
+  {
+    "giftId": 13352,
+    "name": "バラの馬車",
+    "englishName": "Rose Carriage",
+    "diamondCount": 25000
+  },
+  {
+    "giftId": 7319,
+    "name": "フェニックス",
+    "englishName": "Phoenix",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 7400,
+    "name": "アダムの夢",
+    "englishName": "Adam’s Dream",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 18338,
+    "name": "サイバーロア",
+    "englishName": "Cyber Roar",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 54540,
+    "name": "深海王国",
+    "englishName": "Undersea Kingdom",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 59711,
+    "name": "ライトキャッスル",
+    "englishName": "Light Castle",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 101862,
+    "name": "スカイフォージ要塞",
+    "englishName": "Skyforge Citadel",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 972130,
+    "name": "山神の使い",
+    "englishName": "Rin the Snowborn",
+    "diamondCount": 25999
+  },
+  {
+    "giftId": 7610,
+    "name": "ドラゴンの炎",
+    "englishName": "Dragon Flame",
+    "diamondCount": 26999
+  },
+  {
+    "giftId": 6369,
+    "name": "ライオン",
+    "englishName": "Lion",
+    "diamondCount": 29999
+  },
+  {
+    "giftId": 10065,
+    "name": "ゴリラ",
+    "englishName": "Gorilla",
+    "diamondCount": 30000
+  },
+  {
+    "giftId": 17710,
+    "name": "コミュニティレジェンド",
+    "englishName": "Community Legends",
+    "diamondCount": 30000
+  },
+  {
+    "giftId": 7823,
+    "name": "レオンとライオン",
+    "englishName": "Leon and Lion",
+    "diamondCount": 34000
+  },
+  {
+    "giftId": 8624,
+    "name": "ゼウス",
+    "englishName": "Zeus",
+    "diamondCount": 34000,
+    "duplicateOf": [
+      16284
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 16284,
+    "name": "覇王ゼウス",
+    "englishName": "Zeus",
+    "diamondCount": 34000,
+    "duplicateOf": [
+      8624
+    ],
+    "duplicateJaDiffers": true
+  },
+  {
+    "giftId": 8651,
+    "name": "サンダーバード",
+    "englishName": "Thunder Falcon",
+    "diamondCount": 39999
+  },
+  {
+    "giftId": 9092,
+    "name": "ファイアフェニックス",
+    "englishName": "Fire Phoenix",
+    "diamondCount": 41999
+  },
+  {
+    "giftId": 9427,
+    "name": "ホワイトペガサス",
+    "englishName": "Pegasus",
+    "diamondCount": 42999
+  },
+  {
+    "giftId": 54541,
+    "name": "レジェンドのマーセラス",
+    "englishName": "Legend Marcellus ",
+    "diamondCount": 42999
+  },
+  {
+    "giftId": 59712,
+    "name": "レオナルド王",
+    "englishName": "King Leonardo",
+    "diamondCount": 42999
+  },
+  {
+    "giftId": 972138,
+    "name": "雪姫の結界",
+    "englishName": "Yuki's Vigilance",
+    "diamondCount": 42999
+  },
+  {
+    "giftId": 18339,
+    "name": "絶対王者ジュリアス",
+    "englishName": "Julius the Champion",
+    "diamondCount": 43999
+  },
+  {
+    "giftId": 101868,
+    "name": "ヴァレリアンの誓い",
+    "englishName": "Valerian's Oath",
+    "diamondCount": 43999
+  }
+]
