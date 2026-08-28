@@ -243,11 +243,16 @@ class SoundLibrary {
     );
   }
 
-  /// 取り込む前に鳴らして確かめるための取得。**ファイルには書かない。**
+  /// 取り込む前に鳴らして確かめるための取得。**ここではファイルに書かない。**
   ///
   /// 一時ファイルにすると「どの要求が作ったファイルを、いつ誰が消すか」を要求ごとに
   /// 追う必要があり、連打・画面破棄と絡んで残骸や取り違えの原因になる。採用前の音は
   /// 端末に残す理由が無いので、バイト列のまま [SoundPreview] へ渡して鳴らす。
+  ///
+  /// **iOS だけは例外で、鳴らす直前に一時ファイルへ書く。** audioplayers の darwin 実装が
+  /// `setSourceBytes` を未実装として弾くため、バイト列のままでは鳴らせない。ただし
+  /// 書くのは `AudioPlayerPreview`（プレイヤーの所有者）であって、ここではない —
+  /// ファイルの寿命をプレイヤーの寿命に一致させることで、上の懸念を避けている。
   /// `sounds/` の総容量（[maxTotalBytes]）にも数えない — ディスクを使わないため。
   /// 1件あたりの上限（[maxFileBytes]）は取り込みと同じく効く。
   Future<Uint8List> fetchPreviewBytes({
@@ -498,7 +503,15 @@ class SoundLibrary {
 
   String _newId() => 'snd_${DateTime.now().microsecondsSinceEpoch}';
 
-  String _extensionOf(String path, {required String fallback}) {
+  /// 試聴（取り込まずに鳴らす側）が使う拡張子。
+  ///
+  /// iOS は一時ファイルへ書いてから鳴らすが、AVURLAsset は**拡張子から形式を推測する**ため
+  /// ここを間違えると鳴らない。[downloadRemote] と同じ導出を使うこと — 取り込み後の再生と
+  /// 判定を揃えておけば、「試聴では鳴ったのに取り込んだら鳴らない」がそもそも起きない。
+  static String previewExtensionOf(String url) =>
+      _extensionOf(Uri.tryParse(url)?.path ?? url, fallback: '.mp3');
+
+  static String _extensionOf(String path, {required String fallback}) {
     final dot = path.lastIndexOf('.');
     if (dot < 0) return fallback;
     final ext = path.substring(dot).toLowerCase();

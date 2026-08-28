@@ -39,8 +39,12 @@ class FakePreviewPlayer implements PreviewPlayer {
     events.add('play');
   }
 
+  /// [playBytes] に渡された拡張子。iOS は一時ファイルの拡張子で形式を判定するため、
+  /// 呼び出し側が正しく導出しているかをここで見る。
+  final List<String> playedExtensions = [];
+
   @override
-  Future<void> playBytes(Uint8List bytes, double volume) async {
+  Future<void> playBytes(Uint8List bytes, double volume, {String extension = '.mp3'}) async {
     final error = playError;
     if (error != null) throw error;
     final gate = playGate;
@@ -48,6 +52,7 @@ class FakePreviewPlayer implements PreviewPlayer {
     if (gate != null) await gate.future;
     playedBytes.add(bytes);
     volumes.add(volume);
+    playedExtensions.add(extension);
     events.add('play');
   }
 

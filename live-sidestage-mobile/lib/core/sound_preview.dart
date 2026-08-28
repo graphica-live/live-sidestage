@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/app_config.dart';
 import 'sound_library.dart';
@@ -14,7 +16,10 @@ abstract class PreviewPlayer {
 
   /// メモリ上の音源を鳴らす。まだ端末に取り込んでいない検索結果の試聴に使う。
   /// 契約は [play] と同じで、再生の開始までで戻る。
-  Future<void> playBytes(Uint8List bytes, double volume);
+  ///
+  /// [extension] は iOS で一時ファイルへ書くときの拡張子。AVURLAsset が形式を
+  /// 拡張子から推測するので、間違えると鳴らない。
+  Future<void> playBytes(Uint8List bytes, double volume, {String extension = '.mp3'});
 
   /// 鳴っている音を止める。鳴っていなければ何もしない。
   Future<void> stop();
@@ -22,11 +27,121 @@ abstract class PreviewPlayer {
   Future<void> dispose();
 }
 
+/// 試聴用の一時ファイル置き場。**iOS でしか使わない。**
+///
+/// 置き場所は `<tmp>/sound_preview/` の**専用サブディレクトリ**。tmp 直下には
+/// [IosAudioKeepAlive] の `keepalive_silence.wav`（画面オフ読み上げの生命線）と
+/// 読み上げの `tts_<usec>.wav` がいるので、**掃除でそこを巻き込むと機能が丸ごと止まる**。
+/// `FilePicker.clearTemporaryFiles()` を呼んではいけないのと同じ理由で、自前の掃除でも
+/// tmp 直下は絶対に触らない。
+class PreviewTempStore {
+  PreviewTempStore({Directory? overrideDirectory}) : _override = overrideDirectory;
+
+  final Directory? _override;
+  Directory? _dir;
+  int _seq = 0;
+  bool _swept = false;
+
+  /// 発行済みで、まだ消していないファイル。seq の昇順。
+  final List<({int seq, File file})> _staged = [];
+
+  Future<Directory> _directory() async {
+    final existing = _dir;
+    if (existing != null) return existing;
+    final base = _override ?? Directory('${(await getTemporaryDirectory()).path}/sound_preview');
+    if (!await base.exists()) await base.create(recursive: true);
+    _dir = base;
+    return base;
+  }
+
+  /// バイト列を新しいファイルへ書き、そのパスを返す。
+  ///
+  /// **毎回ちがうファイル名にすること。** audioplayers の darwin 実装
+  /// (`WrappedMediaPlayer.setSourceUrl`) は `self.url != url` のときだけ AVPlayerItem を
+  /// 作り直すので、**同じパスを上書きしても前の音がそのまま鳴る**。しかも
+  /// `ReleaseMode.stop` では `stop()` しても url が残るため、使い回すと毎回必ず誤爆する。
+  Future<({int seq, String path})> stage(Uint8List bytes, String extension) async {
+    final dir = await _directory();
+    final seq = ++_seq;
+    final file = File('${dir.path}/prev_$seq$extension');
+    await file.writeAsBytes(bytes, flush: true);
+    _staged.add((seq: seq, file: file));
+    return (seq: seq, path: file.path);
+  }
+
+  /// [seq] より**古いものだけ**を消す。
+  ///
+  /// 「全部消してから書く」にはできない。連打で `playBytes` 同士が interleave するため、
+  /// 古い要求の後始末が**新しい要求の再生予定ファイルを消す**事故が起きる。
+  Future<void> deleteOlderThan(int seq) async {
+    final targets = _staged.where((e) => e.seq < seq).toList(growable: false);
+    _staged.removeWhere((e) => e.seq < seq);
+    for (final entry in targets) {
+      await _delete(entry.file);
+    }
+  }
+
+  /// 特定の1件だけ消す。再生に失敗した要求の後始末。
+  Future<void> deleteSeq(int seq) async {
+    final targets = _staged.where((e) => e.seq == seq).toList(growable: false);
+    _staged.removeWhere((e) => e.seq == seq);
+    for (final entry in targets) {
+      await _delete(entry.file);
+    }
+  }
+
+  Future<void> deleteAll() async {
+    final targets = List.of(_staged);
+    _staged.clear();
+    for (final entry in targets) {
+      await _delete(entry.file);
+    }
+  }
+
+  /// アプリが強制終了して [deleteAll] が走らなかった分を回収する。初回の [stage] 前に1回だけ。
+  ///
+  /// **年齢で守ること。** 無条件に全消しすると、理論上は別インスタンスが今まさに
+  /// 鳴らそうとしているファイルまで消してしまう。
+  Future<void> sweepStale({Duration olderThan = const Duration(hours: 1)}) async {
+    if (_swept) return;
+    _swept = true;
+    try {
+      final dir = await _directory();
+      final threshold = DateTime.now().subtract(olderThan);
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final stat = await entity.stat();
+        if (stat.modified.isAfter(threshold)) continue;
+        await _delete(entity);
+      }
+    } catch (_) {
+      // 掃除は best-effort。失敗しても試聴は続けられる。
+    }
+  }
+
+  Future<void> _delete(File file) async {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // 消せなくても鳴らすことには影響しない。次回の sweepStale が拾う。
+    }
+  }
+}
+
 /// audioplayers による既定の [PreviewPlayer]。
 ///
 /// プレイヤーは1つだけ持つ。テスト再生は「今聴きたい1音」なので重ねる必要がなく、
 /// 重ねられるようにすると連打のぶんだけ AudioPlayer が増える。
 class AudioPlayerPreview implements PreviewPlayer {
+  AudioPlayerPreview({PreviewTempStore? tempStore, bool? bytesViaFile})
+      : _tempStore = tempStore ?? PreviewTempStore(),
+        // iOS は audioplayers の setSourceBytes が未実装なので一時ファイル経由にする。
+        // 注入できるようにしてあるのはテストのため。
+        _bytesViaFile = bytesViaFile ?? Platform.isIOS;
+
+  final PreviewTempStore _tempStore;
+  final bool _bytesViaFile;
+
   /// 生成中の Future をそのまま持つ。連打で2つ作らないため。
   Future<AudioPlayer>? _player;
   bool _disposed = false;
@@ -60,9 +175,35 @@ class AudioPlayerPreview implements PreviewPlayer {
   Future<void> play(String filePath, double volume) =>
       _playSource(DeviceFileSource(filePath), volume);
 
+  /// iOS だけ一時ファイル経由で鳴らす。
+  ///
+  /// audioplayers の darwin 実装は `setSourceBytes` を**明示的に未実装として弾く**
+  /// （`AudioplayersDarwinPlugin.swift`: "setSourceBytes is not currently implemented on iOS"）。
+  /// Android はそのまま [BytesSource] を通る — **こちらのコードパスは1行も変えていない。**
+  ///
+  /// [SoundLibrary.fetchPreviewBytes] は「ファイルには書かない」と決めているが、それは
+  /// 「どの要求が作ったファイルを、いつ誰が消すか」が**要求ごとに散る**ことを避けるため。
+  /// ここではファイルの寿命を**プレイヤーの寿命に一致させ**、後始末をこのクラスだけに
+  /// 閉じ込めているので、その懸念は生じない。[SoundPreview] の generation 機構には触らない。
   @override
-  Future<void> playBytes(Uint8List bytes, double volume) =>
-      _playSource(BytesSource(bytes), volume);
+  Future<void> playBytes(Uint8List bytes, double volume, {String extension = '.mp3'}) async {
+    if (!_bytesViaFile) {
+      await _playSource(BytesSource(bytes), volume);
+      return;
+    }
+
+    await _tempStore.sweepStale();
+    final staged = await _tempStore.stage(bytes, extension);
+    try {
+      await _playSource(DeviceFileSource(staged.path), volume);
+    } catch (_) {
+      await _tempStore.deleteSeq(staged.seq);
+      rethrow;
+    }
+    // **自分より新しいファイルは消さない。** 連打で追い越されている場合、
+    // それは今まさに鳴ろうとしている音源。
+    await _tempStore.deleteOlderThan(staged.seq);
+  }
 
   Future<void> _playSource(Source source, double volume) async {
     if (_disposed) return;
@@ -89,6 +230,8 @@ class AudioPlayerPreview implements PreviewPlayer {
   @override
   Future<void> dispose() async {
     _disposed = true;
+    // 一時ファイルの寿命はプレイヤーと同じ。ここで必ず消す。
+    await _tempStore.deleteAll();
     final pending = _player;
     _player = null;
     if (pending == null) return;
@@ -191,7 +334,11 @@ class SoundPreview {
       await player.stop();
       if (_isStale(generation)) return null;
 
-      await player.playBytes(bytes, masterVolume / 100.0);
+      await player.playBytes(
+        bytes,
+        masterVolume / 100.0,
+        extension: SoundLibrary.previewExtensionOf(sound.mp3Url),
+      );
       await _afterPlay(generation);
       return null;
     } on SoundLibraryException catch (e) {
