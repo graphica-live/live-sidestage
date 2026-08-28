@@ -4731,6 +4731,7 @@
                 giftId: String(catalogGift.id || ''),
                 giftName: String(catalogGift.name || ''),
                 giftImage: String(catalogGift.imageUrl || ''),
+                diamondCount: Number(catalogGift.diamondCount) || 0,
                 points: existing ? existing.points : 10,
             };
             while (list.length < index + 1) list.push(null);
