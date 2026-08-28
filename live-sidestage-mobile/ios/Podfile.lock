@@ -1,0 +1,33 @@
+PODS:
+  - Flutter (1.0.0)
+  - flutter_foreground_task (0.0.1):
+    - Flutter
+  - flutter_secure_storage (6.0.0):
+    - Flutter
+  - VoicevoxNative (0.17.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - flutter_foreground_task (from `.symlinks/plugins/flutter_foreground_task/ios`)
+  - flutter_secure_storage (from `.symlinks/plugins/flutter_secure_storage/ios`)
+  - VoicevoxNative (from `VoicevoxNative`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  flutter_foreground_task:
+    :path: ".symlinks/plugins/flutter_foreground_task/ios"
+  flutter_secure_storage:
+    :path: ".symlinks/plugins/flutter_secure_storage/ios"
+  VoicevoxNative:
+    :path: VoicevoxNative
+
+SPEC CHECKSUMS:
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  flutter_foreground_task: a159d2c2173b33699ddb3e6c2a067045d7cebb89
+  flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
+  VoicevoxNative: 7b4892e20aaf9b5446888c2f399519e0f1841498
+
+PODFILE CHECKSUM: 7990e706e4463ce48d124803df8777daecf15109
+
+COCOAPODS: 1.17.0

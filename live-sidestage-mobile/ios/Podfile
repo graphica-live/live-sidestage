@@ -1,0 +1,59 @@
+# Uncomment this line to define a global platform for your project
+platform :ios, '15.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # VOICEVOX のネイティブ framework。voicevox_core パッケージ(pub) は純粋な Dart FFI で
+  # ネイティブバイナリを運ばないため、ローカル pod として Embed & Sign を CocoaPods に任せる。
+  pod 'VoicevoxNative', :path => 'VoicevoxNative'
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+  end
+
+  # 上流xcframeworkのCFBundleIdentifier不備(アンダースコア)を検知する。
+  # Xcodeの埋め込み検証まで進むと原因の分かりにくいエラーになるので、pod installの時点で止める。
+  # 差し替え時に再発したら、ios/VoicevoxNative/VoicevoxNative.podspec 冒頭のコメントに従い修正すること。
+  # 値の完全一致ではなく文字種で判定しているので、上流が修正済みの版へ差し替えてもそのまま通る。
+  Dir.glob(File.join(__dir__, 'VoicevoxNative', '*.xcframework', '*', '*.framework', 'Info.plist')).each do |plist|
+    id = `/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "#{plist}"`.strip
+    unless id.match?(/\A[A-Za-z0-9.-]+\z/)
+      raise "Invalid CFBundleIdentifier '#{id}' in #{plist} — fix it per ios/VoicevoxNative/VoicevoxNative.podspec header comment"
+    end
+  end
+end
