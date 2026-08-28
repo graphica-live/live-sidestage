@@ -4,6 +4,7 @@ import {
   resolveBattleScore,
   resolveBattleWindow,
   jstDateRangeToUtc,
+  sumDiamondsPerWindow,
   type BattleRow,
 } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
@@ -123,6 +124,52 @@ describe("resolveBattleWindow", () => {
       new Date("2026-08-20T10:01:00Z")
     );
     expect(result.status).toBe("live");
+  });
+});
+
+describe("sumDiamondsPerWindow", () => {
+  function gift(receivedAt: string, totalDiamonds: number) {
+    return { receivedAt: new Date(receivedAt), totalDiamonds };
+  }
+
+  it("windowの範囲内のgiftだけを合計する", () => {
+    const gifts = [
+      gift("2026-08-20T09:59:00Z", 999), // window外(前)
+      gift("2026-08-20T10:00:00Z", 10), // 境界(start、含む)
+      gift("2026-08-20T10:02:00Z", 20),
+      gift("2026-08-20T10:05:00Z", 30), // 境界(end、含む)
+      gift("2026-08-20T10:05:01Z", 999), // window外(後)
+    ];
+    const windows = [{ battleId: "b1", start: new Date("2026-08-20T10:00:00Z"), end: new Date("2026-08-20T10:05:00Z") }];
+
+    const result = sumDiamondsPerWindow(gifts, windows);
+
+    expect(result.get("b1")).toBe(60);
+  });
+
+  it("複数windowへ正しく振り分ける", () => {
+    const gifts = [
+      gift("2026-08-20T10:01:00Z", 10), // b1
+      gift("2026-08-20T11:01:00Z", 20), // b2
+      gift("2026-08-20T12:00:00Z", 999), // どちらのwindowにも属さない
+    ];
+    const windows = [
+      { battleId: "b1", start: new Date("2026-08-20T10:00:00Z"), end: new Date("2026-08-20T10:05:00Z") },
+      { battleId: "b2", start: new Date("2026-08-20T11:00:00Z"), end: new Date("2026-08-20T11:05:00Z") },
+    ];
+
+    const result = sumDiamondsPerWindow(gifts, windows);
+
+    expect(result.get("b1")).toBe(10);
+    expect(result.get("b2")).toBe(20);
+  });
+
+  it("該当するgiftが無いwindowは0", () => {
+    const result = sumDiamondsPerWindow([], [
+      { battleId: "b1", start: new Date("2026-08-20T10:00:00Z"), end: new Date("2026-08-20T10:05:00Z") },
+    ]);
+
+    expect(result.get("b1")).toBe(0);
   });
 });
 

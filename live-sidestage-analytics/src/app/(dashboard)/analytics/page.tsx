@@ -1,7 +1,9 @@
 "use client";
 
-import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { BattleDetailModal } from "./BattleDetailModal";
+import { Avatar, BATTLE_STATUS_LABELS, type BattleListItem, type BattleStatus } from "./battle-types";
 
 type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -46,43 +48,11 @@ interface HistoryData {
   verified?: boolean;
 }
 
-type BattleStatus = "live" | "finished" | "cut_short" | "unknown";
-
-interface BattleListItem {
-  battleId: string;
-  startedAt: string;
-  status: BattleStatus;
-  opponent: { tiktokId: string | null; count: number } | null;
-  selfScore: string | null;
-  opponentScore: string | null;
-}
-
 interface BattlesData {
   battles: BattleListItem[];
   dateRange: { start: string; end: string };
   verified?: boolean;
 }
-
-interface BattleContributor {
-  uniqueId: string;
-  nickname: string;
-  profileImageUrl: string | null;
-  giftCount: number;
-  totalDiamonds: number;
-  lastGiftAt: string;
-}
-
-interface BattleContributorsData {
-  contributors: BattleContributor[];
-  status: BattleStatus;
-}
-
-const BATTLE_STATUS_LABELS: Record<BattleStatus, string> = {
-  live: "進行中",
-  finished: "終了",
-  cut_short: "中断",
-  unknown: "判定不可",
-};
 
 const SORT_LABELS: Record<SortKey, string> = {
   diamonds: "コイン数",
@@ -227,11 +197,8 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [battlesLoading, setBattlesLoading] = useState(false);
-  const [expandedBattleId, setExpandedBattleId] = useState<string | null>(null);
-  const [contributorsByBattleId, setContributorsByBattleId] = useState<
-    Record<string, BattleContributorsData | undefined>
-  >({});
-  const [contributorsLoading, setContributorsLoading] = useState<string | null>(null);
+  const [openBattleId, setOpenBattleId] = useState<string | null>(null);
+  const [hideLowDiamond, setHideLowDiamond] = useState(true);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -318,26 +285,6 @@ export default function AnalyticsPage() {
       if (!silent) setBattlesLoading(false);
     }
   }, [customStart, customEnd]);
-
-  const toggleBattleExpand = useCallback(async (battleId: string) => {
-    if (expandedBattleId === battleId) {
-      setExpandedBattleId(null);
-      return;
-    }
-    setExpandedBattleId(battleId);
-    if (contributorsByBattleId[battleId]) return;
-
-    setContributorsLoading(battleId);
-    try {
-      const res = await fetch(`/api/analytics/battles/${encodeURIComponent(battleId)}/contributors`);
-      if (res.ok) {
-        const json = await res.json();
-        setContributorsByBattleId((prev) => ({ ...prev, [battleId]: json }));
-      }
-    } finally {
-      setContributorsLoading(null);
-    }
-  }, [expandedBattleId, contributorsByBattleId]);
 
   useEffect(() => {
     if (viewMode === "ranking") {
@@ -452,9 +399,18 @@ export default function AnalyticsPage() {
   const filteredBattles = useMemo(() => {
     if (!battlesData) return [];
     const q = filter.toLowerCase();
-    if (!q) return battlesData.battles;
-    return battlesData.battles.filter((b) => b.opponent?.tiktokId?.toLowerCase().includes(q));
-  }, [battlesData, filter]);
+    return battlesData.battles.filter((b) => {
+      if (hideLowDiamond && b.selfTotalDiamonds <= 100) return false;
+      if (!q) return true;
+      const opponent = b.opponent;
+      return (
+        opponent?.tiktokId?.toLowerCase().includes(q) ||
+        opponent?.displayId?.toLowerCase().includes(q) ||
+        opponent?.nickName?.toLowerCase().includes(q) ||
+        false
+      );
+    });
+  }, [battlesData, filter, hideLowDiamond]);
 
   const giftNameSuggestions = useMemo(() => {
     if (!historyData) return [];
@@ -511,6 +467,7 @@ export default function AnalyticsPage() {
   }, [editDraft]);
 
   return (
+    <>
     <main className="max-w-4xl mx-auto w-full px-4 py-4 space-y-4">
         {/* Period tabs + View mode toggle */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -826,12 +783,21 @@ export default function AnalyticsPage() {
         )}
 
         {viewMode === "battles" && battlesData && (
-          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+          <div className="flex gap-4 text-xs text-gray-400 flex-wrap items-center">
             <span>
-              {filter
+              {filter || hideLowDiamond
                 ? `${filteredBattles.length} / ${battlesData.battles.length} 件`
                 : `${battlesData.battles.length} 件`}
             </span>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLowDiamond}
+                onChange={(e) => setHideLowDiamond(e.target.checked)}
+                className="cursor-pointer"
+              />
+              コイン100以下を非表示
+            </label>
             {lastRefreshed && (
               <span className="ml-auto">
                 更新 {lastRefreshed.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -1078,106 +1044,95 @@ export default function AnalyticsPage() {
                     <th className="py-2.5 px-3 text-left">対戦相手</th>
                     <th className="py-2.5 px-3 text-right">スコア</th>
                     <th className="py-2.5 px-3 text-center whitespace-nowrap">状態</th>
-                    <th className="py-2.5 px-3 text-center w-10">貢献者</th>
+                    <th className="py-2.5 px-3 text-right whitespace-nowrap">コイン</th>
+                    <th className="py-2.5 px-3 text-center w-10">詳細</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBattles.map((battle) => {
-                    const expanded = expandedBattleId === battle.battleId;
-                    const contributors = contributorsByBattleId[battle.battleId];
                     const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
                     const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
                     const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
+                    const opponent = battle.opponent;
 
                     return (
-                      <Fragment key={battle.battleId}>
-                        <tr className="border-b border-border/50 hover:bg-white/[0.02] transition-colors">
-                          <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
-                            {formatEventTime(battle.startedAt, period)}
-                          </td>
-                          <td className="py-2 px-3">
-                            {battle.opponent === null ? (
-                              <span className="text-gray-500">対戦相手不明</span>
-                            ) : battle.opponent.count > 1 ? (
-                              <span className="text-gray-400">複数人バトル({battle.opponent.count + 1}人)</span>
-                            ) : battle.opponent.tiktokId ? (
-                              <span className="font-medium">@{battle.opponent.tiktokId}</span>
-                            ) : (
-                              <span className="text-gray-500">対戦相手不明</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
-                            {battle.selfScore === null ? (
-                              "-"
-                            ) : (
-                              <span className={win ? "text-brand font-semibold" : ""}>
-                                {Number(battle.selfScore).toLocaleString()}
-                              </span>
-                            )}
-                            {" / "}
-                            {battle.opponentScore === null ? (
-                              "-"
-                            ) : (
-                              <span className={lose ? "text-red-400 font-semibold" : ""}>
-                                {Number(battle.opponentScore).toLocaleString()}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
-                            <span
-                              className={
-                                battle.status === "live"
-                                  ? "text-brand"
-                                  : battle.status === "cut_short"
-                                    ? "text-red-400"
-                                    : "text-gray-400"
-                              }
-                            >
-                              {BATTLE_STATUS_LABELS[battle.status]}
+                      <tr
+                        key={battle.battleId}
+                        onClick={() => setOpenBattleId(battle.battleId)}
+                        className="border-b border-border/50 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      >
+                        <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                          {formatEventTime(battle.startedAt, period)}
+                        </td>
+                        <td className="py-2 px-3">
+                          {opponent === null ? (
+                            <span className="text-gray-500">対戦相手不明</span>
+                          ) : opponent.count > 1 ? (
+                            <span className="text-gray-400">複数人バトル({opponent.count + 1}人)</span>
+                          ) : opponent.nickName || opponent.displayId || opponent.tiktokId ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
+                              <div className="min-w-0">
+                                <div className="font-medium truncate max-w-[160px]">
+                                  {opponent.nickName ?? `@${opponent.displayId}`}
+                                </div>
+                                {(opponent.displayId || opponent.tiktokId) && (
+                                  <div className="text-xs text-gray-500 truncate max-w-[160px]">
+                                    @{opponent.displayId ?? opponent.tiktokId}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">対戦相手不明</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                          {battle.selfScore === null ? (
+                            "-"
+                          ) : (
+                            <span className={win ? "text-brand font-semibold" : ""}>
+                              {Number(battle.selfScore).toLocaleString()}
                             </span>
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            <button
-                              onClick={() => toggleBattleExpand(battle.battleId)}
-                              className="btn-ghost p-1.5"
-                              title={expanded ? "閉じる" : "貢献者一覧を見る"}
-                            >
-                              {expanded ? "▲" : "▼"}
-                            </button>
-                          </td>
-                        </tr>
-                        {expanded && (
-                          <tr className="border-b border-border/50 bg-white/[0.02]">
-                            <td colSpan={5} className="p-3">
-                              {contributorsLoading === battle.battleId ? (
-                                <div className="text-center py-4 text-gray-500 text-xs">読み込み中...</div>
-                              ) : !contributors || contributors.contributors.length === 0 ? (
-                                <div className="text-center py-4 text-gray-500 text-xs">
-                                  {contributors?.status === "unknown"
-                                    ? "バトル区間を確定できないため集計できません"
-                                    : "このバトルへの貢献者なし"}
-                                </div>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {contributors.contributors
-                                    .slice()
-                                    .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
-                                    .map((c) => (
-                                      <div key={c.uniqueId} className="flex items-center gap-2 text-xs">
-                                        <Avatar src={c.profileImageUrl} alt={c.nickname} />
-                                        <span className="font-medium truncate max-w-[160px]">{c.nickname}</span>
-                                        <span className="text-gray-500">@{c.uniqueId}</span>
-                                        <span className="ml-auto font-mono">
-                                          💎{c.totalDiamonds.toLocaleString()} ({c.giftCount}件)
-                                        </span>
-                                      </div>
-                                    ))}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
+                          )}
+                          {" / "}
+                          {battle.opponentScore === null ? (
+                            "-"
+                          ) : (
+                            <span className={lose ? "text-red-400 font-semibold" : ""}>
+                              {Number(battle.opponentScore).toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
+                          <span
+                            className={
+                              battle.status === "live"
+                                ? "text-brand"
+                                : battle.status === "cut_short"
+                                  ? "text-red-400"
+                                  : "text-gray-400"
+                            }
+                          >
+                            {BATTLE_STATUS_LABELS[battle.status]}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                          💎{battle.selfTotalDiamonds.toLocaleString()}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenBattleId(battle.battleId);
+                            }}
+                            className="btn-ghost p-1.5"
+                            title="貢献者一覧を見る"
+                          >
+                            詳細
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -1188,6 +1143,11 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </main>
+    <BattleDetailModal
+      battle={battlesData?.battles.find((b) => b.battleId === openBattleId) ?? null}
+      onClose={() => setOpenBattleId(null)}
+    />
+    </>
   );
 }
 
@@ -1204,33 +1164,6 @@ function VerifyGate() {
           今すぐ認証する
         </Link>
       </div>
-    </div>
-  );
-}
-
-function Avatar({
-  src,
-  alt,
-}: {
-  src: string | null;
-  alt: string;
-}) {
-  if (src) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={alt}
-        className="w-8 h-8 rounded-full object-cover shrink-0 bg-panel"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
-        }}
-      />
-    );
-  }
-  return (
-    <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center text-gray-500 text-xs shrink-0">
-      {alt.charAt(0).toUpperCase()}
     </div>
   );
 }

@@ -31,8 +31,10 @@ import {
   parseArmiesEvent,
   parseBattleEvent,
   type BattleRecordState,
+  type HostProfiles,
   type ParsedBattle,
 } from "./tiktok-battle";
+import { ensureAvatarCached } from "./avatar-storage";
 
 export type ListenerStatus =
   | "idle"
@@ -1207,6 +1209,7 @@ async function persistBattle(
         hostUserIds: existing.hostUserIds,
         hostDisplayIds: existing.hostDisplayIds,
         hostScores: (existing.hostScores as Record<string, string> | null) ?? {},
+        hostProfiles: (existing.hostProfiles as HostProfiles | null) ?? {},
       }
     : null;
 
@@ -1232,6 +1235,7 @@ async function persistBattle(
     hostUserIds: state.hostUserIds,
     hostDisplayIds: state.hostDisplayIds,
     hostScores: state.hostScores,
+    hostProfiles: state.hostProfiles,
     raw: raws,
   };
 
@@ -1241,6 +1245,12 @@ async function persistBattle(
     await prisma.tiktokBattle.create({
       data: { roomId, battleId: parsed.battleId, ...data },
     });
+  }
+
+  // アイコンの恒久化はfire-and-forget。DB書き込みが終わった後に呼ぶことで
+  // write queueの直列化(同じbattleIdの後続イベント処理)をブロックしない。
+  for (const [anchorId, profile] of Object.entries(state.hostProfiles)) {
+    ensureAvatarCached("battle_host", anchorId, profile.avatarUrl).catch(() => {});
   }
 }
 
@@ -1395,6 +1405,15 @@ async function connectAndAttach(
 
   conn.on("gift", (data: Record<string, unknown>) => {
     markAlive();
+
+    // アイコンの恒久化はfire-and-forget。saveGift/saveComboGiftのadvisory lock保持時間に
+    // 影響させないため、DB書き込みより前・完全に独立した経路で呼ぶ。
+    if (data.uniqueId) {
+      const uniqueId = String(data.uniqueId);
+      const profilePictureUrl = data.profilePictureUrl ? String(data.profilePictureUrl) : null;
+      ensureAvatarCached("gift_sender", uniqueId, profilePictureUrl).catch(() => {});
+    }
+
     const isCombo = data.giftType === 1;
     // protobufの既定値"0"はcomboキーにもdedupキーにも使えない(全ユーザー・全ギフトが
     // 同じキーを共有してしまう)。resolveGroupId()がそれをnullへ倒す。

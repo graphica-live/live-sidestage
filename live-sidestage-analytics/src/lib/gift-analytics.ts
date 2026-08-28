@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
 export function getDateRange(
   period: string,
@@ -42,19 +43,23 @@ export type GiftAnalyticsUser = {
   lastGiftAt: string;
 };
 
+/** viewerStreamerIdが「非表示」にしたギフト(GiftEdit.hidden)のIDを返す。非表示は閲覧者本人のview以外には一切影響しない。 */
+export async function resolveHiddenGiftIds(roomId: string, viewerStreamerId: string): Promise<string[]> {
+  const hiddenEdits = await prisma.giftEdit.findMany({
+    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
+    select: { giftId: true },
+  });
+  return hiddenEdits.map((e) => e.giftId);
+}
+
 // roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
 // viewerStreamerId: 閲覧者本人が「非表示」にしたギフト(GiftEdit.hidden)を除外するために使う。
-// 非表示は閲覧者本人のview以外には一切影響しない。
 export async function queryGifts(
   roomId: string,
   viewerStreamerId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } }
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
-  const hiddenEdits = await prisma.giftEdit.findMany({
-    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
-    select: { giftId: true },
-  });
-  const hiddenIds = hiddenEdits.map((e) => e.giftId);
+  const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
 
   const fullWhere = {
     roomId,
@@ -79,13 +84,16 @@ export async function queryGifts(
   });
 
   const profileMap = new Map(profiles.map((p) => [p.uniqueId, p]));
+  // TikTokの署名付きprofileImageUrlは数十時間で失効する。自前ストレージにキャッシュ済みなら
+  // 恒久URLへ差し替える(未ヒットは従来どおり生のTikTok URLへフォールバック)。
+  const cachedAvatarUrls = await resolveAvatarUrls("gift_sender", grouped.map((g) => g.uniqueId));
 
   const users = grouped.map((g) => {
     const profile = profileMap.get(g.uniqueId);
     return {
       uniqueId: g.uniqueId,
       nickname: profile?.nickname ?? g.uniqueId,
-      profileImageUrl: profile?.profileImageUrl ?? null,
+      profileImageUrl: cachedAvatarUrls.get(g.uniqueId) ?? profile?.profileImageUrl ?? null,
       giftCount: g._sum.repeatCount ?? 0,
       totalDiamonds: g._sum.totalDiamonds ?? 0,
       lastGiftAt: (g._max.receivedAt ?? new Date()).toISOString(),
