@@ -414,6 +414,18 @@ describe("GET /api/mobile/gifts — 日本語表示名", () => {
     expect(hit.labelJa).toBe("ゼウス"); // 日本語名は 80021(日本語を持つ行の最小giftId)
   });
 
+  it("実配信で使われるgiftIdが判明している名前は、最小giftIdより実測のgiftIdを優先する", async () => {
+    // 実測(gift-name-verification/REPORT.md 2026-08-28): 5338と7237は同じ英語名・同額の
+    // 重複giftIdだが、実際に配信で送られてくるのは7237(「幻のユニコーン」)のみ。5338(「ユニコーン
+    // ファンタジー」)は廃止済みの旧IDで、最小giftId優先だと誤ってこちらが選ばれてしまう。
+    await addCatalog(5338, "Unicorn Fantasy", 5000, null, "ユニコーン ファンタジー");
+    await addCatalog(7237, "unicorn fantasy", 5000, null, "幻のユニコーン");
+
+    const { gifts } = await fetchGifts(token);
+    const hit = find(gifts, "unicorn fantasy");
+    expect(hit.labelJa).toBe("幻のユニコーン");
+  });
+
   it("受信履歴にしか無いギフトは labelJa が null", async () => {
     // 部屋固有のサブスクギフトや、カタログから消えた旧ギフト。
     await addGift("HistOnly", 5, new Date("2026-08-20T14:00:00Z"));

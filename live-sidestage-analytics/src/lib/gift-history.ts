@@ -1,4 +1,6 @@
-// ギフト履歴の編集機能まわりの純粋ロジック。ルートハンドラから分離してユニットテスト可能にしている。
+// ギフト履歴の編集機能まわりのロジックと、履歴一覧の取得クエリ。ルートハンドラから分離してテスト可能にしている。
+
+import { prisma } from "@/lib/prisma";
 
 export type GiftEditInput =
   | { ok: true; giftName: string; totalDiamonds: number }
@@ -38,4 +40,79 @@ export function applyGiftEdit<T extends GiftHistoryRow>(
     totalDiamonds: edit?.totalDiamonds ?? row.totalDiamonds,
     edited: edit !== null,
   };
+}
+
+export type GiftHistoryEvent = {
+  id: string;
+  uniqueId: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  giftId: number;
+  giftName: string;
+  giftPictureUrl: string | null;
+  repeatCount: number;
+  totalDiamonds: number;
+  receivedAt: string;
+  edited: boolean;
+};
+
+// roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
+// viewerStreamerId: 閲覧者本人のGiftEdit(リネーム・非表示)を適用するために使う。他の登録者の編集は見えない。
+//
+// **hidden除外はDBクエリのwhere句で行う(取得後にfilterしない)。** limit件を取ってから非表示行を
+// 弾く実装だと、非表示行がlimitを消費して表示可能な件数が減り、totalも「取得できたページ内の合計」に
+// なってしまう(queryGifts()と同じ理由でここも先に除外する)。
+export async function queryGiftHistory(
+  roomId: string,
+  viewerStreamerId: string,
+  where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
+  limit: number
+): Promise<{ events: GiftHistoryEvent[]; total: { count: number; diamonds: number }; hasMore: boolean }> {
+  const hiddenEdits = await prisma.giftEdit.findMany({
+    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
+    select: { giftId: true },
+  });
+  const hiddenIds = hiddenEdits.map((e) => e.giftId);
+
+  const fullWhere = {
+    roomId,
+    ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
+    ...where,
+  };
+
+  // limit+1件取ることで、取得後にスライスするだけでhasMoreを判定できる(追加のcountクエリ不要)。
+  const rows = await prisma.gift.findMany({
+    where: fullWhere,
+    orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    select: {
+      id: true,
+      uniqueId: true,
+      nickname: true,
+      profileImageUrl: true,
+      giftId: true,
+      giftName: true,
+      giftPictureUrl: true,
+      repeatCount: true,
+      totalDiamonds: true,
+      receivedAt: true,
+      edits: { where: { streamerId: viewerStreamerId }, select: { giftName: true, totalDiamonds: true } },
+    },
+  });
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+  const events = pageRows.map((row) => {
+    const { edits, receivedAt, ...base } = row;
+    const edit = edits[0] ? { giftName: edits[0].giftName, totalDiamonds: edits[0].totalDiamonds } : null;
+    return { ...applyGiftEdit({ ...base, edit }), receivedAt: receivedAt.toISOString() };
+  });
+
+  const total = events.reduce(
+    (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),
+    { count: 0, diamonds: 0 }
+  );
+
+  return { events, total, hasMore };
 }

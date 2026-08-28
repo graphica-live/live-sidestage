@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 
@@ -85,4 +85,37 @@ export async function resolveActiveMobileUser(req: NextRequest): Promise<{ userI
   if (!user) return null;
 
   return { userId: auth.userId };
+}
+
+export type MobileAnalyticsStreamer = { id: string; roomId: string; verified: boolean };
+
+// mobile/analytics/* の4エンドポイント共通の認可処理。JWTのstreamerIdは信用せず
+// userIdからStreamerを引き直す(resolveUserByMobileTokenの規約を踏襲)。
+//
+// streamer未登録・roomId未接続の場合のレスポンスはエンドポイントごとに形もステータスも
+// 違う(一覧系は既存Web版のgifts/history/route.tsに揃えて「空データ+verified:falseで200」、
+// 詳細系のbattles/[id]/contributorsは既存Web版に揃えて404)。呼び出し側はその
+// NextResponseをそのまま buildUnauthorizedResponse として渡す。
+//
+// **将来のBIO認証(verified)必須化はここ1箇所に足すだけで4エンドポイント全てに効く。**
+// 今は既存Web版と同様に verified 未完了でも実データを返す(表示ブロックはフロント側の責務)。
+export async function resolveMobileAnalyticsContext(
+  req: NextRequest,
+  buildUnregisteredResponse: () => NextResponse
+): Promise<{ ok: true; streamer: MobileAnalyticsStreamer } | { ok: false; response: NextResponse }> {
+  const auth = resolveUserByMobileToken(req);
+  if (!auth) {
+    return { ok: false, response: NextResponse.json({ error: "認証が必要です" }, { status: 401 }) };
+  }
+
+  const streamer = await prisma.streamer.findUnique({
+    where: { userId: auth.userId },
+    select: { id: true, roomId: true, verified: true },
+  });
+
+  if (!streamer || !streamer.roomId) {
+    return { ok: false, response: buildUnregisteredResponse() };
+  }
+
+  return { ok: true, streamer: { id: streamer.id, roomId: streamer.roomId, verified: streamer.verified } };
 }

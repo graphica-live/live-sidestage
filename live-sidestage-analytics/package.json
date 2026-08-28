@@ -18,6 +18,7 @@
     "db:push:local": "dotenv -e .env.local.test -- prisma db push",
     "seed:local": "dotenv -e .env.local.test -- tsx prisma/seed-local.ts",
     "seed:event:local": "dotenv -e .env.local.test -- tsx prisma/seed-event-local.ts",
+    "seed:battle:local": "dotenv -e .env.local.test -- tsx scripts/seed-local-battle.ts",
     "event-worker:local": "dotenv -e .env.local.test -- tsx event-worker.ts",
     "bench:aggregate:local": "dotenv -e .env.local.test -- tsx scripts/bench-aggregate.ts",
     "cleanup:nonexistent-streamers:local": "dotenv -e .env.local.test -- tsx scripts/cleanup-nonexistent-streamers.ts",

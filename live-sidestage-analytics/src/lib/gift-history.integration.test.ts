@@ -3,8 +3,9 @@
 // ギフトデータは同じtiktokId(=同じTiktokRoom)を登録した全員で共有されるが、編集/非表示は
 // streamerId単位で分離され、編集した本人にしか見えないことも検証する。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { applyGiftEdit } from "./gift-history";
+import { applyGiftEdit, queryGiftHistory } from "./gift-history";
 
 const STREAMER_TIKTOK_ID = "itest_gift_history_streamer";
 let streamerId: string;
@@ -40,7 +41,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function makeGift() {
+async function makeGift(overrides: Partial<Prisma.GiftUncheckedCreateInput> = {}) {
   return prisma.gift.create({
     data: {
       roomId,
@@ -53,6 +54,7 @@ async function makeGift() {
       totalDiamonds: 1,
       dayKey: "2026-08-15",
       receivedAt: new Date("2026-08-15T10:00:00Z"),
+      ...overrides,
     },
   });
 }
@@ -163,5 +165,61 @@ describe("GiftEdit", () => {
     expect(asHider.hidden).toBe(true);
     expect(asOther.hidden).toBe(false);
     expect(original).not.toBeNull(); // 実データは削除されていない
+  });
+});
+
+// 他のdescribeブロックと同じroomIdを共有するため、dayKeyを"2026-08-16"に固定して
+// GiftEditテスト側が作る"2026-08-15"のギフトと混ざらないようにする。
+describe("queryGiftHistory", () => {
+  it("非表示(hidden)行はDBクエリ側で除外され、limitを消費しない", async () => {
+    const g1 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:00:00Z"), totalDiamonds: 10 });
+    const g2 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:01:00Z"), totalDiamonds: 20 });
+    const g3 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:02:00Z"), totalDiamonds: 30 });
+    await prisma.giftEdit.create({
+      data: { giftId: g2.id, streamerId, giftName: g2.giftName, totalDiamonds: g2.totalDiamonds, hidden: true },
+    });
+
+    // limit=2だが非表示なのはg2だけなので、g1とg3の2件がちゃんと返る(g2がlimitを消費してg1しか返らない、では駄目)。
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: "2026-08-16", lte: "2026-08-16" } }, 2);
+
+    expect(result.events.map((e) => e.id)).toEqual([g3.id, g1.id]); // receivedAt降順
+    expect(result.hasMore).toBe(false);
+    expect(result.total).toEqual({ count: 2, diamonds: 40 });
+  });
+
+  it("limitちょうどならhasMore=false、超過があればtrueになる", async () => {
+    const dayKey = "2026-08-17";
+    await makeGift({ dayKey, receivedAt: new Date("2026-08-17T10:00:00Z") });
+    await makeGift({ dayKey, receivedAt: new Date("2026-08-17T10:01:00Z") });
+    await makeGift({ dayKey, receivedAt: new Date("2026-08-17T10:02:00Z") });
+
+    const exact = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 3);
+    expect(exact.events).toHaveLength(3);
+    expect(exact.hasMore).toBe(false);
+
+    const over = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 2);
+    expect(over.events).toHaveLength(2);
+    expect(over.hasMore).toBe(true);
+  });
+
+  it("他のviewerの非表示設定は自分の閲覧結果に影響しない", async () => {
+    const dayKey = "2026-08-18";
+    const gift = await makeGift({ dayKey, receivedAt: new Date("2026-08-18T10:00:00Z") });
+    await prisma.giftEdit.create({
+      data: { giftId: gift.id, streamerId: streamerId2, giftName: gift.giftName, totalDiamonds: gift.totalDiamonds, hidden: true },
+    });
+
+    const asOwner = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
+    expect(asOwner.events.map((e) => e.id)).toContain(gift.id);
+  });
+
+  it("dayKey範囲外のギフトは含まれない", async () => {
+    const dayKey = "2026-08-19";
+    const inRange = await makeGift({ dayKey, receivedAt: new Date("2026-08-19T10:00:00Z") });
+    await makeGift({ dayKey: "2026-08-20", receivedAt: new Date("2026-08-20T10:00:00Z") });
+
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
+
+    expect(result.events.map((e) => e.id)).toEqual([inRange.id]);
   });
 });
