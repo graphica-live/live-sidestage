@@ -242,7 +242,10 @@ export async function queryBattles(
       // 観測があれば相手候補として名前だけ出す。スコア対比は anchorId が特定できないので出さない。
       const firstOther = others[0];
       const tiktokId = otherRoomById.get(firstOther.roomId)?.tiktokId ?? null;
-      opponent = { tiktokId, count: otherRoomIds.length };
+      // count は「このバトルの」相手room数。otherRoomIds は全バトル分の他roomを合算した
+      // 集合なので使わない(使うと別バトルの相手数まで混入する)。
+      const thisBattleOtherRoomIds = new Set(others.map((o) => o.roomId));
+      opponent = { tiktokId, count: thisBattleOtherRoomIds.size };
     }
 
     return {

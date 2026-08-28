@@ -126,6 +126,12 @@ export function isAllowedAvatarUrl(value: unknown): value is string {
   return ALLOWED_AVATAR_HOSTS.some((suffix) => host.endsWith(suffix));
 }
 
+// isAllowedAvatarUrl を通らない値は null に落とす。DB格納時点で検証済みとは限らない
+// 値(Gift.profileImageUrl/giftPictureUrl等)を外部(モバイルクライアント)へ返す前に使う。
+export function sanitizeAvatarUrl(value: string | null): string | null {
+  return isAllowedAvatarUrl(value) ? value : null;
+}
+
 /**
  * `api-live/user/room/` のレスポンスから使える値だけを取り出す。
  *
