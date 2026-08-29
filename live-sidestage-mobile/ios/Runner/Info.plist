@@ -58,6 +58,17 @@
 	<string>515259769901-q7nogebvghseknaek122tq611tad1jto.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- カメラ・写真ライブラリはどちらも本アプリでは使用しない。file_picker が
+	     iOS向けに同梱する画像/カメラピッカー実装(DKImagePickerController/DKCamera)
+	     がAPIを参照しているため、App Store Connectの静的解析(ITMS-90683)で
+	     説明文が必須と判定される。実際の効果音ファイル選択はUIDocumentPickerを使う
+	     (FileType.custom)ため、これらの権限ダイアログが表示されることはない。 -->
+	<key>NSCameraUsageDescription</key>
+	<string>このアプリはカメラを使用しません。ファイル選択機能が内部で参照しているため設定しています。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>このアプリは写真ライブラリを使用しません。ファイル選択機能が内部で参照しているため設定しています。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>このアプリは位置情報を使用しません。同梱するライブラリが内部で参照しているため設定しています。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
