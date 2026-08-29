@@ -106,10 +106,12 @@ class SettingsTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.account_circle_outlined),
             // どちらでログインしたかは session が持っている。決め打ちにすると
-            // Apple で入っている人に嘘を表示することになる。
-            title: Text(
-              session.provider == AuthProvider.apple ? 'Appleアカウント' : 'Googleアカウント',
-            ),
+            // 実際とは違うプロバイダを表示することになる。
+            title: Text(switch (session.provider) {
+              AuthProvider.apple => 'Appleアカウント',
+              AuthProvider.email => 'メールアカウント',
+              AuthProvider.google => 'Googleアカウント',
+            }),
             subtitle: Text(session.userEmail),
           ),
         ListTile(

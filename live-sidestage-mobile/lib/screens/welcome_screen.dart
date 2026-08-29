@@ -5,6 +5,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../core/api_client.dart';
 import '../core/privacy_policy.dart';
 import '../core/session_controller.dart';
+import 'email_auth_screen.dart';
 
 // Google と Apple のボタンは実装元が別（Material の FilledButton と
 // sign_in_with_apple のウィジェット）で既定値も揃っていないため、
@@ -103,6 +104,27 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: _buttonHeight,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: _buttonRadius,
+                      ),
+                    ),
+                    onPressed: controller.isLoading
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const EmailAuthScreen()),
+                            ),
+                    child: const Text(
+                      'メールアドレスでログイン',
+                      style: TextStyle(fontSize: _buttonFontSize),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 TextButton(
                   onPressed: () => launchPrivacyPolicy(context),

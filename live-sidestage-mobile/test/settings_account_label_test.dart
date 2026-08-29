@@ -73,4 +73,13 @@ void main() {
     expect(find.text('Appleアカウント'), findsOneWidget);
     expect(find.text('Googleアカウント'), findsNothing);
   });
+
+  testWidgets('メールでログインしていればメールアカウントと出す', (tester) async {
+    await _pumpSettings(tester, AuthProvider.email);
+    await _scrollToAccount(tester);
+
+    expect(find.text('メールアカウント'), findsOneWidget);
+    expect(find.text('Googleアカウント'), findsNothing);
+    expect(find.text('Appleアカウント'), findsNothing);
+  });
 }
