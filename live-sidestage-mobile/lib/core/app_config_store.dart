@@ -63,6 +63,19 @@ class AppConfigStore extends ChangeNotifier {
   /// 背景 Isolate への反映待ちかどうか。UI で「反映待ち」を出す用。
   bool get syncPending => _pendingRevision != null;
 
+  /// アカウント削除時の後始末。設定を既定値へ戻し、`FlutterForegroundTask`の
+  /// ストレージ(ForegroundTaskが保持する`apiKey`もこの仕組みで入っている)を
+  /// 丸ごとクリアする。同一端末で別アカウントへログインしたとき、前アカウントの
+  /// 設定・接続情報を引き継がないようにするため。
+  Future<void> resetToDefaults() async {
+    await FlutterForegroundTask.clearAllData();
+    _config = const AppConfig();
+    _configReadable = true;
+    _configFromFutureVersion = false;
+    _pendingRevision = null;
+    notifyListeners();
+  }
+
   Future<void> load() async {
     final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
     final decoded = AppConfig.tryDecode(raw);

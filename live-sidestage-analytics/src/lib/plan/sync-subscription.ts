@@ -59,6 +59,13 @@ export async function syncSubscriptionFromStripe(stripeSubscriptionId: string): 
     );
   }
 
+  // アカウント削除でUserが既に消えている場合、Subscription.userIdはUserへのFK
+  // (onDelete: Cascade)なのでcreateがP2003で失敗し続ける。削除は
+  // DELETE /api/mobile/account 側でCustomer自体をStripeから消しているはずで、
+  // ここへ遅延webhookが届いても復元すべきデータが無いのでno-opにする。
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return;
+
   await prisma.subscription.upsert({
     where: { userId },
     create: { userId, ...data },

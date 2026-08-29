@@ -98,6 +98,23 @@ void main() {
     });
   });
 
+  group('deleteAll', () {
+    // アカウント削除時の後始末専用。設定の参照有無に関わらず無条件で消す。
+    test('取り込み済みの音源ファイルを全て消す', () async {
+      final a = await putSound('a.mp3');
+      final b = await putSound('b.mp3');
+
+      await library.deleteAll();
+
+      expect(a.existsSync(), isFalse);
+      expect(b.existsSync(), isFalse);
+    });
+
+    test('ファイルが無くても落ちない', () async {
+      await library.deleteAll();
+    });
+  });
+
   group('deleteUnreferencedSoundFiles', () {
     test('どこからも参照されなくなったファイルは消す', () async {
       final lonely = await putSound('lonely.mp3');

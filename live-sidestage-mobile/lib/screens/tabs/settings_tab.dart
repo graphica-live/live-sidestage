@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/account_deletion.dart';
 import '../../core/app_config_store.dart';
+import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
 import '../../models/auth_session.dart';
 import '../../models/voice_catalog.dart';
@@ -123,6 +125,16 @@ class SettingsTab extends StatelessWidget {
             if (!context.mounted) return;
             await context.read<SessionController>().logout();
           },
+        ),
+        ListTile(
+          leading: const Icon(Icons.delete_forever, color: Colors.red),
+          title: const Text('アカウント削除', style: TextStyle(color: Colors.red)),
+          onTap: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
+        ),
+        ListTile(
+          leading: const Icon(Icons.privacy_tip_outlined),
+          title: const Text('プライバシーポリシー'),
+          onTap: () => launchPrivacyPolicy(context),
         ),
         if (store.syncPending)
           const Padding(

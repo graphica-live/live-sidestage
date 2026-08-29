@@ -419,6 +419,12 @@ class LiveAnalyticsApi {
     return AccountStatus.fromJson(data);
   }
 
+  /// アカウント削除。サーバー側でUserをcascade削除する(Account/Session/Subscription等)。
+  /// 既に削除済みのUserのtokenで呼んでも200(冪等)を返すので、再送時もエラー扱いしなくてよい。
+  Future<void> deleteAccount({required String token}) async {
+    await _send('DELETE', '/api/mobile/account', null, token: token);
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }
@@ -445,6 +451,7 @@ class LiveAnalyticsApi {
       final request = switch (method) {
         'GET' => http.get(uri, headers: headers),
         'PATCH' => http.patch(uri, headers: headers, body: encodedBody),
+        'DELETE' => http.delete(uri, headers: headers, body: encodedBody),
         _ => http.post(uri, headers: headers, body: encodedBody),
       };
       response = await request.timeout(const Duration(seconds: 20));

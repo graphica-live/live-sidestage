@@ -1,9 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:live_sidestage_mobile/core/api_client.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/session_storage.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
 import 'package:live_sidestage_mobile/screens/gift_sound_edit_screen.dart';
+
+/// 実プラグインを叩かせない（plain `test()` にはplatform channelのbindingが無い）。
+class _FakeGoogleSignIn extends GoogleSignIn {
+  int signOuts = 0;
+
+  @override
+  Future<GoogleSignInAccount?> signOut() async {
+    signOuts++;
+    return null;
+  }
+}
 
 /// JWT(90日)が失効しても、常用のコメント受信は apiKey なので気づけない。
 /// 401 を受けたときに無言でトークンを取り直せることを固定する。
@@ -53,6 +65,18 @@ class _FakeApi extends LiveAnalyticsApi {
     }
     return StreamerInfo(id: 's1', tiktokId: tiktokId, apiKey: 'k', verified: true);
   }
+
+  int deleteAccountCalls = 0;
+
+  /// 設定するとdeleteAccountがこの例外を投げる（サーバー側のfail-closedを模す）。
+  ApiException? deleteAccountError;
+
+  @override
+  Future<void> deleteAccount({required String token}) async {
+    deleteAccountCalls++;
+    final error = deleteAccountError;
+    if (error != null) throw error;
+  }
 }
 
 /// secure storage は platform channel なのでテストでは触らせない。
@@ -92,8 +116,12 @@ SessionController _controller({
   required _FakeStorage storage,
   required Future<String?> Function() silentIdToken,
 }) {
-  return SessionController(api: api, storage: storage, silentIdToken: silentIdToken)
-    ..session = _expiredSession();
+  return SessionController(
+    api: api,
+    storage: storage,
+    googleSignIn: _FakeGoogleSignIn(),
+    silentIdToken: silentIdToken,
+  )..session = _expiredSession();
 }
 
 void main() {
@@ -238,6 +266,75 @@ void main() {
     expect(controller.session!.token, 'new-1');
     expect(storage.saved!.token, 'new-1');
     expect(controller.session!.streamer!.tiktokId, 'newid');
+  });
+
+  group('deleteAccount', () {
+    test('成功したらセッションとローカルストレージを消す', () async {
+      final api = _FakeApi();
+      final storage = _FakeStorage();
+      final controller = _controller(
+        api: api,
+        storage: storage,
+        silentIdToken: () async => 'id-token',
+      );
+
+      final result = await controller.deleteAccount();
+
+      expect(result, isTrue);
+      expect(api.deleteAccountCalls, 1);
+      expect(controller.session, isNull);
+      expect(storage.clears, 1);
+      expect(controller.errorMessage, isNull);
+    });
+
+    test('サーバー側が失敗(fail-closed)ならセッションを壊さずfalseを返す', () async {
+      final api = _FakeApi()..deleteAccountError = ApiException('Stripe解約に失敗しました', statusCode: 500);
+      final storage = _FakeStorage();
+      final controller = _controller(
+        api: api,
+        storage: storage,
+        silentIdToken: () async => 'id-token',
+      );
+
+      final result = await controller.deleteAccount();
+
+      expect(result, isFalse);
+      expect(controller.session, isNotNull);
+      expect(controller.errorMessage, 'Stripe解約に失敗しました');
+      expect(storage.clears, 0);
+    });
+
+    test('失敗後は通常どおりtoken refreshできる(削除中フラグを引きずらない)', () async {
+      final api = _FakeApi()..deleteAccountError = ApiException('失敗', statusCode: 500);
+      final controller = _controller(
+        api: api,
+        storage: _FakeStorage(),
+        silentIdToken: () async => 'id-token',
+      );
+
+      expect(await controller.deleteAccount(), isFalse);
+      expect(await controller.refreshToken(), 'new-1');
+    });
+
+    // 削除リクエスト送信中に割り込んだtoken refreshが、サーバー側のGoogle認証ルートへ
+    // 新規User作成のトリガーを送ってしまわないことを固定する。_deleting は
+    // deleteAccount() の最初のawaitより前に同期的に立つので、直後に呼んだ
+    // refreshToken() は _doRefresh() の入り口で早期returnし、Google認証は一切呼ばれない。
+    test('削除中に割り込んだtoken refreshは新規認証を試みない', () async {
+      final api = _FakeApi();
+      final controller = _controller(
+        api: api,
+        storage: _FakeStorage(),
+        silentIdToken: () async => 'id-token',
+      );
+
+      final deleteFuture = controller.deleteAccount();
+      final refreshResult = await controller.refreshToken();
+
+      expect(refreshResult, isNull);
+      expect(api.authCalls, 0);
+      expect(await deleteFuture, isTrue);
+    });
   });
 }
 

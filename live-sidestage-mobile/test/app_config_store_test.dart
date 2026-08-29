@@ -149,6 +149,29 @@ void main() {
     });
   });
 
+  group('resetToDefaults', () {
+    // アカウント削除時の後始末。同一端末で別アカウントへログインしたとき、
+    // 前アカウントの設定・ForegroundTaskのapiKeyを引き継がないようにする。
+    test('設定を既定値へ戻し、保存済みストレージも消す', () async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.updateSound((c) => c.copyWith(masterVolume: 42).addSet('ダンス', id: 'dance'));
+      await FlutterForegroundTask.saveData(key: 'apiKey', value: 'k1');
+
+      await store.resetToDefaults();
+
+      expect(store.config.ttsEnabled, const AppConfig().ttsEnabled);
+      expect(store.sound.masterVolume, const AppConfig().sound.masterVolume);
+      expect(store.sound.sets.map((s) => s.id), [SoundSet.defaultId]);
+      expect(store.syncPending, isFalse);
+      expect(await FlutterForegroundTask.getData<String>(key: 'apiKey'), isNull);
+
+      final reloaded = AppConfigStore();
+      await reloaded.load();
+      expect(reloaded.config.ttsEnabled, const AppConfig().ttsEnabled);
+    });
+  });
+
   group('セット操作', () {
     test('1回の操作で進む revision は1つ', () async {
       final store = AppConfigStore();

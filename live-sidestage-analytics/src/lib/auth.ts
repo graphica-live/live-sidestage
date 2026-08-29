@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import type { Adapter } from "next-auth/adapters";
+import type { JWT } from "next-auth/jwt";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
@@ -78,7 +79,27 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        return token;
+      }
+
+      // ログイン時(userが渡ってくるとき)以外は、クライアントがセッションを
+      // 参照するたびに呼ばれる。next-authはJWT session戦略だとDBを見ずに
+      // token.idを素通しするため、モバイルのアカウント削除でUserが消えても
+      // 署名が有効な限りWebセッションが生き続けてしまう。ここで実在確認する。
+      //
+      // {}のような空オブジェクトを返しても新しいJWTが発行され直って失効しない。
+      // next-authはjwtコールバックがnullを返すとセッションを破棄する
+      // (getServerSession/useSessionがnullを返すようになる)ので、必ずnullを返すこと。
+      // 型定義(Awaitable<JWT>)はnullを許容していないが、実装側は正しくnullを
+      // 特別扱いする(core/routes/session.tsがtry/catchで包んでおり、後続の
+      // sessionコールバックがtoken.idへアクセスしてTypeErrorになった時点で
+      // JWT_SESSION_ERRORとしてcookieを消す)ので、型だけ合わせて意図どおり返す。
+      if (typeof token.id === "string") {
+        const exists = await prisma.user.findUnique({ where: { id: token.id }, select: { id: true } });
+        if (!exists) return null as unknown as JWT;
+      }
       return token;
     },
     async session({ session, token }) {

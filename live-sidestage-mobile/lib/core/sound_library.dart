@@ -271,6 +271,16 @@ class SoundLibrary {
     if (await file.exists()) await file.delete();
   }
 
+  /// 取り込み済みの音源ファイルを全て削除する。アカウント削除時の後始末専用
+  /// ([pruneOrphans]と違い、設定の内容に関わらず無条件で消す) — 同一端末で
+  /// 別アカウントへログインしたとき、前アカウントの効果音を引き継がないため。
+  Future<void> deleteAll() async {
+    final dir = await soundsDirectory();
+    await for (final entity in dir.list()) {
+      if (entity is File) await entity.delete();
+    }
+  }
+
   /// 設定から参照されていない実ファイルを掃除する。
   ///
   /// **設定が正しく読めたときにだけ呼ぶこと。** 壊れたJSONや未対応の未来バージョンで

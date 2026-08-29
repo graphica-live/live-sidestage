@@ -17,3 +17,21 @@ export function getStripe(): Stripe {
   stripeClient = new Stripe(secretKey);
   return stripeClient;
 }
+
+/// Customerを削除する。Stripe公式仕様上、Customer削除はactiveなsubscriptionを
+/// 即時解約しカード情報も消す(個別にsubscriptions.cancel()するより単純で、
+/// 複数/不整合サブスクリプションや未完了Checkout Sessionが残るケースも一括で片付く)。
+///
+/// 既に削除済み(resource_missing)は成功扱いにする — アカウント削除の再送(冪等リトライ)や
+/// 手動でのStripe側先行削除で、対象が既に無いケースを異常系にしないため。
+export async function deleteStripeCustomer(stripeCustomerId: string): Promise<void> {
+  const stripe = getStripe();
+  try {
+    await stripe.customers.del(stripeCustomerId);
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeInvalidRequestError && error.code === "resource_missing") {
+      return;
+    }
+    throw error;
+  }
+}

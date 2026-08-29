@@ -8,12 +8,16 @@ vi.mock("@/lib/stripe", () => ({
 const findUnique = vi.fn();
 const update = vi.fn();
 const upsert = vi.fn();
+const findUserUnique = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     subscription: {
       findUnique: (...args: unknown[]) => findUnique(...args),
       update: (...args: unknown[]) => update(...args),
       upsert: (...args: unknown[]) => upsert(...args),
+    },
+    user: {
+      findUnique: (...args: unknown[]) => findUserUnique(...args),
     },
   },
 }));
@@ -48,6 +52,10 @@ beforeEach(() => {
   findUnique.mockReset();
   update.mockReset();
   upsert.mockReset();
+  findUserUnique.mockReset();
+  // upsert経路(既存Subscription行が無い)のテストは、Userが実在する前提のものが大半。
+  // no-op分岐だけ個別に上書きする。
+  findUserUnique.mockResolvedValue({ id: "user_123" });
 });
 
 describe("syncSubscriptionFromStripe", () => {
@@ -114,6 +122,15 @@ describe("syncSubscriptionFromStripe", () => {
     findUnique.mockResolvedValue(null);
 
     await expect(syncSubscriptionFromStripe("sub_123")).rejects.toThrow(/metadata\.userId/);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("既存行が無くUserも既に削除済みならno-opで例外を投げない(アカウント削除後の遅延webhook対策)", async () => {
+    retrieve.mockResolvedValue(fakeSubscription());
+    findUnique.mockResolvedValue(null);
+    findUserUnique.mockResolvedValue(null);
+
+    await expect(syncSubscriptionFromStripe("sub_123")).resolves.toBeUndefined();
     expect(upsert).not.toHaveBeenCalled();
   });
 });
