@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
@@ -51,11 +52,26 @@ const String appleRedirectUri = String.fromEnvironment(
   defaultValue: '$liveAnalyticsBaseUrl/api/mobile/auth/apple/callback',
 );
 
+/// iOSネイティブでAppleサインインを有効にするビルドフラグ。
+///
+/// iOSのネイティブフローはAndroidと違い、クライアント側に渡すべき固有の設定値が
+/// 無い(client_idはXcodeビルドに焼き込まれるBundle IDで、Dart側は関知しない)。
+/// それでも「Apple Developer Program の entitlement とサーバーの
+/// `APPLE_BUNDLE_ID` 設定が両方揃うまでボタンを出さない」という既存の
+/// fail-closed方針を保つため、Android同様に明示的なビルドフラグでゲートする。
+///
+/// ```
+/// flutter build ios --release --dart-define=APPLE_SIGN_IN_IOS_ENABLED=true
+/// ```
+const bool appleSignInIosEnabled = bool.fromEnvironment('APPLE_SIGN_IN_IOS_ENABLED');
+
 /// Apple サインインを画面に出してよいか。
 ///
-/// **Services ID と https の redirect URI が両方揃っていること**を条件にする。
-/// 片方だけでは authorize が必ず失敗するので、押せてしまう状態を作らない。
+/// - iOS: [appleSignInIosEnabled] だけを見る(Services ID/redirect URIはAndroid専用の概念)。
+/// - Android: **Services ID と https の redirect URI が両方揃っていること**を条件にする。
+///   片方だけでは authorize が必ず失敗するので、押せてしまう状態を作らない。
 bool get isAppleSignInConfigured {
+  if (Platform.isIOS) return appleSignInIosEnabled;
   if (appleServicesId.isEmpty) return false;
   final uri = Uri.tryParse(appleRedirectUri);
   return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
@@ -258,9 +274,10 @@ class LiveAnalyticsApi {
     final data = await _post('/api/mobile/auth/apple', {
       'authorizationCode': authorizationCode,
       'nonce': nonce,
-      // 現状 Android のみ。iOS 版を出すときはここを 'ios' にする
-      // （サーバーは client_id を Bundle ID に切り替え、redirect_uri を送らなくなる）。
-      'clientKind': 'android',
+      // サーバーはclientKindでclient_id(Services ID/Bundle ID)とredirect_uriの
+      // 有無を切り替える(apple-auth.ts の resolveClient)。iOSネイティブでは
+      // redirect_uriを送るとinvalid_grantになるため、ここを誤ると必ず失敗する。
+      'clientKind': Platform.isIOS ? 'ios' : 'android',
       'givenName': ?givenName,
       'familyName': ?familyName,
     });

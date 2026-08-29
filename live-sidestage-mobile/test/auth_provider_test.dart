@@ -65,10 +65,16 @@ AuthorizationCredentialAppleID _credential({required String? state}) =>
     );
 
 /// Apple の設定が入っているビルドを模した controller。
+///
+/// [watchAppResumeOnApple] は既定で true にしてある — このファイルのテストは
+/// Android の Custom Tab フロー(復帰監視で打ち切る挙動)を検証するものが多く、
+/// 実際の既定値([Platform.isAndroid])はテストを実行しているホストOSに左右されて
+/// しまう(macOS上でflutter testを回すとfalseになる)ため。
 SessionController _appleController({
   required _FakeApi api,
   required AppleCredentialFetcher appleCredential,
   AppResumeWatcher? watchAppResume,
+  bool watchAppResumeOnApple = true,
 }) =>
     SessionController(
       api: api,
@@ -77,6 +83,7 @@ SessionController _appleController({
       appleSignInEnabled: true,
       appleCredential: appleCredential,
       watchAppResume: watchAppResume ?? (_) => () {},
+      watchAppResumeOnApple: watchAppResumeOnApple,
     );
 
 class _FakeStorage extends SessionStorage {
@@ -346,6 +353,33 @@ void main() {
 
         expect(result, isTrue);
         expect(api.appleAuthCalls, 1);
+      });
+    });
+
+    test('iOSではCustom Tabの復帰監視を使わず、プラグインのFutureをそのまま待つ', () {
+      // iOS/macOSはネイティブシートなのでプラグインのFutureが必ず解決する。
+      // Android専用の復帰監視(3秒の偽キャンセル猶予)を通すと、正常系なのに
+      // 打ち切られる理論的余地があるため、iOSでは監視自体を無効化する。
+      fakeAsync((async) {
+        final api = _FakeApi();
+        var watchAppResumeCalled = false;
+        final controller = _appleController(
+          api: api,
+          appleCredential: ({required nonce, required state}) async => _credential(state: state),
+          watchAppResume: (onResumed) {
+            watchAppResumeCalled = true;
+            return () {};
+          },
+          watchAppResumeOnApple: false,
+        );
+
+        bool? result;
+        controller.signInWithApple().then((value) => result = value);
+        async.flushMicrotasks();
+
+        expect(result, isTrue);
+        expect(api.appleAuthCalls, 1);
+        expect(watchAppResumeCalled, isFalse);
       });
     });
   });
