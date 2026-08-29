@@ -15,12 +15,18 @@ enum AnalyticsPeriod {
 }
 
 /// JSTの今日の日付("YYYY-MM-DD")。サーバー(overlay/day-key.tsのjstDateKey)と同じ計算。
+String jstTodayDateKey() => jstDateKeyOf(DateTime.now());
+
+/// 任意の時刻をJSTの日付("YYYY-MM-DD")へ変換する。
 ///
 /// `DateTime.now()`は端末のローカルタイムゾーンなので、そのまま使うとJST圏外の端末や
-/// UTC設定の端末で日付がずれる。UTCへ正規化してから+9時間する。
-String jstTodayDateKey() {
-  final jstNow = DateTime.now().toUtc().add(const Duration(hours: 9));
-  return _formatDate(jstNow);
+/// UTC設定の端末で日付がずれる。UTCへ正規化してから+9時間する。バトル終了通知の
+/// `startedAt`のように「今」ではない時刻をJST日付キーにするときはこちらを使う
+/// (「今日」ではなくバトルの開始日で期間判定するため — 深夜0時をまたぐバトルが
+/// 「今日」判定だと漏れる)。
+String jstDateKeyOf(DateTime instant) {
+  final jst = instant.toUtc().add(const Duration(hours: 9));
+  return _formatDate(jst);
 }
 
 String _formatDate(DateTime d) {

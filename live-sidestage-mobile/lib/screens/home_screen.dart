@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
+import '../core/analytics_period.dart' show jstDateKeyOf;
 import '../core/api_client.dart' show LiveAnalyticsApi, giftLabelJaMap;
 import '../core/app_config_store.dart';
+import '../core/battle_activity.dart';
 import '../core/comment_feed.dart' show SocketStatus;
 import '../core/feature_status.dart';
 import '../core/gift_activity.dart';
@@ -481,6 +483,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // ここでは何も描き直さない（setState 不要）。
       case 'gift':
         context.read<GiftActivityNotifier>().onGiftTick();
+      // バトル終了(またはEND後のスコア確定)。バトル履歴タブが取り直すきっかけに
+      // するだけで、ここでは何も描き直さない(setState不要)。
+      case 'battle':
+        final startedAtRaw = map['startedAt'] as String?;
+        final startedAt = startedAtRaw != null ? DateTime.tryParse(startedAtRaw) : null;
+        if (startedAt != null) {
+          context.read<BattleActivityNotifier>().onBattleTick(jstDateKeyOf(startedAt));
+        }
       case 'status':
         setState(() {
           _status = SocketStatus.values.firstWhere(

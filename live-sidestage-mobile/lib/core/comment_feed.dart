@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
+import '../models/battle_event.dart';
 import '../models/comment.dart';
 import '../models/follow_event.dart';
 import '../models/gift_event.dart';
@@ -30,11 +31,13 @@ class CommentFeed extends ChangeNotifier {
   final StreamController<FollowEvent> _followController = StreamController<FollowEvent>.broadcast();
   final StreamController<ListenerStatus> _listenerController =
       StreamController<ListenerStatus>.broadcast();
+  final StreamController<BattleEvent> _battleController = StreamController<BattleEvent>.broadcast();
 
   Stream<Comment> get onComment => _commentController.stream;
   Stream<GiftEvent> get onGift => _giftController.stream;
   Stream<FollowEvent> get onFollow => _followController.stream;
   Stream<ListenerStatus> get onListener => _listenerController.stream;
+  Stream<BattleEvent> get onBattle => _battleController.stream;
 
   /// socket が繋がった（張り直した）タイミング。
   ///
@@ -94,6 +97,11 @@ class CommentFeed extends ChangeNotifier {
     socket.on('chat:listener', (data) {
       final listener = _decode(data, ListenerStatus.tryParse);
       if (listener != null) _listenerController.add(listener);
+    });
+
+    socket.on('chat:battle', (data) {
+      final battle = _decode(data, BattleEvent.tryParse);
+      if (battle != null) _battleController.add(battle);
     });
 
     socket.onDisconnect((_) {
@@ -173,6 +181,7 @@ class CommentFeed extends ChangeNotifier {
     _giftController.close();
     _followController.close();
     _listenerController.close();
+    _battleController.close();
     _connectedController.close();
     super.dispose();
   }

@@ -3,10 +3,12 @@ import { appendGiftLog, type GiftLogEntry } from "@/lib/tiktok-listener";
 import { emitGiftDrivenOverlayUpdates } from "@/lib/overlay";
 import { applyLikeEventInProcess } from "@/lib/overlay/like.server";
 import {
+  emitChatBattle,
   emitChatComment,
   emitChatFollow,
   emitChatGift,
   emitChatListener,
+  type ChatBattleInput,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
@@ -126,6 +128,23 @@ function parseLikeEvent(value: unknown): {
   };
 }
 
+function parseBattleEvent(value: unknown): Omit<ChatBattleInput, "streamerId"> | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+
+  if (!isNonEmptyString(v.battleId)) return null;
+  if (!isNonEmptyString(v.startedAt)) return null;
+  if (!isNonEmptyString(v.endedAt)) return null;
+  if (!isNonEmptyString(v.receivedAt)) return null;
+
+  return {
+    battleId: v.battleId,
+    startedAt: v.startedAt,
+    endedAt: v.endedAt,
+    receivedAt: v.receivedAt,
+  };
+}
+
 function parseListenerEvent(value: unknown): Omit<ChatListenerInput, "streamerId"> | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
@@ -170,6 +189,7 @@ export async function POST(req: NextRequest) {
     chatFollowEvent?: unknown;
     listenerEvent?: unknown;
     likeEvent?: unknown;
+    battleEvent?: unknown;
   } | null;
 
   if (!body) {
@@ -256,6 +276,23 @@ export async function POST(req: NextRequest) {
     await applyLikeEventInProcess({ streamerIds, ...like }).catch((err) =>
       console.error("[internal/gift-event] like apply error:", err)
     );
+  }
+
+  // バトル終了(またはEND後のスコア確定)の即時表示トリガー。detailsは積まず、
+  // 端末はこれをきっかけにバトル履歴を再取得する。dedupしない(chat:listenerと同じ流儀)。
+  if (body.battleEvent !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    const battle = parseBattleEvent(body.battleEvent);
+    if (!streamerIds || !battle) {
+      return NextResponse.json({ error: "Invalid battleEvent" }, { status: 400 });
+    }
+    for (const streamerId of streamerIds) {
+      const delivered = await emitChatBattle({ streamerId, ...battle }).catch((err) => {
+        console.error("[internal/gift-event] battle emit error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    }
   }
 
   return NextResponse.json({ ok: true });

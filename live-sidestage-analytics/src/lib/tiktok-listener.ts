@@ -6,11 +6,13 @@ import { getOrCreateDeviceId } from "./device-id";
 import { emitGiftDrivenOverlayUpdates } from "./overlay";
 import { applyLikeEventInProcess } from "./overlay/like.server";
 import {
+  emitChatBattle,
   emitChatComment,
   emitChatFollow,
   emitChatGift,
   emitChatListener,
   normalizeChatCommentEmotes,
+  type ChatBattleInput,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
@@ -28,6 +30,7 @@ import {
 import { getEulerSignApiKey } from "./settings";
 import type { GiftCatalogSource } from "./tiktok-gift-catalog";
 import {
+  battleNotifyDecision,
   mergeBattleState,
   parseArmiesEvent,
   parseBattleEvent,
@@ -1191,6 +1194,7 @@ function toStorableRaw(data: unknown): Prisma.InputJsonValue {
 
 async function persistBattle(
   roomId: string,
+  streamerIds: string[],
   parsed: ParsedBattle,
   rawKey: "battle" | "armies",
   raw: unknown,
@@ -1253,10 +1257,30 @@ async function persistBattle(
   for (const [anchorId, profile] of Object.entries(state.hostProfiles)) {
     ensureAvatarCached("battle_host", anchorId, profile.avatarUrl).catch(() => {});
   }
+
+  // バトル終了の即時表示。**DB書き込み完了後**に判定・通知する — 受信時点で送ると、
+  // 端末の再取得(REST)がこのDB書き込みと競争して「終了したのに進行中」と表示される
+  // 瞬間ができてしまう。streamerIdsが空(購読者がいない部屋)なら通知先が無いので判定自体を省く。
+  if (streamerIds.length > 0) {
+    const kind = battleNotifyDecision(previous, state);
+    if (kind) {
+      enqueueBattleNotify(`${roomId}:${parsed.battleId}`, {
+        streamerIds,
+        event: {
+          battleId: parsed.battleId,
+          startedAt: state.startedAt.toISOString(),
+          // battleNotifyDecisionがkindを返すのはstate.endedAtがnon-nullのときだけ。
+          endedAt: (state.endedAt as Date).toISOString(),
+          receivedAt: receivedAt.toISOString(),
+        },
+      });
+    }
+  }
 }
 
 function recordBattleEvent(
   roomId: string,
+  streamerIds: string[],
   parsed: ParsedBattle | null,
   rawKey: "battle" | "armies",
   raw: unknown
@@ -1265,8 +1289,79 @@ function recordBattleEvent(
   if (!parsed) return;
   const receivedAt = new Date();
   queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
-    persistBattle(roomId, parsed, rawKey, raw, receivedAt)
+    persistBattle(roomId, streamerIds, parsed, rawKey, raw, receivedAt)
   );
+}
+
+// ── バトル終了通知の転送 ──────────────────────────────────────────────────────
+//
+// listener状態の転送(上のlistenerNotifyQueue)と同じ理由で、共有forwardToWebには
+// 載せない。バトル終了はギフトが殺到する瞬間そのものなので、共有キュー(同時4・
+// 待ち行列256、溢れたら捨てて再送しない)に乗せると一番届けたい通知が真っ先に落ちる。
+// 部屋(roomId:battleId)ごとに最新の1件だけを保持するcoalescingキューにする。
+
+const BATTLE_NOTIFY_TIMEOUT_MS = 5000;
+const BATTLE_NOTIFY_MAX_ATTEMPTS = 3;
+const BATTLE_NOTIFY_RETRY_DELAY_MS = 1000;
+
+interface PendingBattleNotify {
+  streamerIds: string[];
+  event: Omit<ChatBattleInput, "streamerId">;
+}
+
+const battleNotifyQueue = new Map<string, PendingBattleNotify>();
+let battleNotifyRunning = false;
+
+function enqueueBattleNotify(key: string, pending: PendingBattleNotify) {
+  battleNotifyQueue.set(key, pending);
+  void drainBattleNotifyQueue();
+}
+
+async function drainBattleNotifyQueue(): Promise<void> {
+  if (battleNotifyRunning) return;
+  battleNotifyRunning = true;
+  try {
+    while (battleNotifyQueue.size > 0) {
+      const [key, pending] = battleNotifyQueue.entries().next().value as [string, PendingBattleNotify];
+      battleNotifyQueue.delete(key);
+      await deliverBattleNotify(pending);
+    }
+  } finally {
+    battleNotifyRunning = false;
+  }
+}
+
+async function deliverBattleNotify(pending: PendingBattleNotify): Promise<void> {
+  if (!isWorkerProcess) {
+    for (const streamerId of pending.streamerIds) {
+      await emitChatBattle({ streamerId, ...pending.event }).catch((err) =>
+        console.error("[battle] chat emit error:", err)
+      );
+    }
+    return;
+  }
+
+  // 状態通知と同じく、落としたら次の変化(次のバトル)まで戻らない。有限回だけ再送する。
+  for (let attempt = 1; attempt <= BATTLE_NOTIFY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+        },
+        body: JSON.stringify({ streamerIds: pending.streamerIds, battleEvent: pending.event }),
+        signal: AbortSignal.timeout(BATTLE_NOTIFY_TIMEOUT_MS),
+      });
+      if (res.ok) return;
+      console.error("[battle] notify failed:", res.status, await res.text().catch(() => ""));
+    } catch (err) {
+      console.error("[battle] notify error:", err);
+    }
+    if (attempt < BATTLE_NOTIFY_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, BATTLE_NOTIFY_RETRY_DELAY_MS * attempt));
+    }
+  }
 }
 
 async function connectAndAttach(
@@ -1356,11 +1451,11 @@ async function connectAndAttach(
   // バトル中はチャットが流れない配信もあるので、バトルのイベントもwatchdogの生存判定に含める。
   conn.on("linkMicBattle", (data: unknown) => {
     markAlive();
-    recordBattleEvent(roomId, parseBattleEvent(data), "battle", data);
+    recordBattleEvent(roomId, Array.from(inst.subscriberIds), parseBattleEvent(data), "battle", data);
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
-    recordBattleEvent(roomId, parseArmiesEvent(data), "armies", data);
+    recordBattleEvent(roomId, Array.from(inst.subscriberIds), parseArmiesEvent(data), "armies", data);
   });
 
   conn.on("chat", (data: Record<string, unknown>) => {
