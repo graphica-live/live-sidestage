@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fixtures from "./__fixtures__/chat-events.json";
 import {
+  emitChatBattle,
   emitChatComment,
   emitChatFollow,
   emitChatGift,
@@ -130,5 +131,21 @@ describe("chat:* ペイロード契約", () => {
     expect(emitted[0].event).toBe("chat:comment");
     expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
     expect(emitted[0].payload.schemaVersion).toBeUndefined();
+  });
+
+  it("chat:battle のキー集合が fixture と一致する", async () => {
+    const fixture = fixtures.battle;
+    await emitChatBattle({
+      streamerId: fixture.streamerId,
+      battleId: fixture.battleId,
+      startedAt: fixture.startedAt,
+      endedAt: fixture.endedAt,
+      receivedAt: fixture.receivedAt,
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].event).toBe("chat:battle");
+    expect(emitted[0].room).toBe(`chat:${fixture.streamerId}`);
+    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
   });
 });

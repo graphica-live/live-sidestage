@@ -336,3 +336,37 @@ export function mergeBattleState(
     hostProfiles: mergeHostProfiles(existing?.hostProfiles ?? {}, parsed.hostProfiles),
   };
 }
+
+export type BattleNotifyKind = "ended" | "score_updated";
+
+function hostScoresEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+/**
+ * 端末へ「バトル終了の即時表示」を通知すべきかを判定する。
+ *
+ * hostScoresは最後の観測を正とするlast-write-win(mergeBattleState参照)なので、
+ * END(FINISH/CUT_SHORT)の後にもスコア更新イベントが届きうる。1回の通知だけだと
+ * 確定していない点数が端末に表示されるため、初回のEND遷移(`ended`)と、
+ * END後のスコア変化(`score_updated`)を区別して返す。呼び出し側はどちらでも
+ * 同じ扱い(端末へ再取得を促す)でよい — 区別はサーバー側が「通知すべきか」を
+ * 判断するためだけに使う。
+ */
+export function battleNotifyDecision(
+  previous: BattleRecordState | null,
+  next: BattleRecordState
+): BattleNotifyKind | null {
+  if (previous?.endedAt == null && next.endedAt != null) return "ended";
+  if (
+    previous?.endedAt != null &&
+    next.endedAt != null &&
+    !hostScoresEqual(previous.hostScores, next.hostScores)
+  ) {
+    return "score_updated";
+  }
+  return null;
+}

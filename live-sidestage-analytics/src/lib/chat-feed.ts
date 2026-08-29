@@ -194,6 +194,28 @@ export interface ChatListenerPayload extends ChatListenerInput {
   schemaVersion: number;
 }
 
+/**
+ * バトル終了の即時表示用。**トリガー通知に徹する**(ギフト/フォローと違い集計値を
+ * 積まない) — 端末は受信をきっかけにバトル履歴タブを再取得する(貢献/ギフト履歴の
+ * 自動更新と同じ `_load({silent})` 方式)。details(スコアやホスト情報)を積まないのは、
+ * それらをそのまま表示する経路を作ると「サーバーの通知内容 = 表示内容」という別の
+ * 契約が増え、REST側(queryBattles)との二重管理になるため。
+ *
+ * `startedAt` は必須(端末側が「バトルの開始日」で期間判定するため。日付は「今日」
+ * ではなく開始日基準 — 深夜0時をまたぐバトルが「今日」判定だと漏れる)。
+ */
+export interface ChatBattleInput {
+  streamerId: string;
+  battleId: string;
+  startedAt: string; // ISO8601
+  endedAt: string; // ISO8601。通知するのはEND後のみなので必ず取れている
+  receivedAt: string; // ISO8601
+}
+
+export interface ChatBattlePayload extends ChatBattleInput {
+  schemaVersion: number;
+}
+
 interface ChatDedupState {
   ids: Set<string>;
   order: string[];
@@ -432,6 +454,18 @@ export async function emitChatListener(input: ChatListenerInput): Promise<boolea
   if (!isIoReady()) return false;
   const payload: ChatListenerPayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:listener", payload);
+  return true;
+}
+
+/**
+ * バトル終了(または終了後のスコア確定)を配信する。**dedupしない**
+ * (`chat:listener` と同じ流儀。端末側の再取得は冪等なreloadなので、二重発火があっても
+ * 表示が壊れることはない。端末は自前のdebounceで畳む)。
+ */
+export async function emitChatBattle(input: ChatBattleInput): Promise<boolean> {
+  if (!isIoReady()) return false;
+  const payload: ChatBattlePayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
+  g.__io?.to(`chat:${input.streamerId}`).emit("chat:battle", payload);
   return true;
 }
 

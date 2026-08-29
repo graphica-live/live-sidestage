@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_sidestage_mobile/models/battle_event.dart';
 import 'package:live_sidestage_mobile/models/comment.dart';
 import 'package:live_sidestage_mobile/models/follow_event.dart';
 import 'package:live_sidestage_mobile/models/gift_event.dart';
@@ -89,9 +90,22 @@ void main() {
     expect(comment.receivedAt.toUtc().toIso8601String(), '2026-08-21T12:37:00.000Z');
   });
 
+  test('chat:battle を解析できる', () {
+    final json = _load('battle');
+    final event = BattleEvent.tryParse(json);
+
+    expect(event, isNotNull);
+    expect(event!.streamerId, 'streamer-1');
+    expect(event.battleId, '7300000000000000000');
+    expect(event.startedAt.toUtc().toIso8601String(), '2026-08-21T12:40:00.000Z');
+    expect(event.endedAt.toUtc().toIso8601String(), '2026-08-21T12:45:00.000Z');
+  });
+
   test('必須フィールドが欠けたペイロードは null になる(購読を殺さない)', () {
     expect(GiftEvent.tryParse({'uniqueId': 'x'}), isNull);
     expect(FollowEvent.tryParse({'streamerId': 'x'}), isNull);
     expect(Comment.tryParse({'streamerId': 123, 'uniqueId': 'x'}), isNull);
+    expect(BattleEvent.tryParse({'streamerId': 'x'}), isNull);
+    expect(BattleEvent.tryParse({'streamerId': 'x', 'battleId': 'y'}), isNull);
   });
 }

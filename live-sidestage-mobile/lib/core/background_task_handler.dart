@@ -139,6 +139,15 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // 契約を増やさないため type だけの最小ペイロードにしてある。
     _commentFeed.onGift.listen((_) => FlutterForegroundTask.sendDataToMain({'type': 'gift'}));
     _commentFeed.onFollow.listen((_) => _markEventReceived());
+    // バトル終了(またはEND後のスコア確定)の即時表示。ギフトと同じくtypeだけの
+    // 最小ペイロード — 表示に使う値はバトル履歴タブがREST(queryBattles)で取り直す。
+    _commentFeed.onBattle.listen((event) {
+      _markEventReceived();
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'battle',
+        'startedAt': event.startedAt.toIso8601String(),
+      });
+    });
 
     _listenerSub = _commentFeed.onListener.listen(_applyListener);
     // socket が張り直るたびに取り直す。切れている間の push は受け取れていない。

@@ -56,5 +56,13 @@
     "comment": "こんばんは",
     "receivedAt": "2026-08-21T12:37:00.000Z",
     "msgId": "msg-comment-1"
+  },
+  "battle": {
+    "schemaVersion": 1,
+    "streamerId": "streamer-1",
+    "battleId": "7300000000000000000",
+    "startedAt": "2026-08-21T12:40:00.000Z",
+    "endedAt": "2026-08-21T12:45:00.000Z",
+    "receivedAt": "2026-08-21T12:45:00.200Z"
   }
 }
