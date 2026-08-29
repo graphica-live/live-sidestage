@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/services.dart';
@@ -61,8 +62,10 @@ class SessionController extends ChangeNotifier {
     AppleCredentialFetcher? appleCredential,
     AppResumeWatcher? watchAppResume,
     bool? appleSignInEnabled,
+    bool? watchAppResumeOnApple,
   })  : _watchAppResume = watchAppResume ?? _watchAppResumeWithBinding,
         _appleSignInEnabled = appleSignInEnabled ?? isAppleSignInConfigured,
+        _watchAppResumeOnApple = watchAppResumeOnApple ?? Platform.isAndroid,
         _api = api ?? LiveAnalyticsApi(),
         _storage = storage ?? SessionStorage(),
         _googleSignIn = googleSignIn ??
@@ -87,6 +90,16 @@ class SessionController extends ChangeNotifier {
 
   /// ビルドに Apple の設定が渡っているか。既定は [isAppleSignInConfigured]。
   final bool _appleSignInEnabled;
+
+  /// [_awaitAppleCredential] でアプリの前面復帰を監視して強制キャンセルするか。
+  ///
+  /// **Android専用の対処**。Custom Tabで戻ったのに結果が来ない場合の救済で、
+  /// iOS/macOSではプラグインのFutureが必ず解決する(ネイティブシートが閉じた時点で
+  /// キャンセル例外つきで返る)ため不要かつ有害になりうる — ネイティブシート表示中の
+  /// inactive→resumed遷移とグレース期間の兼ね合いで、正常系なのに偽キャンセルする
+  /// 理論的余地がある。既定は [Platform.isAndroid] だが、テストでは
+  /// ホストOSに関わらずAndroidの挙動を検証できるよう注入可能にしてある。
+  final bool _watchAppResumeOnApple;
 
   /// 進行中のトークン再発行。複数のAPI呼び出しが同時に401になっても
   /// Googleのサインインを多重起動しないよう、同じ Future を共有する。
@@ -204,6 +217,8 @@ class SessionController extends ChangeNotifier {
     required String state,
   }) {
     final credential = _appleCredential(nonce: nonce, state: state);
+    if (!_watchAppResumeOnApple) return credential;
+
     final cancelled = Completer<AuthorizationCredentialAppleID>();
 
     // 敗者側の結果が未処理例外として報告されないように受け口を用意しておく。
