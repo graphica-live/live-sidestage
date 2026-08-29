@@ -32,7 +32,10 @@ AuthSession _session({
 class _FakeApi extends LiveAnalyticsApi {
   int googleAuthCalls = 0;
   int appleAuthCalls = 0;
+  int emailRegisterCalls = 0;
+  int emailLoginCalls = 0;
   String? lastNonce;
+  Object? emailLoginError;
 
   @override
   Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
@@ -50,6 +53,19 @@ class _FakeApi extends LiveAnalyticsApi {
     appleAuthCalls++;
     lastNonce = nonce;
     return _session(provider: AuthProvider.apple);
+  }
+
+  @override
+  Future<AuthSession> registerWithEmail({required String email, required String password}) async {
+    emailRegisterCalls++;
+    return _session(provider: AuthProvider.email);
+  }
+
+  @override
+  Future<AuthSession> loginWithEmail({required String email, required String password}) async {
+    emailLoginCalls++;
+    if (emailLoginError != null) throw emailLoginError!;
+    return _session(provider: AuthProvider.email);
   }
 }
 
@@ -206,6 +222,97 @@ void main() {
       await controller.logout();
 
       expect(google.signOuts, 1);
+    });
+  });
+
+  group('メールアドレス+パスワード認証', () {
+    test('新規登録に成功するとメールセッションになる', () async {
+      final api = _FakeApi();
+      final controller = SessionController(
+        api: api,
+        storage: _FakeStorage(),
+        googleSignIn: _FakeGoogleSignIn(),
+      );
+
+      final success = await controller.registerWithEmail(
+        email: 'test@example.com',
+        password: 'correct-horse',
+      );
+
+      expect(success, isTrue);
+      expect(api.emailRegisterCalls, 1);
+      expect(controller.session!.provider, AuthProvider.email);
+    });
+
+    test('ログインに成功するとメールセッションになる', () async {
+      final api = _FakeApi();
+      final controller = SessionController(
+        api: api,
+        storage: _FakeStorage(),
+        googleSignIn: _FakeGoogleSignIn(),
+      );
+
+      final success = await controller.signInWithEmail(
+        email: 'test@example.com',
+        password: 'correct-horse',
+      );
+
+      expect(success, isTrue);
+      expect(api.emailLoginCalls, 1);
+      expect(controller.session!.provider, AuthProvider.email);
+    });
+
+    test('ログイン失敗はエラーメッセージに反映される', () async {
+      final api = _FakeApi()..emailLoginError = ApiException('メールアドレスまたはパスワードが正しくありません');
+      final controller = SessionController(
+        api: api,
+        storage: _FakeStorage(),
+        googleSignIn: _FakeGoogleSignIn(),
+      );
+
+      final success = await controller.signInWithEmail(
+        email: 'test@example.com',
+        password: 'wrong',
+      );
+
+      expect(success, isFalse);
+      expect(controller.session, isNull);
+      expect(controller.errorMessage, 'メールアドレスまたはパスワードが正しくありません');
+    });
+
+    test('メールセッションのログアウトでは Google のサインアウトを呼ばない', () async {
+      final google = _FakeGoogleSignIn();
+      final storage = _FakeStorage();
+      final controller = SessionController(
+        api: _FakeApi(),
+        storage: storage,
+        googleSignIn: google,
+      )..session = _session(provider: AuthProvider.email);
+
+      await controller.logout();
+
+      expect(google.signOuts, 0);
+      expect(storage.clears, 1);
+      expect(controller.session, isNull);
+    });
+
+    test('メールセッションは無言リフレッシュを試みない', () async {
+      final api = _FakeApi();
+      var silentCalls = 0;
+      final controller = SessionController(
+        api: api,
+        storage: _FakeStorage(),
+        googleSignIn: _FakeGoogleSignIn(),
+        silentIdToken: () async {
+          silentCalls++;
+          return 'id-token';
+        },
+      )..session = _session(provider: AuthProvider.email);
+
+      expect(await controller.refreshToken(), isNull);
+      expect(silentCalls, 0);
+      expect(api.googleAuthCalls, 0);
+      expect(controller.session, isNotNull);
     });
   });
 

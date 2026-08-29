@@ -165,6 +165,16 @@ class SessionController extends ChangeNotifier {
     return 'Googleサインインに失敗しました(${e.code})。';
   }
 
+  /// メールアドレス+パスワードでの新規登録。成功したらそのままログイン済み状態になる。
+  Future<bool> registerWithEmail({required String email, required String password}) {
+    return _run(() => _api.registerWithEmail(email: email, password: password));
+  }
+
+  /// メールアドレス+パスワードでのログイン。
+  Future<bool> signInWithEmail({required String email, required String password}) {
+    return _run(() => _api.loginWithEmail(email: email, password: password));
+  }
+
   /// Apple サインイン。
   ///
   /// Android にはネイティブの Apple 認証が無いので Custom Tab で web フローを回す。
@@ -450,10 +460,11 @@ class SessionController extends ChangeNotifier {
 
   Future<void> _clearLocalSession(AuthProvider? provider) async {
     await _storage.clear();
-    // Apple でログインしていたなら Google 側には何も残っていない。
+    // Google でログインしていた場合だけ Google 側のサインアウトを呼ぶ。
     // Apple には端末側のサインアウト API が無い（ブラウザのセッションは
-    // Apple 側の管理）ので、ローカルの破棄だけで完結する。
-    if (provider != AuthProvider.apple) {
+    // Apple 側の管理）ので、ローカルの破棄だけで完結する。email も同様に
+    // Google 側には何も残っていないので呼ぶ意味が無い。
+    if (provider == AuthProvider.google) {
       try {
         await _googleSignIn.signOut();
       } catch (_) {

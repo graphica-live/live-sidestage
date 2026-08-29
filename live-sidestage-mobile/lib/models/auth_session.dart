@@ -26,7 +26,8 @@ class StreamerInfo {
 /// Google には `signInSilently` があるが Apple には相当するものが無い。
 enum AuthProvider {
   google,
-  apple;
+  apple,
+  email;
 
   static AuthProvider? tryParse(String? value) {
     for (final provider in AuthProvider.values) {

@@ -284,6 +284,31 @@ class LiveAnalyticsApi {
     return AuthSession.fromJson(data, provider: AuthProvider.apple);
   }
 
+  /// メールアドレス+パスワードでの新規登録。確認メールは送らない
+  /// (登録直後にログイン済み状態になる)。
+  Future<AuthSession> registerWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final data = await _post('/api/mobile/auth/email/register', {
+      'email': email,
+      'password': password,
+    });
+    return AuthSession.fromJson(data, provider: AuthProvider.email);
+  }
+
+  /// メールアドレス+パスワードでのログイン。
+  Future<AuthSession> loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final data = await _post('/api/mobile/auth/email/login', {
+      'email': email,
+      'password': password,
+    });
+    return AuthSession.fromJson(data, provider: AuthProvider.email);
+  }
+
   Future<(String token, StreamerInfo streamer)> registerStreamer({
     required String token,
     required String tiktokId,

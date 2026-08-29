@@ -4,11 +4,13 @@ import bcrypt from "bcryptjs";
 
 /// パスワード登録。**既定で無効**。
 ///
-/// このエンドポイントで作った User は誰もログインできない —
-/// `bcrypt.compare` はコードベースに1つも無く、`authOptions` にパスワード用の
-/// provider も無いため。実質「任意のメールで User 行を先に作れる窓口」でしかなく、
-/// `/api/mobile/auth/google` のメール一致リンクと組み合わさると、他人のメールを
-/// 先取りして後からその人を自分の作った User 行へ吸着させる経路になる。
+/// このエンドポイントで作った User は誰もログインできない — `authOptions` にパスワード用の
+/// provider が無いのは変わらず、加えて `/api/mobile/auth/email/login` はモバイルの新規メール
+/// 認証(`src/app/api/mobile/auth/email/`)が作った「`provider: "email"` の Account を持つ User」
+/// にしかログインを許さない。ここで作った User は Account を1件も持たないため構造的に到達不能。
+/// 実質「任意のメールで User 行を先に作れる窓口」でしかなく、`/api/mobile/auth/google` の
+/// メール一致リンクと組み合わさると、他人のメールを先取りして後からその人を自分の作った
+/// User 行へ吸着させる経路になる。
 ///
 /// 画面(`src/app/(auth)/register/page.tsx`)は既に /login へリダイレクトするだけで、
 /// ここを呼ぶ導線は残っていない。将来パスワードログインを復活させる余地を残して
