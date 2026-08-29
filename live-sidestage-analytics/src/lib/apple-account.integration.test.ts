@@ -5,10 +5,14 @@
 // 同じ人が Google と Apple を使い分けたときに片方の配信設定へ吸着する。
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma } from "./prisma";
-import { resolveAppleUser, APPLE_PROVIDER } from "./apple-account";
+import { resolveAppleUser, APPLE_PROVIDER, type AppleTokens } from "./apple-account";
 import type { AppleIdTokenClaims } from "./apple-auth";
 
 const PREFIX = "itest-apple-";
+
+// revoke用トークンの保存自体は apple-account.test.ts(persistAppleTokens)で個別に検証する。
+// ここではGoogle/Apple分離の挙動が主眼なので、固定のダミー値を使う。
+const TOKENS: AppleTokens = { refreshToken: null, clientId: "itest-client-id" };
 
 function email(local: string) {
   return `${PREFIX}${local}@local.test`;
@@ -58,6 +62,7 @@ describe("resolveAppleUser", () => {
     const user = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-new`, email: email("new"), emailVerified: true }),
       `${PREFIX}太郎 山田`,
+      TOKENS,
     );
 
     expect(user.id).not.toBe(`${PREFIX}sub-new`);
@@ -72,6 +77,7 @@ describe("resolveAppleUser", () => {
     const user = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-store`, email: email("store"), emailVerified: true }),
       null,
+      TOKENS,
     );
 
     // User にメールを持たせると、あとから Google がメール一致で拾って統合してしまう。
@@ -85,12 +91,14 @@ describe("resolveAppleUser", () => {
     const first = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-dto`, email: email("dto"), emailVerified: true }),
       null,
+      TOKENS,
     );
     expect(first.email).toBe(email("dto"));
 
     const second = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-dto`, email: email("dto"), emailVerified: true }),
       null,
+      TOKENS,
     );
     expect(second.email).toBe(email("dto"));
   });
@@ -99,11 +107,13 @@ describe("resolveAppleUser", () => {
     const first = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-repeat`, email: email("repeat"), emailVerified: true }),
       `${PREFIX}太郎`,
+      TOKENS,
     );
     // Apple は氏名を初回しか返さない。
     const second = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-repeat`, email: email("repeat"), emailVerified: true }),
       null,
+      TOKENS,
     );
 
     expect(second.id).toBe(first.id);
@@ -114,10 +124,11 @@ describe("resolveAppleUser", () => {
     const first = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-noemail2`, email: email("noemail2"), emailVerified: true }),
       null,
+      TOKENS,
     );
 
     // Apple は email を毎回返すとは限らない。
-    const second = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail2` }), null);
+    const second = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail2` }), null, TOKENS);
 
     expect(second.id).toBe(first.id);
     expect(second.email).toBe(email("noemail2"));
@@ -129,6 +140,7 @@ describe("resolveAppleUser", () => {
     const user = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-nolink`, email: email("nolink"), emailVerified: true }),
       null,
+      TOKENS,
     );
 
     expect(user.id).not.toBe(google.id);
@@ -147,6 +159,7 @@ describe("resolveAppleUser", () => {
     const user = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-squat`, email: email("squat"), emailVerified: true }),
       null,
+      TOKENS,
     );
 
     expect(user.id).not.toBe(squatter.id);
@@ -163,22 +176,24 @@ describe("resolveAppleUser", () => {
         isPrivateEmail: true,
       }),
       null,
+      TOKENS,
     );
     expect(relay.email).toBe(email("relay-privaterelay"));
 
     const unverified = await resolveAppleUser(
       claims({ sub: `${PREFIX}sub-unverified`, email: email("unverified"), emailVerified: false }),
       null,
+      TOKENS,
     );
     expect(unverified.email).toBe(email("unverified"));
     expect(unverified.id).not.toBe(relay.id);
   });
 
   it("メールを渡してこない Apple ユーザーでも作れる", async () => {
-    const user = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail` }), null);
+    const user = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail` }), null, TOKENS);
     expect(user.email).toBeNull();
 
-    const again = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail` }), null);
+    const again = await resolveAppleUser(claims({ sub: `${PREFIX}sub-noemail` }), null, TOKENS);
     expect(again.id).toBe(user.id);
   });
 
@@ -187,9 +202,9 @@ describe("resolveAppleUser", () => {
     const payload = claims({ sub: `${PREFIX}sub-race`, email: email("race"), emailVerified: true });
 
     const results = await Promise.all([
-      resolveAppleUser(payload, name),
-      resolveAppleUser(payload, name),
-      resolveAppleUser(payload, name),
+      resolveAppleUser(payload, name, TOKENS),
+      resolveAppleUser(payload, name, TOKENS),
+      resolveAppleUser(payload, name, TOKENS),
     ]);
 
     const ids = new Set(results.map((r) => r.id));
@@ -201,5 +216,39 @@ describe("resolveAppleUser", () => {
     ).toBe(1);
     // 負けた側の User が作られっぱなしになっていないこと(nested write ごと巻き戻る)。
     expect(await prisma.user.count({ where: { name } })).toBe(1);
+  });
+
+  it("revoke用のrefresh_tokenとclientIdを保存し、2回目以降は最新値で上書きする", async () => {
+    const sub = `${PREFIX}sub-tokens`;
+
+    await resolveAppleUser(claims({ sub }), null, {
+      refreshToken: "rtok-1",
+      clientId: "client-1",
+    });
+    const afterFirst = await appleAccountOf(sub);
+    expect(afterFirst?.refresh_token).toBe("rtok-1");
+    expect(afterFirst?.appleClientId).toBe("client-1");
+
+    await resolveAppleUser(claims({ sub }), null, {
+      refreshToken: "rtok-2",
+      clientId: "client-2",
+    });
+    const afterSecond = await appleAccountOf(sub);
+    expect(afterSecond?.refresh_token).toBe("rtok-2");
+    expect(afterSecond?.appleClientId).toBe("client-2");
+  });
+
+  it("2回目のログインでrefresh_tokenが取れなくても、保存済みの値を消さない", async () => {
+    const sub = `${PREFIX}sub-tokens-keep`;
+
+    await resolveAppleUser(claims({ sub }), null, {
+      refreshToken: "rtok-keep",
+      clientId: "client-keep",
+    });
+
+    await resolveAppleUser(claims({ sub }), null, { refreshToken: null, clientId: "client-keep" });
+
+    const account = await appleAccountOf(sub);
+    expect(account?.refresh_token).toBe("rtok-keep");
   });
 });

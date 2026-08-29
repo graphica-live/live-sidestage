@@ -64,8 +64,9 @@ model Subscription {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  // onDelete: Cascadeで行ごと消える = Stripe側の課金は残ったままDB上の紐付けだけ失う。
-  // User削除機能は現状無いが、将来足す場合はStripe側のsubscription解約も併せて行うこと。
+  // onDelete: Cascadeで行ごと消える。DELETE /api/mobile/account はこの削除より前に
+  // stripe.customers.del()でStripe側のCustomer(=関連subscription全て)を先に消しており、
+  // 課金が残ったままDB上の紐付けだけ失う、という状態にはならない。
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
@@ -96,6 +97,13 @@ model Account {
   // account オブジェクトを返したときに、意図せずここへ書かれるのを避ける。
   // unique も付けない(付けると同じメールで別プロバイダにログインできなくなる)。
   providerEmail String?
+
+  // Apple の refresh_token を revoke するには、発行時に使った client_id が要る
+  // (iOSは Bundle ID、Androidは Services ID。Apple revoke APIの要件)。
+  // 発行後に Apple 側の設定(Services ID等)が変わっても正しくrevokeできるよう、
+  // 都度 resolveClient() が返した値をそのまま保存する。Apple以外のprovider(Google)
+  // では常にnull。詳細は src/lib/apple-auth.ts の revokeAppleToken()
+  appleClientId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

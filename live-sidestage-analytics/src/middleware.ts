@@ -61,10 +61,11 @@ export default async function middleware(req: NextRequest) {
 //                       /api/agency, /api/agency/watches, /api/agency/api-key は対象のまま残すこと
 //   api/overlay, overlay — OBS ブラウザソース(overlayToken 保護)
 //   images            — public/images 配下の静的画像。公開ページ(トーナメント表の優勝トロフィー等)から参照する
+//   privacy           — プライバシーポリシー(App Store Connect登録・アプリ内リンクの両方から未ログインで開ける必要がある)
 //
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/analytics/monthly-contributors(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };

@@ -155,7 +155,7 @@ function resolveClient(
 export async function exchangeAuthorizationCode(
   config: AppleConfig,
   { code, clientKind }: { code: string; clientKind: AppleClientKind },
-): Promise<{ idToken: string; clientId: string }> {
+): Promise<{ idToken: string; clientId: string; refreshToken: string | null }> {
   const { clientId, redirectUri } = resolveClient(config, clientKind);
 
   const body = new URLSearchParams({
@@ -178,7 +178,9 @@ export async function exchangeAuthorizationCode(
     throw new AppleAuthError("Appleの認証サーバーへ接続できませんでした", 502);
   }
 
-  const json = (await response.json().catch(() => null)) as { id_token?: unknown; error?: unknown } | null;
+  const json = (await response.json().catch(() => null)) as
+    | { id_token?: unknown; refresh_token?: unknown; error?: unknown }
+    | null;
 
   if (!response.ok) {
     // invalid_grant は「code が期限切れ・使用済み・別クライアント宛」。
@@ -200,7 +202,46 @@ export async function exchangeAuthorizationCode(
     // 自動で再交換しないこと。
     throw new AppleAuthError("Appleの応答にIDトークンが含まれていません", 502);
   }
-  return { idToken: json.id_token, clientId };
+  // refresh_tokenが無いのは想定内(Appleの一時的な応答不備等)。アカウント削除時の
+  // revokeがスキップされるだけで、ログイン自体はブロックしない。
+  const refreshToken = typeof json.refresh_token === "string" ? json.refresh_token : null;
+  return { idToken: json.id_token, clientId, refreshToken };
+}
+
+// ---------------------------------------------------------------------------
+// refresh_token の revoke(アカウント削除時)
+// ---------------------------------------------------------------------------
+
+/// アカウント削除時にAppleの認可を取り消す。revokeには発行時と同じclient_id
+/// (=同じclient_secretの署名対象)が要る — Services IDとBundle IDを取り違えると
+/// Appleはinvalid_clientを返す。ベストエフォート呼び出し前提なので、失敗時は
+/// 例外を投げるだけで呼び出し側がログして削除自体は継続する設計にしてある。
+export async function revokeAppleToken(
+  config: AppleConfig,
+  { refreshToken, clientId }: { refreshToken: string; clientId: string },
+): Promise<void> {
+  const body = new URLSearchParams({
+    token: refreshToken,
+    token_type_hint: "refresh_token",
+    client_id: clientId,
+    client_secret: buildClientSecret(config, clientId),
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(`${APPLE_ISSUER}/auth/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AppleAuthError("Appleの認証サーバーへ接続できませんでした", 502);
+  }
+
+  if (!response.ok) {
+    throw new AppleAuthError("Apple認証の取り消しに失敗しました", 502);
+  }
 }
 
 // ---------------------------------------------------------------------------

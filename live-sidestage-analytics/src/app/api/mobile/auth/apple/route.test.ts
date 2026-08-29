@@ -54,7 +54,11 @@ function configureApple() {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.MOBILE_JWT_SECRET ||= "test-mobile-secret";
-  exchangeAuthorizationCode.mockResolvedValue({ idToken: "id-token", clientId: "com.example.service" });
+  exchangeAuthorizationCode.mockResolvedValue({
+    idToken: "id-token",
+    clientId: "com.example.service",
+    refreshToken: "refresh-token-1",
+  });
   verifyAppleIdToken.mockResolvedValue(claims());
   resolveAppleUser.mockResolvedValue({
     id: "u1",
@@ -95,7 +99,10 @@ describe("POST /api/mobile/auth/apple", () => {
     expect(body.streamer).toBeNull();
     expect(body.onboardingRequired).toBe(true);
     expect(typeof body.token).toBe("string");
-    expect(resolveAppleUser).toHaveBeenCalledWith(claims(), "太郎 山田");
+    expect(resolveAppleUser).toHaveBeenCalledWith(claims(), "太郎 山田", {
+      refreshToken: "refresh-token-1",
+      clientId: "com.example.service",
+    });
   });
 
   it("nonce が一致しなければ 401（他人の Apple 応答を流し込ませない）", async () => {

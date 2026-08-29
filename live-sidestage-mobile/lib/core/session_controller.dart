@@ -105,6 +105,14 @@ class SessionController extends ChangeNotifier {
   /// Googleのサインインを多重起動しないよう、同じ Future を共有する。
   Future<String?>? _refreshInFlight;
 
+  /// アカウント削除の実行中〜完了後を示す。**[deleteAccount] の最初の await より前に
+  /// 同期的に立てる。** 削除リクエスト送信中に token refresh が割り込むと、サーバー側の
+  /// Google/Apple認証ルートは Account/User が既に無いものとして新規Userを作ってしまう
+  /// ([_doRefresh] 側の早期returnで防ぐ)。削除に失敗した場合はアカウントが消えていないので
+  /// 通常のログイン状態へ戻す（[deleteAccount] 内でリセット）。新しいセッションが確立したら
+  /// （[_run] の成功パス）自動的に解除する。
+  bool _deleting = false;
+
   AuthSession? session;
   bool initialized = false;
   bool isLoading = false;
@@ -331,6 +339,10 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<String?> _doRefresh() async {
+    // これから走る/進行中のアカウント削除が優先。ここで打ち切らないと、サーバー側の
+    // 認証ルートが「Account/Userが既に無い」を新規サインアップと区別できず、
+    // 削除直後に新規Userを作ってしまう。
+    if (_deleting) return null;
     final current = session;
     if (current == null) return null;
     // Apple には signInSilently 相当が無い（無言で取り直すと Custom Tab が
@@ -343,8 +355,8 @@ class SessionController extends ChangeNotifier {
 
       final refreshed = await _api.authenticateWithGoogle(idToken: idToken);
       // 端末に別のGoogleアカウントが残っている場合に、他人のセッションで上書きしない。
-      // 待っている間にログアウトされていた場合も、セッションを復活させない。
-      if (session == null || refreshed.userId != current.userId) return null;
+      // 待っている間にログアウト・アカウント削除されていた場合も、セッションを復活させない。
+      if (_deleting || session == null || refreshed.userId != current.userId) return null;
 
       await _storage.save(refreshed);
       session = refreshed;
@@ -375,6 +387,10 @@ class SessionController extends ChangeNotifier {
       final result = await action();
       await _storage.save(result);
       session = result;
+      // 新しいセッションが確立した以上、直前のアカウント削除は完了していないか
+      // 無関係（別アカウントでのログイン）。フラグを持ち越すと、以後このセッションの
+      // token refresh が永久に早期returnし続けてしまう。
+      _deleting = false;
       return true;
     } on ApiException catch (e) {
       errorMessage = e.message;
@@ -390,7 +406,49 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    final provider = session?.provider;
+    await _clearLocalSession(session?.provider);
+  }
+
+  /// アカウント削除。サーバー側のUser削除に成功したら[logout]と同じく
+  /// ローカルセッションを未ログイン状態へ落とす。
+  ///
+  /// 端末に残る他のローカルデータ（設定・取り込み済み効果音ファイル・
+  /// 背景サービスが保持するapiKey等）はここでは触らない — それらは
+  /// [SessionController] の責務外（呼び出し側で
+  /// `confirmAndDeleteAccount`（`account_deletion.dart`）を通して後始末する）。
+  ///
+  /// 失敗時（Stripe解約失敗などでサーバー側がfail-closedで中断した場合）は
+  /// アカウントが消えていないので、通常どおり使える状態のまま `false` を返す。
+  Future<bool> deleteAccount() async {
+    final current = session;
+    if (current == null) return false;
+
+    // 最初のawaitより前に同期的に立てる。詳細は _deleting のdocを参照。
+    _deleting = true;
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _api.deleteAccount(token: current.token);
+    } on ApiException catch (e) {
+      _deleting = false;
+      errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _deleting = false;
+      errorMessage = '予期しないエラーが発生しました: $e';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+
+    await _clearLocalSession(current.provider);
+    return true;
+  }
+
+  Future<void> _clearLocalSession(AuthProvider? provider) async {
     await _storage.clear();
     // Apple でログインしていたなら Google 側には何も残っていない。
     // Apple には端末側のサインアウト API が無い（ブラウザのセッションは

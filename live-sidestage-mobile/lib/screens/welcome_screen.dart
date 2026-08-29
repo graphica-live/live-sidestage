@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../core/api_client.dart';
+import '../core/privacy_policy.dart';
 import '../core/session_controller.dart';
 
 // Google と Apple のボタンは実装元が別（Material の FilledButton と
@@ -102,6 +103,11 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(height: 24),
+                TextButton(
+                  onPressed: () => launchPrivacyPolicy(context),
+                  child: const Text('プライバシーポリシー'),
+                ),
               ],
             ),
           ),

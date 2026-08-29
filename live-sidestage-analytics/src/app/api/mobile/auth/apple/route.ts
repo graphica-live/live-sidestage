@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   const clientKind: AppleClientKind = body.clientKind;
 
   try {
-    const { idToken, clientId } = await exchangeAuthorizationCode(config, {
+    const { idToken, clientId, refreshToken } = await exchangeAuthorizationCode(config, {
       code: authorizationCode,
       clientKind,
     });
@@ -71,7 +71,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 氏名は初回認可のときしか届かない。2回目以降は null のままでよい。
-    const user = await resolveAppleUser(claims, sanitizeName(body.givenName, body.familyName));
+    const user = await resolveAppleUser(claims, sanitizeName(body.givenName, body.familyName), {
+      refreshToken,
+      clientId,
+    });
     return NextResponse.json(mobileAuthResponseBody(user));
   } catch (error) {
     if (error instanceof AppleAuthError) {

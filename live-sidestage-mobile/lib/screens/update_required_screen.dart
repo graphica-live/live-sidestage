@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/account_deletion.dart';
 import '../core/session_controller.dart';
 
 /// 現在のアプリバージョンが `mobileMinSupportedVersion` を下回るときに、
@@ -38,6 +39,18 @@ class UpdateRequiredScreen extends StatelessWidget {
     final canOpenStore = defaultTargetPlatform == TargetPlatform.android;
 
     return Scaffold(
+      // 強制アップデート待ちのままではアプリ内に他の脱出経路が無いため、
+      // アカウント削除だけはこの画面からも実行できるようにしてある
+      // (Apple 5.1.1(v): アプリ内のどの状態からでも削除できる必要がある)。
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'アカウント削除',
+            onPressed: () => confirmAndDeleteAccount(context),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: Padding(

@@ -52,9 +52,17 @@ async function findByAppleSub(sub: string): Promise<MobileAuthUser | null> {
   return { ...account.user, email: account.providerEmail };
 }
 
+/// revoke(アカウント削除時)に必要なトークン。code交換のたびにAppleが返すもので、
+/// refresh_tokenが取れなかった回はnull(revokeがスキップされるだけでログイン自体はブロックしない)。
+export interface AppleTokens {
+  refreshToken: string | null;
+  clientId: string;
+}
+
 async function createAppleUser(
   claims: AppleIdTokenClaims,
   name: string | null,
+  tokens: AppleTokens,
 ): Promise<MobileAuthUser> {
   // User と Account を nested write で一度に作る。$transaction を回すより、
   // 原子性・孤児 User の防止・作成した providerEmail の取り出しが1つの形で済む。
@@ -66,6 +74,8 @@ async function createAppleUser(
       // private relay(転送用アドレス)も未確認メールもそのまま保存する。
       // リンクの根拠にしないので、正しさを問う必要がない。
       providerEmail: claims.email,
+      refresh_token: tokens.refreshToken,
+      appleClientId: tokens.clientId,
       // ここを claims.email にしないこと。上のコメント参照。
       user: { create: { email: null, name } },
     },
@@ -73,6 +83,18 @@ async function createAppleUser(
   });
 
   return { ...account.user, email: account.providerEmail };
+}
+
+/// 2回目以降のログインでも毎回revoke用トークンを最新化する。Appleはcode交換のたびに
+/// refresh_tokenを返すため(過去に発行した分が失効するとは限らないが)、実際にrevokeを
+/// 叩く時点の値を常に持っておく方が安全。refreshTokenが取れなかった回は書き換えない
+/// (直前の正常ログインで持っていた値を失わないため)。
+async function persistAppleTokens(sub: string, tokens: AppleTokens): Promise<void> {
+  if (!tokens.refreshToken) return;
+  await prisma.account.updateMany({
+    where: { provider: APPLE_PROVIDER, providerAccountId: sub },
+    data: { refresh_token: tokens.refreshToken, appleClientId: tokens.clientId },
+  });
 }
 
 /// Apple のクレームから内部ユーザーを解決する。無ければ作る。
@@ -84,17 +106,24 @@ async function createAppleUser(
 export async function resolveAppleUser(
   claims: AppleIdTokenClaims,
   name: string | null,
+  tokens: AppleTokens,
 ): Promise<MobileAuthUser> {
   const existing = await findByAppleSub(claims.sub);
-  if (existing) return existing;
+  if (existing) {
+    await persistAppleTokens(claims.sub, tokens);
+    return existing;
+  }
 
   try {
-    return await createAppleUser(claims, name);
+    return await createAppleUser(claims, name, tokens);
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
 
     const raced = await findByAppleSub(claims.sub);
-    if (raced) return raced;
+    if (raced) {
+      await persistAppleTokens(claims.sub, tokens);
+      return raced;
+    }
     // Account の unique 以外で P2002 が出る経路は無いはずなので、
     // 読み直しても見つからないなら握り潰さずそのまま投げる。
     throw error;

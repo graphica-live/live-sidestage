@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/account_deletion.dart';
 import '../core/session_controller.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -37,6 +38,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'ログアウト',
             onPressed: () => controller.logout(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'アカウント削除',
+            onPressed: () => confirmAndDeleteAccount(context),
           ),
         ],
       ),

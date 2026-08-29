@@ -146,4 +146,16 @@ describe("middleware の matcher", () => {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
   });
+
+  it("プライバシーポリシーは認証なしで通る", () => {
+    for (const path of ["/privacy", "/privacy/"]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("プライバシーポリシーと似た文字列のパスは保護されたままになる", () => {
+    for (const path of ["/privacy-something", "/privacypolicy"]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
 });

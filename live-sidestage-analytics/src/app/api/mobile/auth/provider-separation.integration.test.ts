@@ -10,11 +10,12 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveAppleUser, APPLE_PROVIDER } from "@/lib/apple-account";
+import { resolveAppleUser, APPLE_PROVIDER, type AppleTokens } from "@/lib/apple-account";
 import type { AppleIdTokenClaims } from "@/lib/apple-auth";
 
 const PREFIX = "itest-sep-";
 const SHARED_EMAIL = `${PREFIX}same@local.test`;
+const TOKENS: AppleTokens = { refreshToken: null, clientId: "itest-client-id" };
 
 // Google ルートは google-auth-library で idToken を検証する。
 // 実際のトークンは用意できないので、検証だけ差し替えて後段のユーザー解決を通す。
@@ -68,7 +69,7 @@ afterAll(cleanup);
 
 describe("Google と Apple の分離", () => {
   it("Apple が先でも、あとから同じメールの Google ログインに吸収されない", async () => {
-    const apple = await resolveAppleUser(appleClaims(), `${PREFIX}apple-user`);
+    const apple = await resolveAppleUser(appleClaims(), `${PREFIX}apple-user`, TOKENS);
 
     stubGooglePayload({
       sub: `${PREFIX}google-sub`,
@@ -98,7 +99,7 @@ describe("Google と Apple の分離", () => {
     });
     const googleBody = await (await googlePost(googleRequest())).json();
 
-    const apple = await resolveAppleUser(appleClaims(), `${PREFIX}apple-user`);
+    const apple = await resolveAppleUser(appleClaims(), `${PREFIX}apple-user`, TOKENS);
 
     expect(apple.id).not.toBe(googleBody.user.id);
     expect(await prisma.account.count({ where: { userId: googleBody.user.id } })).toBe(1);
