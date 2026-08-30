@@ -7,6 +7,7 @@ import '../../core/api_retry.dart';
 import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
 import '../widgets/analytics_status.dart';
+import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
@@ -30,6 +31,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
+  DateTimeRange? _customRange;
   GiftRankingResult? _result;
   String? _error;
   bool _loading = false;
@@ -73,10 +75,12 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   }
 
   void _onGiftActivity() {
+    final customRange = _customRange;
     switch (giftAutoReloadAction(
       active: widget.active,
       resumed: _resumed,
-      containsToday: _selection.containsJstToday(),
+      containsToday:
+          customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday(),
     )) {
       case GiftAutoReloadAction.ignore:
         break;
@@ -88,7 +92,10 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   }
 
   void _flushDirty() {
-    if (!_dirty || !widget.active || !_selection.containsJstToday()) return;
+    final customRange = _customRange;
+    final containsNow =
+        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+    if (!_dirty || !widget.active || !containsNow) return;
     _dirty = false;
     _load(silent: true);
   }
@@ -110,12 +117,15 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       });
     }
 
+    final customRange = _customRange;
     try {
       final result = await withTokenRefresh(
         call: (t) => _api.fetchGiftRanking(
           token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
         ),
         token: token,
         refreshToken: sessions.refreshToken,
@@ -143,10 +153,26 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     _load();
   }
 
+  Future<void> _openCustomRangeFilter() async {
+    final result = await showCustomRangeFilterSheet(context, initial: _customRange);
+    if (result == null) return;
+    setState(() => _customRange = result.cleared ? null : result.range);
+    _load();
+  }
+
   String get _rangeLabel {
     final range = _result?.dateRange;
-    if (range == null || range.start.isEmpty) return _selection.date;
-    return range.start == range.end ? range.start : '${range.start} 〜 ${range.end}';
+    if (range != null && range.start.isNotEmpty) {
+      if (range.start.contains('T')) {
+        return formatDateTimeRangeLabel(
+          DateTimeRange(start: DateTime.parse(range.start), end: DateTime.parse(range.end)),
+        );
+      }
+      return range.start == range.end ? range.start : '${range.start} 〜 ${range.end}';
+    }
+    final customRange = _customRange;
+    if (customRange != null) return formatDateTimeRangeLabel(customRange);
+    return _selection.date;
   }
 
   @override
@@ -164,6 +190,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             rangeLabel: _rangeLabel,
             onChanged: _onPeriodChanged,
             enabled: !_loading,
+            customRangeActive: _customRange != null,
+            onOpenCustomRangeFilter: _openCustomRangeFilter,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),

@@ -5,7 +5,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { backfillHostUserIds } from "@/lib/tiktok-host-id";
 import { prisma } from "@/lib/prisma";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parsePeriodQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery } from "@/lib/mobile-analytics-query";
 
 // queryBattles() 内部の take: 200 と同じ上限。ここに達していたら hasMore で伝える。
 const BATTLE_LIST_LIMIT = 200;
@@ -23,9 +23,8 @@ export async function GET(req: NextRequest) {
   if (!ctx.ok) return ctx.response;
 
   const { searchParams } = new URL(req.url);
-  const query = parsePeriodQuery(searchParams, jstDateKey());
+  const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
-  const { period, date } = query.value;
 
   // hostUserId(TikTokの数値userId)はfill-onceの不変値で、スコア表示の消去法に要る。
   // Web版(analytics/battles/route.ts)と同じくレスポンスはブロックしない。
@@ -37,14 +36,23 @@ export async function GET(req: NextRequest) {
     void backfillHostUserIds([room.tiktokId], { maxPerRun: 1 }).catch(() => {});
   }
 
-  const range = jstDateRangeToUtc(period, date);
+  let range: { start: Date; end: Date };
+  let dateRange: { start: string; end: string };
+  if (query.value.mode === "custom") {
+    const { start, end } = query.value;
+    range = { start, end };
+    dateRange = { start: start.toISOString(), end: end.toISOString() };
+  } else {
+    range = jstDateRangeToUtc(query.value.period, query.value.date);
+    dateRange = getDateRange(query.value.period, query.value.date);
+  }
+
   const { battles } = await queryBattles(ctx.streamer.roomId, ctx.streamer.id, range);
-  const { start, end } = getDateRange(period, date);
 
   return NextResponse.json(
     {
       battles,
-      dateRange: { start, end },
+      dateRange,
       hasMore: battles.length >= BATTLE_LIST_LIMIT,
       verified: ctx.streamer.verified,
     },

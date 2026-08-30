@@ -9,6 +9,7 @@ import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
 import '../widgets/analytics_status.dart';
+import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
@@ -30,6 +31,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
+  DateTimeRange? _customRange;
   BattleListResult? _result;
   String? _error;
   bool _loading = false;
@@ -70,13 +72,19 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   }
 
   void _onBattleActivity() {
+    final customRange = _customRange;
     final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
+    // 「今日」ではなく**バトルの開始日**で判定する。深夜0時をまたぐバトルが
+    // 「今日」判定だと自動更新の対象から漏れるため。
+    // customRange指定時は「バトルの開始日」ではなく「選択した範囲が現在を含むか」で
+    // 判定する(期間の切り口が期間種別ではなく開始・終了日時そのものになるため)。
+    final containsStartedDate = customRange != null
+        ? customRangeContainsNow(customRange)
+        : startedDateKey != null && _selection.containsJstToday(today: startedDateKey);
     switch (battleAutoReloadAction(
       active: widget.active,
       resumed: _resumed,
-      // 「今日」ではなく**バトルの開始日**で判定する。深夜0時をまたぐバトルが
-      // 「今日」判定だと自動更新の対象から漏れるため。
-      containsStartedDate: startedDateKey != null && _selection.containsJstToday(today: startedDateKey),
+      containsStartedDate: containsStartedDate,
     )) {
       case BattleAutoReloadAction.ignore:
         break;
@@ -88,9 +96,13 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   }
 
   void _flushDirty() {
-    final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
     if (!_dirty || !widget.active) return;
-    if (startedDateKey == null || !_selection.containsJstToday(today: startedDateKey)) return;
+    final customRange = _customRange;
+    final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
+    final containsNow = customRange != null
+        ? customRangeContainsNow(customRange)
+        : startedDateKey != null && _selection.containsJstToday(today: startedDateKey);
+    if (!containsNow) return;
     _dirty = false;
     _load(silent: true);
   }
@@ -112,12 +124,15 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
       });
     }
 
+    final customRange = _customRange;
     try {
       final result = await withTokenRefresh(
         call: (t) => _api.fetchBattles(
           token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
         ),
         token: token,
         refreshToken: sessions.refreshToken,
@@ -145,10 +160,26 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     _load();
   }
 
+  Future<void> _openCustomRangeFilter() async {
+    final result = await showCustomRangeFilterSheet(context, initial: _customRange);
+    if (result == null) return;
+    setState(() => _customRange = result.cleared ? null : result.range);
+    _load();
+  }
+
   String get _rangeLabel {
     final range = _result?.dateRange;
-    if (range == null || range.start.isEmpty) return _selection.date;
-    return range.start == range.end ? range.start : '${range.start} 〜 ${range.end}';
+    if (range != null && range.start.isNotEmpty) {
+      if (range.start.contains('T')) {
+        return formatDateTimeRangeLabel(
+          DateTimeRange(start: DateTime.parse(range.start), end: DateTime.parse(range.end)),
+        );
+      }
+      return range.start == range.end ? range.start : '${range.start} 〜 ${range.end}';
+    }
+    final customRange = _customRange;
+    if (customRange != null) return formatDateTimeRangeLabel(customRange);
+    return _selection.date;
   }
 
   static String _statusLabel(BattleStatus status) => switch (status) {
@@ -219,6 +250,8 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             rangeLabel: _rangeLabel,
             onChanged: _onPeriodChanged,
             enabled: !_loading,
+            customRangeActive: _customRange != null,
+            onOpenCustomRangeFilter: _openCustomRangeFilter,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),

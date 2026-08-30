@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../models/account_status.dart';
@@ -207,6 +208,31 @@ DateRange _parseDateRange(Object? value) {
   return (start: map['start'] as String? ?? '', end: map['end'] as String? ?? '');
 }
 
+/// period/date(日・週・月の既存経路)とstartDatetime/endDatetime(開始・終了日時による
+/// カスタム範囲)の2系統のクエリパラメータ組み立てを1箇所に共通化する。
+/// startDatetime/endDatetimeを両方指定した場合はそちらを優先し、period/dateは送らない。
+///
+/// 片方だけの指定は呼び出し側の実装ミスとして早期に検出する(3タブの配線はどちらも
+/// 渡すか両方nullかのどちらかにしかならない設計なので、通常は到達しないアサーション)。
+@visibleForTesting
+Map<String, String> rangeParams({
+  required String period,
+  required String date,
+  DateTime? startDatetime,
+  DateTime? endDatetime,
+}) {
+  if (startDatetime == null && endDatetime == null) {
+    return {'period': period, 'date': date};
+  }
+  if (startDatetime == null || endDatetime == null) {
+    throw ArgumentError('startDatetimeとendDatetimeは両方指定するか、両方省略してください');
+  }
+  return {
+    'startDatetime': startDatetime.toUtc().toIso8601String(),
+    'endDatetime': endDatetime.toUtc().toIso8601String(),
+  };
+}
+
 class GiftRankingResult {
   final List<GiftRankingEntry> users;
   final DateRange dateRange;
@@ -353,8 +379,17 @@ class LiveAnalyticsApi {
     required String token,
     required String period,
     required String date,
+    DateTime? startDatetime,
+    DateTime? endDatetime,
   }) async {
-    final query = Uri(queryParameters: {'period': period, 'date': date}).query;
+    final query = Uri(
+      queryParameters: rangeParams(
+        period: period,
+        date: date,
+        startDatetime: startDatetime,
+        endDatetime: endDatetime,
+      ),
+    ).query;
     final data = await _send('GET', '/api/mobile/analytics/ranking?$query', null, token: token);
     final users = data['users'];
     return GiftRankingResult(
@@ -374,8 +409,20 @@ class LiveAnalyticsApi {
     required String period,
     required String date,
     int limit = 50,
+    DateTime? startDatetime,
+    DateTime? endDatetime,
   }) async {
-    final query = Uri(queryParameters: {'period': period, 'date': date, 'limit': '$limit'}).query;
+    final query = Uri(
+      queryParameters: {
+        ...rangeParams(
+          period: period,
+          date: date,
+          startDatetime: startDatetime,
+          endDatetime: endDatetime,
+        ),
+        'limit': '$limit',
+      },
+    ).query;
     final data = await _send('GET', '/api/mobile/analytics/gift-history?$query', null, token: token);
     final events = data['events'];
     return GiftHistoryResult(
@@ -395,8 +442,17 @@ class LiveAnalyticsApi {
     required String token,
     required String period,
     required String date,
+    DateTime? startDatetime,
+    DateTime? endDatetime,
   }) async {
-    final query = Uri(queryParameters: {'period': period, 'date': date}).query;
+    final query = Uri(
+      queryParameters: rangeParams(
+        period: period,
+        date: date,
+        startDatetime: startDatetime,
+        endDatetime: endDatetime,
+      ),
+    ).query;
     final data = await _send('GET', '/api/mobile/analytics/battles?$query', null, token: token);
     final battles = data['battles'];
     return BattleListResult(

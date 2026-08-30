@@ -4,7 +4,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGiftHistory } from "@/lib/gift-history";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parsePeriodQuery, parseLimit } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseLimit } from "@/lib/mobile-analytics-query";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -23,18 +23,28 @@ export async function GET(req: NextRequest) {
   if (!ctx.ok) return ctx.response;
 
   const { searchParams } = new URL(req.url);
-  const query = parsePeriodQuery(searchParams, jstDateKey());
+  const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
-  const { period, date } = query.value;
 
   const limit = parseLimit(searchParams, DEFAULT_LIMIT, MAX_LIMIT);
   if (!limit.ok) return limit.response;
 
-  const { start, end } = getDateRange(period, date);
+  let where: Parameters<typeof queryGiftHistory>[2];
+  let dateRange: { start: string; end: string };
+  if (query.value.mode === "custom") {
+    const { start, end } = query.value;
+    where = { receivedAt: { gte: start, lte: end } };
+    dateRange = { start: start.toISOString(), end: end.toISOString() };
+  } else {
+    const { start, end } = getDateRange(query.value.period, query.value.date);
+    where = { dayKey: { gte: start, lte: end } };
+    dateRange = { start, end };
+  }
+
   const { events, total, hasMore } = await queryGiftHistory(
     ctx.streamer.roomId,
     ctx.streamer.id,
-    { dayKey: { gte: start, lte: end } },
+    where,
     limit.value
   );
 
@@ -45,7 +55,7 @@ export async function GET(req: NextRequest) {
         profileImageUrl: sanitizeAvatarUrl(e.profileImageUrl),
         giftPictureUrl: sanitizeAvatarUrl(e.giftPictureUrl),
       })),
-      dateRange: { start, end },
+      dateRange,
       total,
       hasMore,
       verified: ctx.streamer.verified,
