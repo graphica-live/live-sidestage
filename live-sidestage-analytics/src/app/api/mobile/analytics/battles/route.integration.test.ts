@@ -156,4 +156,37 @@ describe("GET /api/mobile/analytics/battles", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("listenerQuery", () => {
+    it("バトル区間中にそのリスナーが貢献したバトルだけに絞り込む", async () => {
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "Taro_Listener",
+          nickname: "たろう",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 1,
+          totalDiamonds: 1,
+          dayKey: "2026-08-24",
+          receivedAt: new Date("2026-08-24T10:02:00Z"), // itest-battle-1の区間内(10:00-10:05)
+        },
+      });
+
+      const matched = await GET(request("?period=day&date=2026-08-24&listenerQuery=taro", token));
+      const matchedBody = await matched.json();
+      expect(matched.status).toBe(200);
+      expect(matchedBody.battles.map((b: { battleId: string }) => b.battleId)).toEqual(["itest-battle-1"]);
+
+      const unmatched = await GET(request("?period=day&date=2026-08-24&listenerQuery=nonexistent_xyz", token));
+      const unmatchedBody = await unmatched.json();
+      expect(unmatchedBody.battles).toEqual([]);
+    });
+
+    it("100文字を超えるlistenerQueryは400", async () => {
+      const res = await GET(request(`?period=day&date=2026-08-24&listenerQuery=${"a".repeat(101)}`, token));
+      expect(res.status).toBe(400);
+    });
+  });
 });

@@ -222,4 +222,32 @@ describe("queryGiftHistory", () => {
 
     expect(result.events.map((e) => e.id)).toEqual([inRange.id]);
   });
+
+  it("listenerQueryはuniqueId/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
+    const dayKey = "2026-08-21";
+    const taro = await makeGift({ dayKey, uniqueId: "Taro_Listener", nickname: "たろう", receivedAt: new Date("2026-08-21T10:00:00Z") });
+    await makeGift({ dayKey, uniqueId: "hanako_listener", nickname: "花子", receivedAt: new Date("2026-08-21T10:01:00Z") });
+
+    const byUniqueId = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10, "taro");
+    expect(byUniqueId.events.map((e) => e.id)).toEqual([taro.id]);
+  });
+
+  it("listenerQueryの%/_はSQLワイルドカードとして解釈させず、リテラル一致にする", async () => {
+    const dayKey = "2026-08-22";
+    const literal = await makeGift({ dayKey, uniqueId: "100%_off", nickname: "割引", receivedAt: new Date("2026-08-22T10:00:00Z") });
+    await makeGift({ dayKey, uniqueId: "other_user", nickname: "別ユーザー", receivedAt: new Date("2026-08-22T10:01:00Z") });
+
+    // "%"/"_"をワイルドカード展開すると"other_user"等の無関係な行まで拾ってしまう。
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10, "100%_off");
+    expect(result.events.map((e) => e.id)).toEqual([literal.id]);
+  });
+
+  it("listenerQueryは日時条件とAND結合される", async () => {
+    const dayKey = "2026-08-23";
+    const inRange = await makeGift({ dayKey, uniqueId: "and_target", nickname: "AND対象", receivedAt: new Date("2026-08-23T10:00:00Z") });
+    await makeGift({ dayKey: "2026-08-24", uniqueId: "and_target", nickname: "AND対象", receivedAt: new Date("2026-08-24T10:00:00Z") });
+
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10, "and_target");
+    expect(result.events.map((e) => e.id)).toEqual([inRange.id]);
+  });
 });

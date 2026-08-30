@@ -32,6 +32,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
   DateTimeRange? _customRange;
+  String? _listenerQuery;
   GiftRankingResult? _result;
   String? _error;
   bool _loading = false;
@@ -126,6 +127,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
           date: _selection.date,
           startDatetime: customRange?.start,
           endDatetime: customRange?.end,
+          listenerQuery: _listenerQuery,
         ),
         token: token,
         refreshToken: sessions.refreshToken,
@@ -154,9 +156,16 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   }
 
   Future<void> _openCustomRangeFilter() async {
-    final result = await showCustomRangeFilterSheet(context, initial: _customRange);
+    final result = await showCustomRangeFilterSheet(
+      context,
+      initial: _customRange,
+      initialListenerQuery: _listenerQuery,
+    );
     if (result == null) return;
-    setState(() => _customRange = result.cleared ? null : result.range);
+    setState(() {
+      _customRange = result.cleared ? null : result.range;
+      _listenerQuery = result.cleared ? null : result.listenerQuery;
+    });
     _load();
   }
 
@@ -191,6 +200,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             onChanged: _onPeriodChanged,
             enabled: !_loading,
             customRangeActive: _customRange != null,
+            filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),

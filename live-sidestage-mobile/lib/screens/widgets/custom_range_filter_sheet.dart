@@ -8,29 +8,32 @@ import '../../core/analytics_period.dart';
 /// 事前に弾く。
 const int _maxRangeDays = 366;
 
-typedef CustomRangeFilterResult = ({DateTimeRange? range, bool cleared});
+typedef AdvancedFilterResult = ({DateTimeRange? range, String? listenerQuery, bool cleared});
 
-/// 開始・終了日時によるカスタム範囲フィルタのボトムシートを開く。
+/// リスナー名・開始/終了日時による詳細フィルタのボトムシートを開く。
 ///
 /// 戻り値:
 /// - `null` — キャンセル(閉じるだけ、状態変更なし)
-/// - `(range: null, cleared: true)` — 「クリア」押下(custom filter解除)
-/// - `(range: range, cleared: false)` — 「適用」押下(rangeはUTC)
-Future<CustomRangeFilterResult?> showCustomRangeFilterSheet(
+/// - `(range: null, listenerQuery: null, cleared: true)` — 「クリア」押下(フィルタ解除)
+/// - `(range: range?, listenerQuery: query?, cleared: false)` — 「適用」押下
+///   (range/listenerQueryのどちらか一方は非nullだが両方nullにはならない。rangeはUTC)
+Future<AdvancedFilterResult?> showCustomRangeFilterSheet(
   BuildContext context, {
   DateTimeRange? initial,
+  String? initialListenerQuery,
 }) {
-  return showModalBottomSheet<CustomRangeFilterResult>(
+  return showModalBottomSheet<AdvancedFilterResult>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => _CustomRangeFilterSheet(initial: initial),
+    builder: (context) => _CustomRangeFilterSheet(initial: initial, initialListenerQuery: initialListenerQuery),
   );
 }
 
 class _CustomRangeFilterSheet extends StatefulWidget {
-  const _CustomRangeFilterSheet({this.initial});
+  const _CustomRangeFilterSheet({this.initial, this.initialListenerQuery});
 
   final DateTimeRange? initial;
+  final String? initialListenerQuery;
 
   @override
   State<_CustomRangeFilterSheet> createState() => _CustomRangeFilterSheetState();
@@ -42,6 +45,7 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
   // DateTime(...)コンストラクタは経由しない)。
   DateTime? _start;
   DateTime? _end;
+  late final TextEditingController _listenerController;
 
   @override
   void initState() {
@@ -51,26 +55,54 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
       _start = jstWallClockFromUtc(initial.start);
       _end = jstWallClockFromUtc(initial.end);
     }
+    _listenerController = TextEditingController(text: widget.initialListenerQuery ?? '')
+      ..addListener(() => setState(() {}));
   }
+
+  @override
+  void dispose() {
+    _listenerController.dispose();
+    super.dispose();
+  }
+
+  bool get _hasListener => _listenerController.text.trim().isNotEmpty;
+  bool get _hasFullRange => _start != null && _end != null;
+  bool get _hasPartialRange => (_start == null) != (_end == null);
 
   bool get _canApply {
-    final start = _start;
-    final end = _end;
-    if (start == null || end == null) return false;
-    if (!start.isBefore(end)) return false;
-    return end.difference(start) <= const Duration(days: _maxRangeDays);
+    if (_hasPartialRange) return false;
+    if (!_hasListener && !_hasFullRange) return false;
+    if (_hasFullRange) {
+      final start = _start!, end = _end!;
+      if (!start.isBefore(end)) return false;
+      if (end.difference(start) > const Duration(days: _maxRangeDays)) return false;
+    }
+    return true;
   }
 
-  bool get _canClear => widget.initial != null || _start != null || _end != null;
+  bool get _canClear =>
+      widget.initial != null ||
+      (widget.initialListenerQuery?.isNotEmpty ?? false) ||
+      _start != null ||
+      _end != null ||
+      _hasListener;
 
   Future<void> _pickStart() async {
-    final picked = await _pickJstWallClock(context, initial: _start);
+    final picked = await _pickJstWallClock(
+      context,
+      initial: _start,
+      defaultTime: const TimeOfDay(hour: 0, minute: 0),
+    );
     if (picked == null || !mounted) return;
     setState(() => _start = picked);
   }
 
   Future<void> _pickEnd() async {
-    final picked = await _pickJstWallClock(context, initial: _end);
+    final picked = await _pickJstWallClock(
+      context,
+      initial: _end,
+      defaultTime: const TimeOfDay(hour: 23, minute: 59),
+    );
     if (picked == null || !mounted) return;
     // 選択した分の末尾(秒=59.999)に丸める。分単位ピッカーの粒度による取りこぼしを避けるため。
     setState(() {
@@ -79,16 +111,15 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
   }
 
   void _apply() {
-    final start = _start;
-    final end = _end;
-    if (start == null || end == null) return;
-    Navigator.of(context).pop((
-      range: DateTimeRange(start: jstWallClockToUtc(start), end: jstWallClockToUtc(end)),
-      cleared: false,
-    ));
+    if (!_canApply) return;
+    final range = _hasFullRange
+        ? DateTimeRange(start: jstWallClockToUtc(_start!), end: jstWallClockToUtc(_end!))
+        : null;
+    final listenerQuery = _hasListener ? _listenerController.text.trim() : null;
+    Navigator.of(context).pop((range: range, listenerQuery: listenerQuery, cleared: false));
   }
 
-  void _clear() => Navigator.of(context).pop((range: null, cleared: true));
+  void _clear() => Navigator.of(context).pop((range: null, listenerQuery: null, cleared: true));
 
   @override
   Widget build(BuildContext context) {
@@ -100,33 +131,43 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
           top: 16,
           bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('詳細フィルタ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            _DateTimeRow(label: '開始日時', value: _start, onTap: _pickStart),
-            _DateTimeRow(label: '終了日時', value: _end, onTap: _pickEnd),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _canClear ? _clear : null,
-                    child: const Text('クリア'),
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('詳細フィルタ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _listenerController,
+                decoration: const InputDecoration(
+                  labelText: 'リスナー名(ID またはプロフィール名)',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _canApply ? _apply : null,
-                    child: const Text('適用'),
+              ),
+              const SizedBox(height: 8),
+              _DateTimeRow(label: '開始日時', value: _start, onTap: _pickStart),
+              _DateTimeRow(label: '終了日時', value: _end, onTap: _pickEnd),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _canClear ? _clear : null,
+                      child: const Text('クリア'),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _canApply ? _apply : null,
+                      child: const Text('適用'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -167,7 +208,11 @@ class _DateTimeRow extends StatelessWidget {
 /// showDatePicker → showTimePicker の順に開き、結果を「JST壁時計の成分を持つUTCフラグ付き
 /// DateTime」として返す(端末ローカルのDateTime(...)コンストラクタは経由しない)。
 /// どちらかでキャンセルされたらnull。
-Future<DateTime?> _pickJstWallClock(BuildContext context, {DateTime? initial}) async {
+Future<DateTime?> _pickJstWallClock(
+  BuildContext context, {
+  DateTime? initial,
+  required TimeOfDay defaultTime,
+}) async {
   final now = DateTime.now();
   final firstDate = DateTime(now.year - 5);
   final lastDate = DateTime(now.year + 5, 12, 31);
@@ -184,7 +229,7 @@ Future<DateTime?> _pickJstWallClock(BuildContext context, {DateTime? initial}) a
   );
   if (date == null || !context.mounted) return null;
 
-  final initialTime = initial != null ? TimeOfDay(hour: initial.hour, minute: initial.minute) : TimeOfDay.now();
+  final initialTime = initial != null ? TimeOfDay(hour: initial.hour, minute: initial.minute) : defaultTime;
   final time = await showTimePicker(context: context, initialTime: initialTime);
   if (time == null) return null;
 

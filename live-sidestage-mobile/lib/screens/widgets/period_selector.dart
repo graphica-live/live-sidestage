@@ -11,6 +11,7 @@ class PeriodSelectorBar extends StatelessWidget {
     required this.onChanged,
     this.enabled = true,
     this.customRangeActive = false,
+    this.filterActive = false,
     this.onOpenCustomRangeFilter,
   });
 
@@ -32,6 +33,9 @@ class PeriodSelectorBar extends StatelessWidget {
   /// 常に有効のまま。
   final bool customRangeActive;
 
+  /// 詳細フィルタ(日時範囲・リスナー名のいずれか)が適用中かどうか。アイコンの着色のみに使う。
+  final bool filterActive;
+
   /// 詳細フィルタボタン押下時のコールバック。nullなら詳細フィルタボタン自体を出さない。
   final VoidCallback? onOpenCustomRangeFilter;
 
@@ -42,14 +46,35 @@ class PeriodSelectorBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Column(
         children: [
-          SegmentedButton<AnalyticsPeriod>(
-            segments: [
-              for (final p in AnalyticsPeriod.values) ButtonSegment(value: p, label: Text(p.label)),
-            ],
-            selected: {selection.period},
-            onSelectionChanged: periodControlsEnabled
-                ? (selected) => onChanged(selection.withPeriod(selected.first))
-                : null,
+          SizedBox(
+            width: double.infinity,
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                SegmentedButton<AnalyticsPeriod>(
+                  segments: [
+                    for (final p in AnalyticsPeriod.values) ButtonSegment(value: p, label: Text(p.label)),
+                  ],
+                  selected: {selection.period},
+                  onSelectionChanged: periodControlsEnabled
+                      ? (selected) => onChanged(selection.withPeriod(selected.first))
+                      : null,
+                ),
+                if (onOpenCustomRangeFilter != null)
+                  Positioned(
+                    right: 0,
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.tune,
+                        color: filterActive ? Theme.of(context).colorScheme.primary : null,
+                      ),
+                      tooltip: '詳細フィルタ',
+                      onPressed: enabled ? onOpenCustomRangeFilter : null,
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 4),
           Row(
@@ -70,15 +95,6 @@ class PeriodSelectorBar extends StatelessWidget {
                 icon: const Icon(Icons.chevron_right),
                 onPressed: periodControlsEnabled ? () => onChanged(selection.shiftNext()) : null,
               ),
-              if (onOpenCustomRangeFilter != null)
-                IconButton(
-                  icon: Icon(
-                    Icons.tune,
-                    color: customRangeActive ? Theme.of(context).colorScheme.primary : null,
-                  ),
-                  tooltip: '詳細フィルタ',
-                  onPressed: enabled ? onOpenCustomRangeFilter : null,
-                ),
             ],
           ),
         ],

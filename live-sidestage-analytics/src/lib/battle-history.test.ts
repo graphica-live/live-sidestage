@@ -5,6 +5,8 @@ import {
   resolveBattleWindow,
   jstDateRangeToUtc,
   sumDiamondsPerWindow,
+  giftMatchesListenerQuery,
+  battleIdsWithGiftInWindow,
   type BattleRow,
 } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
@@ -170,6 +172,53 @@ describe("sumDiamondsPerWindow", () => {
     ]);
 
     expect(result.get("b1")).toBe(0);
+  });
+});
+
+describe("giftMatchesListenerQuery", () => {
+  it("uniqueIdの部分一致でマッチする(大小文字無視)", () => {
+    expect(giftMatchesListenerQuery({ uniqueId: "Taro_Tiktok", nickname: "たろう" }, "taro")).toBe(true);
+  });
+
+  it("nicknameの部分一致でマッチする", () => {
+    expect(giftMatchesListenerQuery({ uniqueId: "xyz", nickname: "たろう推し" }, "たろう")).toBe(true);
+  });
+
+  it("どちらにも含まれなければマッチしない", () => {
+    expect(giftMatchesListenerQuery({ uniqueId: "hanako", nickname: "花子" }, "taro")).toBe(false);
+  });
+});
+
+describe("battleIdsWithGiftInWindow", () => {
+  const windows = [
+    { battleId: "b1", start: new Date("2026-08-20T10:00:00Z"), end: new Date("2026-08-20T10:05:00Z") },
+    { battleId: "b2", start: new Date("2026-08-20T11:00:00Z"), end: new Date("2026-08-20T11:05:00Z") },
+  ];
+
+  it("window内のgiftがあればそのbattleIdを含める", () => {
+    const ms = [new Date("2026-08-20T10:02:00Z").getTime()];
+    expect(battleIdsWithGiftInWindow(ms, windows)).toEqual(new Set(["b1"]));
+  });
+
+  it("window外のgiftは無視する", () => {
+    const ms = [new Date("2026-08-20T09:00:00Z").getTime(), new Date("2026-08-20T12:00:00Z").getTime()];
+    expect(battleIdsWithGiftInWindow(ms, windows)).toEqual(new Set());
+  });
+
+  it("複数windowにそれぞれ一致があれば両方含める", () => {
+    const ms = [new Date("2026-08-20T10:01:00Z").getTime(), new Date("2026-08-20T11:01:00Z").getTime()];
+    expect(battleIdsWithGiftInWindow(ms, windows)).toEqual(new Set(["b1", "b2"]));
+  });
+
+  it("gift配列が空なら空集合を返す", () => {
+    expect(battleIdsWithGiftInWindow([], windows)).toEqual(new Set());
+  });
+
+  it("windowの境界(start/end含む)はマッチする", () => {
+    const startMs = [new Date("2026-08-20T10:00:00Z").getTime()];
+    const endMs = [new Date("2026-08-20T10:05:00Z").getTime()];
+    expect(battleIdsWithGiftInWindow(startMs, windows)).toEqual(new Set(["b1"]));
+    expect(battleIdsWithGiftInWindow(endMs, windows)).toEqual(new Set(["b1"]));
   });
 });
 

@@ -97,4 +97,61 @@ describe("queryGifts", () => {
     const { users } = await queryGifts(roomId, streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
     expect(users.find((u) => u.uniqueId === "user_hide")).toBeUndefined();
   });
+
+  it("listenerQueryはuniqueId/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
+    await makeGift({ uniqueId: "Taro_Listener", nickname: "たろう", totalDiamonds: 10, receivedAt: new Date("2026-08-15T09:20:00Z") });
+    await makeGift({ uniqueId: "hanako_listener", nickname: "花子", totalDiamonds: 20, receivedAt: new Date("2026-08-15T09:21:00Z") });
+
+    const byUniqueId = await queryGifts(
+      roomId,
+      streamerId,
+      { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } },
+      "taro"
+    );
+    expect(byUniqueId.users.map((u) => u.uniqueId)).toEqual(["Taro_Listener"]);
+
+    const byNickname = await queryGifts(
+      roomId,
+      streamerId,
+      { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } },
+      "花子"
+    );
+    expect(byNickname.users.map((u) => u.uniqueId)).toEqual(["hanako_listener"]);
+  });
+
+  it("listenerQuery指定時、期間中に表示名が変わっていても過少集計にならない(uniqueId一致で全期間ぶんを集計する)", async () => {
+    await makeGift({
+      uniqueId: "rename_user",
+      nickname: "旧名前",
+      totalDiamonds: 100,
+      receivedAt: new Date("2026-08-15T09:30:00Z"),
+    });
+    await makeGift({
+      uniqueId: "rename_user",
+      nickname: "新名前",
+      totalDiamonds: 200,
+      receivedAt: new Date("2026-08-15T09:31:00Z"),
+    });
+
+    const result = await queryGifts(
+      roomId,
+      streamerId,
+      { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } },
+      "新名前"
+    );
+
+    const user = result.users.find((u) => u.uniqueId === "rename_user");
+    expect(user).toBeDefined();
+    expect(user!.totalDiamonds).toBe(300); // 旧名前ぶんの100を取りこぼさない
+  });
+
+  it("listenerQueryに一致するユーザーが居なければ空配列を返す", async () => {
+    const result = await queryGifts(
+      roomId,
+      streamerId,
+      { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } },
+      "nonexistent_listener_xyz"
+    );
+    expect(result).toEqual({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+  });
 });

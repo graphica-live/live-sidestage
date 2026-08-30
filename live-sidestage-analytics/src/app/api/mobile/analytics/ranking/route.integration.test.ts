@@ -204,4 +204,24 @@ describe("GET /api/mobile/analytics/ranking", () => {
       }
     });
   });
+
+  describe("listenerQuery", () => {
+    it("uniqueId/nicknameの部分一致(大小文字無視)で絞り込み、日付条件とAND結合される", async () => {
+      await addGift("Taro_Listener", "たろう", 15, new Date("2026-08-27T10:00:00Z"), "2026-08-27");
+      await addGift("hanako_listener", "花子", 25, new Date("2026-08-27T10:01:00Z"), "2026-08-27");
+      await addGift("Taro_Listener", "たろう", 999, new Date("2026-08-28T10:00:00Z"), "2026-08-28"); // 別日は対象外
+
+      const res = await GET(request("?period=day&date=2026-08-27&listenerQuery=taro", token));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.users.map((u: { uniqueId: string }) => u.uniqueId)).toEqual(["Taro_Listener"]);
+      expect(body.total).toEqual({ giftCount: 1, totalDiamonds: 15 });
+    });
+
+    it("100文字を超えるlistenerQueryは400", async () => {
+      const res = await GET(request(`?period=day&date=2026-08-20&listenerQuery=${"a".repeat(101)}`, token));
+      expect(res.status).toBe(400);
+    });
+  });
 });
