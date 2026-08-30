@@ -59,6 +59,30 @@ describe("resolveBattleScore", () => {
     const resolved = resolveBattleScore({ rows: [row(["X", "Y"], { X: "10", Y: "20" })], selfHostUserId: "A" });
     expect(resolved.kind).toBe("unknown");
   });
+
+  it("4人の2vs2バトルで実userId(大きな数字)がキーでもselfScoreが正しく解決される", () => {
+    // 実データ由来: TikTok userId は 15〜19桁の数字
+    // collectHosts() 修正前はキーが「チーム番号("1"/"2")」のため selfScore が常に null になっていた
+    const resolved = resolveBattleScore({
+      rows: [
+        row(
+          ["6813783089135895553", "6958337949008692226", "7418071357873701889", "6969117324289164290"],
+          {
+            "6813783089135895553": "253255",
+            "6958337949008692226": "22846",
+            "7418071357873701889": "100000",
+            "6969117324289164290": "50000",
+          }
+        ),
+      ],
+      selfHostUserId: "6813783089135895553",
+    });
+    expect(resolved).toMatchObject({
+      kind: "multi",
+      participantCount: 4,
+      selfScore: "253255", // 修正後は selfScore が正しく取得される
+    });
+  });
 });
 
 const START = new Date("2026-08-20T10:00:00Z");

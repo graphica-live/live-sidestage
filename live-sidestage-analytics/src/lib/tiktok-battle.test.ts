@@ -132,6 +132,108 @@ describe("parseBattleEvent", () => {
     expect(parsed?.hostScores).toEqual({ "111": "10" });
   });
 
+  it("2vs2のチームバトル(teamArmies)から4人のuserIdと個人スコアを取得する", () => {
+    // 実データ由来: teamUsers[].score の合計 = hostScore になる(253255+22846=276101)
+    const parsed = parseBattleEvent(
+      battlePayload(BATTLE_ACTION.OPEN, {
+        teamArmies: [
+          {
+            teamId: "1",
+            hostRank: "0",
+            teamUsers: [
+              { userId: "6813783089135895553", userIdStr: "6813783089135895553", score: 253255 },
+              { userId: "6958337949008692226", userIdStr: "6958337949008692226", score: 22846 },
+            ],
+            userArmies: { hostScore: "276101", anchorIdStr: "1" },
+            teamTotalScore: 276101,
+          },
+          {
+            teamId: "2",
+            hostRank: "0",
+            teamUsers: [
+              { userId: "7418071357873701889", userIdStr: "7418071357873701889", score: 100000 },
+              { userId: "6969117324289164290", userIdStr: "6969117324289164290", score: 50000 },
+            ],
+            userArmies: { hostScore: "150000", anchorIdStr: "2" },
+            teamTotalScore: 150000,
+          },
+        ],
+        armies: {}, // チーム戦では armies/battleItems のキーは anchorIdStr = チーム番号("1"/"2")になるため、teamArmies を優先する
+        anchorInfo: {
+          "6813783089135895553": {
+            user: {
+              userId: "6813783089135895553",
+              nickName: "配信者A",
+              displayId: "hostA",
+              avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/a.webp"] },
+            },
+          },
+          "6958337949008692226": {
+            user: {
+              userId: "6958337949008692226",
+              nickName: "配信者B",
+              displayId: "hostB",
+              avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/b.webp"] },
+            },
+          },
+          "7418071357873701889": {
+            user: {
+              userId: "7418071357873701889",
+              nickName: "配信者C",
+              displayId: "hostC",
+              avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/c.webp"] },
+            },
+          },
+          "6969117324289164290": {
+            user: {
+              userId: "6969117324289164290",
+              nickName: "配信者D",
+              displayId: "hostD",
+              avatarThumb: { url: ["https://p16-common-sign.tiktokcdn.com/d.webp"] },
+            },
+          },
+        },
+      })
+    );
+
+    // 4人の実userId が取れる
+    expect(parsed?.hostUserIds).toEqual([
+      "6813783089135895553",
+      "6958337949008692226",
+      "7418071357873701889",
+      "6969117324289164290",
+    ]);
+    expect(parsed?.hostDisplayIds).toEqual(["hostA", "hostB", "hostC", "hostD"]);
+
+    // 個人別のスコア(チーム番号ではなく実userIdがキー)
+    expect(parsed?.hostScores).toEqual({
+      "6813783089135895553": "253255",
+      "6958337949008692226": "22846",
+      "7418071357873701889": "100000",
+      "6969117324289164290": "50000",
+    });
+
+    // チーム番号("1"/"2")が含まれないこと(バグの確認)
+    expect(parsed?.hostUserIds).not.toContain("1");
+    expect(parsed?.hostUserIds).not.toContain("2");
+  });
+
+  it("1vs1ではteamArmiesが空配列なら既存の armies/battleItems ロジックにフォールバックする", () => {
+    // 1vs1では teamArmies: [] (空)
+    const parsed = parseBattleEvent(
+      battlePayload(BATTLE_ACTION.OPEN, {
+        teamArmies: [],
+        armies: {
+          "111": { anchorIdStr: "111", hostScore: "5000", userArmy: [] },
+          "222": { anchorIdStr: "222", hostScore: "4200", userArmy: [] },
+        },
+      })
+    );
+
+    expect(parsed?.hostUserIds).toEqual(["111", "222"]);
+    expect(parsed?.hostScores).toEqual({ "111": "5000", "222": "4200" });
+  });
+
   it("battleIdが無ければ記録しない", () => {
     const payload = battlePayload(BATTLE_ACTION.OPEN, { battleId: "" });
     // battleSetting 側に残っていれば拾える

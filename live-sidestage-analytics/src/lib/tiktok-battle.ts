@@ -126,18 +126,41 @@ function firstAvatarUrl(user: Record<string, unknown>): string | null {
   return typeof first === "string" ? first : null;
 }
 
+/** battle/armies 側から teamArmies[].teamUsers[] を読む(2vs2等のチーム戦)。 */
+function findTeamArmies(data: Record<string, unknown>): Record<string, unknown>[] {
+  return toEntries(data.teamArmies);
+}
+
 /** バックフィルスクリプト(既存raw JSONの再解釈)からも使うのでexportする。 */
 export function collectHosts(data: Record<string, unknown>) {
   const hostUserIds: string[] = [];
   const hostScores: Record<string, string> = {};
 
-  for (const army of findArmies(data)) {
-    const anchorId = nonEmptyString(army.anchorIdStr) ?? nonEmptyString(army.anchorId);
-    if (anchorId === null) continue;
-    if (!hostUserIds.includes(anchorId)) hostUserIds.push(anchorId);
+  const teamArmies = findTeamArmies(data);
+  if (teamArmies.length > 0) {
+    // チーム戦(2vs2等)。armies/battleItems の値の anchorIdStr は実userIdではなく
+    // 「チーム番号("1"/"2")」になっている(実データ・型定義で確認済み)。個々の配信者の
+    // 実userId/scoreは teamArmies[].teamUsers[] からしか取れない。
+    for (const team of teamArmies) {
+      for (const teamUser of toEntries(team.teamUsers)) {
+        const userId = nonEmptyString(teamUser.userIdStr) ?? nonEmptyString(teamUser.userId);
+        if (userId === null) continue;
+        if (!hostUserIds.includes(userId)) hostUserIds.push(userId);
 
-    const score = nonEmptyString(army.hostScore);
-    if (score !== null) hostScores[anchorId] = score;
+        const score = nonEmptyString(teamUser.score);
+        if (score !== null) hostScores[userId] = score;
+      }
+    }
+  } else {
+    // 1vs1。armies/battleItems の値の anchorIdStr がそのまま実userIdと一致する(既存ロジック)。
+    for (const army of findArmies(data)) {
+      const anchorId = nonEmptyString(army.anchorIdStr) ?? nonEmptyString(army.anchorId);
+      if (anchorId === null) continue;
+      if (!hostUserIds.includes(anchorId)) hostUserIds.push(anchorId);
+
+      const score = nonEmptyString(army.hostScore);
+      if (score !== null) hostScores[anchorId] = score;
+    }
   }
 
   const hostDisplayIds: string[] = [];
