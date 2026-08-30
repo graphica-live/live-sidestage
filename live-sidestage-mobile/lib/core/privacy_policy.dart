@@ -7,7 +7,9 @@ import 'api_client.dart';
 ///
 /// Apple 5.1.1(i)はApp Store Connect登録に加えてアプリ内リンクも要求するため、
 /// welcome_screen.dartとsettings_tab.dartの両方から開けるようにしてある。
-final Uri privacyPolicyUri = Uri.parse('$liveAnalyticsBaseUrl/privacy');
+/// Web版(配信者向けダッシュボード)とは決済情報の記述が異なるため、
+/// モバイル専用ページ(/privacy/mobile)に分離してある。
+final Uri privacyPolicyUri = Uri.parse('$liveAnalyticsBaseUrl/privacy/mobile');
 
 Future<void> launchPrivacyPolicy(BuildContext context) async {
   final messenger = ScaffoldMessenger.of(context);

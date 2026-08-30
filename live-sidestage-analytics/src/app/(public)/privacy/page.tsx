@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   description: "LIVE Sidestage / LIVE Sidestage Analytics のプライバシーポリシー",
 };
 
-const UPDATED_AT = "2026-08-29";
+const UPDATED_AT = "2026-08-30";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -99,9 +99,14 @@ export default function PrivacyPolicyPage() {
         </Section>
 
         <Section title="5. お問い合わせ">
-          <p>本ポリシーに関するお問い合わせは以下までご連絡ください。</p>
-          <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-200">
-            運営者名・連絡先: [未確定 — 公開前に確定してください]
+          <p>本ポリシーおよび個人情報の取扱いに関するお問い合わせは、以下の窓口までご連絡ください。</p>
+          <p>
+            運営：LIVE Sidestage
+            <br />
+            お問い合わせ：graphicatestlive@gmail.com
+          </p>
+          <p>
+            個人情報取扱事業者の氏名、住所その他法令に基づき開示が必要な事項については、上記窓口へのご請求に応じて遅滞なく開示いたします。
           </p>
         </Section>
       </div>
