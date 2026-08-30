@@ -155,6 +155,22 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     _load();
   }
 
+  /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
+  /// 切り替えつつ、日時範囲フィルタだけを解除する(リスナー名フィルタ`_listenerQuery`は維持)。
+  void _shiftOutOfCustomRange(bool forward) {
+    final customRange = _customRange;
+    if (customRange == null) return;
+    final anchor = AnalyticsPeriodSelection(
+      period: AnalyticsPeriod.day,
+      date: jstDateKeyOf(forward ? customRange.end : customRange.start),
+    );
+    setState(() {
+      _selection = forward ? anchor.shiftNext() : anchor.shiftPrevious();
+      _customRange = null;
+    });
+    _load();
+  }
+
   Future<void> _openCustomRangeFilter() async {
     final result = await showCustomRangeFilterSheet(
       context,
@@ -202,6 +218,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             customRangeActive: _customRange != null,
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
+            onShiftCustomRange: _shiftOutOfCustomRange,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
