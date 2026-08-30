@@ -4,7 +4,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGiftHistory } from "@/lib/gift-history";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseLimit } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseLimit, parseListenerQuery } from "@/lib/mobile-analytics-query";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
   const limit = parseLimit(searchParams, DEFAULT_LIMIT, MAX_LIMIT);
   if (!limit.ok) return limit.response;
 
+  const listenerQuery = parseListenerQuery(searchParams);
+  if (!listenerQuery.ok) return listenerQuery.response;
+
   let where: Parameters<typeof queryGiftHistory>[2];
   let dateRange: { start: string; end: string };
   if (query.value.mode === "custom") {
@@ -45,7 +48,8 @@ export async function GET(req: NextRequest) {
     ctx.streamer.roomId,
     ctx.streamer.id,
     where,
-    limit.value
+    limit.value,
+    listenerQuery.value
   );
 
   return NextResponse.json(

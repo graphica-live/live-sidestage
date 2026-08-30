@@ -181,4 +181,48 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("listenerQuery", () => {
+    it("uniqueId/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "Taro_Listener",
+          nickname: "たろう",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 1,
+          totalDiamonds: 1,
+          dayKey: "2026-08-27",
+          receivedAt: new Date("2026-08-27T10:00:00Z"),
+        },
+      });
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "hanako_listener",
+          nickname: "花子",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 1,
+          totalDiamonds: 1,
+          dayKey: "2026-08-27",
+          receivedAt: new Date("2026-08-27T10:01:00Z"),
+        },
+      });
+
+      const res = await GET(request("?period=day&date=2026-08-27&listenerQuery=taro", token));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toEqual(["Taro_Listener"]);
+    });
+
+    it("100文字を超えるlistenerQueryは400", async () => {
+      const res = await GET(request(`?period=day&date=2026-08-20&listenerQuery=${"a".repeat(101)}`, token));
+      expect(res.status).toBe(400);
+    });
+  });
 });

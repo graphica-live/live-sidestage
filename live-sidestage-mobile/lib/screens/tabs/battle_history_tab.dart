@@ -5,6 +5,7 @@ import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/battle_activity.dart';
+import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
@@ -32,6 +33,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
   DateTimeRange? _customRange;
+  String? _listenerQuery;
   BattleListResult? _result;
   String? _error;
   bool _loading = false;
@@ -39,19 +41,34 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 
   /// 見えていない間に届いた通知。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
   bool _dirty = false;
+
+  /// リスナー名フィルタ有効時、見えていない間に届いたギフト起点の分。[_dirty]とは
+  /// トリガーの意味が違うので別フラグにするが、flushは[_flushDirty]の1箇所へ統合する
+  /// (両方立った状態で個別にflushすると`_load`が2回走ってしまうため)。
+  bool _giftDirty = false;
+
   bool _resumed = true;
+
+  /// 直前の取得結果に進行中バトルが1件でも含まれるか。リスナー名フィルタ中のギフト到着を
+  /// 再取得のトリガーにすべきか判定するのに使う(JST日付境界をまたぐ進行中バトルでも
+  /// 正しく判定できるよう、日付ベースの判定は使わない — 詳細はplan §3)。
+  bool get _hasOpenBattleInView => _result?.battles.any((b) => b.status == BattleStatus.live) ?? false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     context.read<BattleActivityNotifier>().addListener(_onBattleActivity);
+    // _listenerQueryは常にnullで始まるため、GiftActivityNotifierへはここでは購読しない
+    // (_openCustomRangeFilterで空⇄非空が切り替わったときにだけ購読/解除する)。
     if (widget.active) _load();
   }
 
   @override
   void dispose() {
     context.read<BattleActivityNotifier>().removeListener(_onBattleActivity);
+    // 購読していなくてもremoveListenerは安全にno-opになるため、現在の購読有無を問わず呼べる。
+    context.read<GiftActivityNotifier>().removeListener(_onListenerFilterGiftActivity);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -95,15 +112,33 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     }
   }
 
+  /// ギフト到着起点。リスナー名フィルタが有効で、かつ直前の結果に進行中バトルが
+  /// 含まれる場合のみ意味を持つ(それ以外はギフトが届いても一覧の中身は変わりようがない)。
+  void _onListenerFilterGiftActivity() {
+    if (!(_listenerQuery?.isNotEmpty ?? false)) return;
+    if (!_hasOpenBattleInView) return;
+    if (!widget.active || !_resumed) {
+      _giftDirty = true;
+      return;
+    }
+    _load(silent: true);
+  }
+
+  /// バトル起点([_dirty])とギフト起点([_giftDirty])を1箇所で統合してflushする。
+  /// 両方を独立にflushすると同時に立った際`_load`が2回走ってしまうため、
+  /// どちらか一方でも条件を満たせば両方まとめてクリアし`_load`は1回だけ呼ぶ。
   void _flushDirty() {
-    if (!_dirty || !widget.active) return;
+    if (!widget.active) return;
     final customRange = _customRange;
     final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
     final containsNow = customRange != null
         ? customRangeContainsNow(customRange)
         : startedDateKey != null && _selection.containsJstToday(today: startedDateKey);
-    if (!containsNow) return;
+    final battleShouldFlush = _dirty && containsNow;
+    final giftShouldFlush = _giftDirty;
+    if (!battleShouldFlush && !giftShouldFlush) return;
     _dirty = false;
+    _giftDirty = false;
     _load(silent: true);
   }
 
@@ -133,6 +168,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
           date: _selection.date,
           startDatetime: customRange?.start,
           endDatetime: customRange?.end,
+          listenerQuery: _listenerQuery,
         ),
         token: token,
         refreshToken: sessions.refreshToken,
@@ -161,10 +197,35 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   }
 
   Future<void> _openCustomRangeFilter() async {
-    final result = await showCustomRangeFilterSheet(context, initial: _customRange);
+    final result = await showCustomRangeFilterSheet(
+      context,
+      initial: _customRange,
+      initialListenerQuery: _listenerQuery,
+    );
     if (result == null) return;
-    setState(() => _customRange = result.cleared ? null : result.range);
+    final previousQuery = _listenerQuery;
+    final newQuery = result.cleared ? null : result.listenerQuery;
+    setState(() {
+      _customRange = result.cleared ? null : result.range;
+      _listenerQuery = newQuery;
+    });
+    _updateGiftListenerSubscription(previousQuery, newQuery);
     _load();
+  }
+
+  /// [_listenerQuery]の空⇄非空が切り替わったときだけ[GiftActivityNotifier]への
+  /// 購読/解除を行う(空→空、非空→非空の変化では何もしない)。
+  void _updateGiftListenerSubscription(String? previousQuery, String? newQuery) {
+    final wasActive = previousQuery?.isNotEmpty ?? false;
+    final isActive = newQuery?.isNotEmpty ?? false;
+    if (wasActive == isActive) return;
+    final notifier = context.read<GiftActivityNotifier>();
+    if (isActive) {
+      notifier.addListener(_onListenerFilterGiftActivity);
+    } else {
+      notifier.removeListener(_onListenerFilterGiftActivity);
+      _giftDirty = false;
+    }
   }
 
   String get _rangeLabel {
@@ -251,6 +312,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             onChanged: _onPeriodChanged,
             enabled: !_loading,
             customRangeActive: _customRange != null,
+            filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),

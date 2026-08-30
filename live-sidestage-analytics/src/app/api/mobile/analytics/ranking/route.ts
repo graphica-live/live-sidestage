@@ -3,7 +3,7 @@ import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseListenerQuery } from "@/lib/mobile-analytics-query";
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
+  const listenerQuery = parseListenerQuery(searchParams);
+  if (!listenerQuery.ok) return listenerQuery.response;
 
   let where: Parameters<typeof queryGifts>[2];
   let dateRange: { start: string; end: string };
@@ -33,7 +35,7 @@ export async function GET(req: NextRequest) {
     dateRange = { start, end };
   }
 
-  const { users, total } = await queryGifts(ctx.streamer.roomId, ctx.streamer.id, where);
+  const { users, total } = await queryGifts(ctx.streamer.roomId, ctx.streamer.id, where, listenerQuery.value);
 
   // queryGifts() は groupBy の結果順(順位順ではない)を返すため、
   // 配列インデックス+1がそのまま順位になるようここで明示的にソートする。

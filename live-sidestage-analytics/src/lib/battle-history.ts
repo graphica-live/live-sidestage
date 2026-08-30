@@ -4,6 +4,39 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGifts, resolveHiddenGiftIds, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
+const BATTLE_SELECT = {
+  battleId: true,
+  action: true,
+  startedAt: true,
+  startedAtEstimated: true,
+  endedAt: true,
+  durationSec: true,
+  hostUserIds: true,
+  hostScores: true,
+  hostProfiles: true,
+} as const;
+
+type OwnBattleRow = {
+  battleId: string;
+  action: number;
+  startedAt: Date;
+  startedAtEstimated: boolean;
+  endedAt: Date | null;
+  durationSec: number | null;
+  hostUserIds: string[];
+  hostScores: unknown;
+  hostProfiles: unknown;
+};
+
+type ScanRow = {
+  battleId: string;
+  action: number;
+  startedAt: Date;
+  startedAtEstimated: boolean;
+  endedAt: Date | null;
+  durationSec: number | null;
+};
+
 // バトル履歴タブの集計ロジック。
 //
 // **相手のTikTokハンドル・表示名・アイコンは、相手が analytics 未登録でも取れる。**
@@ -216,41 +249,132 @@ export function sumDiamondsPerWindow(
   return result;
 }
 
+/** listenerQueryがgift(uniqueId/nickname)にマッチするか(大小文字を無視した部分一致)。 */
+export function giftMatchesListenerQuery(
+  gift: { uniqueId: string; nickname: string },
+  listenerQuery: string
+): boolean {
+  const q = listenerQuery.toLowerCase();
+  return gift.uniqueId.toLowerCase().includes(q) || gift.nickname.toLowerCase().includes(q);
+}
+
 /**
- * roomId の観測済みバトル一覧を返す。固定7クエリ(N+1にしない):
- * (1) 自 room のバトル (2) 同 battleId の他 room 行 (3) 他 room の TiktokRoom (4) 自 room の hostUserId
- * (5) 非表示ギフトID (6) ダイヤ集計対象のGift (7) 相手アイコンのTiktokAvatarAsset。
- * (5)〜(7)はダイヤ集計対象・相手アイコンが1件も無ければ実行しない。
+ * 各windowに、マッチ済みgiftが1件でも含まれるか。純粋関数。giftReceivedAtMsは昇順ソート済みで
+ * 渡すこと(sumDiamondsPerWindowと同じ規約)。存在確認だけなので二分探索の結果を1点だけ見れば足りる。
  */
-export async function queryBattles(
+export function battleIdsWithGiftInWindow(
+  giftReceivedAtMs: number[],
+  windows: { battleId: string; start: Date; end: Date }[]
+): Set<string> {
+  const matched = new Set<string>();
+  function lowerBound(target: number): number {
+    let lo = 0;
+    let hi = giftReceivedAtMs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (giftReceivedAtMs[mid] < target) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  for (const w of windows) {
+    const i = lowerBound(w.start.getTime());
+    if (i < giftReceivedAtMs.length && giftReceivedAtMs[i] <= w.end.getTime()) matched.add(w.battleId);
+  }
+  return matched;
+}
+
+const DISPLAY_LIMIT = 200;
+const CHUNK_SIZE = 1000; // 1回のfindManyで取得するバトル件数(listenerQuery指定時のみ使う)
+const MAX_SCAN_CHUNKS = 10; // 安全弁。CHUNK_SIZE*MAX_SCAN_CHUNKS=10,000件相当。1年で1万バトルは
+                             // 現実の配信頻度を大きく超えるため、MAX_RANGE_DAYS等と同種の
+                             // 「実用上は到達しない安全弁」として扱う(理論上は境界が残ることを明記)。
+
+/**
+ * リスナー名フィルタ有効時、一致するバトルをDISPLAY_LIMIT+1件見つかるまでチャンク走査する。
+ * `startedAt`を降順カーソルにしてCHUNK_SIZE件ずつ取得し、各チャンクごとに一致判定に必要な
+ * 最小限の列(receivedAt/uniqueId/nickname)だけでギフトを取得して判定する
+ * (取得済み候補全件ぶんの表示用列・ダイヤ合計は表示対象が確定してから別途取得する)。
+ *
+ * 一括take(例: 5000件)で取得してから絞り込む設計だと、取得件数の上限を超えた位置にしか
+ * 一致が無い場合に検索結果から漏れる(queryGiftHistoryが「limit後にfilterしない」のと同じ
+ * 理由でNG)。チャンク走査ならレンジ全体を尽きるまで(またはDISPLAY_LIMIT+1件見つかるまで)
+ * 走査を続けられる。
+ */
+async function scanMatchingBattleIds(
   roomId: string,
   viewerStreamerId: string,
   range: { start: Date; end: Date },
-  now: Date = new Date()
-): Promise<{ battles: BattleListItem[] }> {
-  const selfRoom = await prisma.tiktokRoom.findUnique({
-    where: { id: roomId },
-    select: { hostUserId: true },
-  });
+  listenerQuery: string,
+  now: Date
+): Promise<ScanRow[]> {
+  const matchedRows: ScanRow[] = [];
+  let cursor = range.end;
 
-  const ownBattles = await prisma.tiktokBattle.findMany({
-    where: { roomId, startedAt: { gte: range.start, lt: range.end } },
-    orderBy: { startedAt: "desc" },
-    take: 200,
-    select: {
-      battleId: true,
-      action: true,
-      startedAt: true,
-      startedAtEstimated: true,
-      endedAt: true,
-      durationSec: true,
-      hostUserIds: true,
-      hostScores: true,
-      hostProfiles: true,
-    },
-  });
+  for (let i = 0; i < MAX_SCAN_CHUNKS && matchedRows.length <= DISPLAY_LIMIT; i++) {
+    const chunk: ScanRow[] = await prisma.tiktokBattle.findMany({
+      where: { roomId, startedAt: { gte: range.start, lt: cursor } },
+      orderBy: { startedAt: "desc" },
+      take: CHUNK_SIZE,
+      select: {
+        battleId: true,
+        action: true,
+        startedAt: true,
+        startedAtEstimated: true,
+        endedAt: true,
+        durationSec: true,
+      },
+    });
+    if (chunk.length === 0) break;
 
-  if (ownBattles.length === 0) return { battles: [] };
+    const diamondWindows = chunk
+      .map((b) => ({ battleId: b.battleId, window: resolveBattleWindow(b, now).window }))
+      .filter(
+        (w): w is { battleId: string; window: { start: Date; end: Date } } =>
+          w.window !== null && w.window.end !== null
+      )
+      .map((w) => ({ battleId: w.battleId, start: w.window.start, end: w.window.end }));
+
+    if (diamondWindows.length > 0) {
+      const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
+      const gifts = await prisma.gift.findMany({
+        where: {
+          roomId,
+          OR: diamondWindows.map((w) => ({ receivedAt: { gte: w.start, lte: w.end } })),
+          ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
+        },
+        select: { receivedAt: true, uniqueId: true, nickname: true },
+        orderBy: { receivedAt: "asc" },
+      });
+      const matching = gifts.filter((g) => giftMatchesListenerQuery(g, listenerQuery));
+      const matchedIdsInChunk = battleIdsWithGiftInWindow(
+        matching.map((g) => g.receivedAt.getTime()),
+        diamondWindows
+      );
+      matchedRows.push(...chunk.filter((b) => matchedIdsInChunk.has(b.battleId)));
+    }
+
+    if (chunk.length < CHUNK_SIZE) break; // レンジ全体を走査し終えた
+    cursor = chunk[chunk.length - 1].startedAt;
+  }
+
+  return matchedRows;
+}
+
+/**
+ * ownBattles(表示対象として確定したバトル)から表示用アイテムを組み立てる。固定6クエリ
+ * (N+1にしない): (1) 同 battleId の他 room 行 (2) 他 room の TiktokRoom (3) 非表示ギフトID
+ * (4) ダイヤ集計対象のGift (5) 相手アイコンのTiktokAvatarAsset。(3)〜(5)はダイヤ集計対象・
+ * 相手アイコンが1件も無ければ実行しない。
+ */
+async function buildBattleListItems(
+  ownBattles: OwnBattleRow[],
+  roomId: string,
+  viewerStreamerId: string,
+  selfHostUserId: string | null,
+  now: Date
+): Promise<BattleListItem[]> {
+  if (ownBattles.length === 0) return [];
 
   const battleIds = ownBattles.map((b) => b.battleId);
   const otherRows = await prisma.tiktokBattle.findMany({
@@ -326,7 +450,7 @@ export async function queryBattles(
       ...others.map((o) => ({ battleId: o.battleId, hostUserIds: o.hostUserIds, hostScores: o.hostScores })),
     ];
 
-    const resolved = resolveBattleScore({ rows, selfHostUserId: selfRoom?.hostUserId ?? null });
+    const resolved = resolveBattleScore({ rows, selfHostUserId });
     const windowInfo = windowInfoByBattleId.get(own.battleId)!;
     const selfScore: string | null = resolved.selfScore;
 
@@ -398,7 +522,58 @@ export async function queryBattles(
     selfTotalDiamonds: p.selfTotalDiamonds,
   }));
 
-  return { battles };
+  return battles;
+}
+
+/**
+ * roomId の観測済みバトル一覧を返す。
+ *
+ * listenerQuery省略時は既存どおり直近DISPLAY_LIMIT件を1回のfindManyで取得する。指定時は
+ * scanMatchingBattleIdsでチャンク走査により一致するバトルを探し、表示対象(最大
+ * DISPLAY_LIMIT件)が確定してから初めて表示用の全列とダイヤ合計用のギフトを取得する
+ * (絞り込みで除外されたバトルの相手情報取得・ダイヤ集計を無駄にしないため)。
+ */
+export async function queryBattles(
+  roomId: string,
+  viewerStreamerId: string,
+  range: { start: Date; end: Date },
+  options: { listenerQuery?: string | null; now?: Date } = {}
+): Promise<{ battles: BattleListItem[]; hasMore: boolean }> {
+  const { listenerQuery = null, now = new Date() } = options;
+
+  const selfRoom = await prisma.tiktokRoom.findUnique({
+    where: { id: roomId },
+    select: { hostUserId: true },
+  });
+  const selfHostUserId = selfRoom?.hostUserId ?? null;
+
+  if (!listenerQuery) {
+    const ownBattles = await prisma.tiktokBattle.findMany({
+      where: { roomId, startedAt: { gte: range.start, lt: range.end } },
+      orderBy: { startedAt: "desc" },
+      take: DISPLAY_LIMIT,
+      select: BATTLE_SELECT,
+    });
+    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, now);
+    return { battles, hasMore: ownBattles.length >= DISPLAY_LIMIT };
+  }
+
+  const matchedRows = await scanMatchingBattleIds(roomId, viewerStreamerId, range, listenerQuery, now);
+  const hasMore = matchedRows.length > DISPLAY_LIMIT;
+  const battlesToRenderIds = matchedRows.slice(0, DISPLAY_LIMIT).map((b) => b.battleId);
+  if (battlesToRenderIds.length === 0) return { battles: [], hasMore: false };
+
+  const battlesToRenderUnsorted = await prisma.tiktokBattle.findMany({
+    where: { roomId, battleId: { in: battlesToRenderIds } },
+    select: BATTLE_SELECT,
+  });
+  const orderById = new Map(battlesToRenderIds.map((id, i) => [id, i]));
+  const ownBattles = battlesToRenderUnsorted.sort(
+    (a, b) => orderById.get(a.battleId)! - orderById.get(b.battleId)!
+  );
+
+  const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, now);
+  return { battles, hasMore };
 }
 
 export type BattleContributor = GiftAnalyticsUser;

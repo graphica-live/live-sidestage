@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MAX_RANGE_DAYS } from "@/lib/range-limits";
-import { parseRangeQuery } from "./mobile-analytics-query";
+import { parseRangeQuery, parseListenerQuery, escapeLikePattern } from "./mobile-analytics-query";
 
 function params(entries: Record<string, string>): URLSearchParams {
   return new URLSearchParams(entries);
@@ -122,5 +122,41 @@ describe("parseRangeQuery", () => {
 
     const over = parseRangeQuery(params({ startDatetime: start, endDatetime: overEnd }), "2026-08-01");
     expect(over.ok).toBe(false);
+  });
+});
+
+describe("parseListenerQuery", () => {
+  it("未指定ならnullを返す", () => {
+    const r = parseListenerQuery(params({}));
+    expect(r).toEqual({ ok: true, value: null });
+  });
+
+  it("前後の空白をtrimする", () => {
+    const r = parseListenerQuery(params({ listenerQuery: "  taro  " }));
+    expect(r).toEqual({ ok: true, value: "taro" });
+  });
+
+  it("空白のみの入力はnull扱いにする", () => {
+    const r = parseListenerQuery(params({ listenerQuery: "   " }));
+    expect(r).toEqual({ ok: true, value: null });
+  });
+
+  it("100文字ちょうどは許可し、101文字は拒否する", () => {
+    const exact = parseListenerQuery(params({ listenerQuery: "a".repeat(100) }));
+    expect(exact.ok).toBe(true);
+
+    const over = parseListenerQuery(params({ listenerQuery: "a".repeat(101) }));
+    expect(over.ok).toBe(false);
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("%と_とバックスラッシュをエスケープする", () => {
+    expect(escapeLikePattern("100%_off")).toBe("100\\%\\_off");
+    expect(escapeLikePattern("a\\b")).toBe("a\\\\b");
+  });
+
+  it("ワイルドカードを含まない文字列はそのまま返す", () => {
+    expect(escapeLikePattern("taro")).toBe("taro");
   });
 });

@@ -1,6 +1,8 @@
 // ギフト履歴の編集機能まわりのロジックと、履歴一覧の取得クエリ。ルートハンドラから分離してテスト可能にしている。
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 
 export type GiftEditInput =
   | { ok: true; giftName: string; totalDiamonds: number }
@@ -66,7 +68,8 @@ export async function queryGiftHistory(
   roomId: string,
   viewerStreamerId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
-  limit: number
+  limit: number,
+  listenerQuery?: string | null
 ): Promise<{ events: GiftHistoryEvent[]; total: { count: number; diamonds: number }; hasMore: boolean }> {
   const hiddenEdits = await prisma.giftEdit.findMany({
     where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
@@ -74,9 +77,20 @@ export async function queryGiftHistory(
   });
   const hiddenIds = hiddenEdits.map((e) => e.giftId);
 
+  // イベント単位の一覧なので、そのイベント自身のuniqueId/nicknameが一致するかで素直に
+  // フィルタしてよい(queryGiftsのような表示名変更による過少集計問題はここには当てはまらない
+  // — 各行は「受信当時の記録」をそのまま出す一覧のため)。
   const fullWhere = {
     roomId,
     ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
+    ...(listenerQuery
+      ? {
+          OR: [
+            { uniqueId: { contains: escapeLikePattern(listenerQuery), mode: Prisma.QueryMode.insensitive } },
+            { nickname: { contains: escapeLikePattern(listenerQuery), mode: Prisma.QueryMode.insensitive } },
+          ],
+        }
+      : {}),
     ...where,
   };
 

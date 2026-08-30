@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
+import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 
 export function getDateRange(
   period: string,
@@ -54,18 +56,41 @@ export async function resolveHiddenGiftIds(roomId: string, viewerStreamerId: str
 
 // roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
 // viewerStreamerId: 閲覧者本人が「非表示」にしたギフト(GiftEdit.hidden)を除外するために使う。
+// listenerQuery: リスナー名(uniqueId/nicknameの部分一致)による絞り込み。指定時は「一致する
+// uniqueIdの集合」を先に求め、その集合に対して(listenerQuery条件を外した)通常の集計を行う
+// 2段階クエリにする。表示名条件をgroupByのwhereへ直接混ぜると、対象ユーザーが期間中に
+// TikTok側の表示名を変えていた場合、一致した行だけが集計され合計コイン数が過少になるため。
 export async function queryGifts(
   roomId: string,
   viewerStreamerId: string,
-  where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } }
+  where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
+  listenerQuery?: string | null
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
   const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
 
-  const fullWhere = {
+  const baseWhere = {
     roomId,
     ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
     ...where,
   };
+
+  let fullWhere: typeof baseWhere & { uniqueId?: { in: string[] } } = baseWhere;
+  if (listenerQuery) {
+    const pattern = escapeLikePattern(listenerQuery);
+    const matchingUsers = await prisma.gift.findMany({
+      where: {
+        ...baseWhere,
+        OR: [
+          { uniqueId: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
+          { nickname: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
+        ],
+      },
+      select: { uniqueId: true },
+      distinct: ["uniqueId"],
+    });
+    if (matchingUsers.length === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
+    fullWhere = { ...baseWhere, uniqueId: { in: matchingUsers.map((u) => u.uniqueId) } };
+  }
 
   const grouped = await prisma.gift.groupBy({
     by: ["uniqueId"],

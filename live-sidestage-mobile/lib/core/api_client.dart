@@ -381,14 +381,18 @@ class LiveAnalyticsApi {
     required String date,
     DateTime? startDatetime,
     DateTime? endDatetime,
+    String? listenerQuery,
   }) async {
     final query = Uri(
-      queryParameters: rangeParams(
-        period: period,
-        date: date,
-        startDatetime: startDatetime,
-        endDatetime: endDatetime,
-      ),
+      queryParameters: {
+        ...rangeParams(
+          period: period,
+          date: date,
+          startDatetime: startDatetime,
+          endDatetime: endDatetime,
+        ),
+        if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
+      },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/ranking?$query', null, token: token);
     final users = data['users'];
@@ -411,6 +415,7 @@ class LiveAnalyticsApi {
     int limit = 50,
     DateTime? startDatetime,
     DateTime? endDatetime,
+    String? listenerQuery,
   }) async {
     final query = Uri(
       queryParameters: {
@@ -421,6 +426,7 @@ class LiveAnalyticsApi {
           endDatetime: endDatetime,
         ),
         'limit': '$limit',
+        if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
       },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/gift-history?$query', null, token: token);
@@ -444,14 +450,18 @@ class LiveAnalyticsApi {
     required String date,
     DateTime? startDatetime,
     DateTime? endDatetime,
+    String? listenerQuery,
   }) async {
     final query = Uri(
-      queryParameters: rangeParams(
-        period: period,
-        date: date,
-        startDatetime: startDatetime,
-        endDatetime: endDatetime,
-      ),
+      queryParameters: {
+        ...rangeParams(
+          period: period,
+          date: date,
+          startDatetime: startDatetime,
+          endDatetime: endDatetime,
+        ),
+        if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
+      },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/battles?$query', null, token: token);
     final battles = data['battles'];

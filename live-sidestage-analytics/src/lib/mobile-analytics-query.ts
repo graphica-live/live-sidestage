@@ -156,6 +156,37 @@ export function parseRangeQuery(
   return { ok: true, value: { mode: "custom", start, end } };
 }
 
+const MAX_LISTENER_QUERY_LENGTH = 100;
+
+export function parseListenerQuery(
+  searchParams: URLSearchParams
+): { ok: true; value: string | null } | { ok: false; response: NextResponse } {
+  const raw = searchParams.get("listenerQuery");
+  if (raw === null) return { ok: true, value: null };
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return { ok: true, value: null };
+  if (trimmed.length > MAX_LISTENER_QUERY_LENGTH) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: `listenerQueryは${MAX_LISTENER_QUERY_LENGTH}文字以内で指定してください` },
+        { status: 400 }
+      ),
+    };
+  }
+  return { ok: true, value: trimmed };
+}
+
+/**
+ * Prismaのcontains(Postgres ILIKE)へ渡す前に、SQLワイルドカード(%, _)とエスケープ文字(\)自体を
+ * バックスラッシュエスケープし、リテラル部分一致にする。エスケープしないと、ユーザー入力の
+ * "%"/"_" がSQLのワイルドカードとして解釈され、貢献/ギフト履歴だけワイルドカード展開・
+ * バトル(JS側の.includes()でリテラル一致)と検索結果が食い違う。
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export function parseLimit(
   searchParams: URLSearchParams,
   defaultValue: number,
