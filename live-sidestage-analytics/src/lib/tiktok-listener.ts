@@ -36,6 +36,7 @@ import {
   parseBattleEvent,
   type BattleRecordState,
   type HostProfiles,
+  type HostTeams,
   type ParsedBattle,
 } from "./tiktok-battle";
 import { ensureAvatarCached } from "./avatar-storage";
@@ -1215,6 +1216,7 @@ async function persistBattle(
         hostDisplayIds: existing.hostDisplayIds,
         hostScores: (existing.hostScores as Record<string, string> | null) ?? {},
         hostProfiles: (existing.hostProfiles as HostProfiles | null) ?? {},
+        hostTeams: (existing.hostTeams as HostTeams | null) ?? {},
       }
     : null;
 
@@ -1241,6 +1243,7 @@ async function persistBattle(
     hostDisplayIds: state.hostDisplayIds,
     hostScores: state.hostScores,
     hostProfiles: state.hostProfiles,
+    hostTeams: state.hostTeams,
     raw: raws,
   };
 

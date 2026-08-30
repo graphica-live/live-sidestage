@@ -30,7 +30,11 @@ describe("mergeMaxScores", () => {
 
 describe("resolveBattleScore", () => {
   it("自分のhostUserIdが未解決ならunknownを返す", () => {
-    const resolved = resolveBattleScore({ rows: [row(["A", "B"], { A: "10", B: "20" })], selfHostUserId: null });
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B"], { A: "10", B: "20" })],
+      selfHostUserId: null,
+      selfHostTeams: {},
+    });
     expect(resolved.kind).toBe("unknown");
   });
 
@@ -38,25 +42,31 @@ describe("resolveBattleScore", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B"], { A: "10", B: "20" })],
       selfHostUserId: "A",
+      selfHostTeams: {},
     });
     expect(resolved).toMatchObject({ kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "20" });
   });
 
   it("自分しか観測できていない場合はsoloを返す(自分のスコアは正しいので出す)", () => {
-    const resolved = resolveBattleScore({ rows: [row(["A"], { A: "10" })], selfHostUserId: "A" });
+    const resolved = resolveBattleScore({ rows: [row(["A"], { A: "10" })], selfHostUserId: "A", selfHostTeams: {} });
     expect(resolved).toMatchObject({ kind: "solo", selfScore: "10" });
   });
 
-  it("3人以上(2vs2等)は自分のスコアのみ返す(敵味方を区別できないため)", () => {
+  it("3人以上(2vs2等)でhostTeamsが無ければ自分のスコアのみ返す(敵味方を区別できないため)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
       selfHostUserId: "A",
+      selfHostTeams: {},
     });
     expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
   });
 
   it("観測したバトルに自分のhostUserIdが含まれていなければunknownを返す(別人のroom)", () => {
-    const resolved = resolveBattleScore({ rows: [row(["X", "Y"], { X: "10", Y: "20" })], selfHostUserId: "A" });
+    const resolved = resolveBattleScore({
+      rows: [row(["X", "Y"], { X: "10", Y: "20" })],
+      selfHostUserId: "A",
+      selfHostTeams: {},
+    });
     expect(resolved.kind).toBe("unknown");
   });
 
@@ -76,12 +86,60 @@ describe("resolveBattleScore", () => {
         ),
       ],
       selfHostUserId: "6813783089135895553",
+      selfHostTeams: {},
     });
     expect(resolved).toMatchObject({
       kind: "multi",
       participantCount: 4,
       selfScore: "253255", // 修正後は selfScore が正しく取得される
     });
+  });
+
+  it("hostTeamsで全員のチームが割当済み(distinct 2種類)なら自チーム/相手チームに分割したteamsを返す", () => {
+    const resolved = resolveBattleScore({
+      rows: [
+        row(
+          ["6813783089135895553", "6958337949008692226", "7418071357873701889", "6969117324289164290"],
+          {
+            "6813783089135895553": "253255",
+            "6958337949008692226": "22846",
+            "7418071357873701889": "100000",
+            "6969117324289164290": "50000",
+          }
+        ),
+      ],
+      selfHostUserId: "6813783089135895553",
+      selfHostTeams: {
+        "6813783089135895553": "1",
+        "6958337949008692226": "1",
+        "7418071357873701889": "2",
+        "6969117324289164290": "2",
+      },
+    });
+    expect(resolved).toMatchObject({
+      kind: "teams",
+      selfScore: "253255",
+      selfTeamAnchorIds: ["6813783089135895553", "6958337949008692226"],
+      opponentTeamAnchorIds: ["7418071357873701889", "6969117324289164290"],
+    });
+  });
+
+  it("hostTeamsが一部の参加者にしか無ければmultiにフォールバックする(バックフィル前の旧データ等)", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
+      selfHostUserId: "A",
+      selfHostTeams: { A: "1", B: "2" }, // CのteamId欠損
+    });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
+  });
+
+  it("hostTeamsのdistinctなteamIdが3種類以上(1vs1vs1等)ならmultiにフォールバックする", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
+      selfHostUserId: "A",
+      selfHostTeams: { A: "1", B: "2", C: "3" },
+    });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
   });
 });
 

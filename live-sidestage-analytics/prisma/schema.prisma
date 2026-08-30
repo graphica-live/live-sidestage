@@ -602,6 +602,7 @@ model TiktokBattle {
   hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostUserIdsとインデックス対応しない)
   hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
   hostProfiles   Json      @default("{}") // anchorIdStr -> {displayId, nickName, avatarUrl}。tiktok-battle.tsのHostProfiles
+  hostTeams      Json      @default("{}") // anchorIdStr -> teamId(teamArmies由来。1vs1等チーム情報が無いバトルは{})
   raw            Json // 受信したpayloadそのもの。実payloadのfixture取得と後追い調査用
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

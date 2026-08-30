@@ -39,6 +39,12 @@ export type HostProfile = {
 };
 export type HostProfiles = Record<string /* anchorId */, HostProfile>;
 
+/**
+ * anchorId(=hostUserIds の要素) -> teamId。teamArmies(2vs2等のチーム戦)由来。
+ * 1vs1などteamArmiesが無いバトルでは空になる(サイド分割の概念自体が無いため)。
+ */
+export type HostTeams = Record<string /* anchorId */, string /* teamId */>;
+
 export type ParsedBattle = {
   battleId: string;
   /** 最後に観測した BattleAction。armies イベントには action が無いので null */
@@ -57,6 +63,8 @@ export type ParsedBattle = {
   hostScores: Record<string, string>;
   /** anchorIdStr -> {displayId, nickName, avatarUrl}。相手が analytics 未登録でも取れる */
   hostProfiles: HostProfiles;
+  /** anchorIdStr -> teamId。teamArmies由来(2vs2等)。1vs1等では空 */
+  hostTeams: HostTeams;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -135,13 +143,18 @@ function findTeamArmies(data: Record<string, unknown>): Record<string, unknown>[
 export function collectHosts(data: Record<string, unknown>) {
   const hostUserIds: string[] = [];
   const hostScores: Record<string, string> = {};
+  const hostTeams: HostTeams = {};
 
   const teamArmies = findTeamArmies(data);
   if (teamArmies.length > 0) {
     // チーム戦(2vs2等)。armies/battleItems の値の anchorIdStr は実userIdではなく
     // 「チーム番号("1"/"2")」になっている(実データ・型定義で確認済み)。個々の配信者の
     // 実userId/scoreは teamArmies[].teamUsers[] からしか取れない。
-    for (const team of teamArmies) {
+    teamArmies.forEach((team, teamIndex) => {
+      // teamId は実データで存在確認済み(tiktok-battle.test.ts参照)。念のため、無い場合は
+      // 配列インデックスで代用する(teamArmies自体が「チームごとの配列」なので、並びさえ
+      // あればサイド分割は成立する)。
+      const teamId = nonEmptyString(team.teamId) ?? String(teamIndex);
       for (const teamUser of toEntries(team.teamUsers)) {
         const userId = nonEmptyString(teamUser.userIdStr) ?? nonEmptyString(teamUser.userId);
         if (userId === null) continue;
@@ -149,8 +162,10 @@ export function collectHosts(data: Record<string, unknown>) {
 
         const score = nonEmptyString(teamUser.score);
         if (score !== null) hostScores[userId] = score;
+
+        hostTeams[userId] = teamId;
       }
-    }
+    });
   } else {
     // 1vs1。armies/battleItems の値の anchorIdStr がそのまま実userIdと一致する(既存ロジック)。
     for (const army of findArmies(data)) {
@@ -186,7 +201,7 @@ export function collectHosts(data: Record<string, unknown>) {
     }
   }
 
-  return { hostUserIds, hostDisplayIds, hostScores, hostProfiles };
+  return { hostUserIds, hostDisplayIds, hostScores, hostProfiles, hostTeams };
 }
 
 /**
@@ -259,6 +274,7 @@ export type BattleRecordState = {
   hostDisplayIds: string[];
   hostScores: Record<string, string>;
   hostProfiles: HostProfiles;
+  hostTeams: HostTeams;
 };
 
 /**
@@ -357,6 +373,8 @@ export function mergeBattleState(
     // スコアは最新の値で上書きする(増えていくので最後の観測が正しい)。
     hostScores: { ...(existing?.hostScores ?? {}), ...parsed.hostScores },
     hostProfiles: mergeHostProfiles(existing?.hostProfiles ?? {}, parsed.hostProfiles),
+    // チーム所属はバトル中に変わらない。単純unionでよい(スコアと違い後着優先ではない)。
+    hostTeams: { ...(existing?.hostTeams ?? {}), ...parsed.hostTeams },
   };
 }
 
