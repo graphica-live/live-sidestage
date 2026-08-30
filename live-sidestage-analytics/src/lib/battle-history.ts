@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { BATTLE_ACTION, type HostProfiles } from "@/lib/tiktok-battle";
+import { BATTLE_ACTION, type HostProfiles, type HostTeams } from "@/lib/tiktok-battle";
 import { getDateRange } from "@/lib/gift-analytics";
 import { queryGifts, resolveHiddenGiftIds, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
@@ -14,6 +14,7 @@ const BATTLE_SELECT = {
   hostUserIds: true,
   hostScores: true,
   hostProfiles: true,
+  hostTeams: true,
 } as const;
 
 type OwnBattleRow = {
@@ -26,6 +27,7 @@ type OwnBattleRow = {
   hostUserIds: string[];
   hostScores: unknown;
   hostProfiles: unknown;
+  hostTeams: unknown;
 };
 
 type ScanRow = {
@@ -61,6 +63,14 @@ function asScoreEntries(value: unknown): [string, string][] {
   );
 }
 
+/** hostTeams(anchorId -> teamId)から妥当なエントリだけを取り出す。値は非空文字列であることのみ検証。 */
+function asTeamEntries(value: unknown): [string, string][] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+  return Object.entries(value as Record<string, unknown>).flatMap(([anchorId, teamId]) =>
+    typeof teamId === "string" && teamId.length > 0 ? [[anchorId, teamId] as [string, string]] : []
+  );
+}
+
 export type BattleRow = {
   battleId: string;
   hostUserIds: string[];
@@ -82,6 +92,12 @@ export function mergeMaxScores(rows: BattleRow[]): Map<string, bigint> {
 
 export type ResolvedBattleScore =
   | { kind: "1v1"; selfScore: string | null; opponentAnchorId: string; opponentScore: string | null }
+  | {
+      kind: "teams";
+      selfTeamAnchorIds: string[];
+      opponentTeamAnchorIds: string[];
+      selfScore: string | null;
+    }
   | { kind: "multi"; participantCount: number; selfScore: string | null }
   | { kind: "solo"; selfScore: string | null }
   | { kind: "unknown"; selfScore: null };
@@ -92,10 +108,17 @@ export type ResolvedBattleScore =
  * `selfHostUserId` が未解決、または観測したバトルに自分が含まれていない(別人の room)場合は
  * `unknown` を返す(誤って相手のスコアを自分のものとして出すより、出さないほうがよい)。
  * 自分しか観測できていない場合(`solo`)は、相手情報こそ無いが自分のスコア自体は正しいので出す。
+ *
+ * `selfHostTeams`(自room行のhostTeams列)にanchorIds全員分のteamId割当があり、かつ
+ * distinctなteamIdがちょうど2種類のときだけ`teams`を返す。**チーム判定は自room行だけを見る**
+ * (相手room行とはマージしない)。teamIdが受信room視点の相対値である可能性が未検証なため、
+ * 複数roomのhostTeamsを混ぜると視点の異なる誤ったチーム分けを「割当済み」のまま表示しうる。
+ * teamArmiesは両チーム分を1payloadに含むので、自room行だけで判定が完結する。
  */
 export function resolveBattleScore(input: {
   rows: BattleRow[];
   selfHostUserId: string | null;
+  selfHostTeams: unknown;
 }): ResolvedBattleScore {
   if (input.selfHostUserId === null) return { kind: "unknown", selfScore: null };
 
@@ -118,6 +141,23 @@ export function resolveBattleScore(input: {
   }
 
   if (anchorIds.size === 1) return { kind: "solo", selfScore };
+
+  const teamOf = new Map(asTeamEntries(input.selfHostTeams));
+  const anchorIdList = [...anchorIds];
+  const allAssigned = anchorIdList.every((id) => teamOf.has(id));
+  const selfTeamId = teamOf.get(input.selfHostUserId);
+  // hostTeamsに現在の参加者以外の値が(通常起きないが)残っていても巻き込まないよう、
+  // 実際のanchorIdList分だけでdistinct数を数える。
+  const distinctTeamCount = new Set(anchorIdList.map((id) => teamOf.get(id))).size;
+
+  if (allAssigned && selfTeamId !== undefined && distinctTeamCount === 2) {
+    return {
+      kind: "teams",
+      selfTeamAnchorIds: anchorIdList.filter((id) => teamOf.get(id) === selfTeamId),
+      opponentTeamAnchorIds: anchorIdList.filter((id) => teamOf.get(id) !== selfTeamId),
+      selfScore,
+    };
+  }
 
   return { kind: "multi", participantCount: anchorIds.size, selfScore };
 }
@@ -199,11 +239,33 @@ export type BattleOpponent = {
   count: number;
 };
 
+/** 左右split表示(vs)1メンバー分。1vs1・チーム戦の両方で使う共通の形。 */
+export type BattleParticipant = {
+  anchorId: string;
+  /** 登録済みならそのtiktokId。未登録ならnull(補助情報)。 */
+  tiktokId: string | null;
+  /** anchorInfo由来のTikTokハンドル。未登録でも取れる。ID併記用。 */
+  displayId: string | null;
+  /** 表示名。UIのメイン表示。 */
+  nickName: string | null;
+  /** 自前ストレージのpresigned GET URL。無ければnull。 */
+  avatarUrl: string | null;
+};
+
 export type BattleListItem = {
   battleId: string;
   startedAt: string;
   status: BattleWindow["status"];
   opponent: BattleOpponent | null;
+  /**
+   * 左右split表示用。1vs1・チーム戦(2vs2/1vs3等でhostTeamsが解決できた場合)は
+   * どちらも非null(selfTeamは常に自分を含む1件以上、opponentTeamも1件以上)。
+   * 対戦相手不明・チーム未解決のmulti・soloの場合はどちらもnull(UIは既存のopponentで
+   * フォールバック表示する)。既存の`opponent`/`selfScore`/`opponentScore`は後方互換のため
+   * そのまま残す(モバイルアプリはこれらのみを参照する)。
+   */
+  selfTeam: BattleParticipant[] | null;
+  opponentTeam: BattleParticipant[] | null;
   selfScore: string | null;
   opponentScore: string | null;
   /** 自分が受け取った実ダイヤ合計。区間が確定できない(unknown、end===nullのcut_short)場合は0。 */
@@ -367,11 +429,62 @@ async function scanMatchingBattleIds(
  * (4) ダイヤ集計対象のGift (5) 相手アイコンのTiktokAvatarAsset。(3)〜(5)はダイヤ集計対象・
  * 相手アイコンが1件も無ければ実行しない。
  */
+/**
+ * 左右split表示1メンバー分を組み立てる。selfHostUserId本人はselfTiktokIdで補う(自room由来なので確実)。
+ *
+ * チーム戦(3人以上)では「同じbattleIdを持つ他room行」が複数存在しうり、しかもその
+ * hostUserIds は各roomが観測した battle payload 由来で**参加者全員分**が入る(自分だけの
+ * IDに絞られていない。teamArmiesは両チーム分を1payloadに含むため、どのroomが観測しても
+ * 同じ全員分のhostUserIdsになる)。そのため「hostUserIdsにanchorIdが含まれるroom」で
+ * 検索すると、どの他room行がヒットしても真になってしまい、2人以上の他room行が絡む
+ * チーム戦でtiktokIdを取り違える(誤って別参加者のtiktokIdを割り当てる)。
+ * 「そのroom自身の所有者(TiktokRoom.hostUserId)がanchorIdと一致するか」で照合する。
+ *
+ * **検索対象は`candidateRoomIds`(このバトルで実際に観測された他room)だけに絞る。**
+ * `TiktokRoom.tiktokId`はuniqueだが`hostUserId`にunique制約は無く、ハンドル変更で
+ * 旧ハンドルのroom行が残ると同じhostUserIdを持つroomが複数存在しうる(手続きは
+ * `src/lib/tiktok-host-id.ts`が一度入った値を上書きしない前提のため、新ハンドルの
+ * roomは別行として作られる)。`otherRoomById`(このクエリ全体でまとめて取得した、
+ * 表示対象の全バトル分の他room)を無条件に全探索すると、hostUserIdが重複するroomの
+ * うちどれが先にヒットするかが不定になり、別バトル・別ハンドルのtiktokIdを取り違える。
+ */
+function buildParticipant(
+  anchorId: string,
+  hostProfiles: HostProfiles | null,
+  candidateRoomIds: string[],
+  otherRoomById: Map<string, { tiktokId: string; hostUserId: string | null }>,
+  avatarUrls: Map<string, string>,
+  selfHostUserId: string | null,
+  selfTiktokId: string | null
+): BattleParticipant {
+  const profile = hostProfiles?.[anchorId];
+  let tiktokId: string | null = null;
+  if (anchorId === selfHostUserId) {
+    tiktokId = selfTiktokId;
+  } else {
+    for (const roomId of candidateRoomIds) {
+      const room = otherRoomById.get(roomId);
+      if (room?.hostUserId === anchorId) {
+        tiktokId = room.tiktokId;
+        break;
+      }
+    }
+  }
+  return {
+    anchorId,
+    tiktokId,
+    displayId: profile?.displayId ?? null,
+    nickName: profile?.nickName ?? null,
+    avatarUrl: avatarUrls.get(anchorId) ?? null,
+  };
+}
+
 async function buildBattleListItems(
   ownBattles: OwnBattleRow[],
   roomId: string,
   viewerStreamerId: string,
   selfHostUserId: string | null,
+  selfTiktokId: string | null,
   now: Date
 ): Promise<BattleListItem[]> {
   if (ownBattles.length === 0) return [];
@@ -438,10 +551,16 @@ async function buildBattleListItems(
     opponentNickName: string | null;
     opponentAnchorId: string | null;
     opponentCount: number | null;
+    /** 左右split表示用。1v1/teamsに解決できた場合のみ非null(hostProfiles解決前の生anchorId)。 */
+    selfTeamAnchorIds: string[] | null;
+    opponentTeamAnchorIds: string[] | null;
+    hostProfiles: HostProfiles | null;
+    /** このバトルで実際に観測された他roomのroomId一覧。buildParticipantの検索対象をこのバトルだけに絞る。 */
+    otherRoomIdsForBattle: string[];
   };
 
-  // 1v1に解決できたバトルの相手anchorIdをdistinctで集め、アイコンをまとめて1回だけ解決する。
-  const opponentAnchorIds = new Set<string>();
+  // 左右split表示・旧opponentフィールドの両方に使うアイコンをdistinctで集め、まとめて1回だけ解決する。
+  const avatarAnchorIds = new Set<string>();
 
   const pending: PendingItem[] = ownBattles.map((own): PendingItem => {
     const others = otherRowsByBattleId.get(own.battleId) ?? [];
@@ -450,7 +569,7 @@ async function buildBattleListItems(
       ...others.map((o) => ({ battleId: o.battleId, hostUserIds: o.hostUserIds, hostScores: o.hostScores })),
     ];
 
-    const resolved = resolveBattleScore({ rows, selfHostUserId });
+    const resolved = resolveBattleScore({ rows, selfHostUserId, selfHostTeams: own.hostTeams });
     const windowInfo = windowInfoByBattleId.get(own.battleId)!;
     const selfScore: string | null = resolved.selfScore;
 
@@ -460,11 +579,12 @@ async function buildBattleListItems(
     let opponentAnchorId: string | null = null;
     let opponentCount: number | null = null;
     let opponentScore: string | null = null;
+    let selfTeamAnchorIds: string[] | null = null;
+    let opponentTeamAnchorIds: string[] | null = null;
 
     if (resolved.kind === "1v1") {
       opponentScore = resolved.opponentScore;
       opponentAnchorId = resolved.opponentAnchorId;
-      opponentAnchorIds.add(resolved.opponentAnchorId);
 
       const profile = (own.hostProfiles as HostProfiles | null)?.[resolved.opponentAnchorId];
       opponentDisplayId = profile?.displayId ?? null;
@@ -473,6 +593,22 @@ async function buildBattleListItems(
       const opponentRoom = others.find((o) => o.hostUserIds.includes(resolved.opponentAnchorId));
       opponentTiktokId = opponentRoom ? otherRoomById.get(opponentRoom.roomId)?.tiktokId ?? null : null;
       opponentCount = 1;
+
+      // 1v1もteamsと同じ形(各サイド1人)に正規化し、UIが1vs1/2vs2/1vs3を同じ構造で扱えるようにする。
+      if (selfHostUserId !== null) {
+        selfTeamAnchorIds = [selfHostUserId];
+        opponentTeamAnchorIds = [resolved.opponentAnchorId];
+        avatarAnchorIds.add(selfHostUserId);
+        avatarAnchorIds.add(resolved.opponentAnchorId);
+      }
+    } else if (resolved.kind === "teams") {
+      // 旧opponentフィールドはmulti時代と同じ形(人数のみ、名前・アイコンは出さない)で後方互換を保つ。
+      // モバイルアプリはopponent.countだけを見て「複数人バトル(N人)」に分岐している。
+      opponentCount = resolved.selfTeamAnchorIds.length + resolved.opponentTeamAnchorIds.length - 1;
+      selfTeamAnchorIds = resolved.selfTeamAnchorIds;
+      opponentTeamAnchorIds = resolved.opponentTeamAnchorIds;
+      for (const id of resolved.selfTeamAnchorIds) avatarAnchorIds.add(id);
+      for (const id of resolved.opponentTeamAnchorIds) avatarAnchorIds.add(id);
     } else if (resolved.kind === "multi") {
       opponentCount = resolved.participantCount - 1;
     } else if (others.length > 0) {
@@ -498,10 +634,14 @@ async function buildBattleListItems(
       opponentNickName,
       opponentAnchorId,
       opponentCount,
+      selfTeamAnchorIds,
+      opponentTeamAnchorIds,
+      hostProfiles: own.hostProfiles as HostProfiles | null,
+      otherRoomIdsForBattle: others.map((o) => o.roomId),
     };
   });
 
-  const opponentAvatarUrls = await resolveAvatarUrls("battle_host", [...opponentAnchorIds]);
+  const avatarUrls = await resolveAvatarUrls("battle_host", [...avatarAnchorIds]);
 
   const battles: BattleListItem[] = pending.map((p) => ({
     battleId: p.battleId,
@@ -514,9 +654,17 @@ async function buildBattleListItems(
             tiktokId: p.opponentTiktokId,
             displayId: p.opponentDisplayId,
             nickName: p.opponentNickName,
-            avatarUrl: p.opponentAnchorId ? opponentAvatarUrls.get(p.opponentAnchorId) ?? null : null,
+            avatarUrl: p.opponentAnchorId ? avatarUrls.get(p.opponentAnchorId) ?? null : null,
             count: p.opponentCount,
           },
+    selfTeam:
+      p.selfTeamAnchorIds?.map((id) =>
+        buildParticipant(id, p.hostProfiles, p.otherRoomIdsForBattle, otherRoomById, avatarUrls, selfHostUserId, selfTiktokId)
+      ) ?? null,
+    opponentTeam:
+      p.opponentTeamAnchorIds?.map((id) =>
+        buildParticipant(id, p.hostProfiles, p.otherRoomIdsForBattle, otherRoomById, avatarUrls, selfHostUserId, selfTiktokId)
+      ) ?? null,
     selfScore: p.selfScore,
     opponentScore: p.opponentScore,
     selfTotalDiamonds: p.selfTotalDiamonds,
@@ -543,9 +691,10 @@ export async function queryBattles(
 
   const selfRoom = await prisma.tiktokRoom.findUnique({
     where: { id: roomId },
-    select: { hostUserId: true },
+    select: { hostUserId: true, tiktokId: true },
   });
   const selfHostUserId = selfRoom?.hostUserId ?? null;
+  const selfTiktokId = selfRoom?.tiktokId ?? null;
 
   if (!listenerQuery) {
     const ownBattles = await prisma.tiktokBattle.findMany({
@@ -554,7 +703,7 @@ export async function queryBattles(
       take: DISPLAY_LIMIT,
       select: BATTLE_SELECT,
     });
-    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, now);
+    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, selfTiktokId, now);
     return { battles, hasMore: ownBattles.length >= DISPLAY_LIMIT };
   }
 
@@ -572,7 +721,7 @@ export async function queryBattles(
     (a, b) => orderById.get(a.battleId)! - orderById.get(b.battleId)!
   );
 
-  const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, now);
+  const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, selfTiktokId, now);
   return { battles, hasMore };
 }
 

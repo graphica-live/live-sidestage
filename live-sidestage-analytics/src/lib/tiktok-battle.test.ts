@@ -216,6 +216,37 @@ describe("parseBattleEvent", () => {
     // チーム番号("1"/"2")が含まれないこと(バグの確認)
     expect(parsed?.hostUserIds).not.toContain("1");
     expect(parsed?.hostUserIds).not.toContain("2");
+
+    // hostTeams: 各anchorIdがteamArmies[].teamIdへ正しく紐づく(左右split表示に使う)
+    expect(parsed?.hostTeams).toEqual({
+      "6813783089135895553": "1",
+      "6958337949008692226": "1",
+      "7418071357873701889": "2",
+      "6969117324289164290": "2",
+    });
+  });
+
+  it("teamArmies[].teamIdが無ければ配列インデックスをteamIdとしてフォールバックする", () => {
+    const parsed = parseBattleEvent(
+      battlePayload(BATTLE_ACTION.OPEN, {
+        teamArmies: [
+          {
+            hostRank: "0",
+            teamUsers: [{ userId: "111", userIdStr: "111", score: 10 }],
+            userArmies: { hostScore: "10", anchorIdStr: "0" },
+          },
+          {
+            hostRank: "0",
+            teamUsers: [{ userId: "222", userIdStr: "222", score: 20 }],
+            userArmies: { hostScore: "20", anchorIdStr: "1" },
+          },
+        ],
+        armies: {},
+        anchorInfo: {},
+      })
+    );
+
+    expect(parsed?.hostTeams).toEqual({ "111": "0", "222": "1" });
   });
 
   it("1vs1ではteamArmiesが空配列なら既存の armies/battleItems ロジックにフォールバックする", () => {
@@ -333,6 +364,7 @@ describe("mergeBattleState", () => {
       hostDisplayIds: [],
       hostScores: {},
       hostProfiles: {},
+      hostTeams: {},
     };
 
     const state = mergeBattleState(
@@ -359,6 +391,7 @@ describe("mergeBattleState", () => {
       hostDisplayIds: [],
       hostScores: { "111": "100" },
       hostProfiles: {},
+      hostTeams: {},
     };
 
     const state = mergeBattleState(confirmed, parseArmiesEvent({ battleId: "abc" })!, now);

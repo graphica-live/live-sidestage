@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { BattleDetailModal } from "./BattleDetailModal";
-import { Avatar, BATTLE_STATUS_LABELS, type BattleListItem, type BattleStatus } from "./battle-types";
+import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, type BattleListItem, type BattleStatus } from "./battle-types";
 
 type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -1065,7 +1065,9 @@ export default function AnalyticsPage() {
                           {formatEventTime(battle.startedAt, period)}
                         </td>
                         <td className="py-2 px-3">
-                          {opponent === null ? (
+                          {battle.selfTeam && battle.opponentTeam ? (
+                            <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="sm" />
+                          ) : opponent === null ? (
                             <span className="text-gray-500">対戦相手不明</span>
                           ) : opponent.count > 1 ? (
                             <span className="text-gray-400">複数人バトル({opponent.count + 1}人)</span>

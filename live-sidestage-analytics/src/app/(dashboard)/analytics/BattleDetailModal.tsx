@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Avatar, BATTLE_STATUS_LABELS, type BattleContributorsData, type BattleListItem } from "./battle-types";
+import {
+  Avatar,
+  BattleVersus,
+  BATTLE_STATUS_LABELS,
+  type BattleContributorsData,
+  type BattleListItem,
+} from "./battle-types";
 
 // バトル履歴の行クリックで開く対戦詳細モーダル。以前は行内アコーディオン展開だったが、
 // 公開トーナメント表の対戦詳細モーダル(MatchDetailModal.tsx)と表示形式を揃えるため変更した。
@@ -100,7 +106,9 @@ export function BattleDetailModal({
 
           <div className="mt-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              {opponent === null ? (
+              {battle.selfTeam && battle.opponentTeam ? (
+                <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="md" />
+              ) : opponent === null ? (
                 <span className="text-gray-500 text-sm">対戦相手不明</span>
               ) : opponent.count > 1 ? (
                 <span className="text-gray-400 text-sm">複数人バトル({opponent.count + 1}人)</span>
