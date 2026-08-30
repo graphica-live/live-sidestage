@@ -22,9 +22,8 @@ Future<void> confirmAndDeleteAccount(
     builder: (dialogContext) => AlertDialog(
       title: const Text('アカウントを削除しますか？'),
       content: const Text(
-        'この操作は取り消せません。ログイン情報・TikTok連携・課金情報などがすべて削除されます。\n\n'
-        '主催しているイベントがある場合、そのイベント自体は削除されず公開ページ・参加者データ・'
-        '結果はそのまま残りますが、削除後は誰も編集できなくなります。',
+        'この操作は取り消せません。ログイン情報・TikTok連携・課金情報など、'
+        'LIVE Sidestageの全サービスに保存されたあなたの情報が削除されます。',
       ),
       actions: [
         TextButton(
