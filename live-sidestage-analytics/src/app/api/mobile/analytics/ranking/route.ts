@@ -3,7 +3,7 @@ import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parsePeriodQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery } from "@/lib/mobile-analytics-query";
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -18,14 +18,22 @@ export async function GET(req: NextRequest) {
   if (!ctx.ok) return ctx.response;
 
   const { searchParams } = new URL(req.url);
-  const query = parsePeriodQuery(searchParams, jstDateKey());
+  const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
-  const { period, date } = query.value;
 
-  const { start, end } = getDateRange(period, date);
-  const { users, total } = await queryGifts(ctx.streamer.roomId, ctx.streamer.id, {
-    dayKey: { gte: start, lte: end },
-  });
+  let where: Parameters<typeof queryGifts>[2];
+  let dateRange: { start: string; end: string };
+  if (query.value.mode === "custom") {
+    const { start, end } = query.value;
+    where = { receivedAt: { gte: start, lte: end } };
+    dateRange = { start: start.toISOString(), end: end.toISOString() };
+  } else {
+    const { start, end } = getDateRange(query.value.period, query.value.date);
+    where = { dayKey: { gte: start, lte: end } };
+    dateRange = { start, end };
+  }
+
+  const { users, total } = await queryGifts(ctx.streamer.roomId, ctx.streamer.id, where);
 
   // queryGifts() は groupBy の結果順(順位順ではない)を返すため、
   // 配列インデックス+1がそのまま順位になるようここで明示的にソートする。
@@ -38,7 +46,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     {
       users: sorted.map((u) => ({ ...u, profileImageUrl: sanitizeAvatarUrl(u.profileImageUrl) })),
-      dateRange: { start, end },
+      dateRange,
       total,
       verified: ctx.streamer.verified,
     },

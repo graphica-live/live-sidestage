@@ -123,4 +123,85 @@ describe("GET /api/mobile/analytics/ranking", () => {
     expect(res.status).toBe(200);
     expect(body.users.length).toBeGreaterThan(0);
   });
+
+  describe("startDatetime/endDatetime(custom range)", () => {
+    it("範囲内のギフトだけを集計する", async () => {
+      await addGift("user_custom_in", "範囲内さん", 30, new Date("2026-08-25T10:00:00Z"), "2026-08-25");
+      await addGift("user_custom_out", "範囲外さん", 999, new Date("2026-08-25T13:00:00Z"), "2026-08-25");
+
+      const res = await GET(
+        request(
+          "?startDatetime=2026-08-25T09%3A00%3A00Z&endDatetime=2026-08-25T12%3A00%3A00Z",
+          token
+        )
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.users.map((u: { uniqueId: string }) => u.uniqueId)).toEqual(["user_custom_in"]);
+      expect(body.dateRange).toEqual({
+        start: "2026-08-25T09:00:00.000Z",
+        end: "2026-08-25T12:00:00.000Z",
+      });
+    });
+
+    it("receivedAt == endは含まれる(inclusive)", async () => {
+      await addGift("user_boundary_end", "境界さん", 7, new Date("2026-08-26T12:00:00.000Z"), "2026-08-26");
+
+      const res = await GET(
+        request(
+          "?startDatetime=2026-08-26T00%3A00%3A00Z&endDatetime=2026-08-26T12%3A00%3A00Z",
+          token
+        )
+      );
+      const body = await res.json();
+      expect(body.users.map((u: { uniqueId: string }) => u.uniqueId)).toContain("user_boundary_end");
+    });
+
+    it("片方だけの指定は400", async () => {
+      const res = await GET(request("?startDatetime=2026-08-25T00%3A00%3A00Z", token));
+      expect(res.status).toBe(400);
+    });
+
+    it("start >= endは400", async () => {
+      const res = await GET(
+        request(
+          "?startDatetime=2026-08-25T12%3A00%3A00Z&endDatetime=2026-08-25T09%3A00%3A00Z",
+          token
+        )
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("他部屋のギフトは混ざらない", async () => {
+      const otherRoom = await prisma.tiktokRoom.create({ data: { tiktokId: "itest_mobile_ranking_other" } });
+      await prisma.gift.create({
+        data: {
+          roomId: otherRoom.id,
+          uniqueId: "other_room_user",
+          nickname: "他部屋さん",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 500,
+          totalDiamonds: 500,
+          dayKey: "2026-08-25",
+          receivedAt: new Date("2026-08-25T10:00:00Z"),
+        },
+      });
+
+      try {
+        const res = await GET(
+          request(
+            "?startDatetime=2026-08-25T09%3A00%3A00Z&endDatetime=2026-08-25T12%3A00%3A00Z",
+            token
+          )
+        );
+        const body = await res.json();
+        expect(body.users.map((u: { uniqueId: string }) => u.uniqueId)).not.toContain("other_room_user");
+      } finally {
+        await prisma.tiktokRoom.delete({ where: { id: otherRoom.id } }).catch(() => {});
+      }
+    });
+  });
 });

@@ -101,4 +101,59 @@ describe("GET /api/mobile/analytics/battles", () => {
     const body = await res.json();
     expect(body.battles).toEqual([]);
   });
+
+  describe("startDatetime/endDatetime(custom range)", () => {
+    it("範囲内のバトルだけを返す", async () => {
+      const res = await GET(
+        request("?startDatetime=2026-08-24T09%3A00%3A00Z&endDatetime=2026-08-24T11%3A00%3A00Z", token)
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.battles.map((b: { battleId: string }) => b.battleId)).toEqual(["itest-battle-1"]);
+      expect(body.dateRange).toEqual({
+        start: "2026-08-24T09:00:00.000Z",
+        end: "2026-08-24T11:00:00.000Z",
+      });
+    });
+
+    // Gift系(receivedAt<=end、inclusive)とは非対称。queryBattles()は startedAt<end
+    // (endは排他)であり、custom rangeでもこの挙動をWeb版と揃えて維持する。
+    it("startedAt == endは含まれない(exclusive) — Gift系との非対称性を固定する", async () => {
+      await prisma.tiktokBattle.create({
+        data: {
+          roomId,
+          battleId: "itest-battle-boundary",
+          action: BATTLE_ACTION.FINISH,
+          startedAt: new Date("2026-08-26T12:00:00.000Z"),
+          startedAtEstimated: false,
+          endedAt: new Date("2026-08-26T12:05:00Z"),
+          durationSec: 300,
+          hostUserIds: ["itest_host_self"],
+          hostScores: { itest_host_self: "50" },
+          raw: {},
+        },
+      });
+
+      const res = await GET(
+        request("?startDatetime=2026-08-26T00%3A00%3A00Z&endDatetime=2026-08-26T12%3A00%3A00Z", token)
+      );
+      const body = await res.json();
+      expect(body.battles.map((b: { battleId: string }) => b.battleId)).not.toContain(
+        "itest-battle-boundary"
+      );
+    });
+
+    it("片方だけの指定は400", async () => {
+      const res = await GET(request("?startDatetime=2026-08-24T00%3A00%3A00Z", token));
+      expect(res.status).toBe(400);
+    });
+
+    it("start >= endは400", async () => {
+      const res = await GET(
+        request("?startDatetime=2026-08-24T11%3A00%3A00Z&endDatetime=2026-08-24T09%3A00%3A00Z", token)
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });

@@ -101,4 +101,84 @@ describe("GET /api/mobile/analytics/gift-history", () => {
     expect(body.events[0].giftPictureUrl).toBeNull();
     expect(body.dateRange).toEqual({ start: "2026-08-23", end: "2026-08-23" });
   });
+
+  describe("startDatetime/endDatetime(custom range)", () => {
+    it("範囲内のイベントだけを返す", async () => {
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "user_custom_in",
+          nickname: "範囲内さん",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 5,
+          totalDiamonds: 5,
+          dayKey: "2026-08-25",
+          receivedAt: new Date("2026-08-25T10:00:00Z"),
+        },
+      });
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "user_custom_out",
+          nickname: "範囲外さん",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 5,
+          totalDiamonds: 5,
+          dayKey: "2026-08-25",
+          receivedAt: new Date("2026-08-25T13:00:00Z"),
+        },
+      });
+
+      const res = await GET(
+        request("?startDatetime=2026-08-25T09%3A00%3A00Z&endDatetime=2026-08-25T12%3A00%3A00Z", token)
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toEqual(["user_custom_in"]);
+      expect(body.dateRange).toEqual({
+        start: "2026-08-25T09:00:00.000Z",
+        end: "2026-08-25T12:00:00.000Z",
+      });
+    });
+
+    it("receivedAt == endは含まれる(inclusive)", async () => {
+      await prisma.gift.create({
+        data: {
+          roomId,
+          uniqueId: "user_boundary_end",
+          nickname: "境界さん",
+          giftId: 1,
+          giftName: "Rose",
+          repeatCount: 1,
+          diamondCount: 1,
+          totalDiamonds: 1,
+          dayKey: "2026-08-26",
+          receivedAt: new Date("2026-08-26T12:00:00.000Z"),
+        },
+      });
+
+      const res = await GET(
+        request("?startDatetime=2026-08-26T00%3A00%3A00Z&endDatetime=2026-08-26T12%3A00%3A00Z", token)
+      );
+      const body = await res.json();
+      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toContain("user_boundary_end");
+    });
+
+    it("片方だけの指定は400", async () => {
+      const res = await GET(request("?startDatetime=2026-08-25T00%3A00%3A00Z", token));
+      expect(res.status).toBe(400);
+    });
+
+    it("start >= endは400", async () => {
+      const res = await GET(
+        request("?startDatetime=2026-08-25T12%3A00%3A00Z&endDatetime=2026-08-25T09%3A00%3A00Z", token)
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });

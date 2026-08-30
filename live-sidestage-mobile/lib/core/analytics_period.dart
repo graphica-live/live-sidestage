@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show DateTimeRange;
+
 /// 貢献/ギフト履歴/バトル履歴タブが共有する期間種別。サーバー側 `period` クエリと同じ3値。
 enum AnalyticsPeriod {
   day,
@@ -104,4 +106,53 @@ class AnalyticsPeriodSelection {
     }
     return AnalyticsPeriodSelection(period: period, date: _formatDate(shifted));
   }
+}
+
+/// 日付ピッカー/時刻ピッカーが返した「JSTの壁時計」の年月日時分を、対応するUTC時刻に変換する。
+///
+/// `showDatePicker`/`showTimePicker`はいずれも「時計の見た目の数字」を返すだけで、端末の
+/// タイムゾーン設定とは無関係。素朴に`.toUtc()`すると端末設定に引きずられるため、呼び出し側は
+/// ピッカーが返した年月日時分の数値を`DateTime.utc(...)`でいったんUTC成分として組み立ててから
+/// この関数へ渡し、「JSTの壁時計である」という意味づけをここで確定させる(端末ローカルの
+/// `DateTime(...)`コンストラクタを経由しない — 理論上はタイムゾーン正規化の影響を受けうるため)。
+DateTime jstWallClockToUtc(DateTime jstLocalWallClock) {
+  return DateTime.utc(
+    jstLocalWallClock.year,
+    jstLocalWallClock.month,
+    jstLocalWallClock.day,
+    jstLocalWallClock.hour,
+    jstLocalWallClock.minute,
+    jstLocalWallClock.second,
+    jstLocalWallClock.millisecond,
+  ).subtract(const Duration(hours: 9));
+}
+
+/// [jstWallClockToUtc]の逆変換。UTCの絶対時刻をJST壁時計の年月日時分に戻す
+/// (既存の[jstDateKeyOf]と同じ+9時間シフト)。既存のカスタム範囲を再度開いて調整する場合
+/// (ピッカーのinitialDate/initialTime)や、行の表示に使う。
+DateTime jstWallClockFromUtc(DateTime utcInstant) {
+  return utcInstant.toUtc().add(const Duration(hours: 9));
+}
+
+String _formatJstDateTime(DateTime utcInstant) {
+  final jst = jstWallClockFromUtc(utcInstant);
+  final y = jst.year.toString().padLeft(4, '0');
+  final m = jst.month.toString().padLeft(2, '0');
+  final d = jst.day.toString().padLeft(2, '0');
+  final hh = jst.hour.toString().padLeft(2, '0');
+  final mi = jst.minute.toString().padLeft(2, '0');
+  return '$y/$m/$d $hh:$mi';
+}
+
+/// UTCレンジをJST(+9)表示に変換し、"2026/08/30 18:00 〜 2026/08/30 23:00"形式に整形する。
+/// 年を常に含める(366日範囲で年をまたぎ得るため)。
+String formatDateTimeRangeLabel(DateTimeRange utcRange) {
+  return '${_formatJstDateTime(utcRange.start)} 〜 ${_formatJstDateTime(utcRange.end)}';
+}
+
+/// [utcRange]が「現在(UTC)」を含むか。カスタム範囲表示中のライブ自動更新(silent reload)を
+/// 続けるかどうかの判定に使う。
+bool customRangeContainsNow(DateTimeRange utcRange) {
+  final now = DateTime.now().toUtc();
+  return !now.isBefore(utcRange.start) && !now.isAfter(utcRange.end);
 }

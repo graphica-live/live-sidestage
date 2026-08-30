@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/account_status_store.dart';
@@ -56,6 +57,10 @@ class LiveSidestageApp extends StatelessWidget {
       child: MaterialApp(
         title: 'LIVE Sidestage',
         theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
+        // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
+        // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('ja')],
         home: const AuthGate(),
       ),
     );
