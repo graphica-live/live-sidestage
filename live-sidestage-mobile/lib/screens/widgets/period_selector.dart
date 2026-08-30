@@ -13,6 +13,7 @@ class PeriodSelectorBar extends StatelessWidget {
     this.customRangeActive = false,
     this.filterActive = false,
     this.onOpenCustomRangeFilter,
+    this.onShiftCustomRange,
   });
 
   final AnalyticsPeriodSelection selection;
@@ -28,9 +29,10 @@ class PeriodSelectorBar extends StatelessWidget {
   final bool enabled;
 
   /// 開始・終了日時による詳細フィルタ(カスタム範囲)が適用中かどうか。true の間は
-  /// サーバーへ送るのがcustom rangeかperiod/dateかを一意にするため、日/週/月の切替と
-  /// ◀/▶を無効化する。詳細フィルタボタン自体は(再度開いて調整・解除できるよう)
-  /// 常に有効のまま。
+  /// サーバーへ送るのがcustom rangeかperiod/dateかを一意にするため、日/週/月の切替を
+  /// 無効化する。◀/▶は[onShiftCustomRange]があれば無効化せず、そちらへ回す
+  /// (でないと詳細フィルタ中に身動きが取れなくなり、解除方法もわかりにくいため)。
+  /// 詳細フィルタボタン自体は(再度開いて調整・解除できるよう)常に有効のまま。
   final bool customRangeActive;
 
   /// 詳細フィルタ(日時範囲・リスナー名のいずれか)が適用中かどうか。アイコンの着色のみに使う。
@@ -39,9 +41,16 @@ class PeriodSelectorBar extends StatelessWidget {
   /// 詳細フィルタボタン押下時のコールバック。nullなら詳細フィルタボタン自体を出さない。
   final VoidCallback? onOpenCustomRangeFilter;
 
+  /// [customRangeActive]中に◀/▶が押されたときのコールバック。引数`true`は▶(現在表示中の
+  /// 終了日時の次の日へ)、`false`は◀(開始日時の前日へ)。呼び出し側はここで日時範囲フィルタを
+  /// 解除して該当日の`day`選択へ切り替える(リスナー名フィルタは維持する)。nullなら
+  /// [customRangeActive]中は◀/▶を無効化したままにする。
+  final ValueChanged<bool>? onShiftCustomRange;
+
   @override
   Widget build(BuildContext context) {
     final periodControlsEnabled = enabled && !customRangeActive;
+    final canShiftCustomRange = enabled && customRangeActive && onShiftCustomRange != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Column(
@@ -81,7 +90,9 @@ class PeriodSelectorBar extends StatelessWidget {
             children: [
               IconButton(
                 icon: const Icon(Icons.chevron_left),
-                onPressed: periodControlsEnabled ? () => onChanged(selection.shiftPrevious()) : null,
+                onPressed: periodControlsEnabled
+                    ? () => onChanged(selection.shiftPrevious())
+                    : (canShiftCustomRange ? () => onShiftCustomRange!(false) : null),
               ),
               Expanded(
                 child: Text(
@@ -93,7 +104,9 @@ class PeriodSelectorBar extends StatelessWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
-                onPressed: periodControlsEnabled ? () => onChanged(selection.shiftNext()) : null,
+                onPressed: periodControlsEnabled
+                    ? () => onChanged(selection.shiftNext())
+                    : (canShiftCustomRange ? () => onShiftCustomRange!(true) : null),
               ),
             ],
           ),
