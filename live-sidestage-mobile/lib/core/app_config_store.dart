@@ -9,6 +9,20 @@ import '../models/app_config.dart';
 /// `FlutterForegroundTask.saveData` は Map を保存できないので JSON 文字列で入れる。
 const String appConfigStorageKey = 'appConfig';
 
+/// 「開始」後にライブが一定時間始まらず自動停止したが、UI側の永続設定
+/// ([AppConfig].ttsEnabled/sound.enabled)へまだ反映していないことを示すフラグ。
+/// UI Isolate と Foreground Service Isolate の両方から読み書きする。
+///
+/// [appConfigStorageKey] とは独立させ、AppConfig の revision 管理を一切
+/// 経由しない（自動停止はユーザーの「意思」であるAppConfigを書き換えない設計
+/// のため。詳細は background_task_handler.dart の自動停止まわりのコメント参照）。
+const String autoStopPendingStorageKey = 'noLiveAutoStopPending';
+
+/// フォアグラウンド通知に出す、読み上げ・効果音が両方停止しているときの文言。
+/// UI Isolate([HomeScreen]の`_notificationText`)と背景Isolate(自動停止時)の
+/// 両方から参照する固定文言なので、表記ゆれを避けるためここへ集約する。
+const String idleNotificationText = '接続中です（読み上げ・効果音は停止中）';
+
 /// UI Isolate 側の設定ストア。
 ///
 /// 背景 Isolate との同期は revision 方式:

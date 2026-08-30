@@ -130,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGiftNames());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAutoStopPending());
   }
 
   /// 起動時に一度だけ、サーバーからギフトの日本語名を取り直して端末へ貯める。
@@ -169,6 +170,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 残す理由が無いので、こちらから切る。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 自動停止の収束チェックは _idleServiceEnabled のロールバックスイッチとは
+    // 無関係に常に行う（待機サービスの仕組みとは独立した話のため）。
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_checkAutoStopPending());
+    }
+
     if (!_idleServiceEnabled) return;
 
     if (state == AppLifecycleState.resumed) {
@@ -232,6 +239,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final started = await _startService(apiKey: apiKey, store: store, idle: true);
     if (!mounted) return;
     setState(() => _serviceRunning = started);
+  }
+
+  /// 背景 Isolate が「60分ライブが始まらず自動停止した」ことを記録した
+  /// フラグ([autoStopPendingStorageKey])を確認し、確定していれば UI 側の
+  /// 正規の設定へ反映してスナックバーを出す。
+  ///
+  /// アプリ起動時・resume時の両方から呼ぶ（背景 Isolate が `sendDataToMain`
+  /// した瞬間に UI が存在しない/購読していない場合に備えて、収束処理は
+  /// 常にここへ集約する）。
+  Future<void> _checkAutoStopPending() async {
+    final pending = await FlutterForegroundTask.getData<bool>(key: autoStopPendingStorageKey);
+    if (pending != true) return;
+    if (!mounted) return;
+
+    // 先に正規の設定へ反映してから、pendingフラグを消す。
+    // 逆順だとフラグ消去後・保存完了前に終了した場合に収束できなくなる。
+    await context.read<AppConfigStore>().setFeatureMask(tts: false, sound: false);
+    await FlutterForegroundTask.saveData(key: autoStopPendingStorageKey, value: false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('60分間ライブ配信が開始されなかったため、読み上げ・効果音を自動的に停止しました。'),
+        duration: Duration(seconds: 8),
+      ),
+    );
   }
 
   /// 開始/停止ボタンの実体。**設定の保存とサービス遷移を1本の直列処理にまとめる。**
@@ -384,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (tts && sound) return 'コメント読み上げと効果音が動作中です';
     if (tts) return 'コメントを読み上げ中です';
     if (sound) return '効果音が動作中です';
-    return '接続中です（読み上げ・効果音は停止中）';
+    return idleNotificationText;
   }
 
   Future<void> _stopService() async {
@@ -540,6 +572,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             duration: Duration(seconds: 8),
           ),
         );
+      case 'noLiveAutoStop':
+        unawaited(_checkAutoStopPending());
       case 'comment':
         final comment = Comment.tryParse(map);
         if (comment == null) return;

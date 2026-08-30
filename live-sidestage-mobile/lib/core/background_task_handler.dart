@@ -34,6 +34,35 @@ class CommentSpeechTaskHandler extends TaskHandler {
   Directory? _soundsDir;
   AppConfig _config = const AppConfig();
 
+  // ── 開始ボタン押下後、ライブが一定時間始まらなければ自動停止 ──────────────────
+  //
+  // _config（UIとのrevision同期の正本 = ユーザーの「意思」）は自動停止時に
+  // 一切書き換えない。実行系（speechQueue/soundEngine/iOS keepalive）へ渡す
+  // 設定は、常に「意思」と _autoStopLatched を合成した実効設定を通す
+  // （_applyEffectiveConfig）。この分離により、UIから届く通常の設定変更と
+  // 自動停止の間の ordering race を避ける。
+
+  /// true の間は _config の値に関わらず読み上げ・効果音を鳴らさない。
+  /// onStart で永続フラグから復元することがあるので、初期値の意味は
+  /// 「前回セッションで自動停止していたか」も兼ねる。
+  bool _autoStopLatched = false;
+
+  /// 直近に適用した意思で、読み上げ・効果音のどちらかが有効だったか。
+  /// false → true の立ち上がりだけを「開始ボタンを押した」とみなす
+  /// （TTS/サウンドを集約した1つの状態として扱う。個別の開始ボタンごとに
+  /// タイマーを分けない設計は確定仕様）。
+  bool _wasFeatureEnabled = false;
+
+  /// 「開始」からの経過時間。単調時計（_sinceLastEvent と同じ理由 — 端末の
+  /// 時刻変更やNTP補正の影響を受けないため）。
+  final Stopwatch _sinceFeatureEnabled = Stopwatch();
+
+  /// このセッション（直近の「開始」以降）で一度でもライブ中と判定されたか。
+  /// true なら自動停止しない。次の「開始」でリセットする。
+  bool _everLiveSinceEnabled = false;
+
+  static const Duration _noLiveAutoStopTimeout = Duration(minutes: 60);
+
   // ── TikTok側の配信状態 ─────────────────────────────────────────────────────
   //
   // 取得経路は2つ。**socket の push を主、HTTP を保険にする。**
@@ -109,6 +138,19 @@ class CommentSpeechTaskHandler extends TaskHandler {
     final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
     final decoded = AppConfig.tryDecode(raw);
     _config = decoded ?? const AppConfig();
+
+    // OS都合でこのTaskHandlerが再生成された場合に備え、前回セッションで
+    // 自動停止していた事実を永続フラグから復元する。
+    //
+    // **_wasFeatureEnabledも同時に揃えること。** ラッチだけ復元して
+    // _wasFeatureEnabled=falseのままだと、直後の_applyConfigが
+    // 「意思がON（まだUIが収束していない）」を新しい開始の立ち上がりと誤認し、
+    // ラッチと永続フラグの両方を即座に解除してしまう
+    // （自動停止の事実がUIへ二度と伝わらなくなる）。
+    _autoStopLatched =
+        await FlutterForegroundTask.getData<bool>(key: autoStopPendingStorageKey) == true;
+    _wasFeatureEnabled = _autoStopLatched;
+
     _applyConfig(_config);
 
     // 設定を解釈できたときだけ孤児ファイルを掃除する。壊れたJSONや未対応の
@@ -171,6 +213,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
   @override
   void onRepeatEvent(DateTime timestamp) {
+    _checkNoLiveAutoStop();
     _pushStatus();
     _pushSpeechState();
     _pushSoundState();
@@ -271,13 +314,40 @@ class CommentSpeechTaskHandler extends TaskHandler {
     }
   }
 
+  /// UIから届いた「意思」を受け取り、_configの更新・自動停止タイマーの
+  /// 起動/停止制御を行ってから、実行系へ反映する（_applyEffectiveConfig）。
   void _applyConfig(AppConfig config) {
-    _soundEngine?.applyConfig(config);
-    _speechQueue.setEnabled(config.ttsEnabled);
-    _speechQueue.randomVoice = config.randomVoice;
-    _speechQueue.fixedStyleId = config.fixedStyleId;
-    _speechQueue.volume = config.ttsVolume;
-    _speechQueue.speed = config.ttsSpeed;
+    _config = config;
+
+    final featureEnabled = config.ttsEnabled || config.sound.enabled;
+    if (featureEnabled && !_wasFeatureEnabled) {
+      // 「開始」。新しいセッションとしてタイマー・everLive・ラッチをリセットする。
+      _sinceFeatureEnabled
+        ..reset()
+        ..start();
+      _everLiveSinceEnabled = false;
+      _setAutoStopLatched(false);
+    } else if (!featureEnabled) {
+      _sinceFeatureEnabled.stop();
+    }
+    _wasFeatureEnabled = featureEnabled;
+
+    _applyEffectiveConfig();
+  }
+
+  /// 実際に speechQueue / soundEngine / iOS keepalive へ反映する設定
+  /// （「意思」と自動停止ラッチを合成したもの）。_config自体は変更しない。
+  void _applyEffectiveConfig() {
+    final effective = _autoStopLatched
+        ? _config.copyWith(ttsEnabled: false, sound: _config.sound.copyWith(enabled: false))
+        : _config;
+
+    _soundEngine?.applyConfig(effective);
+    _speechQueue.setEnabled(effective.ttsEnabled);
+    _speechQueue.randomVoice = effective.randomVoice;
+    _speechQueue.fixedStyleId = effective.fixedStyleId;
+    _speechQueue.volume = effective.ttsVolume;
+    _speechQueue.speed = effective.ttsSpeed;
 
     // **無音キープアライブはサービスの稼働ではなく「音を出す機能」に紐づける。**
     //
@@ -292,14 +362,46 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // あるうえ、App Store 2.5.4 の「バックグラウンド音声は可聴コンテンツのため」
     // という位置づけから外れる。
     if (Platform.isIOS) {
-      final wantsAudio = config.ttsEnabled || config.sound.enabled;
+      final wantsAudio = effective.ttsEnabled || effective.sound.enabled;
       unawaited(wantsAudio ? _keepAlive.start() : _keepAlive.stop());
     }
 
     // VOICEVOXの初期化は重い。TTSがOFFのままサウンドだけ使う運用では走らせない。
-    if (config.ttsEnabled && !_speechQueue.initialized) {
+    if (effective.ttsEnabled && !_speechQueue.initialized) {
       unawaited(_speechQueue.initialize());
     }
+  }
+
+  /// 60分経ってもライブが始まらなければ、読み上げ・効果音を自動停止する。
+  ///
+  /// **_config（意思）は書き換えない。** 実行系だけ_autoStopLatchedで止め、
+  /// 自動停止の事実はUI Isolateへ非同期に伝える（_notifyAutoStop）。
+  void _checkNoLiveAutoStop() {
+    if (_autoStopLatched || _everLiveSinceEnabled) return;
+    if (!_sinceFeatureEnabled.isRunning) return;
+    if (_sinceFeatureEnabled.elapsed < _noLiveAutoStopTimeout) return;
+
+    _sinceFeatureEnabled.stop();
+    _autoStopLatched = true;
+    _applyEffectiveConfig(); // 実行系を即座に止める
+    unawaited(_notifyAutoStop());
+  }
+
+  /// 自動停止の事実を永続化してからUIへ通知する。
+  ///
+  /// **保存 → 通知の順を守ること。** 逆順だと、UIが通知を受けて永続フラグを
+  /// 読みに行ったタイミングで、まだ保存が完了していない理論上のraceがある。
+  Future<void> _notifyAutoStop() async {
+    await FlutterForegroundTask.saveData(key: autoStopPendingStorageKey, value: true);
+    await FlutterForegroundTask.updateService(notificationText: idleNotificationText);
+    FlutterForegroundTask.sendDataToMain({'type': 'noLiveAutoStop'});
+  }
+
+  /// 「開始」（意思の立ち上がり）でラッチを解除するとき用。
+  void _setAutoStopLatched(bool value) {
+    if (_autoStopLatched == value) return;
+    _autoStopLatched = value;
+    unawaited(FlutterForegroundTask.saveData(key: autoStopPendingStorageKey, value: value));
   }
 
   @override
@@ -334,9 +436,12 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // イベントが届いている間は、サーバーの観測より現実を優先する。
     // push が落ちていても、あるいは古い error が残っていても、実際に鳴っている以上は配信中。
     final recent = _hasRecentEvent;
+    final live = recent || (listener?.live ?? false);
+    // 一度でもライブ中と判定できたら、このセッションでは自動停止しない。
+    if (live) _everLiveSinceEnabled = true;
     FlutterForegroundTask.sendDataToMain({
       'type': 'listener',
-      'live': recent || (listener?.live ?? false),
+      'live': live,
       'status': listener?.activity,
       'problem': recent ? null : listener?.problem,
     });
