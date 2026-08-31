@@ -239,8 +239,30 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
           for (final event in events)
             ListTile(
               leading: GiftThumbnail(event.giftPictureUrl),
-              title: Text('${event.nickname} → ${event.giftName}'),
-              subtitle: Text(event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}'),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      event.nickname,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text(
+                          event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
+                          style: TextStyle(fontSize: 12, color: Theme.of(context).disabledColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               trailing: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
