@@ -2,7 +2,7 @@
 // GiftEditのDBスキーマ・オリジナルデータ非破壊・上書き表示の一連の流れを検証する。
 // ギフトデータは同じtiktokId(=同じTiktokRoom)を登録した全員で共有されるが、編集/非表示は
 // streamerId単位で分離され、編集した本人にしか見えないことも検証する。
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { applyGiftEdit, queryGiftHistory } from "./gift-history";
@@ -249,5 +249,50 @@ describe("queryGiftHistory", () => {
 
     const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10, "and_target");
     expect(result.events.map((e) => e.id)).toEqual([inRange.id]);
+  });
+});
+
+// TiktokGiftCatalogはroomIdを持たないグローバルテーブルなので、他describeと衝突しないgiftIdを使う。
+describe("queryGiftHistory - labelJa(日本語表示名)", () => {
+  const CATALOG_GIFT_IDS = [900001, 900002, 900003];
+
+  afterEach(async () => {
+    await prisma.tiktokGiftCatalog.deleteMany({ where: { giftId: { in: CATALOG_GIFT_IDS } } });
+  });
+
+  it("カタログにlabelJaがあれば日本語名で返る", async () => {
+    const dayKey = "2026-08-25";
+    await prisma.tiktokGiftCatalog.create({
+      data: { giftId: 900001, name: "rose", label: "Rose", labelJa: "バラ", diamondCount: 1 },
+    });
+    const gift = await makeGift({ dayKey, giftId: 900001, receivedAt: new Date("2026-08-25T10:00:00Z") });
+
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
+
+    expect(result.events.find((e) => e.id === gift.id)?.giftName).toBe("バラ");
+  });
+
+  it("カタログに無い/labelJaがnullのgiftIdは受信生データ(英語)のまま返る", async () => {
+    const dayKey = "2026-08-25";
+    const gift = await makeGift({ dayKey, giftId: 900002, receivedAt: new Date("2026-08-25T10:01:00Z") });
+
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
+
+    expect(result.events.find((e) => e.id === gift.id)?.giftName).toBe("Rose");
+  });
+
+  it("GiftEditの手動編集はlabelJaより優先される", async () => {
+    const dayKey = "2026-08-25";
+    await prisma.tiktokGiftCatalog.create({
+      data: { giftId: 900003, name: "rose3", label: "Rose3", labelJa: "バラ3", diamondCount: 1 },
+    });
+    const gift = await makeGift({ dayKey, giftId: 900003, receivedAt: new Date("2026-08-25T10:02:00Z") });
+    await prisma.giftEdit.create({
+      data: { giftId: gift.id, streamerId, giftName: "手動リネーム", totalDiamonds: gift.totalDiamonds },
+    });
+
+    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
+
+    expect(result.events.find((e) => e.id === gift.id)?.giftName).toBe("手動リネーム");
   });
 });

@@ -27,7 +27,10 @@ import { prisma } from "./prisma";
 import { isAllowedAvatarUrl } from "./tiktok-profile";
 
 // カタログの鮮度。これより新しければ何もしない。
-export const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+// イベント用ギフトがイベント開始直前に追加されるケースがあるため24時間から短縮した。
+// この判定はDB共有のMAX(fetchedAt)を見るので、複数プロセス(web/worker1〜3)がいても
+// 実際の取得回数は単純にTTLの短縮分(12倍)で収まる(プロセス数倍にはならない)。
+export const CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
 
 // 取得に失敗したときにプロセス内で待つ時間。
 //
