@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:provider/provider.dart';
 
 import 'core/account_status_store.dart';
@@ -26,7 +28,13 @@ void startCallback() {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Debugビルドのみ Marionette MCP(AIエージェントによるUI操作・検証)を有効化する。
+  // Releaseビルドはこれまでどおり WidgetsFlutterBinding のみ。
+  if (kDebugMode) {
+    MarionetteBinding.ensureInitialized();
+  } else {
+    WidgetsFlutterBinding.ensureInitialized();
+  }
   // ギフトの日本語名キャッシュは FlutterForegroundTask のストレージに置いてある。
   FlutterForegroundTask.initCommunicationPort();
   // 端末に貯めた日本語名を1度だけ読む。以降はどの画面からも同期で引ける。
