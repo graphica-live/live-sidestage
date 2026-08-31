@@ -68,7 +68,7 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 - **`src/lib/overlay/` は client/server をファイルで分けている。** `contracts.ts`(型・定数)と `kinds.ts`(種類の一覧)だけが import ゼロでクライアント安全。`index.ts`(= `@/lib/overlay`)・`token.ts`・`contribution.server.ts`・`emit.ts` は prisma / crypto を引くのでサーバー専用。**クライアントコンポーネントから `@/lib/overlay` を import しないこと**
 - データ取得は `(overlay)/_hooks/useOverlaySnapshot.ts` に集約。socket.io の push が主経路で、切断中だけ 30秒 polling が動く（GET はその日のギフト全件を読む重い処理なので接続中は投げない）。クエリの読み取りは `useOverlayParams.ts` を通す — **`useSearchParams` に戻さないこと**（Suspense 構成が本番でだけ "Element type is invalid" を起こした経緯がある）
 - 背景の透過は `(overlay)/layout.tsx` の inline script が hydration 前に `body.overlay-body` を付けて実現する。CSS は必ず `.overlay-body` にスコープを閉じる（裸の `body` セレクタだとダッシュボード側の背景まで消える）
-- 設定 UI は `/overlays`（[src/app/(dashboard)/overlays/](src/app/(dashboard)/overlays/)）。**ヘッダーのドロップダウンへ戻さないこと。** 未送信の変更は項目別ではなく1つの patch にマージして直列 PATCH する（[useOverlaySettings.ts](src/app/(dashboard)/overlays/useOverlaySettings.ts)）— 項目ごとに debounce タイマーを共有すると、連続操作で先の変更が握り潰される
+- 設定 UI は `/overlays`（[src/app/(overlay-settings)/overlays/](src/app/(overlay-settings)/overlays/)）。**ヘッダーのドロップダウンへ戻さないこと。** 未送信の変更は項目別ではなく1つの patch にマージして直列 PATCH する（[useOverlaySettings.ts](src/app/(overlay-settings)/overlays/useOverlaySettings.ts)）— 項目ごとに debounce タイマーを共有すると、連続操作で先の変更が握り潰される
 - 設定の保存 API `/api/streamer/overlay-settings` は **contribution 固定**。設定が要る種類を2つ目に足すときは、この API か `Streamer` の `overlay*` 列（種類ごとに増え続ける）の設計から必要になる
 
 ### イベント機能（LIVE Sidestage Event）— 同じコードベース、別プロセス
@@ -88,4 +88,4 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 ### Railway デプロイ
 
-Root Directory を `live-sidestage-analytics` にする。[railway.toml](railway.toml) と [Dockerfile](Dockerfile) はそのディレクトリ基準。**同じイメージを3サービスで使い、start command と環境変数だけを変える** — 未指定（web。Dockerfile の CMD）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る）/ `npm run event-worker`（イベント集計）。**スキーマ反映は build ではなく web の起動時**（CMD が `prisma db push --accept-data-loss` を実行する）。start command を上書きする worker と event-worker は CMD を通らないので push しない。本番構成の詳細は auto-memory の `railway-analytics-production-services` を参照。
+Root Directory を `live-sidestage-analytics` にする。[railway.toml](railway.toml) と [Dockerfile](Dockerfile) はそのディレクトリ基準。**同じイメージを6サービス（web + worker1/2/3 + event-worker + worker-guardian）で使い、start command と環境変数だけを変える** — 未指定（web。Dockerfile の CMD）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る、worker1〜3の3インスタンス）/ `npm run event-worker`（イベント集計）/ `npm run worker-guardian`（worker監視・フェイルオーバー）。**スキーマ反映は build ではなく web の起動時**（CMD が `prisma db push --accept-data-loss` を実行する）。start command を上書きするworker系サービスはCMDを通らないので push しない。本番構成の詳細は auto-memory の `railway-analytics-production-services` を参照。

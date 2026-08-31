@@ -51,7 +51,7 @@ Android にはネイティブの Apple 認証が無いので、Custom Tab で **
 
 | 作るもの | 値 | 用途 |
 | --- | --- | --- |
-| App ID | `com.liveanalytics.live-sidestage-mobile` | 将来の iOS 版。Sign In with Apple capability を有効化する。**Bundle ID に underscore は使えない**（英数字・ハイフン・ピリオドのみ）ので、Android の `applicationId` とは別の値になる |
+| App ID | `com.liveanalytics.live-sidestage-mobile` | iOS 版。Sign In with Apple capability を有効化する。**Bundle ID に underscore は使えない**（英数字・ハイフン・ピリオドのみ）ので、Android の `applicationId` とは別の値になる |
 | Services ID | 例 `com.liveanalytics.live-sidestage.signin` | Android / Web の client_id。上の App ID を **primary App ID として関連付ける**（これをしないと同じ人でもクライアントごとに別の `sub` になる） |
 | Key (.p8) | Sign in with Apple 用 | client_secret の署名鍵。**ダウンロードは1回きり** |
 
@@ -71,7 +71,7 @@ Services ID の設定で以下を登録する。
 | `APPLE_PRIVATE_KEY` | ✓ | `.p8` の中身（改行は `\n` エスケープでよい） |
 | `APPLE_SERVICES_ID` | ✓ | Services ID |
 | `APPLE_REDIRECT_URI` | ✓ | 登録した Return URL と**完全一致**させる |
-| `APPLE_BUNDLE_ID` | — | iOS 版を出すときだけ。設定すると `aud` として Bundle ID も許容する |
+| `APPLE_BUNDLE_ID` | — | iOS 版で設定。`aud` として Bundle ID も許容する |
 | `APPLE_ANDROID_PACKAGE` | — | 既定 `com.liveanalytics.live_sidestage_mobile` |
 
 ### 3. アプリのビルド
