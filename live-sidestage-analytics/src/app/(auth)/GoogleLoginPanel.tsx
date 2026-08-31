@@ -20,6 +20,13 @@ export interface GoogleLoginPanelProps {
    * analytics 側は旧ブックマーク(`/login?callbackUrl=/events`)互換のため渡さない。
    */
   restrictPrefix?: string;
+  /**
+   * safeCallbackUrl() の同一オリジン判定に使う基準origin。呼び出し元のServer
+   * Componentがそのページの正規ホスト(ANALYTICS_ORIGIN/EVENTS_ORIGIN)を渡す。
+   * サブドメイン化前と違い window.location.origin は使わない — 絶対URL/
+   * プロトコル相対URLを別オリジンとして弾く判定ロジックは基準originが固定値でも変わらない。
+   */
+  origin: string;
 }
 
 // analytics とイベントで同じ Google ログインを使う。ブランド表記と戻り先だけが違う。
@@ -32,18 +39,14 @@ export default function GoogleLoginPanel(props: GoogleLoginPanelProps) {
   );
 }
 
-function LoginForm({ brandSuffix, tagline, defaultCallbackUrl, restrictPrefix }: GoogleLoginPanelProps) {
+function LoginForm({ brandSuffix, tagline, defaultCallbackUrl, restrictPrefix, origin }: GoogleLoginPanelProps) {
   const [devEmail, setDevEmail] = useState("dev@local.test");
   const searchParams = useSearchParams();
   // middleware が未ログインのリクエストを弾くとき、元のURLを callbackUrl に載せて
   // ここへ飛ばしてくる。それを読まずに "/" 固定で戻していたため、イベント管理画面から
   // 飛ばされたユーザーがログイン後 analytics へ流れていた。
   // オープンリダイレクトを避けるため safeCallbackUrl() を通す。
-  const raw = safeCallbackUrl(
-    searchParams.get("callbackUrl"),
-    typeof window === "undefined" ? "" : window.location.origin,
-    defaultCallbackUrl
-  );
+  const raw = safeCallbackUrl(searchParams.get("callbackUrl"), origin, defaultCallbackUrl);
   const callbackUrl = restrictPrefix
     ? clampCallbackUrl(raw, restrictPrefix, defaultCallbackUrl)
     : raw;

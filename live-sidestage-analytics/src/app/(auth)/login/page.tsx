@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import GoogleLoginPanel from "../GoogleLoginPanel";
 import { isEventPath } from "@/lib/login-path";
+import { canonicalOrigin } from "@/lib/canonical-origin";
 
 // NextAuth が戻り先を覚えている Cookie。本番(https)では __Secure- が付く。
 const CALLBACK_COOKIES = ["next-auth.callback-url", "__Secure-next-auth.callback-url"];
@@ -51,6 +52,7 @@ export default function LoginPage({
       brandSuffix="Analytics"
       tagline="TikTok Live ギフト解析"
       defaultCallbackUrl="/"
+      origin={canonicalOrigin("analytics")}
     />
   );
 }

@@ -6,6 +6,36 @@ const { PrismaClient } = require("@prisma/client");
 const dev = process.env.NODE_ENV !== "production";
 const port = process.env.PORT || 3000;
 
+// src/lib/canonical-origin.ts の isAllowedHost() は allowlist が空(*_ORIGIN が
+// 1つも設定されていない)なら host 検証そのものをスキップする——ローカル開発を
+// 単一オリジンのまま動かすためのフォールバックだが、本番で設定を1つでも
+// 落とすと AUTH_TRUST_HOST=1 が転送 Host を無条件に信頼する状態になる。
+// TSモジュールを require できないためチェックはここに複製する。
+if (!dev) {
+  const REQUIRED_ORIGIN_ENV_VARS = [
+    "ANALYTICS_ORIGIN",
+    "EVENTS_ORIGIN",
+    "AGENCY_ORIGIN",
+    "OVERLAYS_ORIGIN",
+    "API_ORIGIN",
+  ];
+  const missing = REQUIRED_ORIGIN_ENV_VARS.filter((key) => {
+    const value = process.env[key];
+    if (!value) return true;
+    try {
+      return new URL(value).protocol !== "https:";
+    } catch {
+      return true;
+    }
+  });
+  if (missing.length > 0) {
+    console.error(
+      `[startup] 本番起動には https:// の *_ORIGIN が5つとも必要です。未設定/不正な値: ${missing.join(", ")}`
+    );
+    process.exit(1);
+  }
+}
+
 const app = next({ dev });
 const handle = app.getRequestHandler();
 

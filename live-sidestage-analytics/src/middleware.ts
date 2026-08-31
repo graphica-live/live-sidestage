@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { AGENCY_SESSION_COOKIE } from "@/lib/agency/session-cookie";
 import { isAgencyPath, loginPathFor } from "@/lib/login-path";
+import { requestHost, ROOT_REDIRECT_TARGETS } from "@/lib/canonical-origin";
 
 // セッションは2系統ある。どちらの Cookie を見るかをパスで振り分ける。
 //
@@ -14,13 +15,28 @@ import { isAgencyPath, loginPathFor } from "@/lib/login-path";
 // **ログイン画面は3系統ある**(analytics / イベント / 事務所)。イベントは表向き別サービス
 // として分離してあるので、/events から弾かれたユーザーを analytics ブランドの /login へ
 // 送らない。飛び先の判定は src/lib/login-path.ts の loginPathFor() に集約してある。
-// セッション Cookie はイベントと analytics で共有したままなので、**変わるのは飛び先だけで
-// 保護範囲(matcher)は動かない**。
+// **セッション Cookie はホストごとに独立している(host-onlyデフォルトのまま)ため、
+// analyticsでログインしていてもeventsでは別途ログインが必要**——変わるのは飛び先だけでなく、
+// eventsでは実際に未ログイン扱いになる(意図した挙動)。保護範囲(matcher)自体は動かない。
 //
 // このファイルは Edge ランタイムで動くため、Prisma を引き込むモジュール
 // (src/lib/agency/auth.ts など)を import してはいけない。
 export default async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  // サブドメインの裸の `/` だけ、host別の代表パスへ307リダイレクトする。
+  // 対象外のパスは従来どおりどのhostからでも到達可能なまま(パスレベルの
+  // 相互アクセス制限は今回のスコープ外。詳細はプラン4節参照)。
+  if (pathname === "/") {
+    const host = requestHost(req);
+    const target = host ? ROOT_REDIRECT_TARGETS.find(([h]) => h === host)?.[1] : undefined;
+    if (target) {
+      const url = new URL(target, req.url);
+      url.search = search;
+      return NextResponse.redirect(url);
+    }
+  }
+
   const agency = isAgencyPath(pathname);
 
   const token = await getToken({

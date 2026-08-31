@@ -22,7 +22,7 @@ flutter build apk --release
 ## アーキテクチャの要点 — Flutter + オンデバイス VOICEVOX
 
 - `lib/core/` が中核: `SessionController`（認証・セッション、ChangeNotifier）/ `CommentFeed`（socket.io 受信）/ `SpeechQueue` + `TtsEngine` + `VoicePool`（VOICEVOX 合成）/ `background_task_handler.dart`（`flutter_foreground_task` で画面オフ中も読み上げ継続）
-- 本番バックエンド URL は `lib/core/api_client.dart` にハードコード（`https://liveanalytics-production.up.railway.app`）
+- 本番バックエンド URL は `lib/core/api_client.dart` にハードコード（`https://api.livesidestage.com`）
 - 認証フロー: `POST /api/mobile/auth/google` → JWT → `GET /api/mobile/streamer` で apiKey 取得 → socket.io に `?apiKey=` で接続し `chat:{streamerId}` ルームの `chat:comment` を受信
 - Google サインインは **パッケージ名 + 署名 SHA-1 の組**を Google Cloud Console に Android OAuth クライアントとして登録しないと必ず `DEVELOPER_ERROR`(code 10) になる。`applicationId` を変えたら再登録が必要。手順は [README.md](README.md)
 - Apple サインインは Android にネイティブ実装が無いので **Custom Tab の web フロー**。client_id は Bundle ID ではなく **Services ID** で、Apple の `form_post` を受けて `intent://` へ中継する `/api/mobile/auth/apple/callback` が要る。**id_token ではなく authorizationCode をサーバーへ送る**（受け口の `SignInWithAppleCallback` Activity は exported なので他アプリからも叩け、id_token 単体では他人の応答を差し込まれる）。端末は `state` を、サーバーは code 交換と `nonce` の完全一致を検証する。`--dart-define=APPLE_SERVICES_ID=...` を渡していないビルドではボタン自体を出さない。手順は [README.md](README.md)
