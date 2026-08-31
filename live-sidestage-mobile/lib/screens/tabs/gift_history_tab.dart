@@ -10,6 +10,7 @@ import '../gift_sound_edit_screen.dart' show GiftThumbnail;
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/period_selector.dart';
+import '../widgets/user_avatar.dart';
 
 /// ギフト履歴タブ。閲覧専用(Web版にあるリネーム・非表示機能はここでは提供しない)。
 class GiftHistoryTab extends StatefulWidget {
@@ -238,10 +239,11 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
           for (final event in events)
             ListTile(
-              leading: GiftThumbnail(event.giftPictureUrl),
+              leading: UserAvatar(event.profileImageUrl),
               title: Row(
                 children: [
                   Expanded(
+                    flex: 2,
                     child: Text(
                       event.nickname,
                       maxLines: 1,
@@ -250,13 +252,23 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                   ),
                   const SizedBox(width: 8),
                   Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    flex: 3,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        Text(
-                          event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
-                          style: TextStyle(fontSize: 12, color: Theme.of(context).disabledColor),
+                        GiftThumbnail(event.giftPictureUrl),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              Text(
+                                event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
+                                style: TextStyle(fontSize: 12, color: Theme.of(context).disabledColor),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
