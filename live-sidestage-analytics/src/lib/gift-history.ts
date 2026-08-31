@@ -117,10 +117,28 @@ export async function queryGiftHistory(
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
+  // 表示名は「TikTok公式の日本語名(labelJa)があればそれ、無ければ受信生データ(英語)」を土台にし、
+  // GiftEditの手動リネームがあれば常にそれを最優先で上書きする(applyGiftEdit)。
+  // 一致キー(効果音・集計)には影響しない — ここは表示専用の差し替え。
+  const giftIds = [...new Set(pageRows.map((r) => r.giftId))];
+  const catalogRows = giftIds.length
+    ? await prisma.tiktokGiftCatalog.findMany({
+        where: { giftId: { in: giftIds } },
+        select: { giftId: true, labelJa: true },
+      })
+    : [];
+  const labelJaByGiftId = new Map(
+    catalogRows.filter((c) => c.labelJa).map((c) => [c.giftId, c.labelJa as string])
+  );
+
   const events = pageRows.map((row) => {
-    const { edits, receivedAt, ...base } = row;
+    const { edits, receivedAt, giftName, ...base } = row;
     const edit = edits[0] ? { giftName: edits[0].giftName, totalDiamonds: edits[0].totalDiamonds } : null;
-    return { ...applyGiftEdit({ ...base, edit }), receivedAt: receivedAt.toISOString() };
+    const displayGiftName = labelJaByGiftId.get(row.giftId) ?? giftName;
+    return {
+      ...applyGiftEdit({ ...base, giftName: displayGiftName, edit }),
+      receivedAt: receivedAt.toISOString(),
+    };
   });
 
   const total = events.reduce(
