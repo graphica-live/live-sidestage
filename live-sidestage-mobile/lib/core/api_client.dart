@@ -1,7 +1,8 @@
+import 'dart:async' show TimeoutException;
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../models/account_status.dart';
@@ -77,6 +78,12 @@ bool get isAppleSignInConfigured {
   final uri = Uri.tryParse(appleRedirectUri);
   return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 }
+
+/// 502/503/504やタイムアウトなど、サーバー側の一時的な不調で表示する文言。
+/// 原因(コールドスタート/デプロイ中/過負荷等)を問わず「今は繋がらないが
+/// 恒久故障ではない」ことだけをITリテラシーの低い利用者にも伝える。
+const String _serverBusyMessage = 'サーバーが混み合っているか、一時的に応答できない状態です。\n'
+    '時間をおいてから、もう一度お試しください。';
 
 class ApiException implements Exception {
   final String message;
@@ -546,17 +553,27 @@ class LiveAnalyticsApi {
         _ => http.post(uri, headers: headers, body: encodedBody),
       };
       response = await request.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      // サーバーが詰まっている/コールドスタート中などで応答が返ってこない状態。
+      // 通信環境の問題ではないので、切り分けが要らない易しい文言にする。
+      throw ApiException(_serverBusyMessage);
     } catch (e) {
       throw ApiException('サーバーに接続できませんでした。通信環境を確認してください。(${e.runtimeType})');
+    }
+
+    // Railwayが再起動中/デプロイ中に502等を返すとJSONではなくHTMLのエラーページになる。
+    // 利用者には「一時的な不調」とだけ伝え、切り分け用の詳細は開発者向けにログへ残す。
+    if (response.statusCode >= 500) {
+      debugPrint(
+        '[api_client] HTTP ${response.statusCode} at $path: ${_snippet(response.bodyBytes)}',
+      );
+      throw ApiException(_serverBusyMessage, statusCode: response.statusCode);
     }
 
     final Object? decoded;
     try {
       decoded = jsonDecode(utf8.decode(response.bodyBytes));
     } catch (_) {
-      // Railwayのコールドスタート中などJSONではなくHTMLのエラーページが返ることがある。
-      // 原因を切り分けられるよう、ステータスと本文の先頭を残す。以前はここで
-      // 握り潰していたため、ログイン失敗時に何が起きたのか追えなかった。
       throw ApiException(
         'サーバーの応答を解析できませんでした (HTTP ${response.statusCode}): ${_snippet(response.bodyBytes)}',
         statusCode: response.statusCode,
