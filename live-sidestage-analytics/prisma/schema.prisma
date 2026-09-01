@@ -279,11 +279,12 @@ model TiktokRoom {
   // (updateManyのwhereでhostUserId: nullを条件にして構造的に保証する)。
   hostUserId String?
 
-  streamers   Streamer[]
-  gifts       Gift[]
-  battles     TiktokBattle[]
-  watches     AgencyWatch[]
-  likeTallies LikeTally[]
+  streamers       Streamer[]
+  gifts           Gift[]
+  battles         TiktokBattle[]
+  battleHistories BattleHistory[]
+  watches         AgencyWatch[]
+  likeTallies     LikeTally[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
@@ -748,6 +749,82 @@ model TiktokBattle {
   @@index([roomId, startedAt])
   @@index([battleId])
   @@map("tiktok_battles")
+  @@schema("public")
+}
+
+// バトル履歴タブの確定スナップショット(非正規化キャッシュ)。
+//
+// バトル履歴タブは本来 TiktokBattle から時間窓を求め、その都度 Gift を集計している。
+// バトル終了から10分後、値が60秒間安定していたことを実測で確認できた場合にだけ、その集計結果を
+// ここへ1回だけ確定保存し、以後の読み出しを Gift 非依存にする(src/lib/battle-history-finalize.ts)。
+//
+// **行が存在すること自体が「確定済み」を意味する。** 未確定バトルは行を作らないので、
+// 読み出し側(src/lib/battle-history.ts)は行の有無だけで「確定テーブルを読む/ライブ集計へ
+// フォールバックする」を判定できる(専用フラグは不要)。確定はあくまで最適化であり、
+// 確定できなかったバトルの表示は従来どおりライブ集計で正しく出る。
+//
+// **avatarUrl 列は持たない。** resolveAvatarUrls が返すのは24時間で失効する署名付きURLなので、
+// 文字列としてスナップショットすると翌日リンク切れになる。anchorId/uniqueId だけを保存し、
+// 読み出し時に TiktokAvatarAsset から都度署名する(このテーブルは Gift 非依存の恒久キャッシュ)。
+model BattleHistory {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String
+
+  windowStart DateTime // resolveBattleWindowが確定したstart
+  windowEnd   DateTime // 同end(materializeはend!==nullの場合のみ実行するのでNOT NULL)
+  status      String   // "finished" | "cut_short"(resolveBattleWindowのstatus。liveは作らない)
+
+  selfScore         String?
+  opponentScore     String?
+  selfTotalDiamonds Int      @default(0) // Gift.totalDiamondsと同じInt
+  sourceUpdatedAt   DateTime // 集計に使った全room TiktokBattle行のupdatedAt最大値。新旧Worker並走時のCASに使う
+  finalizedAt       DateTime // 確定処理を実行した時刻
+
+  room         TiktokRoom                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participants BattleHistoryParticipant[]
+  contributors BattleHistoryContributor[]
+
+  @@unique([roomId, battleId])
+  @@index([roomId, windowStart])
+  @@map("battle_histories")
+  @@schema("public")
+}
+
+// 確定済みバトルの左右split表示1メンバー分。BattleParticipant(battle-history.ts)から
+// avatarUrl(署名付きで失効する)を除いた恒久部分だけを持つ。
+model BattleHistoryParticipant {
+  id              String  @id @default(cuid())
+  battleHistoryId String
+  side            String // "self" | "opponent"
+  position        Int // side内の表示順(生成順をそのまま保存)
+  anchorId        String
+  tiktokId        String?
+  displayId       String?
+  nickName        String?
+
+  battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+
+  @@unique([battleHistoryId, anchorId])
+  @@map("battle_history_participants")
+  @@schema("public")
+}
+
+// 確定済みバトルの貢献者(送信者ごとの合計)。個々のギフトイベントは持たない。
+// **GiftEdit.hidden(閲覧者=Streamer単位の非表示編集)は反映しない**(確定は閲覧者非依存)。
+model BattleHistoryContributor {
+  id              String   @id @default(cuid())
+  battleHistoryId String
+  uniqueId        String
+  nickname        String
+  giftCount       Int
+  totalDiamonds   Int
+  lastGiftAt      DateTime
+
+  battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+
+  @@unique([battleHistoryId, uniqueId])
+  @@map("battle_history_contributors")
   @@schema("public")
 }
 

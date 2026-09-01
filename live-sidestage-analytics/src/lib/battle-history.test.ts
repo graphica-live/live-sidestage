@@ -3,6 +3,7 @@ import {
   mergeMaxScores,
   resolveBattleScore,
   resolveBattleWindow,
+  resolveBattleSides,
   jstDateRangeToUtc,
   sumDiamondsPerWindow,
   giftMatchesListenerQuery,
@@ -316,5 +317,48 @@ describe("jstDateRangeToUtc", () => {
     const earlyMorningJst = new Date("2026-08-20T05:00:00+09:00");
     expect(earlyMorningJst.getTime()).toBeGreaterThanOrEqual(start.getTime());
     expect(earlyMorningJst.getTime()).toBeLessThan(end.getTime());
+  });
+});
+
+// 左右split表示のanchorId配列。ライブ集計(buildBattleListItems)と確定処理
+// (battle-history-finalize.ts)の両方がこの関数を使うので、ここが「確定前後で表示を変えない」
+// 保証の要になる。
+describe("resolveBattleSides", () => {
+  it("1v1は各サイド1人へ正規化する", () => {
+    const sides = resolveBattleSides(
+      { kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "5" },
+      "A"
+    );
+    expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B"] });
+  });
+
+  it("teamsは解決済みのチーム分けをそのまま使う", () => {
+    const sides = resolveBattleSides(
+      { kind: "teams", selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"], selfScore: "10" },
+      "A"
+    );
+    expect(sides).toEqual({ selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"] });
+  });
+
+  it("multiは「自分1人 vs 残り全員」として埋める", () => {
+    const sides = resolveBattleSides(
+      { kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" },
+      "A"
+    );
+    expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B", "C"] });
+  });
+
+  it("solo/unknown、および自分のanchorIdが未解決なら左右splitは作らない", () => {
+    expect(resolveBattleSides({ kind: "solo", selfScore: "10" }, "A")).toEqual({
+      selfTeamAnchorIds: null,
+      opponentTeamAnchorIds: null,
+    });
+    expect(resolveBattleSides({ kind: "unknown", selfScore: null }, "A")).toEqual({
+      selfTeamAnchorIds: null,
+      opponentTeamAnchorIds: null,
+    });
+    expect(
+      resolveBattleSides({ kind: "1v1", selfScore: null, opponentAnchorId: "B", opponentScore: null }, null)
+    ).toEqual({ selfTeamAnchorIds: null, opponentTeamAnchorIds: null });
   });
 });

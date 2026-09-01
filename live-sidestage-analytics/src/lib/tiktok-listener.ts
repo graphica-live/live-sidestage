@@ -41,6 +41,7 @@ import {
   type ParsedBattle,
 } from "./tiktok-battle";
 import { ensureAvatarCached } from "./avatar-storage";
+import { materializeBattleHistory } from "./battle-history-finalize";
 
 export type ListenerStatus =
   | "idle"
@@ -1258,6 +1259,32 @@ function toStorableRaw(data: unknown): Prisma.InputJsonValue {
   }
 }
 
+/**
+ * バトル履歴の確定を仕掛けるまでの猶予。
+ *
+ * Gift の保存は persistBattle と非同期・非awaitの別経路(saveGift(...).then(...))なので、
+ * END検知の瞬間には集計対象の Gift がまだ INSERT されていない。さらに armies の最終スコアが
+ * FINISH 後に届くこともある。10分待ってから確定処理へ入り、そこでさらに60秒の安定性チェックを行う。
+ */
+const BATTLE_FINALIZE_DELAY_MS = 10 * 60 * 1000;
+
+/**
+ * 10分後に確定処理を1回だけ fire-and-forget で呼ぶ。**await しない**(イベントループを塞がない)。
+ *
+ * 失敗・プロセス再起動で取りこぼしても、そのバトルは「未確定」のまま残るだけで、読み出しは
+ * 従来どおりライブ集計へ正しくフォールバックする。再試行は行わない
+ * (まとめて確定させたいときは scripts/backfill-battle-history.ts を実行する)。
+ */
+function scheduleBattleHistoryFinalize(roomId: string, battleId: string): void {
+  const timer = setTimeout(() => {
+    void materializeBattleHistory(roomId, battleId, new Date()).catch((err) => {
+      console.error(`[battle-history] 確定処理に失敗 roomId=${roomId} battleId=${battleId}`, err);
+    });
+  }, BATTLE_FINALIZE_DELAY_MS);
+  // 確定は最適化なので、プロセス終了をこのタイマーで引き延ばさない。
+  timer.unref?.();
+}
+
 async function persistBattle(
   roomId: string,
   streamerIds: string[],
@@ -1326,11 +1353,20 @@ async function persistBattle(
     ensureAvatarCached("battle_host", anchorId, profile.avatarUrl).catch(() => {});
   }
 
+  const notifyKind = battleNotifyDecision(previous, state);
+
+  // バトル履歴の確定(非正規化スナップショット)。**購読者の有無とは無関係**に、
+  // このプロセスでEND遷移を検知したときだけ仕掛ける。確定は表示の最適化であって
+  // 通知先の有無に依存しないため、streamerIdsの分岐の外に置く。
+  if (notifyKind === "ended") {
+    scheduleBattleHistoryFinalize(roomId, parsed.battleId);
+  }
+
   // バトル終了の即時表示。**DB書き込み完了後**に判定・通知する — 受信時点で送ると、
   // 端末の再取得(REST)がこのDB書き込みと競争して「終了したのに進行中」と表示される
-  // 瞬間ができてしまう。streamerIdsが空(購読者がいない部屋)なら通知先が無いので判定自体を省く。
+  // 瞬間ができてしまう。streamerIdsが空(購読者がいない部屋)なら通知先が無い。
   if (streamerIds.length > 0) {
-    const kind = battleNotifyDecision(previous, state);
+    const kind = notifyKind;
     if (kind) {
       enqueueBattleNotify(`${roomId}:${parsed.battleId}`, {
         streamerIds,

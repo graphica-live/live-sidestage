@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { queryBattles } from "./battle-history";
+import { queryBattles, queryBattleContributors } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 
 const SELF_TIKTOK_ID = "itest_battle_self";
@@ -662,5 +662,225 @@ describe("queryBattles listenerQuery", () => {
 
     expect(battles).toEqual([]);
     expect(hasMore).toBe(false);
+  });
+});
+
+// 確定済みスナップショット(BattleHistory)優先の読み出しと、未確定へのフォールバック。
+describe("queryBattles/queryBattleContributors 確定済みスナップショット", () => {
+  const FINAL_TIKTOK_ID = "itest_battle_final_self";
+  const SELF_ANCHOR = "final_host_self";
+  const OPP_ANCHOR = "final_host_opp";
+  const VIEWER = "itest-battle-final-viewer";
+
+  let finalRoomId: string;
+
+  beforeAll(async () => {
+    const room = await prisma.tiktokRoom.create({ data: { tiktokId: FINAL_TIKTOK_ID, hostUserId: SELF_ANCHOR } });
+    finalRoomId = room.id;
+  });
+
+  afterAll(async () => {
+    // TiktokBattle / Gift / BattleHistory はすべて room から cascade する。
+    await prisma.tiktokRoom.delete({ where: { id: finalRoomId } }).catch(() => {});
+  });
+
+  function finalBattleData(
+    battleId: string,
+    startedAt: Date,
+    overrides: Partial<Prisma.TiktokBattleUncheckedCreateInput> = {}
+  ): Prisma.TiktokBattleUncheckedCreateInput {
+    return {
+      roomId: finalRoomId,
+      battleId,
+      action: BATTLE_ACTION.FINISH,
+      startedAt,
+      startedAtEstimated: false,
+      endedAt: new Date(startedAt.getTime() + 5 * 60 * 1000),
+      durationSec: 300,
+      hostUserIds: [SELF_ANCHOR, OPP_ANCHOR],
+      hostScores: { [SELF_ANCHOR]: "111", [OPP_ANCHOR]: "222" },
+      hostProfiles: {
+        [SELF_ANCHOR]: { displayId: "live_self", nickName: "ライブ自分", avatarUrl: "https://example.invalid/a.jpg" },
+        [OPP_ANCHOR]: { displayId: "live_opp", nickName: "ライブ相手", avatarUrl: "https://example.invalid/b.jpg" },
+      },
+      raw: {},
+      ...overrides,
+    };
+  }
+
+  async function finalGift(overrides: Partial<Prisma.GiftUncheckedCreateInput>) {
+    return prisma.gift.create({
+      data: {
+        roomId: finalRoomId,
+        uniqueId: "final_listener",
+        nickname: "ライブ側リスナー",
+        giftId: 1,
+        giftName: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: 1,
+        dayKey: "2026-09-01",
+        receivedAt: new Date("2026-09-01T10:01:00Z"),
+        ...overrides,
+      },
+    });
+  }
+
+  /** 確定済み行を直接作る(値をライブ集計とわざと変えて、どちらを読んだか判別できるようにする)。 */
+  async function createHistory(
+    battleId: string,
+    startedAt: Date,
+    contributors: { uniqueId: string; nickname: string; totalDiamonds: number }[]
+  ) {
+    return prisma.battleHistory.create({
+      data: {
+        roomId: finalRoomId,
+        battleId,
+        windowStart: startedAt,
+        windowEnd: new Date(startedAt.getTime() + 5 * 60 * 1000),
+        status: "finished",
+        selfScore: "777",
+        opponentScore: "555",
+        selfTotalDiamonds: 4242,
+        sourceUpdatedAt: new Date("2026-09-01T10:10:00Z"),
+        finalizedAt: new Date("2026-09-01T10:16:00Z"),
+        participants: {
+          create: [
+            {
+              side: "self",
+              position: 0,
+              anchorId: SELF_ANCHOR,
+              tiktokId: FINAL_TIKTOK_ID,
+              displayId: "snap_self",
+              nickName: "確定自分",
+            },
+            {
+              side: "opponent",
+              position: 0,
+              anchorId: OPP_ANCHOR,
+              tiktokId: null,
+              displayId: "snap_opp",
+              nickName: "確定相手",
+            },
+          ],
+        },
+        contributors: {
+          create: contributors.map((c) => ({
+            uniqueId: c.uniqueId,
+            nickname: c.nickname,
+            giftCount: 1,
+            totalDiamonds: c.totalDiamonds,
+            lastGiftAt: new Date(startedAt.getTime() + 60 * 1000),
+          })),
+        },
+      },
+    });
+  }
+
+  it("確定済みバトルはスナップショットから読み、未確定バトルはライブ集計へフォールバックする", async () => {
+    const range = { start: new Date("2026-09-01T00:00:00Z"), end: new Date("2026-09-02T00:00:00Z") };
+    const finalizedStart = new Date("2026-09-01T10:00:00Z");
+    const liveStart = new Date("2026-09-01T09:00:00Z");
+
+    await prisma.tiktokBattle.create({ data: finalBattleData("mix_finalized", finalizedStart) });
+    await prisma.tiktokBattle.create({ data: finalBattleData("mix_live", liveStart) });
+    // 確定済みバトルの窓に入るギフト。**確定済みなら読まれない**(selfTotalDiamondsは4242のまま)。
+    await finalGift({ totalDiamonds: 3, receivedAt: new Date(finalizedStart.getTime() + 60 * 1000) });
+    // 未確定バトルの窓に入るギフト。こちらはライブ集計される。
+    await finalGift({ totalDiamonds: 8, receivedAt: new Date(liveStart.getTime() + 60 * 1000) });
+
+    await createHistory("mix_finalized", finalizedStart, [
+      { uniqueId: "snap_fan", nickname: "確定ファン", totalDiamonds: 4242 },
+    ]);
+
+    const { battles } = await queryBattles(finalRoomId, VIEWER, range);
+    const byId = new Map(battles.map((b) => [b.battleId, b]));
+
+    const finalized = byId.get("mix_finalized")!;
+    expect(finalized.selfScore).toBe("777");
+    expect(finalized.opponentScore).toBe("555");
+    expect(finalized.selfTotalDiamonds).toBe(4242);
+    expect(finalized.status).toBe("finished");
+    // 保存済みの識別情報(hostProfilesではなくスナップショット)を使う
+    expect(finalized.selfTeam!.map((p) => p.nickName)).toEqual(["確定自分"]);
+    expect(finalized.opponentTeam!.map((p) => p.nickName)).toEqual(["確定相手"]);
+    expect(finalized.opponent).toMatchObject({ count: 1, nickName: "確定相手", displayId: "snap_opp" });
+
+    const live = byId.get("mix_live")!;
+    expect(live.selfScore).toBe("111");
+    expect(live.opponentScore).toBe("222");
+    expect(live.selfTotalDiamonds).toBe(8);
+    expect(live.selfTeam!.map((p) => p.nickName)).toEqual(["ライブ自分"]);
+    expect(live.opponentTeam!.map((p) => p.nickName)).toEqual(["ライブ相手"]);
+  });
+
+  it("queryBattleContributorsは確定済みならGiftを見ずスナップショットをダイヤ降順で返す", async () => {
+    const startedAt = new Date("2026-09-01T14:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("contrib_finalized", startedAt) });
+    await finalGift({
+      uniqueId: "gift_only_user",
+      nickname: "Gift側だけの人",
+      totalDiamonds: 5,
+      receivedAt: new Date(startedAt.getTime() + 60 * 1000),
+    });
+    await createHistory("contrib_finalized", startedAt, [
+      { uniqueId: "snap_small", nickname: "少額", totalDiamonds: 10 },
+      { uniqueId: "snap_big", nickname: "多額", totalDiamonds: 500 },
+    ]);
+
+    const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_finalized");
+
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("finished");
+    expect(result!.contributors.map((c) => c.uniqueId)).toEqual(["snap_big", "snap_small"]);
+    expect(result!.contributors.map((c) => c.totalDiamonds)).toEqual([500, 10]);
+  });
+
+  it("queryBattleContributorsは未確定ならGiftのライブ集計へフォールバックする", async () => {
+    const startedAt = new Date("2026-09-01T15:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("contrib_live", startedAt) });
+    await finalGift({
+      uniqueId: "live_fan",
+      nickname: "ライブファン",
+      totalDiamonds: 12,
+      receivedAt: new Date(startedAt.getTime() + 60 * 1000),
+    });
+
+    const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_live");
+
+    expect(result!.contributors.map((c) => [c.uniqueId, c.totalDiamonds])).toEqual([["live_fan", 12]]);
+  });
+
+  it("listenerQueryは確定済み(貢献者スナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
+    const range = { start: new Date("2026-09-03T00:00:00Z"), end: new Date("2026-09-04T00:00:00Z") };
+    const finalizedStart = new Date("2026-09-03T10:00:00Z");
+    const liveStart = new Date("2026-09-03T09:00:00Z");
+    const otherStart = new Date("2026-09-03T08:00:00Z");
+
+    await prisma.tiktokBattle.create({ data: finalBattleData("q_finalized", finalizedStart) });
+    await prisma.tiktokBattle.create({ data: finalBattleData("q_live", liveStart) });
+    await prisma.tiktokBattle.create({ data: finalBattleData("q_nomatch", otherStart) });
+
+    // 確定済み側: 一致する貢献者はスナップショットにだけ居る(Giftには居ない)
+    await createHistory("q_finalized", finalizedStart, [
+      { uniqueId: "Hanako_Snapshot", nickname: "はなこ", totalDiamonds: 100 },
+    ]);
+    // 未確定側: 一致するギフトはGiftにだけ居る
+    await finalGift({
+      uniqueId: "hanako_live",
+      nickname: "はなこライブ",
+      receivedAt: new Date(liveStart.getTime() + 60 * 1000),
+    });
+    // 無関係なバトルにも別のギフトを置き、取りこぼしでなく非一致であることを明確にする
+    await finalGift({
+      uniqueId: "taro_other",
+      nickname: "たろう",
+      receivedAt: new Date(otherStart.getTime() + 60 * 1000),
+    });
+
+    const { battles } = await queryBattles(finalRoomId, VIEWER, range, { listenerQuery: "hanako" });
+
+    // startedAt降順(確定済みのほうが新しい)
+    expect(battles.map((b) => b.battleId)).toEqual(["q_finalized", "q_live"]);
   });
 });
