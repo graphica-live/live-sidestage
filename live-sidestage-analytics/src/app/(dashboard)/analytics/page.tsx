@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { BattleDetailModal } from "./BattleDetailModal";
-import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, type BattleListItem, type BattleStatus } from "./battle-types";
+import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 
 type Period = "day" | "week" | "month" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -845,20 +845,34 @@ export default function AnalyticsPage() {
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Avatar
-                            src={user.profileImageUrl}
-                            alt={user.nickname}
-                          />
+                          <a
+                            href={tiktokProfileUrl(user.uniqueId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="TikTokプロフィールを開く"
+                            className="shrink-0"
+                          >
+                            <Avatar
+                              src={user.profileImageUrl}
+                              alt={user.nickname}
+                            />
+                          </a>
                           <div className="min-w-0">
-                            <div className="font-medium truncate max-w-[140px] sm:max-w-none">
+                            <a
+                              href={tiktokProfileUrl(user.uniqueId)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="TikTokプロフィールを開く"
+                              className="font-medium truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
+                            >
                               {user.nickname}
-                            </div>
+                            </a>
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <span className="truncate max-w-[100px]">
                                 @{user.uniqueId}
                               </span>
                               <a
-                                href={`https://www.tiktok.com/@${user.uniqueId}`}
+                                href={tiktokProfileUrl(user.uniqueId)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-gray-500 hover:text-brand transition-colors shrink-0"
@@ -923,11 +937,25 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-2 min-w-0">
-                            <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
+                            <a
+                              href={tiktokProfileUrl(ev.uniqueId)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="TikTokプロフィールを開く"
+                              className="shrink-0"
+                            >
+                              <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
+                            </a>
                             <div className="min-w-0">
-                              <div className="font-medium truncate max-w-[120px] sm:max-w-[200px]">
+                              <a
+                                href={tiktokProfileUrl(ev.uniqueId)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="TikTokプロフィールを開く"
+                                className="font-medium truncate max-w-[120px] sm:max-w-[200px] hover:text-brand transition-colors block"
+                              >
                                 {ev.nickname}
-                              </div>
+                              </a>
                               <div className="text-xs text-gray-500 truncate max-w-[100px]">
                                 @{ev.uniqueId}
                               </div>

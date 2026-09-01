@@ -57,6 +57,10 @@ export const BATTLE_STATUS_LABELS: Record<BattleStatus, string> = {
   unknown: "判定不可",
 };
 
+export function tiktokProfileUrl(uniqueId: string): string {
+  return `https://www.tiktok.com/@${encodeURIComponent(uniqueId)}`;
+}
+
 export function Avatar({
   src,
   alt,
