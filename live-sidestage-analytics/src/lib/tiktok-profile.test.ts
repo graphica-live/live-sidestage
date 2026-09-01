@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   USER_NOT_FOUND_STATUS_CODE,
   classifyAccountExistence,
   extractVerifiedNickname,
   isAllowedAvatarUrl,
   parseProfileResponse,
+  sanitizeAvatarUrl,
 } from "./tiktok-profile";
 
 // 実際のレスポンス(2026-08 時点、https://www.tiktok.com/api-live/user/room/)を縮めたもの。
@@ -39,6 +40,50 @@ describe("isAllowedAvatarUrl", () => {
 
   it("極端に長い URL を弾く", () => {
     expect(isAllowedAvatarUrl(`https://p16.tiktokcdn.com/${"a".repeat(1200)}`)).toBe(false);
+  });
+});
+
+describe("sanitizeAvatarUrl", () => {
+  const ORIGINAL_ENDPOINT = process.env.MEDIA_BUCKET_ENDPOINT;
+  const ORIGINAL_BUCKET = process.env.MEDIA_BUCKET_NAME;
+
+  beforeEach(() => {
+    process.env.MEDIA_BUCKET_ENDPOINT = "https://t3.storageapi.dev";
+    process.env.MEDIA_BUCKET_NAME = "live-sidestage-media";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_ENDPOINT === undefined) delete process.env.MEDIA_BUCKET_ENDPOINT;
+    else process.env.MEDIA_BUCKET_ENDPOINT = ORIGINAL_ENDPOINT;
+    if (ORIGINAL_BUCKET === undefined) delete process.env.MEDIA_BUCKET_NAME;
+    else process.env.MEDIA_BUCKET_NAME = ORIGINAL_BUCKET;
+  });
+
+  it("TikTok CDN の URL は引き続き通す", () => {
+    expect(sanitizeAvatarUrl(REAL_AVATAR)).toBe(REAL_AVATAR);
+  });
+
+  it("自前ストレージ(Railway Bucket)の presigned URL を通す", () => {
+    const bucketUrl = "https://live-sidestage-media.t3.storageapi.dev/avatars/gift_sender/abc.webp?X-Amz-Signature=xyz";
+    expect(sanitizeAvatarUrl(bucketUrl)).toBe(bucketUrl);
+  });
+
+  it("bucket 名部分だけ似せた偽装 URL を弾く", () => {
+    expect(sanitizeAvatarUrl("https://evil.example.com/live-sidestage-media.t3.storageapi.dev/x")).toBe(null);
+    expect(sanitizeAvatarUrl("https://live-sidestage-media.t3.storageapi.dev.evil.example/x")).toBe(null);
+    expect(sanitizeAvatarUrl("https://other-bucket.t3.storageapi.dev/x")).toBe(null);
+  });
+
+  it("MEDIA_BUCKET_ENDPOINT/MEDIA_BUCKET_NAME 未設定なら Bucket URL を弾く", () => {
+    delete process.env.MEDIA_BUCKET_ENDPOINT;
+    delete process.env.MEDIA_BUCKET_NAME;
+    const bucketUrl = "https://live-sidestage-media.t3.storageapi.dev/avatars/gift_sender/abc.webp";
+    expect(sanitizeAvatarUrl(bucketUrl)).toBe(null);
+  });
+
+  it("null や不正な値は null のまま", () => {
+    expect(sanitizeAvatarUrl(null)).toBe(null);
+    expect(sanitizeAvatarUrl("https://evil.example.com/x.png")).toBe(null);
   });
 });
 
