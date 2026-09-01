@@ -9,6 +9,7 @@ import { evaluateEventReadiness, loadReadinessInput } from "@/event/readiness";
 import { resolveEventWindows } from "@/event/sessions";
 import { ENTRY_MODE_LABELS, FORMAT_LABELS } from "@/event/labels";
 import { getCoverImageUrl, isCoverUploadEnabled } from "@/lib/media-storage";
+import { canonicalOrigin } from "@/lib/canonical-origin";
 import { EventForm, type EventFormValues } from "../EventForm";
 import { EventAdminControls } from "./EventAdminControls";
 import { EventCoverUpload } from "./EventCoverUpload";
@@ -87,6 +88,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
         status={event.status}
         visibility={event.visibility}
         readinessTasks={readinessTasks}
+        eventsOrigin={canonicalOrigin("events")}
       />
 
       <div className="mt-4">

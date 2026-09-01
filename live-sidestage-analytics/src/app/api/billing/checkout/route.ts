@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 import { PAID_PLANS, priceIdForPlan, type PaidPlan } from "@/lib/plan/price-map";
+import { canonicalOrigin } from "@/lib/canonical-origin";
 
 const ACTIVE_STATUSES = new Set(["active", "trialing"]);
 
@@ -27,10 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `${plan}は現在購入できません` }, { status: 503 });
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL;
-  if (!baseUrl) {
-    return NextResponse.json({ error: "NEXTAUTH_URL is not configured" }, { status: 503 });
-  }
+  const baseUrl = canonicalOrigin("analytics");
 
   let stripe;
   try {

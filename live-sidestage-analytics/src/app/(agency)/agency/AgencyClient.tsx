@@ -42,7 +42,7 @@ function statusText(w: Watch): string {
   return STATUS_LABEL[w.listenerStatus] ?? w.listenerStatus;
 }
 
-export default function AgencyClient() {
+export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string }) {
   const [loading, setLoading] = useState(true);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [watches, setWatches] = useState<Watch[]>([]);
@@ -323,7 +323,7 @@ export default function AgencyClient() {
           </p>
           <pre className="bg-black/40 rounded p-3 overflow-x-auto text-[11px] font-mono text-gray-300">
 {`curl -H "x-api-key: <APIキー>" \\
-  "${typeof window !== "undefined" ? window.location.origin : ""}/api/agency/gifts/summary?from=2026-08-01&to=2026-08-21"`}
+  "${agencyOrigin}/api/agency/gifts/summary?from=2026-08-01&to=2026-08-21"`}
           </pre>
           <ul className="space-y-1 list-disc list-inside">
             <li>

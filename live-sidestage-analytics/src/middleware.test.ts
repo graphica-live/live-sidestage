@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { NextRequest } from "next/server";
 
 // middleware の matcher を「実際にデプロイされる文字列そのもの」で検証する。
 //
@@ -157,5 +158,68 @@ describe("middleware の matcher", () => {
     for (const path of ["/privacy-something", "/privacypolicy"]) {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
+  });
+});
+
+// canonical-origin.ts は *_ORIGIN 環境変数をモジュール読み込み時に評価するため、
+// 各テストで env を設定してからモジュールを再読み込みする(vi.resetModules)。
+describe("裸の `/` の host別リダイレクト", () => {
+  const ORIGIN_ENV_KEYS = [
+    "ANALYTICS_ORIGIN",
+    "EVENTS_ORIGIN",
+    "AGENCY_ORIGIN",
+    "OVERLAYS_ORIGIN",
+    "API_ORIGIN",
+  ] as const;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of ORIGIN_ENV_KEYS) savedEnv[key] = process.env[key];
+    process.env.ANALYTICS_ORIGIN = "https://analytics.livesidestage.com";
+    process.env.EVENTS_ORIGIN = "https://events.livesidestage.com";
+    process.env.AGENCY_ORIGIN = "https://agency.livesidestage.com";
+    process.env.OVERLAYS_ORIGIN = "https://overlays.livesidestage.com";
+    process.env.API_ORIGIN = "https://api.livesidestage.com";
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    for (const key of ORIGIN_ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+    vi.resetModules();
+  });
+
+  async function runMiddleware(host: string, pathname: string) {
+    const { default: mw } = await import("./middleware");
+    const req = new NextRequest(`https://example.invalid${pathname}`, {
+      headers: { "x-forwarded-host": host },
+    });
+    return mw(req);
+  }
+
+  it("events.livesidestage.com の裸の `/` は /events へ307リダイレクトする", async () => {
+    const res = await runMiddleware("events.livesidestage.com", "/");
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/events");
+  });
+
+  it("agency.livesidestage.com の裸の `/` は /agency へ307リダイレクトする", async () => {
+    const res = await runMiddleware("agency.livesidestage.com", "/");
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/agency");
+  });
+
+  it("overlays.livesidestage.com の裸の `/` は /overlays へ307リダイレクトする", async () => {
+    const res = await runMiddleware("overlays.livesidestage.com", "/");
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/overlays");
+  });
+
+  it("裸の `/` 以外のパスはリダイレクト対象にならない", async () => {
+    const res = await runMiddleware("events.livesidestage.com", "/events");
+    // root redirect は発火せず、通常の認証チェック(未ログイン→ログイン画面)へ進む
+    expect(new URL(res.headers.get("location") ?? "https://example.invalid/").pathname).not.toBe("/events");
   });
 });

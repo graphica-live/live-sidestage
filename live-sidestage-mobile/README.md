@@ -57,10 +57,10 @@ Android にはネイティブの Apple 認証が無いので、Custom Tab で **
 
 Services ID の設定で以下を登録する。
 
-- Domains and Subdomains: `liveanalytics-production.up.railway.app`
+- Domains and Subdomains: `api.livesidestage.com`
 - Return URLs:
-  - `https://liveanalytics-production.up.railway.app/api/mobile/auth/apple/callback` （モバイル用）
-  - `https://liveanalytics-production.up.railway.app/api/auth/callback/apple` （**将来 Web(NextAuth) に足すとき用**。今は未使用だが、先に登録しておけば後から Apple 側を触らずに済む）
+  - `https://api.livesidestage.com/api/mobile/auth/apple/callback` （モバイル用）
+  - `https://analytics.livesidestage.com/api/auth/callback/apple` （**将来 Web(NextAuth) に足すとき用**。今は未使用だが、先に登録しておけば後から Apple 側を触らずに済む）
 
 ### 2. バックエンド（Railway の web サービス）
 
@@ -79,7 +79,7 @@ Services ID の設定で以下を登録する。
 ```bash
 flutter build apk --release \
   --dart-define=APPLE_SERVICES_ID=com.liveanalytics.live-sidestage.signin \
-  --dart-define=APPLE_REDIRECT_URI=https://liveanalytics-production.up.railway.app/api/mobile/auth/apple/callback
+  --dart-define=APPLE_REDIRECT_URI=https://api.livesidestage.com/api/mobile/auth/apple/callback
 ```
 
 `APPLE_REDIRECT_URI` は省略すると `API_BASE_URL` から組み立てるので、本番URLのままなら

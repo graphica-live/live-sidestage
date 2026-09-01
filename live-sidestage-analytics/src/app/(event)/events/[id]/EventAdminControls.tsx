@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { STATUS_CLASSES, STATUS_LABELS } from "@/event/labels";
@@ -72,12 +72,14 @@ export function EventAdminControls({
   status,
   visibility,
   readinessTasks,
+  eventsOrigin,
 }: {
   id: string;
   slug: string;
   status: string;
   visibility: string;
   readinessTasks: ReadinessTask[];
+  eventsOrigin: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -89,12 +91,7 @@ export function EventAdminControls({
   const blocked = readinessTasks.some((task) => task.blocking);
   const showTasks = SHOW_TASKS_IN.includes(status as EventStatus);
 
-  // origin はサーバーレンダリング時には存在しない。初回レンダーで参照すると
-  // サーバー(相対パス)とクライアント(絶対URL)で出力が食い違い、hydration エラーになる。
-  // マウント後に埋めることで初回レンダーをサーバーと一致させる。
-  const [origin, setOrigin] = useState("");
-  useEffect(() => setOrigin(window.location.origin), []);
-  const publicUrl = `${origin}/e/${slug}`;
+  const publicUrl = `${eventsOrigin}/e/${slug}`;
 
   async function changeStatus(to: EventStatus) {
     setBusy(true);
