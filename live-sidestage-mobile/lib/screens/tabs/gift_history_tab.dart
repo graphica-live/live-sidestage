@@ -256,8 +256,6 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        GiftThumbnail(event.giftPictureUrl),
-                        const SizedBox(width: 4),
                         Flexible(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
@@ -270,6 +268,8 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                             ],
                           ),
                         ),
+                        const SizedBox(width: 4),
+                        GiftThumbnail(event.giftPictureUrl),
                       ],
                     ),
                   ),
