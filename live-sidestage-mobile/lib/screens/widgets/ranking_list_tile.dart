@@ -13,8 +13,22 @@ class RankingListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isTopThree = rank <= 3;
+
+    final cardTheme = theme.cardTheme;
+    final baseShape = cardTheme.shape as RoundedRectangleBorder?;
+    final shape = isTopThree && baseShape != null
+        ? baseShape.copyWith(side: BorderSide(color: colorScheme.primary, width: 1.5))
+        : null;
+
     return Card(
+      shape: shape,
       child: ListTile(
+        contentPadding: isTopThree
+            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 4)
+            : null,
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -23,17 +37,26 @@ class RankingListTile extends StatelessWidget {
               child: Text(
                 '$rank',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: isTopThree ? colorScheme.primary : null,
+                ),
               ),
             ),
             const SizedBox(width: 8),
             UserAvatar(entry.profileImageUrl),
           ],
         ),
-        title: Text(entry.nickname),
+        title: Text(
+          entry.nickname,
+          style: isTopThree ? theme.textTheme.titleLarge : null,
+        ),
         trailing: Text(
           '${entry.totalDiamonds}コイン',
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: isTopThree ? 20 : 18,
+          ),
         ),
       ),
     );

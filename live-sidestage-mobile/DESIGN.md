@@ -65,6 +65,7 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 ### Primary
 - **Tangerine Seed** (`#D9591F`): `ColorScheme.fromSeed(seedColor: ...)`(`main.dart`の`_buildTheme()`)で指定されるシード色。ここから`ColorScheme.fromSeed`がprimary/on-primary/surface等のロールトークンを自動生成する。個々のロールの正確な値はランタイム計算に委ねられており、コード上に固定hexとして明示的なオーバーライドは無い。FilledButton(読み上げ開始ボタン等)・NavigationBarの選択インジケータ・Cardの縁がこのprimaryロールを直接使う。
 - 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。
+- ランキング上位3件の強調枠線など、状態伝達以外のアクセント表現にも`colorScheme.primary`を直接再利用してよい(Signal-Only Color Ruleの対象はgreen/orange/red/greyの4色のみ)。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
 - **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。
@@ -175,6 +176,11 @@ FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデ
 
 ### List Items
 - **Style:** コメント表示に標準`ListTile`を使用。`CircleAvatar`(プロフィール画像 or 人型アイコンのフォールバック)+ニックネーム(title)+コメント本文(subtitle)。1pxの`Divider`で区切る。
+
+### Ranking List(貢献タブ・バトル履歴貢献者展開共通)
+- **Style:** `RankingListTile`(`lib/screens/widgets/ranking_list_tile.dart`)が貢献タブとバトル履歴タブの貢献者展開(`showModalBottomSheet`)の両方で共有される(サーバー側が同じ形状のデータを返すため)。
+- **上位3件の強調(2026-09〜):** 1〜3位は`colorScheme.primary`の1.5px枠線(通常はテーマの`line`色1px)と、一段階大きいテキストロール(ニックネーム=`titleLarge`相当、コイン数=18→20px)で目立たせる。新規の色・アイコン(トロフィー等)は追加しない。Cardの`elevation`・`surfaceTintColor`はテーマの`CardThemeData`から一切変更せず(Card Deck Rule)、変えるのは枠線色とテキストサイズのみ。
+- バトル履歴タブの貢献者展開でも同じ強調が自動適用される。両画面とも「ギフト貢献ランキング」という同一文脈のため意図した挙動であり、オプトアウトの仕組みは持たない。
 
 ### Status Bar(Signature Component)
 - **Description:** ホーム画面上部に常駐する接続状態バー。背景は状態色を`withValues(alpha: 0.12)`で薄く敷き、状態色の小さな`Icon(Icons.circle)`ドット+ラベルテキストを横並びに配置。エラー時のみ詳細メッセージを右側に省略表示で追加する。このアプリで最もアプリらしい、独自に設計された唯一のコンポーネント。
