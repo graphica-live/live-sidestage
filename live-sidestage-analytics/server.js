@@ -137,6 +137,16 @@ app.prepare().then(() => {
 
   // ブラウザ製オーバーレイウィジェット: ?token=overlayToken → overlay:{streamerId} ルーム
   // Android/iOSアプリ: ?apiKey=streamer.apiKey → chat:{streamerId} ルーム
+  //
+  // クライアントが err.message ではなく err.data で理由を判別できるよう、
+  // 機械可読な code を付与する（err.message は互換のため "unauthorized" のまま固定）。
+  // モバイル側は comment_feed.dart がこの code を日本語メッセージへ変換する。
+  const unauthorizedError = (code) => {
+    const err = new Error("unauthorized");
+    err.data = code;
+    return err;
+  };
+
   io.use(async (socket, next) => {
     const { token, apiKey } = socket.handshake.query ?? {};
 
@@ -147,13 +157,13 @@ app.prepare().then(() => {
           where: { overlayToken: token },
           select: { id: true },
         });
-        if (!streamer) return next(new Error("unauthorized"));
+        if (!streamer) return next(unauthorizedError("INVALID_OVERLAY_TOKEN"));
         socket.data.streamerId = streamer.id;
         socket.data.room = `overlay:${streamer.id}`;
         return next();
       } catch (err) {
         console.error("[socket] auth error:", err);
-        return next(new Error("unauthorized"));
+        return next(unauthorizedError("INVALID_OVERLAY_TOKEN"));
       }
     }
 
@@ -163,17 +173,17 @@ app.prepare().then(() => {
           where: { apiKey, verified: true },
           select: { id: true },
         });
-        if (!streamer) return next(new Error("unauthorized"));
+        if (!streamer) return next(unauthorizedError("INVALID_API_KEY"));
         socket.data.streamerId = streamer.id;
         socket.data.room = `chat:${streamer.id}`;
         return next();
       } catch (err) {
         console.error("[socket] auth error:", err);
-        return next(new Error("unauthorized"));
+        return next(unauthorizedError("INVALID_API_KEY"));
       }
     }
 
-    return next(new Error("unauthorized"));
+    return next(unauthorizedError("MISSING_CREDENTIALS"));
   });
 
   io.on("connection", (socket) => {
