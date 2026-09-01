@@ -10,6 +10,7 @@ import '../../core/tiktok_profile.dart';
 import '../gift_sound_edit_screen.dart' show GiftThumbnail;
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/user_avatar.dart';
 
@@ -232,63 +233,83 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text(
                 '合計 ${result.total.count}件 / ${result.total.diamonds}コイン(LIVE Sidestage登録後データ)',
-                style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           if (!_loading && result != null && events.isEmpty)
             const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
-          for (final event in events)
-            Card(
-              child: ListTile(
-              leading: UserAvatar(event.profileImageUrl),
-              title: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      event.nickname,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    flex: 3,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Column(
+          if (events.isNotEmpty)
+            ListPanel(
+              children: [
+                for (final event in events)
+                  InkWell(
+                    onTap: () => openTiktokProfile(context, event.uniqueId),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          UserAvatar(event.profileImageUrl),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              event.nickname,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            flex: 3,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      Text(
+                                        event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
+                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                GiftThumbnail(event.giftPictureUrl),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
                               Text(
-                                event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
-                                style: TextStyle(fontSize: 12, color: Theme.of(context).disabledColor),
+                                '${event.totalDiamonds}コイン',
+                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              Text(
+                                _formatTime(event.receivedAt),
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        GiftThumbnail(event.giftPictureUrl),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
-              trailing: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('${event.totalDiamonds}コイン', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(
-                    _formatTime(event.receivedAt),
-                    style: TextStyle(fontSize: 11, color: Theme.of(context).disabledColor),
-                  ),
-                ],
-              ),
-              onTap: () => openTiktokProfile(context, event.uniqueId),
-              ),
+              ],
             ),
         ],
       ),

@@ -22,19 +22,19 @@ const _entry = GiftRankingEntry(
 );
 
 void main() {
-  testWidgets('rankによらずCardの枠線は変わらない', (tester) async {
+  testWidgets('rankによらず行のパディングは変わらない', (tester) async {
     for (final rank in [1, 2, 3, 4]) {
       await tester.pumpWidget(wrap(RankingListTile(rank: rank, entry: _entry)));
-      final card = tester.widget<Card>(find.byType(Card));
-      expect(card.shape, isNull, reason: 'rank $rank');
+      final padding = tester.widget<Padding>(find.byType(Padding).first);
+      expect(padding.padding, const EdgeInsets.symmetric(vertical: 10), reason: 'rank $rank');
     }
   });
 
-  testWidgets('rankによらずコイン数は🪙表記・フォントサイズ14のまま', (tester) async {
+  testWidgets('rankによらずコイン数は🪙表記・太字のまま', (tester) async {
     for (final rank in [1, 4]) {
       await tester.pumpWidget(wrap(RankingListTile(rank: rank, entry: _entry)));
       final text = tester.widget<Text>(find.text('🪙1,000'));
-      expect(text.style?.fontSize, 14, reason: 'rank $rank');
+      expect(text.style?.fontWeight, FontWeight.w700, reason: 'rank $rank');
     }
   });
 

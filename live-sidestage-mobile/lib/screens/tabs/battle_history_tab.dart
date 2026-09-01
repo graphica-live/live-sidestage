@@ -11,6 +11,7 @@ import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
@@ -341,23 +342,52 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             ),
           if (!_loading && result != null && battles.isEmpty)
             const EmptyListNotice(message: 'この期間はバトルがありません'),
-          for (final battle in battles)
-            Card(
-              child: ListTile(
-                onTap: () => _showContributors(battle),
-                title: Text('vs ${_opponentLabel(battle.opponent)}'),
-                subtitle: Text('${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}'),
-                trailing: Text(
-                  '${_formatScore(battle.selfScore)} - ${_formatScore(battle.opponentScore)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
+          if (battles.isNotEmpty)
+            ListPanel(
+              children: [
+                for (final battle in battles)
+                  InkWell(
+                    onTap: () => _showContributors(battle),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('vs ${_opponentLabel(battle.opponent)}'),
+                                Text(
+                                  '${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}',
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '${_formatScore(battle.selfScore)} - ${_formatScore(battle.opponentScore)}',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           if (result?.hasMore ?? false)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Center(
-                child: Text('直近分のみ表示', style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12)),
+                child: Text(
+                  '直近分のみ表示',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
               ),
             ),
         ],
@@ -443,10 +473,13 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
               const EmptyListNotice(message: 'このバトルの貢献者はいません'),
             if (contributors != null && contributors.isNotEmpty)
               Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: contributors.length,
-                  itemBuilder: (context, i) => RankingListTile(rank: i + 1, entry: contributors[i]),
+                child: SingleChildScrollView(
+                  child: ListPanel(
+                    children: [
+                      for (var i = 0; i < contributors.length; i++)
+                        RankingListTile(rank: i + 1, entry: contributors[i]),
+                    ],
+                  ),
                 ),
               ),
             const SizedBox(height: 8),
