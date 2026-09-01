@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
+import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
 import 'package:live_sidestage_mobile/screens/home_screen.dart' show SpeechState;
 import 'package:live_sidestage_mobile/screens/tabs/settings_tab.dart';
@@ -33,6 +34,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
       providers: [
         ChangeNotifierProvider<AppConfigStore>(create: (_) => AppConfigStore()),
         ChangeNotifierProvider<SessionController>.value(value: controller),
+        ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -77,7 +79,7 @@ void main() {
 
   testWidgets('設定のログアウトの上に利用規約の行がある', (tester) async {
     await _pumpSettings(tester);
-    await tester.ensureVisible(find.text('ログアウト'));
+    await tester.scrollUntilVisible(find.text('ログアウト'), 100);
     await tester.pumpAndSettle();
 
     final terms = find.text('VOICEVOX利用規約');
@@ -92,7 +94,7 @@ void main() {
 
   testWidgets('設定の行を押すと本文とリンクが出る', (tester) async {
     await _pumpSettings(tester);
-    await tester.ensureVisible(find.text('VOICEVOX利用規約'));
+    await tester.scrollUntilVisible(find.text('VOICEVOX利用規約'), 100);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('VOICEVOX利用規約'));

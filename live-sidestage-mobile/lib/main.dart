@@ -14,6 +14,7 @@ import 'core/battle_activity.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
 import 'core/session_controller.dart';
+import 'core/theme_mode_store.dart';
 import 'core/version_compare.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -159,20 +160,27 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
         ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
         ChangeNotifierProvider(create: (_) => AccountStatusStore()),
+        ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
         // バトル終了(またはEND後のスコア確定)をバトル履歴タブへ伝えるだけの通知。
         ChangeNotifierProvider(create: (_) => BattleActivityNotifier()),
       ],
-      child: MaterialApp(
-        title: 'LIVE Sidestage',
-        theme: _buildTheme(Brightness.light),
-        darkTheme: _buildTheme(Brightness.dark),
-        // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
-        // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('ja')],
-        home: const AuthGate(),
+      child: Builder(
+        builder: (context) {
+          final themeMode = context.watch<ThemeModeStore>().themeMode;
+          return MaterialApp(
+            title: 'LIVE Sidestage',
+            theme: _buildTheme(Brightness.light),
+            darkTheme: _buildTheme(Brightness.dark),
+            themeMode: themeMode,
+            // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
+            // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            supportedLocales: const [Locale('ja')],
+            home: const AuthGate(),
+          );
+        },
       ),
     );
   }
