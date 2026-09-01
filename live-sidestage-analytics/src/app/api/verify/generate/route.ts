@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
   }
 
   // 登録は無条件で許可する(他アカウントとの重複登録も可)。
-  // 実データ(コイン数・ギフト履歴)へのアクセスはBIO認証完了まで別途ブロックされる。
+  // 実データ(コイン数・ギフト履歴)のBIO認証ゲートはUI側(analytics/page.tsx の
+  // BIO_VERIFICATION_GATE_ENABLED)で現在無効化中。復活時はこのコメントも合わせて戻す。
   const code = generateVerificationCode();
 
   const streamer = await prisma.streamer.upsert({
