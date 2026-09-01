@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
+import '../../core/tiktok_profile.dart';
 import '../gift_sound_edit_screen.dart' show GiftThumbnail;
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
@@ -287,6 +288,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                   ),
                 ],
               ),
+              onTap: () => openTiktokProfile(context, event.uniqueId),
               ),
             ),
         ],
