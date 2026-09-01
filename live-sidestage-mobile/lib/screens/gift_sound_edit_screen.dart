@@ -272,7 +272,7 @@ class _GiftSoundEditScreenState extends State<GiftSoundEditScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = describeError(e);
         _saving = false;
       });
     }
@@ -488,7 +488,6 @@ enum _SoundSourceChoice { localFile, soundEffectLab, myInstants }
 /// 安い帯ほどギフトの種類が多く、ざっくりした区切りだと1つのチップに大半が
 /// 残ってしまうので、下ほど刻みを細かくする。チップは横スクロールで並べる。
 enum _CoinRange {
-  all('すべて', 0, null),
   tier1('1〜9', 1, 9),
   tier2('10〜49', 10, 49),
   tier3('50〜99', 50, 99),
@@ -511,6 +510,29 @@ enum _CoinRange {
   /// （`freestyle` の 1c と 1800c）はどちらの帯でも見つかってほしい。
   bool matches(GiftCandidate gift) => gift.overlapsCoins(min, max);
 }
+
+/// [_CoinRange] の10段階は片手操作の初期表示としては選択肢が多すぎるため、
+/// まず4つの粗い区分を見せ、タップした区分の詳細レンジだけを展開する
+/// (progressive disclosure)。フィルタリング自体は既存の[_CoinRange]のロジックを
+/// そのまま使う。
+enum _CoinGroup {
+  all('すべて', null, null),
+  low('〜99', 1, 99),
+  mid('100〜999', 100, 999),
+  high('1000〜', 1000, null);
+
+  const _CoinGroup(this.label, this.min, this.max);
+
+  final String label;
+  final int? min;
+  final int? max;
+}
+
+const Map<_CoinGroup, List<_CoinRange>> _coinTiersByGroup = {
+  _CoinGroup.low: [_CoinRange.tier1, _CoinRange.tier2, _CoinRange.tier3],
+  _CoinGroup.mid: [_CoinRange.tier4, _CoinRange.tier5, _CoinRange.tier6],
+  _CoinGroup.high: [_CoinRange.tier7, _CoinRange.tier8, _CoinRange.tier9],
+};
 
 /// ギフト候補が検索文字列に一致するか。
 ///
@@ -629,8 +651,19 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
   List<GiftCandidate>? _candidates;
   String? _error;
   bool _needsRelogin = false;
-  _CoinRange _coinRange = _CoinRange.all;
+  _CoinGroup _coinGroup = _CoinGroup.all;
+
+  /// 展開した粗い区分の中で、さらに詳細レンジを選んでいるとき。null なら
+  /// 区分全体(粗いレンジ)で絞り込む。
+  _CoinRange? _coinTier;
   bool _coinRangeAscending = true;
+
+  bool _coinMatches(GiftCandidate gift) {
+    final tier = _coinTier;
+    if (tier != null) return tier.matches(gift);
+    if (_coinGroup == _CoinGroup.all) return true;
+    return gift.overlapsCoins(_coinGroup.min ?? 0, _coinGroup.max);
+  }
 
   @override
   void initState() {
@@ -653,7 +686,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
     final all = _candidates ?? const <GiftCandidate>[];
     final query = _query;
     final list = all
-        .where(_coinRange.matches)
+        .where(_coinMatches)
         .where((g) => !isBlockedGift(g))
         .where((g) => matchesGiftQuery(g, query))
         .toList();
@@ -781,16 +814,18 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    for (final range in _CoinRange.values) ...[
+                    for (final group in _CoinGroup.values) ...[
                       ChoiceChip(
-                        label: Text(range.label),
-                        selected: _coinRange == range,
-                        // 同じ帯をもう一度選んだら昇順/降順を反転。違う帯を選んだら昇順に戻す。
+                        label: Text(group.label),
+                        selected: _coinGroup == group,
+                        // 同じ区分をもう一度選んだら昇順/降順を反転。違う区分を選んだら
+                        // 昇順に戻し、詳細レンジの選択は解除する(区分全体で絞り込む)。
                         onSelected: (_) => setState(() {
-                          if (_coinRange == range) {
+                          if (_coinGroup == group) {
                             _coinRangeAscending = !_coinRangeAscending;
                           } else {
-                            _coinRange = range;
+                            _coinGroup = group;
+                            _coinTier = null;
                             _coinRangeAscending = true;
                           }
                         }),
@@ -800,10 +835,40 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                   ],
                 ),
               ),
+              // 粗い区分をタップすると、その配下の詳細レンジを次の行に展開する
+              // (progressive disclosure)。同じ横スクロール行に続けて置くと、
+              // 展開されたことに気づかれず埋もれてしまうため行を分ける。
+              // もう一度タップして詳細レンジを解除すれば区分全体の絞り込みに戻る。
+              if (_coinTiersByGroup[_coinGroup] case final tiers?) ...[
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      for (final tier in tiers) ...[
+                        ChoiceChip(
+                          label: Text(tier.label),
+                          selected: _coinTier == tier,
+                          onSelected: (_) => setState(() {
+                            if (_coinTier == tier) {
+                              _coinTier = null;
+                            } else {
+                              _coinTier = tier;
+                              _coinRangeAscending = true;
+                            }
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               // 絞り込んでいる最中に出すと選択肢として紛らわしいので、
               // 素の状態のときだけ見せる。
-              if (query.isEmpty && _coinRange == _CoinRange.all)
+              if (query.isEmpty && _coinGroup == _CoinGroup.all)
                 ListTile(
                   leading: const Icon(Icons.all_inclusive),
                   title: const Text('すべてのギフト'),
@@ -905,7 +970,8 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
               TextButton.icon(
                 onPressed: () => setState(() {
                   _searchController.clear();
-                  _coinRange = _CoinRange.all;
+                  _coinGroup = _CoinGroup.all;
+                  _coinTier = null;
                   _coinRangeAscending = true;
                 }),
                 icon: const Icon(Icons.filter_alt_off_outlined),
@@ -1110,7 +1176,7 @@ class _RemoteSearchScreenState extends State<_RemoteSearchScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = describeError(e);
         // 直前の検索結果を残すと、エラー文と噛み合わない一覧が
         // 新しいキーワードの結果に見えてしまう。
         _results = null;

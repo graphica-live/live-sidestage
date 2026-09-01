@@ -22,6 +22,8 @@ class TtsTab extends StatelessWidget {
     required this.onToggle,
     required this.roomSwitching,
     required this.switchingToTiktokId,
+    required this.showFirstRunGuide,
+    required this.onDismissFirstRunGuide,
   });
 
   final List<Comment> comments;
@@ -41,6 +43,10 @@ class TtsTab extends StatelessWidget {
   final bool roomSwitching;
   final String? switchingToTiktokId;
 
+  /// オンボーディング後、初回だけ出す誘導バナーを見せるか。
+  final bool showFirstRunGuide;
+  final VoidCallback onDismissFirstRunGuide;
+
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppConfigStore>();
@@ -49,6 +55,8 @@ class TtsTab extends StatelessWidget {
       children: [
         FeatureStatusBar(status: status, errors: errors, notice: notice),
         if (store.configFromFutureVersion) const ConfigTooNewBanner(),
+        if (showFirstRunGuide)
+          _FirstRunGuideBanner(onDismiss: onDismissFirstRunGuide),
         FeatureStartButton(
           started: started,
           busy: busy,
@@ -97,7 +105,15 @@ class TtsTab extends StatelessWidget {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final c = comments[index];
+                    // Signal-Only Color Ruleの例外(DESIGN.md参照)。装飾ではなく
+                    // 「今読み上げ中」という状態を伝えるための着色。
+                    final isNowSpeaking =
+                        speech.nowSpeakingCommentKey != null &&
+                        c.identityKey == speech.nowSpeakingCommentKey;
                     return ListTile(
+                      tileColor: isNowSpeaking
+                          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
+                          : null,
                       leading: CircleAvatar(
                         backgroundImage:
                             c.profilePictureUrl != null ? NetworkImage(c.profilePictureUrl!) : null,
@@ -112,6 +128,41 @@ class TtsTab extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// オンボーディング直後、何から始めればいいか分からず離脱するのを防ぐための
+/// 一度きりの誘導。状態伝達ではないため、Signal-Only Color Ruleの色は使わない。
+class _FirstRunGuideBanner extends StatelessWidget {
+  const _FirstRunGuideBanner({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 18, color: Colors.grey),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'まず設定タブでボイスを選びましょう',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: '閉じる',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -60,3 +60,29 @@ Future<void> confirmAndDeleteAccount(
   await configStore.resetToDefaults();
   await SoundLibrary().deleteAll();
 }
+
+/// ログアウト前の確認ダイアログ。配信中に運用画面(TTS/サウンドタブ)から
+/// 誤タップで即ログアウトすると、読み上げ・効果音が配信中に無言で止まる
+/// (アカウント削除には確認があるのに、ログアウトには無かった)。
+///
+/// 確認したら true を返す。呼び出し側でログアウトの実処理を行う。
+Future<bool> confirmLogout(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('ログアウトしますか？'),
+      content: const Text('読み上げ・効果音が停止します。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('キャンセル'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('ログアウト'),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}

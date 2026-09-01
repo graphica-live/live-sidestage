@@ -138,4 +138,11 @@ class Comment {
   /// メインisolate側でエモートが静かに消える。
   List<Map<String, Object?>> emotesToMaps() =>
       emotes.map((e) => e.toMap()).toList(growable: false);
+
+  /// 同一コメントを isolate をまたいで識別するためのキー。
+  ///
+  /// UI(メインisolate)の[Comment]とバックグラウンドisolateの[Comment]は、
+  /// 同じイベントでも `Comment.tryParse` で別々に再構築された別インスタンスなので
+  /// `identical()` は使えない。このキーで代わりに同一性を判定する。
+  String get identityKey => '$streamerId|$uniqueId|${receivedAt.toIso8601String()}|$comment';
 }

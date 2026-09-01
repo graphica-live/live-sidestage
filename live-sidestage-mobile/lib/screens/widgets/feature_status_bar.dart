@@ -84,7 +84,12 @@ class ConfigTooNewBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: const Row(
         children: [
-          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.red),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: Colors.red,
+            semanticLabel: '警告',
+          ),
           SizedBox(width: 8),
           Expanded(
             child: SelectableText(

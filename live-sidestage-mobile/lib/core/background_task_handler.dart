@@ -463,6 +463,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
       'enabled': _speechQueue.enabled,
       'randomVoice': _speechQueue.randomVoice,
       'nowSpeakingCharacterName': _speechQueue.nowSpeakingCharacterName,
+      'nowSpeakingCommentKey': _speechQueue.nowSpeakingCommentKey,
       'errorMessage': _speechQueue.errorMessage,
     });
   }
