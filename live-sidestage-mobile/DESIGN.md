@@ -53,17 +53,18 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 現状これは意図的にミニマルへ振り切ったデザインシステムというより、機能実装を優先した結果として「Material3をほぼ素のまま使う」状態にある。今後の一般公開に向けては、この北極星(静かな信頼性)を保ったまま、ブランドとしての意図的な選択(seedカラーの再検討、ダークテーマ対応など)を積み増していくのが自然な発展方向。
 
 **Key Characteristics:**
-- Material3のColorScheme/TextThemeにほぼ全面依存し、独自トークンをほとんど持たない
+- Material3のColorScheme/TextThemeにほぼ全面依存し、独自トークンは`main.dart`の`_buildTheme()`1箇所(タンジェリンseed・IBM Plex Mono・CardThemeData)に集約
 - 状態(接続・読み上げ・エラー)を色で即座に伝える、機能的な色使い
 - ホームは6タブのボトムナビ(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)。各タブの中身は単一目的の縦積みを保つ
-- 装飾的なshadow・アニメーション・カスタムフォントは無い
+- Card Deck構成: 要素はカードへ分離して積む(2026-09〜)。装飾アニメーションは無し
 
 ## Colors
 
 パレットは実質、Material3のseedカラー1色と、状態伝達のための4つの信号色のみで構成される。
 
 ### Primary
-- **Deep Purple Seed** (`#673AB7`): `ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true)`で指定されるシード色。ここから`ColorScheme.fromSeed`がprimary/on-primary/surface等のロールトークンを自動生成する。個々のロールの正確な値はランタイム計算に委ねられており、コード上に固定hexとして明示的なオーバーライドは無い。FilledButton(読み上げ開始ボタン等)がこのprimaryロールを直接使う唯一の目立つ箇所。
+- **Tangerine Seed** (`#D9591F`): `ColorScheme.fromSeed(seedColor: ...)`(`main.dart`の`_buildTheme()`)で指定されるシード色。ここから`ColorScheme.fromSeed`がprimary/on-primary/surface等のロールトークンを自動生成する。個々のロールの正確な値はランタイム計算に委ねられており、コード上に固定hexとして明示的なオーバーライドは無い。FilledButton(読み上げ開始ボタン等)・NavigationBarの選択インジケータ・Cardの縁がこのprimaryロールを直接使う。
+- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
 - **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。
@@ -78,10 +79,10 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Typography
 
-**Display/Title Font:** Roboto (Material3標準、フォールバック sans-serif)
-**Body Font:** Roboto (Material3標準TextTheme、明示的な上書き無し)
+**Display/Title Font:** IBM Plex Mono (`google_fonts`パッケージ、フォールバック monospace)
+**Body Font:** IBM Plex Mono (`GoogleFonts.ibmPlexMonoTextTheme`でMaterial3 TextTheme全体を上書き)
 
-**Character:** Material3デフォルトのRoboto一本に依存し、独自のタイプフェイスやカスタムスケールは持たない。サイズの手打ちも最小限(ウェルカム画面のアプリ名タイトルのみ)。
+**Character:** 2026-09にRoboto一本からIBM Plex Mono一本へ変更(Card Deckリブランディング)。等幅書体をアプリ全域に適用する明示判断で、独自のカスタムスケールは持たない(サイズ階層はMaterial3 TextThemeのロール名に準拠)。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
 
 ### Hierarchy
 - **Title** (bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
@@ -112,10 +113,10 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Elevation & Depth
 
-恣意的なdrop shadowは無い。AppBarやFilledButtonなど、Material3コンポーネントの標準tonal elevationにそのまま依存している。カスタムShadow定義・独自の浮遊感演出は無し。
+2026-09のCard Deckリブランディングで、要素をカードへ分離して積む構成に変更した。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 2、角丸18、タンジェリンを薄めた`shadowColor`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。
 
 ### Named Rules
-**The Flat-By-Default Rule.** 深度はMaterial3のロールトークン(tonal elevation)にのみ由来する。カスタムBoxShadowや手動elevation値を追加しない。
+**The Card Deck Rule(旧: Flat-By-Default Rule).** 深度は`main.dart`の`CardThemeData`1箇所にのみ由来する。個々の画面・Widgetで独自のBoxShadowや手動elevation値を追加しない(テーマの一括変更で全画面に反映される状態を維持する)。
 
 ## Shapes
 

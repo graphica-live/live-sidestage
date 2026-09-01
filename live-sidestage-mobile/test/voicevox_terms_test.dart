@@ -48,9 +48,8 @@ Future<void> _pumpSettings(WidgetTester tester) async {
   );
   // 読み上げ・効果音の設定項目をこのタブへ集約したぶん一覧が縦に伸び、規約と
   // ログアウトは初期表示の外へ出た。ListView は可視域の外を組み立てないので、
-  // 見つける前に送っておく。
+  // 使う行はテストごとに scrollUntilVisible で送ってから触る。
   await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(find.text('ログアウト'), 200);
 }
 
 /// 読み上げの開始ボタン相当。押すと初回だけ案内が出る。
@@ -78,6 +77,8 @@ void main() {
 
   testWidgets('設定のログアウトの上に利用規約の行がある', (tester) async {
     await _pumpSettings(tester);
+    await tester.ensureVisible(find.text('ログアウト'));
+    await tester.pumpAndSettle();
 
     final terms = find.text('VOICEVOX利用規約');
     final logout = find.text('ログアウト');
@@ -91,6 +92,8 @@ void main() {
 
   testWidgets('設定の行を押すと本文とリンクが出る', (tester) async {
     await _pumpSettings(tester);
+    await tester.ensureVisible(find.text('VOICEVOX利用規約'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('VOICEVOX利用規約'));
     await tester.pumpAndSettle();
