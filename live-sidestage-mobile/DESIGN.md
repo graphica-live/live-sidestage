@@ -76,7 +76,8 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 - **Tangerine Accent** (`#D9591F`): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton(読み上げ開始ボタン等)・アクティブなNavigationBarアイコン・スライダー・見出しラベルがこのロールを直接使う。
 - **Background / Card / Ink / Sub / Line** はいずれも承認済みモックアップの実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#FBF8F5` / card `#FFFFFF` / ink `#211C18` / sub `#928B83` / line `#ECE5DC`、dark: bg `#141414` / card `#1C1B19` / ink `#ECE9E5` / sub `#9B958A` / line `#282623`)。
 - **`ColorScheme.fromSeed`任せにしない。** 当初`ColorScheme.fromSeed(seedColor: #D9591F)`だけで組んだところ、Material3のトーンパレット生成がseed色の彩度・明度を自動シフトし、実機では暗いくすんだ赤茶色の背景になった――以前ユーザーが明示的に却下した「おじさんくさい/dated」なブロンズ配色に、fromSeedの自動生成を経由して意図せず逆戻りしていた(2026-09-01 実機確認で発覚)。以降、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、モックアップの数値を直接`ColorScheme.copyWith`で上書きする。
-- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。
+- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。この判断は**アプリ全体のアクセント色**の採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
+- 状態伝達以外のアクセント表現にも`colorScheme.primary`を直接再利用してよい(Signal-Only Color Ruleの対象はgreen/orange/red/greyの4色のみ)。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
 - **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。
@@ -187,6 +188,12 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ### List Items
 - **Style:** コメント表示に標準`ListTile`を使用。`CircleAvatar`(プロフィール画像 or 人型アイコンのフォールバック)+ニックネーム(title)+コメント本文(subtitle)。1pxの`Divider`で区切る。
+
+### Ranking List(貢献タブ・バトル履歴貢献者展開共通、2026-09改訂)
+- **Style:** `RankingListTile`(`lib/screens/widgets/ranking_list_tile.dart`)が貢献タブとバトル履歴タブの貢献者展開(`showModalBottomSheet`)の両方で共有される(サーバー側が同じ形状のデータを返すため)。**行そのものの見た目(`Card`の枠・サイズ・コイン数のフォントサイズ)は順位によらず統一する。** 一時期、上位3人だけ表彰台レイアウト(`RankingPodium`)へ切り出す案を実装したが、通常リストとの視覚差が大きすぎるとして撤回し、この統一形へ戻した。
+- **順位バッジ:** 1〜3位だけ、行頭の順位数字を丸バッジ(1位=金`#C9971F`、2位=銀`#A8ADB5`、3位=銅`#C48A5A`、白文字)にする。4位以下はプレーンな数字テキストのまま。これは順位専用の限定的な装飾色であり、Signal-Only Color Ruleの対象(green/orange/red/grey)には含まれない。
+- コイン数は`🪙3,613`のようにカンマ区切りで表示する(`diamond_format.dart`の`formatDiamonds()`)。1位も含め通常の濃色太字で、金色などの装飾はしない(視認性を優先)。
+- バトル履歴タブの貢献者展開でも同じ`RankingListTile`が使われる。両画面とも「ギフト貢献ランキング」という同一文脈のため共有している。
 
 ### Status Bar(Signature Component)
 - **Description:** ホーム画面上部に常駐する接続状態バー。背景は状態色を`withValues(alpha: 0.12)`で薄く敷き、状態色の小さな`Icon(Icons.circle)`ドット+ラベルテキストを横並びに配置。エラー時のみ詳細メッセージを右側に省略表示で追加する。このアプリで最もアプリらしい、独自に設計された唯一のコンポーネント。
