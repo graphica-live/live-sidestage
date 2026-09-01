@@ -12,6 +12,33 @@ import 'api_client.dart' show liveAnalyticsBaseUrl;
 
 enum SocketStatus { disconnected, connecting, connected, error }
 
+/// サーバー(server.js の io.use())が unauthorized 系エラーに付与する `err.data` の値。
+/// 未知のcodeは無視し、サーバーから届いた message をそのまま表示する(下位互換)。
+const Map<String, String> _socketErrorMessages = {
+  'INVALID_API_KEY':
+      'アカウントの認証に失敗しました。アプリを再起動しても直らない場合は、TikTokアカウントの連携をやり直してください。',
+  'INVALID_OVERLAY_TOKEN': 'オーバーレイの認証に失敗しました。',
+  'MISSING_CREDENTIALS': 'アカウントの認証情報が見つかりません。ログインし直してください。',
+};
+
+/// socket.io の connect_error / error に載る値から表示メッセージを組み立てる。
+///
+/// server.js の CONNECT_ERROR パケットは `{message, data}` 形式(socket.io-clientの
+/// protocol 4/5)。data に既知のcodeがあれば日本語文言に差し替え、無ければ従来どおり
+/// message(またはerr自体)を透過表示する。
+String _describeSocketError(dynamic err, String fallbackPrefix) {
+  if (err is Map) {
+    final code = err['data'];
+    if (code is String) {
+      final known = _socketErrorMessages[code];
+      if (known != null) return known;
+    }
+    final message = err['message'];
+    if (message != null) return '$fallbackPrefix: $message';
+  }
+  return '$fallbackPrefix: $err';
+}
+
 /// gift / follow が付けてくる契約バージョン。これより新しいものは解釈できないので無視する。
 /// chat:comment だけは配信形式を変えていないため schemaVersion を持たない(legacy扱い)。
 const int supportedChatEventSchemaVersion = 1;
@@ -111,13 +138,13 @@ class CommentFeed extends ChangeNotifier {
 
     socket.onConnectError((err) {
       status = SocketStatus.error;
-      errorMessage = '接続エラー: $err';
+      errorMessage = _describeSocketError(err, '接続エラー');
       notifyListeners();
     });
 
     socket.onError((err) {
       status = SocketStatus.error;
-      errorMessage = 'エラー: $err';
+      errorMessage = _describeSocketError(err, 'エラー');
       notifyListeners();
     });
 

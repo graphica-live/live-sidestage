@@ -589,12 +589,27 @@ class LiveAnalyticsApi {
 
     if (response.statusCode >= 400) {
       throw ApiException(
-        decoded['error'] as String? ?? 'エラーが発生しました (${response.statusCode})',
+        decoded['error'] as String? ?? _fallbackMessageForStatus(response.statusCode),
         statusCode: response.statusCode,
       );
     }
 
     return decoded;
+  }
+
+  /// サーバーが `error` フィールドを返さなかった4xxのための保険。
+  /// 通常のAPIは全て `error` にメッセージ文字列を入れて返すため、ここに来るのは想定外の応答のみ。
+  static String _fallbackMessageForStatus(int statusCode) {
+    switch (statusCode) {
+      case 401:
+        return 'ログインの有効期限が切れています。再度ログインしてください。';
+      case 403:
+        return 'この操作を行う権限がありません。';
+      case 404:
+        return '対象のデータが見つかりませんでした。';
+      default:
+        return 'エラーが発生しました ($statusCode)';
+    }
   }
 
   /// エラー表示へ添えるための本文の先頭。HTMLがそのまま返ることがあるので
