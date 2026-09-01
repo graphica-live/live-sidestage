@@ -2114,15 +2114,28 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
 // **ライブ中かどうかは問わない。** fetchAvailableGifts()はHTTPだけで済み、WS接続を必要としない。
 // 「接続成功後」に置くと、担当している配信が全部オフラインのあいだカタログが永久に空のままになり、
 // 「まだ貰ったことのないギフトを事前に仕込む」という目的そのものが果たせない。
-export async function resolveGiftCatalogSource(): Promise<GiftCatalogSource | null> {
-  const rooms = await getMyRooms();
-  const room = rooms[0];
-  if (!room) return null;
+// 1周回のカタログ取得で試す部屋数の上限。
+//
+// **地域/イベント限定ギフトは`gift/list/`の応答が部屋(アカウント)ごとに変わりうる**
+// (実測: giftId 1182805 "Ultra Fan"/「ウルトラうちわ」は`is_global_gift: false`で、
+// ある部屋からの取得では出るが別の部屋からは出ない可能性がある)。1部屋だけに固定すると
+// その部屋がたまたま対象外のイベント/地域だった場合、実際にTikTok側には存在するギフトが
+// 恒久的にカタログへ入らない。複数の自部屋を試して和集合を取ることでカバレッジを広げる。
+//
+// 増やしすぎるとリフレッシュ1周回あたりのTikTokへのリクエスト数(英語+日本語の2倍)が
+// 線形に増えるため、小さめの上限にする。
+export const MAX_GIFT_CATALOG_SOURCES = 3;
 
-  // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない。
-  const deviceId = await getOrCreateDeviceId(room.id);
-  const proxyUrl = await resolveProxyForRoom(room.id);
-  return { tiktokId: room.tiktokId, deviceId, proxyUrl };
+export async function resolveGiftCatalogSources(): Promise<GiftCatalogSource[]> {
+  const rooms = await getMyRooms();
+  const sources: GiftCatalogSource[] = [];
+  for (const room of rooms.slice(0, MAX_GIFT_CATALOG_SOURCES)) {
+    // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない。
+    const deviceId = await getOrCreateDeviceId(room.id);
+    const proxyUrl = await resolveProxyForRoom(room.id);
+    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl });
+  }
+  return sources;
 }
 
 // デプロイ時のグレースフルシャットダウン用。担当中の全部屋のTikTok接続を明示的に切断する。

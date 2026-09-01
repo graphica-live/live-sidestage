@@ -364,14 +364,14 @@ async function writeCatalog(entries: LocalizedCatalogEntry[], fetchedAt: Date): 
 /**
  * カタログが古ければ取り直す。新しければ何もしない。
  *
- * `resolveSource` は**TTLと失敗バックオフを通過したときにだけ**呼ばれる。
+ * `resolveSources` は**TTLと失敗バックオフを通過したときにだけ**呼ばれる。
  * 取得元の解決(部屋の検索・deviceId・proxy)にDBアクセスが要るので、
  * 60秒ごとに無駄打ちしないため遅延にしている。
  *
  * **この関数は例外を投げない。** ライブ接続の維持がカタログ取得の失敗に引きずられてはいけない。
  */
 export async function refreshGiftCatalogIfStale(
-  resolveSource: () => Promise<GiftCatalogSource | null>,
+  resolveSources: () => Promise<GiftCatalogSource[]>,
   deps: GiftCatalogDeps = defaultDeps
 ): Promise<void> {
   if (inFlight) return inFlight;
@@ -386,31 +386,58 @@ export async function refreshGiftCatalogIfStale(
       const fresh = fetchedAt !== null && startedAt - fetchedAt.getTime() < CATALOG_TTL_MS;
       if (fresh && !(await shouldBackfillImages()) && !(await shouldBackfillJaLabels())) return;
 
-      const source = await resolveSource();
-      if (!source) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
+      const sources = await resolveSources();
+      if (sources.length === 0) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
 
-      // **英語版は必須。** `name`(一致キー)と `label` の供給元なので、ここが取れないなら
-      // カタログを更新する意味がない。
-      const base = normalizeCatalogEntries(await deps.fetchGifts(source, "default"));
-      if (base.length === 0) {
+      // **複数の部屋から取って和集合にする。** 地域/イベント限定ギフト(`is_global_gift: false`)は
+      // `gift/list/` の応答が部屋(アカウント)ごとに変わりうるため、1部屋だけだと恒久的に
+      // 取りこぼす可能性がある。先に見つかった部屋のgiftIdを優先し(決定的にするため)、
+      // 後続の部屋は前の部屋に無かったgiftIdだけ足す。
+      const baseByGiftId = new Map<number, CatalogEntry>();
+      const jaByGiftId = new Map<number, CatalogEntry>();
+      let anyBaseSucceeded = false;
+
+      for (const source of sources) {
+        // **英語版は必須。** `name`(一致キー)と `label` の供給元。この部屋で取れなければ
+        // 日本語版も叩かず次の部屋へ進む。
+        let base: CatalogEntry[];
+        try {
+          base = normalizeCatalogEntries(await deps.fetchGifts(source, "default"));
+        } catch (err) {
+          console.warn("[gift-catalog] base fetch failed for a room (trying next):", describeError(err));
+          continue;
+        }
+        if (base.length === 0) continue;
+        anyBaseSucceeded = true;
+        for (const entry of base) {
+          if (!baseByGiftId.has(entry.giftId)) baseByGiftId.set(entry.giftId, entry);
+        }
+
+        // **日本語版は表示専用なので、落ちてもカタログ更新そのものは通す。** 失敗扱いにすると
+        // 名前・価格・画像の更新まで止まる。既存の `labelJa` は writeCatalog() の
+        // COALESCE が守るので、ここが空でも日本語表示は消えない。
+        try {
+          const ja = normalizeCatalogEntries(await deps.fetchGifts(source, "ja"));
+          for (const entry of ja) {
+            if (!jaByGiftId.has(entry.giftId)) jaByGiftId.set(entry.giftId, entry);
+          }
+        } catch (err) {
+          console.warn(
+            "[gift-catalog] ja fetch failed (keeping existing labelJa):",
+            describeError(err)
+          );
+        }
+      }
+
+      if (!anyBaseSucceeded) {
         // 空・全件不正を成功扱いにしない。成功にすると壊れたレスポンスで24時間沈黙する。
-        throw new Error("gift/list/ returned no usable entries");
+        throw new Error("gift/list/ returned no usable entries from any source");
       }
 
-      // **日本語版は表示専用なので、落ちてもカタログ更新そのものは通す。** 失敗扱いにすると
-      // 名前・価格・画像の更新まで24時間止まる。既存の `labelJa` は writeCatalog() の
-      // COALESCE が守るので、ここが空でも日本語表示は消えない。
-      let ja: CatalogEntry[] = [];
-      try {
-        ja = normalizeCatalogEntries(await deps.fetchGifts(source, "ja"));
-      } catch (err) {
-        console.warn(
-          "[gift-catalog] ja fetch failed (keeping existing labelJa):",
-          describeError(err)
-        );
-      }
-
-      const entries = mergeLocalizedCatalog(base, ja);
+      const entries = mergeLocalizedCatalog(
+        Array.from(baseByGiftId.values()),
+        Array.from(jaByGiftId.values())
+      );
       await writeCatalog(entries, new Date(deps.now()));
       lastFailureAt = 0;
       // 画像・日本語名が取れたかどうかに関わらず消費する(取れなければ通常のTTLへ戻す)。
