@@ -5,7 +5,7 @@ import Link from "next/link";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 
-type Period = "day" | "week" | "month" | "custom";
+type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
 type HistorySortKey = "time" | "diamonds" | "user" | "gift";
 type SortOrder = "asc" | "desc";
@@ -102,6 +102,12 @@ function addMonths(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function addYears(date: string, n: number): string {
+  const d = new Date(date);
+  d.setFullYear(d.getFullYear() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatPeriodLabel(period: Period, date: string): string {
   const d = new Date(date + "T00:00:00");
   if (period === "day") {
@@ -123,13 +129,17 @@ function formatPeriodLabel(period: Period, date: string): string {
       `${dt.getMonth() + 1}/${dt.getDate()}`;
     return `${mon.getFullYear()}年 ${fmt(mon)} 〜 ${fmt(sun)}`;
   }
-  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "long" });
+  if (period === "month") {
+    return d.toLocaleDateString("ja-JP", { year: "numeric", month: "long" });
+  }
+  return d.toLocaleDateString("ja-JP", { year: "numeric" });
 }
 
 function navigateDate(period: Period, date: string, dir: -1 | 1): string {
   if (period === "day") return addDays(date, dir);
   if (period === "week") return addDays(date, dir * 7);
-  return addMonths(date, dir);
+  if (period === "month") return addMonths(date, dir);
+  return addYears(date, dir);
 }
 
 function formatEventTime(iso: string, period: Period): string {
@@ -472,7 +482,7 @@ export default function AnalyticsPage() {
         {/* Period tabs + View mode toggle */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
-            {(["day", "week", "month"] as Period[]).map((p) => (
+            {(["day", "week", "month", "year"] as Period[]).map((p) => (
               <button
                 key={p}
                 onClick={() => {
@@ -485,7 +495,7 @@ export default function AnalyticsPage() {
                     : "text-gray-400 hover:text-white"
                 }`}
               >
-                {p === "day" ? "日" : p === "week" ? "週" : "月"}
+                {p === "day" ? "日" : p === "week" ? "週" : p === "month" ? "月" : "年"}
               </button>
             ))}
             <div className="w-px bg-border mx-0.5 self-stretch" />
@@ -721,7 +731,7 @@ export default function AnalyticsPage() {
                 }}
                 disabled={deleting || (data?.users.length === 0)}
                 className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
-                title={`この${period === "day" ? "日" : period === "week" ? "週" : "月"}のデータを自分の表示からのみ非表示にする(他の登録者には影響しません)`}
+                title={`この${period === "day" ? "日" : period === "week" ? "週" : period === "month" ? "月" : "年"}のデータを自分の表示からのみ非表示にする(他の登録者には影響しません)`}
               >
                 {deleting ? "処理中..." : "🙈 非表示"}
               </button>
