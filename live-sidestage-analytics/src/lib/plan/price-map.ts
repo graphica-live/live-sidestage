@@ -24,3 +24,9 @@ export function planForPriceId(priceId: string): PlanTier | undefined {
   }
   return undefined;
 }
+
+// Web(Stripe)の表示価格。ストア価格帯手動設定という設計上、動的検証は行わない(表示専用定数)。
+export const WEB_MONTHLY_PRICE_JPY: Record<PaidPlan, number> = {
+  PRO: 980,
+  ULTRA: 3980,
+};

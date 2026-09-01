@@ -3,12 +3,12 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { PlanTier } from "@/lib/plan/types";
-import { isPlanPurchasable, type PaidPlan } from "@/lib/plan/price-map";
+import { highestPlan } from "@/lib/plan/types";
+import { isPlanPurchasable, WEB_MONTHLY_PRICE_JPY, type PaidPlan } from "@/lib/plan/price-map";
+import { isEntitlementRowValid } from "@/lib/plan/effective-entitlement";
 import { UpgradeButton, ManageBillingButton } from "./UpgradeActions";
 
 export const dynamic = "force-dynamic";
-
-const ACTIVE_STATUSES = new Set(["active", "trialing"]);
 
 const PLAN_DESCRIPTIONS: Record<PlanTier, string> = {
   FREE: "現在はすべての機能を無料でご利用いただけます。",
@@ -24,14 +24,25 @@ export default async function BillingPage({
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId: session.user.id },
-    select: { plan: true, status: true, stripeCustomerId: true },
-  });
+  const [subscriptions, link] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { userId: session.user.id },
+      select: { plan: true, provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
+    }),
+    prisma.stripeCustomerLink.findUnique({
+      where: { userId: session.user.id },
+      select: { stripeCustomerId: true },
+    }),
+  ]);
 
-  const currentPlan: PlanTier = subscription?.plan ?? "FREE";
-  const isActivePaid = Boolean(subscription?.status && ACTIVE_STATUSES.has(subscription.status));
-  const hasStripeCustomer = Boolean(subscription?.stripeCustomerId);
+  const activeRows = subscriptions.filter((s) => isEntitlementRowValid(s));
+  const currentPlan: PlanTier = highestPlan(activeRows.map((r) => r.plan));
+  const isActivePaid = activeRows.length > 0;
+  // provider問わず現在有効な行があるが、それがSTRIPEでない(=ストア経由)場合は
+  // Portal誘導ではなく「ストアで契約中」の案内だけを出す。
+  const activeStripeRow = activeRows.find((r) => !r.provider || r.provider === "STRIPE");
+  const activeStoreRow = activeRows.find((r) => r.provider === "GOOGLE_PLAY" || r.provider === "APPLE");
+  const hasStripeCustomer = Boolean(link?.stripeCustomerId);
   const checkout = searchParams.checkout;
 
   return (
@@ -44,7 +55,7 @@ export default async function BillingPage({
               analyticsとイベント運営で共通のプランです。
             </p>
           </div>
-          {hasStripeCustomer && <ManageBillingButton />}
+          {hasStripeCustomer && activeStripeRow && <ManageBillingButton />}
         </div>
 
         {checkout === "success" && (
@@ -54,6 +65,11 @@ export default async function BillingPage({
         )}
         {checkout === "cancel" && (
           <div className="card mb-6 text-sm text-gray-400">決済はキャンセルされました。</div>
+        )}
+        {activeStoreRow && (
+          <div className="card mb-6 text-sm text-gray-400">
+            モバイルアプリのストア購入でご契約中です。プラン変更・解約はアプリ内のストア購読管理から行ってください。
+          </div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-3">
@@ -86,6 +102,12 @@ function PlanCard({
             </span>
           )}
         </div>
+        {plan !== "FREE" && (
+          <p className="mt-1 text-2xl font-bold text-white">
+            ¥{WEB_MONTHLY_PRICE_JPY[plan as PaidPlan].toLocaleString()}
+            <span className="text-xs font-normal text-gray-400"> /月</span>
+          </p>
+        )}
         <p className="mt-2 text-xs text-gray-400">{PLAN_DESCRIPTIONS[plan]}</p>
       </div>
 
@@ -99,8 +121,8 @@ function renderAction(plan: PlanTier, current: boolean, isActivePaid: boolean) {
 
   const paidPlan = plan as PaidPlan;
 
-  // 既に有効な有償プランを持っている場合、Stripe Checkoutは二重購読を防ぐため409を返す
-  // (src/app/api/billing/checkout/route.ts参照)。プラン変更はPortal経由に一本化する。
+  // 既に有効な有償プラン(provider問わず)を持っている場合、Stripe Checkoutは二重課金を防ぐため
+  // 409を返す(src/app/api/billing/checkout/route.ts参照)。プラン変更はPortal経由に一本化する。
   if (isActivePaid) {
     if (current) return null;
     return <p className="text-xs text-gray-500">プラン変更は「プランを管理する」から行えます</p>;
