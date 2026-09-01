@@ -73,7 +73,7 @@ beforeAll(async () => {
   });
   noRoomToken = signMobileToken({ userId: noRoomUserId, streamerId: noRoomStreamer.id });
 
-  // BIO認証が済んでいない配信者。socket 認証と同じく弾かれること。
+  // BIO認証が済んでいない配信者。モバイルはBIO認証ゲート対象外なので弾かれないこと。
   const unverified = await prisma.user.create({
     data: { email: `itest-mobile-listener-unverified-${Date.now()}@local.test` },
   });
@@ -188,10 +188,10 @@ describe("GET /api/mobile/listener-status", () => {
       expect(res.status).toBe(401);
     });
 
-    // socket 認証(server.js)と条件を揃える。未認証の配信者には配信しない。
-    it("verified=falseのapiKeyは401", async () => {
+    // モバイルはBIO認証ゲート対象外。socket認証(server.js)と条件を揃える。
+    it("verified=falseのapiKeyでも200", async () => {
       const res = await GET(request({ apiKey: unverifiedApiKey }));
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(200);
     });
 
     it("JWTとapiKeyが別人を指していたら401", async () => {

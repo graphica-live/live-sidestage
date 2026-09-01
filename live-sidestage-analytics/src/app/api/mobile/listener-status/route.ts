@@ -88,9 +88,9 @@ async function resolveStreamerId(req: NextRequest): Promise<string | null> {
   const apiKey = req.headers.get("x-api-key");
   if (!apiKey) return byToken;
 
-  // socket 認証(server.js の io.use)と同じ条件で引く。
+  // socket 認証(server.js の io.use)と同じ条件で引く。モバイルはBIO認証ゲート対象外。
   const byApiKey = await prisma.streamer.findFirst({
-    where: { apiKey, verified: true },
+    where: { apiKey },
     select: { id: true },
   });
   if (!byApiKey) return null;

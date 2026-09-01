@@ -169,8 +169,9 @@ app.prepare().then(() => {
 
     if (typeof apiKey === "string" && apiKey) {
       try {
+        // モバイルアプリはBIO認証ゲート対象外。verifiedを問わず通す。
         const streamer = await prisma.streamer.findFirst({
-          where: { apiKey, verified: true },
+          where: { apiKey },
           select: { id: true },
         });
         if (!streamer) return next(unauthorizedError("INVALID_API_KEY"));
