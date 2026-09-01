@@ -33,4 +33,16 @@ describe("getDateRange", () => {
   it("month: うるう年の2月は29日までを返す", () => {
     expect(getDateRange("month", "2024-02-10")).toEqual({ start: "2024-02-01", end: "2024-02-29" });
   });
+
+  it("year: 年初〜年末を返す", () => {
+    expect(getDateRange("year", "2026-08-15")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+  });
+
+  it("year: 1月1日を指定した場合も同じ年の1/1〜12/31を返す", () => {
+    expect(getDateRange("year", "2026-01-01")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+  });
+
+  it("year: 12月31日を指定した場合も同じ年の1/1〜12/31を返す", () => {
+    expect(getDateRange("year", "2026-12-31")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+  });
 });

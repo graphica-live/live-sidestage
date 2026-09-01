@@ -84,7 +84,7 @@ describe("GET /api/mobile/analytics/ranking", () => {
   });
 
   it("不正なperiodは400", async () => {
-    const res = await GET(request("?period=year&date=2026-08-20", token));
+    const res = await GET(request("?period=decade&date=2026-08-20", token));
     expect(res.status).toBe(400);
   });
 

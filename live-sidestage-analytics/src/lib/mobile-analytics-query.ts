@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { MAX_RANGE_DAYS } from "@/lib/range-limits";
 
-const PERIODS = ["day", "week", "month"] as const;
+const PERIODS = ["day", "week", "month", "year"] as const;
 export type Period = (typeof PERIODS)[number];
 
 function isValidDateString(value: string): boolean {

@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart' show DateTimeRange;
 
-/// 貢献/ギフト履歴/バトル履歴タブが共有する期間種別。サーバー側 `period` クエリと同じ3値。
+/// 貢献/ギフト履歴/バトル履歴タブが共有する期間種別。サーバー側 `period` クエリと同じ4値。
 enum AnalyticsPeriod {
   day,
   week,
-  month;
+  month,
+  year;
 
-  /// クエリパラメータへそのまま渡せる値("day"/"week"/"month")。
+  /// クエリパラメータへそのまま渡せる値("day"/"week"/"month"/"year")。
   String get apiValue => name;
 
   String get label => switch (this) {
         AnalyticsPeriod.day => '日',
         AnalyticsPeriod.week => '週',
         AnalyticsPeriod.month => '月',
+        AnalyticsPeriod.year => '年',
       };
 }
 
@@ -55,8 +57,8 @@ class AnalyticsPeriodSelection {
   /// 見ているときに取り直すと、過去の数字が勝手に動いたように見える。
   ///
   /// 判定はサーバー `gift-analytics.ts` の `getDateRange` と**同じ規則**にしてある。
-  /// week は月曜起点（日曜は -6 補正）、month は暦月。ここがずれると、週の境目だけ
-  /// 自動更新されない／されすぎる、という気づきにくい食い違いになる。
+  /// week は月曜起点（日曜は -6 補正）、month は暦月、year は暦年。ここがずれると、
+  /// 週や年の境目だけ自動更新されない／されすぎる、という気づきにくい食い違いになる。
   ///
   /// サーバー応答の期間には頼らない。初回ロード前は手元に無いし、期間を切り替えた
   /// 直後は古い応答が残っている。
@@ -74,6 +76,8 @@ class AnalyticsPeriodSelection {
         return !target.isBefore(monday) && !target.isAfter(sunday);
       case AnalyticsPeriod.month:
         return date.substring(0, 7) == t.substring(0, 7);
+      case AnalyticsPeriod.year:
+        return date.substring(0, 4) == t.substring(0, 4);
     }
   }
 
@@ -103,6 +107,9 @@ class AnalyticsPeriodSelection {
         // 意図しない月になる(例: 1/31の1ヶ月前を2/2などに解釈しうる)ため。
         // getDateRange()はdateの「月」しか見ないので、day=1に丸めても実害は無い。
         shifted = DateTime.utc(base.year, base.month + direction, 1);
+      case AnalyticsPeriod.year:
+        // 年移動も同様に1/1へ丸める。getDateRange()はdateの「年」しか見ない。
+        shifted = DateTime.utc(base.year + direction, 1, 1);
     }
     return AnalyticsPeriodSelection(period: period, date: _formatDate(shifted));
   }
