@@ -33,6 +33,16 @@ export function getDateRange(
     };
   }
 
+  if (period === "year") {
+    const year = d.getUTCFullYear();
+    const first = new Date(Date.UTC(year, 0, 1));
+    const last = new Date(Date.UTC(year, 11, 31));
+    return {
+      start: first.toISOString().slice(0, 10),
+      end: last.toISOString().slice(0, 10),
+    };
+  }
+
   return { start: date, end: date };
 }
 
