@@ -10,6 +10,7 @@ import "dotenv/config";
 import { aggregateDueEvents } from "@/event/aggregate";
 import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
 import { backfillHostUserIds } from "@/lib/tiktok-host-id";
+import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
 import { prisma } from "@/lib/prisma";
 
 const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
@@ -29,11 +30,18 @@ const RENEW_INTERVAL_MS = Number(process.env.LEASE_RENEW_INTERVAL_MS ?? 60 * 60 
  */
 const HOST_ID_INTERVAL_MS = Number(process.env.TIKTOK_HOST_ID_INTERVAL_MS ?? 60_000);
 
+/**
+ * イベントの参加者アイコンをスナップショットする間隔(Event.startAt 到来チェック)。
+ * 一度スナップショットしたイベントは対象から外れるので、集計ほど頻繁に回す必要はない。
+ */
+const AVATAR_SNAPSHOT_INTERVAL_MS = Number(process.env.EVENT_AVATAR_SNAPSHOT_INTERVAL_MS ?? 60_000);
+
 let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
 let renewInFlight = false;
 let hostIdInFlight = false;
+let avatarSnapshotInFlight = false;
 
 async function tick(): Promise<void> {
   // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
@@ -107,6 +115,27 @@ async function hostIdTick(): Promise<void> {
   }
 }
 
+// イベントのトーナメント表・参加者アイコンを startAt 到来時点で恒久ストレージへスナップショットする。
+// 個々の参加者の失敗はライブ取得への永続フォールバックに任せるので、集計ループには影響させない。
+async function avatarSnapshotTick(): Promise<void> {
+  if (avatarSnapshotInFlight || stopping) return;
+
+  avatarSnapshotInFlight = true;
+  try {
+    const result = await snapshotDueEventAvatars();
+    if (result.eventsProcessed > 0) {
+      console.log(
+        `[event-worker] アイコンをスナップショット ${result.eventsProcessed}イベント ` +
+          `(成功 ${result.succeeded}件 / 失敗 ${result.failed}件)`
+      );
+    }
+  } catch (err) {
+    console.error("[event-worker] アイコンのスナップショットでエラー:", err);
+  } finally {
+    avatarSnapshotInFlight = false;
+  }
+}
+
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
@@ -115,6 +144,7 @@ async function shutdown(signal: string) {
   clearInterval(timer);
   clearInterval(renewTimer);
   if (hostIdTimer) clearInterval(hostIdTimer);
+  clearInterval(avatarSnapshotTimer);
   await currentTick.catch(() => {});
   await prisma.$disconnect().catch(() => {});
   console.log("[event-worker] 終了");
@@ -129,14 +159,17 @@ const timer = setInterval(scheduleTick, INTERVAL_MS);
 const renewTimer = setInterval(() => void renewTick(), RENEW_INTERVAL_MS);
 const hostIdTimer =
   HOST_ID_INTERVAL_MS > 0 ? setInterval(() => void hostIdTick(), HOST_ID_INTERVAL_MS) : null;
+const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 console.log(
   `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms / ` +
-    `hostUserId の補完 ${HOST_ID_INTERVAL_MS > 0 ? `${HOST_ID_INTERVAL_MS}ms` : "無効"})`
+    `hostUserId の補完 ${HOST_ID_INTERVAL_MS > 0 ? `${HOST_ID_INTERVAL_MS}ms` : "無効"} / ` +
+    `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms)`
 );
 scheduleTick();
 void renewTick();
 if (hostIdTimer) void hostIdTick();
+void avatarSnapshotTick();
