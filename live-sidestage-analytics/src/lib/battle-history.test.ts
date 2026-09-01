@@ -58,7 +58,7 @@ describe("resolveBattleScore", () => {
       selfHostUserId: "A",
       selfHostTeams: {},
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
   });
 
   it("観測したバトルに自分のhostUserIdが含まれていなければunknownを返す(別人のroom)", () => {
@@ -130,7 +130,7 @@ describe("resolveBattleScore", () => {
       selfHostUserId: "A",
       selfHostTeams: { A: "1", B: "2" }, // CのteamId欠損
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
   });
 
   it("hostTeamsのdistinctなteamIdが3種類以上(1vs1vs1等)ならmultiにフォールバックする", () => {
@@ -139,7 +139,7 @@ describe("resolveBattleScore", () => {
       selfHostUserId: "A",
       selfHostTeams: { A: "1", B: "2", C: "3" },
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, selfScore: "10" });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
   });
 });
 

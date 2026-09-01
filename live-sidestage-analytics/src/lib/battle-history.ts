@@ -98,7 +98,7 @@ export type ResolvedBattleScore =
       opponentTeamAnchorIds: string[];
       selfScore: string | null;
     }
-  | { kind: "multi"; participantCount: number; selfScore: string | null }
+  | { kind: "multi"; participantCount: number; anchorIds: string[]; selfScore: string | null }
   | { kind: "solo"; selfScore: string | null }
   | { kind: "unknown"; selfScore: null };
 
@@ -159,7 +159,7 @@ export function resolveBattleScore(input: {
     };
   }
 
-  return { kind: "multi", participantCount: anchorIds.size, selfScore };
+  return { kind: "multi", participantCount: anchorIds.size, anchorIds: anchorIdList, selfScore };
 }
 
 /** 決着済みバトルの開始からの猶予。この間は duration を過ぎていても「進行中」寄りに倒す。 */
@@ -258,11 +258,13 @@ export type BattleListItem = {
   status: BattleWindow["status"];
   opponent: BattleOpponent | null;
   /**
-   * 左右split表示用。1vs1・チーム戦(2vs2/1vs3等でhostTeamsが解決できた場合)は
-   * どちらも非null(selfTeamは常に自分を含む1件以上、opponentTeamも1件以上)。
-   * 対戦相手不明・チーム未解決のmulti・soloの場合はどちらもnull(UIは既存のopponentで
-   * フォールバック表示する)。既存の`opponent`/`selfScore`/`opponentScore`は後方互換のため
-   * そのまま残す(モバイルアプリはこれらのみを参照する)。
+   * 左右split表示用。1vs1・チーム戦(2vs2/1vs3等でhostTeamsが解決できた場合)・
+   * multi(3人以上でhostTeamsが2チームに解決できない乱戦。「自分1人 vs 残り全員」として
+   * 埋める。敵味方が不明なためopponentScoreはnullのまま=スコア対比は出さず、アイコン表示のみに使う)
+   * は、どちらも非null(selfTeamは常に自分を含む1件以上、opponentTeamも1件以上)。
+   * 対戦相手不明・自分のhostUserId未解決のsolo/unknownの場合のみどちらもnull(UIは既存の
+   * opponentでフォールバック表示する)。既存の`opponent`/`selfScore`/`opponentScore`は後方互換の
+   * ためそのまま残す(モバイルアプリはこれらのみを参照する)。
    */
   selfTeam: BattleParticipant[] | null;
   opponentTeam: BattleParticipant[] | null;
@@ -611,6 +613,15 @@ async function buildBattleListItems(
       for (const id of resolved.opponentTeamAnchorIds) avatarAnchorIds.add(id);
     } else if (resolved.kind === "multi") {
       opponentCount = resolved.participantCount - 1;
+      // チーム分けは不明だが、参加者全員のanchorIdは分かっている。「自分1人 vs 残り全員」として
+      // selfTeam/opponentTeamを埋め、アイコン表示だけは3人以上でも出せるようにする(スコア対比は
+      // 敵味方が不明なので出さない=opponentScoreはnullのまま)。
+      if (selfHostUserId !== null) {
+        selfTeamAnchorIds = [selfHostUserId];
+        opponentTeamAnchorIds = resolved.anchorIds.filter((id) => id !== selfHostUserId);
+        avatarAnchorIds.add(selfHostUserId);
+        for (const id of opponentTeamAnchorIds) avatarAnchorIds.add(id);
+      }
     } else if (others.length > 0) {
       // anchorId ベースでは解決できなくても(hostUserId未解決・別人room混在等)、別 room の
       // 観測があれば相手候補として名前だけ出す。スコア対比は anchorId が特定できないので出さない。

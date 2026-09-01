@@ -262,6 +262,112 @@ describe("queryBattles teams (2vs2)", () => {
   });
 });
 
+describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)", () => {
+  const SELF_MULTI_TIKTOK_ID = "itest_multi_self";
+  const OPPONENT_E_TIKTOK_ID = "itest_multi_opponent_e";
+  const OPPONENT_F_TIKTOK_ID = "itest_multi_opponent_f";
+
+  let selfMultiRoomId: string;
+  let opponentERoomId: string;
+  let opponentFRoomId: string;
+
+  beforeAll(async () => {
+    const selfRoom = await prisma.tiktokRoom.create({ data: { tiktokId: SELF_MULTI_TIKTOK_ID, hostUserId: "host_self" } });
+    selfMultiRoomId = selfRoom.id;
+    const opponentE = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_E_TIKTOK_ID, hostUserId: "host_e" } });
+    opponentERoomId = opponentE.id;
+    const opponentF = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_F_TIKTOK_ID, hostUserId: "host_f" } });
+    opponentFRoomId = opponentF.id;
+  });
+
+  afterAll(async () => {
+    await prisma.tiktokRoom.delete({ where: { id: selfMultiRoomId } }).catch(() => {}); // cascades TiktokBattle
+    await prisma.tiktokRoom.delete({ where: { id: opponentERoomId } }).catch(() => {});
+    await prisma.tiktokRoom.delete({ where: { id: opponentFRoomId } }).catch(() => {});
+  });
+
+  it("3人以上でhostTeamsが無くても、自分1人vs残り全員としてselfTeam/opponentTeamにアイコン用の情報を埋める", async () => {
+    const range = { start: new Date("2026-08-24T00:00:00Z"), end: new Date("2026-08-25T00:00:00Z") };
+    const allHostUserIds = ["host_self", "host_e", "host_f"];
+
+    await prisma.tiktokBattle.create({
+      data: {
+        roomId: selfMultiRoomId,
+        battleId: "multi_battle",
+        action: BATTLE_ACTION.FINISH,
+        startedAt: new Date("2026-08-24T10:00:00Z"),
+        startedAtEstimated: false,
+        endedAt: new Date("2026-08-24T10:05:00Z"),
+        durationSec: 300,
+        hostUserIds: allHostUserIds,
+        hostScores: { host_self: "100", host_e: "50", host_f: "80" },
+        hostProfiles: {
+          host_self: { displayId: "self_handle", nickName: "自分", avatarUrl: null },
+          host_e: { displayId: "opponent_e_handle", nickName: "相手E", avatarUrl: null },
+          host_f: { displayId: "opponent_f_handle", nickName: "相手F", avatarUrl: null },
+        },
+        raw: {},
+      },
+    });
+    await prisma.tiktokBattle.create({
+      data: {
+        roomId: opponentERoomId,
+        battleId: "multi_battle",
+        action: BATTLE_ACTION.FINISH,
+        startedAt: new Date("2026-08-24T10:00:00Z"),
+        startedAtEstimated: false,
+        endedAt: new Date("2026-08-24T10:05:00Z"),
+        durationSec: 300,
+        hostUserIds: allHostUserIds,
+        hostScores: {},
+        raw: {},
+      },
+    });
+    await prisma.tiktokBattle.create({
+      data: {
+        roomId: opponentFRoomId,
+        battleId: "multi_battle",
+        action: BATTLE_ACTION.FINISH,
+        startedAt: new Date("2026-08-24T10:00:00Z"),
+        startedAtEstimated: false,
+        endedAt: new Date("2026-08-24T10:05:00Z"),
+        durationSec: 300,
+        hostUserIds: allHostUserIds,
+        hostScores: {},
+        raw: {},
+      },
+    });
+
+    const { battles } = await queryBattles(selfMultiRoomId, "itest-multi-viewer", range);
+    expect(battles).toHaveLength(1);
+    const battle = battles[0];
+
+    expect(battle.selfTeam).toEqual([
+      { anchorId: "host_self", tiktokId: SELF_MULTI_TIKTOK_ID, displayId: "self_handle", nickName: "自分", avatarUrl: null },
+    ]);
+    expect(battle.opponentTeam).toEqual([
+      {
+        anchorId: "host_e",
+        tiktokId: OPPONENT_E_TIKTOK_ID,
+        displayId: "opponent_e_handle",
+        nickName: "相手E",
+        avatarUrl: null,
+      },
+      {
+        anchorId: "host_f",
+        tiktokId: OPPONENT_F_TIKTOK_ID,
+        displayId: "opponent_f_handle",
+        nickName: "相手F",
+        avatarUrl: null,
+      },
+    ]);
+    // 敵味方が不明なのでスコア対比は出さない(旧opponentも人数のみ)。
+    expect(battle.opponent).toEqual({ tiktokId: null, displayId: null, nickName: null, avatarUrl: null, count: 2 });
+    expect(battle.opponentScore).toBeNull();
+    expect(battle.selfScore).toBe("100");
+  });
+});
+
 describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごとに絞る", () => {
   // TiktokRoom.tiktokId はunique だが hostUserId にはunique制約が無い(ハンドル変更で
   // 旧ハンドルのroom行が残ると、同じhostUserIdを持つroomが複数存在しうる)。表示対象の
