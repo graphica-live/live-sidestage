@@ -8,6 +8,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task_platform_interfa
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
+import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
 import 'package:live_sidestage_mobile/screens/home_screen.dart' show SpeechState;
 import 'package:live_sidestage_mobile/screens/tabs/settings_tab.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -44,6 +45,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<AppConfigStore>.value(value: store),
           ChangeNotifierProvider<SessionController>(create: (_) => SessionController()),
+          ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
         ],
         child: MaterialApp(
           home: Scaffold(

@@ -5,6 +5,7 @@ import '../../core/account_deletion.dart';
 import '../../core/app_config_store.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
+import '../../core/theme_mode_store.dart';
 import '../../models/auth_session.dart';
 import '../../models/voice_catalog.dart';
 import '../home_screen.dart' show SpeechState;
@@ -37,6 +38,7 @@ class SettingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<AppConfigStore>();
     final session = context.watch<SessionController>().session;
+    final themeModeStore = context.watch<ThemeModeStore>();
 
     // **どの設定も「開始しているか」では止めない。** `ttsEnabled` / `sound.enabled` は
     // 機能のON/OFF設定ではなく開始しているかの記録なので、それで無効化すると
@@ -47,6 +49,13 @@ class SettingsTab extends StatelessWidget {
 
     return ListView(
       children: [
+        const _SectionHeader('表示'),
+        Card(
+          child: _ThemeModeTile(
+            themeMode: themeModeStore.themeMode,
+            onSelected: themeModeStore.setThemeMode,
+          ),
+        ),
         // 読み上げ・効果音の ON/OFF は各タブの「開始/停止」ボタンが持つ。
         // ここに同じトグルを置くと二重になり、どちらが接続を制御しているのか分からなくなる。
         const _SectionHeader('読み上げ'),
@@ -162,6 +171,71 @@ class SettingsTab extends StatelessWidget {
             child: Text('設定を反映中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
           ),
       ],
+    );
+  }
+}
+
+extension on ThemeMode {
+  String get label => switch (this) {
+        ThemeMode.system => 'システム設定に合わせる',
+        ThemeMode.light => 'ライト',
+        ThemeMode.dark => 'ダーク',
+      };
+}
+
+/// 画面全体の配色(ライト/ダーク/システム追従)。
+class _ThemeModeTile extends StatelessWidget {
+  const _ThemeModeTile({required this.themeMode, required this.onSelected});
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: const Text('テーマ'),
+      subtitle: Text(themeMode.label),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _pick(context),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      builder: (context) => _ThemeModePickerSheet(selected: themeMode),
+    );
+    if (picked != null && picked != themeMode) onSelected(picked);
+  }
+}
+
+class _ThemeModePickerSheet extends StatelessWidget {
+  const _ThemeModePickerSheet({required this.selected});
+
+  final ThemeMode selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'テーマを選ぶ',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+          for (final mode in ThemeMode.values)
+            ListTile(
+              key: ValueKey('theme-mode-${mode.name}'),
+              title: Text(mode.label),
+              trailing: mode == selected ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.of(context).pop(mode),
+            ),
+        ],
+      ),
     );
   }
 }

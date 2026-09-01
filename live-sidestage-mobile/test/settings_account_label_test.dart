@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
+import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
 import 'package:live_sidestage_mobile/screens/home_screen.dart' show SpeechState;
 import 'package:live_sidestage_mobile/screens/tabs/settings_tab.dart';
@@ -29,6 +30,7 @@ Future<void> _pumpSettings(WidgetTester tester, AuthProvider provider) async {
       providers: [
         ChangeNotifierProvider<AppConfigStore>(create: (_) => AppConfigStore()),
         ChangeNotifierProvider<SessionController>.value(value: controller),
+        ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
       ],
       child: MaterialApp(
         home: Scaffold(
