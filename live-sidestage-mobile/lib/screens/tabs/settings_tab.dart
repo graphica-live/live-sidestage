@@ -96,7 +96,7 @@ class SettingsTab extends StatelessWidget {
               // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
               // 保存済み設定のキーなので変えない。
               _VolumeSlider(
-            title: '効果音の音量',
+            title: 'すべての効果音の音量',
             value: store.sound.masterVolume,
             enabled: canEdit,
             onChanged: (value) =>

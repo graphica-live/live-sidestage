@@ -130,7 +130,7 @@ void main() {
       expect(store.config.ttsEnabled, isFalse);
       expect(voiceTile(tester).onTap, isNotNull);
       expect(volumeSlider(tester, '読み上げの音量').onChanged, isNotNull);
-      expect(volumeSlider(tester, '効果音の音量').onChanged, isNotNull);
+      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNotNull);
     });
 
     testWidgets('同じボイスを選び直しても revision を進めない', (tester) async {
@@ -162,7 +162,7 @@ void main() {
 
     testWidgets('効果音の全体音量は運用中も触れる', (tester) async {
       await pumpSettings(tester);
-      expect(volumeSlider(tester, '効果音の音量').onChanged, isNotNull);
+      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNotNull);
     });
 
     // 開始処理は「設定を保存 → サービス起動」の順に進むので、その間の変更は背景
@@ -170,7 +170,7 @@ void main() {
     testWidgets('開始/停止の遷移中はどの設定も止める', (tester) async {
       await pumpSettings(tester, busy: true);
 
-      expect(volumeSlider(tester, '効果音の音量').onChanged, isNull);
+      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNull);
       expect(volumeSlider(tester, '読み上げの音量').onChanged, isNull);
       expect(voiceTile(tester).onTap, isNull);
       expect(
