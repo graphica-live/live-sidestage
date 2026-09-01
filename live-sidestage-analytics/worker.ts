@@ -14,7 +14,7 @@ import {
   checkWatchdogs,
   stopAllListeners,
   getListenerSnapshots,
-  resolveGiftCatalogSource,
+  resolveGiftCatalogSources,
 } from "@/lib/tiktok-listener";
 import { refreshGiftCatalogIfStale } from "@/lib/tiktok-gift-catalog";
 
@@ -165,9 +165,10 @@ function scheduleReconcile() {
   reconcileTimer = setTimeout(
     async () => {
       await reconcileOnce();
-      // ギフトカタログの取り直し。TTL(24時間)内なら即returnするので実質1日1回しか走らない。
-      // 内部で例外を握るのでライブ接続には影響しない。
-      if (!shuttingDown) await refreshGiftCatalogIfStale(resolveGiftCatalogSource);
+      // ギフトカタログの取り直し。TTL(2時間)内なら即returnするので実質1日12回程度しか走らない。
+      // 内部で例外を握るのでライブ接続には影響しない。複数の自部屋を試して和集合を取る
+      // (地域/イベント限定ギフト対策。詳細は resolveGiftCatalogSources() のコメント)。
+      if (!shuttingDown) await refreshGiftCatalogIfStale(resolveGiftCatalogSources);
       scheduleReconcile();
     },
     ready ? RECONCILE_INTERVAL_MS : UNREADY_RECONCILE_INTERVAL_MS
