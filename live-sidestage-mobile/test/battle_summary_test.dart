@@ -36,6 +36,39 @@ void main() {
     test('Map以外はnull(相手が全く特定できないケース)', () {
       expect(BattleOpponent.tryParse(null), isNull);
     });
+
+    test('avatarUrlを解析できる。空文字・欠損はnull', () {
+      expect(BattleOpponent.tryParse({'count': 1, 'avatarUrl': 'https://x/a.png'})!.avatarUrl, 'https://x/a.png');
+      expect(BattleOpponent.tryParse({'count': 1, 'avatarUrl': ''})!.avatarUrl, isNull);
+      expect(BattleOpponent.tryParse({'count': 1})!.avatarUrl, isNull);
+    });
+  });
+
+  group('BattleParticipant.tryParseList', () {
+    test('anchorIdとavatarUrlを持つ配列を解析できる', () {
+      final list = BattleParticipant.tryParseList([
+        {'anchorId': 'a1', 'avatarUrl': 'https://x/a1.png'},
+        {'anchorId': 'a2', 'avatarUrl': null},
+      ]);
+      expect(list, hasLength(2));
+      expect(list![0].anchorId, 'a1');
+      expect(list[0].avatarUrl, 'https://x/a1.png');
+      expect(list[1].avatarUrl, isNull);
+    });
+
+    test('anchorIdが無い要素は除外する', () {
+      final list = BattleParticipant.tryParseList([
+        {'avatarUrl': 'https://x/a.png'},
+        {'anchorId': 'a1'},
+      ]);
+      expect(list, hasLength(1));
+      expect(list![0].anchorId, 'a1');
+    });
+
+    test('null・List以外はnull', () {
+      expect(BattleParticipant.tryParseList(null), isNull);
+      expect(BattleParticipant.tryParseList('not a list'), isNull);
+    });
   });
 
   group('BattleSummary.tryParse', () {
@@ -81,6 +114,29 @@ void main() {
         'selfScore': hugeScore,
       });
       expect(battle!.selfScore, hugeScore);
+    });
+
+    test('selfTeam・opponentTeamを解析できる', () {
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'selfTeam': [
+          {'anchorId': 'me', 'avatarUrl': 'https://x/me.png'},
+        ],
+        'opponentTeam': [
+          {'anchorId': 'r1', 'avatarUrl': 'https://x/r1.png'},
+          {'anchorId': 'r2', 'avatarUrl': null},
+        ],
+      });
+      expect(battle!.selfTeam, hasLength(1));
+      expect(battle.selfTeam![0].avatarUrl, 'https://x/me.png');
+      expect(battle.opponentTeam, hasLength(2));
+    });
+
+    test('selfTeam・opponentTeamが無ければnull(対戦相手不明・チーム未解決)', () {
+      final battle = BattleSummary.tryParse({'battleId': 'b1', 'status': 'unknown'});
+      expect(battle!.selfTeam, isNull);
+      expect(battle.opponentTeam, isNull);
     });
   });
 }
