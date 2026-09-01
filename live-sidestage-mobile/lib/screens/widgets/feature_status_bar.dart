@@ -31,17 +31,35 @@ class FeatureStatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = status.color;
     final noticeText = notice;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: double.infinity,
-      color: color.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.4 : 0.3)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.circle, size: 10, color: color),
+              // 機材のLEDらしく、ダークモードでは発光させる。ライトの筐体上では
+              // 発光が目立ちすぎるため控えめ(shadowなし)にする。
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  boxShadow: isDark
+                      ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 8, spreadRadius: 1)]
+                      : const [],
+                ),
+              ),
               const SizedBox(width: 8),
               Text(status.label),
             ],
@@ -51,7 +69,7 @@ class FeatureStatusBar extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: SelectableText(
                 noticeText,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           for (final (label, message) in errors)
@@ -59,7 +77,7 @@ class FeatureStatusBar extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: SelectableText(
                 '$label: $message',
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
               ),
             ),
         ],
@@ -78,24 +96,25 @@ class ConfigTooNewBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final err = Theme.of(context).colorScheme.error;
     return Container(
       width: double.infinity,
-      color: Colors.red.withValues(alpha: 0.12),
+      color: err.withValues(alpha: 0.12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: const Row(
+      child: Row(
         children: [
           Icon(
             Icons.warning_amber_rounded,
             size: 18,
-            color: Colors.red,
+            color: err,
             semanticLabel: '警告',
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
             child: SelectableText(
               'このアプリより新しいバージョンで作られた設定です。'
               '設定を壊さないため、読み込みと変更を停止しています。アプリを更新してください。',
-              style: TextStyle(fontSize: 12, color: Colors.red),
+              style: TextStyle(fontSize: 12, color: err),
             ),
           ),
         ],
@@ -134,14 +153,21 @@ class FeatureStartButton extends StatelessWidget {
           // 双方が「サービスは止まっている」と判断して二重に起動しうる。
           onPressed: busy || blocked ? null : () => onToggle(!started),
           style: FilledButton.styleFrom(
-            backgroundColor: started ? Colors.red : null,
+            backgroundColor: started ? Theme.of(context).colorScheme.error : null,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
           icon: busy
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    // 開始ボタンはLEDグリーン背景でonPrimaryが暗色になるため、
+                    // 白固定だとダークで背景に埋もれて見えなくなる。
+                    color: started
+                        ? Theme.of(context).colorScheme.onError
+                        : Theme.of(context).colorScheme.onPrimary,
+                  ),
                 )
               : Icon(started ? Icons.stop : Icons.play_arrow),
           label: Text(started ? '停止' : '開始'),

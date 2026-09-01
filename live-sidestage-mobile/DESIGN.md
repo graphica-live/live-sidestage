@@ -1,40 +1,38 @@
 ---
 name: LIVE Sidestage
-description: TikTok Liveのコメントを画面を見ずに聞ける、静かな副操縦士アプリ
+description: 配信を操る機材の筐体を思わせる、静かな副操縦士アプリ
 colors:
-  accent-tangerine: "#D9591F"
-  bg-light: "#FBF8F5"
-  bg-dark: "#141414"
-  card-light: "#FFFFFF"
-  card-dark: "#1C1B19"
-  ink-light: "#211C18"
-  ink-dark: "#ECE9E5"
-  sub-light: "#928B83"
-  sub-dark: "#9B958A"
-  line-light: "#ECE5DC"
-  line-dark: "#282623"
-  status-connected: "#4F8A6F"
+  accent-led-light: "#1F8F4E"
+  accent-led-dark: "#35D07F"
+  accent-amber-light: "#FFB13C"
+  accent-amber-dark: "#FFC15C"
+  bg-light: "#E4E1DA"
+  bg-dark: "#15171B"
+  card-light: "#F4F2ED"
+  card-dark: "#1D2024"
+  ink-light: "#1A1D21"
+  ink-dark: "#E8EAED"
+  sub-light: "#5B5F66"
+  sub-dark: "#9AA0A6"
+  line-light: "#CFCBC0"
+  line-dark: "#2B2F35"
+  status-connected: "#4CAF50"
   status-connecting: "#FF9800"
-  status-error: "#C9636B"
+  status-error-light: "#E24B4B"
+  status-error-dark: "#FF5C5C"
   status-neutral: "#9E9E9E"
   on-danger: "#FFFFFF"
 typography:
-  title:
-    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
-    fontSize: "28px"
+  display:
+    fontFamily: "Space Grotesk, ui-sans-serif, sans-serif"
     fontWeight: 700
-    lineHeight: 1.2
   body:
-    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
+    fontFamily: "IBM Plex Sans, ui-sans-serif, sans-serif"
     fontSize: "16px"
     fontWeight: 400
-  label:
-    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
+  data:
+    fontFamily: "Space Mono, ui-monospace, monospace"
     fontSize: "12px"
-    fontWeight: 400
-  caption:
-    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
-    fontSize: "11px"
     fontWeight: 400
 spacing:
   sm: "8px"
@@ -43,11 +41,11 @@ spacing:
   xl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.accent-tangerine}"
+    backgroundColor: "{colors.accent-led-light}"
     textColor: "#FFFFFF"
     padding: "16px 24px"
   button-danger:
-    backgroundColor: "{colors.status-error}"
+    backgroundColor: "{colors.status-error-light}"
     textColor: "{colors.on-danger}"
     padding: "14px 24px"
 ---
@@ -56,33 +54,32 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Silent Co-Pilot"**
+**Creative North Star: "The Mixer Console"**
 
-LIVE Sidestageは、配信者が画面を見なくても信頼して任せられる道具として存在する。配信の主役は配信者自身とコメントであり、UIはその邪魔をしない。装飾はほとんど無く、Flutter Material3のデフォルト挙動をそのまま採用している。唯一UIが積極的に発言するのは「今どういう状態か」を伝える時――接続中/接続済み/切断/エラーを色付きドットとテキストで即座に示す瞬間だけであり、それ以外の場面では静かに背景へ徹する。
-
-現状これは意図的にミニマルへ振り切ったデザインシステムというより、機能実装を優先した結果として「Material3をほぼ素のまま使う」状態にある。今後の一般公開に向けては、この北極星(静かな信頼性)を保ったまま、ブランドとしての意図的な選択(seedカラーの再検討、ダークテーマ対応など)を積み増していくのが自然な発展方向。
+LIVE Sidestageは、配信を操る機材の筐体という世界観に刷新した(2026-09、Card Deckから移行)。配信者が画面を見なくても信頼して任せられる道具である、という「静かな信頼性」自体は変えていないが、その信頼性を「地味なMaterial3の既定値」ではなく「機材パネルらしい直線的なフォルムとLEDの発光」で表現する。UIが最も雄弁に語るのは今回も「今どういう状態か」を伝える瞬間で、接続中/接続済み/切断/エラーをLEDドットの発光とテキストで示す。
 
 **Key Characteristics:**
-- Material3のColorScheme/TextThemeにほぼ全面依存し、独自トークンは`main.dart`の`_buildTheme()`1箇所(タンジェリンseed・IBM Plex Mono・CardThemeData)に集約
-- 状態(接続・読み上げ・エラー)を色で即座に伝える、機能的な色使い
+- 独自トークンは`main.dart`の`_buildTheme()`1箇所(LEDグリーンaccent・Space Grotesk/IBM Plex Sans/Space Mono・角丸8px)に集約
+- 状態(接続・読み上げ・エラー)を色とLED発光で即座に伝える、機能的な色使い
 - ホームは6タブのボトムナビ(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)。各タブの中身は単一目的の縦積みを保つ
-- Card Deck構成: 要素はカードへ分離して積む(2026-09〜)。装飾アニメーションは無し
+- Mixer Panel構成: 要素は機材パネルの区画のように角の立ったカードへ分離して積む(2026-09〜)。装飾アニメーションは無し
 
 ## Colors
 
-パレットは実質、Material3のseedカラー1色と、状態伝達のための4つの信号色のみで構成される。
+ライト/ダーク双方を同格で作る。背景・カード・文字色はテーマごとに別トークンを持ち、accent(LEDグリーン)・amber・errorの3色だけライト/ダークで明度違いの対を持つ。状態伝達の信号色はこれと独立。
 
 ### Primary
-- **Tangerine Accent** (`#D9591F`): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton(読み上げ開始ボタン等)・アクティブなNavigationBarアイコン・スライダー・見出しラベルがこのロールを直接使う。
-- **Background / Card / Ink / Sub / Line** はいずれも承認済みモックアップの実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#FBF8F5` / card `#FFFFFF` / ink `#211C18` / sub `#928B83` / line `#ECE5DC`、dark: bg `#141414` / card `#1C1B19` / ink `#ECE9E5` / sub `#9B958A` / line `#282623`)。
-- **`ColorScheme.fromSeed`任せにしない。** 当初`ColorScheme.fromSeed(seedColor: #D9591F)`だけで組んだところ、Material3のトーンパレット生成がseed色の彩度・明度を自動シフトし、実機では暗いくすんだ赤茶色の背景になった――以前ユーザーが明示的に却下した「おじさんくさい/dated」なブロンズ配色に、fromSeedの自動生成を経由して意図せず逆戻りしていた(2026-09-01 実機確認で発覚)。以降、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、モックアップの数値を直接`ColorScheme.copyWith`で上書きする。
-- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。この判断は**アプリ全体のアクセント色**の採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
+- **LED Green Accent** (light `#1F8F4E` / dark `#35D07F`): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton(読み上げ開始ボタン等)・アクティブなNavigationBarアイコン・スライダー・見出しラベルがこのロールを直接使う。機材パネルのLEDが光っているような彩度を狙い、ダークでは明度を上げて発光感を出す。
+- **Amber**(light `#FFB13C` / dark `#FFC15C`): アクセントの副色。primaryContainerや強調が必要だがprimaryほど強くしたくない箇所に使う。
+- **Background / Card / Ink / Sub / Line** はいずれも承認済みモックアップの実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#E4E1DA` / card `#F4F2ED` / ink `#1A1D21` / sub `#5B5F66` / line `#CFCBC0`、dark: bg `#15171B` / card `#1D2024` / ink `#E8EAED` / sub `#9AA0A6` / line `#2B2F35`)。ライトは温度感のある紙寄りのグレージュ、ダークは純黒ではなく僅かに青みのある筐体グレーにして、どちらも「金属パネル」の質感を狙う。
+- **`ColorScheme.fromSeed`任せにしない。** fromSeedのトーンパレット生成はseed色の彩度・明度を自動シフトするため、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、モックアップの数値を直接`ColorScheme.copyWith`で上書きする(2026-09 Card Deck期からの既存方針を継続)。
+- 2026-09にタンジェリン単色(Card Deck方向)からLED Green+Amberの2アクセント構成へ変更(Mixer Consoleリブランディング)。「配信を操る機材」という北極星に対し、緑=稼働中/正常のLEDという直感的な結びつきを持つ色を採用した。この判断は**アプリ全体のアクセント色**の採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
 - 状態伝達以外のアクセント表現にも`colorScheme.primary`を直接再利用してよい(Signal-Only Color Ruleの対象はgreen/orange/red/greyの4色のみ)。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
-- **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。
+- **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。LEDドットはダークテーマでのみ`boxShadow`で発光させる(ライトの筐体上では発光が目立ちすぎるため)。
 - **Connecting Orange** (`#FF9800` / `Colors.orange`): 接続試行中の一時状態。
-- **Error Red** (`#F44336` / `Colors.red`): 切断エラー、読み上げエラー、および「読み上げ停止」ボタンの背景(危険なアクションであることを示す)。
+- **Error Red** (light `#E24B4B` / dark `#FF5C5C` / `colorScheme.error`): 切断エラー、読み上げエラー、および「読み上げ停止」ボタンの背景(危険なアクションであることを示す)。固定の`Colors.red`直書きではなく`colorScheme.error`/`onError`経由に統一する(2026-09、ダークで発光色と衝突しない明度を個別に持たせるため)。
 - **Muted Grey** (`#9E9E9E` / `Colors.grey`): 切断状態、補助テキスト(VOICEVOX準備中、話者名表示など)、二次的な説明文。
 
 ### Named Rules
@@ -92,19 +89,21 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Typography
 
-**Display/Title Font:** IBM Plex Mono (`google_fonts`パッケージ、フォールバック monospace)
-**Body Font:** IBM Plex Mono (`GoogleFonts.ibmPlexMonoTextTheme`でMaterial3 TextTheme全体を上書き)
+**Display Font:** Space Grotesk(`google_fonts`パッケージ、フォールバック sans-serif、bold 700)
+**Body Font:** IBM Plex Sans(`google_fonts`パッケージ)
+**Data Font:** Space Mono(コイン数・タイムスタンプなど数値の並ぶ箇所、フォールバック monospace)
 
-**Character:** 2026-09にRoboto一本からIBM Plex Mono一本へ変更(Card Deckリブランディング)。等幅書体をアプリ全域に適用する明示判断で、独自のカスタムスケールは持たない(サイズ階層はMaterial3 TextThemeのロール名に準拠)。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
+**Character:** 2026-09にIBM Plex Mono一本(Card Deck)から3書体構成(Mixer Console)へ変更。等幅一本の「機材然とした無機質さ」から、見出しに硬質なグロテスク(Space Grotesk)、本文に可読性の高いサンセリフ(IBM Plex Sans)、数値だけ等幅(Space Mono)という役割分担に変えた。サイズ階層はMaterial3 TextThemeのロール名に準拠する。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
 
 ### Hierarchy
-- **Title** (bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
-- **Body** (regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
-- **Label** (regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
-- **Caption** (regular 400, 11px, red): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
+- **Display** (Space Grotesk bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
+- **Body** (IBM Plex Sans regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
+- **Data** (Space Mono regular 400, 12px): コイン数・ランキング順位・日付など、桁を揃えたい数値表示。
+- **Label** (IBM Plex Sans regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
+- **Caption** (IBM Plex Sans regular 400, 11px, error色): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
 
 ### Named Rules
-**The One Title Rule.** 28px boldの大型タイトルはウェルカム画面のアプリ名一箇所のみに予約されている。他画面で見出しサイズを増やして視覚的な重みを作らない。
+**The One Title Rule.** 28px boldの大型見出しはウェルカム画面のアプリ名一箇所のみに予約されている。他画面で見出しサイズを増やして視覚的な重みを作らない。
 
 ## Layout
 
@@ -126,21 +125,21 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Elevation & Depth
 
-2026-09のCard Deckリブランディングで、要素をカードへ分離して積む構成に変更した。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 0、角丸16、`line`トークン色の1px枠線、`surfaceTintColor: transparent`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。`surfaceTintColor`を明示的に透明化しているのは、Material3のデフォルト挙動(elevationに応じてカードへ`primary`をブレンドする)が、白いカードに暖色の色かぶりを乗せてモックアップの純白カードと食い違ったため。
+2026-09のMixer Consoleリブランディングでも、要素をカードへ分離して積む構成自体は維持する(Card Deck期からの継続)。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 0、角丸8、`line`トークン色の1px枠線、`surfaceTintColor: transparent`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。`surfaceTintColor`を明示的に透明化しているのは、Material3のデフォルト挙動(elevationに応じてカードへ`primary`をブレンドする)が、モックアップの意図した中立なカード色と食い違うため。
 
 ### Named Rules
-**The Card Deck Rule(旧: Flat-By-Default Rule).** 深度は`main.dart`の`CardThemeData`1箇所にのみ由来する。個々の画面・Widgetで独自のBoxShadowや手動elevation値を追加しない(テーマの一括変更で全画面に反映される状態を維持する)。
+**The Mixer Panel Rule(旧: Card Deck Rule / Flat-By-Default Rule).** 深度は`main.dart`の`CardThemeData`1箇所にのみ由来する。個々の画面・Widgetで独自のBoxShadowや手動elevation値を追加しない(テーマの一括変更で全画面に反映される状態を維持する)。角の丸みも8pxに統一し、Card Deck期の16pxより直線的な機材パネルらしいフォルムにする(唯一の例外はStatus BarのLEDドット。これは`BoxShape.circle`で、機材のインジケータランプそのものを表すため角丸ルールの対象外)。
 
 ## Shapes
 
-`main.dart`の`_buildTheme()`がCard(角丸16+line色の1px枠線)・ListTile(角丸14)・Chip(スタジアム形)・FilledButton(角丸14)の形状をテーマ側で一括指定する。TextFormField・AlertDialog・Switchは Material3 のデフォルト形状のまま(個別のオーバーライドは無い)。独自の角丸スケールは持たず、テーマの数値をそのまま使う。
+`main.dart`の`_buildTheme()`がCard(角丸8+line色の1px枠線)・ListTile(角丸8)・Chip(スタジアム形のまま維持)・FilledButton(角丸8)の形状をテーマ側で一括指定する。角丸を16→8へ縮小したのはCard Deck期の柔らかい印象を捨て、機材パネルらしい直線的なフォルムを狙ったため。Chipのみスタジアム形(角丸最大)を維持している――コイン帯フィルタのような選択トグルは指で摘む対象としての丸みを保つ判断で、パネルの箱型とは役割が異なる。TextFormField・AlertDialog・Switchは Material3 のデフォルト形状のまま(個別のオーバーライドは無い)。独自の角丸スケールは持たず、テーマの数値をそのまま使う。
 
 ## Components
 
 ### Buttons
-- **Shape:** `_buildTheme()`の`filledButtonTheme`で角丸14に統一(Material3デフォルトのpill型から変更)。
+- **Shape:** `_buildTheme()`の`filledButtonTheme`で角丸8に統一(Material3デフォルトのpill型から変更)。
 - **Primary:** `FilledButton`/`FilledButton.icon`。読み上げ開始・ログイン・連携する・変更する、など画面の主アクションに使用。縦paddingは12〜14px程度。
-- **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: Colors.red`で上書きされる。危険/停止アクション専用。
+- **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: colorScheme.error`で上書きされる(`Colors.red`直書きは廃止、2026-09)。危険/停止アクション専用。ボタン内の`CircularProgressIndicator`もこの状態では`onError`を使い、`onPrimary`固定にしない――ダークテーマのLED Green primaryは`onPrimary`が暗色になるため、停止中はエラー色に合わせた明るい色を明示的に選ぶ。
 - **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`は編集画面の「テスト再生」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。
 - **FAB:** `FloatingActionButton.extended`(サウンドタブの「追加」)。リストへ要素を足す操作にのみ使う。
 
@@ -196,7 +195,8 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 - バトル履歴タブの貢献者展開でも同じ`RankingListTile`が使われる。両画面とも「ギフト貢献ランキング」という同一文脈のため共有している。
 
 ### Status Bar(Signature Component)
-- **Description:** ホーム画面上部に常駐する接続状態バー。背景は状態色を`withValues(alpha: 0.12)`で薄く敷き、状態色の小さな`Icon(Icons.circle)`ドット+ラベルテキストを横並びに配置。エラー時のみ詳細メッセージを右側に省略表示で追加する。このアプリで最もアプリらしい、独自に設計された唯一のコンポーネント。
+- **Description:** ホーム画面上部に常駐する接続状態バー。背景は状態色を`withValues(alpha: 0.12)`で薄く敷き、状態色の小さな円形ドット+ラベルテキストを横並びに配置。エラー時のみ詳細メッセージを右側に省略表示で追加する。このアプリで最もアプリらしい、独自に設計された唯一のコンポーネント。
+- **LED発光(2026-09追加):** ドットは`Container`+`BoxDecoration`で描き、ダークテーマのときだけ`boxShadow`(同色・alpha 0.7・blurRadius 8)を足して発光させる。ライトの筐体上では発光が目立ちすぎるため、ライトテーマでは`boxShadow`を付けない。「機材のLED」という北極星を最も具体的に体現する箇所。
 
 ### Switch
 - **Style:** 標準`Switch`(ランダムボイスON/OFF)。VOICEVOX初期化完了前は同サイズの空`SizedBox`を代わりに表示し、無効状態のSwitchを一切マウントしない(既知のFlutter描画バグの回避策)。
@@ -213,7 +213,7 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 ### Don't:
 - **Don't** iOS由来のコンポーネント(Cupertinoスイッチ・ダイアログ等)を混在させない。Material3コンポーネントのみを使う。
 - **Don't** 装飾目的で新しい色を追加しない。状態を表さない色は原則Material3のロールトークン(surface/onSurface等)から取る。
-- **Don't** ダークテーマは現状未対応(`ThemeData`に`darkTheme`指定なし)。対応するまでは、ダーク前提の配色決め打ちを行わない。
+- **Don't** ライト/ダークどちらかだけを検証して終えない。`main.dart`の`_buildTheme(Brightness)`はライト/ダーク双方を同格で分岐する設計(2026-09〜)。片方専用の決め打ち値(`Colors.red`直書き等)を新設しない――必ず`colorScheme`経由でテーマに応じて解決させる。
 - **Don't** タブレット・横画面・レスポンシブ分岐は未検証。対応するまでは固定幅前提のレイアウトを増やさない。
 - **Don't** ボトムナビのタブを安易に増やさない。2026-08に貢献/ギフト履歴/バトル履歴の3タブを例外的に追加して6タブになったが、これは「タブは増やさない」原則からの明示的な逸脱であり通例ではない。さらに増やしたくなったら、まず既存6タブのいずれかの配下へpushできないかを疑う。
 - **Don't** 設定項目をTTSタブ・サウンドタブへ置かない。設定は設定タブへ集約する(Layout参照)。運用画面に置きたくなったら、それが本当に「今の状態」ではなく「設定」なのかをまず疑う。

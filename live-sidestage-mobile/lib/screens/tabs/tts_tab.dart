@@ -64,11 +64,16 @@ class TtsTab extends StatelessWidget {
           onToggle: onToggle,
         ),
         if (started && !speech.initialized && speech.errorMessage == null)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('VOICEVOX準備中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              child: Text(
+                'VOICEVOX準備中…',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
             ),
           ),
         if (started && speech.nowSpeakingCharacterName != null)
@@ -78,7 +83,9 @@ class TtsTab extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 'VOICEVOX:${speech.nowSpeakingCharacterName}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           ),
@@ -88,13 +95,20 @@ class TtsTab extends StatelessWidget {
           child: comments.isEmpty
               ? Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      roomSwitching
-                          ? '@${switchingToTiktokId ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「開始」を押しておけば、反映され次第コメントが流れ始めます）'
-                          : '「開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          roomSwitching
+                              ? '@${switchingToTiktokId ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「開始」を押しておけば、反映され次第コメントが流れ始めます）'
+                              : '「開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                      ),
                     ),
                   ),
                 )
@@ -142,17 +156,18 @@ class _FirstRunGuideBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
-          const Icon(Icons.info_outline, size: 18, color: Colors.grey),
+          Icon(Icons.info_outline, size: 18, color: sub),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
               'まず設定タブでボイスを選びましょう',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(color: sub),
             ),
           ),
           IconButton(
