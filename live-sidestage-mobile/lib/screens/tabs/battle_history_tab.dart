@@ -13,6 +13,7 @@ import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
+import '../widgets/user_avatar.dart';
 
 /// バトル履歴タブ。行をタップするとそのバトル区間の貢献者一覧をボトムシートで開く。
 ///
@@ -345,6 +346,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             Card(
               child: ListTile(
                 onTap: () => _showContributors(battle),
+                leading: _BattleAvatarsRow(battle: battle),
                 title: Text('vs ${_opponentLabel(battle.opponent)}'),
                 subtitle: Text('${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}'),
                 trailing: Text(
@@ -360,6 +362,62 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
                 child: Text('直近分のみ表示', style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12)),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// リスト行のleading。「自分アイコン(束) vs 相手アイコン(束)」を横並びにする。
+/// チーム戦で複数人になる場合は[_BattleAvatarCluster]が重ねて表示する。
+class _BattleAvatarsRow extends StatelessWidget {
+  const _BattleAvatarsRow({required this.battle});
+
+  final BattleSummary battle;
+
+  @override
+  Widget build(BuildContext context) {
+    final selfUrls = battle.selfTeam?.map((p) => p.avatarUrl).toList() ?? const [null];
+    final opponentUrls = battle.opponentTeam?.map((p) => p.avatarUrl).toList() ?? [battle.opponent?.avatarUrl];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _BattleAvatarCluster(avatarUrls: selfUrls),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text('vs', style: TextStyle(fontSize: 10, color: Theme.of(context).disabledColor)),
+        ),
+        _BattleAvatarCluster(avatarUrls: opponentUrls),
+      ],
+    );
+  }
+}
+
+/// [avatarUrls]を円形アイコンで表示する。複数件なら少しずつ重ねて表示する
+/// (先頭3件まで。それ以上は先頭3件のみ)。
+class _BattleAvatarCluster extends StatelessWidget {
+  const _BattleAvatarCluster({required this.avatarUrls});
+
+  final List<String?> avatarUrls;
+
+  static const double _size = 28;
+  static const int _maxShown = 3;
+  static const double _overlap = 0.55;
+
+  @override
+  Widget build(BuildContext context) {
+    final urls = avatarUrls.isEmpty ? const [null] : avatarUrls.take(_maxShown).toList();
+    if (urls.length == 1) return UserAvatar(urls.first, size: _size);
+
+    final step = _size * _overlap;
+    return SizedBox(
+      width: _size + step * (urls.length - 1),
+      height: _size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < urls.length; i++)
+            Positioned(left: step * i, child: UserAvatar(urls[i], size: _size)),
         ],
       ),
     );
