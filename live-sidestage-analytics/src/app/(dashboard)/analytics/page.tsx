@@ -5,6 +5,9 @@ import Link from "next/link";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 
+// BIO認証ゲート無効化中。復活時はtrueに戻す。
+const BIO_VERIFICATION_GATE_ENABLED = false;
+
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
 type HistorySortKey = "time" | "diamonds" | "user" | "gift";
@@ -706,11 +709,11 @@ export default function AnalyticsPage() {
                   }
                 }}
                 disabled={
-                  verified === false ||
+                  (BIO_VERIFICATION_GATE_ENABLED && verified === false) ||
                   (viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0)
                 }
                 className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
-                title={verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
+                title={BIO_VERIFICATION_GATE_ENABLED && verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
               >
                 <DownloadIcon />
                 <span className="hidden sm:inline">CSV</span>
@@ -741,10 +744,10 @@ export default function AnalyticsPage() {
 
         {/* Stats bar + Table: コイン数・ギフト履歴はBIO認証完了まですりガラス表示 */}
         <div className="relative">
-          {verified === false && <VerifyGate />}
+          {BIO_VERIFICATION_GATE_ENABLED && verified === false && <VerifyGate />}
           <div
             className={`space-y-4 ${
-              verified === false ? "blur-sm select-none pointer-events-none" : ""
+              BIO_VERIFICATION_GATE_ENABLED && verified === false ? "blur-sm select-none pointer-events-none" : ""
             }`}
           >
         {viewMode === "ranking" && data && (
