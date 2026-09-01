@@ -2,28 +2,38 @@
 name: LIVE Sidestage
 description: TikTok Liveのコメントを画面を見ずに聞ける、静かな副操縦士アプリ
 colors:
-  seed-deep-purple: "#673AB7"
-  status-connected: "#4CAF50"
+  accent-tangerine: "#D9591F"
+  bg-light: "#FBF8F5"
+  bg-dark: "#141414"
+  card-light: "#FFFFFF"
+  card-dark: "#1C1B19"
+  ink-light: "#211C18"
+  ink-dark: "#ECE9E5"
+  sub-light: "#928B83"
+  sub-dark: "#9B958A"
+  line-light: "#ECE5DC"
+  line-dark: "#282623"
+  status-connected: "#4F8A6F"
   status-connecting: "#FF9800"
-  status-error: "#F44336"
+  status-error: "#C9636B"
   status-neutral: "#9E9E9E"
   on-danger: "#FFFFFF"
 typography:
   title:
-    fontFamily: "Roboto, sans-serif"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
     fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.2
   body:
-    fontFamily: "Roboto, sans-serif"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
     fontSize: "16px"
     fontWeight: 400
   label:
-    fontFamily: "Roboto, sans-serif"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
     fontSize: "12px"
     fontWeight: 400
   caption:
-    fontFamily: "Roboto, sans-serif"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
     fontSize: "11px"
     fontWeight: 400
 spacing:
@@ -33,7 +43,7 @@ spacing:
   xl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.seed-deep-purple}"
+    backgroundColor: "{colors.accent-tangerine}"
     textColor: "#FFFFFF"
     padding: "16px 24px"
   button-danger:
@@ -63,8 +73,10 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 パレットは実質、Material3のseedカラー1色と、状態伝達のための4つの信号色のみで構成される。
 
 ### Primary
-- **Tangerine Seed** (`#D9591F`): `ColorScheme.fromSeed(seedColor: ...)`(`main.dart`の`_buildTheme()`)で指定されるシード色。ここから`ColorScheme.fromSeed`がprimary/on-primary/surface等のロールトークンを自動生成する。個々のロールの正確な値はランタイム計算に委ねられており、コード上に固定hexとして明示的なオーバーライドは無い。FilledButton(読み上げ開始ボタン等)・NavigationBarの選択インジケータ・Cardの縁がこのprimaryロールを直接使う。
-- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。この判断は**アプリ全体のシード色**(`ColorScheme.fromSeed`)候補としての採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
+- **Tangerine Accent** (`#D9591F`): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton(読み上げ開始ボタン等)・アクティブなNavigationBarアイコン・スライダー・見出しラベルがこのロールを直接使う。
+- **Background / Card / Ink / Sub / Line** はいずれも承認済みモックアップの実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#FBF8F5` / card `#FFFFFF` / ink `#211C18` / sub `#928B83` / line `#ECE5DC`、dark: bg `#141414` / card `#1C1B19` / ink `#ECE9E5` / sub `#9B958A` / line `#282623`)。
+- **`ColorScheme.fromSeed`任せにしない。** 当初`ColorScheme.fromSeed(seedColor: #D9591F)`だけで組んだところ、Material3のトーンパレット生成がseed色の彩度・明度を自動シフトし、実機では暗いくすんだ赤茶色の背景になった――以前ユーザーが明示的に却下した「おじさんくさい/dated」なブロンズ配色に、fromSeedの自動生成を経由して意図せず逆戻りしていた(2026-09-01 実機確認で発覚)。以降、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、モックアップの数値を直接`ColorScheme.copyWith`で上書きする。
+- 2026-09にDeep Purple(`#673AB7`)から変更(Card Deckリブランディング)。中性色寄りのブロンズ/鈍青は「性別記号・年代感が乗りやすい」と判断し不採用、彩度のはっきりした暖色を採用した。この判断は**アプリ全体のアクセント色**の採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
 - 状態伝達以外のアクセント表現にも`colorScheme.primary`を直接再利用してよい(Signal-Only Color Ruleの対象はgreen/orange/red/greyの4色のみ)。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
@@ -114,19 +126,19 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 
 ## Elevation & Depth
 
-2026-09のCard Deckリブランディングで、要素をカードへ分離して積む構成に変更した。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 2、角丸18、タンジェリンを薄めた`shadowColor`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。
+2026-09のCard Deckリブランディングで、要素をカードへ分離して積む構成に変更した。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 0、角丸16、`line`トークン色の1px枠線、`surfaceTintColor: transparent`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。`surfaceTintColor`を明示的に透明化しているのは、Material3のデフォルト挙動(elevationに応じてカードへ`primary`をブレンドする)が、白いカードに暖色の色かぶりを乗せてモックアップの純白カードと食い違ったため。
 
 ### Named Rules
 **The Card Deck Rule(旧: Flat-By-Default Rule).** 深度は`main.dart`の`CardThemeData`1箇所にのみ由来する。個々の画面・Widgetで独自のBoxShadowや手動elevation値を追加しない(テーマの一括変更で全画面に反映される状態を維持する)。
 
 ## Shapes
 
-FilledButton・TextFormField・AlertDialog・Switchはすべて Material3 のデフォルト角丸・形状をそのまま使用しており、`shape:`や`BorderRadius`によるオーバーライドはコード中に存在しない。独自の角丸スケールは無い。
+`main.dart`の`_buildTheme()`がCard(角丸16+line色の1px枠線)・ListTile(角丸14)・Chip(スタジアム形)・FilledButton(角丸14)の形状をテーマ側で一括指定する。TextFormField・AlertDialog・Switchは Material3 のデフォルト形状のまま(個別のオーバーライドは無い)。独自の角丸スケールは持たず、テーマの数値をそのまま使う。
 
 ## Components
 
 ### Buttons
-- **Shape:** Material3 FilledButtonのデフォルト形状(pill型、明示的なradius指定なし)。
+- **Shape:** `_buildTheme()`の`filledButtonTheme`で角丸14に統一(Material3デフォルトのpill型から変更)。
 - **Primary:** `FilledButton`/`FilledButton.icon`。読み上げ開始・ログイン・連携する・変更する、など画面の主アクションに使用。縦paddingは12〜14px程度。
 - **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: Colors.red`で上書きされる。危険/停止アクション専用。
 - **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`は編集画面の「テスト再生」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。

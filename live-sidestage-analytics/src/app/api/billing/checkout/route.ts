@@ -6,8 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 import { PAID_PLANS, priceIdForPlan, type PaidPlan } from "@/lib/plan/price-map";
 import { canonicalOrigin } from "@/lib/canonical-origin";
-
-const ACTIVE_STATUSES = new Set(["active", "trialing"]);
+import { isEntitlementRowValid } from "@/lib/plan/effective-entitlement";
 
 function isPaidPlan(value: unknown): value is PaidPlan {
   return typeof value === "string" && (PAID_PLANS as readonly string[]).includes(value);
@@ -38,21 +37,41 @@ export async function POST(req: Request) {
   }
 
   const userId = session.user.id;
-  let existing = await prisma.subscription.findUnique({
-    where: { userId },
-    select: { status: true, stripeCustomerId: true },
-  });
 
-  // Stripe Checkoutのsubscription modeは既存購読があっても新規購読を作れてしまうため、
-  // ここでガードしないと二重課金になる。プラン変更はBilling Portal経由に誘導する。
-  if (existing?.status && ACTIVE_STATUSES.has(existing.status)) {
+  // cross-provider二重課金防止: providerを問わず、既に有効なentitlementを持つ行が
+  // あれば拒否する。プラン変更はBilling Portal経由(Stripeの場合)に誘導する。
+  // entitlementActive:trueだけでなく、バックフィル未実行の旧Stripe行(provider未設定)も
+  // isEntitlementRowValidのフォールバックで拾えるよう、userId一致の全行を読む。
+  const activeRows = await prisma.subscription.findMany({
+    where: { userId },
+    select: { provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
+  });
+  // provider未設定の旧行は実質STRIPE(バックフィル前)なので、それ以外のみ「ストア契約」扱いにする。
+  const activeNonStripe = activeRows.find(
+    (r) => isEntitlementRowValid(r) && r.provider && r.provider !== "STRIPE",
+  );
+  if (activeNonStripe) {
+    return NextResponse.json(
+      { error: "ストアで契約中のプランがあります。プラン変更はモバイルアプリのストア購読管理から行ってください" },
+      { status: 409 },
+    );
+  }
+  const activeStripe = activeRows.find(
+    (r) => isEntitlementRowValid(r) && (!r.provider || r.provider === "STRIPE"),
+  );
+  if (activeStripe) {
     return NextResponse.json(
       { error: "既に有効なプランをご利用中です。プラン変更は「プランを管理する」から行ってください" },
       { status: 409 },
     );
   }
 
-  let customerId = existing?.stripeCustomerId;
+  let link = await prisma.stripeCustomerLink.findUnique({
+    where: { userId },
+    select: { stripeCustomerId: true },
+  });
+
+  let customerId = link?.stripeCustomerId;
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: session.user.email ?? undefined,
@@ -61,17 +80,17 @@ export async function POST(req: Request) {
     customerId = customer.id;
 
     try {
-      await prisma.subscription.create({
+      await prisma.stripeCustomerLink.create({
         data: { userId, stripeCustomerId: customerId },
       });
     } catch (err) {
       // 同時リクエストでCustomer作成が競合した場合のP2002。孤児Customerが1件残るだけで実害はない。
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        existing = await prisma.subscription.findUnique({
+        link = await prisma.stripeCustomerLink.findUnique({
           where: { userId },
-          select: { status: true, stripeCustomerId: true },
+          select: { stripeCustomerId: true },
         });
-        customerId = existing?.stripeCustomerId ?? customerId;
+        customerId = link?.stripeCustomerId ?? customerId;
       } else {
         throw err;
       }

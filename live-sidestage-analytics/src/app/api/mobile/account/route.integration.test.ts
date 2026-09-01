@@ -45,6 +45,7 @@ function authedRequest(token: string) {
 async function cleanup() {
   await prisma.event.deleteMany({ where: { slug: { startsWith: PREFIX } } });
   await prisma.subscription.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
+  await prisma.stripeCustomerLink.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
   await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
@@ -79,7 +80,15 @@ describe("DELETE /api/mobile/account", () => {
         accounts: {
           create: { type: "oauth", provider: "google", providerAccountId: `${PREFIX}google-basic` },
         },
-        subscription: { create: { plan: "PRO", stripeCustomerId: `${PREFIX}cus-basic` } },
+        stripeCustomerLink: { create: { stripeCustomerId: `${PREFIX}cus-basic` } },
+        subscriptions: {
+          create: {
+            plan: "PRO",
+            provider: "STRIPE",
+            providerSubscriptionId: `${PREFIX}sub-basic`,
+            entitlementActive: true,
+          },
+        },
       },
     });
     const token = signMobileToken({ userId: user.id });
@@ -147,7 +156,15 @@ describe("DELETE /api/mobile/account", () => {
     const user = await prisma.user.create({
       data: {
         email: `${PREFIX}stripe-fail@local.test`,
-        subscription: { create: { plan: "PRO", stripeCustomerId: `${PREFIX}cus-fail` } },
+        stripeCustomerLink: { create: { stripeCustomerId: `${PREFIX}cus-fail` } },
+        subscriptions: {
+          create: {
+            plan: "PRO",
+            provider: "STRIPE",
+            providerSubscriptionId: `${PREFIX}sub-fail`,
+            entitlementActive: true,
+          },
+        },
       },
     });
     const token = signMobileToken({ userId: user.id });

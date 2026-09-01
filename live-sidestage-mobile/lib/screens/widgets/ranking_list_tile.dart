@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/tiktok_profile.dart';
 import '../../models/gift_ranking_entry.dart';
 import 'diamond_format.dart';
 import 'user_avatar.dart';
@@ -36,6 +37,7 @@ class RankingListTile extends StatelessWidget {
           formatDiamonds(entry.totalDiamonds),
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
+        onTap: () => openTiktokProfile(context, entry.uniqueId),
       ),
     );
   }
