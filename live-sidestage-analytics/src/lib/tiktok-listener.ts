@@ -28,6 +28,7 @@ import {
   type ListenerHealth,
 } from "./listener-state";
 import { getEulerSignApiKey } from "./settings";
+import { recordEulerSignUsage, type EulerSignTrigger } from "./euler-usage";
 import type { GiftCatalogSource } from "./tiktok-gift-catalog";
 import {
   battleNotifyDecision,
@@ -1087,13 +1088,69 @@ export async function saveComboGift(
 // transactionを開くとプールを食い潰す。プロセス内で先に1本へ絞る。
 const comboWrites = createWriteQueue("gift/combo");
 
+interface SignUsageContext {
+  roomId: string;
+  trigger: EulerSignTrigger;
+  reason: string | null;
+}
+
+// EulerStream署名API(WebSocket接続用の署名)への実際のリクエストを記録するラッパー。
+// tiktok-live-connectorはoptions.signedWebSocketProviderが未指定なら
+// `this.webClient.fetchSignedWebSocketFromEuler`を直接呼ぶ(node_modules/tiktok-live-connector/dist/lib/client.js
+// の_connect()参照)。ここではその既定実装を素通しで呼びつつ、呼ばれた事実だけを記録する
+// — fetchRoomInfoOnConnectのオフライン判定(UserOfflineError)はこの手前で終わるため、
+// このラッパーが呼ばれる=実際に署名を消費する試行が発生した、という対応が保たれる。
+function createSignedWebSocketProvider(
+  getConn: () => WebcastPushConnection,
+  tiktokId: string,
+  eulerSignApiKey: string | null,
+  signCtx: SignUsageContext
+) {
+  return async (params: unknown) => {
+    const requestedAt = new Date();
+    const [epoch, workerIndex] = await Promise.all([
+      ensureListenerEpoch().catch(() => null),
+      Promise.resolve(
+        Number.isInteger(Number(process.env.WORKER_INDEX)) ? Number(process.env.WORKER_INDEX) : null
+      ),
+    ]);
+    const record = (outcome: "success" | "error", errorMessage?: string) =>
+      void recordEulerSignUsage({
+        roomId: signCtx.roomId,
+        tiktokId,
+        requestedAt,
+        outcome,
+        errorMessage,
+        trigger: signCtx.trigger,
+        reason: signCtx.reason,
+        role: isWorkerProcess ? "worker" : "web",
+        workerIndex,
+        listenerEpoch: epoch,
+        credentialMode: eulerSignApiKey ? "configured" : "anonymous",
+      });
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiktok-live-connectorの内部プロパティ
+      const webClient = (getConn() as any).webClient;
+      const result = await webClient.fetchSignedWebSocketFromEuler(params);
+      record("success");
+      return result;
+    } catch (err) {
+      record("error", err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  };
+}
+
 function createConnection(
   tiktokId: string,
   deviceId: string,
   proxyUrl: string | null,
-  eulerSignApiKey: string | null
+  eulerSignApiKey: string | null,
+  signCtx: SignUsageContext
 ): WebcastPushConnection {
-  return new WebcastPushConnection(`@${tiktokId}`, {
+  let connRef: WebcastPushConnection;
+  const conn = new WebcastPushConnection(`@${tiktokId}`, {
     processInitialData: false,
     fetchRoomInfoOnConnect: true,
     enableExtendedGiftInfo: false,
@@ -1104,6 +1161,12 @@ function createConnection(
     authenticateWs: false,
     // 管理画面で設定されたEulerAPIキー。未設定ならtiktok-live-connectorのデフォルト(匿名)にフォールバックする。
     ...(eulerSignApiKey ? { signApiKey: eulerSignApiKey } : {}),
+    signedWebSocketProvider: createSignedWebSocketProvider(
+      () => connRef,
+      tiktokId,
+      eulerSignApiKey,
+      signCtx
+    ),
     webClientParams: {
       app_language: "ja",
       device_platform: "web",
@@ -1124,9 +1187,11 @@ function createConnection(
         }
       : {}),
   } as Record<string, unknown>);
+  connRef = conn;
+  return conn;
 }
 
-async function connectInstance(roomId: string) {
+async function connectInstance(roomId: string, trigger: EulerSignTrigger = "start") {
   const inst = listeners.get(roomId);
   if (!inst || inst.stopped) return;
 
@@ -1153,7 +1218,7 @@ async function connectInstance(roomId: string) {
 
       if (inst.stopped) return;
 
-      await connectAndAttach(roomId, inst, deviceId, proxyUrl, eulerSignApiKey);
+      await connectAndAttach(roomId, inst, deviceId, proxyUrl, eulerSignApiKey, trigger);
     } finally {
       inst.connectPromise = null;
     }
@@ -1372,9 +1437,17 @@ async function connectAndAttach(
   inst: ListenerInstance,
   deviceId: string,
   proxyUrl: string | null,
-  eulerSignApiKey: string | null
+  eulerSignApiKey: string | null,
+  trigger: EulerSignTrigger
 ) {
-  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey);
+  // "connecting"遷移でinst.state.reasonがnullに上書きされる前に退避する(updateState参照)。
+  // 署名利用ログにはこの直前理由(初回接続ならnull)を残す。
+  const signReason = inst.state.reason;
+  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey, {
+    roomId,
+    trigger,
+    reason: signReason,
+  });
   inst.connection = conn;
 
   // stopListener()やconnectInstance()の再呼び出しでinst.connectionが別物(または null)に
@@ -1759,7 +1832,7 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
 
   inst.reconnectTimer = setTimeout(async () => {
     inst.reconnectTimer = null;
-    await connectInstance(roomId);
+    await connectInstance(roomId, "scheduled_reconnect");
   }, delay);
 }
 
@@ -1820,7 +1893,7 @@ export async function startListener(
   };
 
   listeners.set(roomId, inst);
-  await connectInstance(roomId);
+  await connectInstance(roomId, "start");
   return inst.state;
 }
 
@@ -2142,7 +2215,7 @@ export function checkWatchdogs() {
     console.warn(
       `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect (trigger #${inst.watchdogTriggerCount}, next forced reconnect allowed in ${backoffMs}ms if still silent)`
     );
-    connectInstance(roomId).catch((err) =>
+    connectInstance(roomId, "watchdog").catch((err) =>
       console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
     );
   });

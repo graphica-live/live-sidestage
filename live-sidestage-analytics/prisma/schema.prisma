@@ -211,6 +211,59 @@ model TiktokRoom {
   @@schema("public")
 }
 
+// EulerStream署名API(WebSocket接続用の署名)への実際のリクエストを1回につき1行記録する。
+// 「謎のAPIトークン消費」の原因究明用。
+//
+// **記録境界は `conn.connect()` ではなく、tiktok-live-connectorが実際に
+// `fetchSignedWebSocketFromEuler` を呼ぶ瞬間(`signedWebSocketProvider`)。**
+// `conn.connect()` は fetchRoomInfoOnConnect のオフライン判定(UserOfflineError)で
+// 署名取得前に終わることがあり、そちらまで1行にすると「オフライン配信者への
+// 30秒ごとの再試行」が大量に紛れ込み、実際のトークン消費と一致しなくなる。
+model EulerSignUsage {
+  id  String @id @default(cuid())
+  // 署名リクエストを開始した時刻。fire-and-forgetでDB書き込みが遅延すると
+  // createdAt(INSERT完了時刻)とずれるため分けて持つ。
+  requestedAt DateTime
+  createdAt   DateTime @default(now())
+
+  roomId   String
+  tiktokId String
+
+  outcome      String // "success" | "error"
+  errorMessage String? @db.Text // outcome="error"のときだけ
+
+  // connectInstance()がどの経路から呼ばれたか。
+  // "start"(初回接続 / reconcileでの復元) | "scheduled_reconnect"(disconnected等からの通常再接続) | "watchdog"(無応答検知による強制再接続)
+  trigger String
+  // scheduleReconnect()のreason。trigger="scheduled_reconnect"のときだけ意味を持つ。
+  // ("disconnected" | "stream_end" | "error" | "rate_limited" | "connect_failed" | "user_offline")
+  reason  String?
+
+  role        String // "web" | "worker"
+  workerIndex Int?
+  // fencing用のプロセス世代(ListenerEpoch.id)。ゼロダウンタイムデプロイ中に
+  // 新旧Workerが同じ部屋へ並走したことを見分けるため。
+  listenerEpoch    BigInt?
+  // 記録時点でDB上どのWorkerがこの部屋の担当だったか(TiktokRoom.workerId)。
+  // 上のworkerIndexと食い違っていれば、担当替え直後の旧Workerが取り残されて
+  // 接続していることが分かる。
+  assignedWorkerId Int?
+  // EulerAPIキーが設定されていたか。匿名取得は別のトークン消費経路として扱うため区別する。
+  credentialMode String // "configured" | "anonymous"
+
+  // 記録時点のスナップショット。FK無し(部屋やイベントが後で消えても履歴は残す)。
+  // 表示名は現在のテーブルからしか解決できない — 削除・改名後は当時と異なりうる。
+  streamerUserIds  String[]
+  agencyIds        String[]
+  eventIds         String[]
+  roomMonitorUntil DateTime? // 記録時点のTiktokRoom.monitorUntil
+
+  @@index([roomId, createdAt])
+  @@index([tiktokId, createdAt])
+  @@index([createdAt])
+  @@schema("public")
+}
+
 // listener状態の書き込みをフェンスするための世代番号。
 //
 // プロセス起動時に1行 insert し、採番された id をそのプロセスの世代として使う。
