@@ -21,7 +21,7 @@ import 'url_validation.dart';
 /// 平文HTTPは debug ビルドのマニフェストでのみ許可している。
 const String liveAnalyticsBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://api.livesidestage.com',
+  defaultValue: 'https://analytics.livesidestage.com',
 );
 
 // LIVE Sidestage Analyticsバックエンドの GOOGLE_CLIENT_ID と同じ値(ウェブ アプリケーション種別のクライアントID)。
