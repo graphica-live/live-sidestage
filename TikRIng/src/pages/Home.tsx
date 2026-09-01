@@ -1591,8 +1591,8 @@ export default function Home({ user }: HomeProps) {
                   style={{
                     transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
                     transformOrigin: 'center center',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
+                    width: '100%',
+                    height: '100%',
                     objectFit: 'contain',
                   }}
                 />
