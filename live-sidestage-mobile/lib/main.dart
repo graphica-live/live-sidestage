@@ -48,31 +48,103 @@ Future<void> main() async {
   runApp(const LiveSidestageApp());
 }
 
-/// Card Deck方向のブランドテーマ。タンジェリン(暖橙)を種にした配色 +
-/// IBM Plex Mono一本の等幅タイポグラフィ。カードは角丸+ごく薄い影で
-/// 「要素をカードに分離して積む」構成を全画面へ波及させる
-/// (DESIGN.mdのFlat-By-Default/Typography節はこのリブランディングに合わせて更新済み)。
-ThemeData _buildTheme() {
-  const seed = Color(0xFFD9591F);
-  final colorScheme = ColorScheme.fromSeed(seedColor: seed);
-  final base = ThemeData(colorScheme: colorScheme, useMaterial3: true);
-  final textTheme = GoogleFonts.ibmPlexMonoTextTheme(base.textTheme);
+/// Card Deck方向のブランドテーマ。承認済みモックアップの実測トークン
+/// (bg #FBF8F5 / card #FFFFFF / ink #211C18 / sub #928B83 / line #ECE5DC /
+/// acc #D9591F、暗所は bg #141414 / card #1C1B19 / ink #ECE9E5 / sub #9B958A /
+/// line #282623)をそのまま使う。**`ColorScheme.fromSeed`任せにしない** —
+/// Material3のトーンパレット生成はseed色を彩度・明度ともにシフトするため、
+/// タンジェリンの種のはずが実機ではくすんだ赤茶色の背景になり、以前ユーザーが
+/// 明示的に却下した「おじさんくさい」配色に逆戻りしていた
+/// (2026-09-01 実機確認で発覚、fromSeedの自動生成をやめて数値を直接指定する形に修正)。
+/// IBM Plex Monoは変わらず全テキストへ適用する。
+ThemeData _buildTheme(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  const accent = Color(0xFFD9591F);
+  const ok = Color(0xFF4F8A6F);
+  const err = Color(0xFFC9636B);
+  final bg = isDark ? const Color(0xFF141414) : const Color(0xFFFBF8F5);
+  final card = isDark ? const Color(0xFF1C1B19) : const Color(0xFFFFFFFF);
+  final ink = isDark ? const Color(0xFFECE9E5) : const Color(0xFF211C18);
+  final sub = isDark ? const Color(0xFF9B958A) : const Color(0xFF928B83);
+  final line = isDark ? const Color(0xFF282623) : const Color(0xFFECE5DC);
+  // モックアップの「配信中」ピル(薄橙背景+アクセント文字)。TTSタブの
+  // 「読み上げ中」ハイライトもこの組で塗る。
+  final primaryContainer = isDark ? accent.withValues(alpha: 0.22) : const Color(0xFFFDE9DF);
 
-  return base.copyWith(
+  final colorScheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
+    primary: accent,
+    onPrimary: Colors.white,
+    primaryContainer: primaryContainer,
+    onPrimaryContainer: accent,
+    secondary: accent,
+    onSecondary: Colors.white,
+    surface: bg,
+    onSurface: ink,
+    onSurfaceVariant: sub,
+    outline: line,
+    outlineVariant: line,
+    error: err,
+    onError: Colors.white,
+    surfaceTint: Colors.transparent,
+  );
+
+  final textTheme =
+      GoogleFonts.ibmPlexMonoTextTheme(ThemeData(brightness: brightness).textTheme)
+          .apply(bodyColor: ink, displayColor: ink);
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: bg,
     textTheme: textTheme,
-    primaryTextTheme: GoogleFonts.ibmPlexMonoTextTheme(base.primaryTextTheme),
-    cardTheme: const CardThemeData(
-      elevation: 2,
-      shadowColor: Color(0x33D9591F),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18))),
-      margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    primaryTextTheme: textTheme,
+    appBarTheme: AppBarTheme(
+      backgroundColor: bg,
+      foregroundColor: ink,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
     ),
-    listTileTheme: const ListTileThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+    cardTheme: CardThemeData(
+      color: card,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
+        side: BorderSide(color: line),
+      ),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     ),
-    chipTheme: base.chipTheme.copyWith(
-      shape: const StadiumBorder(),
-      labelStyle: textTheme.labelMedium,
+    listTileTheme: ListTileThemeData(
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+      textColor: ink,
+      iconColor: sub,
+    ),
+    chipTheme: ThemeData(brightness: brightness).chipTheme.copyWith(
+          shape: const StadiumBorder(),
+          backgroundColor: card,
+          side: BorderSide(color: line),
+          labelStyle: textTheme.labelMedium?.copyWith(color: sub),
+        ),
+    dividerTheme: DividerThemeData(color: line),
+    switchTheme: SwitchThemeData(
+      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected) ? ok : line,
+      ),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: accent,
+      inactiveTrackColor: line,
+      thumbColor: accent,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: accent,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
     ),
   );
 }
@@ -94,7 +166,8 @@ class LiveSidestageApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'LIVE Sidestage',
-        theme: _buildTheme(),
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
         // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
         // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
