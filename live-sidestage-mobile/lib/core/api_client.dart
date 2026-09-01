@@ -20,9 +20,15 @@ import 'url_validation.dart';
 /// `--dart-define=API_BASE_URL=http://localhost:3000` を渡す
 /// （端末からPCへ届かせるには `adb reverse tcp:3000 tcp:3000` が要る）。
 /// 平文HTTPは debug ビルドのマニフェストでのみ許可している。
+///
+/// 2026-09-01時点で暫定的に `analytics.livesidestage.com` へ向けている。
+/// 本来は `api.livesidestage.com` だが、Railway側のカスタムドメイン登録が
+/// 未完了（analytics以外の *.livesidestage.com サブドメインが対応するサービスに
+/// アタッチされていない）でこちらは疎通しない。ドメイン設定のトラブル対応が
+/// 終わり次第 `api.livesidestage.com` に戻すこと。
 const String liveAnalyticsBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://api.livesidestage.com',
+  defaultValue: 'https://analytics.livesidestage.com',
 );
 
 // LIVE Sidestage Analyticsバックエンドの GOOGLE_CLIENT_ID と同じ値(ウェブ アプリケーション種別のクライアントID)。
