@@ -49,36 +49,42 @@ Future<void> main() async {
   runApp(const LiveSidestageApp());
 }
 
-/// Card Deck方向のブランドテーマ。承認済みモックアップの実測トークン
-/// (bg #FBF8F5 / card #FFFFFF / ink #211C18 / sub #928B83 / line #ECE5DC /
-/// acc #D9591F、暗所は bg #141414 / card #1C1B19 / ink #ECE9E5 / sub #9B958A /
-/// line #282623)をそのまま使う。**`ColorScheme.fromSeed`任せにしない** —
-/// Material3のトーンパレット生成はseed色を彩度・明度ともにシフトするため、
-/// タンジェリンの種のはずが実機ではくすんだ赤茶色の背景になり、以前ユーザーが
-/// 明示的に却下した「おじさんくさい」配色に逆戻りしていた
-/// (2026-09-01 実機確認で発覚、fromSeedの自動生成をやめて数値を直接指定する形に修正)。
-/// IBM Plex Monoは変わらず全テキストへ適用する。
+/// Mixer Console方向のブランドテーマ(2026-09、Card Deckから刷新)。
+/// 配信を操る機材の筐体という世界観で、承認済みモック(`.impeccable/mocks/directions.html`)の
+/// 実測トークンをそのまま使う: bg #E4E1DA / card #F4F2ED / ink #1A1D21 / sub #5B5F66 /
+/// line #CFCBC0 / accent(LEDグリーン) #1F8F4E、暗所は bg #15171B / card #1D2024 /
+/// ink #E8EAED / sub #9AA0A6 / line #2B2F35 / accent #35D07F。
+/// **`ColorScheme.fromSeed`任せにしない**(Material3のトーンパレット生成がseed色を
+/// 意図せずシフトする問題は2026-09-01の実機確認で既知のため、数値を直接指定する)。
+/// フォントは見出し/ボタンにSpace Grotesk、本文にIBM Plex Sans、
+/// ラベル/データ表示(コイン数・時刻等)にSpace Monoを使い分ける。
 ThemeData _buildTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
-  const accent = Color(0xFFD9591F);
-  const ok = Color(0xFF4F8A6F);
-  const err = Color(0xFFC9636B);
-  final bg = isDark ? const Color(0xFF141414) : const Color(0xFFFBF8F5);
-  final card = isDark ? const Color(0xFF1C1B19) : const Color(0xFFFFFFFF);
-  final ink = isDark ? const Color(0xFFECE9E5) : const Color(0xFF211C18);
-  final sub = isDark ? const Color(0xFF9B958A) : const Color(0xFF928B83);
-  final line = isDark ? const Color(0xFF282623) : const Color(0xFFECE5DC);
-  // モックアップの「配信中」ピル(薄橙背景+アクセント文字)。TTSタブの
-  // 「読み上げ中」ハイライトもこの組で塗る。
-  final primaryContainer = isDark ? accent.withValues(alpha: 0.22) : const Color(0xFFFDE9DF);
+  const accentLight = Color(0xFF1F8F4E);
+  const accentDark = Color(0xFF35D07F);
+  const amberLight = Color(0xFFFFB13C);
+  const amberDark = Color(0xFFFFC15C);
+  const errLight = Color(0xFFE24B4B);
+  const errDark = Color(0xFFFF5C5C);
+  final accent = isDark ? accentDark : accentLight;
+  final amber = isDark ? amberDark : amberLight;
+  final err = isDark ? errDark : errLight;
+  final bg = isDark ? const Color(0xFF15171B) : const Color(0xFFE4E1DA);
+  final card = isDark ? const Color(0xFF1D2024) : const Color(0xFFF4F2ED);
+  final ink = isDark ? const Color(0xFFE8EAED) : const Color(0xFF1A1D21);
+  final sub = isDark ? const Color(0xFF9AA0A6) : const Color(0xFF5B5F66);
+  final line = isDark ? const Color(0xFF2B2F35) : const Color(0xFFCFCBC0);
+  final onAccent = isDark ? const Color(0xFF0C0F10) : Colors.white;
+  // モックアップの「配信中」ピル(薄いLEDグリーン背景+アクセント文字)。
+  final primaryContainer = accent.withValues(alpha: isDark ? 0.22 : 0.14);
 
   final colorScheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
     primary: accent,
-    onPrimary: Colors.white,
+    onPrimary: onAccent,
     primaryContainer: primaryContainer,
     onPrimaryContainer: accent,
-    secondary: accent,
-    onSecondary: Colors.white,
+    secondary: amber,
+    onSecondary: const Color(0xFF241804),
     surface: bg,
     onSurface: ink,
     onSurfaceVariant: sub,
@@ -89,9 +95,30 @@ ThemeData _buildTheme(Brightness brightness) {
     surfaceTint: Colors.transparent,
   );
 
-  final textTheme =
-      GoogleFonts.ibmPlexMonoTextTheme(ThemeData(brightness: brightness).textTheme)
-          .apply(bodyColor: ink, displayColor: ink);
+  final base = ThemeData(brightness: brightness);
+  final displayFont = GoogleFonts.spaceGroteskTextTheme(base.textTheme);
+  final bodyFont = GoogleFonts.ibmPlexSansTextTheme(base.textTheme);
+  final monoFont = GoogleFonts.spaceMonoTextTheme(base.textTheme);
+
+  final textTheme = bodyFont
+      .copyWith(
+        displayLarge: displayFont.displayLarge,
+        displayMedium: displayFont.displayMedium,
+        displaySmall: displayFont.displaySmall,
+        headlineLarge: displayFont.headlineLarge,
+        headlineMedium: displayFont.headlineMedium,
+        headlineSmall: displayFont.headlineSmall,
+        titleLarge: displayFont.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        titleMedium: displayFont.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        titleSmall: displayFont.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        labelLarge: monoFont.labelLarge,
+        labelMedium: monoFont.labelMedium,
+        labelSmall: monoFont.labelSmall,
+      )
+      .apply(bodyColor: ink, displayColor: ink);
+
+  // 機材筐体らしい直線的な印象を出すため、Card Deck時代の14/16pxから縮小。
+  const radius = 8.0;
 
   return ThemeData(
     useMaterial3: true,
@@ -105,19 +132,20 @@ ThemeData _buildTheme(Brightness brightness) {
       foregroundColor: ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
+      titleTextStyle: displayFont.titleLarge?.copyWith(color: ink, fontWeight: FontWeight.w800),
     ),
     cardTheme: CardThemeData(
       color: card,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(16)),
+        borderRadius: BorderRadius.circular(radius),
         side: BorderSide(color: line),
       ),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     ),
     listTileTheme: ListTileThemeData(
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
       textColor: ink,
       iconColor: sub,
     ),
@@ -125,13 +153,15 @@ ThemeData _buildTheme(Brightness brightness) {
           shape: const StadiumBorder(),
           backgroundColor: card,
           side: BorderSide(color: line),
-          labelStyle: textTheme.labelMedium?.copyWith(color: sub),
+          labelStyle: monoFont.labelMedium?.copyWith(color: sub, fontWeight: FontWeight.w700),
         ),
     dividerTheme: DividerThemeData(color: line),
     switchTheme: SwitchThemeData(
-      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected) ? onAccent : Colors.white,
+      ),
       trackColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? ok : line,
+        (states) => states.contains(WidgetState.selected) ? accent : line,
       ),
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
     ),
@@ -143,8 +173,9 @@ ThemeData _buildTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: accent,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        foregroundColor: onAccent,
+        textStyle: displayFont.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
       ),
     ),
   );

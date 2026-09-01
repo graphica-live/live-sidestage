@@ -8,6 +8,7 @@ import '../../core/gift_activity.dart';
 import '../../core/session_controller.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
@@ -229,15 +230,52 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             ),
           if (result != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '表示中の合計 ${users.length}人',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    Text(
+                      '${result.total.totalDiamonds}コイン',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (result != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: Text(
-                '合計 ${result.total.giftCount}件 / ${result.total.totalDiamonds}コイン(LIVE Sidestage登録後データ)',
-                style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
+                'LIVE Sidestage登録後データ',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           if (!_loading && result != null && users.isEmpty)
             const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
-          for (var i = 0; i < users.length; i++) RankingListTile(rank: i + 1, entry: users[i]),
+          if (users.isNotEmpty)
+            ListPanel(
+              children: [for (var i = 0; i < users.length; i++) RankingListTile(rank: i + 1, entry: users[i])],
+            ),
         ],
       ),
     );

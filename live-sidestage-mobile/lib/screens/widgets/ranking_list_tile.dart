@@ -19,10 +19,11 @@ class RankingListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
+    return InkWell(
+      onTap: () => openTiktokProfile(context, entry.uniqueId),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 24),
@@ -30,14 +31,19 @@ class RankingListTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             UserAvatar(entry.profileImageUrl),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(entry.nickname, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
+            ),
+            Text(
+              formatDiamonds(entry.totalDiamonds),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           ],
         ),
-        title: Text(entry.nickname, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
-        trailing: Text(
-          formatDiamonds(entry.totalDiamonds),
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-        onTap: () => openTiktokProfile(context, entry.uniqueId),
       ),
     );
   }
