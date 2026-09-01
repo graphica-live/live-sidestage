@@ -231,7 +231,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text(
-                '合計 ${result.total.giftCount}件 / ${result.total.totalDiamonds}コイン',
+                '合計 ${result.total.giftCount}件 / ${result.total.totalDiamonds}コイン(LIVE Sidestage登録後データ)',
                 style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
               ),
             ),

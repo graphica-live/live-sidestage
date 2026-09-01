@@ -231,8 +231,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text(
-                '合計 ${result.total.count}件 / ${result.total.diamonds}コイン'
-                '${result.hasMore ? '(直近分のみ表示)' : ''}',
+                '合計 ${result.total.count}件 / ${result.total.diamonds}コイン(LIVE Sidestage登録後データ)',
                 style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
               ),
             ),
