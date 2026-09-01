@@ -31,6 +31,7 @@
     "verify:host-user-ids:local": "dotenv -e .env.local.test -- tsx scripts/verify-host-user-ids.ts"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "@next-auth/prisma-adapter": "^1.0.7",
@@ -38,6 +39,7 @@
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.4.2",
     "google-auth-library": "^11.0.2",
+    "googleapis": "^144.0.0",
     "jsonwebtoken": "^9.0.3",
     "next": "^14.2.0",
     "next-auth": "^4.24.11",

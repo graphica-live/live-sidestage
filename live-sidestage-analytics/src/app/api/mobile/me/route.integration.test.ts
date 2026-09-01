@@ -80,7 +80,15 @@ describe("GET /api/mobile/me", () => {
 
   it("β無効時はSubscriptionのplanをそのまま反映する", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}pro@local.test` } });
-    await prisma.subscription.create({ data: { userId: user.id, plan: "PRO" } });
+    await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        plan: "PRO",
+        provider: "STRIPE",
+        providerSubscriptionId: `${PREFIX}sub-pro`,
+        entitlementActive: true,
+      },
+    });
     const token = signMobileToken({ userId: user.id });
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
@@ -118,7 +126,15 @@ describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
 
   it("PRO以上は200(β経由のULTRAでも通る)", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-pro@local.test` } });
-    await prisma.subscription.create({ data: { userId: user.id, plan: "PRO" } });
+    await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        plan: "PRO",
+        provider: "STRIPE",
+        providerSubscriptionId: `${PREFIX}sub-probe-pro`,
+        entitlementActive: true,
+      },
+    });
     const token = signMobileToken({ userId: user.id });
 
     const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));

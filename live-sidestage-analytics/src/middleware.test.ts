@@ -132,8 +132,15 @@ describe("middleware の matcher", () => {
     }
   });
 
-  it("Stripe Webhookは署名検証で保護されるためNextAuthセッションを要求しない", () => {
-    for (const path of ["/api/webhooks/stripe", "/api/webhooks/stripe/"]) {
+  it("Webhookは署名/トークン検証で保護されるためNextAuthセッションを要求しない", () => {
+    for (const path of [
+      "/api/webhooks/stripe",
+      "/api/webhooks/stripe/",
+      "/api/webhooks/google-play",
+      "/api/webhooks/google-play/",
+      "/api/webhooks/apple",
+      "/api/webhooks/apple/",
+    ]) {
       expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
     }
   });
@@ -142,6 +149,8 @@ describe("middleware の matcher", () => {
     for (const path of [
       "/billing", // 共通課金ページ(要ログイン)
       "/api/webhooks/stripe-evil", // `api/webhooks/stripe` に食われてはいけない
+      "/api/webhooks/google-play-evil", // `api/webhooks/google-play` に食われてはいけない
+      "/api/webhooks/apple-evil", // `api/webhooks/apple` に食われてはいけない
       "/api/webhooks", // 境界より手前
     ]) {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);

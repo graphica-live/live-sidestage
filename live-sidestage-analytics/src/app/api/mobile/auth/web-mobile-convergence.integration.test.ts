@@ -100,10 +100,18 @@ describe("Web/Mobileアカウント統合(同一sub→同一User.id)", () => {
     const mobileBody = await (await googlePost(googleRequest())).json();
 
     // WebのStripe Webhook経由で付与されたのと同じ状態を模す。
-    await prisma.subscription.create({ data: { userId: mobileBody.user.id, plan: "PRO" } });
+    await prisma.subscription.create({
+      data: {
+        userId: mobileBody.user.id,
+        plan: "PRO",
+        provider: "STRIPE",
+        providerSubscriptionId: `${PREFIX}sub-stripe-subscription`,
+        entitlementActive: true,
+      },
+    });
 
     const webUser = await adapter.getUserByAccount!({ provider: "google", providerAccountId: sub });
-    const subscription = await prisma.subscription.findUnique({ where: { userId: webUser!.id } });
+    const subscription = await prisma.subscription.findFirst({ where: { userId: webUser!.id } });
 
     expect(subscription?.plan).toBe("PRO");
   });

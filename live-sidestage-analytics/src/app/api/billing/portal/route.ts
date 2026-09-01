@@ -11,12 +11,12 @@ export async function POST() {
 
   const baseUrl = canonicalOrigin("analytics");
 
-  const subscription = await prisma.subscription.findUnique({
+  const link = await prisma.stripeCustomerLink.findUnique({
     where: { userId: session.user.id },
     select: { stripeCustomerId: true },
   });
 
-  if (!subscription?.stripeCustomerId) {
+  if (!link?.stripeCustomerId) {
     return NextResponse.json({ error: "有料プランのご利用がありません" }, { status: 400 });
   }
 
@@ -28,7 +28,7 @@ export async function POST() {
   }
 
   const portalSession = await stripe.billingPortal.sessions.create({
-    customer: subscription.stripeCustomerId,
+    customer: link.stripeCustomerId,
     return_url: `${baseUrl}/billing`,
   });
 

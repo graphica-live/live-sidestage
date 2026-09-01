@@ -32,10 +32,12 @@ model User {
   password      String?
   createdAt     DateTime  @default(now())
 
-  accounts     Account[]
-  sessions     Session[]
-  streamer     Streamer?
-  subscription Subscription?
+  accounts               Account[]
+  sessions               Session[]
+  streamer               Streamer?
+  subscriptions          Subscription[]
+  stripeCustomerLink     StripeCustomerLink?
+  pendingPurchaseIntents PendingPurchaseIntent[]
 
   @@schema("public")
 }
@@ -48,27 +50,107 @@ enum PlanTier {
   @@schema("public")
 }
 
+enum SubscriptionProvider {
+  STRIPE
+  GOOGLE_PLAY
+  APPLE
+
+  @@schema("public")
+}
+
 // User単位の課金プラン。行が無いUser = FREE扱い(全Userに先回りして作らない)。
+// **1ユーザーが複数の有効な行を同時に持ちうる**(Web/Stripeとモバイル/Google Play・Appleは
+// 別契約として独立に成立する)。getUserPlan()は有効な全行から最上位プランを算出する。
 // event機能はUser.idへの生FKを張らない方針(Event.ownerUserId参照)なので、
 // event側からもこのモデルをuserIdの一致だけで参照する。
+//
+// フェーズA(拡張のみ)時点のスキーマ。provider/providerSubscriptionId等はnullable。
+// 旧列(stripeCustomerId/stripeSubscriptionId/status)はフェーズB(破壊的クリーンアップ、
+// 別コミット)まで残す。詳細は scripts/migrate-subscription-provider.ts。
+// **userIdに一意制約は無い(元から無い、フェーズBで消える予定の列でもない)。**
+// 1ユーザーが複数provider(Stripe/Google Play/Apple)で同時に有効な行を持つのが
+// 正しい状態のため。実装後レビューでコメント記載(旧版)が「userId一意制約はフェーズBまで
+// 残す」と誤っており、その前提でsync-subscription.tsのP2002 fallbackが書かれていたが、
+// スキーマ上そもそも存在しない制約だった。fallbackはprovider+providerSubscriptionId
+// 複合uniqueの衝突だけを扱うよう修正済み。
 model Subscription {
-  id                   String    @id @default(cuid())
-  userId               String    @unique
-  plan                 PlanTier  @default(FREE)
-  stripeCustomerId     String?   @unique
-  stripeSubscriptionId String?   @unique
-  stripePriceId        String?
+  id     String                @id @default(cuid())
+  userId String
+  plan   PlanTier              @default(FREE)
+
+  // フェーズA以降の新列。バックフィル前はnull。
+  provider SubscriptionProvider?
+  // providerごとの一意キー。STRIPE: Subscription ID。GOOGLE_PLAY: purchaseToken
+  // (再購読で新token発行時は別行、旧行はentitlementActive=falseに)。
+  // APPLE: originalTransactionId(更新をまたいで不変)。
+  providerSubscriptionId String?
+
+  stripePriceId            String? // STRIPEのみ
+  googleProductId           String? // GOOGLE_PLAYのみ
+  googleObfuscatedAccountId String? // GOOGLE_PLAYのみ、横流し防止用
+  appleProductId             String? // APPLEのみ
+  appleAppAccountToken       String? // APPLEのみ、横流し防止用
+
+  rawStatus         String?   // providerの生status文字列
+  entitlementActive Boolean   @default(false) // getUserPlan()が見るのはこれだけ
+  lastVerifiedAt    DateTime? // sync系関数がre-fetchを開始した時刻。古いfetch結果による上書きを防ぐガードに使う
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // --- 旧列(フェーズBで削除) ---
+  // **@uniqueを持たせない。** 複数行モデルへの移行後、同一Stripe Customerが解約→再購読すると
+  // 旧行(entitlementActive=falseになっても行自体は残る)が同じstripeCustomerIdを持ったままなので、
+  // 新規Subscription行のcreateが一意制約違反でP2002になり、複合key(provider,providerSubscriptionId)
+  // 基準のP2002フォールバックでは救済できず、webhookが永久に失敗してentitlementが付かない
+  // (実装後レビュー指摘)。customer↔userの一意な紐付けは既にStripeCustomerLinkが担っており、
+  // ここは表示・フェーズB前の互換用ミラーでしかないためunique制約は不要。
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
   status               String? // Stripeのsubscription.statusをそのまま保存(active/past_due/canceled等)
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean   @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
 
   // onDelete: Cascadeで行ごと消える。DELETE /api/mobile/account はこの削除より前に
   // stripe.customers.del()でStripe側のCustomer(=関連subscription全て)を先に消しており、
   // 課金が残ったままDB上の紐付けだけ失う、という状態にはならない。
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // nullable列を含む複合unique。旧行はprovider=nullのまま共存でき、
+  // 新規行だけが実質的な一意性チェックを受ける(Postgresの複合unique indexの仕様)。
+  @@unique([provider, providerSubscriptionId])
+  @@index([userId, entitlementActive])
+  @@schema("public")
+}
+
+// 購読成立前の「Stripe Customerは作ったが未購読」の置き場(旧Subscriptionの間借り先を分離)
+model StripeCustomerLink {
+  userId           String   @id
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+// 購入開始時に発行するobfuscatedAccountId/appAccountTokenとuserIdの対応表。
+// Subscription行は購入成立後にしか存在しないため、webhook(RTDN/App Store Server Notifications)が
+// verify-purchaseより先に届いた場合、この表が無いとpurchaseToken/transactionIdからuserIdを解決できない
+// (Stripeはcheckout session作成時にsubscription.metadata.userIdを仕込めるが、Google/Appleの購入は
+// クライアント発のapplicationUserNameしか経路が無いため、サーバー側で先に対応表を持つ必要がある)。
+model PendingPurchaseIntent {
+  id         String               @id @default(cuid())
+  userId     String
+  provider   SubscriptionProvider // GOOGLE_PLAY | APPLE のみ想定(STRIPEはmetadata.userIdで完結)
+  token      String               // GOOGLE_PLAY: googleObfuscatedAccountId、APPLE: appAccountToken。サーバーが発行する
+  expiresAt  DateTime             // 発行から1時間
+  consumedAt DateTime?            // Subscription行作成時に埋める。以後は解決対象から除外する
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, token])
   @@schema("public")
 }
 
