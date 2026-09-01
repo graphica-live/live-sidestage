@@ -6,11 +6,12 @@
 
 const SUBJECT_ID_PATTERN = /^[A-Za-z0-9_.-]{1,100}$/;
 
-export type AvatarKind = "battle_host" | "gift_sender";
+export type AvatarKind = "battle_host" | "gift_sender" | "event_participant";
 
 const KIND_PREFIX: Record<AvatarKind, string> = {
   battle_host: "avatars/battle-host",
   gift_sender: "avatars/gift-sender",
+  event_participant: "avatars/event-participant",
 };
 
 /** subjectIdがキーに埋め込んでよい形か。外れる場合は呼び出し側でキャッシュ自体をスキップする。 */

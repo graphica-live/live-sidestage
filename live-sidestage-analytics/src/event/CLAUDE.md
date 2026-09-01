@@ -912,14 +912,27 @@ lease が切れた room は補完対象外なので、**終了済みイベント
 - 変えたときは実ブラウザで確認する。カード高さが1種類か、コネクタの 25/50/75% が
   カード中心と一致するかを見れば足りる（6人・8人・11人・16人、標準／段階的の両方で検証済み）
 
-### 配信者アイコンの URL を永続化しない
+### 配信者アイコンの URL を DB へ保存しない（バイト列の恒久保存とは別物）
 
 TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom` や `EventParticipant` に
-列を足して保存したくなるが、**やらないこと**。終了済みイベントの表で必ず腐るうえ、
-取り直しの排他・失敗時のバックオフ・ロールバック時の列の扱いが全部乗ってくる。
+**URL 文字列を**列として保存することは今も禁止（終了済みイベントの表で必ず腐る）。
 
-閲覧の契機で引いてプロセス内キャッシュに置く（`src/lib/tiktok-avatar.ts`）、
-配信は `GET /api/public/avatar/<participantId>` からの 302 だけにする。
+一方で **`Event.startAt` 到来時点の参加者アイコンは、画像バイトを自前ストレージ（Railway
+Bucket）へダウンロードのうえ恒久保存する**（`src/event/avatar-snapshot.ts`、
+`TiktokAvatarAsset` の `kind: "event_participant"`。バトル履歴・貢献タブが使っている
+`src/lib/avatar-storage.ts` の仕組みをそのまま再利用しており、DB に持つのはオブジェクトキー
+だけで URL 自体は書かない）。トーナメント表が確定した後に本人がアイコンを変えても表示が
+揺れないようにする狙い。**トリガーは event-worker の定期ジョブ（`avatarSnapshotTick`、既定
+60秒間隔）が `startAt <= now かつ avatarsSnapshottedAt IS NULL` のイベントを見つけて1回だけ
+実行する。個々の参加者の取得に失敗しても再試行しない（try-once。`avatarsSnapshottedAt` は
+成否に関わらず立てる）** — 失敗した参加者だけは次節のライブ取得へ永続的にフォールバックする
+（fail-open）。`startAt` を延長しても `avatarsSnapshottedAt` は自動で戻らない（`finalizedAt`
+とは異なり、延長は「スナップショットのやり直し」を意味しない設計判断）。
+
+`GET /api/public/avatar/<participantId>` はまずこのスナップショットを見に行き
+（`resolveAvatarUrls("event_participant", ...)`）、無ければ従来どおり閲覧の契機で
+プロセス内キャッシュ（`src/lib/tiktok-avatar.ts`）経由でライブ取得して 302 する。
+開催準備中（`startAt` 未到来）のプレビューは常にこちらの経路。
 参加者IDの解決は `findPublicParticipantTiktokId()` を通し、公開イベントの出場者に限る。
 
 **参加者登録（`registerParticipant`）から TikTok へ問い合わせを足さない。** 主催者の

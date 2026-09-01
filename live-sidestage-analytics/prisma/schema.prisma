@@ -901,6 +901,13 @@ model Event {
   // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。
   // 主催者が endAt を延ばしたら null に戻して再開させる。
   finalizedAt       DateTime?
+  // startAt到来時点で参加者アイコンを自前ストレージへ1回だけスナップショットした時刻。
+  // null は未到来または未実行。書き込みは avatar-snapshot.ts の1箇所だけ。
+  // 個々の参加者の取得に失敗してもここは立てる(以後はライブ取得へ永続的にフォールバックする
+  // fail-open方針のため)。startAtを延ばしても自動では戻さない — 延長は主催者が
+  // 意図して行う操作であり、延長後も旧開始時刻のスナップショットで揃える(finalizedAtの
+  // ような「再開して当然」の項目ではない)。
+  avatarsSnapshottedAt DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
