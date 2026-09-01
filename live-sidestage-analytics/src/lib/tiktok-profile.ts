@@ -126,10 +126,49 @@ export function isAllowedAvatarUrl(value: unknown): value is string {
   return ALLOWED_AVATAR_HOSTS.some((suffix) => host.endsWith(suffix));
 }
 
-// isAllowedAvatarUrl を通らない値は null に落とす。DB格納時点で検証済みとは限らない
-// 値(Gift.profileImageUrl/giftPictureUrl等)を外部(モバイルクライアント)へ返す前に使う。
+/**
+ * 自前ストレージ(Railway Bucket、`src/lib/media-bucket.ts`)が発行した presigned URL かどうか。
+ *
+ * `resolveAvatarUrls`(`avatar-storage.ts`)がキャッシュ済みアバターに対して返す URL は
+ * TikTok CDN ではなく Bucket のホストになるため、`isAllowedAvatarUrl` の allowlist には
+ * 一致しない。ホストの suffix 一致だと bucket 名部分を検証できないため、
+ * `MEDIA_BUCKET_ENDPOINT` + `MEDIA_BUCKET_NAME` から期待ホストを組み立てて完全一致で見る
+ * (`media-bucket.ts` の通り virtual-host style: `<bucket>.<host>`)。
+ */
+function isAllowedMediaBucketUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value.length === 0 || value.length > MAX_AVATAR_URL_LENGTH) return false;
+
+  const endpoint = process.env.MEDIA_BUCKET_ENDPOINT;
+  const bucket = process.env.MEDIA_BUCKET_NAME;
+  if (!endpoint || !bucket) return false;
+
+  let endpointHost: string;
+  try {
+    endpointHost = new URL(endpoint).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const expectedHost = `${bucket}.${endpointHost}`;
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "https:") return false;
+  return url.hostname.toLowerCase() === expectedHost;
+}
+
+// isAllowedAvatarUrl / isAllowedMediaBucketUrl を通らない値は null に落とす。DB格納時点で
+// 検証済みとは限らない値(Gift.profileImageUrl/giftPictureUrl等)を外部(モバイルクライアント)
+// へ返す前に使う。自前ストレージ(Railway Bucket)のキャッシュ済み URL も対象に含める。
 export function sanitizeAvatarUrl(value: string | null): string | null {
-  return isAllowedAvatarUrl(value) ? value : null;
+  if (isAllowedAvatarUrl(value)) return value;
+  if (isAllowedMediaBucketUrl(value)) return value;
+  return null;
 }
 
 /**
