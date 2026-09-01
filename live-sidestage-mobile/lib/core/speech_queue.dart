@@ -28,6 +28,10 @@ class SpeechQueueController extends ChangeNotifier {
   String? errorMessage;
   String? nowSpeakingCharacterName;
 
+  /// 今読み上げ中のコメントを isolate をまたいで識別するためのキー
+  /// ([Comment.identityKey])。UI側がハイライト対象の行を判定するのに使う。
+  String? nowSpeakingCommentKey;
+
   /// 読み上げ待ちが尽きてからクレジット表記を消すまでの猶予。
   /// 再生完了と同時に消すと、コメントが途切れがちな配信では表記が一瞬で
   /// 消えてしまい、VOICEVOX のクレジット表示として成立しない。
@@ -175,7 +179,7 @@ class SpeechQueueController extends ChangeNotifier {
         prefetched = null;
       }
 
-      _setNowSpeakingCharacterName(pool.characterNameForStyleId(styleId));
+      _setNowSpeaking(pool.characterNameForStyleId(styleId), comment.identityKey);
       await _play(wav);
     }
 
@@ -183,22 +187,24 @@ class SpeechQueueController extends ChangeNotifier {
     _processing = false;
   }
 
-  void _setNowSpeakingCharacterName(String? name) {
+  void _setNowSpeaking(String? name, String? commentKey) {
     _clearCharacterNameTimer?.cancel();
     _clearCharacterNameTimer = null;
     nowSpeakingCharacterName = name;
+    nowSpeakingCommentKey = commentKey;
     notifyListeners();
   }
 
   /// 次に読むコメントが無くなったときだけ、猶予を置いてから表記を消す。
-  /// 猶予中に次のコメントが届けば [_setNowSpeakingCharacterName] が
-  /// タイマーを畳んで新しい名前へ差し替えるので、表記は途切れない。
+  /// 猶予中に次のコメントが届けば [_setNowSpeaking] がタイマーを畳んで
+  /// 新しい名前・キーへ差し替えるので、表記は途切れない。
   void _scheduleCharacterNameClear() {
     if (nowSpeakingCharacterName == null) return;
     _clearCharacterNameTimer?.cancel();
     _clearCharacterNameTimer = Timer(_characterNameLinger, () {
       _clearCharacterNameTimer = null;
       nowSpeakingCharacterName = null;
+      nowSpeakingCommentKey = null;
       notifyListeners();
     });
   }

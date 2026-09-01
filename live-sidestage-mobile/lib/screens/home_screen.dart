@@ -31,6 +31,11 @@ class SpeechState {
   final bool enabled;
   final bool randomVoice;
   final String? nowSpeakingCharacterName;
+
+  /// 今読み上げ中のコメントの識別キー([Comment.identityKey])。
+  /// バックグラウンドisolateとメインisolateは別インスタンスなので、
+  /// [Comment]そのものではなくこのキーで同一性を判定する。
+  final String? nowSpeakingCommentKey;
   final String? errorMessage;
 
   const SpeechState({
@@ -38,6 +43,7 @@ class SpeechState {
     this.enabled = true,
     this.randomVoice = true,
     this.nowSpeakingCharacterName,
+    this.nowSpeakingCommentKey,
     this.errorMessage,
   });
 }
@@ -114,6 +120,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   SoundState _sound = const SoundState();
   ListenerState _listener = const ListenerState();
 
+  /// オンボーディング後、初回だけTTSタブ上部に出す誘導バナー。
+  bool _showFirstRunGuide = false;
+
   // TikTok ID変更後、LIVE Sidestage Analytics側のWorkerが新しい部屋(TiktokRoom)へ接続し直すまでの猶予。
   // サーバーは60秒間隔のreconcileループでしか部屋の切り替えを反映しないため、
   // 変更直後にコメントが止まって見えるのを「確認中」として明示する。
@@ -131,6 +140,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGiftNames());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkAutoStopPending());
+    unawaited(_loadFirstRunGuideState());
+  }
+
+  Future<void> _loadFirstRunGuideState() async {
+    final dismissed =
+        await FlutterForegroundTask.getData<bool>(key: firstRunGuideDismissedStorageKey);
+    if (!mounted) return;
+    setState(() => _showFirstRunGuide = dismissed != true);
+  }
+
+  Future<void> _dismissFirstRunGuide() async {
+    setState(() => _showFirstRunGuide = false);
+    await FlutterForegroundTask.saveData(key: firstRunGuideDismissedStorageKey, value: true);
   }
 
   /// 起動時に一度だけ、サーバーからギフトの日本語名を取り直して端末へ貯める。
@@ -538,6 +560,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             enabled: map['enabled'] as bool? ?? true,
             randomVoice: map['randomVoice'] as bool? ?? true,
             nowSpeakingCharacterName: map['nowSpeakingCharacterName'] as String?,
+            nowSpeakingCommentKey: map['nowSpeakingCommentKey'] as String?,
             errorMessage: map['errorMessage'] as String?,
           );
         });
@@ -675,6 +698,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onToggle: (enable) => _toggleFeature(isTts: true, enable: enable),
                   roomSwitching: _roomSwitching,
                   switchingToTiktokId: _switchingToTiktokId,
+                  showFirstRunGuide: _showFirstRunGuide,
+                  onDismissFirstRunGuide: _dismissFirstRunGuide,
                 ),
                 SoundTab(
                   sound: _sound,

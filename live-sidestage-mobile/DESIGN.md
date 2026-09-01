@@ -74,6 +74,8 @@ LIVE Sidestageは、配信者が画面を見なくても信頼して任せられ
 ### Named Rules
 **The Signal-Only Color Rule.** Green/Orange/Red/Greyの4色は状態伝達のためだけに存在する。装飾目的でこれらの色を使わない。新しいUI要素の色分けが必要になった場合も、まず「これは状態を示しているか」を自問すること。
 
+**例外: TTSタブの読み上げ中ハイライト。** `colorScheme.primaryContainer`を薄く敷いて「今読み上げ中のコメント」を示す(`tts_tab.dart`)。4色の状態色そのものではないが、装飾ではなく状態伝達の用途に限定した例外として認める。
+
 ## Typography
 
 **Display/Title Font:** Roboto (Material3標準、フォールバック sans-serif)

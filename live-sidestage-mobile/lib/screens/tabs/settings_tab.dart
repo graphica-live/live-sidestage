@@ -123,6 +123,9 @@ class SettingsTab extends StatelessWidget {
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('ログアウト', style: TextStyle(color: Colors.red)),
           onTap: () async {
+            final confirmed = await confirmLogout(context);
+            if (!confirmed) return;
+            if (!context.mounted) return;
             await onBeforeLogout();
             if (!context.mounted) return;
             await context.read<SessionController>().logout();

@@ -23,6 +23,11 @@ const String autoStopPendingStorageKey = 'noLiveAutoStopPending';
 /// 両方から参照する固定文言なので、表記ゆれを避けるためここへ集約する。
 const String idleNotificationText = '接続中です（読み上げ・効果音は停止中）';
 
+/// オンボーディング後の初回ガイドバナーを閉じたか。UI Isolateだけが読み書きする
+/// (背景Isolateは関与しない)が、他の永続化キーと同じ`FlutterForegroundTask`の
+/// ストレージへ集約しておく。
+const String firstRunGuideDismissedStorageKey = 'firstRunGuideDismissed';
+
 /// UI Isolate 側の設定ストア。
 ///
 /// 背景 Isolate との同期は revision 方式:

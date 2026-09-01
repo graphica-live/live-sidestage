@@ -44,6 +44,16 @@ class SoundLibraryException implements Exception {
   String toString() => message;
 }
 
+/// ユーザー向けのエラー文言に変換する。
+///
+/// [SoundLibraryException] は既に日本語で理由を持っているのでそのまま使う。
+/// それ以外(file_pickerのPlatformExceptionなど)は生の例外文字列が
+/// 技術的すぎるので、一般化した文言に落とす。
+String describeError(Object e) {
+  if (e is SoundLibraryException) return e.message;
+  return '予期しないエラーが発生しました。もう一度お試しください。';
+}
+
 /// 音源ファイルの取得・保存・削除。
 ///
 /// desktop(TikEffect)の soundeffect-lab.js / myinstants.js を移植しているが、
