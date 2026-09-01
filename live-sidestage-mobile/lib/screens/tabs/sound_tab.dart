@@ -415,10 +415,20 @@ class _GiftSoundTile extends StatelessWidget {
       // 保存してあるのは TikTok の英語名。表示だけ辞書で日本語にするので、
       // あとから辞書が増えれば登録済みの設定にも効く。
       title: Text(GiftNameJa.display(gift.giftName, fallback: gift.displayGiftName)),
-      subtitle: Text(
-        gift.soundName.isEmpty ? gift.fileName : gift.soundName,
-        style: const TextStyle(fontSize: 12),
-        overflow: TextOverflow.ellipsis,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            gift.soundName.isEmpty ? gift.fileName : gift.soundName,
+            style: const TextStyle(fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+          // 個別音量(GiftSoundEditScreenで設定)は一覧では見えなかった。
+          // 何本鳴っているか把握するのに毎回開く必要があったので、ここでも可視化する。
+          const SizedBox(height: 4),
+          _MiniVolumeMeter(volume: gift.volume),
+        ],
       ),
       trailing: Switch(
         value: gift.enabled,
@@ -445,6 +455,44 @@ class _GiftSoundTile extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// [GiftSound.volume](0-100)を5本の棒で可視化する。数値を出さないのは
+/// このタイルが1行の要約であるため──正確な値を見る・変えるのは
+/// タップ先の [GiftSoundEditScreen] の役目で、ここは大小の見た目だけでよい。
+class _MiniVolumeMeter extends StatelessWidget {
+  const _MiniVolumeMeter({required this.volume});
+
+  final int volume;
+
+  static const int _barCount = 5;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeBars = (volume / 100 * _barCount).round().clamp(0, _barCount);
+
+    return Semantics(
+      label: '音量 $volume',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _barCount; i++)
+            Padding(
+              padding: EdgeInsets.only(right: i < _barCount - 1 ? 2 : 0),
+              child: Container(
+                width: 3,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: i < activeBars ? colorScheme.primary : colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
