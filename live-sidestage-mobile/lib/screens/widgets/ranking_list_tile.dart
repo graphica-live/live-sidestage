@@ -13,26 +13,28 @@ class RankingListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 24),
-            child: Text(
-              '$rank',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+    return Card(
+      child: ListTile(
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 24),
+              child: Text(
+                '$rank',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          UserAvatar(entry.profileImageUrl),
-        ],
-      ),
-      title: Text(entry.nickname),
-      trailing: Text(
-        '${entry.totalDiamonds}コイン',
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            const SizedBox(width: 8),
+            UserAvatar(entry.profileImageUrl),
+          ],
+        ),
+        title: Text(entry.nickname),
+        trailing: Text(
+          '${entry.totalDiamonds}コイン',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+        ),
       ),
     );
   }

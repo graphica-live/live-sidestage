@@ -98,11 +98,10 @@ class TtsTab extends StatelessWidget {
                     ),
                   ),
                 )
-              : ListView.separated(
+              : ListView.builder(
                   controller: scrollController,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: comments.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final c = comments[index];
                     // Signal-Only Color Ruleの例外(DESIGN.md参照)。装飾ではなく
@@ -110,19 +109,21 @@ class TtsTab extends StatelessWidget {
                     final isNowSpeaking =
                         speech.nowSpeakingCommentKey != null &&
                         c.identityKey == speech.nowSpeakingCommentKey;
-                    return ListTile(
-                      tileColor: isNowSpeaking
+                    return Card(
+                      color: isNowSpeaking
                           ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
                           : null,
-                      leading: CircleAvatar(
-                        backgroundImage:
-                            c.profilePictureUrl != null ? NetworkImage(c.profilePictureUrl!) : null,
-                        child: c.profilePictureUrl == null ? const Icon(Icons.person) : null,
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage:
+                              c.profilePictureUrl != null ? NetworkImage(c.profilePictureUrl!) : null,
+                          child: c.profilePictureUrl == null ? const Icon(Icons.person) : null,
+                        ),
+                        title: Text(c.nickname),
+                        // c.comment ではなく displayText。エモートだけのコメントは
+                        // 本文が空で届くので、生のまま出すと行が空白になる。
+                        subtitle: Text(c.displayText),
                       ),
-                      title: Text(c.nickname),
-                      // c.comment ではなく displayText。エモートだけのコメントは
-                      // 本文が空で届くので、生のまま出すと行が空白になる。
-                      subtitle: Text(c.displayText),
                     );
                   },
                 ),

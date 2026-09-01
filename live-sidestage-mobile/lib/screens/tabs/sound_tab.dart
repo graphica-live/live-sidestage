@@ -267,7 +267,7 @@ class _SetTabNotchPainter extends CustomPainter {
 ///
 /// 見出しもギフト一覧も、タブと地続きの面に閉じ込める。囲いが無いと
 /// 一覧が画面直下に流れ、どこまでがそのセットの持ち物なのかが見えない。
-/// 深度は増やさない（`Card.outlined` = elevation 0 + 枠線）。
+/// 深度はテーマの`CardThemeData`（DESIGN.md「Card Deck Rule」）に委ねる。
 class _SelectedSetPanel extends StatelessWidget {
   const _SelectedSetPanel({required this.set, required this.locked});
 
@@ -279,11 +279,9 @@ class _SelectedSetPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card.outlined(
+    return Card(
       // 上マージンは持たない。タブの舌と接するのが囲いの上端。
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      // 枠線だけだと画面の地（surface）と差が出ず、囲いとして読めない。
-      // 影は足さず、tonal な surface ロールを一段上げて面を分ける。
       color: Theme.of(context).colorScheme.surfaceContainer,
       // 帯と一覧の背景を角丸からはみ出させない。
       clipBehavior: Clip.antiAlias,

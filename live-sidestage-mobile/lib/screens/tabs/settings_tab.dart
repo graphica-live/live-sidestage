@@ -50,96 +50,111 @@ class SettingsTab extends StatelessWidget {
         // 読み上げ・効果音の ON/OFF は各タブの「開始/停止」ボタンが持つ。
         // ここに同じトグルを置くと二重になり、どちらが接続を制御しているのか分からなくなる。
         const _SectionHeader('読み上げ'),
-        SwitchListTile(
-          title: const Text('ランダムボイス'),
-          subtitle: const Text('コメント投稿者ごとに声を割り当てます'),
-          value: store.config.randomVoice,
-          onChanged: canEdit ? (value) => store.setRandomVoice(value) : null,
-        ),
-        _VoiceTile(
-          styleId: store.config.fixedStyleId,
-          randomVoice: store.config.randomVoice,
-          enabled: canEdit,
-          onSelected: store.setFixedStyleId,
-        ),
-        _VolumeSlider(
-          title: '読み上げの音量',
-          value: store.config.ttsVolume,
-          enabled: canEdit,
-          onChanged: store.setTtsVolume,
-        ),
-        // 速度は合成時にしか効かせられないので、変えても**先読み済みの1件には
-        // 反映されない**（次の次から効く）。音量と違って即座には変わらない。
-        _VolumeSlider(
-          title: '読み上げの速さ',
-          value: store.config.ttsSpeed,
-          enabled: canEdit,
-          onChanged: store.setTtsSpeed,
-          min: 50,
-          max: 200,
-          divisions: 30,
-          suffix: '%',
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: const Text('ランダムボイス'),
+                subtitle: const Text('コメント投稿者ごとに声を割り当てます'),
+                value: store.config.randomVoice,
+                onChanged: canEdit ? (value) => store.setRandomVoice(value) : null,
+              ),
+              _VoiceTile(
+                styleId: store.config.fixedStyleId,
+                randomVoice: store.config.randomVoice,
+                enabled: canEdit,
+                onSelected: store.setFixedStyleId,
+              ),
+              _VolumeSlider(
+                title: '読み上げの音量',
+                value: store.config.ttsVolume,
+                enabled: canEdit,
+                onChanged: store.setTtsVolume,
+              ),
+              // 速度は合成時にしか効かせられないので、変えても**先読み済みの1件には
+              // 反映されない**（次の次から効く）。音量と違って即座には変わらない。
+              _VolumeSlider(
+                title: '読み上げの速さ',
+                value: store.config.ttsSpeed,
+                enabled: canEdit,
+                onChanged: store.setTtsSpeed,
+                min: 50,
+                max: 200,
+                divisions: 30,
+                suffix: '%',
+              ),
+            ],
+          ),
         ),
         const _SectionHeader('効果音'),
-        // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
-        //
-        // 以前は「全体の音量」という表示だったが、**読み上げには一切かかっていない**
-        // (sound_engine.dart: gift.volume * masterVolume)。名前だけが「全体」を
-        // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
-        // 保存済み設定のキーなので変えない。
-        _VolumeSlider(
-          title: '効果音の音量',
-          value: store.sound.masterVolume,
-          enabled: canEdit,
-          onChanged: (value) =>
-              store.updateSound((c) => c.copyWith(masterVolume: value)),
+        Card(
+          child:
+              // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
+              //
+              // 以前は「全体の音量」という表示だったが、**読み上げには一切かかっていない**
+              // (sound_engine.dart: gift.volume * masterVolume)。名前だけが「全体」を
+              // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
+              // 保存済み設定のキーなので変えない。
+              _VolumeSlider(
+            title: '効果音の音量',
+            value: store.sound.masterVolume,
+            enabled: canEdit,
+            onChanged: (value) =>
+                store.updateSound((c) => c.copyWith(masterVolume: value)),
+          ),
         ),
         const _SectionHeader('アカウント'),
-        ListTile(
-          leading: const Icon(Icons.alternate_email),
-          title: const Text('TikTok ID'),
-          subtitle: Text('@${session?.streamer?.tiktokId ?? ''}'),
-          trailing: const Icon(Icons.edit),
-          onTap: onChangeTiktokId,
-        ),
-        if (session != null && session.userEmail.isNotEmpty)
-          ListTile(
-            leading: const Icon(Icons.account_circle_outlined),
-            // どちらでログインしたかは session が持っている。決め打ちにすると
-            // 実際とは違うプロバイダを表示することになる。
-            title: Text(switch (session.provider) {
-              AuthProvider.apple => 'Appleアカウント',
-              AuthProvider.email => 'メールアカウント',
-              AuthProvider.google => 'Googleアカウント',
-            }),
-            subtitle: Text(session.userEmail),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.alternate_email),
+                title: const Text('TikTok ID'),
+                subtitle: Text('@${session?.streamer?.tiktokId ?? ''}'),
+                trailing: const Icon(Icons.edit),
+                onTap: onChangeTiktokId,
+              ),
+              if (session != null && session.userEmail.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.account_circle_outlined),
+                  // どちらでログインしたかは session が持っている。決め打ちにすると
+                  // 実際とは違うプロバイダを表示することになる。
+                  title: Text(switch (session.provider) {
+                    AuthProvider.apple => 'Appleアカウント',
+                    AuthProvider.email => 'メールアカウント',
+                    AuthProvider.google => 'Googleアカウント',
+                  }),
+                  subtitle: Text(session.userEmail),
+                ),
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('VOICEVOX利用規約'),
+                onTap: () => showVoicevoxTermsDialog(context),
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('ログアウト', style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  final confirmed = await confirmLogout(context);
+                  if (!confirmed) return;
+                  if (!context.mounted) return;
+                  await onBeforeLogout();
+                  if (!context.mounted) return;
+                  await context.read<SessionController>().logout();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text('アカウント削除', style: TextStyle(color: Colors.red)),
+                onTap: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
+              ),
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('プライバシーポリシー'),
+                onTap: () => launchPrivacyPolicy(context),
+              ),
+            ],
           ),
-        ListTile(
-          leading: const Icon(Icons.description_outlined),
-          title: const Text('VOICEVOX利用規約'),
-          onTap: () => showVoicevoxTermsDialog(context),
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout, color: Colors.red),
-          title: const Text('ログアウト', style: TextStyle(color: Colors.red)),
-          onTap: () async {
-            final confirmed = await confirmLogout(context);
-            if (!confirmed) return;
-            if (!context.mounted) return;
-            await onBeforeLogout();
-            if (!context.mounted) return;
-            await context.read<SessionController>().logout();
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete_forever, color: Colors.red),
-          title: const Text('アカウント削除', style: TextStyle(color: Colors.red)),
-          onTap: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
-        ),
-        ListTile(
-          leading: const Icon(Icons.privacy_tip_outlined),
-          title: const Text('プライバシーポリシー'),
-          onTap: () => launchPrivacyPolicy(context),
         ),
         if (store.syncPending)
           const Padding(

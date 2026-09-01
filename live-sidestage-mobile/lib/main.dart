@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -47,6 +48,35 @@ Future<void> main() async {
   runApp(const LiveSidestageApp());
 }
 
+/// Card Deck方向のブランドテーマ。タンジェリン(暖橙)を種にした配色 +
+/// IBM Plex Mono一本の等幅タイポグラフィ。カードは角丸+ごく薄い影で
+/// 「要素をカードに分離して積む」構成を全画面へ波及させる
+/// (DESIGN.mdのFlat-By-Default/Typography節はこのリブランディングに合わせて更新済み)。
+ThemeData _buildTheme() {
+  const seed = Color(0xFFD9591F);
+  final colorScheme = ColorScheme.fromSeed(seedColor: seed);
+  final base = ThemeData(colorScheme: colorScheme, useMaterial3: true);
+  final textTheme = GoogleFonts.ibmPlexMonoTextTheme(base.textTheme);
+
+  return base.copyWith(
+    textTheme: textTheme,
+    primaryTextTheme: GoogleFonts.ibmPlexMonoTextTheme(base.primaryTextTheme),
+    cardTheme: const CardThemeData(
+      elevation: 2,
+      shadowColor: Color(0x33D9591F),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18))),
+      margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    ),
+    listTileTheme: const ListTileThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      shape: const StadiumBorder(),
+      labelStyle: textTheme.labelMedium,
+    ),
+  );
+}
+
 class LiveSidestageApp extends StatelessWidget {
   const LiveSidestageApp({super.key});
 
@@ -64,7 +94,7 @@ class LiveSidestageApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'LIVE Sidestage',
-        theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
+        theme: _buildTheme(),
         // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
         // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

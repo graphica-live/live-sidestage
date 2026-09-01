@@ -238,7 +238,8 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
           if (!_loading && result != null && events.isEmpty)
             const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
           for (final event in events)
-            ListTile(
+            Card(
+              child: ListTile(
               leading: UserAvatar(event.profileImageUrl),
               title: Row(
                 children: [
@@ -285,6 +286,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                     style: TextStyle(fontSize: 11, color: Theme.of(context).disabledColor),
                   ),
                 ],
+              ),
               ),
             ),
         ],

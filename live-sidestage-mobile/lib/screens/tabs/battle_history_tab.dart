@@ -342,13 +342,15 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
           if (!_loading && result != null && battles.isEmpty)
             const EmptyListNotice(message: 'この期間はバトルがありません'),
           for (final battle in battles)
-            ListTile(
-              onTap: () => _showContributors(battle),
-              title: Text('vs ${_opponentLabel(battle.opponent)}'),
-              subtitle: Text('${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}'),
-              trailing: Text(
-                '${_formatScore(battle.selfScore)} - ${_formatScore(battle.opponentScore)}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+            Card(
+              child: ListTile(
+                onTap: () => _showContributors(battle),
+                title: Text('vs ${_opponentLabel(battle.opponent)}'),
+                subtitle: Text('${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}'),
+                trailing: Text(
+                  '${_formatScore(battle.selfScore)} - ${_formatScore(battle.opponentScore)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           if (result?.hasMore ?? false)
