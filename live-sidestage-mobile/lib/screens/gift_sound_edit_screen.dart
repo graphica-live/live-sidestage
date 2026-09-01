@@ -517,9 +517,9 @@ enum _CoinRange {
 /// そのまま使う。
 enum _CoinGroup {
   all('すべて', null, null),
-  low('少額(〜99)', 1, 99),
-  mid('中額(100〜999)', 100, 999),
-  high('高額(1000〜)', 1000, null);
+  low('〜99', 1, 99),
+  mid('100〜999', 100, 999),
+  high('1000〜', 1000, null);
 
   const _CoinGroup(this.label, this.min, this.max);
 
