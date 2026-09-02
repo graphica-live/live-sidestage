@@ -72,6 +72,12 @@ dependencies:
   # 起動時のバージョン取得(強制アップデート判定・X-App-Versionヘッダー)に使う。
   package_info_plus: ^8.1.2
   marionette_flutter: ^0.6.0
+  # Google Play課金(サブスクリプション)。Android専用に in_app_purchase_android を
+  # 明示追加している(iOSは今回対象外、既存のApple課金APIへは未接続)。
+  in_app_purchase: ^3.2.0
+  # Billing Library 7系は2026-08-31でGoogle Playへの新規提出期限切れ(延長申請の期限が
+  # 2026-11-01)。0.5.0でBilling Library 8.0.0へ上がっている(実装後レビュー指摘、HIGH)。
+  in_app_purchase_android: ^0.5.0
 
 dev_dependencies:
   flutter_test:

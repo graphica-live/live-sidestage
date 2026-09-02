@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics_period.dart';
+import '../subscription_screen.dart';
 
 /// サーバー側([range-limits.ts](../../../../live-sidestage-analytics/src/lib/range-limits.ts))の
 /// MAX_RANGE_DAYSと必ず一致させること。無効な範囲を選んだまま放置すると、その範囲が
@@ -9,6 +10,21 @@ import '../../core/analytics_period.dart';
 const int _maxRangeDays = 366;
 
 typedef AdvancedFilterResult = ({DateTimeRange? range, String? listenerQuery, bool cleared});
+
+void _showUpgradeNotice(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(message),
+      duration: const Duration(seconds: 4),
+      action: SnackBarAction(
+        label: 'アップグレード',
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
+        ),
+      ),
+    ));
+}
 
 /// リスナー名・開始/終了日時による詳細フィルタのボトムシートを開く。
 ///
@@ -21,19 +37,37 @@ Future<AdvancedFilterResult?> showCustomRangeFilterSheet(
   BuildContext context, {
   DateTimeRange? initial,
   String? initialListenerQuery,
+  bool extendedRangeAllowed = true,
+  bool listenerFilterAllowed = true,
 }) {
   return showModalBottomSheet<AdvancedFilterResult>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => _CustomRangeFilterSheet(initial: initial, initialListenerQuery: initialListenerQuery),
+    builder: (context) => _CustomRangeFilterSheet(
+      initial: initial,
+      initialListenerQuery: initialListenerQuery,
+      extendedRangeAllowed: extendedRangeAllowed,
+      listenerFilterAllowed: listenerFilterAllowed,
+    ),
   );
 }
 
 class _CustomRangeFilterSheet extends StatefulWidget {
-  const _CustomRangeFilterSheet({this.initial, this.initialListenerQuery});
+  const _CustomRangeFilterSheet({
+    this.initial,
+    this.initialListenerQuery,
+    this.extendedRangeAllowed = true,
+    this.listenerFilterAllowed = true,
+  });
 
   final DateTimeRange? initial;
   final String? initialListenerQuery;
+
+  /// FREEプランでは開始/終了日時による範囲指定を使えない(履歴の遡り期間制限)。
+  final bool extendedRangeAllowed;
+
+  /// FREEプランではリスナー名フィルタを使えない(入力欄は見せるが入力不可)。
+  final bool listenerFilterAllowed;
 
   @override
   State<_CustomRangeFilterSheet> createState() => _CustomRangeFilterSheetState();
@@ -140,14 +174,34 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
               const SizedBox(height: 8),
               TextField(
                 controller: _listenerController,
-                decoration: const InputDecoration(
+                readOnly: !widget.listenerFilterAllowed,
+                onTap: widget.listenerFilterAllowed
+                    ? null
+                    : () => _showUpgradeNotice(context, 'リスナー名での絞り込みはPRO/ULTRAプランで利用できます'),
+                decoration: InputDecoration(
                   labelText: 'リスナー名(ID またはプロフィール名)',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  hintText: widget.listenerFilterAllowed ? null : 'PRO/ULTRAプランで利用できます',
+                  suffixIcon: widget.listenerFilterAllowed ? null : const Icon(Icons.lock_outline, size: 18),
                 ),
               ),
               const SizedBox(height: 8),
-              _DateTimeRow(label: '開始日時', value: _start, onTap: _pickStart),
-              _DateTimeRow(label: '終了日時', value: _end, onTap: _pickEnd),
+              _DateTimeRow(
+                label: '開始日時',
+                value: _start,
+                onTap: widget.extendedRangeAllowed
+                    ? _pickStart
+                    : () => _showUpgradeNotice(context, '日時範囲での絞り込みはPRO/ULTRAプランで利用できます'),
+                locked: !widget.extendedRangeAllowed,
+              ),
+              _DateTimeRow(
+                label: '終了日時',
+                value: _end,
+                onTap: widget.extendedRangeAllowed
+                    ? _pickEnd
+                    : () => _showUpgradeNotice(context, '日時範囲での絞り込みはPRO/ULTRAプランで利用できます'),
+                locked: !widget.extendedRangeAllowed,
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -175,7 +229,7 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
 }
 
 class _DateTimeRow extends StatelessWidget {
-  const _DateTimeRow({required this.label, required this.value, required this.onTap});
+  const _DateTimeRow({required this.label, required this.value, required this.onTap, this.locked = false});
 
   final String label;
 
@@ -184,14 +238,20 @@ class _DateTimeRow extends StatelessWidget {
 
   final VoidCallback onTap;
 
+  /// FREEプランでロック中。タップは常に受け付ける(押されたら理由を伝える)。
+  final bool locked;
+
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(label),
-      subtitle: Text(value == null ? '未設定' : _format(value!)),
-      trailing: const Icon(Icons.edit_calendar_outlined),
-      onTap: onTap,
+    return Opacity(
+      opacity: locked ? 0.6 : 1,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(label),
+        subtitle: Text(locked ? 'PRO/ULTRAプランで利用できます' : (value == null ? '未設定' : _format(value!))),
+        trailing: Icon(locked ? Icons.lock_outline : Icons.edit_calendar_outlined),
+        onTap: onTap,
+      ),
     );
   }
 

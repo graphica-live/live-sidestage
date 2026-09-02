@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/account_status_store.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/gift_activity.dart';
+import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../../core/tiktok_profile.dart';
 import '../gift_sound_edit_screen.dart' show GiftThumbnail;
@@ -151,10 +153,13 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   }
 
   Future<void> _openCustomRangeFilter() async {
+    final planGate = PlanGate(context.read<AccountStatusStore>().status);
     final result = await showCustomRangeFilterSheet(
       context,
       initial: _customRange,
       initialListenerQuery: _listenerQuery,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      listenerFilterAllowed: planGate.canUseListenerFilter,
     );
     if (result == null) return;
     setState(() {
@@ -205,6 +210,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final result = _result;
     final events = result?.events ?? const [];
+    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -215,6 +221,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             selection: _selection,
             rangeLabel: _rangeLabel,
             onChanged: _onPeriodChanged,
+            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
             enabled: !_loading,
             customRangeActive: _customRange != null,
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),

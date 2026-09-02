@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_sidestage_mobile/core/account_status_store.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/feature_status.dart';
 import 'package:live_sidestage_mobile/models/app_config.dart';
@@ -60,8 +61,11 @@ void main() {
     required bool busy,
   }) async {
     await tester.pumpWidget(
-      ChangeNotifierProvider<AppConfigStore>.value(
-        value: store,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppConfigStore>.value(value: store),
+          ChangeNotifierProvider<AccountStatusStore>(create: (_) => AccountStatusStore()),
+        ],
         child: MaterialApp(
           home: SoundTab(
             sound: const SoundState(),

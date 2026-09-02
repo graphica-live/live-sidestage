@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:live_sidestage_mobile/core/account_status_store.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
@@ -31,6 +32,7 @@ Future<void> _pump(WidgetTester tester, SessionController controller, Widget chi
     MultiProvider(
       providers: [
         ChangeNotifierProvider<AppConfigStore>(create: (_) => AppConfigStore()),
+        ChangeNotifierProvider<AccountStatusStore>(create: (_) => AccountStatusStore()),
         ChangeNotifierProvider<SessionController>.value(value: controller),
         ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
       ],

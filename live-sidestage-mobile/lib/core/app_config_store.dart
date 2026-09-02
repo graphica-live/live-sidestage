@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/app_config.dart';
+import '../models/voice_catalog.dart';
 
 /// 設定の永続化キー。UI Isolate と Foreground Service Isolate の両方から読む。
 /// `FlutterForegroundTask.saveData` は Map を保存できないので JSON 文字列で入れる。
@@ -142,6 +143,30 @@ class AppConfigStore extends ChangeNotifier {
   Future<void> setTtsSpeed(int value) {
     final clamped = value.clamp(50, 200);
     return _mutate((c) => c.ttsSpeed == clamped ? null : c.bumped(ttsSpeed: clamped));
+  }
+
+  /// FREEプランへ降格した(または降格していた)ときに、過去PRO/ULTRA時代に保存された
+  /// ランダムボイス・非対応ボイス・非標準速度を強制的にFREEの範囲へ戻す。
+  ///
+  /// UIロックは「これから」の変更を止めるだけで、既に保存済みの値は残り続ける
+  /// (背景Isolateはその値をそのまま読んで合成する)。AccountStatusStore.refresh()
+  /// 完了後、effectivePlanがFREEのときに呼ぶ想定(呼び出し元はAuthGate)。
+  ///
+  /// 効果音の登録数はここでは扱わない(既存の6件目以降を無効化しない、
+  /// グランドファザリング)。新規追加のみsound_tab.dart側でブロックする。
+  Future<void> enforceFreePlanLimits() {
+    return _mutate((c) {
+      final needsRandomVoiceReset = c.randomVoice;
+      final needsStyleReset = !VoiceCatalog.isFreeStyle(c.fixedStyleId);
+      final needsSpeedReset = c.ttsSpeed != 100;
+      if (!needsRandomVoiceReset && !needsStyleReset && !needsSpeedReset) return null;
+
+      return c.bumped(
+        randomVoice: needsRandomVoiceReset ? false : null,
+        fixedStyleId: needsStyleReset ? VoiceCatalog.defaultStyleId : null,
+        ttsSpeed: needsSpeedReset ? 100 : null,
+      );
+    });
   }
 
   Future<void> updateSound(SoundConfig Function(SoundConfig current) transform) {

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/account_status_store.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/gift_activity.dart';
+import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
@@ -173,10 +175,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   }
 
   Future<void> _openCustomRangeFilter() async {
+    final planGate = PlanGate(context.read<AccountStatusStore>().status);
     final result = await showCustomRangeFilterSheet(
       context,
       initial: _customRange,
       initialListenerQuery: _listenerQuery,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      listenerFilterAllowed: planGate.canUseListenerFilter,
     );
     if (result == null) return;
     setState(() {
@@ -205,6 +210,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final result = _result;
     final users = result?.users ?? const [];
+    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -220,6 +226,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
             onShiftCustomRange: _shiftOutOfCustomRange,
+            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
           ),
           if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),

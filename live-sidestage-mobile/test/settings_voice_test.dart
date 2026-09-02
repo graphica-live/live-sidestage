@@ -6,14 +6,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_sidestage_mobile/core/account_status_store.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
+import 'package:live_sidestage_mobile/models/account_status.dart';
 import 'package:live_sidestage_mobile/screens/home_screen.dart' show SpeechState;
 import 'package:live_sidestage_mobile/screens/tabs/settings_tab.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// このファイルのテストはプラン制限とは無関係な既存挙動(ボイス選択・音量)の確認が目的。
+// FREE(fallback)だとボイス選択がロックされてしまうので、ULTRA相当で固定して検証する。
+const _ultraStatus = AccountStatus(
+  userId: 'u1',
+  effectivePlan: 'ULTRA',
+  betaAccess: false,
+  features: ['mobile.history.extendedRange', 'mobile.history.listenerFilter'],
+  minimumSupportedVersion: '0.0.0',
+  maintenanceMode: false,
+);
 
 class _StoppedForegroundTaskPlatform extends FlutterForegroundTaskPlatform
     with MockPlatformInterfaceMixin {
@@ -44,6 +57,11 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AppConfigStore>.value(value: store),
+          ChangeNotifierProvider<AccountStatusStore>(
+            create: (_) => AccountStatusStore()
+              ..status = _ultraStatus
+              ..loaded = true,
+          ),
           ChangeNotifierProvider<SessionController>(create: (_) => SessionController()),
           ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
         ],

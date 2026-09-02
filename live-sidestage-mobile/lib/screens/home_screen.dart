@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../core/analytics_period.dart' show jstDateKeyOf;
 import '../core/api_client.dart' show LiveAnalyticsApi, giftLabelJaMap;
+import '../core/account_status_store.dart';
 import '../core/app_config_store.dart';
 import '../core/battle_activity.dart';
 import '../core/comment_feed.dart' show SocketStatus;
@@ -17,6 +18,7 @@ import '../core/session_controller.dart';
 import '../main.dart' show startCallback;
 import '../models/comment.dart';
 import 'gift_sound_edit_screen.dart' show fetchGiftCandidatesWithRefresh;
+import 'subscription_screen.dart';
 import 'tabs/battle_history_tab.dart';
 import 'tabs/contribution_tab.dart';
 import 'tabs/gift_history_tab.dart';
@@ -675,8 +677,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final soundEnabled = store.sound.enabled;
     final tiktokId = session?.streamer?.tiktokId;
 
+    final accountStatus = context.watch<AccountStatusStore>();
+
     return Scaffold(
-      appBar: AppBar(title: Text('@${session?.streamer?.tiktokId ?? ''}')),
+      appBar: AppBar(
+        title: Text('@${session?.streamer?.tiktokId ?? ''}'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(child: _PlanBadge(plan: accountStatus.status.effectivePlan)),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           if (_roomSwitching)
@@ -751,6 +763,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _roomSwitchTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+/// AppBar右上のプラン表示。タップでプラン選択画面へ遷移する。
+class _PlanBadge extends StatelessWidget {
+  const _PlanBadge({required this.plan});
+
+  final String plan;
+
+  String get _label => switch (plan) {
+        'ULTRA' => 'ULTRA',
+        'PRO' => 'PRO',
+        _ => 'FREE',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: colorScheme.primary),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          _label,
+          style: TextStyle(
+            color: colorScheme.primary,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
   }
 }
 
