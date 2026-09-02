@@ -16,9 +16,16 @@ class ListPanel extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: outline),
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF9B6BFF).withValues(alpha: 0.12),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+            spreadRadius: -18,
+          ),
+        ],
       ),
       child: Column(
         children: [
