@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics_period.dart';
-import '../subscription_screen.dart';
+import '../../core/upgrade_notice.dart';
 
 /// 貢献/ギフト履歴/バトル履歴タブ共通の期間選択バー(日/週/月 + ◀/▶)。
 class PeriodSelectorBar extends StatelessWidget {
@@ -91,18 +91,7 @@ class PeriodSelectorBar extends StatelessWidget {
                       ? (selected) {
                           final next = selected.first;
                           if (!extendedRangeAllowed && _isExtendedPeriod(next)) {
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(SnackBar(
-                                content: const Text('月・年での表示はPRO/ULTRAプランで利用できます'),
-                                duration: const Duration(seconds: 4),
-                                action: SnackBarAction(
-                                  label: 'アップグレード',
-                                  onPressed: () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
-                                  ),
-                                ),
-                              ));
+                            showUpgradeRequiredNotice(context, '月・年での表示はPRO/ULTRAプランで利用できます');
                             return;
                           }
                           onChanged(selection.withPeriod(next));

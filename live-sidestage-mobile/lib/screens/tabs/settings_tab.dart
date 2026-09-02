@@ -8,11 +8,15 @@ import '../../core/plan_gate.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
 import '../../core/theme_mode_store.dart';
+import '../../core/upgrade_notice.dart';
 import '../../models/auth_session.dart';
 import '../../models/voice_catalog.dart';
 import '../home_screen.dart' show SpeechState;
 import '../subscription_screen.dart';
 import '../widgets/voicevox_terms.dart';
+
+void _showUpgradeRequired(BuildContext context, String message) =>
+    showUpgradeRequiredNotice(context, message);
 
 /// 設定の集約先。
 ///
@@ -74,11 +78,12 @@ class SettingsTab extends StatelessWidget {
                       : 'PRO/ULTRAプランで利用できます',
                 ),
                 value: store.config.randomVoice,
-                onChanged: canEdit && planGate.canUseRandomVoice
-                    ? (value) => store.setRandomVoice(value)
-                    : null,
+                onChanged: !canEdit
+                    ? null
+                    : planGate.canUseRandomVoice
+                        ? (value) => store.setRandomVoice(value)
+                        : (_) => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
               ),
-              if (!planGate.canUseRandomVoice) _UpgradeLockRow(),
               _VoiceTile(
                 styleId: store.config.fixedStyleId,
                 randomVoice: store.config.randomVoice,
@@ -99,12 +104,14 @@ class SettingsTab extends StatelessWidget {
                 value: store.config.ttsSpeed,
                 enabled: canEdit && planGate.canAdjustTtsSpeed,
                 onChanged: store.setTtsSpeed,
+                onLockedTap: planGate.canAdjustTtsSpeed
+                    ? null
+                    : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで速度を調整できます'),
                 min: 50,
                 max: 200,
                 divisions: 30,
                 suffix: '%',
               ),
-              if (!planGate.canAdjustTtsSpeed) _UpgradeLockRow(subtitle: 'PRO/ULTRAプランで速度を調整できます'),
             ],
           ),
         ),
@@ -361,34 +368,12 @@ class _VoicePickerSheet extends StatelessWidget {
                     title: Text(style.styleName, style: const TextStyle(color: Colors.grey)),
                     leading: const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
                     subtitle: const Text('PRO/ULTRAプランで選べます'),
-                    enabled: false,
+                    onTap: () => _showUpgradeRequired(context, 'PRO/ULTRAプランで選べます'),
                   ),
               ],
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// ロック状態の設定項目に添える、アップグレード導線の行。
-class _UpgradeLockRow extends StatelessWidget {
-  const _UpgradeLockRow({this.subtitle = 'PRO/ULTRAプランで利用できます'});
-
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      dense: true,
-      leading: const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
-      title: Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-      trailing: TextButton(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-        ),
-        child: const Text('アップグレード'),
       ),
     );
   }
@@ -406,6 +391,7 @@ class _VolumeSlider extends StatefulWidget {
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.onLockedTap,
     this.min = 0,
     this.max = 100,
     this.divisions = 20,
@@ -416,6 +402,9 @@ class _VolumeSlider extends StatefulWidget {
   final int value;
   final bool enabled;
   final ValueChanged<int> onChanged;
+
+  /// [enabled] が false のとき、タップされたら呼ぶ(ロック中のアップグレード導線)。
+  final VoidCallback? onLockedTap;
   final int min;
   final int max;
   final int divisions;
@@ -437,6 +426,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
 
     return ListTile(
       title: Text(widget.title),
+      onTap: widget.enabled ? null : widget.onLockedTap,
       subtitle: Slider(
         value: value.toDouble(),
         min: widget.min.toDouble(),

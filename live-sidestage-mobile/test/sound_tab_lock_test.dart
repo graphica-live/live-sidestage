@@ -149,6 +149,9 @@ void main() {
 
       expect(store.sound.selectedSetId, SoundSet.defaultId);
       expect(find.text('セットを変更するには停止してください'), findsOneWidget);
+      // 案内のSnackBarはTimerで自動的に消す実装。ウィジェットdispose前に消化しないと
+      // 「pending timer」でテストが落ちる(showTimedNotice参照)。
+      await tester.pump(const Duration(seconds: 3));
     });
 
     testWidgets('ギフト行を押しても画面遷移せず、停止を促す', (tester) async {
@@ -161,6 +164,7 @@ void main() {
       expect(find.text('設定を変更するには停止してください'), findsOneWidget);
       // 編集画面へ行っていない（一覧のままである）。
       expect(find.text('使用中：A'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
     });
 
     testWidgets('「音を追加」を押しても画面遷移せず、停止を促す', (tester) async {
@@ -174,6 +178,7 @@ void main() {
       expect(find.text('使用中：A'), findsOneWidget);
       // 押せる状態のままなので、ロックは薄さで示す。
       expect(fabOpacity(tester), lessThan(1));
+      await tester.pump(const Duration(seconds: 3));
     });
 
     testWidgets('セット追加・操作メニュー・Switch を禁止する', (tester) async {
@@ -204,6 +209,7 @@ void main() {
       expect(addChip(tester).onPressed, isNull);
       expect(giftSwitch(tester).onChanged, isNull);
       expect(fabOpacity(tester), lessThan(1));
+      await tester.pump(const Duration(seconds: 3));
     });
 
     testWidgets('遷移中も「音を追加」は停止を促す', (tester) async {
@@ -213,6 +219,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('設定を変更するには停止してください'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
     });
   });
 

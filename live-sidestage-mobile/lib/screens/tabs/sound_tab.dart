@@ -8,8 +8,8 @@ import '../../core/gift_name_ja.dart';
 import '../../core/plan_gate.dart';
 import '../../core/sound_file_cleanup.dart';
 import '../../core/sound_library.dart';
+import '../../core/upgrade_notice.dart';
 import '../../models/app_config.dart';
-import '../subscription_screen.dart';
 import '../gift_sound_edit_screen.dart';
 import '../home_screen.dart' show SoundState;
 import '../widgets/feature_status_bar.dart';
@@ -20,28 +20,11 @@ const String _lockedSetMessage = 'セットを変更するには停止してく�
 /// ギフト設定を触ろうとしたときの案内。
 const String _lockedSettingMessage = '設定を変更するには停止してください';
 
-void _showLocked(BuildContext context, String message) {
-  // 連打で溜めない。同じ案内が何枚も積まれても意味がない。
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
-}
+void _showLocked(BuildContext context, String message) => showTimedNotice(context, message);
 
 /// FREEプランの上限到達を伝え、プラン選択画面への導線を添える。
-void _showUpgradeRequired(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 4),
-      action: SnackBarAction(
-        label: 'アップグレード',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
-        ),
-      ),
-    ));
-}
+void _showUpgradeRequired(BuildContext context, String message) =>
+    showUpgradeRequiredNotice(context, message);
 
 /// 「ギフト → 音」の一覧。最大 [SoundConfig.maxSets] セットを切り替えて使う。
 ///

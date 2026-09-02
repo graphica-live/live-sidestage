@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../models/app_config.dart';
 import '../models/comment.dart';
 import '../models/listener_status.dart';
+import 'account_status_store.dart' show effectivePlanStorageKey;
 import 'api_client.dart';
 import 'app_config_store.dart';
 import 'comment_feed.dart';
@@ -138,6 +139,11 @@ class CommentSpeechTaskHandler extends TaskHandler {
     final raw = await FlutterForegroundTask.getData<String>(key: appConfigStorageKey);
     final decoded = AppConfig.tryDecode(raw);
     _config = decoded ?? const AppConfig();
+
+    // FREEプランの読み上げインターバル判定用。サービス稼働中のプラン変更は
+    // リアルタイム反映しない(次回「開始」時に反映)。未保存(null)なら制限しない側に倒す。
+    final storedPlan = await FlutterForegroundTask.getData<String>(key: effectivePlanStorageKey);
+    _speechQueue.isFreePlan = storedPlan == 'FREE';
 
     // OS都合でこのTaskHandlerが再生成された場合に備え、前回セッションで
     // 自動停止していた事実を永続フラグから復元する。

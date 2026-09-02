@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics_period.dart';
-import '../subscription_screen.dart';
+import '../../core/upgrade_notice.dart';
 
 /// サーバー側([range-limits.ts](../../../../live-sidestage-analytics/src/lib/range-limits.ts))の
 /// MAX_RANGE_DAYSと必ず一致させること。無効な範囲を選んだまま放置すると、その範囲が
@@ -11,20 +11,8 @@ const int _maxRangeDays = 366;
 
 typedef AdvancedFilterResult = ({DateTimeRange? range, String? listenerQuery, bool cleared});
 
-void _showUpgradeNotice(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 4),
-      action: SnackBarAction(
-        label: 'アップグレード',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
-        ),
-      ),
-    ));
-}
+void _showUpgradeNotice(BuildContext context, String message) =>
+    showUpgradeRequiredNotice(context, message);
 
 /// リスナー名・開始/終了日時による詳細フィルタのボトムシートを開く。
 ///
