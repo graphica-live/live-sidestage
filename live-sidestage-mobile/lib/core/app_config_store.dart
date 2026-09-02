@@ -150,7 +150,7 @@ class AppConfigStore extends ChangeNotifier {
   ///
   /// UIロックは「これから」の変更を止めるだけで、既に保存済みの値は残り続ける
   /// (背景Isolateはその値をそのまま読んで合成する)。AccountStatusStore.refresh()
-  /// 完了後、effectivePlanがFREEのときに呼ぶ想定(呼び出し元はAuthGate)。
+  /// 完了後、planがFREEでmobileβも無効のときに呼ぶ想定(呼び出し元はAuthGate)。
   ///
   /// 効果音の登録数はここでは扱わない(既存の6件目以降を無効化しない、
   /// グランドファザリング)。新規追加のみsound_tab.dart側でブロックする。

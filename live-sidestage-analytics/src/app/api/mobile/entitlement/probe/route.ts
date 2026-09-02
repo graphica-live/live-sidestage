@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 // requireFeature()の配管が実際のHTTPリクエストを通じて機能することを示すためだけの
 // エンドポイント。実際のmobile限定機能ではないので、本番UIから日常的に叩かれる想定はない。
-// FEATURE_REQUIREMENTSへ実機能を足すときの参照実装として残す。
+// FEATURE_POLICIESへ実機能を足すときの参照実装として残す。
 export async function GET(req: NextRequest) {
   const auth = await resolveActiveMobileUser(req);
   if (!auth) {

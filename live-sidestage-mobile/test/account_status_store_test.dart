@@ -28,10 +28,16 @@ class _FakeApi extends LiveAnalyticsApi {
   }
 }
 
-AccountStatus _status({String userId = 'u1', String plan = 'PRO'}) => AccountStatus(
+AccountStatus _status({
+  String userId = 'u1',
+  String plan = 'PRO',
+  bool mobileBetaActive = false,
+}) =>
+    AccountStatus(
       userId: userId,
-      effectivePlan: plan,
-      betaAccess: false,
+      plan: plan,
+      mobileBetaActive: mobileBetaActive,
+      planLabel: mobileBetaActive ? 'β$plan' : plan,
       features: const [],
       minimumSupportedVersion: '0.0.0',
       maintenanceMode: false,
@@ -45,8 +51,19 @@ void main() {
     await store.refresh(userId: 'u1', token: 'tok-1');
 
     expect(store.loaded, isTrue);
-    expect(store.status.effectivePlan, 'PRO');
+    expect(store.status.plan, 'PRO');
     expect(api.calls, 1);
+  });
+
+  test('mobileBetaActiveもstatusへ反映される', () async {
+    final api = _FakeApi()..byToken['tok-1'] = _status(plan: 'FREE', mobileBetaActive: true);
+    final store = AccountStatusStore(api: api);
+
+    await store.refresh(userId: 'u1', token: 'tok-1');
+
+    expect(store.status.plan, 'FREE');
+    expect(store.status.mobileBetaActive, isTrue);
+    expect(store.status.planLabel, 'βFREE');
   });
 
   test('通信失敗はfallbackへ倒しつつloaded=trueにする(アプリを止めない)', () async {
@@ -57,7 +74,8 @@ void main() {
     await store.refresh(userId: 'u1', token: 'tok-1');
 
     expect(store.loaded, isTrue);
-    expect(store.status.effectivePlan, AccountStatus.fallback.effectivePlan);
+    expect(store.status.plan, AccountStatus.fallback.plan);
+    expect(store.status.mobileBetaActive, AccountStatus.fallback.mobileBetaActive);
   });
 
   test('401もfallbackへ倒す(再ログイン導線は他のAPI呼び出し側が持つ)', () async {
@@ -67,7 +85,7 @@ void main() {
     await store.refresh(userId: 'u1', token: 'unknown-token');
 
     expect(store.loaded, isTrue);
-    expect(store.status.effectivePlan, AccountStatus.fallback.effectivePlan);
+    expect(store.status.plan, AccountStatus.fallback.plan);
   });
 
   test('取得中に別ユーザーへ切り替わったら古い結果を捨てる', () async {
@@ -81,12 +99,12 @@ void main() {
     final oldRefresh = store.refresh(userId: 'old', token: 'tok-old');
     // oldの結果がまだ返っていないうちに、newへ切り替わる。
     await store.refresh(userId: 'new', token: 'tok-new');
-    expect(store.status.effectivePlan, 'FREE');
+    expect(store.status.plan, 'FREE');
 
     // oldの結果が遅れて返っても上書きしない。
     gate.complete();
     await oldRefresh;
-    expect(store.status.effectivePlan, 'FREE');
+    expect(store.status.plan, 'FREE');
     expect(store.status.userId, 'new');
   });
 
@@ -99,6 +117,6 @@ void main() {
     store.reset();
 
     expect(store.loaded, isFalse);
-    expect(store.status.effectivePlan, AccountStatus.fallback.effectivePlan);
+    expect(store.status.plan, AccountStatus.fallback.plan);
   });
 }

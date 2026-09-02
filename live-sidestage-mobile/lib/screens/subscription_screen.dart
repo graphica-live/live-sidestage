@@ -93,6 +93,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final accountStatus = context.watch<AccountStatusStore>();
     final billing = context.watch<BillingService>();
     final currentPlan = accountStatus.status.effectivePlan;
+    final busy = billing.state == BillingPurchaseState.processing;
+    // サーバーのinitは有効な有料プラン保持中、provider問わず常に409で拒否する
+    // (cross-provider二重課金防止)。プラン間の変更(upgrade/downgrade)は未実装なので、
+    // 既に有料プランの間は他プランの購入ボタンも出さない(押しても常に失敗する導線にしない)。
+    final onPaidPlan = currentPlan == 'PRO' || currentPlan == 'ULTRA';
 
     ProductDetails? productFor(String productId) {
       // Play Consoleで同一productIdに複数のbase plan/offerを設定すると、

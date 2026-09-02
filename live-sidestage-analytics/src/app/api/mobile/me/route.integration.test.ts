@@ -1,18 +1,18 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 //
-// getEffectiveMobilePlan → hasFeature → GET /api/mobile/me / GET /api/mobile/entitlement/probe
-// の配管を、モック無しの実DBとJWTで通しで確認する。
+// getUserPlan / getBetaStatuses → hasFeatureAccessSync → GET /api/mobile/me /
+// GET /api/mobile/entitlement/probe の配管を、モック無しの実DBとJWTで通しで確認する。
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { setSetting } from "@/lib/settings";
 import {
-  MOBILE_BETA_ENABLED_SETTING,
   MOBILE_MIN_SUPPORTED_VERSION_SETTING,
   MOBILE_LATEST_VERSION_SETTING,
   MOBILE_MAINTENANCE_MODE_SETTING,
 } from "@/lib/mobile-settings";
+import { betaSettingKey } from "@/lib/plan/beta-settings";
 import { GET as mePost } from "./route";
 import { GET as probeGet } from "../entitlement/probe/route";
 
@@ -27,7 +27,9 @@ function authedRequest(url: string, token: string) {
 async function cleanup() {
   await prisma.subscription.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
-  await setSetting(MOBILE_BETA_ENABLED_SETTING, null);
+  await setSetting(betaSettingKey("mobile"), null);
+  await setSetting(betaSettingKey("analytics"), null);
+  await setSetting(betaSettingKey("events"), null);
   await setSetting(MOBILE_MIN_SUPPORTED_VERSION_SETTING, null);
   await setSetting(MOBILE_LATEST_VERSION_SETTING, null);
   await setSetting(MOBILE_MAINTENANCE_MODE_SETTING, null);
@@ -48,7 +50,7 @@ describe("GET /api/mobile/me", () => {
     expect(response.status).toBe(401);
   });
 
-  it("β無効・Subscription無しはFREE、betaAccess=false", async () => {
+  it("β無効・Subscription無しはFREE、mobileBetaActive=false", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}free@local.test` } });
     const token = signMobileToken({ userId: user.id });
 
@@ -56,8 +58,11 @@ describe("GET /api/mobile/me", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.effectivePlan).toBe("FREE");
-    expect(body.betaAccess).toBe(false);
+    expect(body.plan).toBe("FREE");
+    expect(body.mobileBetaActive).toBe(false);
+    expect(body.planLabel).toBe("FREE");
+    expect(body.effectivePlan).toBeUndefined();
+    expect(body.betaAccess).toBeUndefined();
     expect(body.features).toEqual([]);
     expect(body.minimumSupportedVersion).toBe("0.0.0");
     expect(body.latestVersion).toBeNull();
@@ -65,17 +70,34 @@ describe("GET /api/mobile/me", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("β有効ならSubscription無しでもULTRA相当・betaAccess=true", async () => {
+  it("mobileβ有効でもSubscription無しならplanはFREEのまま、planLabelだけβFREEになる", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}beta@local.test` } });
     const token = signMobileToken({ userId: user.id });
-    await setSetting(MOBILE_BETA_ENABLED_SETTING, "true");
+    await setSetting(betaSettingKey("mobile"), "true");
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
     const body = await response.json();
 
-    expect(body.effectivePlan).toBe("ULTRA");
-    expect(body.betaAccess).toBe(true);
-    expect(body.features).toContain("mobile.entitlementProbe");
+    expect(body.plan).toBe("FREE");
+    expect(body.mobileBetaActive).toBe(true);
+    expect(body.planLabel).toBe("βFREE");
+    // mobile.entitlementProbeにはbetaAreaを紐づけていないため、mobileβはこの機能を解放しない。
+    expect(body.features).not.toContain("mobile.entitlementProbe");
+  });
+
+  it("analyticsβ有効ならFREEでもmobile.history.extendedRangeが解放される(実プランはFREEのまま)", async () => {
+    const user = await prisma.user.create({ data: { email: `${PREFIX}analytics-beta@local.test` } });
+    const token = signMobileToken({ userId: user.id });
+    await setSetting(betaSettingKey("analytics"), "true");
+
+    const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
+    const body = await response.json();
+
+    expect(body.plan).toBe("FREE");
+    expect(body.planLabel).toBe("FREE"); // バッジ表記はmobile領域のβだけを見る
+    expect(body.features).toContain("mobile.history.extendedRange");
+    expect(body.features).toContain("mobile.history.listenerFilter");
+    expect(body.features).not.toContain("mobile.entitlementProbe");
   });
 
   it("β無効時はSubscriptionのplanをそのまま反映する", async () => {
@@ -94,8 +116,8 @@ describe("GET /api/mobile/me", () => {
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
     const body = await response.json();
 
-    expect(body.effectivePlan).toBe("PRO");
-    expect(body.betaAccess).toBe(false);
+    expect(body.plan).toBe("PRO");
+    expect(body.mobileBetaActive).toBe(false);
   });
 
   it("mobileMinSupportedVersion/mobileMaintenanceModeをAppSettingから反映する", async () => {
@@ -124,7 +146,17 @@ describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
     expect(response.status).toBe(403);
   });
 
-  it("PRO以上は200(β経由のULTRAでも通る)", async () => {
+  it("mobileβが有効でもbetaArea未設定の機能は403のまま(betaAccessのULTRA昇格は廃止済み)", async () => {
+    const user = await prisma.user.create({ data: { email: `${PREFIX}probe-mobilebeta@local.test` } });
+    const token = signMobileToken({ userId: user.id });
+    await setSetting(betaSettingKey("mobile"), "true");
+
+    const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("PRO以上は200", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-pro@local.test` } });
     await prisma.subscription.create({
       data: {

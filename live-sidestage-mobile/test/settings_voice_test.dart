@@ -21,8 +21,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 // FREE(fallback)だとボイス選択がロックされてしまうので、ULTRA相当で固定して検証する。
 const _ultraStatus = AccountStatus(
   userId: 'u1',
-  effectivePlan: 'ULTRA',
-  betaAccess: false,
+  plan: 'ULTRA',
+  mobileBetaActive: false,
+  planLabel: 'ULTRA',
   features: ['mobile.history.extendedRange', 'mobile.history.listenerFilter'],
   minimumSupportedVersion: '0.0.0',
   maintenanceMode: false,

@@ -45,7 +45,7 @@ class BillingService extends ChangeNotifier {
 
   /// アプリ起動時、ログイン済みセッションが判明した時点で1回呼ぶ。
   /// [token]はverify-purchase呼び出しに使うJWT、[accountStatusStore]は
-  /// 購入確定後にeffectivePlanを取り直すために使う。
+  /// 購入確定後にplanを取り直すために使う。
   Future<void> init({
     required String token,
     required String userId,
@@ -128,7 +128,7 @@ class BillingService extends ChangeNotifier {
     // 場合の二重課金リスク。根本対応にはGoogle Play側の所有購読の事前照会が要るが、
     // 現行in_app_purchaseにその手段が無く本タスクの範囲を超えるため、既知の残存リスクとして
     // 報告に残す)。
-    final currentPlan = _accountStatusStore?.status.effectivePlan;
+    final currentPlan = _accountStatusStore?.status.plan;
     if (currentPlan == 'PRO' || currentPlan == 'ULTRA') {
       state = BillingPurchaseState.error;
       errorMessage = '既に有料プランをご利用中です。';
@@ -295,7 +295,7 @@ class BillingService extends ChangeNotifier {
       final reflectedStatus = accountStatusStore?.status;
       if (reflectedStatus != null &&
           !reflectedStatus.isFallback &&
-          reflectedStatus.effectivePlan == 'FREE') {
+          reflectedStatus.plan == 'FREE') {
         state = BillingPurchaseState.error;
         errorMessage = '購入処理は完了しましたが、プランへの反映を確認できませんでした。時間をおいて画面を開き直すか、サポートへお問い合わせください。';
         notifyListeners();

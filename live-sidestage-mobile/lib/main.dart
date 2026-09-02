@@ -234,8 +234,10 @@ class _AuthGateState extends State<AuthGate> {
   // リクエストが飛んでしまう。
   String? _requestedForUserId;
 
-  // effectivePlanが変わった(初回取得含む)ときにだけFREE降格フォールバックを走らせるための
-  // 直近適用済みplanの記録。buildは何度も呼ばれるので、これが無いと呼ぶたびに走ってしまう。
+  // plan+mobileBetaActiveが変わった(初回取得含む)ときにだけFREE降格フォールバックを走らせる
+  // ための直近適用済みキーの記録("$plan:$mobileBetaActive")。buildは何度も呼ばれるので、
+  // これが無いと呼ぶたびに走ってしまう。mobileβのON/OFF切り替えでも再評価が必要なため、
+  // plan文字列単体ではなくβ状態も含めたキーで比較する。
   String? _enforcedForPlan;
 
   // BillingServiceへ反映済みのtoken。userId不変のままJWTだけ更新された(無言リフレッシュ等)
@@ -317,9 +319,12 @@ class _AuthGateState extends State<AuthGate> {
     // fallback FREEのときに'FREE'を記録してしまうと、その後サーバーから正式な
     // FREE応答が届いても文字列としては同じ'FREE'なので判定に入らず、実際に
     // 降格すべきユーザーのボイス設定が野放しのまま残ってしまう。
-    if (!accountStatus.status.isFallback && _enforcedForPlan != accountStatus.status.effectivePlan) {
-      _enforcedForPlan = accountStatus.status.effectivePlan;
-      if (accountStatus.status.effectivePlan == 'FREE') {
+    final enforceKey = '${accountStatus.status.plan}:${accountStatus.status.mobileBetaActive}';
+    if (!accountStatus.status.isFallback && _enforcedForPlan != enforceKey) {
+      _enforcedForPlan = enforceKey;
+      // mobileβが有効な間は実プランがFREEでも降格しない(プラン自体は書き換えず、
+      // βで機能制限だけを一時的にバイパスする設計)。
+      if (accountStatus.status.plan == 'FREE' && !accountStatus.status.mobileBetaActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           context.read<AppConfigStore>().enforceFreePlanLimits();

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActiveMobileUser } from "@/lib/mobile-auth";
-import { getEffectiveMobilePlan } from "@/lib/plan/effective-mobile-plan";
-import { FEATURE_REQUIREMENTS, hasFeature, type FeatureKey } from "@/lib/plan/features";
+import { getUserPlan } from "@/lib/plan/get-user-plan";
+import { getBetaStatuses } from "@/lib/plan/beta-settings";
+import { FEATURE_POLICIES, hasFeatureAccessSync, type FeatureKey } from "@/lib/plan/features";
+import { getPlanDisplay } from "@/lib/plan/plan-display";
 import {
   getMobileLatestVersion,
   getMobileMinSupportedVersion,
@@ -17,22 +19,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  const [{ plan, betaAccess }, minimumSupportedVersion, latestVersion, maintenanceMode] = await Promise.all([
-    getEffectiveMobilePlan(auth.userId),
+  const [plan, betaStatuses, minimumSupportedVersion, latestVersion, maintenanceMode] = await Promise.all([
+    getUserPlan(auth.userId),
+    getBetaStatuses(),
     getMobileMinSupportedVersion(),
     getMobileLatestVersion(),
     isMobileMaintenanceMode(),
   ]);
 
-  const features = (Object.keys(FEATURE_REQUIREMENTS) as FeatureKey[]).filter((key) => hasFeature(plan, key));
+  // 実プランはβで書き換えない。featureの許可判定だけがβ領域のバイパスを考慮する。
+  // ここは同期計算(DBは上のPromise.allで1回ずつしか叩かない)。
+  const features = (Object.keys(FEATURE_POLICIES) as FeatureKey[]).filter((key) =>
+    hasFeatureAccessSync(plan, key, betaStatuses)
+  );
+
+  // モバイルAppBarの単一プランバッジは「mobile」領域のβ状態だけを見る
+  // (analytics/events領域のβはmobile限定機能の解禁に使うが、バッジ表記には影響しない)。
+  const { betaActive: mobileBetaActive, label: planLabel } = getPlanDisplay(plan, betaStatuses.mobile);
 
   return NextResponse.json(
     {
       userId: auth.userId,
-      effectivePlan: plan,
-      // mobileBetaEnabled(全体設定)が現在有効かどうか。plan=ULTRAの理由がβ由来かを
-      // 説明するためのフラグで、ユーザー個別の参加可否ではない(現状は全員一律)。
-      betaAccess,
+      plan,
+      mobileBetaActive,
+      planLabel,
       features,
       minimumSupportedVersion,
       latestVersion,
