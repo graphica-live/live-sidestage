@@ -31,6 +31,12 @@ model User {
   image         String?
   password      String?
   createdAt     DateTime  @default(now())
+  // 最終アクティブ日時。列新設直後はnull(=未記録)で、監視枠の低価値クリーンアップは
+  // nullを「保護対象」として扱う(古いユーザーの誤削除防止)。ログイン成功時に加え、
+  // 有効セッション/トークンでの日常アクセス時にもスロットル付きで更新する
+  // (markLastActive()参照)。「ログイン」ではなく「アクティブ」なのは、JWTセッション/
+  // 90日有効なモバイルトークンだと再ログインなしで長期間使われ続けるため。
+  lastActiveAt  DateTime?
 
   accounts               Account[]
   sessions               Session[]
@@ -271,6 +277,16 @@ model TiktokRoom {
   // このRoomに対しfetchTiktokProfile()を最後に実行した時刻(結果を問わず)。
   // 同じ部屋への過度な再チェックを防ぐクールダウンと、候補選定の公平なローテーションに使う。
   lastExistenceCheckAt DateTime?
+
+  // --- 低価値Room監視停止(tiktok-low-value-cleanup.ts)用 ---
+  // このRoomに対し低価値クリーンアップの判定を最後に実行した時刻(結果を問わず)。
+  // lastExistenceCheckAtと同じ理由(クールダウン+候補ローテーションの公平性)で持つ。
+  lastLowValueCheckAt DateTime?
+  // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
+  // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/GiftEdit/
+  // overlayToken/apiKey/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
+  // 再アクセスすると markLastActive() が自動でfalseへ戻し、次のreconcileで監視が復活する。
+  monitoringSuspended Boolean   @default(false)
 
   // TikTokの数値userId(api-live/user/room/ の data.user.id)。バトルpayloadのanchorIdStrと
   // 同じ空間で、tiktok_battles.hostScoresのキーと突き合わせてバトルスコアを配信者へ帰属させる。

@@ -9,6 +9,7 @@ import {
 } from "@/lib/apple-auth";
 import { resolveAppleUser } from "@/lib/apple-account";
 import { mobileAuthResponseBody } from "@/lib/mobile-oauth";
+import { markLastActive } from "@/lib/mark-last-active";
 
 /// Flutter アプリからの Apple サインイン。
 ///
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
       refreshToken,
       clientId,
     });
+    await markLastActive(user.id);
     return NextResponse.json(mobileAuthResponseBody(user));
   } catch (error) {
     if (error instanceof AppleAuthError) {

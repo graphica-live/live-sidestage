@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getSetting } from "./settings";
 import { fetchTiktokProfile, type TiktokProfileResult } from "./tiktok-profile";
+import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 
 // TikTok上に存在しなくなった(削除/改名された)アカウントに紐づくStreamerを検出・削除する
 // 日次バッチ(tiktok-cleanup.ts から呼ばれる)。worker-guardian.ts と同じ設計パターン
@@ -29,7 +30,7 @@ import { fetchTiktokProfile, type TiktokProfileResult } from "./tiktok-profile";
 // 監査ログに記録するだけに留める(少なくとも一度は実際に配信していた証拠があるため)。
 
 export const UNHEALTHY_THRESHOLD_MS =
-  Number(process.env.TIKTOK_CLEANUP_UNHEALTHY_DAYS ?? 3) * 86_400_000;
+  Number(process.env.TIKTOK_CLEANUP_UNHEALTHY_DAYS ?? 30) * 86_400_000;
 export const NOT_FOUND_STREAK_REQUIRED = Number(process.env.TIKTOK_CLEANUP_NOT_FOUND_STREAK ?? 3);
 export const NOT_FOUND_ELAPSED_MS =
   Number(process.env.TIKTOK_CLEANUP_NOT_FOUND_ELAPSED_DAYS ?? 3) * 86_400_000;
@@ -223,6 +224,12 @@ export async function deleteConfirmedRoom(
       },
     });
     if (streamers.length === 0) return null;
+
+    // 課金ユーザーが1人でも監視しているRoomは、TikTok上NOT_FOUND確定でも自動削除しない。
+    if (await roomHasPaidWatcher(streamers.map((s) => s.userId), tx)) {
+      console.warn(`[tiktok-cleanup] @${room.tiktokId} はNOT_FOUND確定だが課金ユーザーが監視中 — 自動削除せず要手動確認`);
+      return null;
+    }
 
     const outcome: CleanupAuditEntry["outcome"] =
       giftCount > 0 ? "needs_review" : dryRun ? "dry_run" : "deleted";

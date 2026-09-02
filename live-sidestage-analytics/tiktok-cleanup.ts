@@ -9,6 +9,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { runCleanupCycle } from "@/lib/tiktok-room-cleanup";
+import { runLowValueCleanupCycle } from "@/lib/tiktok-low-value-cleanup";
 
 // セッションスコープのadvisory lock(pg_try_advisory_xact_lockではない)。トランザクションでは
 // なくプロセス全体を通してロックしたいため。Prismaのコネクションプールと相性が悪く、
@@ -26,6 +27,9 @@ requireEnv("DATABASE_URL");
 
 // 明示的に"false"にしない限りdry-run(デフォルト安全側)。
 const dryRun = process.env.TIKTOK_CLEANUP_DRY_RUN !== "false";
+// 低価値Room監視停止は判定基準が別物(データ削除はなく監視停止/復活のみ)なので
+// dry-runフラグも分離する。
+const lowValueDryRun = process.env.TIKTOK_LOW_VALUE_DRY_RUN !== "false";
 
 async function main() {
   const [{ locked }] = await prisma.$queryRaw<{ locked: boolean }[]>`
@@ -40,6 +44,10 @@ async function main() {
     console.log(`[tiktok-cleanup] 開始 (dryRun=${dryRun})`);
     const result = await runCleanupCycle({ dryRun });
     console.log("[tiktok-cleanup] 完了:", JSON.stringify(result));
+
+    console.log(`[tiktok-low-value-cleanup] 開始 (dryRun=${lowValueDryRun})`);
+    const lowValueResult = await runLowValueCleanupCycle({ dryRun: lowValueDryRun });
+    console.log("[tiktok-low-value-cleanup] 完了:", JSON.stringify(lowValueResult));
   } finally {
     await prisma.$queryRaw`SELECT pg_advisory_unlock(${CLEANUP_LOCK_KEY}::bigint)`.catch(() => {});
   }

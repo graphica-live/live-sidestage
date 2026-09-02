@@ -5,6 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
+import { markLastActive } from "./mark-last-active";
 
 /// `allowDangerousEmailAccountLinking` のメール一致リンクを
 /// **Account を1件も持たない User だけ**に絞るためのラッパ。
@@ -81,6 +82,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        // ログイン確定。監視枠の低価値クリーンアップが「アクティブなユーザー」を
+        // 保護・監視復活させる判定に使う(mark-last-active.ts参照)。
+        await markLastActive(user.id);
         return token;
       }
 
@@ -99,6 +103,10 @@ export const authOptions: NextAuthOptions = {
       if (typeof token.id === "string") {
         const exists = await prisma.user.findUnique({ where: { id: token.id }, select: { id: true } });
         if (!exists) return null as unknown as JWT;
+
+        // JWTセッションは再ログインなしにローリング更新され続けるため、ここでも
+        // アクティブを記録する(スロットルはmarkLastActive内部で行うのでawait不要)。
+        void markLastActive(exists.id);
       }
       return token;
     },

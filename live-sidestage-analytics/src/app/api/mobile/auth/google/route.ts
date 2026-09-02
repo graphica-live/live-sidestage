@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
 import { mobileAuthResponseBody } from "@/lib/mobile-oauth";
+import { markLastActive } from "@/lib/mark-last-active";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -109,6 +110,8 @@ export async function POST(req: NextRequest) {
       });
     }
   }
+
+  await markLastActive(user.id);
 
   // レスポンスの形は Apple 版(`../apple/route.ts`)と共通にしてある。
   // 端末の AuthSession.fromJson は1つしかないので、ここが食い違うと片方が壊れる。
