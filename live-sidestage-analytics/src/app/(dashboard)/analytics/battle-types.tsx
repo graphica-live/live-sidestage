@@ -86,7 +86,7 @@ export function Avatar({
   }
   return (
     <div
-      className={`${dimClass} rounded-full bg-surface border border-border flex items-center justify-center text-gray-500 shrink-0`}
+      className={`${dimClass} rounded-full bg-surface border border-border flex items-center justify-center text-muted shrink-0`}
     >
       {alt.charAt(0).toUpperCase()}
     </div>
@@ -110,7 +110,7 @@ export function BattleVersus({
   return (
     <div className="flex items-center gap-2">
       <BattleTeamColumn team={selfTeam} size={size} />
-      <span className={`shrink-0 text-gray-500 ${size === "sm" ? "text-xs" : "text-sm"}`}>vs</span>
+      <span className={`shrink-0 text-muted ${size === "sm" ? "text-xs" : "text-sm"}`}>vs</span>
       <BattleTeamColumn team={opponentTeam} size={size} />
     </div>
   );
@@ -129,7 +129,7 @@ function BattleTeamColumn({ team, size }: { team: BattleParticipant[]; size: "sm
             <div className={`min-w-0 ${nameMaxWidth}`}>
               <div className={`font-medium truncate ${nameTextClass}`}>{label}</div>
               {team.length === 1 && (p.displayId || p.tiktokId) && (
-                <div className="text-[10px] text-gray-500 truncate">@{p.displayId ?? p.tiktokId}</div>
+                <div className="text-[10px] text-muted truncate">@{p.displayId ?? p.tiktokId}</div>
               )}
             </div>
           </div>

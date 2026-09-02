@@ -19,7 +19,7 @@ const HEADING_BACKGROUND_LABELS: Record<OverlayHeadingBackground, string> = {
 
 const CHOICE_BASE = "text-xs px-2 py-2 rounded-lg border transition-colors";
 const CHOICE_ON = "border-brand text-brand bg-brand/10";
-const CHOICE_OFF = "border-border text-gray-400 hover:text-white hover:border-white/30";
+const CHOICE_OFF = "border-border text-muted hover:text-strong hover:border-brand/40";
 
 export default function ContributionSettings({
   settings,
@@ -42,7 +42,7 @@ export default function ContributionSettings({
           <button onClick={() => update({ nav: "prev" }, true)} className="btn-secondary">
             ‹ 前日
           </button>
-          <span className="text-sm font-medium text-white text-center flex-1">{displayDateLabel}</span>
+          <span className="text-sm font-medium text-strong text-center flex-1">{displayDateLabel}</span>
           <button
             onClick={() => update({ nav: "next" }, true)}
             disabled={settings.isToday}
@@ -150,7 +150,7 @@ export default function ContributionSettings({
           <label className="label mb-0" htmlFor="overlay-display-speed">
             表示速度
           </label>
-          <span className="text-xs text-gray-400">{settings.displaySpeed}</span>
+          <span className="text-xs text-muted">{settings.displaySpeed}</span>
         </div>
         <input
           id="overlay-display-speed"
@@ -163,7 +163,7 @@ export default function ContributionSettings({
           className="w-full mt-1.5"
           style={{ accentColor: "#fe2c55" }}
         />
-        <div className="flex items-center justify-between text-[10px] text-gray-500 mt-0.5">
+        <div className="flex items-center justify-between text-[10px] text-muted mt-0.5">
           <span>遅い</span>
           <span>速い</span>
         </div>

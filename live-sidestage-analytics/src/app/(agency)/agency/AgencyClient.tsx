@@ -148,7 +148,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
   if (loading) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <p className="text-sm text-gray-400">読み込み中...</p>
+        <p className="text-sm text-muted">読み込み中...</p>
       </main>
     );
   }
@@ -161,7 +161,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-4">
         <div>
           <h1 className="text-xl font-bold">事務所情報が見つかりません</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-muted mt-1">
             このGoogleアカウントは事務所として登録されていません。
             利用を希望する場合は、ログインに使うGoogleアカウントのメールアドレスを運営までお知らせください。
             以前は使えていた場合は、登録が取り消された可能性があります。
@@ -177,20 +177,20 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
     <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
       <div>
         <h1 className="text-xl font-bold">{agency.name}</h1>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="text-sm text-muted mt-1">
           監視対象 {watches.length} / {agency.maxWatchTargets} 件
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300">監視対象ライバー</h2>
+        <h2 className="text-sm font-semibold text-strong">監視対象ライバー</h2>
 
         <form onSubmit={handleAddWatch} className="card space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 block mb-1">TikTok ID</label>
+              <label className="text-xs text-muted block mb-1">TikTok ID</label>
               <input
                 value={tiktokIdInput}
                 onChange={(e) => setTiktokIdInput(e.target.value)}
@@ -200,7 +200,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
               />
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1">管理名(任意)</label>
+              <label className="text-xs text-muted block mb-1">管理名(任意)</label>
               <input
                 value={labelInput}
                 onChange={(e) => setLabelInput(e.target.value)}
@@ -218,7 +218,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
             >
               {adding ? "追加中..." : "追加する"}
             </button>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-muted">
               {remaining === 0 ? "上限に達しています" : `あと${remaining}件追加できます`}
             </span>
           </div>
@@ -226,7 +226,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
 
         {watches.length === 0 ? (
           <div className="card">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted">
               まだ監視対象がありません。TikTok IDを追加すると、そのライバーの配信からギフト情報の収集が始まります。
             </p>
           </div>
@@ -234,7 +234,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
           <div className="card p-0 overflow-x-auto">
             <table className="w-full text-sm min-w-[480px]">
               <thead>
-                <tr className="border-b border-border text-left text-xs text-gray-500">
+                <tr className="border-b border-border text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium">TikTok ID</th>
                   <th className="px-4 py-2 font-medium">管理名</th>
                   <th className="px-4 py-2 font-medium">接続状態</th>
@@ -245,9 +245,9 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
                 {watches.map((w) => (
                   <tr key={w.id} className="border-b border-border last:border-b-0">
                     <td className="px-4 py-2.5 font-medium">@{w.tiktokId}</td>
-                    <td className="px-4 py-2.5 text-gray-400">{w.label ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-muted">{w.label ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <span className="flex items-center gap-1.5 text-xs text-muted">
                         <span
                           className={`w-2 h-2 rounded-full shrink-0 ${
                             STATUS_COLOR[w.listenerStatus ?? ""] ?? "bg-gray-500"
@@ -273,19 +273,19 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300">APIキー</h2>
+        <h2 className="text-sm font-semibold text-strong">APIキー</h2>
         <div className="card space-y-3">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted">
             企業向けAPIの認証に使います。キーは発行した瞬間だけ表示され、以降は再表示できません。
           </p>
 
           {issuedApiKey && (
             <div>
-              <label className="text-xs text-gray-500 block mb-1">
+              <label className="text-xs text-muted block mb-1">
                 発行されたAPIキー(この場でコピーしてください)
               </label>
               <div className="flex items-center gap-1.5">
-                <code className="text-xs font-mono text-white bg-black/40 px-2 py-1.5 rounded flex-1 break-all">
+                <code className="text-xs font-mono text-strong bg-black/5 dark:bg-white/5 px-2 py-1.5 rounded flex-1 break-all">
                   {issuedApiKey}
                 </code>
                 <button
@@ -306,7 +306,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
             <button onClick={handleIssueApiKey} disabled={issuing} className="btn-primary">
               {issuing ? "発行中..." : agency.hasApiKey ? "再発行する" : "発行する"}
             </button>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-muted">
               {agency.hasApiKey ? "発行済み" : "未発行"}
             </span>
           </div>
@@ -314,34 +314,34 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300">API の使い方</h2>
-        <div className="card space-y-3 text-xs text-gray-400">
+        <h2 className="text-sm font-semibold text-strong">API の使い方</h2>
+        <div className="card space-y-3 text-xs text-muted">
           <p>
             監視対象ライバーのギフト実績を、期間を指定してまとめて取得します。数値は編集前の
-            オリジナル生データ基準です(レスポンスの <code className="text-gray-300">basis</code> が{" "}
-            <code className="text-gray-300">&quot;raw&quot;</code> であることがその契約を示します)。
+            オリジナル生データ基準です(レスポンスの <code className="text-strong">basis</code> が{" "}
+            <code className="text-strong">&quot;raw&quot;</code> であることがその契約を示します)。
           </p>
-          <pre className="bg-black/40 rounded p-3 overflow-x-auto text-[11px] font-mono text-gray-300">
+          <pre className="bg-black/5 dark:bg-white/5 rounded p-3 overflow-x-auto text-[11px] font-mono text-strong">
 {`curl -H "x-api-key: <APIキー>" \\
   "${agencyOrigin}/api/agency/gifts/summary?from=2026-08-01&to=2026-08-21"`}
           </pre>
           <ul className="space-y-1 list-disc list-inside">
             <li>
-              <code className="text-gray-300">from</code> / <code className="text-gray-300">to</code>{" "}
+              <code className="text-strong">from</code> / <code className="text-strong">to</code>{" "}
               — 必須。YYYY-MM-DD形式。期間は最大366日(1年)
             </li>
             <li>
-              <code className="text-gray-300">tiktokIds</code> — 任意。カンマ区切り。
+              <code className="text-strong">tiktokIds</code> — 任意。カンマ区切り。
               省略すると監視対象すべてが対象。監視対象に無いIDは{" "}
-              <code className="text-gray-300">unknownTiktokIds</code> として返り、集計には含まれません
+              <code className="text-strong">unknownTiktokIds</code> として返り、集計には含まれません
             </li>
             <li>
-              レスポンスの <code className="text-gray-300">tiktokId</code> は正規化済み(小文字・@なし)で、
-              そのまま <code className="text-gray-300">tiktokIds</code> に渡せます。
-              入力した表記は <code className="text-gray-300">displayName</code> に入ります
+              レスポンスの <code className="text-strong">tiktokId</code> は正規化済み(小文字・@なし)で、
+              そのまま <code className="text-strong">tiktokIds</code> に渡せます。
+              入力した表記は <code className="text-strong">displayName</code> に入ります
             </li>
             <li>
-              <code className="text-gray-300">watchStartedAt</code> — 監視を開始した日時。
+              <code className="text-strong">watchStartedAt</code> — 監視を開始した日時。
               ギフトは配信単位で蓄積されるため、これより前の期間の数値は監視開始前のものです
             </li>
           </ul>

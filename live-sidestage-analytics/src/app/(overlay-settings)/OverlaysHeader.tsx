@@ -22,7 +22,7 @@ export default function OverlaysHeader() {
           className="flex items-baseline gap-1.5 shrink-0 hover:opacity-80 transition-opacity"
         >
           <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
-          <span className="text-gray-400 font-medium text-sm">Overlays</span>
+          <span className="text-muted font-medium text-sm">Overlays</span>
         </Link>
 
         <Link

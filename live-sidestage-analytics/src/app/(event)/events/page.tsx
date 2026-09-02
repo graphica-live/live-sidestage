@@ -65,7 +65,7 @@ export default async function EventsPage() {
 
       {events.length === 0 ? (
         <div className="card text-center">
-          <p className="text-sm text-gray-400">まだイベントがない。</p>
+          <p className="text-sm text-muted">まだイベントがない。</p>
           <Link href="/events/new" className="mt-3 inline-block text-sm text-brand hover:underline">
             最初のイベントを作る
           </Link>
@@ -77,16 +77,16 @@ export default async function EventsPage() {
               <Link href={`/events/${event.id}`} className="card block transition-colors hover:border-brand/40">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold text-white">{event.title}</h2>
-                    <p className="mt-1 text-xs text-gray-400">
+                    <h2 className="truncate text-sm font-semibold text-strong">{event.title}</h2>
+                    <p className="mt-1 text-xs text-muted">
                       {FORMAT_LABELS[event.format as EventFormat]} ・{" "}
                       {ENTRY_MODE_LABELS[event.entryMode as EntryMode]} ・ 参加 {event._count.participants} 人
                     </p>
-                    <p className="mt-1 font-mono text-xs text-gray-500">
+                    <p className="mt-1 font-mono text-xs text-muted">
                       {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
                       {/* 外枠だけでは日程の隙間が見えないので、複数日程は件数を添える。 */}
                       {event._count.sessions > 1 && (
-                        <span className="ml-2 font-sans text-gray-400">
+                        <span className="ml-2 font-sans text-muted">
                           全 {event._count.sessions} 日程
                         </span>
                       )}
@@ -101,8 +101,8 @@ export default async function EventsPage() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs ${
                         event.visibility === "PUBLIC"
-                          ? "bg-green-400/10 text-green-400"
-                          : "bg-white/5 text-gray-500"
+                          ? "bg-green-400/10 text-green-600 dark:text-green-400"
+                          : "bg-black/5 dark:bg-white/5 text-muted"
                       }`}
                     >
                       {VISIBILITY_LABELS[event.visibility as Visibility]}
@@ -120,7 +120,7 @@ export default async function EventsPage() {
 
         {publicEvents.length === 0 ? (
           <div className="card text-center">
-            <p className="text-sm text-gray-400">現在公開されているイベントはない。</p>
+            <p className="text-sm text-muted">現在公開されているイベントはない。</p>
           </div>
         ) : (
           <ul className="grid gap-3">
@@ -132,15 +132,15 @@ export default async function EventsPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-white">{event.title}</h3>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <h3 className="truncate text-sm font-semibold text-strong">{event.title}</h3>
+                      <p className="mt-1 text-xs text-muted">
                         {FORMAT_LABELS[event.format as EventFormat]} ・{" "}
                         {ENTRY_MODE_LABELS[event.entryMode as EntryMode]} ・ 参加 {event._count.participants} 人
                       </p>
-                      <p className="mt-1 font-mono text-xs text-gray-500">
+                      <p className="mt-1 font-mono text-xs text-muted">
                         {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
                         {event._count.sessions > 1 && (
-                          <span className="ml-2 font-sans text-gray-400">
+                          <span className="ml-2 font-sans text-muted">
                             全 {event._count.sessions} 日程
                           </span>
                         )}

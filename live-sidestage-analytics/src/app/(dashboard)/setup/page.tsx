@@ -139,8 +139,8 @@ export default function SetupPage() {
             <div className="space-y-4">
               <div className="text-center py-2 space-y-1">
                 <div className="text-3xl">✓</div>
-                <p className="text-green-400 font-semibold">認証済みです</p>
-                <p className="text-sm text-gray-400">
+                <p className="text-green-600 dark:text-green-400 font-semibold">認証済みです</p>
+                <p className="text-sm text-muted">
                   対象のTikTok ID: <span className="font-mono text-brand">@{tiktokId}</span>
                 </p>
               </div>
@@ -153,11 +153,11 @@ export default function SetupPage() {
           {step === "input" && (
             <form onSubmit={handleGenerateCode} className="space-y-4">
               <div>
-                <label className="text-sm text-gray-300 block mb-1">
+                <label className="text-sm text-strong block mb-1">
                   TikTok ユーザーID
                 </label>
                 <div className="flex gap-2">
-                  <span className="flex items-center px-3 bg-surface border border-border rounded-lg text-gray-400 text-sm">
+                  <span className="flex items-center px-3 bg-surface border border-border rounded-lg text-muted text-sm">
                     @
                   </span>
                   <input
@@ -172,7 +172,7 @@ export default function SetupPage() {
                 </div>
               </div>
 
-              {error && <p className="text-red-400 text-sm">{error}</p>}
+              {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
 
               <button type="submit" disabled={loading} className="btn-primary w-full">
                 {loading ? "処理中..." : "認証コードを発行する"}
@@ -183,16 +183,16 @@ export default function SetupPage() {
           {(step === "code_issued" || step === "verifying") && (
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-300 mb-1">認証対象のTikTok ID</p>
+                <p className="text-sm text-strong mb-1">認証対象のTikTok ID</p>
                 <p className="font-mono text-brand">@{tiktokId}</p>
               </div>
 
               <div className="bg-surface border border-brand/30 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-xs text-muted mb-2">
                   以下のコードを TikTok プロフィールの自己紹介(bio)に追記してください
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="text-lg font-mono font-bold text-white tracking-wider bg-black/40 px-3 py-2 rounded flex-1 text-center">
+                  <code className="text-lg font-mono font-bold text-strong tracking-wider bg-black/5 dark:bg-white/5 px-3 py-2 rounded flex-1 text-center">
                     {code}
                   </code>
                   <button
@@ -205,13 +205,13 @@ export default function SetupPage() {
                 </div>
               </div>
 
-              <div className="text-xs text-gray-400 space-y-1">
+              <div className="text-xs text-muted space-y-1">
                 <p>① TikTokアプリ → プロフィール編集 → 自己紹介欄に上記コードを貼り付け</p>
                 <p>② 保存後、下の「確認する」ボタンを押してください</p>
                 <p>③ 認証完了後、コードはbioから削除して構いません</p>
               </div>
 
-              {error && <p className="text-red-400 text-sm">{error}</p>}
+              {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
 
               <div className="flex gap-2">
                 <button
@@ -233,14 +233,14 @@ export default function SetupPage() {
                 href={`https://www.tiktok.com/@${tiktokId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-brand transition-colors"
+                className="flex items-center justify-center gap-1 text-xs text-muted hover:text-brand transition-colors"
               >
                 プロフィールを開く
                 <ExternalLinkIcon />
               </a>
 
               <div className="text-center pt-1 border-t border-border">
-                <p className="text-[11px] text-gray-500 mt-2 mb-1">
+                <p className="text-[11px] text-muted mt-2 mb-1">
                   オーバーレイはBIO認証前でも利用できます。認証は後からでも構いません。
                 </p>
                 <button
@@ -256,27 +256,27 @@ export default function SetupPage() {
           {step === "verified" && (
             <div className="text-center py-4 space-y-2">
               <div className="text-4xl">✓</div>
-              <p className="text-green-400 font-semibold">認証完了!</p>
-              <p className="text-sm text-gray-400">解析ページへ移動しています...</p>
+              <p className="text-green-600 dark:text-green-400 font-semibold">認証完了!</p>
+              <p className="text-sm text-muted">解析ページへ移動しています...</p>
             </div>
           )}
         </div>
 
         <div className="card space-y-3 mt-4">
           <div>
-            <p className="text-sm text-gray-300 font-semibold">TikEffect連携用APIキー</p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-sm text-strong font-semibold">TikEffect連携用APIキー</p>
+            <p className="text-xs text-muted mt-1">
               TikEffectの称号ウィジェット設定画面にこのキーを貼り付けると、先月度貢献MVP/TOP5を自動反映できます。
             </p>
           </div>
 
           {issuedApiKey && (
             <div className="bg-surface border border-brand/30 rounded-lg p-4">
-              <p className="text-xs text-gray-400 mb-2">
+              <p className="text-xs text-muted mb-2">
                 このキーは今だけ表示されます。コピーしてTikEffectに保存してください。
               </p>
               <div className="flex items-center gap-2">
-                <code className="text-xs font-mono text-white break-all bg-black/40 px-3 py-2 rounded flex-1">
+                <code className="text-xs font-mono text-strong break-all bg-black/5 dark:bg-white/5 px-3 py-2 rounded flex-1">
                   {issuedApiKey}
                 </code>
                 <button
@@ -301,7 +301,7 @@ export default function SetupPage() {
 
         <div className="card space-y-3 mt-4">
           <div>
-            <p className="text-sm text-gray-300 font-semibold">現在のプラン</p>
+            <p className="text-sm text-strong font-semibold">現在のプラン</p>
             <p className="mt-1 text-lg font-bold text-brand">{plan ?? "…"}</p>
           </div>
           <Link href="/billing" className="btn-ghost block w-full text-center text-sm">

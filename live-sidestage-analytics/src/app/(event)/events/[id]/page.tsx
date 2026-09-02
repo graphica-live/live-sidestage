@@ -73,12 +73,12 @@ export default async function EventDetailPage({ params }: { params: { id: string
 
   return (
     <div>
-      <Link href="/events" className="text-xs text-gray-500 hover:text-white">
+      <Link href="/events" className="text-xs text-muted hover:text-strong">
         ← イベント一覧
       </Link>
       <h1 className="mb-2 mt-2 truncate text-xl font-bold">{event.title}</h1>
       {/* 選んだ種目だけを出す。他の種目は作成後に選べないので並べない。 */}
-      <p className="mb-6 text-xs text-gray-400">
+      <p className="mb-6 text-xs text-muted">
         {FORMAT_LABELS[format]} ・ {ENTRY_MODE_LABELS[event.entryMode as EntryMode]}
       </p>
 
@@ -104,7 +104,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
         className="card mt-4 flex items-center justify-between hover:border-brand/40"
       >
         <span className="text-sm font-medium">参加者</span>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted">
           {event._count.participants} 人 →
         </span>
       </Link>
@@ -115,7 +115,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
           className="card mt-2 flex items-center justify-between hover:border-brand/40"
         >
           <span className="text-sm font-medium">{matchLinkLabel}</span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted">
             {event._count.matches > 0
               ? `${event._count.matches} 試合 →`
               : format === "TOURNAMENT"
@@ -127,10 +127,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
 
       {/* 参加者と無関係なイベント全体の設定。新規作成後はあまり触らないのでアコーディオンで畳んでおく。 */}
       <details className="group mt-8 rounded-lg border border-border bg-panel">
-        <summary className="flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm font-semibold text-gray-300">
+        <summary className="flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm font-semibold text-strong">
           設定
-          <span className="text-xs font-normal text-gray-500 group-open:hidden">開く ▾</span>
-          <span className="hidden text-xs font-normal text-gray-500 group-open:inline">閉じる ▴</span>
+          <span className="text-xs font-normal text-muted group-open:hidden">開く ▾</span>
+          <span className="hidden text-xs font-normal text-muted group-open:inline">閉じる ▴</span>
         </summary>
         <div className="border-t border-border p-4">
           <EventForm eventId={event.id} initial={initial} />

@@ -98,10 +98,10 @@ export function ManualBracketBuilder({
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted">
             {unplaced.length > 0 ? (
               <>
-                未配置 <strong className="text-gray-200">{unplaced.length}</strong> 組。枠へドラッグ
+                未配置 <strong className="text-strong">{unplaced.length}</strong> 組。枠へドラッグ
                 (スマホは組を押してから枠を押す)。
               </>
             ) : (
@@ -113,7 +113,7 @@ export function ManualBracketBuilder({
               type="button"
               onClick={autoFill}
               disabled={disabled}
-              className="text-gray-400 hover:text-white disabled:opacity-40"
+              className="text-muted hover:text-strong disabled:opacity-40"
             >
               シード順で並べる
             </button>
@@ -124,16 +124,16 @@ export function ManualBracketBuilder({
                 setSelectedId(null);
               }}
               disabled={disabled}
-              className="text-gray-400 hover:text-white disabled:opacity-40"
+              className="text-muted hover:text-strong disabled:opacity-40"
             >
               すべて外す
             </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 rounded-lg bg-white/[0.03] p-2">
+        <div className="flex flex-wrap gap-1.5 rounded-lg bg-panel p-2">
           {unplaced.length === 0 ? (
-            <span className="px-1 py-0.5 text-xs text-gray-600">未配置なし</span>
+            <span className="px-1 py-0.5 text-xs text-muted">未配置なし</span>
           ) : (
             unplaced.map((entrant) => (
               <button
@@ -149,7 +149,7 @@ export function ManualBracketBuilder({
                 className={`max-w-[14rem] truncate rounded-full px-3 py-1 text-sm transition ${
                   selectedId === entrant.id
                     ? "bg-brand/20 text-brand ring-1 ring-brand/60"
-                    : "bg-white/5 text-gray-200 hover:bg-white/10"
+                    : "bg-black/5 dark:bg-white/5 text-strong hover:bg-row-hover"
                 } ${disabled ? "cursor-not-allowed opacity-40" : "cursor-grab active:cursor-grabbing"}`}
               >
                 {entrant.label}
@@ -313,14 +313,14 @@ function Slot({
         entrantId
           ? selected
             ? "bg-brand/20 ring-1 ring-brand/60"
-            : "bg-white/5 hover:bg-white/10"
-          : "border border-dashed border-border text-gray-600 hover:border-brand/40"
+            : "bg-black/5 dark:bg-white/5 hover:bg-row-hover"
+          : "border border-dashed border-border text-muted hover:border-brand/40"
       } ${over ? "ring-1 ring-brand" : ""} ${
         context.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
       }`}
     >
       <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
-        {label ?? <span className="text-gray-600">空き</span>}
+        {label ?? <span className="text-muted">空き</span>}
       </span>
       {entrantId && !context.disabled && (
         <button
@@ -330,7 +330,7 @@ function Slot({
             e.stopPropagation();
             context.onClear(index);
           }}
-          className="shrink-0 rounded px-1 text-xs text-gray-500 hover:text-red-300"
+          className="shrink-0 rounded px-1 text-xs text-muted hover:text-red-300"
         >
           ✕
         </button>
@@ -343,7 +343,7 @@ function Slot({
 function FutureCard({ label }: { label: string }) {
   return (
     <div
-      className={`flex ${CARD_H} w-full flex-col items-center justify-center rounded-xl border border-dashed border-border text-[11px] text-gray-600`}
+      className={`flex ${CARD_H} w-full flex-col items-center justify-center rounded-xl border border-dashed border-border text-[11px] text-muted`}
     >
       <span>{label}</span>
       <span className="mt-0.5 text-[10px]">勝者</span>
@@ -367,7 +367,7 @@ function PairConnector({ mirror }: { mirror: boolean }) {
 function StraightConnector() {
   return (
     <div className={`relative ${CONN_W} shrink-0`} aria-hidden>
-      <span className="absolute inset-x-0 top-1/2 h-px bg-white/20" />
+      <span className="absolute inset-x-0 top-1/2 h-px bg-black/20 dark:bg-white/20" />
     </div>
   );
 }

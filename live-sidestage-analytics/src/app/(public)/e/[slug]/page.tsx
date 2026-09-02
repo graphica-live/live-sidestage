@@ -79,7 +79,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
     <main className="px-4 py-10 md:py-14">
       {/* hero: イベントPOP + タイトル */}
       <div className="mx-auto w-full max-w-2xl">
-        <div className={`relative overflow-hidden border-2 border-white/10 bg-panel ${CARD_CLIP}`}>
+        <div className={`relative overflow-hidden border-2 border-border bg-panel ${CARD_CLIP}`}>
           {coverImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={coverImageUrl} alt="" className="max-h-[380px] w-full object-cover" />
@@ -101,7 +101,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 ${TAG_SKEW} border border-white/10 px-3 py-1 text-xs font-bold tracking-wide ${STATUS_CLASSES[event.status as EventStatus]}`}
+            className={`inline-flex items-center gap-1.5 ${TAG_SKEW} border border-border px-3 py-1 text-xs font-bold tracking-wide ${STATUS_CLASSES[event.status as EventStatus]}`}
           >
             <span className={`inline-flex items-center gap-1.5 ${TAG_UNSKEW}`}>
               {isLive && (
@@ -113,31 +113,31 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
               {STATUS_LABELS[event.status as EventStatus]}
             </span>
           </span>
-          <span className="text-xs font-medium tracking-wide text-gray-500">
+          <span className="text-xs font-medium tracking-wide text-muted">
             {FORMAT_LABELS[event.format as EventFormat]} ・{" "}
             {ENTRY_MODE_LABELS[event.entryMode as EntryMode]}
           </span>
         </div>
 
-        <h1 className="mt-3 font-[family-name:var(--font-battle)] text-3xl font-black leading-tight tracking-tight text-white md:text-4xl">
+        <h1 className="mt-3 font-[family-name:var(--font-battle)] text-3xl font-black leading-tight tracking-tight text-strong md:text-4xl">
           {event.title}
         </h1>
 
         {/* 開催概要 */}
-        <section className={`relative mt-6 border border-white/10 bg-white/[0.03] p-4 ${CARD_CLIP}`}>
+        <section className={`relative mt-6 border border-border bg-panel p-4 ${CARD_CLIP}`}>
           <SectionEyebrow>開催概要</SectionEyebrow>
 
           {/* 日程が複数あるイベントは1行にまとめない。外枠だけ出すと、
               集計されない隙間(1日目の終了〜2日目の開始)まで開催中に見えてしまう。 */}
           {windows.length === 1 ? (
-            <p className="mt-3 font-mono text-sm text-gray-300">
+            <p className="mt-3 font-mono text-sm text-strong">
               {formatJst(event.startAt)} 〜 {formatJst(event.endAt)}
             </p>
           ) : (
             <ul className="mt-3 grid gap-1.5">
               {windows.map((w, index) => (
-                <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-sm text-gray-300">
-                  <span className="text-xs text-gray-500">{w.name || `${index + 1}日目`}</span>
+                <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-sm text-strong">
+                  <span className="text-xs text-muted">{w.name || `${index + 1}日目`}</span>
                   <span className="font-mono">{formatJstRange(w.start, w.end)}</span>
                 </li>
               ))}
@@ -147,7 +147,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
           <p className="mt-2 text-sm font-semibold text-brand">{formatOverviewLine}</p>
 
           {event.description && (
-            <p className="mt-4 whitespace-pre-wrap border-t border-white/10 pt-4 text-sm leading-relaxed text-gray-300">
+            <p className="mt-4 whitespace-pre-wrap border-t border-border pt-4 text-sm leading-relaxed text-strong">
               {event.description}
             </p>
           )}
@@ -159,7 +159,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
         <div className="mx-auto mt-10 w-full max-w-5xl">
           <section>
             <SectionHeading>トーナメント表</SectionHeading>
-            <p className="mt-2 text-sm text-gray-400">
+            <p className="mt-2 text-sm text-muted">
               最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。対戦カードをタップすると、そのバトルの詳細を確認できる。
             </p>
             {/* トップは表があるときだけセクションを出す。表が消えたら中身も消える
@@ -181,7 +181,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
         {event.prizeText && (
           <section className="mt-10 first:mt-0">
             <SectionHeading>賞品</SectionHeading>
-            <p className={`mt-3 whitespace-pre-wrap border border-brand/30 bg-brand/[0.06] p-4 text-sm leading-relaxed text-gray-200 ${CARD_CLIP}`}>
+            <p className={`mt-3 whitespace-pre-wrap border border-brand/30 bg-brand/[0.06] p-4 text-sm leading-relaxed text-strong ${CARD_CLIP}`}>
               {event.prizeText}
             </p>
           </section>
@@ -191,7 +191,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
         {matchRules && (
           <section className="mt-10 first:mt-0">
             <SectionHeading>ルール</SectionHeading>
-            <dl className={`mt-3 grid gap-2 border border-white/10 bg-white/[0.03] p-4 text-sm ${CARD_CLIP}`}>
+            <dl className={`mt-3 grid gap-2 border border-border bg-panel p-4 text-sm ${CARD_CLIP}`}>
               <RuleRow label="勝利条件">{WIN_CONDITION_LABELS[matchRules.winCondition]}</RuleRow>
               <RuleRow label="グローブ">{GLOVE_LEVEL_LABELS[matchRules.glove]}</RuleRow>
               <RuleRow label="ブースター">{BOOSTER_LEVEL_LABELS[matchRules.booster]}</RuleRow>
@@ -232,7 +232,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
           </section>
         )}
 
-        <p className="mt-10 text-xs leading-relaxed text-gray-600">
+        <p className="mt-10 text-xs leading-relaxed text-muted">
           集計は当サービスが受信したギフトに基づく。通信状況により実際の数値と差が出る場合がある。
         </p>
       </div>
@@ -243,7 +243,7 @@ export default async function PublicEventPage({ params }: { params: { slug: stri
 /** 大見出し。左に太いブランドバーを添えるだけで、AI生成テンプレ特有の連番アイキャッチは使わない。 */
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-xl font-black tracking-tight text-white">
+    <h2 className="flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-xl font-black tracking-tight text-strong">
       <span className="h-5 w-1.5 shrink-0 -skew-x-12 bg-brand" aria-hidden />
       {children}
     </h2>
@@ -253,7 +253,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 /** 小さいセクション内ラベル(SectionHeadingより一段小さい、カード内で使う)。 */
 function SectionEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-400">
+    <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-muted">
       <span className="h-3 w-1 shrink-0 -skew-x-12 bg-brand/70" aria-hidden />
       {children}
     </h3>
@@ -263,8 +263,8 @@ function SectionEyebrow({ children }: { children: React.ReactNode }) {
 function RuleRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1">
-      <dt className="w-32 shrink-0 text-xs text-gray-500">{label}</dt>
-      <dd className="min-w-0 flex-1 text-sm text-gray-200">{children}</dd>
+      <dt className="w-32 shrink-0 text-xs text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 text-sm text-strong">{children}</dd>
     </div>
   );
 }

@@ -138,20 +138,20 @@ export default function AgenciesAdminPage() {
     <div className="max-w-4xl px-6 py-8 space-y-6">
       <div>
         <h1 className="text-lg font-bold text-brand">事務所</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted mt-1">
           相手のGoogleアカウントのメールアドレスを登録すると、その人はログインするだけで事務所コンソールを使えます。
           申請や承認のやり取りはありません。監視対象1件につきTikTok接続とproxy枠を1つ消費するため、上限に注意してください。
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {message && <p className="text-sm text-green-400">{message}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {message && <p className="text-sm text-green-600 dark:text-green-400">{message}</p>}
 
       <form onSubmit={handleCreate} className="card space-y-3">
-        <p className="text-xs font-semibold text-gray-300">事務所を発行</p>
+        <p className="text-xs font-semibold text-strong">事務所を発行</p>
         <div className="grid sm:grid-cols-3 gap-3">
           <div className="sm:col-span-1">
-            <label className="text-xs text-gray-500 block mb-1">事務所名</label>
+            <label className="text-xs text-muted block mb-1">事務所名</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -162,7 +162,7 @@ export default function AgenciesAdminPage() {
             />
           </div>
           <div className="sm:col-span-1">
-            <label className="text-xs text-gray-500 block mb-1">Googleアカウント</label>
+            <label className="text-xs text-muted block mb-1">Googleアカウント</label>
             <input
               type="email"
               value={email}
@@ -173,7 +173,7 @@ export default function AgenciesAdminPage() {
             />
           </div>
           <div className="sm:col-span-1">
-            <label className="text-xs text-gray-500 block mb-1">監視対象の上限</label>
+            <label className="text-xs text-muted block mb-1">監視対象の上限</label>
             <input
               type="number"
               min={0}
@@ -195,16 +195,16 @@ export default function AgenciesAdminPage() {
       </form>
 
       {agencies === null ? (
-        <p className="text-sm text-gray-400">読み込み中...</p>
+        <p className="text-sm text-muted">読み込み中...</p>
       ) : agencies.length === 0 ? (
         <div className="card">
-          <p className="text-sm text-gray-400">まだ事務所がありません。上のフォームから発行してください。</p>
+          <p className="text-sm text-muted">まだ事務所がありません。上のフォームから発行してください。</p>
         </div>
       ) : (
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm min-w-[680px]">
             <thead>
-              <tr className="border-b border-border text-left text-xs text-gray-500">
+              <tr className="border-b border-border text-left text-xs text-muted">
                 <th className="px-4 py-2 font-medium">事務所名</th>
                 <th className="px-4 py-2 font-medium">Googleアカウント</th>
                 <th className="px-4 py-2 font-medium">監視</th>
@@ -217,26 +217,26 @@ export default function AgenciesAdminPage() {
               {agencies.map((a) => (
                 <tr key={a.id} className="border-b border-border last:border-b-0">
                   <td className="px-4 py-2.5 font-medium">{a.name}</td>
-                  <td className="px-4 py-2.5 text-gray-400 text-xs">{a.email}</td>
+                  <td className="px-4 py-2.5 text-muted text-xs">{a.email}</td>
                   <td className="px-4 py-2.5">
                     <button
                       onClick={() => handleChangeLimit(a)}
                       disabled={busyId === a.id}
-                      className="text-xs text-gray-300 hover:text-brand hover:underline"
+                      className="text-xs text-strong hover:text-brand hover:underline"
                       title="上限を変更"
                     >
                       {a.watchCount} / {a.maxWatchTargets}
                     </button>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-400">
+                  <td className="px-4 py-2.5 text-xs text-muted">
                     {a.hasApiKey ? "発行済み" : "未発行"}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-400 text-xs">{formatDate(a.createdAt)}</td>
+                  <td className="px-4 py-2.5 text-muted text-xs">{formatDate(a.createdAt)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button
                       onClick={() => handleDelete(a)}
                       disabled={busyId === a.id}
-                      className="btn-ghost text-xs hover:text-red-400"
+                      className="btn-ghost text-xs hover:text-red-600 dark:text-red-400"
                     >
                       {busyId === a.id ? "..." : "削除"}
                     </button>

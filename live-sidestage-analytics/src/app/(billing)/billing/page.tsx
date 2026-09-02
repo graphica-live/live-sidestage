@@ -51,7 +51,7 @@ export default async function BillingPage({
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-brand">プラン</h1>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-muted mt-1">
               analyticsとイベント運営で共通のプランです。
             </p>
           </div>
@@ -64,10 +64,10 @@ export default async function BillingPage({
           </div>
         )}
         {checkout === "cancel" && (
-          <div className="card mb-6 text-sm text-gray-400">決済はキャンセルされました。</div>
+          <div className="card mb-6 text-sm text-muted">決済はキャンセルされました。</div>
         )}
         {activeStoreRow && (
-          <div className="card mb-6 text-sm text-gray-400">
+          <div className="card mb-6 text-sm text-muted">
             モバイルアプリのストア購入でご契約中です。プラン変更・解約はアプリ内のストア購読管理から行ってください。
           </div>
         )}
@@ -95,7 +95,7 @@ function PlanCard({
     <div className={`card flex flex-col gap-3 ${current ? "border-brand/60" : ""}`}>
       <div>
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-white">{plan}</h2>
+          <h2 className="text-lg font-bold text-strong">{plan}</h2>
           {current && (
             <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs text-brand">
               現在のプラン
@@ -103,12 +103,12 @@ function PlanCard({
           )}
         </div>
         {plan !== "FREE" && (
-          <p className="mt-1 text-2xl font-bold text-white">
+          <p className="mt-1 text-2xl font-bold text-strong">
             ¥{WEB_MONTHLY_PRICE_JPY[plan as PaidPlan].toLocaleString()}
-            <span className="text-xs font-normal text-gray-400"> /月</span>
+            <span className="text-xs font-normal text-muted"> /月</span>
           </p>
         )}
-        <p className="mt-2 text-xs text-gray-400">{PLAN_DESCRIPTIONS[plan]}</p>
+        <p className="mt-2 text-xs text-muted">{PLAN_DESCRIPTIONS[plan]}</p>
       </div>
 
       <div className="mt-auto">{renderAction(plan, current, isActivePaid)}</div>
@@ -125,7 +125,7 @@ function renderAction(plan: PlanTier, current: boolean, isActivePaid: boolean) {
   // 409を返す(src/app/api/billing/checkout/route.ts参照)。プラン変更はPortal経由に一本化する。
   if (isActivePaid) {
     if (current) return null;
-    return <p className="text-xs text-gray-500">プラン変更は「プランを管理する」から行えます</p>;
+    return <p className="text-xs text-muted">プラン変更は「プランを管理する」から行えます</p>;
   }
 
   if (!isPlanPurchasable(paidPlan)) {

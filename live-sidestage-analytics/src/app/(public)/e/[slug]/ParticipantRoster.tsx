@@ -16,7 +16,7 @@ export function ParticipantRoster({
   entryMode: string;
 }) {
   if (participants.length === 0) {
-    return <p className={`border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ出場者が登録されていない。</p>;
+    return <p className={`border border-border bg-panel p-4 text-sm text-muted ${CARD_CLIP}`}>まだ出場者が登録されていない。</p>;
   }
 
   if (entryMode !== "TEAM") {
@@ -56,7 +56,7 @@ export function ParticipantRoster({
                   aria-hidden
                 />
               )}
-              <span className="text-sm font-bold text-white">{team.name}</span>
+              <span className="text-sm font-bold text-strong">{team.name}</span>
             </div>
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {members.map((p) => (
@@ -69,7 +69,7 @@ export function ParticipantRoster({
 
       {unassigned.length > 0 && (
         <div>
-          <p className="mb-2 text-sm font-medium text-gray-400">未所属</p>
+          <p className="mb-2 text-sm font-medium text-muted">未所属</p>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {unassigned.map((p) => (
               <ParticipantCard key={p.id} participant={p} />
@@ -88,19 +88,19 @@ function ParticipantCard({ participant }: { participant: RosterParticipantDto })
         href={`https://www.tiktok.com/@${participant.tiktokId}`}
         target="_blank"
         rel="noreferrer"
-        className={`flex items-center gap-2 border border-white/10 bg-panel p-3 transition-colors hover:border-brand/50 hover:bg-white/[0.04] ${CARD_CLIP}`}
+        className={`flex items-center gap-2 border border-border bg-panel p-3 transition-colors hover:border-brand/50 hover:bg-row-hover ${CARD_CLIP}`}
       >
         {/* 外部(TikTok CDN)経由の画像なのでnext/imageの最適化は通さない。 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`/api/public/avatar/${participant.id}`}
           alt=""
-          className="h-9 w-9 shrink-0 rounded-full border border-white/10 bg-white/5 object-cover"
+          className="h-9 w-9 shrink-0 rounded-full border border-border bg-black/5 dark:bg-white/5 object-cover"
           loading="lazy"
         />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{participant.displayName}</p>
-          <p className="truncate font-mono text-xs text-gray-500">@{participant.tiktokId}</p>
+          <p className="truncate font-mono text-xs text-muted">@{participant.tiktokId}</p>
         </div>
       </a>
     </li>

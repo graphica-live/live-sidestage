@@ -34,22 +34,22 @@ export default async function BracketPage({ params }: { params: { slug: string }
     <div className="mx-auto max-w-5xl px-4 py-10">
       <Link
         href={`/e/${event.slug}`}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-brand"
+        className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-brand"
       >
         ← {event.title}
       </Link>
-      <h1 className="mt-3 flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-2xl font-black tracking-tight text-white md:text-3xl">
+      <h1 className="mt-3 flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-2xl font-black tracking-tight text-strong md:text-3xl">
         <span className="h-6 w-2 shrink-0 -skew-x-12 bg-brand" aria-hidden />
         トーナメント表
       </h1>
 
       {event.format !== "TOURNAMENT" ? (
-        <p className={`mt-6 border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+        <p className={`mt-6 border border-dashed border-border p-4 text-sm text-muted ${CARD_CLIP}`}>
           この種目にトーナメント表はない。
         </p>
       ) : (
         <>
-          <p className="mt-2 text-sm text-gray-400">
+          <p className="mt-2 text-sm text-muted">
             最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。
           </p>
 
@@ -65,14 +65,14 @@ export default async function BracketPage({ params }: { params: { slug: string }
               initialStatus={event.status}
               initialFinalizedAt={event.finalizedAt?.toISOString() ?? null}
               empty={
-                <p className={`border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+                <p className={`border border-dashed border-border p-4 text-sm text-muted ${CARD_CLIP}`}>
                   まだ対戦表が公開されていない。
                 </p>
               }
             />
           </div>
 
-          <p className="mt-3 text-xs leading-relaxed text-gray-600">
+          <p className="mt-3 text-xs leading-relaxed text-muted">
             集計は当サービスが受信したギフトに基づく。通信状況により実際と差が出る場合がある。
             対戦が自動で検知できなかった場合は主催者が結果を確定する。
           </p>

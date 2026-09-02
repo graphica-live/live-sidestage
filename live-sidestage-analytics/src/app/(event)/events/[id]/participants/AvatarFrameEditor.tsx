@@ -151,9 +151,9 @@ export function AvatarFrameEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-panel p-4">
-        <h2 className="mb-1 text-sm font-bold text-white">@{displayName} のアイコン位置</h2>
-        <p className="mb-3 text-xs text-gray-500">
+      <div className="w-full max-w-md rounded-xl border border-border bg-panel p-4">
+        <h2 className="mb-1 text-sm font-bold text-strong">@{displayName} のアイコン位置</h2>
+        <p className="mb-3 text-xs text-muted">
           ドラッグで位置合わせ、ピンチ(PCはホイール)で拡大縮小できる。
         </p>
 
@@ -165,7 +165,7 @@ export function AvatarFrameEditor({
           onPointerCancel={handlePointerUp}
           onLostPointerCapture={handlePointerUp}
           style={{ width: PREVIEW_W, height: PREVIEW_H, touchAction: "none" }}
-          className="relative mx-auto select-none overflow-hidden rounded-md border border-white/10 bg-white/5"
+          className="relative mx-auto select-none overflow-hidden rounded-md border border-border bg-black/5 dark:bg-white/5"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -191,14 +191,14 @@ export function AvatarFrameEditor({
           </div>
         </div>
 
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={reset}
             disabled={saving}
-            className="text-xs text-gray-400 hover:text-white"
+            className="text-xs text-muted hover:text-strong"
           >
             初期位置に戻す
           </button>
@@ -207,7 +207,7 @@ export function AvatarFrameEditor({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-3 py-1.5 text-xs text-gray-400 hover:text-white"
+              className="px-3 py-1.5 text-xs text-muted hover:text-strong"
             >
               キャンセル
             </button>

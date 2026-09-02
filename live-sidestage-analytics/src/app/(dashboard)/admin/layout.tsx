@@ -20,7 +20,7 @@ export default async function AdminLayout({
     <div className="min-h-screen flex">
       <aside className="w-48 shrink-0 border-r border-border bg-panel min-h-screen">
         <div className="px-4 py-3 border-b border-border">
-          <Link href="/analytics" className="text-xs text-gray-400 hover:text-white">
+          <Link href="/analytics" className="text-xs text-muted hover:text-strong">
             ← 戻る
           </Link>
           <p className="text-sm font-bold text-brand mt-1">管理者画面</p>
@@ -30,7 +30,7 @@ export default async function AdminLayout({
             <Link
               key={item.href}
               href={item.href}
-              className="block px-4 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+              className="block px-4 py-2 text-sm text-strong hover:bg-row-hover hover:text-strong transition-colors"
             >
               {item.label}
             </Link>

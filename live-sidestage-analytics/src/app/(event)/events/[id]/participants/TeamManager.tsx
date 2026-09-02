@@ -82,9 +82,9 @@ export function TeamManager({
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold text-gray-300">
+      <h2 className="mb-3 text-sm font-semibold text-strong">
         チーム
-        <span className="ml-2 text-xs font-normal text-gray-500">
+        <span className="ml-2 text-xs font-normal text-muted">
           {teams.length} / {MAX_TEAMS}
         </span>
       </h2>
@@ -132,7 +132,7 @@ export function TeamManager({
             チームを追加
           </button>
         </div>
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>}
       </form>
 
       {teams.length > 0 && (
@@ -150,11 +150,11 @@ export function TeamManager({
                 />
               )}
               <span className="text-sm">{t.name}</span>
-              <span className="text-xs text-gray-500">{t.memberCount}人</span>
+              <span className="text-xs text-muted">{t.memberCount}人</span>
               <button
                 onClick={() => remove(t)}
                 disabled={busy}
-                className="text-xs text-gray-600 hover:text-red-400"
+                className="text-xs text-muted hover:text-red-600 dark:text-red-400"
                 aria-label={`${t.name} を削除`}
               >
                 ×

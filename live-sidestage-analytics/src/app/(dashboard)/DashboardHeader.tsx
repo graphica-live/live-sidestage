@@ -11,10 +11,10 @@ interface ListenerState {
 }
 
 const statusColor: Record<string, string> = {
-  connected: "bg-green-500",
+  connected: "bg-ok shadow-[0_0_0_3px_rgba(34,197,94,.15)]",
   connecting: "bg-yellow-500 animate-pulse",
   retrying: "bg-yellow-500 animate-pulse",
-  idle: "bg-gray-500",
+  idle: "bg-muted",
   error: "bg-red-500",
 };
 
@@ -35,18 +35,18 @@ export default function DashboardHeader() {
 
   return (
     <header className="border-b border-border bg-panel sticky top-0 z-10">
-      <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div className="max-w-4xl mx-auto px-[18px] py-[14px] flex items-center justify-between gap-3">
         <Link href="/analytics" className="flex items-baseline gap-1.5 shrink-0 hover:opacity-80 transition-opacity">
-          <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
-          <span className="hidden sm:inline text-gray-400 font-medium text-sm">Analytics</span>
+          <span className="text-strong font-bold text-base sm:text-[1.05rem]">LIVE Sidestage</span>
+          <span className="hidden sm:inline text-muted font-medium text-sm">Analytics</span>
         </Link>
 
         <div className="flex items-center gap-2 min-w-0">
           {listener && (
-            <span className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0 truncate">
+            <span className="flex items-center gap-1.5 text-xs text-muted min-w-0 truncate">
               <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  statusColor[listener.status] ?? "bg-gray-500"
+                className={`w-[9px] h-[9px] rounded-full shrink-0 ${
+                  statusColor[listener.status] ?? "bg-muted"
                 }`}
               />
               <span className="hidden sm:inline truncate">

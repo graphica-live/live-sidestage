@@ -225,6 +225,8 @@ export default function AnalyticsPage() {
   const [pendingStart, setPendingStart] = useState(customStart);
   const [pendingEnd, setPendingEnd] = useState(customEnd);
   const calendarRef = useRef<HTMLDivElement>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{ giftName: string; totalDiamonds: string }>({
@@ -319,6 +321,17 @@ export default function AnalyticsPage() {
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [showCalendar]);
+
+  useEffect(() => {
+    if (!showSortMenu) return;
+    function onMouseDown(e: MouseEvent) {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setShowSortMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [showSortMenu]);
 
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
@@ -484,7 +497,7 @@ export default function AnalyticsPage() {
     <main className="max-w-4xl mx-auto w-full px-4 py-4 space-y-4">
         {/* Period tabs + View mode toggle */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
+          <div className="flex gap-0.5 bg-panel border border-border rounded-seg p-[3px] w-fit">
             {(["day", "week", "month", "year"] as Period[]).map((p) => (
               <button
                 key={p}
@@ -492,10 +505,10 @@ export default function AnalyticsPage() {
                   setPeriod(p);
                   setCurrentDate(todayStr());
                 }}
-                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-[13px] py-[7px] rounded-[5px] text-[.78rem] font-semibold transition-colors ${
                   period === p
-                    ? "bg-brand text-white"
-                    : "text-gray-400 hover:text-white"
+                    ? "bg-brand text-on-accent shadow-[0_1px_2px_rgba(16,24,40,.08)]"
+                    : "text-muted hover:text-strong"
                 }`}
               >
                 {p === "day" ? "日" : p === "week" ? "週" : p === "month" ? "月" : "年"}
@@ -509,10 +522,10 @@ export default function AnalyticsPage() {
                   setPendingEnd(customEnd);
                   setShowCalendar((v) => !v);
                 }}
-                className={`px-2 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-1 ${
+                className={`px-2 py-[7px] rounded-[5px] text-[.78rem] font-semibold transition-colors flex items-center gap-1 ${
                   period === "custom"
-                    ? "bg-brand text-white"
-                    : "text-gray-400 hover:text-white"
+                    ? "bg-brand text-on-accent shadow-[0_1px_2px_rgba(16,24,40,.08)]"
+                    : "text-muted hover:text-strong"
                 }`}
                 title="カスタム期間"
               >
@@ -520,10 +533,10 @@ export default function AnalyticsPage() {
               </button>
               {showCalendar && (
                 <div className="absolute top-full left-0 mt-1 z-50 bg-panel border border-border rounded-xl p-4 shadow-xl w-72">
-                  <p className="text-xs text-gray-400 mb-3 font-medium">カスタム期間</p>
+                  <p className="text-xs text-muted mb-3 font-medium">カスタム期間</p>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs text-gray-500 block mb-1">開始日時</label>
+                      <label className="text-xs text-muted block mb-1">開始日時</label>
                       <input
                         type="datetime-local"
                         step="1"
@@ -533,7 +546,7 @@ export default function AnalyticsPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 block mb-1">終了日時</label>
+                      <label className="text-xs text-muted block mb-1">終了日時</label>
                       <input
                         type="datetime-local"
                         step="1"
@@ -550,7 +563,7 @@ export default function AnalyticsPage() {
                         setShowCalendar(false);
                       }}
                       disabled={!pendingStart || !pendingEnd || pendingStart >= pendingEnd}
-                      className="w-full bg-brand text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+                      className="w-full bg-brand text-on-accent rounded-lg py-2 text-sm font-medium hover:bg-brand-hover disabled:opacity-40 transition-colors"
                     >
                       適用
                     </button>
@@ -560,15 +573,15 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="flex gap-1 bg-panel border border-border rounded-lg p-1 w-fit">
+          <div className="flex gap-0.5 bg-panel border border-border rounded-seg p-[3px] w-fit">
             {(["ranking", "history", "battles"] as ViewMode[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-[13px] py-[7px] rounded-[5px] text-[.78rem] font-semibold transition-colors ${
                   viewMode === m
-                    ? "bg-brand text-white"
-                    : "text-gray-400 hover:text-white"
+                    ? "bg-brand text-on-accent shadow-[0_1px_2px_rgba(16,24,40,.08)]"
+                    : "text-muted hover:text-strong"
                 }`}
               >
                 {m === "ranking" ? "ユーザー別コイン数" : m === "history" ? "ギフト履歴" : "バトル履歴"}
@@ -587,7 +600,7 @@ export default function AnalyticsPage() {
               ‹
             </button>
           )}
-          <span className="text-sm font-medium min-w-0 text-center flex-1 truncate">
+          <span className="text-sm font-medium text-strong min-w-0 text-center flex-1 truncate">
             {period === "custom"
               ? formatCustomRangeLabel(customStart, customEnd)
               : formatPeriodLabel(period, currentDate)}
@@ -622,7 +635,7 @@ export default function AnalyticsPage() {
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
             >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -643,60 +656,70 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {viewMode === "ranking" && (
-              <>
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
-                >
-                  {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(
-                    ([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    )
-                  )}
-                </select>
-
+            {(viewMode === "ranking" || viewMode === "history") && (
+              <div className="relative" ref={sortMenuRef}>
                 <button
-                  onClick={() =>
-                    setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
-                  }
-                  className="btn-ghost px-2 py-2 text-sm"
-                  title={sortOrder === "desc" ? "降順" : "昇順"}
+                  onClick={() => setShowSortMenu((v) => !v)}
+                  className="btn-ghost text-[.76rem] font-semibold px-2.5 py-2"
                 >
-                  {sortOrder === "desc" ? "↓" : "↑"}
+                  並び替え ▾
                 </button>
-              </>
-            )}
-
-            {viewMode === "history" && (
-              <>
-                <select
-                  value={historySortKey}
-                  onChange={(e) => setHistorySortKey(e.target.value as HistorySortKey)}
-                  className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
-                >
-                  {(Object.entries(HISTORY_SORT_LABELS) as [HistorySortKey, string][]).map(
-                    ([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <button
-                  onClick={() =>
-                    setHistorySortOrder((o) => (o === "desc" ? "asc" : "desc"))
-                  }
-                  className="btn-ghost px-2 py-2 text-sm"
-                  title={historySortOrder === "desc" ? "降順" : "昇順"}
-                >
-                  {historySortOrder === "desc" ? "↓" : "↑"}
-                </button>
-              </>
+                {showSortMenu && (
+                  <div className="absolute top-full right-0 mt-1 z-50 bg-panel border border-border rounded-xl p-3 shadow-xl w-48 flex items-center gap-1.5">
+                    {viewMode === "ranking" ? (
+                      <>
+                        <select
+                          value={sortKey}
+                          onChange={(e) => setSortKey(e.target.value as SortKey)}
+                          className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
+                        >
+                          {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(
+                            ([k, v]) => (
+                              <option key={k} value={k}>
+                                {v}
+                              </option>
+                            )
+                          )}
+                        </select>
+                        <button
+                          onClick={() =>
+                            setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
+                          }
+                          className="btn-ghost px-2 py-2 text-sm shrink-0"
+                          title={sortOrder === "desc" ? "降順" : "昇順"}
+                        >
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          value={historySortKey}
+                          onChange={(e) => setHistorySortKey(e.target.value as HistorySortKey)}
+                          className="input-field text-sm w-auto pr-8 appearance-none cursor-pointer"
+                        >
+                          {(Object.entries(HISTORY_SORT_LABELS) as [HistorySortKey, string][]).map(
+                            ([k, v]) => (
+                              <option key={k} value={k}>
+                                {v}
+                              </option>
+                            )
+                          )}
+                        </select>
+                        <button
+                          onClick={() =>
+                            setHistorySortOrder((o) => (o === "desc" ? "asc" : "desc"))
+                          }
+                          className="btn-ghost px-2 py-2 text-sm shrink-0"
+                          title={historySortOrder === "desc" ? "降順" : "昇順"}
+                        >
+                          {historySortOrder === "desc" ? "↓" : "↑"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {viewMode !== "battles" && (
@@ -712,7 +735,7 @@ export default function AnalyticsPage() {
                   (BIO_VERIFICATION_GATE_ENABLED && verified === false) ||
                   (viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0)
                 }
-                className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
+                className="btn-ghost flex items-center gap-1 text-[.76rem] font-semibold disabled:opacity-30"
                 title={BIO_VERIFICATION_GATE_ENABLED && verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
               >
                 <DownloadIcon />
@@ -733,7 +756,7 @@ export default function AnalyticsPage() {
                   }
                 }}
                 disabled={deleting || (data?.users.length === 0)}
-                className="btn-ghost flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-30"
+                className="btn-ghost flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:text-red-300 disabled:opacity-30"
                 title={`この${period === "day" ? "日" : period === "week" ? "週" : period === "month" ? "月" : "年"}のデータを自分の表示からのみ非表示にする(他の登録者には影響しません)`}
               >
                 {deleting ? "処理中..." : "🙈 非表示"}
@@ -751,22 +774,23 @@ export default function AnalyticsPage() {
             }`}
           >
         {viewMode === "ranking" && data && (
-          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+          <div className="flex gap-4 text-[.74rem] text-muted flex-wrap">
             <span>
-              {filter ? `${sortedFiltered.length} / ${data.users.length} 人` : `${data.users.length} 人`}
+              <b className="text-strong font-bold">{filter ? sortedFiltered.length : data.users.length}</b>
+              {filter ? ` / ${data.users.length} 人` : " 人"}
             </span>
             <span>
               合計{" "}
-              {sortedFiltered
-                .reduce((s, u) => s + u.totalDiamonds, 0)
-                .toLocaleString()}{" "}
+              <b className="text-strong font-bold">
+                {sortedFiltered.reduce((s, u) => s + u.totalDiamonds, 0).toLocaleString()}
+              </b>{" "}
               コイン
             </span>
             <span>
               ギフト{" "}
-              {sortedFiltered
-                .reduce((s, u) => s + u.giftCount, 0)
-                .toLocaleString()}{" "}
+              <b className="text-strong font-bold">
+                {sortedFiltered.reduce((s, u) => s + u.giftCount, 0).toLocaleString()}
+              </b>{" "}
               件
             </span>
             {lastRefreshed && (
@@ -778,13 +802,16 @@ export default function AnalyticsPage() {
         )}
 
         {viewMode === "history" && historyData && (
-          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+          <div className="flex gap-4 text-[.74rem] text-muted flex-wrap">
             <span>
-              {filter ? `${filteredEvents.length} / ${historyData.events.length} 件` : `${historyData.events.length} 件`}
+              <b className="text-strong font-bold">{filter ? filteredEvents.length : historyData.events.length}</b>
+              {filter ? ` / ${historyData.events.length} 件` : " 件"}
             </span>
             <span>
               合計{" "}
-              {filteredEvents.reduce((s, e) => s + e.totalDiamonds, 0).toLocaleString()}{" "}
+              <b className="text-strong font-bold">
+                {filteredEvents.reduce((s, e) => s + e.totalDiamonds, 0).toLocaleString()}
+              </b>{" "}
               コイン
             </span>
             {lastRefreshed && (
@@ -796,7 +823,7 @@ export default function AnalyticsPage() {
         )}
 
         {viewMode === "battles" && battlesData && (
-          <div className="flex gap-4 text-xs text-gray-400 flex-wrap items-center">
+          <div className="flex gap-4 text-[.74rem] text-muted flex-wrap items-center">
             <span>
               {filter || hideLowDiamond
                 ? `${filteredBattles.length} / ${battlesData.battles.length} 件`
@@ -822,25 +849,25 @@ export default function AnalyticsPage() {
         {/* Ranking Table */}
         {viewMode === "ranking" && (
           loading ? (
-            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+            <div className="text-center py-16 text-muted">読み込み中...</div>
           ) : sortedFiltered.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
+            <div className="text-center py-16 text-muted">
               {filter ? "一致するユーザーなし" : "この期間のデータなし"}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-card border border-border shadow-[0_1px_2px_rgba(16,24,40,.05)]">
+              <table className="w-full text-[.84rem]">
                 <thead>
-                  <tr className="border-b border-border text-xs text-gray-400">
-                    <th className="py-2.5 px-3 text-right w-10">#</th>
-                    <th className="py-2.5 px-3 text-left">ユーザー</th>
-                    <th className="py-2.5 px-3 text-right">
+                  <tr className="border-b border-border text-[.68rem] tracking-[.02em] text-muted bg-panel">
+                    <th className="py-[9px] px-3 text-right w-10 font-semibold">#</th>
+                    <th className="py-[9px] px-3 text-left font-semibold">ユーザー</th>
+                    <th className="py-[9px] px-3 text-right font-semibold">
                       <span title="コイン数">💎</span>
                     </th>
-                    <th className="py-2.5 px-3 text-right hidden sm:table-cell">
+                    <th className="py-[9px] px-3 text-right hidden sm:table-cell font-semibold">
                       <span title="ギフト数">🎁</span>
                     </th>
-                    <th className="py-2.5 px-3 text-right hidden md:table-cell text-gray-400">
+                    <th className="py-[9px] px-3 text-right hidden md:table-cell font-semibold text-muted">
                       最終
                     </th>
                   </tr>
@@ -849,14 +876,14 @@ export default function AnalyticsPage() {
                   {sortedFiltered.map((user, idx) => (
                     <tr
                       key={user.uniqueId}
-                      className={`border-b border-border/50 hover:bg-white/[0.02] transition-colors ${
+                      className={`border-b border-row-border hover:bg-row-hover transition-colors ${
                         idx === 0 ? "bg-yellow-500/5" : ""
                       }`}
                     >
-                      <td className="py-2.5 px-3 text-right text-gray-500 font-mono text-xs">
+                      <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
                         {user.rank}
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-[9px] px-3">
                         <div className="flex items-center gap-2 min-w-0">
                           <a
                             href={tiktokProfileUrl(user.uniqueId)}
@@ -876,11 +903,11 @@ export default function AnalyticsPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="TikTokプロフィールを開く"
-                              className="font-medium truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
+                              className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
                             >
                               {user.nickname}
                             </a>
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <div className="flex items-center gap-1 text-xs text-muted">
                               <span className="truncate max-w-[100px]">
                                 @{user.uniqueId}
                               </span>
@@ -888,7 +915,7 @@ export default function AnalyticsPage() {
                                 href={tiktokProfileUrl(user.uniqueId)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-gray-500 hover:text-brand transition-colors shrink-0"
+                                className="text-muted hover:text-brand transition-colors shrink-0"
                                 title="TikTokプロフィールを開く"
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -898,13 +925,13 @@ export default function AnalyticsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
+                      <td className="py-[9px] px-3 text-right font-mono font-bold text-strong">
                         {user.totalDiamonds.toLocaleString()}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-gray-400 hidden sm:table-cell">
+                      <td className="py-[9px] px-3 text-right text-muted hidden sm:table-cell">
                         {user.giftCount.toLocaleString()}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-gray-500 text-xs hidden md:table-cell">
+                      <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
                         {formatRelativeTime(user.lastGiftAt)}
                       </td>
                     </tr>
@@ -918,16 +945,16 @@ export default function AnalyticsPage() {
         {/* History Table */}
         {viewMode === "history" && (
           historyLoading ? (
-            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+            <div className="text-center py-16 text-muted">読み込み中...</div>
           ) : filteredEvents.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
+            <div className="text-center py-16 text-muted">
               {filter ? "一致するイベントなし" : "この期間のデータなし"}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs text-gray-400">
+                  <tr className="border-b border-border text-xs text-muted">
                     <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
                     <th className="py-2.5 px-3 text-left">ユーザー</th>
                     <th className="py-2.5 px-3 text-left">ギフト</th>
@@ -943,9 +970,9 @@ export default function AnalyticsPage() {
                     return (
                       <tr
                         key={ev.id}
-                        className="border-b border-border/50 hover:bg-white/[0.02] transition-colors"
+                        className="border-b border-row-border hover:bg-row-hover transition-colors"
                       >
-                        <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                        <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
                           {formatEventTime(ev.receivedAt, period)}
                         </td>
                         <td className="py-2 px-3">
@@ -969,7 +996,7 @@ export default function AnalyticsPage() {
                               >
                                 {ev.nickname}
                               </a>
-                              <div className="text-xs text-gray-500 truncate max-w-[100px]">
+                              <div className="text-xs text-muted truncate max-w-[100px]">
                                 @{ev.uniqueId}
                               </div>
                             </div>
@@ -1005,7 +1032,7 @@ export default function AnalyticsPage() {
                               <span className="truncate">
                                 {ev.giftName}
                                 {ev.repeatCount > 1 && (
-                                  <span className="text-gray-400 ml-1">×{ev.repeatCount}</span>
+                                  <span className="text-muted ml-1">×{ev.repeatCount}</span>
                                 )}
                               </span>
                               {ev.edited && (
@@ -1071,16 +1098,16 @@ export default function AnalyticsPage() {
         {/* Battles Table */}
         {viewMode === "battles" && (
           battlesLoading ? (
-            <div className="text-center py-16 text-gray-500">読み込み中...</div>
+            <div className="text-center py-16 text-muted">読み込み中...</div>
           ) : filteredBattles.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
+            <div className="text-center py-16 text-muted">
               {filter ? "一致するバトルなし" : "この期間のバトルなし"}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs text-gray-400">
+                  <tr className="border-b border-border text-xs text-muted">
                     <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
                     <th className="py-2.5 px-3 text-left">対戦相手</th>
                     <th className="py-2.5 px-3 text-right">スコア</th>
@@ -1100,18 +1127,18 @@ export default function AnalyticsPage() {
                       <tr
                         key={battle.battleId}
                         onClick={() => setOpenBattleId(battle.battleId)}
-                        className="border-b border-border/50 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                        className="border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer"
                       >
-                        <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                        <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
                           {formatEventTime(battle.startedAt, period)}
                         </td>
                         <td className="py-2 px-3">
                           {battle.selfTeam && battle.opponentTeam ? (
                             <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="sm" />
                           ) : opponent === null ? (
-                            <span className="text-gray-500">対戦相手不明</span>
+                            <span className="text-muted">対戦相手不明</span>
                           ) : opponent.count > 1 ? (
-                            <span className="text-gray-400">複数人バトル({opponent.count + 1}人)</span>
+                            <span className="text-muted">複数人バトル({opponent.count + 1}人)</span>
                           ) : opponent.nickName || opponent.displayId || opponent.tiktokId ? (
                             <div className="flex items-center gap-2">
                               <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
@@ -1120,14 +1147,14 @@ export default function AnalyticsPage() {
                                   {opponent.nickName ?? `@${opponent.displayId}`}
                                 </div>
                                 {(opponent.displayId || opponent.tiktokId) && (
-                                  <div className="text-xs text-gray-500 truncate max-w-[160px]">
+                                  <div className="text-xs text-muted truncate max-w-[160px]">
                                     @{opponent.displayId ?? opponent.tiktokId}
                                   </div>
                                 )}
                               </div>
                             </div>
                           ) : (
-                            <span className="text-gray-500">対戦相手不明</span>
+                            <span className="text-muted">対戦相手不明</span>
                           )}
                         </td>
                         <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
@@ -1142,7 +1169,7 @@ export default function AnalyticsPage() {
                           {battle.opponentScore === null ? (
                             "-"
                           ) : (
-                            <span className={lose ? "text-red-400 font-semibold" : ""}>
+                            <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
                               {Number(battle.opponentScore).toLocaleString()}
                             </span>
                           )}
@@ -1153,8 +1180,8 @@ export default function AnalyticsPage() {
                               battle.status === "live"
                                 ? "text-brand"
                                 : battle.status === "cut_short"
-                                  ? "text-red-400"
-                                  : "text-gray-400"
+                                  ? "text-red-600 dark:text-red-400"
+                                  : "text-muted"
                             }
                           >
                             {BATTLE_STATUS_LABELS[battle.status]}
@@ -1199,8 +1226,8 @@ function VerifyGate() {
     <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
       <div className="bg-panel/90 border border-border rounded-xl px-6 py-5 text-center shadow-xl backdrop-blur-sm max-w-xs">
         <div className="text-2xl mb-2">🔒</div>
-        <p className="text-sm font-semibold text-white mb-1">BIO認証で解除されます</p>
-        <p className="text-xs text-gray-400 mb-3">
+        <p className="text-sm font-semibold text-strong mb-1">BIO認証で解除されます</p>
+        <p className="text-xs text-muted mb-3">
           コイン数・ギフト履歴はTikTokのBIO認証が完了すると表示されます。オーバーレイは認証前でも利用できます。
         </p>
         <Link href="/setup" className="btn-primary text-xs inline-block px-4 py-2">

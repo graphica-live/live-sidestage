@@ -94,7 +94,7 @@ export function EventCoverUpload({
   return (
     <div className="card">
       <span className="label">イベントPOP(カバー画像)</span>
-      <p className="mb-3 text-xs text-gray-500">
+      <p className="mb-3 text-xs text-muted">
         公開ページのheroに表示される。JPEG/PNG/WebP、{MAX_COVER_IMAGE_BYTES / 1024 / 1024}MBまで。
       </p>
 
@@ -111,7 +111,7 @@ export function EventCoverUpload({
             />
           )}
 
-          {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+          {error && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
           <div className="flex flex-wrap gap-2">
             <input
@@ -123,7 +123,7 @@ export function EventCoverUpload({
                 const file = e.target.files?.[0];
                 if (file) void handleFile(file);
               }}
-              className="text-xs text-gray-400 file:mr-3 file:rounded-lg file:border file:border-border file:bg-panel file:px-3 file:py-1.5 file:text-xs file:text-gray-200"
+              className="text-xs text-muted file:mr-3 file:rounded-lg file:border file:border-border file:bg-panel file:px-3 file:py-1.5 file:text-xs file:text-strong"
             />
             {previewUrl && (
               <button

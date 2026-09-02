@@ -20,7 +20,7 @@ import { BattleCard, UnselectedBattleNote } from "./BattleCard";
 export function MatchDetailBody({ detail }: { detail: PublicMatchDetail }) {
   return (
     <>
-      <h1 className="flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-2xl font-black tracking-tight text-white md:text-3xl">
+      <h1 className="flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-2xl font-black tracking-tight text-strong md:text-3xl">
         <span className="h-6 w-2 shrink-0 -skew-x-12 bg-brand" aria-hidden />
         {detail.placement ? `${detail.placement.rank}位決定戦` : detail.roundLabel}
       </h1>
@@ -31,12 +31,12 @@ export function MatchDetailBody({ detail }: { detail: PublicMatchDetail }) {
       <div className="mt-8">
         <div className="flex items-center gap-2.5">
           <span className="h-5 w-1.5 shrink-0 -skew-x-12 bg-brand" aria-hidden />
-          <h2 className="text-sm font-bold tracking-wide text-white">バトル内訳</h2>
+          <h2 className="text-sm font-bold tracking-wide text-strong">バトル内訳</h2>
         </div>
         <BattleBreakdownSection detail={detail} />
       </div>
 
-      <p className="mt-8 text-xs leading-relaxed text-gray-600">
+      <p className="mt-8 text-xs leading-relaxed text-muted">
         集計は当サービスが受信したギフトに基づく。通信状況により実際と差が出る場合がある。
         最終的な勝敗は実際のバトルスコアおよび運営判断で決定する。
       </p>
@@ -49,7 +49,7 @@ function MatchSummary({ detail }: { detail: PublicMatchDetail }) {
   const reviewLabel = detail.reviewReason ? PUBLIC_REVIEW_REASON_LABELS[detail.reviewReason] : null;
 
   return (
-    <dl className={`mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border border-white/10 bg-panel p-4 text-sm sm:grid-cols-3 ${CARD_CLIP}`}>
+    <dl className={`mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border border-border bg-panel p-4 text-sm sm:grid-cols-3 ${CARD_CLIP}`}>
       <Item label="開催日程">{detail.sessionLabel || "—"}</Item>
       <Item label="勝利条件">{WIN_CONDITION_LABELS[detail.winCondition]}</Item>
       <Item label="状態">{MATCH_STATUS_LABELS[detail.status] ?? detail.status}</Item>
@@ -58,13 +58,13 @@ function MatchSummary({ detail }: { detail: PublicMatchDetail }) {
       <Item label="不戦勝">{detail.isBye ? "はい" : "いいえ"}</Item>
       {reviewLabel && (
         <div className="col-span-2 sm:col-span-3">
-          <dt className="text-xs text-gray-500">運営確認</dt>
+          <dt className="text-xs text-muted">運営確認</dt>
           <dd className="text-yellow-300">{reviewLabel}</dd>
         </div>
       )}
       {detail.hasFeederOverride && (
         <div className="col-span-2 sm:col-span-3">
-          <dt className="text-xs text-gray-500">組み合わせ</dt>
+          <dt className="text-xs text-muted">組み合わせ</dt>
           <dd className="text-amber-300">
             この枠は接続が変更されている。トーナメント表に描かれている接続線は実際のフローと異なる。
           </dd>
@@ -77,8 +77,8 @@ function MatchSummary({ detail }: { detail: PublicMatchDetail }) {
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-gray-500">{label}</dt>
-      <dd className="text-white">{children}</dd>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="text-strong">{children}</dd>
     </div>
   );
 }
@@ -87,7 +87,7 @@ function MatchSides({ detail }: { detail: PublicMatchDetail }) {
   return (
     <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
       {detail.sides.map((side) => (
-        <div key={side.id} className={`min-w-0 border border-white/10 bg-panel p-2.5 sm:p-3 ${CARD_CLIP}`}>
+        <div key={side.id} className={`min-w-0 border border-border bg-panel p-2.5 sm:p-3 ${CARD_CLIP}`}>
           <div className="flex items-center gap-1.5 sm:gap-2">
             {side.entrants.slice(0, 4).map((e) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -98,7 +98,7 @@ function MatchSides({ detail }: { detail: PublicMatchDetail }) {
                 title={e.displayName}
                 width={32}
                 height={32}
-                className="h-6 w-6 shrink-0 rounded-full border border-panel bg-white/5 object-cover sm:h-8 sm:w-8"
+                className="h-6 w-6 shrink-0 rounded-full border border-panel bg-black/5 dark:bg-white/5 object-cover sm:h-8 sm:w-8"
                 loading="lazy"
                 referrerPolicy="no-referrer"
               />
@@ -112,9 +112,9 @@ function MatchSides({ detail }: { detail: PublicMatchDetail }) {
               </span>
             )}
           </div>
-          <p className="mt-2 truncate font-mono text-xs tabular-nums text-gray-300 sm:text-sm">
+          <p className="mt-2 truncate font-mono text-xs tabular-nums text-strong sm:text-sm">
             {formatNumber(side.diamonds)}{" "}
-            <span className="text-[10px] text-gray-500 sm:text-xs">ダイヤ(全バトル合計)</span>
+            <span className="text-[10px] text-muted sm:text-xs">ダイヤ(全バトル合計)</span>
           </p>
         </div>
       ))}
@@ -125,7 +125,7 @@ function MatchSides({ detail }: { detail: PublicMatchDetail }) {
 function BattleBreakdownSection({ detail }: { detail: PublicMatchDetail }) {
   if (detail.battleState !== "AVAILABLE") {
     return (
-      <p className={`mt-4 border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+      <p className={`mt-4 border border-dashed border-border p-4 text-sm text-muted ${CARD_CLIP}`}>
         {MATCH_BATTLE_STATE_LABELS[detail.battleState]}
       </p>
     );
@@ -133,7 +133,7 @@ function BattleBreakdownSection({ detail }: { detail: PublicMatchDetail }) {
 
   if (detail.games.length === 0 && detail.battles.length === 0) {
     return (
-      <p className={`mt-4 border border-dashed border-white/15 p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+      <p className={`mt-4 border border-dashed border-border p-4 text-sm text-muted ${CARD_CLIP}`}>
         まだバトルを検知できていない。
       </p>
     );
@@ -159,7 +159,7 @@ function BattleBreakdownSection({ detail }: { detail: PublicMatchDetail }) {
       ))}
       {unselectedBattles.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-gray-500">結果に反映されていない検知バトル</p>
+          <p className="text-xs text-muted">結果に反映されていない検知バトル</p>
           {unselectedBattles.map((battle) => (
             <UnselectedBattleNote key={battle.candidateId} battle={battle} />
           ))}

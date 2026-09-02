@@ -362,7 +362,7 @@ type WizardStep = "session" | "method" | "seed" | "manual";
 function SessionNote({ sessions }: { sessions: SessionRow[] }) {
   if (sessions.length === 0) return null;
   return (
-    <div className="text-xs text-gray-500">
+    <div className="text-xs text-muted">
       <p>
         開催日程(<strong className="text-amber-300/90">この中で終了したバトルだけ</strong>が
         対戦として扱われる):
@@ -371,7 +371,7 @@ function SessionNote({ sessions }: { sessions: SessionRow[] }) {
         {sessions.map((s, index) => (
           <li key={s.id}>
             {sessionRangeLabel(s, index)}{" "}
-            <span className="whitespace-nowrap text-gray-400">(監視対象)</span>
+            <span className="whitespace-nowrap text-muted">(監視対象)</span>
           </li>
         ))}
       </ul>
@@ -389,7 +389,7 @@ function SwapNote({ selected }: { selected: boolean }) {
   return (
     <div className="rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
       <p className="font-medium text-brand">組み合わせの変更中</p>
-      <ul className="mt-1 space-y-0.5 text-gray-400">
+      <ul className="mt-1 space-y-0.5 text-muted">
         <li>
           ・
           {selected
@@ -398,12 +398,12 @@ function SwapNote({ selected }: { selected: boolean }) {
         </li>
         <li>
           ・入れ替えられるのは
-          <strong className="text-gray-200">同じラウンドの、まだ始まっていない枠</strong>
+          <strong className="text-strong">同じラウンドの、まだ始まっていない枠</strong>
           だけ。敗退した組と進行中の対戦は動かせない
         </li>
         <li>
           ・準決勝以降を入れ替えると、その組が勝ち上がってきた
-          <strong className="text-gray-200">1回戦のカードも一緒に移動する</strong>
+          <strong className="text-strong">1回戦のカードも一緒に移動する</strong>
           (結果はそのまま)
         </li>
         <li>・空いている枠へ置くと、元の枠は不戦勝になる</li>
@@ -421,7 +421,7 @@ function FeederSwapNote({ selected, hasOverride }: { selected: boolean; hasOverr
   return (
     <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs leading-relaxed">
       <p className="font-medium text-amber-300">接続の変更中</p>
-      <ul className="mt-1 space-y-0.5 text-gray-400">
+      <ul className="mt-1 space-y-0.5 text-muted">
         <li>
           ・
           {selected
@@ -430,13 +430,13 @@ function FeederSwapNote({ selected, hasOverride }: { selected: boolean; hasOverr
         </li>
         <li>
           ・対象は
-          <strong className="text-gray-200">準決勝以降の、まだ実施していない枠</strong>
-          だけ。<strong className="text-gray-200">結果や出場者は一切変わらない</strong>
+          <strong className="text-strong">準決勝以降の、まだ実施していない枠</strong>
+          だけ。<strong className="text-strong">結果や出場者は一切変わらない</strong>
           — 「誰の勝者がどちらの枠へ入るか」という接続だけが変わる
         </li>
         <li>
           ・組み合わせの変更(葉スワップ)と違い、
-          <strong className="text-gray-200">下流の対戦がすでに始まっていても使える</strong>
+          <strong className="text-strong">下流の対戦がすでに始まっていても使える</strong>
         </li>
       </ul>
       {hasOverride && (
@@ -1009,12 +1009,12 @@ export function MatchManager({
         />
 
         {matches.length === 0 ? (
-          <div className="card text-sm text-gray-500">
+          <div className="card text-sm text-muted">
             まだ対戦がない。上のフォームから組むと、その時間枠のバトルを自動で照合する。
           </div>
         ) : (
           <section className="space-y-2">
-            <h2 className="text-sm font-semibold text-gray-300">対戦</h2>
+            <h2 className="text-sm font-semibold text-strong">対戦</h2>
             {matches.map((match) => (
               <MatchCard
                 key={match.id}
@@ -1036,7 +1036,7 @@ export function MatchManager({
 
   if (format !== "TOURNAMENT") {
     return (
-      <div className="card text-sm text-gray-500">
+      <div className="card text-sm text-muted">
         獲得ダイヤレースには対戦がない。順位は期間中のダイヤだけで決まる。
       </div>
     );
@@ -1070,7 +1070,7 @@ export function MatchManager({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="font-semibold">トーナメント表</h2>
-              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+              <p className="mt-1 text-xs leading-relaxed text-muted">
                 {matches.length === 0
                   ? "まだ表がない。日程を決めるところから順に作る。"
                   : `対戦カードが${matches.length}件ある。組み合わせは表を保ったまま変えられる(まだ始まっていない枠どうし)。`}
@@ -1103,7 +1103,7 @@ export function MatchManager({
                     className={
                       swapping
                         ? "btn-primary"
-                        : "rounded-lg border border-border px-3 py-2 text-sm text-gray-300 transition hover:border-brand/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        : "rounded-lg border border-border px-3 py-2 text-sm text-strong transition hover:border-brand/50 hover:text-strong disabled:cursor-not-allowed disabled:opacity-40"
                     }
                   >
                     {swapping ? "変更を終える" : "組み合わせを変更"}
@@ -1134,7 +1134,7 @@ export function MatchManager({
                       type="button"
                       disabled={busy || feederResetting}
                       onClick={() => void submitFeederReset()}
-                      className="rounded-lg border border-border px-3 py-2 text-sm text-gray-300 transition hover:border-brand/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-lg border border-border px-3 py-2 text-sm text-strong transition hover:border-brand/50 hover:text-strong disabled:cursor-not-allowed disabled:opacity-40"
                       title="変更した接続をすべて元の座標へ戻す"
                     >
                       接続をリセット
@@ -1178,9 +1178,9 @@ export function MatchManager({
               先に登録してから表を作る。
             </p>
           ) : sessions.length === 1 ? (
-            <div className="rounded-lg bg-white/5 px-3 py-2 text-sm">
+            <div className="rounded-lg bg-black/5 dark:bg-white/5 px-3 py-2 text-sm">
               <p>{sessionRangeLabel(sessions[0], 0)}</p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted">
                 日程は1つだけなので、全{roundCount}ラウンドをこの日程で行う。
               </p>
             </div>
@@ -1295,14 +1295,14 @@ export function MatchManager({
                 onDrop={(e) => handleSeedDrop(e, index)}
                 onDragEnd={handleSeedDragEnd}
                 className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition ${
-                  isDragging ? "opacity-40" : "bg-white/5"
+                  isDragging ? "opacity-40" : "bg-black/5 dark:bg-white/5"
                 } ${isDragOver ? "ring-1 ring-brand/60" : ""}`}
               >
                 <span
                   draggable={!busy}
                   onDragStart={(e) => handleSeedDragStart(e, index, id)}
                   aria-label="ドラッグして並び替え"
-                  className={`shrink-0 text-gray-500 hover:text-gray-300 ${
+                  className={`shrink-0 text-muted hover:text-strong ${
                     busy ? "cursor-not-allowed opacity-30" : "cursor-grab active:cursor-grabbing"
                   }`}
                 >
@@ -1315,7 +1315,7 @@ export function MatchManager({
                     <circle cx="8" cy="14" r="1.5" />
                   </svg>
                 </span>
-                <span className="w-8 shrink-0 text-xs text-gray-500">第{index + 1}</span>
+                <span className="w-8 shrink-0 text-xs text-muted">第{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate">{entrant.label}</span>
               </li>
             );
@@ -1366,7 +1366,7 @@ export function MatchManager({
 
           <div className="flex flex-wrap items-center justify-end gap-3">
             {!allPlaced && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted">
                 残り {entrants.length - placedCount} 組を配置すると作れる。
               </p>
             )}
@@ -1377,7 +1377,7 @@ export function MatchManager({
 
       {byRound.length === 0 ? (
         wizardStep === null && (
-          <div className="card text-sm text-gray-500">
+          <div className="card text-sm text-muted">
             まだ対戦表がない。「表を作る」から日程・作成方法の順に決める。
           </div>
         )
@@ -1395,7 +1395,7 @@ export function MatchManager({
                 setFeederSwapSlot(null);
               }}
               className={`rounded-full px-3 py-1 ${
-                viewMode === "list" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
+                viewMode === "list" ? "bg-brand/20 text-brand" : "text-muted hover:bg-row-hover"
               }`}
             >
               一覧
@@ -1404,7 +1404,7 @@ export function MatchManager({
               type="button"
               onClick={() => setViewMode("bracket")}
               className={`rounded-full px-3 py-1 ${
-                viewMode === "bracket" ? "bg-brand/20 text-brand" : "text-gray-400 hover:bg-white/5"
+                viewMode === "bracket" ? "bg-brand/20 text-brand" : "text-muted hover:bg-row-hover"
               }`}
             >
               表
@@ -1415,7 +1415,7 @@ export function MatchManager({
             <>
               {byRound.map(([round, rows]) => (
                 <section key={round} className="space-y-2">
-                  <h2 className="text-sm font-semibold text-gray-300">
+                  <h2 className="text-sm font-semibold text-strong">
                     {rows[0]?.roundLabel ?? `${round}回戦`}
                   </h2>
                   {rows.map((match) => (
@@ -1436,12 +1436,12 @@ export function MatchManager({
 
               {placementGroups.length > 0 && (
                 <div className="space-y-4 border-t border-border pt-4">
-                  <h2 className="text-[11px] font-bold tracking-[0.2em] text-gray-500">
+                  <h2 className="text-[11px] font-bold tracking-[0.2em] text-muted">
                     順位決定戦
                   </h2>
                   {placementGroups.map((group) => (
                     <section key={group.label} className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-300">{group.label}</h3>
+                      <h3 className="text-sm font-semibold text-strong">{group.label}</h3>
                       {group.rows.map((match) => (
                         <MatchCard
                           key={match.id}
@@ -1560,7 +1560,7 @@ function PlacementDepthSection({
         <label htmlFor="placement-depth" className="label">
           順位決定戦
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-xs text-muted">
           3位以下も試合で決めるか。増やすと参加者の実際のライブバトルが増える。
         </p>
       </div>
@@ -1580,7 +1580,7 @@ function PlacementDepthSection({
       </select>
 
       {plannedPlacementDepth > 0 && (
-        <ul className="grid gap-0.5 text-xs text-gray-500">
+        <ul className="grid gap-0.5 text-xs text-muted">
           {placementChoices
             .filter((option) => option.depth <= plannedPlacementDepth)
             .map((option) => (
@@ -1654,17 +1654,17 @@ function WizardFrame({
   return (
     <section className="card space-y-4">
       <div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-muted">
           {onBack && (
-            <button type="button" onClick={onBack} className="text-gray-400 hover:text-white">
+            <button type="button" onClick={onBack} className="text-muted hover:text-strong">
               ← 戻る
             </button>
           )}
-          <span className="rounded-full bg-white/5 px-2 py-0.5">ステップ {stepNo} / 3</span>
+          <span className="rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5">ステップ {stepNo} / 3</span>
         </div>
         <h2 className="mt-2 font-semibold">{title}</h2>
         {description && (
-          <p className="mt-1 text-xs leading-relaxed text-gray-400">{description}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
         )}
       </div>
       {children}
@@ -1690,15 +1690,15 @@ function MethodChoice({
     <button
       type="button"
       onClick={onSelect}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-white/[0.02] p-4 text-left transition hover:border-brand/50 hover:bg-white/[0.05]"
+      className="flex flex-col gap-3 rounded-xl border border-border bg-black/[0.02] dark:bg-white/[0.02] p-4 text-left transition hover:border-brand/50 hover:bg-row-hover"
     >
-      <div className="rounded-lg bg-black/20 p-3">
+      <div className="rounded-lg bg-black/5 dark:bg-white/5 p-3">
         <BracketBuildMethodDiagram kind={kind} />
       </div>
       <div>
         <h3 className="font-semibold">{title}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-gray-400">{lead}</p>
-        <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
+        <p className="mt-1 text-xs leading-relaxed text-muted">{lead}</p>
+        <ul className="mt-2 space-y-0.5 text-xs text-muted">
           {points.map((point) => (
             <li key={point}>・{point}</li>
           ))}
@@ -1719,7 +1719,7 @@ function SelectedSessions({
 }) {
   if (sessions.length <= 1) return null;
   return (
-    <p className="rounded-lg bg-white/5 px-3 py-2 text-xs text-gray-400">
+    <p className="rounded-lg bg-black/5 dark:bg-white/5 px-3 py-2 text-xs text-muted">
       日程:{" "}
       {roundSessionIds
         .map((id, index) => `${index + 1}回戦 ${sessionLabel(sessions, id)}`)
@@ -1765,7 +1765,7 @@ function LifeTable({
 }) {
   if (lives.length === 0) {
     return (
-      <div className="card text-sm text-gray-500">
+      <div className="card text-sm text-muted">
         {entryMode === "TEAM"
           ? "まだチームがない。チームを作ってから対戦を組む。"
           : "まだ参加者がいない。参加者を登録してから対戦を組む。"}
@@ -1779,7 +1779,7 @@ function LifeTable({
     <section className="card space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold">ライフ</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           初期{rules.initialLife} / 敗北 -{rules.lossDelta}
           {rules.winDelta > 0 && ` / 勝利 +${rules.winDelta}`}
           {rules.drawDelta > 0 && ` / 引き分け -${rules.drawDelta}`} ・ 残り{alive}
@@ -1798,19 +1798,19 @@ function LifeTable({
             <li
               key={life.subjectId}
               className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm ${
-                life.eliminated ? "bg-white/[0.02] text-gray-600" : "bg-white/5"
+                life.eliminated ? "bg-black/[0.02] dark:bg-white/[0.02] text-muted" : "bg-black/5 dark:bg-white/5"
               }`}
             >
               <span className="min-w-0 flex-1 truncate">{life.label}</span>
               {life.eliminated ? (
-                <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs">脱落</span>
+                <span className="shrink-0 rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5 text-xs">脱落</span>
               ) : (
                 <span className="shrink-0 font-mono text-xs" aria-label={`残ライフ ${current}`}>
                   {"♥".repeat(Math.min(current, 10))}
-                  <span className="ml-1.5 text-gray-400">
+                  <span className="ml-1.5 text-muted">
                     {current} / {max}
                   </span>
-                  {pending && <span className="ml-1.5 font-sans text-gray-600">初期値</span>}
+                  {pending && <span className="ml-1.5 font-sans text-muted">初期値</span>}
                 </span>
               )}
             </li>
@@ -1866,7 +1866,7 @@ function RulesEditor({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="text-xs text-gray-400 hover:text-white"
+          className="text-xs text-muted hover:text-strong"
         >
           {open ? "閉じる" : "変更する"}
         </button>
@@ -2030,8 +2030,8 @@ function SingleMatchBuilder({
         {/* チーム戦は出場するメンバーを明示させる。全員をサイドに入れると、
             バトルの検知(room 集合の一致)が成立しなくなるため。 */}
         {isTeam && entrant && (
-          <div className="space-y-1 rounded-lg bg-white/[0.03] px-3 py-2">
-            <p className="text-xs text-gray-400">
+          <div className="space-y-1 rounded-lg bg-panel px-3 py-2">
+            <p className="text-xs text-muted">
               出場するメンバー（{MAX_SIDE_SIZE}人まで）
             </p>
             {entrant.members.length === 0 ? (
@@ -2045,7 +2045,7 @@ function SingleMatchBuilder({
                     type="checkbox"
                     checked={members.includes(m.id)}
                     onChange={() => toggleMember(m.id, members, setMembers)}
-                    className="h-4 w-4 rounded border-white/20 bg-transparent"
+                    className="h-4 w-4 rounded border-border bg-transparent"
                   />
                   <span className="min-w-0 truncate">{m.label}</span>
                 </label>
@@ -2061,7 +2061,7 @@ function SingleMatchBuilder({
     <form onSubmit={submit} className="card space-y-4">
       <div>
         <h2 className="font-semibold">対戦を組む</h2>
-        <p className="mt-1 text-xs leading-relaxed text-gray-400">
+        <p className="mt-1 text-xs leading-relaxed text-muted">
           時間枠のあいだに実際のバトルが起きると自動で照合する。
           脱落した{label}は選べない。同じ{label}の枠は重ねられない。
           {isTeam && "チームからは実際にバトルへ出るメンバーだけを選ぶ。"}
@@ -2221,39 +2221,39 @@ function MatchCard({
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${
-            MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400"
+            MATCH_STATUS_CLASSES[match.status] ?? "bg-black/5 dark:bg-white/5 text-muted"
           }`}
         >
           {MATCH_STATUS_LABELS[match.status] ?? match.status}
         </span>
         {match.winnerDecidedBy && (
-          <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-400">
+          <span className="rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5 text-xs text-muted">
             {WINNER_DECIDED_BY_LABELS[match.winnerDecidedBy] ?? match.winnerDecidedBy}
           </span>
         )}
         {match.decidedAt && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted">
             決着: {formatJst(new Date(match.decidedAt))}
           </span>
         )}
-        <span className="text-xs text-gray-500">{sessionLabel(sessions, match.sessionId)}</span>
+        <span className="text-xs text-muted">{sessionLabel(sessions, match.sessionId)}</span>
         {reschedulable && sessions.length > 1 ? (
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="ml-auto text-xs text-gray-400 hover:text-white"
+            className="ml-auto text-xs text-muted hover:text-strong"
           >
             {editing ? "閉じる" : "日程を変更"}
           </button>
         ) : !reschedulable ? (
-          <span className="ml-auto text-xs text-gray-600">
+          <span className="ml-auto text-xs text-muted">
             日程の変更には検知のやり直しが要る
           </span>
         ) : null}
       </div>
 
       {editing && reschedulable && (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg bg-white/5 p-3">
+        <div className="flex flex-wrap items-end gap-2 rounded-lg bg-black/5 dark:bg-white/5 p-3">
           <div className="min-w-[14rem] flex-1">
             <label className="label">開催日程</label>
             <select
@@ -2289,20 +2289,20 @@ function MatchCard({
             className={`rounded-lg px-3 py-2 ${
               match.winnerSideId === side.id
                 ? "bg-brand/10 ring-1 ring-brand/40"
-                : "bg-white/5"
+                : "bg-black/5 dark:bg-white/5"
             }`}
           >
             <div className="truncate text-sm font-medium">
-              {side.empty ? <span className="text-gray-500">未確定</span> : side.label}
+              {side.empty ? <span className="text-muted">未確定</span> : side.label}
             </div>
-            <div className="mt-0.5 text-xs text-gray-400">
+            <div className="mt-0.5 text-xs text-muted">
               {Number(side.diamonds).toLocaleString("ja-JP")} ダイヤ
               {/* TikTok 側のバトルスコア。左のダイヤ集計とは別の数値なので、区別できるよう並べる。
                   帰属できていないときに黙って消すと「0」と読めてしまうので「—」を出す。 */}
               {side.tiktokScore !== null ? (
-                <span className="ml-2 text-gray-500">バトルスコア {side.tiktokScore}</span>
+                <span className="ml-2 text-muted">バトルスコア {side.tiktokScore}</span>
               ) : match.battleScoreExpected ? (
-                <span className="ml-2 text-gray-600">バトルスコア —</span>
+                <span className="ml-2 text-muted">バトルスコア —</span>
               ) : null}
               {match.winnerSideId === side.id && (
                 <span className="ml-2 text-brand">勝者</span>
@@ -2313,7 +2313,7 @@ function MatchCard({
       </div>
 
       {match.detectedStartAt && (
-        <p className="text-xs leading-relaxed text-gray-500">
+        <p className="text-xs leading-relaxed text-muted">
           検知: {formatJst(new Date(match.detectedStartAt))}
           {match.detectedEndAt && ` 〜 ${formatJst(new Date(match.detectedEndAt))}`}
           {match.detectedEndSource && ` — ${END_SOURCE_NOTES[match.detectedEndSource] ?? ""}`}
@@ -2321,14 +2321,14 @@ function MatchCard({
       )}
 
       {progressLabel && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-muted">
           勝利条件: {WIN_CONDITION_LABELS[winCondition]}({progressLabel})
         </p>
       )}
 
       {/* 配信者の TikTok userId は event-worker が後追いで埋めるので、待てば出ることがある。 */}
       {match.battleScoreExpected && match.sides.every((s) => s.tiktokScore === null) && (
-        <p className="text-xs leading-relaxed text-gray-600">
+        <p className="text-xs leading-relaxed text-muted">
           バトルスコアは TikTok 側から配信者を特定できたときだけ出る。まだ特定できていないので、
           しばらく待ってから開き直すこと（最終的な勝敗は運営判断で確定するため影響しない）。
         </p>
@@ -2375,7 +2375,7 @@ function MatchCard({
             「前の候補と合算する」を押すと1ゲームとして扱われる。
           </p>
 
-          <label className="flex items-center gap-2 text-xs text-gray-400">
+          <label className="flex items-center gap-2 text-xs text-muted">
             <input
               type="checkbox"
               checked={hideLowDiamond}
@@ -2393,7 +2393,7 @@ function MatchCard({
             return (
               <>
                 {hiddenCount > 0 && (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     1000ダイヤ以下の候補を{hiddenCount}件非表示中(トグルで表示)
                   </p>
                 )}
@@ -2428,7 +2428,7 @@ function MatchCard({
                             }
                           }}
                         />
-                        <span className={pending ? "text-gray-500" : "text-gray-300"}>
+                        <span className={pending ? "text-muted" : "text-strong"}>
                           {formatJst(new Date(c.startedAt))}
                           {c.endedAt ? ` 〜 ${formatJst(new Date(c.endedAt))}` : " (進行中・選択不可)"}
                           {c.confidence === "partial" && " · 部分一致"}
@@ -2436,7 +2436,7 @@ function MatchCard({
                           {diamonds === null && !pending && diamondsLoading && " ・ 集計中"}
                         </span>
                         {canMergeWithPrevious && (
-                          <label className="flex items-center gap-1 text-gray-500">
+                          <label className="flex items-center gap-1 text-muted">
                             <input
                               type="checkbox"
                               checked={mergeWithPreviousIds.has(c.id)}
@@ -2460,7 +2460,7 @@ function MatchCard({
             );
           })()}
 
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted">
             実効ゲーム数: {effectiveGameCount} / 上限 {maxGames}
           </p>
 
@@ -2549,7 +2549,7 @@ function MatchCard({
         )}
 
         {(decidingSideId !== null || isDrawDeciding) && (
-          <div className="w-full space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+          <div className="w-full space-y-2 rounded-lg border border-border bg-black/5 dark:bg-white/5 p-3">
             <label className="label">決着時刻</label>
             <input
               type="datetime-local"
@@ -2560,7 +2560,7 @@ function MatchCard({
             {/* feederDecidedAt(下流のバトル検知の下限)・ライフ適用順のどちらに影響するかは
                 種目で異なるので文言を出し分ける。実際に起きた不具合(準決勝の手動確定が翌日に
                 ずれ込み、決勝の正当なバトルが検知対象から除外された)の再発防止の説明。 */}
-            <p className="text-xs leading-relaxed text-gray-400">
+            <p className="text-xs leading-relaxed text-muted">
               {format === "DEATHMATCH"
                 ? "デスマッチのライフはこの決着時刻の順に適用されます。実際に対戦が終わった時刻をできるだけ正確に入力してください。"
                 : "この時刻より前に開始したバトルは、次のラウンドの対戦検知の対象になりません。迷ったら早めの時刻を入力してください。"}
@@ -2652,7 +2652,7 @@ function MatchCard({
                 return;
               onSend(url, { action: "void" });
             }}
-            className="text-xs text-red-400 hover:text-red-300"
+            className="text-xs text-red-600 dark:text-red-400 hover:text-red-300"
           >
             無効にする
           </button>
@@ -2667,7 +2667,7 @@ function MatchCard({
               if (!window.confirm("この対戦を取り消す。")) return;
               onSend(url, null, "DELETE");
             }}
-            className="text-xs text-gray-500 hover:text-gray-300"
+            className="text-xs text-muted hover:text-strong"
           >
             取り消す
           </button>
@@ -2705,9 +2705,9 @@ function TroubleShootingSection({
   return (
     <div className="space-y-2 rounded-lg border border-red-400/30 bg-red-400/[0.04] px-3 py-2">
       <p className="text-xs font-semibold text-red-300">⚠️ トラブル対処</p>
-      <p className="text-xs leading-relaxed text-gray-400">
+      <p className="text-xs leading-relaxed text-muted">
         バトル検知が失敗してこの対戦の集計が正しく反映されない場合の緊急措置。有効にすると、
-        この対戦の出場者について開催日程内に受け取った<strong className="text-gray-200">全ての</strong>
+        この対戦の出場者について開催日程内に受け取った<strong className="text-strong">全ての</strong>
         ギフトを集計対象にする(通常は検知したバトル区間のみ)。バトル倍率が設定されている場合は
         全期間に倍率が乗る。「検知をやり直す」「無効にする」を行うとこの設定は自動的に解除される。
       </p>

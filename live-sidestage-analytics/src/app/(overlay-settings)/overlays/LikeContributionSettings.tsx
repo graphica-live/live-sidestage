@@ -14,12 +14,12 @@ type Payload = {
 export default function LikeContributionSettings() {
   const { settings, loading, error, update } = useOverlayKindSettings<Payload>("like-contribution");
 
-  if (loading) return <p className="text-sm text-gray-400">読み込み中...</p>;
-  if (!settings) return error ? <p className="text-sm text-red-400">{error}</p> : null;
+  if (loading) return <p className="text-sm text-muted">読み込み中...</p>;
+  if (!settings) return error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null;
 
   return (
     <div className="space-y-5">
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div>
         <label className="label" htmlFor="like-contribution-title">
@@ -83,7 +83,7 @@ export default function LikeContributionSettings() {
           <label className="label mb-0" htmlFor="like-contribution-volume">
             通知音量
           </label>
-          <span className="text-xs text-gray-400">{settings.soundVolume}</span>
+          <span className="text-xs text-muted">{settings.soundVolume}</span>
         </div>
         <input
           id="like-contribution-volume"

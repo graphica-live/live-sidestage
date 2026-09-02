@@ -351,10 +351,10 @@ export function ParticipantManager({
             key={i}
             className={`mt-3 text-xs ${
               n.kind === "error"
-                ? "text-red-400"
+                ? "text-red-600 dark:text-red-400"
                 : n.kind === "warn"
-                  ? "text-yellow-400"
-                  : "text-gray-400"
+                  ? "text-yellow-600 dark:text-yellow-400"
+                  : "text-muted"
             }`}
           >
             {n.text}
@@ -363,7 +363,7 @@ export function ParticipantManager({
       </form>
 
       {participants.length === 0 ? (
-        <div className="card text-sm text-gray-500">
+        <div className="card text-sm text-muted">
           まだ参加者がいない。TikTok ID を追加すると、その配信者のギフトがイベントの集計対象になる。
         </div>
       ) : (
@@ -420,7 +420,7 @@ export function ParticipantManager({
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="shrink-0 text-xs text-gray-500 hover:text-white"
+                      className="shrink-0 text-xs text-muted hover:text-strong"
                     >
                       取消
                     </button>
@@ -445,21 +445,21 @@ export function ParticipantManager({
                     </button>
                     {p.verified ? (
                       <span
-                        className="shrink-0 rounded-full bg-green-400/10 px-2 py-0.5 text-xs text-green-400"
+                        className="shrink-0 rounded-full bg-green-400/10 px-2 py-0.5 text-xs text-green-600 dark:text-green-400"
                         title="当サービスに会員登録済みで、本人確認(BIO認証)を通っている"
                       >
                         本人確認済み
                       </span>
                     ) : p.registered ? (
                       <span
-                        className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-400"
+                        className="shrink-0 rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5 text-xs text-muted"
                         title="当サービスに会員登録はあるが、本人確認は済んでいない"
                       >
                         会員登録あり
                       </span>
                     ) : (
                       <span
-                        className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-500"
+                        className="shrink-0 rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5 text-xs text-muted"
                         title="当サービスに会員登録がない配信者。本人性は主催者の責任で確認すること"
                       >
                         未登録
@@ -505,7 +505,7 @@ export function ParticipantManager({
                       type="button"
                       onClick={cancelEditTiktok}
                       disabled={busy}
-                      className="shrink-0 text-xs text-gray-500 hover:text-white"
+                      className="shrink-0 text-xs text-muted hover:text-strong"
                     >
                       取消
                     </button>
@@ -519,7 +519,7 @@ export function ParticipantManager({
                     aria-label={`@${p.tiktokId} の TikTok ID を訂正`}
                     className="group flex min-w-0 items-center gap-1 text-left"
                   >
-                    <span className="truncate font-mono text-xs text-gray-500 group-hover:underline">
+                    <span className="truncate font-mono text-xs text-muted group-hover:underline">
                       @{p.tiktokId}
                     </span>
                     <PencilIcon />
@@ -547,8 +547,8 @@ export function ParticipantManager({
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
                   p.listenerStatus
-                    ? (LISTENER_STATUS_CLASSES[p.listenerStatus] ?? "text-gray-400 bg-white/5")
-                    : "text-yellow-400 bg-yellow-400/10"
+                    ? (LISTENER_STATUS_CLASSES[p.listenerStatus] ?? "text-muted bg-black/5 dark:bg-white/5")
+                    : "text-yellow-600 dark:text-yellow-400 bg-yellow-400/10"
                 }`}
               >
                 {p.listenerStatus
@@ -559,7 +559,7 @@ export function ParticipantManager({
               <button
                 onClick={() => remove(p)}
                 disabled={busy}
-                className="shrink-0 text-xs text-red-400 hover:underline"
+                className="shrink-0 text-xs text-red-600 dark:text-red-400 hover:underline"
               >
                 外す
               </button>
@@ -568,7 +568,7 @@ export function ParticipantManager({
         </ul>
       )}
 
-      <p className="text-xs leading-relaxed text-gray-500">
+      <p className="text-xs leading-relaxed text-muted">
         参加者を追加すると、その配信者の TikTok Live をイベント終了まで監視する。監視の開始・停止は
         最大60秒ごとの同期で反映される。参加者を外しても、それまでに受信したギフトのデータは消えない。
         一覧の表示名はペンマークか名前をクリックすると編集できる。TikTok ID
@@ -621,7 +621,7 @@ function AvatarPreview({
       onClick={onClick}
       title="クリックで対戦カードのアイコン位置を編集"
       aria-label={`${participant.displayName} の対戦カード表示を編集`}
-      className="relative h-10 w-[76px] shrink-0 overflow-hidden rounded-sm border border-white/10 bg-white/5"
+      className="relative h-10 w-[76px] shrink-0 overflow-hidden rounded-sm border border-border bg-black/5 dark:bg-white/5"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -652,7 +652,7 @@ function PencilIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-3.5 w-3.5 shrink-0 text-gray-400 transition-colors group-hover:text-white"
+      className="h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-strong"
     >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />

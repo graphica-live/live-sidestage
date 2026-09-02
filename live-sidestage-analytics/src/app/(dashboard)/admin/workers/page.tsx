@@ -29,9 +29,9 @@ function ageMs(iso: string | null, nowMs: number): number | null {
 }
 
 function statusColor(status: string): string {
-  if (status === "connected") return "text-green-400";
-  if (status === "connecting" || status === "retrying") return "text-yellow-400";
-  return "text-red-400";
+  if (status === "connected") return "text-green-600 dark:text-green-400";
+  if (status === "connecting" || status === "retrying") return "text-yellow-600 dark:text-yellow-400";
+  return "text-red-600 dark:text-red-400";
 }
 
 // issue の type は worker_url_count_mismatch のように長く、スマホ幅では改行できずに
@@ -101,8 +101,8 @@ export default function WorkersAdminPage() {
     <div className="p-6 max-w-5xl">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-white">Worker 稼働状況</h1>
-          <p className="text-xs text-gray-400 mt-1">
+          <h1 className="text-lg font-bold text-strong">Worker 稼働状況</h1>
+          <p className="text-xs text-muted mt-1">
             {REFRESH_INTERVAL_MS / 1000}秒ごとに自動更新
             {report && ` · 最終取得 ${new Date(report.generatedAt).toLocaleTimeString("ja-JP")}`}
           </p>
@@ -110,7 +110,7 @@ export default function WorkersAdminPage() {
         <button
           onClick={load}
           disabled={loading}
-          className="px-3 py-1.5 text-sm rounded border border-border text-gray-300 hover:bg-white/5 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
         >
           {loading ? "取得中..." : "更新"}
         </button>
@@ -145,35 +145,35 @@ export default function WorkersAdminPage() {
         </div>
       )}
 
-      {!report && !error && <p className="text-sm text-gray-400">読み込み中...</p>}
+      {!report && !error && <p className="text-sm text-muted">読み込み中...</p>}
 
       <div className="space-y-4">
         {report?.workers.map((w) => (
           <div key={w.workerIndex} className="rounded border border-border bg-panel">
             <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
-              <span className="text-sm font-bold text-white">worker {w.workerIndex}</span>
+              <span className="text-sm font-bold text-strong">worker {w.workerIndex}</span>
               {w.reachable ? (
-                <span className={w.ready ? "text-xs text-green-400" : "text-xs text-yellow-400"}>
+                <span className={w.ready ? "text-xs text-green-600 dark:text-green-400" : "text-xs text-yellow-600 dark:text-yellow-400"}>
                   {w.ready ? "ready" : "unready"}
                 </span>
               ) : (
-                <span className="text-xs text-red-400">応答なし</span>
+                <span className="text-xs text-red-600 dark:text-red-400">応答なし</span>
               )}
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-muted">
                 listener {w.listeners.length}件 / DB 上の担当 {w.assignedRooms.length}件
               </span>
               {w.uptimeMs != null && (
-                <span className="text-xs text-gray-400">稼働 {formatDuration(w.uptimeMs)}</span>
+                <span className="text-xs text-muted">稼働 {formatDuration(w.uptimeMs)}</span>
               )}
               {/* 本番の URL は worker1.railway.internal:8080 と長いので、狭い幅では折り返させる。 */}
               {w.url && (
-                <span className="text-xs text-gray-500 font-mono ml-auto min-w-0 break-all">
+                <span className="text-xs text-muted font-mono ml-auto min-w-0 break-all">
                   {w.url}
                 </span>
               )}
             </div>
 
-            <div className="px-4 py-2 text-xs text-gray-400 border-b border-border">
+            <div className="px-4 py-2 text-xs text-muted border-b border-border">
               {w.reachable ? (
                 <>
                   最終 reconcile:{" "}
@@ -199,10 +199,10 @@ export default function WorkersAdminPage() {
               <div className="divide-y divide-border">
                 {w.listeners.map((l) => (
                   <div key={l.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
-                    <span className="text-sm text-white">@{l.tiktokId}</span>
+                    <span className="text-sm text-strong">@{l.tiktokId}</span>
                     <span className={`text-xs ${statusColor(l.status)}`}>{l.status}</span>
-                    <span className="text-xs text-gray-400">{l.message}</span>
-                    <span className="text-xs text-gray-500 ml-auto">
+                    <span className="text-xs text-muted">{l.message}</span>
+                    <span className="text-xs text-muted ml-auto">
                       購読 {l.subscriberCount}人 · 無音 {formatDuration(l.silentForMs)}
                       {l.watchdogTriggerCount > 0 && ` · watchdog ${l.watchdogTriggerCount}回`}
                     </span>
@@ -212,7 +212,7 @@ export default function WorkersAdminPage() {
             )}
 
             {w.reachable && w.listeners.length === 0 && (
-              <div className="px-4 py-2 text-xs text-gray-500">listener なし（待機中）</div>
+              <div className="px-4 py-2 text-xs text-muted">listener なし（待機中）</div>
             )}
           </div>
         ))}
@@ -220,14 +220,14 @@ export default function WorkersAdminPage() {
 
       {report && report.guardianAuditLog.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel">
-          <div className="px-4 py-2 border-b border-border text-sm text-white">
+          <div className="px-4 py-2 border-b border-border text-sm text-strong">
             worker-guardian 自動移送履歴(直近{report.guardianAuditLog.length}件)
           </div>
           <div className="divide-y divide-border">
             {[...report.guardianAuditLog].reverse().map((entry, i) => (
-              <div key={i} className="px-4 py-2 text-xs text-gray-400">
+              <div key={i} className="px-4 py-2 text-xs text-muted">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-gray-300">
+                  <span className="text-strong">
                     {new Date(entry.at).toLocaleString("ja-JP")}
                   </span>
                   <span className="text-red-300">worker {entry.deadWorkerIndex} 死亡確定</span>
@@ -238,7 +238,7 @@ export default function WorkersAdminPage() {
                   )}
                 </div>
                 {entry.assignments.length > 0 && (
-                  <div className="mt-1 text-gray-500">
+                  <div className="mt-1 text-muted">
                     {entry.assignments.map((a) => `@${a.tiktokId}→worker${a.toWorker}`).join(", ")}
                   </div>
                 )}
@@ -250,9 +250,9 @@ export default function WorkersAdminPage() {
 
       {report && report.unassignedRooms.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel">
-          <div className="px-4 py-2 border-b border-border text-sm text-white">workerId 未割当</div>
+          <div className="px-4 py-2 border-b border-border text-sm text-strong">workerId 未割当</div>
           {report.unassignedRooms.map((r) => (
-            <div key={r.roomId} className="px-4 py-2 text-xs text-gray-400">
+            <div key={r.roomId} className="px-4 py-2 text-xs text-muted">
               @{r.tiktokId}
             </div>
           ))}

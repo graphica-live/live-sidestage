@@ -70,7 +70,7 @@ export function MatchContributions({
           setOpen(true);
           if (!data) void load();
         }}
-        className="text-xs text-gray-400 hover:text-white"
+        className="text-xs text-muted hover:text-strong"
       >
         リスナー貢献を見る
       </button>
@@ -78,31 +78,31 @@ export function MatchContributions({
   }
 
   return (
-    <div className="space-y-2 rounded-lg bg-white/5 p-3">
+    <div className="space-y-2 rounded-lg bg-black/5 dark:bg-white/5 p-3">
       <div className="flex items-center gap-3">
-        <h3 className="text-xs font-semibold text-gray-300">枠ごとのリスナー貢献</h3>
+        <h3 className="text-xs font-semibold text-strong">枠ごとのリスナー貢献</h3>
         <button
           type="button"
           disabled={loading}
           onClick={() => void load()}
-          className="text-xs text-gray-400 hover:text-white disabled:opacity-50"
+          className="text-xs text-muted hover:text-strong disabled:opacity-50"
         >
           {loading ? "読み込み中..." : "更新"}
         </button>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="ml-auto text-xs text-gray-500 hover:text-gray-300"
+          className="ml-auto text-xs text-muted hover:text-strong"
         >
           閉じる
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {!data && loading && <p className="text-xs text-gray-500">読み込み中...</p>}
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {!data && loading && <p className="text-xs text-muted">読み込み中...</p>}
 
       {data && data.status !== "ok" && (
-        <p className="text-xs leading-relaxed text-gray-500">
+        <p className="text-xs leading-relaxed text-muted">
           {STATUS_NOTES[data.status] ?? "この対戦は集計できない。"}
         </p>
       )}
@@ -155,14 +155,14 @@ function Slots({
         </p>
       )}
       {manual && (
-        <p className="text-xs leading-relaxed text-gray-500">
+        <p className="text-xs leading-relaxed text-muted">
           主催者が結果を確定した対戦のため、上のサイド表示のダイヤは集計されていない（0
           のまま）。ここの数字は検知した区間から数え直したもので、順位表と同じ母集団。
         </p>
       )}
 
       {data.slots.length === 0 ? (
-        <p className="text-xs text-gray-500">出場者が確定していない。</p>
+        <p className="text-xs text-muted">出場者が確定していない。</p>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {data.slots.map((slot) => (
@@ -200,34 +200,34 @@ function SlotColumn({
   reserveScoreRow: boolean;
 }) {
   return (
-    <div className="min-w-[13rem] flex-1 rounded-lg bg-white/5 p-2">
+    <div className="min-w-[13rem] flex-1 rounded-lg bg-black/5 dark:bg-white/5 p-2">
       <div className="truncate text-sm font-medium" title={`@${slot.tiktokId}`}>
         {slot.displayName}
       </div>
-      <div className="mt-0.5 text-xs text-gray-400">
+      <div className="mt-0.5 text-xs text-muted">
         {formatNumber(slot.diamonds)} ダイヤ
         {hasMultiplier && (
-          <span className="ml-2 text-gray-500">{formatPoints(slot.points)} pt</span>
+          <span className="ml-2 text-muted">{formatPoints(slot.points)} pt</span>
         )}
       </div>
       {tiktokScore !== null ? (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-muted">
           バトルスコア {tiktokScore}
-          {scoreIsSideTotal && <span className="ml-1 text-gray-600">(サイド合計)</span>}
+          {scoreIsSideTotal && <span className="ml-1 text-muted">(サイド合計)</span>}
         </div>
       ) : reserveScoreRow ? (
-        <div className="text-xs text-gray-500" aria-hidden>
+        <div className="text-xs text-muted" aria-hidden>
           &nbsp;
         </div>
       ) : null}
 
       {slot.listeners.length === 0 ? (
-        <p className="mt-2 text-xs text-gray-600">この区間のギフトなし</p>
+        <p className="mt-2 text-xs text-muted">この区間のギフトなし</p>
       ) : (
         <ol className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
           {slot.listeners.map((listener, index) => (
             <li key={listener.uniqueId} className="flex items-center gap-1.5 text-xs">
-              <span className="w-4 shrink-0 text-right text-gray-500">{index + 1}</span>
+              <span className="w-4 shrink-0 text-right text-muted">{index + 1}</span>
               {listener.profileImageUrl ? (
                 // 外部(TikTok CDN)の画像なので next/image の最適化は通さない。
                 // eslint-disable-next-line @next/next/no-img-element
@@ -238,12 +238,12 @@ function SlotColumn({
                   loading="lazy"
                 />
               ) : (
-                <span className="h-5 w-5 shrink-0 rounded-full bg-white/10" aria-hidden />
+                <span className="h-5 w-5 shrink-0 rounded-full bg-black/10 dark:bg-white/10" aria-hidden />
               )}
               <span className="min-w-0 flex-1 truncate" title={`@${listener.uniqueId}`}>
                 {listener.nickname}
               </span>
-              <span className="shrink-0 tabular-nums text-gray-400">
+              <span className="shrink-0 tabular-nums text-muted">
                 {hasMultiplier ? formatPoints(listener.points) : formatNumber(listener.diamonds)}
               </span>
             </li>

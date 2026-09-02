@@ -42,14 +42,14 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
   return (
     <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
       <header>
-        <h1 className="text-xl font-bold text-white">オーバーレイ</h1>
-        <p className="text-sm text-gray-400 mt-1">
+        <h1 className="text-xl font-bold text-strong">オーバーレイ</h1>
+        <p className="text-sm text-muted mt-1">
           OBS の「ブラウザ」ソースに URL を貼ると、配信画面に重ねて表示できます。
         </p>
       </header>
 
       {error && (
-        <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+        <p className="text-sm text-red-600 dark:text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
       )}
 
       {OVERLAY_KIND_LIST.length > 1 && (
@@ -61,7 +61,7 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
               className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
                 k.kind === selectedKind
                   ? "border-brand text-brand bg-brand/10"
-                  : "border-border text-gray-400 hover:text-white hover:border-white/30"
+                  : "border-border text-muted hover:text-strong hover:border-brand/40"
               }`}
             >
               {k.label}
@@ -73,16 +73,16 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
       <section className="card space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-white">{meta.label}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{meta.description}</p>
+            <h2 className="font-semibold text-strong">{meta.label}</h2>
+            <p className="text-xs text-muted mt-0.5">{meta.description}</p>
           </div>
-          {saving && <span className="text-xs text-gray-500 shrink-0 pt-1">保存中…</span>}
+          {saving && <span className="text-xs text-muted shrink-0 pt-1">保存中…</span>}
         </div>
 
         <div>
           <span className="label">OBS に貼る URL</span>
           <div className="flex items-center gap-2">
-            <code className="text-xs font-mono text-white bg-black/40 border border-border px-2.5 py-2 rounded-lg flex-1 truncate">
+            <code className="text-xs font-mono text-strong bg-black/5 dark:bg-white/5 border border-border px-2.5 py-2 rounded-lg flex-1 truncate">
               {overlayUrl || "読み込み中..."}
             </code>
             <button
@@ -98,7 +98,7 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
               {copied ? "✓ コピー済み" : "コピー"}
             </button>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1.5">
+          <p className="text-[11px] text-muted mt-1.5">
             この URL を知っている人は誰でも表示できます。配信画面には映さないでください。
           </p>
         </div>
@@ -121,13 +121,13 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
               ) : (
                 <div className="w-full h-[420px] rounded-xl border border-border bg-black/40" />
               )}
-              <p className="text-[11px] text-gray-500 mt-1.5">
+              <p className="text-[11px] text-muted mt-1.5">
                 見やすいように暗い背景を敷いています。実際の配信では背景は透明になります。
               </p>
             </div>
           </div>
         ) : loading ? (
-          <p className="text-sm text-gray-400">読み込み中...</p>
+          <p className="text-sm text-muted">読み込み中...</p>
         ) : settings ? (
           <div className="grid gap-6 lg:grid-cols-2">
             <ContributionSettings settings={settings} update={update} />
@@ -143,7 +143,7 @@ export default function OverlaysPageClient({ origin }: { origin: string }) {
               ) : (
                 <div className="w-full h-[420px] rounded-xl border border-border bg-black/40" />
               )}
-              <p className="text-[11px] text-gray-500 mt-1.5">
+              <p className="text-[11px] text-muted mt-1.5">
                 見やすいように暗い背景を敷いています。実際の配信では背景は透明になります。
               </p>
             </div>

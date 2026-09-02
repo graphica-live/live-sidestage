@@ -16,7 +16,7 @@ export default async function DashboardLayout({
   return (
     <>
       {isAdminEmail(session.user.email) && (
-        <div className="bg-black border-b border-border px-4 py-1 text-right">
+        <div className="bg-panel border-b border-border px-4 py-1 text-right">
           <Link href="/admin" className="text-xs text-brand hover:underline">
             管理者
           </Link>

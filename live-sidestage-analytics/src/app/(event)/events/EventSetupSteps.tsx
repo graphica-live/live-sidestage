@@ -35,10 +35,10 @@ export function EventSetupSteps({
         const active = index === currentIndex;
         return (
           <li key={step} className="flex items-center gap-2">
-            {index > 0 && <span className="text-gray-700">›</span>}
+            {index > 0 && <span className="text-muted">›</span>}
             <span
               className={
-                active ? "font-medium text-white" : done ? "text-gray-400" : "text-gray-600"
+                active ? "font-medium text-strong" : done ? "text-muted" : "text-muted opacity-60"
               }
             >
               {index + 1}. {STEP_LABELS[step]}

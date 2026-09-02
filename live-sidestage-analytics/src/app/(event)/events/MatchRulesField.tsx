@@ -166,8 +166,8 @@ function ToggleField({
             onClick={() => onChange(opt.value)}
             className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
               value === opt.value
-                ? "border-brand bg-brand/5 text-white"
-                : "border-border bg-panel text-gray-400 hover:text-white"
+                ? "border-brand bg-brand/5 text-strong"
+                : "border-border bg-panel text-muted hover:text-strong"
             }`}
           >
             {opt.text}

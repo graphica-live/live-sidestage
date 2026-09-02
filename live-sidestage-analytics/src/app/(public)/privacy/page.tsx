@@ -10,8 +10,8 @@ const UPDATED_AT = "2026-08-30";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold text-white">{title}</h2>
-      <div className="space-y-2 text-sm leading-relaxed text-neutral-300">{children}</div>
+      <h2 className="text-lg font-semibold text-strong">{title}</h2>
+      <div className="space-y-2 text-sm leading-relaxed text-strong">{children}</div>
     </section>
   );
 }
@@ -19,8 +19,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="text-2xl font-bold text-white">プライバシーポリシー</h1>
-      <p className="mt-2 text-xs text-neutral-500">最終更新日: {UPDATED_AT}</p>
+      <h1 className="text-2xl font-bold text-strong">プライバシーポリシー</h1>
+      <p className="mt-2 text-xs text-muted">最終更新日: {UPDATED_AT}</p>
 
       <div className="mt-8 space-y-10">
         <Section title="1. 取得する情報">
@@ -30,29 +30,29 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong className="text-neutral-100">Googleアカウントでログインした場合:</strong>{" "}
+              <strong className="text-strong">Googleアカウントでログインした場合:</strong>{" "}
               氏名、メールアドレス、プロフィール画像、Google発行のアカウント識別子(provider
               ID)を取得します。
             </li>
             <li>
-              <strong className="text-neutral-100">Appleアカウントでログインした場合:</strong>{" "}
+              <strong className="text-strong">Appleアカウントでログインした場合:</strong>{" "}
               Apple発行のアカウント識別子(sub)、メールアドレス(Appleの非公開リレーアドレスの場合を含む)、氏名を取得します。氏名やメールアドレスはApple側の設定により共有されない場合があります。
             </li>
             <li>
-              <strong className="text-neutral-100">TikTok連携情報:</strong>{" "}
+              <strong className="text-strong">TikTok連携情報:</strong>{" "}
               配信者ご自身が登録するTikTokアカウントのIDを取得し、配信データの取得に利用します。
             </li>
             <li>
-              <strong className="text-neutral-100">TikTok LIVE配信中に取得する視聴者側の情報:</strong>{" "}
+              <strong className="text-strong">TikTok LIVE配信中に取得する視聴者側の情報:</strong>{" "}
               配信中にTikTok
               LIVEから受信するニックネーム、TikTokユーザーID、コメント本文、ギフトの種類・回数を取得します。これらは配信画面へのリアルタイム表示・集計を目的としたもので、視聴者自身によるアプリの利用ではありません。
             </li>
             <li>
-              <strong className="text-neutral-100">イベント(大会)機能利用時の情報:</strong>{" "}
+              <strong className="text-strong">イベント(大会)機能利用時の情報:</strong>{" "}
               大会への参加登録情報、対戦の公開結果、大会カバー画像を取得します。
             </li>
             <li>
-              <strong className="text-neutral-100">決済情報:</strong>{" "}
+              <strong className="text-strong">決済情報:</strong>{" "}
               有料プランのお支払いはStripe社が処理し、カード番号などの決済情報自体は当社では保持しません。取引記録は法令に基づき保存されます。
             </li>
           </ul>
@@ -88,11 +88,11 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong className="text-neutral-100">主催したイベント(大会):</strong>{" "}
+              <strong className="text-strong">主催したイベント(大会):</strong>{" "}
               大会は主催者お一人の所有物ではなく、他の参加者・観戦者にとっての公開データであるため、アカウント削除後も大会ページ・参加者情報・対戦結果はそのまま閲覧可能な状態で保持されます。削除後は主催者としての編集操作ができなくなります。
             </li>
             <li>
-              <strong className="text-neutral-100">TikTok LIVE配信データ:</strong>{" "}
+              <strong className="text-strong">TikTok LIVE配信データ:</strong>{" "}
               同一TikTokアカウントを他の利用者も登録している場合、そのTikTokアカウントの配信データ(ギフト履歴等)は削除されず、TikTok側の部屋データとして残る場合があります。
             </li>
           </ul>

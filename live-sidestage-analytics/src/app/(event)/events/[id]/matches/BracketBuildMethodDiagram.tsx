@@ -61,7 +61,7 @@ function Box({
           x={x + BOX_W / 2}
           y={y + BOX_H / 2 + 3}
           textAnchor="middle"
-          className={variant === "highlight" ? "fill-brand text-[8px]" : "fill-gray-200 text-[8px]"}
+          className={variant === "highlight" ? "fill-brand text-[8px]" : "fill-strong text-[8px]"}
         >
           {label}
         </text>
@@ -135,7 +135,7 @@ function SeedDiagram() {
             x={LIST_X + LIST_W / 2}
             y={leafY(i) + BOX_H / 2 + 3}
             textAnchor="middle"
-            className="fill-gray-200 text-[8px]"
+            className="fill-strong text-[8px]"
           >
             {label}
           </text>
@@ -203,7 +203,7 @@ function ManualDiagram() {
             x={LIST_X + LIST_W / 2}
             y={leafY(i * 2) + BOX_H / 2 + 3}
             textAnchor="middle"
-            className="fill-gray-200 text-[8px]"
+            className="fill-strong text-[8px]"
           >
             {label}
           </text>

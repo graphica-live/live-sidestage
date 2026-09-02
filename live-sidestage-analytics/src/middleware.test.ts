@@ -168,6 +168,18 @@ describe("middleware の matcher", () => {
       expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
     }
   });
+
+  it("利用規約は認証なしで通る", () => {
+    for (const path of ["/terms", "/terms/"]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("利用規約と似た文字列のパスは保護されたままになる", () => {
+    for (const path of ["/terms-something", "/termsofservice"]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
 });
 
 // canonical-origin.ts は *_ORIGIN 環境変数をモジュール読み込み時に評価するため、
