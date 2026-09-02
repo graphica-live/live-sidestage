@@ -4,30 +4,36 @@ import { getSetting } from "./settings";
 import { fetchTiktokProfile, type TiktokProfileResult } from "./tiktok-profile";
 import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 
-// TikTok上に存在しなくなった(削除/改名された)アカウントに紐づくStreamerを検出・削除する
+// TikTok上に存在しなくなった(削除/改名された)可能性があるRoomの監視を一時停止する
 // 日次バッチ(tiktok-cleanup.ts から呼ばれる)。worker-guardian.ts と同じ設計パターン
 // (純粋関数 + オーケストレータ + kill switch + AppSetting監査ログ)を踏襲する。
+//
+// **データは一切削除しない。** 停止は TiktokRoom.monitoringSuspended を立てるだけで、
+// Streamer/GiftEdit/overlayToken/apiKey/Gift/BattleHistoryは全て残る
+// (tiktok-low-value-cleanup.ts と同じ仕組み)。ユーザーが再ログイン・再アクセスすると
+// markLastActive() が自動でフラグを戻し、次のreconcile(60秒間隔)で監視が復活する。
+// 以前はStreamerごと削除する設計だったが、TikTok改名(uniqueId変更)は「打ち間違いで
+// 最初から存在しないID」と同じNOT_FOUND応答になり、TikTok側での逆引きは無認証では
+// 不可能なため、確定的な削除は取り返しがつかないリスクを持つと判断し撤回した。
+// 監視停止であれば、判定が誤りだったとしても実害は無く(再ログインで即復活)、
+// 判定が正しければ単に無駄な接続を試み続けなくなるだけ。
 //
 // 対象の絞り込みは TiktokRoom.listenerStatus が retrying/error に入ってから
 // UNHEALTHY_THRESHOLD_MS 継続しているRoomのみ。全件毎回チェックはしない
 // (fetchTiktokProfile() はプロキシなし単一データセンターIP頼りで、TikTok側の
 // レート制限・bot判定を過度に刺激したくないため)。
 //
-// 削除確定は NOT_FOUND が NOT_FOUND_STREAK_REQUIRED 回連続、かつ NOT_FOUND_ELAPSED_MS 以上
+// 停止確定は NOT_FOUND が NOT_FOUND_STREAK_REQUIRED 回連続、かつ NOT_FOUND_ELAPSED_MS 以上
 // 経過した場合のみ。RATE_LIMITED/ERROR(判定不能)はストリークをリセットせず無視する —
 // 字義通りリセットすると、TikTok側のレート制限が続く間は永久に連続回数を達成できない
 // 自己矛盾が起きるため。
 //
 // 誤検出への防御(実装前レビューで指摘): NOT_FOUND判定は statusCode 単一シグナル頼りで、
 // TikTok側のbot判定強化で休眠中の実在アカウントが一斉にNOT_FOUND化するリスクがある。
-// そのため (1) run単位の削除件数上限(MAX_DELETES_PER_RUN)、(2) run内NOT_FOUND率が
-// 異常に高ければ削除を一切実行せず打ち切る、の2段構えで恒久的にガードする。
-//
-// さらに、TikTok改名(uniqueId変更)は「打ち間違いで最初から存在しないID」と同じNOT_FOUND
-// 応答になり、TikTok側での逆引きは無認証では不可能(既存の手動スクリプト
-// scripts/cleanup-nonexistent-streamers.ts で2026-08に実測済み)。したがって、NOT_FOUND確定
-// 条件を満たしても、対象RoomにGift受信実績が1件でもあれば自動削除せず「要手動確認」として
-// 監査ログに記録するだけに留める(少なくとも一度は実際に配信していた証拠があるため)。
+// そのため (1) run単位の停止件数上限(MAX_SUSPENSIONS_PER_RUN)、(2) run内NOT_FOUND率が
+// 異常に高ければ停止を一切実行せず打ち切る、の2段構えで恒久的にガードする
+// (データ削除ではなくなったため必須ではないが、無駄な接続断が大量発生するのを防ぐ
+// 意味で維持する)。
 
 export const UNHEALTHY_THRESHOLD_MS =
   Number(process.env.TIKTOK_CLEANUP_UNHEALTHY_DAYS ?? 30) * 86_400_000;
@@ -40,7 +46,12 @@ export const MAX_CHECKS_PER_RUN = Number(process.env.TIKTOK_CLEANUP_MAX_CHECKS_P
 export const CONCURRENCY = Number(process.env.TIKTOK_CLEANUP_CONCURRENCY ?? 2);
 export const BATCH_DELAY_MS = Number(process.env.TIKTOK_CLEANUP_BATCH_DELAY_MS ?? 1000);
 export const CIRCUIT_THRESHOLD = Number(process.env.TIKTOK_CLEANUP_CIRCUIT_THRESHOLD ?? 5);
-export const MAX_DELETES_PER_RUN = Number(process.env.TIKTOK_CLEANUP_MAX_DELETES_PER_RUN ?? 5);
+// 旧環境変数名(TIKTOK_CLEANUP_MAX_DELETES_PER_RUN)からのリネーム(Code Modeレビューで指摘)。
+// 本番に旧変数名が設定済みの場合に黙って既定値へ落ちないよう、新変数名が未設定なら
+// 旧変数名にfallbackする。既定値はどちらも5で同一。
+export const MAX_SUSPENSIONS_PER_RUN = Number(
+  process.env.TIKTOK_CLEANUP_MAX_SUSPENSIONS_PER_RUN ?? process.env.TIKTOK_CLEANUP_MAX_DELETES_PER_RUN ?? 5
+);
 export const NOT_FOUND_RATE_GUARD_MIN_CHECKS = Number(
   process.env.TIKTOK_CLEANUP_NOT_FOUND_RATE_GUARD_MIN_CHECKS ?? 10
 );
@@ -80,6 +91,7 @@ export async function selectCleanupCandidates(now: Date, limit: number): Promise
       listenerStatus: { in: ["retrying", "error"] },
       unhealthySince: { lte: unhealthyCutoff },
       streamers: { some: {} },
+      monitoringSuspended: false,
       OR: [{ lastExistenceCheckAt: null }, { lastExistenceCheckAt: { lte: cooldownCutoff } }],
     },
     orderBy: { lastExistenceCheckAt: { sort: "asc", nulls: "first" } },
@@ -94,25 +106,25 @@ export type ExistenceClassification = {
   notFoundStreak: number;
   notFoundFirstAt: Date | null;
   outcome: ExistenceOutcome;
-  shouldDelete: boolean;
+  shouldSuspend: boolean;
 };
 
-/** fetchTiktokProfile()の結果からストリークを更新し、削除確定すべきかを判定する。純粋関数。 */
+/** fetchTiktokProfile()の結果からストリークを更新し、監視停止確定すべきかを判定する。純粋関数。 */
 export function classifyExistenceResult(
   current: { notFoundStreak: number; notFoundFirstAt: Date | null },
   result: TiktokProfileResult,
   now: Date
 ): ExistenceClassification {
   if (result.ok) {
-    return { notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldDelete: false };
+    return { notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldSuspend: false };
   }
 
   if (result.reason === "NOT_FOUND") {
     const notFoundFirstAt = current.notFoundStreak > 0 && current.notFoundFirstAt ? current.notFoundFirstAt : now;
     const notFoundStreak = current.notFoundStreak + 1;
     const elapsedMs = now.getTime() - notFoundFirstAt.getTime();
-    const shouldDelete = notFoundStreak >= NOT_FOUND_STREAK_REQUIRED && elapsedMs >= NOT_FOUND_ELAPSED_MS;
-    return { notFoundStreak, notFoundFirstAt, outcome: "not_found", shouldDelete };
+    const shouldSuspend = notFoundStreak >= NOT_FOUND_STREAK_REQUIRED && elapsedMs >= NOT_FOUND_ELAPSED_MS;
+    return { notFoundStreak, notFoundFirstAt, outcome: "not_found", shouldSuspend };
   }
 
   // RATE_LIMITED / ERROR: 判定不能として現状維持(増やしも減らしもしない)。
@@ -120,7 +132,7 @@ export function classifyExistenceResult(
     notFoundStreak: current.notFoundStreak,
     notFoundFirstAt: current.notFoundFirstAt,
     outcome: "inconclusive",
-    shouldDelete: false,
+    shouldSuspend: false,
   };
 }
 
@@ -150,21 +162,11 @@ export type CleanupAuditEntry = {
   roomId: string;
   tiktokId: string;
   dryRun: boolean;
-  outcome: "deleted" | "needs_review" | "dry_run";
+  outcome: "suspended" | "dry_run";
   notFoundStreak: number;
   notFoundFirstAt: string;
   giftCount: number;
-  deletedStreamers: Array<{
-    streamerId: string;
-    userId: string;
-    userEmail: string | null;
-    tiktokIdEntered: string;
-    verified: boolean;
-    createdAt: string;
-    hadApiKey: boolean;
-    hadOverlayToken: boolean;
-    giftEditCount: number;
-  }>;
+  watcherCount: number;
 };
 
 async function appendCleanupAuditLog(tx: Prisma.TransactionClient, entry: CleanupAuditEntry): Promise<void> {
@@ -188,13 +190,12 @@ async function appendCleanupAuditLog(tx: Prisma.TransactionClient, entry: Cleanu
 }
 
 /**
- * NOT_FOUND確定したRoom1件ぶんの削除を実行する(dryRun時は監査ログのみ記録)。
+ * NOT_FOUND確定したRoom1件ぶんの監視を停止する(dryRun時は監査ログのみ記録)。
+ * データは削除しない — TiktokRoom.monitoringSuspended を立てるだけ。
  *
  * TOCTOU再確認: 選定〜ここまでの間にlistenerがconnected復帰していないか確認する。
- * Gift安全策: 受信済みGiftが1件でもあれば、TikTok改名の可能性を考慮して自動削除せず
- * "needs_review"として記録するだけに留める(既存の手動スクリプトから移植した安全策)。
  */
-export async function deleteConfirmedRoom(
+export async function suspendNotFoundRoom(
   room: { id: string; tiktokId: string },
   dryRun: boolean
 ): Promise<CleanupAuditEntry | null> {
@@ -211,57 +212,36 @@ export async function deleteConfirmedRoom(
 
     const streamers = await tx.streamer.findMany({
       where: { roomId: room.id },
-      select: {
-        id: true,
-        userId: true,
-        tiktokId: true,
-        verified: true,
-        createdAt: true,
-        apiKey: true,
-        overlayToken: true,
-        user: { select: { email: true } },
-        giftEdits: { select: { id: true } },
-      },
+      select: { userId: true },
     });
     if (streamers.length === 0) return null;
 
-    // 課金ユーザーが1人でも監視しているRoomは、TikTok上NOT_FOUND確定でも自動削除しない。
+    // 課金ユーザーが1人でも監視しているRoomは、TikTok上NOT_FOUND確定でも自動停止しない。
     if (await roomHasPaidWatcher(streamers.map((s) => s.userId), tx)) {
-      console.warn(`[tiktok-cleanup] @${room.tiktokId} はNOT_FOUND確定だが課金ユーザーが監視中 — 自動削除せず要手動確認`);
+      console.warn(`[tiktok-cleanup] @${room.tiktokId} はNOT_FOUND確定だが課金ユーザーが監視中 — 自動停止せず要手動確認`);
       return null;
     }
-
-    const outcome: CleanupAuditEntry["outcome"] =
-      giftCount > 0 ? "needs_review" : dryRun ? "dry_run" : "deleted";
 
     const entry: CleanupAuditEntry = {
       at: new Date().toISOString(),
       roomId: room.id,
       tiktokId: room.tiktokId,
       dryRun,
-      outcome,
+      outcome: dryRun ? "dry_run" : "suspended",
       notFoundStreak: fresh.notFoundStreak,
       notFoundFirstAt: fresh.notFoundFirstAt.toISOString(),
       giftCount,
-      deletedStreamers: streamers.map((s) => ({
-        streamerId: s.id,
-        userId: s.userId,
-        userEmail: s.user.email,
-        tiktokIdEntered: s.tiktokId,
-        verified: s.verified,
-        createdAt: s.createdAt.toISOString(),
-        hadApiKey: s.apiKey != null,
-        hadOverlayToken: s.overlayToken != null,
-        giftEditCount: s.giftEdits.length,
-      })),
+      watcherCount: streamers.length,
     };
 
-    if (giftCount === 0 && !dryRun) {
-      await tx.streamer.deleteMany({ where: { roomId: room.id } });
-      // 将来同じtiktokIdで再登録されたときに古いフラグを引き継がないようクリアする。
-      await tx.tiktokRoom.update({
-        where: { id: room.id },
-        data: { unhealthySince: null, notFoundStreak: 0, notFoundFirstAt: null, lastExistenceCheckAt: null },
+    if (!dryRun) {
+      // monitoringSuspended:falseに加えlistenerStatusもWHEREへ含める(Code Modeレビューで指摘)。
+      // ここまでのGift/Streamer/課金判定の間にlistenerがconnected復帰していても、
+      // notFoundStreak/notFoundFirstAtの再確認だけでは検知できない。listenerStatusを
+      // retrying/errorのまま再確認することで、復帰済みRoomを誤って停止する窓を防ぐ。
+      await tx.tiktokRoom.updateMany({
+        where: { id: room.id, monitoringSuspended: false, listenerStatus: { in: ["retrying", "error"] } },
+        data: { monitoringSuspended: true },
       });
     }
 
@@ -283,27 +263,31 @@ export type CleanupCycleResult =
       exists: number;
       notFound: number;
       inconclusive: number;
-      deleted: number;
-      needsReview: number;
-      streamersDeleted: number;
+      suspended: number;
       anomalyDetected: boolean;
-      maxDeletesReached: boolean;
+      maxSuspensionsReached: boolean;
     };
 
 /**
- * 1サイクルぶんの実在確認+(確定した分の)削除を実行する。
+ * 1サイクルぶんの実在確認+(確定した分の)監視停止を実行する。
  *
- * 判定フェーズと削除フェーズを分離しているのは、NOT_FOUND率異常ガードを「削除を
+ * 判定フェーズと停止フェーズを分離しているのは、NOT_FOUND率異常ガードを「停止を
  * 一切実行しない」形で機能させるため — 判定を先に全部集計してからガード判定し、
- * 異常なしのときだけ削除フェーズへ進む。
+ * 異常なしのときだけ停止フェーズへ進む。
  */
 export async function runCleanupCycle(opts: { dryRun: boolean; now?: Date }): Promise<CleanupCycleResult> {
   const now = opts.now ?? new Date();
 
-  const disabledSetting = await getSetting(KILL_SWITCH_SETTING_KEY).catch((err) => {
-    console.error("[tiktok-cleanup] kill switch の読み取りに失敗:", err);
-    return null;
-  });
+  // kill switchが読めない間はfail-closedでスキップする。読み取り失敗をnullへ変換して
+  // 「無効」とみなすと、緊急停止を設定済みでも一時的な読み取り障害の直後に監視を
+  // 停止してしまいうる。
+  let disabledSetting: string | null;
+  try {
+    disabledSetting = await getSetting(KILL_SWITCH_SETTING_KEY);
+  } catch (err) {
+    console.error("[tiktok-cleanup] kill switch の読み取りに失敗 — fail-closedでスキップ:", err);
+    return { skipped: true };
+  }
   if (isCleanupDisabled(disabledSetting)) {
     console.log(`[tiktok-cleanup] kill switch有効(${KILL_SWITCH_SETTING_KEY}=true) — スキップ`);
     return { skipped: true };
@@ -358,41 +342,30 @@ export async function runCleanupCycle(opts: { dryRun: boolean; now?: Date }): Pr
   const anomalyDetected =
     checked >= NOT_FOUND_RATE_GUARD_MIN_CHECKS && notFound / checked > NOT_FOUND_RATE_GUARD_THRESHOLD;
 
-  let deleted = 0;
-  let needsReview = 0;
-  let streamersDeleted = 0;
-  let maxDeletesReached = false;
+  let suspended = 0;
+  let maxSuspensionsReached = false;
 
   if (anomalyDetected) {
     console.warn(
-      `[tiktok-cleanup] NOT_FOUND率異常(${notFound}/${checked}) — TikTok側の広範な障害/bot判定強化を疑い、削除を一切実行せずrunを打ち切る`
+      `[tiktok-cleanup] NOT_FOUND率異常(${notFound}/${checked}) — TikTok側の広範な障害/bot判定強化を疑い、停止を一切実行せずrunを打ち切る`
     );
   } else {
     for (const { room, classification } of checkedResults) {
-      if (!classification.shouldDelete) continue;
-      if (deleted >= MAX_DELETES_PER_RUN) {
-        maxDeletesReached = true;
-        console.warn(`[tiktok-cleanup] run単位の削除件数上限(${MAX_DELETES_PER_RUN})に到達 — 残りは次回runへ持ち越し`);
+      if (!classification.shouldSuspend) continue;
+      if (suspended >= MAX_SUSPENSIONS_PER_RUN) {
+        maxSuspensionsReached = true;
+        console.warn(`[tiktok-cleanup] run単位の停止件数上限(${MAX_SUSPENSIONS_PER_RUN})に到達 — 残りは次回runへ持ち越し`);
         break;
       }
 
-      const entry = await deleteConfirmedRoom(room, opts.dryRun);
+      const entry = await suspendNotFoundRoom(room, opts.dryRun);
       if (!entry) continue;
 
-      if (entry.outcome === "needs_review") {
-        needsReview++;
-        console.warn(
-          `[tiktok-cleanup] @${room.tiktokId} はNOT_FOUND確定だがGift実績あり(${entry.giftCount}件) — 自動削除せず要手動確認`
-        );
-      } else {
-        deleted++;
-        streamersDeleted += entry.deletedStreamers.length;
-        console.error(
-          `[tiktok-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokId} を非実在と確定 — ` +
-            `Streamer ${entry.deletedStreamers.length}件${opts.dryRun ? "を削除対象として記録" : "を削除"} ` +
-            `(userEmails: ${entry.deletedStreamers.map((s) => s.userEmail ?? "(unknown)").join(", ")})`
-        );
-      }
+      suspended++;
+      console.warn(
+        `[tiktok-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokId} を非実在と確定 — ` +
+          `監視${entry.watcherCount}件を${opts.dryRun ? "停止対象として記録" : "停止"} (giftCount: ${entry.giftCount})`
+      );
     }
   }
 
@@ -403,10 +376,8 @@ export async function runCleanupCycle(opts: { dryRun: boolean; now?: Date }): Pr
     exists,
     notFound,
     inconclusive,
-    deleted,
-    needsReview,
-    streamersDeleted,
+    suspended,
     anomalyDetected,
-    maxDeletesReached,
+    maxSuspensionsReached,
   };
 }

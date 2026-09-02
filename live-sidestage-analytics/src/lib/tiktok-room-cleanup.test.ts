@@ -20,18 +20,18 @@ const ERROR: TiktokProfileResult = { ok: false, reason: "ERROR" };
 describe("classifyExistenceResult", () => {
   it("ok:trueならストリークを0/nullにリセットする", () => {
     const c = classifyExistenceResult({ notFoundStreak: 2, notFoundFirstAt: NOW }, OK, NOW);
-    expect(c).toEqual({ notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldDelete: false });
+    expect(c).toEqual({ notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldSuspend: false });
   });
 
-  it("NOT_FOUND初回はstreak=1・firstAt=nowになり、shouldDeleteはfalse", () => {
+  it("NOT_FOUND初回はstreak=1・firstAt=nowになり、shouldSuspendはfalse", () => {
     const c = classifyExistenceResult({ notFoundStreak: 0, notFoundFirstAt: null }, NOT_FOUND, NOW);
     expect(c.notFoundStreak).toBe(1);
     expect(c.notFoundFirstAt).toEqual(NOW);
     expect(c.outcome).toBe("not_found");
-    expect(c.shouldDelete).toBe(false);
+    expect(c.shouldSuspend).toBe(false);
   });
 
-  it("streak要件未達なら経過日数が十分でもshouldDelete=false", () => {
+  it("streak要件未達なら経過日数が十分でもshouldSuspend=false", () => {
     const firstAt = new Date(NOW.getTime() - NOT_FOUND_ELAPSED_MS - 1000);
     const c = classifyExistenceResult(
       { notFoundStreak: NOT_FOUND_STREAK_REQUIRED - 2, notFoundFirstAt: firstAt },
@@ -39,10 +39,10 @@ describe("classifyExistenceResult", () => {
       NOW
     );
     expect(c.notFoundStreak).toBe(NOT_FOUND_STREAK_REQUIRED - 1);
-    expect(c.shouldDelete).toBe(false);
+    expect(c.shouldSuspend).toBe(false);
   });
 
-  it("streak要件は満たすが経過日数が不足していればshouldDelete=false", () => {
+  it("streak要件は満たすが経過日数が不足していればshouldSuspend=false", () => {
     const firstAt = new Date(NOW.getTime() - NOT_FOUND_ELAPSED_MS + 1000);
     const c = classifyExistenceResult(
       { notFoundStreak: NOT_FOUND_STREAK_REQUIRED - 1, notFoundFirstAt: firstAt },
@@ -50,10 +50,10 @@ describe("classifyExistenceResult", () => {
       NOW
     );
     expect(c.notFoundStreak).toBe(NOT_FOUND_STREAK_REQUIRED);
-    expect(c.shouldDelete).toBe(false);
+    expect(c.shouldSuspend).toBe(false);
   });
 
-  it("streak要件を満たしかつ経過日数もちょうど閾値ならshouldDelete=true(境界含む)", () => {
+  it("streak要件を満たしかつ経過日数もちょうど閾値ならshouldSuspend=true(境界含む)", () => {
     const firstAt = new Date(NOW.getTime() - NOT_FOUND_ELAPSED_MS);
     const c = classifyExistenceResult(
       { notFoundStreak: NOT_FOUND_STREAK_REQUIRED - 1, notFoundFirstAt: firstAt },
@@ -61,29 +61,29 @@ describe("classifyExistenceResult", () => {
       NOW
     );
     expect(c.notFoundStreak).toBe(NOT_FOUND_STREAK_REQUIRED);
-    expect(c.shouldDelete).toBe(true);
+    expect(c.shouldSuspend).toBe(true);
   });
 
-  it("streak要件・経過日数とも十分に満たせばshouldDelete=true", () => {
+  it("streak要件・経過日数とも十分に満たせばshouldSuspend=true", () => {
     const firstAt = new Date(NOW.getTime() - NOT_FOUND_ELAPSED_MS * 2);
     const c = classifyExistenceResult(
       { notFoundStreak: NOT_FOUND_STREAK_REQUIRED, notFoundFirstAt: firstAt },
       NOT_FOUND,
       NOW
     );
-    expect(c.shouldDelete).toBe(true);
+    expect(c.shouldSuspend).toBe(true);
   });
 
   it("RATE_LIMITEDは判定不能としてstreak/firstAtを変化させない", () => {
     const current = { notFoundStreak: 2, notFoundFirstAt: NOW };
     const c = classifyExistenceResult(current, RATE_LIMITED, NOW);
-    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldDelete: false });
+    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldSuspend: false });
   });
 
   it("ERRORは判定不能としてstreak/firstAtを変化させない", () => {
     const current = { notFoundStreak: 1, notFoundFirstAt: NOW };
     const c = classifyExistenceResult(current, ERROR, NOW);
-    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldDelete: false });
+    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldSuspend: false });
   });
 
   it("2回目以降のNOT_FOUNDはfirstAtを更新せず引き継ぐ", () => {

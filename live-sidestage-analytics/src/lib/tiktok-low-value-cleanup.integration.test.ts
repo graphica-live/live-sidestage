@@ -66,7 +66,7 @@ async function attachStreamer(roomId: string, userId: string) {
 
 async function attachSubscription(userId: string) {
   await prisma.subscription.create({
-    data: { userId, entitlementActive: true },
+    data: { userId, plan: "PRO", entitlementActive: true },
   });
 }
 

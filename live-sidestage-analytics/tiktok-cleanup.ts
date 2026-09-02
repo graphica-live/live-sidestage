@@ -1,5 +1,6 @@
-// TikTok上に存在しなくなった(削除/改名された)アカウントに紐づくStreamerを検出・削除する
+// TikTok上に存在しなくなった(削除/改名された)可能性があるRoomの監視を一時停止する
 // 日次バッチ。専用エントリポイント。Railway Cron Job(1回実行して終了)として動かす想定。
+// データは削除しない(TiktokRoom.monitoringSuspendedを立てるだけ)。
 //
 // worker-guardian.ts等の常駐サービスと違い、判定周期は「日」単位で十分なため常駐させない。
 // Railwayのcronが多重起動防止(前回実行がActive中ならスキップ)を担保する一次防御、

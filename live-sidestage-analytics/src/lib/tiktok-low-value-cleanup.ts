@@ -108,7 +108,7 @@ async function appendLowValueAuditLog(tx: Prisma.TransactionClient, entry: LowVa
  * 課金・アクティブ判定をやり直す(選定〜ここまでの間に新規登録・ログインがあり
  * うるため)。ダイヤ合計もこの1Room分だけ再計算する(インデックス済みなので軽い)。
  *
- * 判定〜停止更新〜監査ログ記録をtiktok-room-cleanup.tsのdeleteConfirmedRoom()と同様に
+ * 判定〜停止更新〜監査ログ記録をtiktok-room-cleanup.tsのsuspendNotFoundRoom()と同様に
  * 単一の$transactionへまとめる(実装後レビューで指摘)。個別awaitに分かれていると、
  * 判定直後に課金開始・新規Watcher追加・高額Gift受信が割り込む余地が広がる。
  * 完全なrow lockではないため理論上のレースを完全には排除しないが、既存の削除フローと

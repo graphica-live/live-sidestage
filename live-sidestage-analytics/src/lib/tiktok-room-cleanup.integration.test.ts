@@ -1,11 +1,11 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
-// selectCleanupCandidates() の候補抽出条件と、deleteConfirmedRoom() の削除実行
-// (カスケード削除・Gift安全策・dry-run・TOCTOU再確認)を実DBで検証する。
+// selectCleanupCandidates() の候補抽出条件と、suspendNotFoundRoom() の停止実行
+// (データ削除なし・monitoringSuspendedのみ・dry-run・課金ガード・TOCTOU再確認)を実DBで検証する。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import {
   selectCleanupCandidates,
-  deleteConfirmedRoom,
+  suspendNotFoundRoom,
   UNHEALTHY_THRESHOLD_MS,
   CHECK_COOLDOWN_MS,
   NOT_FOUND_STREAK_REQUIRED,
@@ -28,6 +28,7 @@ async function makeRoom(data: {
   lastExistenceCheckAt?: Date | null;
   notFoundStreak?: number;
   notFoundFirstAt?: Date | null;
+  monitoringSuspended?: boolean;
 }) {
   const room = await prisma.tiktokRoom.create({
     data: {
@@ -37,6 +38,7 @@ async function makeRoom(data: {
       lastExistenceCheckAt: data.lastExistenceCheckAt ?? null,
       notFoundStreak: data.notFoundStreak ?? 0,
       notFoundFirstAt: data.notFoundFirstAt ?? null,
+      monitoringSuspended: data.monitoringSuspended ?? false,
     },
     select: { id: true, tiktokId: true },
   });
@@ -44,15 +46,19 @@ async function makeRoom(data: {
   return room;
 }
 
-async function attachStreamer(roomId: string) {
-  const user = await prisma.user.create({
-    data: { email: `itest-cln-${suffix()}@local.test`, name: "itest" },
-    select: { id: true },
-  });
-  userIds.push(user.id);
+async function attachStreamer(roomId: string, userId?: string) {
+  let uid = userId;
+  if (!uid) {
+    const user = await prisma.user.create({
+      data: { email: `itest-cln-${suffix()}@local.test`, name: "itest" },
+      select: { id: true },
+    });
+    userIds.push(user.id);
+    uid = user.id;
+  }
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
+      userId: uid,
       tiktokId: tiktokId("s"),
       roomId,
       verificationCode: `itest-${suffix()}`,
@@ -80,12 +86,17 @@ async function attachGift(roomId: string) {
   return gift;
 }
 
+async function attachSubscription(userId: string) {
+  await prisma.subscription.create({ data: { userId, plan: "PRO", entitlementActive: true } });
+}
+
 const NOW = new Date();
 
 afterAll(async () => {
   await prisma.gift.deleteMany({ where: { id: { in: giftIds } } });
   await prisma.giftEdit.deleteMany({ where: { streamer: { roomId: { in: roomIds } } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
+  await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
@@ -97,6 +108,7 @@ describe("selectCleanupCandidates", () => {
   let cooldownNotElapsed: { id: string; tiktokId: string };
   let connectedRoom: { id: string; tiktokId: string };
   let noStreamerRoom: { id: string; tiktokId: string };
+  let alreadySuspendedRoom: { id: string; tiktokId: string };
 
   beforeAll(async () => {
     const wellPastUnhealthy = new Date(NOW.getTime() - UNHEALTHY_THRESHOLD_MS - 60_000);
@@ -151,6 +163,15 @@ describe("selectCleanupCandidates", () => {
       lastExistenceCheckAt: null,
     });
     // Streamerを付けない。
+
+    alreadySuspendedRoom = await makeRoom({
+      tag: "suspended",
+      listenerStatus: "retrying",
+      unhealthySince: wellPastUnhealthy,
+      lastExistenceCheckAt: null,
+      monitoringSuspended: true,
+    });
+    await attachStreamer(alreadySuspendedRoom.id);
   });
 
   it("未チェック(lastExistenceCheckAt=null)の対象を拾う", async () => {
@@ -183,6 +204,11 @@ describe("selectCleanupCandidates", () => {
     expect(candidates.some((c) => c.id === noStreamerRoom.id)).toBe(false);
   });
 
+  it("既に監視停止済み(monitoringSuspended:true)の部屋は拾わない", async () => {
+    const candidates = await selectCleanupCandidates(NOW, 100);
+    expect(candidates.some((c) => c.id === alreadySuspendedRoom.id)).toBe(false);
+  });
+
   it("未チェック(NULL)行がNULLS LASTで後ろに落ちず優先される(nulls: first確認)", async () => {
     const candidates = await selectCleanupCandidates(NOW, 100);
     const uncheckedIdx = candidates.findIndex((c) => c.id === eligibleUnchecked.id);
@@ -193,18 +219,16 @@ describe("selectCleanupCandidates", () => {
   });
 });
 
-describe("deleteConfirmedRoom", () => {
-  it("Gift0件・streak充足ならStreamerを削除し、GiftEditもカスケード削除、TiktokRoomのフラグもクリアされる", async () => {
+describe("suspendNotFoundRoom", () => {
+  it("Gift0件・streak充足なら監視を停止する(Streamer/GiftEditは削除しない)", async () => {
     const room = await makeRoom({
-      tag: "delete-ok",
+      tag: "suspend-ok",
       listenerStatus: "retrying",
       notFoundStreak: NOT_FOUND_STREAK_REQUIRED,
       notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
     });
     const streamer = await attachStreamer(room.id);
 
-    // GiftEditのcascade削除確認用に、別roomのGiftへの編集を1件付ける
-    // (Gift.roomIdとStreamer.roomIdは独立なカラムなので、対象roomのGift件数とは無関係)。
     const otherRoom = await makeRoom({ tag: "gift-source" });
     const editGift = await prisma.gift.create({
       data: {
@@ -223,32 +247,26 @@ describe("deleteConfirmedRoom", () => {
       select: { id: true },
     });
 
-    const entry = await deleteConfirmedRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
 
     expect(entry).not.toBeNull();
-    expect(entry!.outcome).toBe("deleted");
+    expect(entry!.outcome).toBe("suspended");
     expect(entry!.giftCount).toBe(0);
-    expect(entry!.deletedStreamers).toHaveLength(1);
-    expect(entry!.deletedStreamers[0].streamerId).toBe(streamer.id);
-    expect(entry!.deletedStreamers[0].hadApiKey).toBe(true);
-    expect(entry!.deletedStreamers[0].hadOverlayToken).toBe(true);
+    expect(entry!.watcherCount).toBe(1);
 
     const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
-    expect(streamerAfter).toBeNull();
+    expect(streamerAfter).not.toBeNull();
 
     const giftEditAfter = await prisma.giftEdit.findUnique({ where: { id: edit.id } });
-    expect(giftEditAfter).toBeNull();
+    expect(giftEditAfter).not.toBeNull();
 
     const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
-    expect(roomAfter.unhealthySince).toBeNull();
-    expect(roomAfter.notFoundStreak).toBe(0);
-    expect(roomAfter.notFoundFirstAt).toBeNull();
-    expect(roomAfter.lastExistenceCheckAt).toBeNull();
+    expect(roomAfter.monitoringSuspended).toBe(true);
   });
 
-  it("Gift実績が1件でもあれば自動削除せずneeds_reviewに回す", async () => {
+  it("Gift実績が1件でもあれば監視を停止する(データは残る)", async () => {
     const room = await makeRoom({
-      tag: "needs-review",
+      tag: "gift-exists",
       listenerStatus: "retrying",
       notFoundStreak: NOT_FOUND_STREAK_REQUIRED,
       notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
@@ -256,32 +274,61 @@ describe("deleteConfirmedRoom", () => {
     const streamer = await attachStreamer(room.id);
     await attachGift(room.id);
 
-    const entry = await deleteConfirmedRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
 
     expect(entry).not.toBeNull();
-    expect(entry!.outcome).toBe("needs_review");
+    expect(entry!.outcome).toBe("suspended");
     expect(entry!.giftCount).toBe(1);
 
     const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
     expect(streamerAfter).not.toBeNull();
+
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.monitoringSuspended).toBe(true);
   });
 
-  it("dryRun=trueなら実削除せずoutcome=dry_runで記録する", async () => {
+  it("課金ユーザーが監視していれば停止しない", async () => {
+    const room = await makeRoom({
+      tag: "paid",
+      listenerStatus: "retrying",
+      notFoundStreak: NOT_FOUND_STREAK_REQUIRED,
+      notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
+    });
+    const user = await prisma.user.create({
+      data: { email: `itest-cln-${suffix()}@local.test`, name: "itest" },
+      select: { id: true },
+    });
+    userIds.push(user.id);
+    await attachSubscription(user.id);
+    const streamer = await attachStreamer(room.id, user.id);
+
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+
+    expect(entry).toBeNull();
+
+    const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
+    expect(streamerAfter).not.toBeNull();
+
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.monitoringSuspended).toBe(false);
+  });
+
+  it("dryRun=trueなら実際には停止せずoutcome=dry_runで記録する", async () => {
     const room = await makeRoom({
       tag: "dry-run",
       listenerStatus: "retrying",
       notFoundStreak: NOT_FOUND_STREAK_REQUIRED,
       notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
     });
-    const streamer = await attachStreamer(room.id);
+    await attachStreamer(room.id);
 
-    const entry = await deleteConfirmedRoom({ id: room.id, tiktokId: room.tiktokId }, true);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, true);
 
     expect(entry).not.toBeNull();
     expect(entry!.outcome).toBe("dry_run");
 
-    const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
-    expect(streamerAfter).not.toBeNull();
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.monitoringSuspended).toBe(false);
   });
 
   it("TOCTOU再確認: DB上のnotFoundStreakが要件未満に戻っていれば何もせずnullを返す(connected復帰等)", async () => {
@@ -291,13 +338,13 @@ describe("deleteConfirmedRoom", () => {
       notFoundStreak: 0,
       notFoundFirstAt: null,
     });
-    const streamer = await attachStreamer(room.id);
+    await attachStreamer(room.id);
 
-    const entry = await deleteConfirmedRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
 
     expect(entry).toBeNull();
 
-    const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
-    expect(streamerAfter).not.toBeNull();
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.monitoringSuspended).toBe(false);
   });
 });
