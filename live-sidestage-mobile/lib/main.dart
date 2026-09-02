@@ -11,6 +11,7 @@ import 'core/app_config_store.dart';
 import 'core/app_version.dart';
 import 'core/background_task_handler.dart';
 import 'core/battle_activity.dart';
+import 'core/battle_filter_store.dart';
 import 'core/billing_service.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
@@ -21,6 +22,7 @@ import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'screens/widgets/gradient_kit.dart';
 
 @pragma('vm:entry-point')
 void startCallback() {
@@ -72,6 +74,8 @@ ThemeData _buildTheme(Brightness brightness) {
   final ink = isDark ? const Color(0xFFF1EDF5) : const Color(0xFF2A2130);
   final sub = isDark ? const Color(0xFFA79FB0) : const Color(0xFF7C7286);
   final line = isDark ? const Color(0xFF332C3B) : const Color(0xFFEFE6E9);
+  // スイッチOFF・スライダー非活性のトラック(comp `#E5DFE8`)。罫線より一段濃い。
+  final track = isDark ? const Color(0xFF3D3547) : KosaiPalette.track;
   const onAccent = Colors.white;
   final primaryContainer = accent.withValues(alpha: isDark ? 0.22 : 0.12);
 
@@ -152,18 +156,28 @@ ThemeData _buildTheme(Brightness brightness) {
         ),
     dividerTheme: DividerThemeData(color: line),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? onAccent : Colors.white,
-      ),
+      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      // OFFトラックは罫線(line)ではなく専用のtrack色(#E5DFE8)。罫線色だと
+      // 白カードの上でスイッチが消える(comp `.switch` は明確に一段濃い)。
       trackColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? accent : line,
+        (states) => states.contains(WidgetState.selected) ? accent : track,
       ),
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      trackOutlineWidth: const WidgetStatePropertyAll(0),
     ),
     sliderTheme: SliderThemeData(
+      trackHeight: 5,
       activeTrackColor: accent,
-      inactiveTrackColor: line,
-      thumbColor: accent,
+      inactiveTrackColor: track,
+      thumbColor: Colors.white,
+      overlayColor: accent.withValues(alpha: 0.12),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+      // comp `.mini-slider .thumb`: 白丸16dp + 2dpのc2枠。標準の
+      // `RoundSliderThumbShape` は枠線を描けないので専用shapeを使う。
+      thumbShape: const KosaiSliderThumbShape(),
+      activeTickMarkColor: Colors.transparent,
+      inactiveTickMarkColor: Colors.transparent,
+      valueIndicatorColor: accent,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -188,6 +202,8 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AccountStatusStore()),
         ChangeNotifierProvider(create: (_) => BillingService()),
         ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
+        // バトル履歴の表示フィルタ(小さいバトルを隠す)。背景Isolateへは同期しない。
+        ChangeNotifierProvider(create: (_) => BattleFilterStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
         // バトル終了(またはEND後のスコア確定)をバトル履歴タブへ伝えるだけの通知。

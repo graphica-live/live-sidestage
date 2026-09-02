@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/account_deletion.dart';
 import '../../core/account_status_store.dart';
 import '../../core/app_config_store.dart';
+import '../../core/battle_filter_store.dart';
 import '../../core/plan_gate.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
@@ -13,6 +14,8 @@ import '../../models/auth_session.dart';
 import '../../models/voice_catalog.dart';
 import '../home_screen.dart' show SpeechState;
 import '../subscription_screen.dart';
+import '../widgets/gradient_kit.dart';
+import '../widgets/list_panel.dart';
 import '../widgets/voicevox_terms.dart';
 
 void _showUpgradeRequired(BuildContext context, String message) =>
@@ -23,6 +26,10 @@ void _showUpgradeRequired(BuildContext context, String message) =>
 /// **読み上げ・効果音の設定項目はすべてここに置く。** TTSタブとサウンドタブは
 /// 配信中に見る運用画面なので、状態表示と開始/停止だけを持たせる。同じ設定を
 /// 両方に出すと、どちらが効いているのか分からなくなる。
+///
+/// 見た目は光彩(Kosai)の `.impeccable/approved/settings-tab-kosai/`。
+/// 数値設定(音量・速さ・しきい値)は一覧では「値 + ›」の行にとどめ、
+/// スライダーはタップで開くボトムシートの中だけに置く。
 class SettingsTab extends StatelessWidget {
   const SettingsTab({
     super.key,
@@ -46,7 +53,9 @@ class SettingsTab extends StatelessWidget {
     final store = context.watch<AppConfigStore>();
     final session = context.watch<SessionController>().session;
     final themeModeStore = context.watch<ThemeModeStore>();
-    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final battleFilter = context.watch<BattleFilterStore>();
+    final accountStatus = context.watch<AccountStatusStore>();
+    final planGate = PlanGate(accountStatus.status);
 
     // **どの設定も「開始しているか」では止めない。** `ttsEnabled` / `sound.enabled` は
     // 機能のON/OFF設定ではなく開始しているかの記録なので、それで無効化すると
@@ -56,121 +65,189 @@ class SettingsTab extends StatelessWidget {
     final canEdit = !busy;
 
     return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
-        const _SectionHeader('表示'),
-        Card(
-          child: _ThemeModeTile(
-            themeMode: themeModeStore.themeMode,
-            onSelected: themeModeStore.setThemeMode,
-          ),
+        const KosaiSectionHeading('表示', top: 8),
+        ListPanel(
+          children: [
+            _SettingValueRow(
+              title: 'テーマ',
+              value: themeModeStore.themeMode.label,
+              onTap: () => _pickThemeMode(context, themeModeStore),
+            ),
+          ],
         ),
         // 読み上げ・効果音の ON/OFF は各タブの「開始/停止」ボタンが持つ。
         // ここに同じトグルを置くと二重になり、どちらが接続を制御しているのか分からなくなる。
-        const _SectionHeader('読み上げ'),
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                title: const Text('ランダムボイス'),
-                subtitle: Text(
-                  planGate.canUseRandomVoice
-                      ? 'コメント投稿者ごとに声を割り当てます'
-                      : 'PRO/ULTRAプランで利用できます',
+        const KosaiSectionHeading('読み上げ'),
+        ListPanel(
+          children: [
+            _SettingSwitchRow(
+              title: 'ランダムボイス',
+              subtitle: planGate.canUseRandomVoice
+                  ? 'コメント投稿者ごとに声を割り当てます'
+                  : 'PRO/ULTRAプランで利用できます',
+              value: store.config.randomVoice,
+              enabled: canEdit && planGate.canUseRandomVoice,
+              onChanged: store.setRandomVoice,
+              onLockedTap: !canEdit
+                  ? null
+                  : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
+            ),
+            _VoiceRow(
+              styleId: store.config.fixedStyleId,
+              randomVoice: store.config.randomVoice,
+              enabled: canEdit,
+              canUseAllVoices: planGate.canUseAllVoices,
+              onSelected: store.setFixedStyleId,
+            ),
+            _SettingValueRow(
+              title: '読み上げの音量',
+              value: '${store.config.ttsVolume}',
+              accent: true,
+              onTap: !canEdit
+                  ? null
+                  : () => showKosaiValueSheet(
+                        context,
+                        title: '読み上げの音量',
+                        value: store.config.ttsVolume,
+                        onChanged: store.setTtsVolume,
+                      ),
+            ),
+            // 速度は合成時にしか効かせられないので、変えても**先読み済みの1件には
+            // 反映されない**（次の次から効く）。音量と違って即座には変わらない。
+            _SettingValueRow(
+              title: '読み上げの速さ',
+              value: '${store.config.ttsSpeed}%',
+              accent: true,
+              locked: !planGate.canAdjustTtsSpeed,
+              onTap: !canEdit
+                  ? null
+                  : !planGate.canAdjustTtsSpeed
+                      ? () => _showUpgradeRequired(context, 'PRO/ULTRAプランで速度を調整できます')
+                      : () => showKosaiValueSheet(
+                            context,
+                            title: '読み上げの速さ',
+                            value: store.config.ttsSpeed,
+                            onChanged: store.setTtsSpeed,
+                            min: 50,
+                            max: 200,
+                            divisions: 30,
+                            suffix: '%',
+                          ),
+            ),
+          ],
+        ),
+        const KosaiSectionHeading('効果音'),
+        ListPanel(
+          children: [
+            // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
+            //
+            // 以前は「全体の音量」という表示だったが、**読み上げには一切かかっていない**
+            // (sound_engine.dart: gift.volume * masterVolume)。名前だけが「全体」を
+            // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
+            // 保存済み設定のキーなので変えない。
+            _SettingValueRow(
+              title: 'すべての効果音の音量',
+              value: '${store.sound.masterVolume}',
+              accent: true,
+              onTap: !canEdit
+                  ? null
+                  : () => showKosaiValueSheet(
+                        context,
+                        title: 'すべての効果音の音量',
+                        value: store.sound.masterVolume,
+                        onChanged: (value) =>
+                            store.updateSound((c) => c.copyWith(masterVolume: value)),
+                      ),
+            ),
+          ],
+        ),
+        // comp未定義。バトル履歴タブのしきい値トグルが参照する境界値をここで変える。
+        const KosaiSectionHeading('バトル履歴'),
+        ListPanel(
+          children: [
+            _SettingValueRow(
+              title: '小さいバトルを隠すしきい値',
+              subtitle: 'バトル履歴タブの「◯コイン未満を非表示」の基準',
+              value: '${battleFilter.threshold}コイン',
+              accent: true,
+              onTap: () => showKosaiValueSheet(
+                context,
+                title: '小さいバトルを隠すしきい値',
+                value: battleFilter.threshold,
+                onChanged: battleFilter.setThreshold,
+                max: maxBattleHideSmallThreshold,
+                divisions: 20,
+                suffix: 'コイン',
+              ),
+            ),
+          ],
+        ),
+        const KosaiSectionHeading('プラン'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: GradientBorderCard(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    accountStatus.status.effectivePlan,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                  ),
                 ),
-                value: store.config.randomVoice,
-                onChanged: !canEdit
-                    ? null
-                    : planGate.canUseRandomVoice
-                        ? (value) => store.setRandomVoice(value)
-                        : (_) => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
-              ),
-              _VoiceTile(
-                styleId: store.config.fixedStyleId,
-                randomVoice: store.config.randomVoice,
-                enabled: canEdit,
-                canUseAllVoices: planGate.canUseAllVoices,
-                onSelected: store.setFixedStyleId,
-              ),
-              _VolumeSlider(
-                title: '読み上げの音量',
-                value: store.config.ttsVolume,
-                enabled: canEdit,
-                onChanged: store.setTtsVolume,
-              ),
-              // 速度は合成時にしか効かせられないので、変えても**先読み済みの1件には
-              // 反映されない**（次の次から効く）。音量と違って即座には変わらない。
-              _VolumeSlider(
-                title: '読み上げの速さ',
-                value: store.config.ttsSpeed,
-                enabled: canEdit && planGate.canAdjustTtsSpeed,
-                onChanged: store.setTtsSpeed,
-                onLockedTap: planGate.canAdjustTtsSpeed
-                    ? null
-                    : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで速度を調整できます'),
-                min: 50,
-                max: 200,
-                divisions: 30,
-                suffix: '%',
-              ),
-            ],
+                KosaiOutlineButton(
+                  label: 'アップグレード',
+                  expand: false,
+                  verticalPadding: 9,
+                  horizontalPadding: 19,
+                  fontSize: 12,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const _SectionHeader('効果音'),
-        Card(
-          child:
-              // セットをまたいだ共通の音量。配信中に下げたくなるものなので運用中も触れる。
-              //
-              // 以前は「全体の音量」という表示だったが、**読み上げには一切かかっていない**
-              // (sound_engine.dart: gift.volume * masterVolume)。名前だけが「全体」を
-              // 名乗っていて、読み上げも下がると誤解される。内部名 masterVolume は
-              // 保存済み設定のキーなので変えない。
-              _VolumeSlider(
-            title: 'すべての効果音の音量',
-            value: store.sound.masterVolume,
-            enabled: canEdit,
-            onChanged: (value) =>
-                store.updateSound((c) => c.copyWith(masterVolume: value)),
-          ),
+        const KosaiSectionHeading('アカウント'),
+        ListPanel(
+          children: [
+            _SettingValueRow(
+              title: 'TikTok ID',
+              value: '@${session?.streamer?.tiktokId ?? ''}',
+              trailingIcon: Icons.edit,
+              onTap: onChangeTiktokId,
+            ),
+            if (session != null && session.userEmail.isNotEmpty)
+              _SettingValueRow(
+                // どちらでログインしたかは session が持っている。決め打ちにすると
+                // 実際とは違うプロバイダを表示することになる。
+                title: switch (session.provider) {
+                  AuthProvider.apple => 'Appleアカウント',
+                  AuthProvider.email => 'メールアカウント',
+                  AuthProvider.google => 'Googleアカウント',
+                },
+                subtitle: session.userEmail,
+                trailingIcon: null,
+              ),
+            _SettingValueRow(
+              title: 'VOICEVOX利用規約',
+              onTap: () => showVoicevoxTermsDialog(context),
+            ),
+            _SettingValueRow(
+              title: 'プライバシーポリシー',
+              onTap: () => launchPrivacyPolicy(context),
+            ),
+          ],
         ),
-        const _SectionHeader('アカウント'),
-        Card(
-          child: Column(
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: ListPanel(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
             children: [
-              ListTile(
-                leading: const Icon(Icons.alternate_email),
-                title: const Text('TikTok ID'),
-                subtitle: Text('@${session?.streamer?.tiktokId ?? ''}'),
-                trailing: const Icon(Icons.edit),
-                onTap: onChangeTiktokId,
-              ),
-              ListTile(
-                leading: Icon(Icons.workspace_premium_outlined, color: Theme.of(context).colorScheme.primary),
-                title: const Text('プランをアップグレード'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-                ),
-              ),
-              if (session != null && session.userEmail.isNotEmpty)
-                ListTile(
-                  leading: const Icon(Icons.account_circle_outlined),
-                  // どちらでログインしたかは session が持っている。決め打ちにすると
-                  // 実際とは違うプロバイダを表示することになる。
-                  title: Text(switch (session.provider) {
-                    AuthProvider.apple => 'Appleアカウント',
-                    AuthProvider.email => 'メールアカウント',
-                    AuthProvider.google => 'Googleアカウント',
-                  }),
-                  subtitle: Text(session.userEmail),
-                ),
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: const Text('VOICEVOX利用規約'),
-                onTap: () => showVoicevoxTermsDialog(context),
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text('ログアウト', style: TextStyle(color: Colors.red)),
+              InkWell(
                 onTap: () async {
                   final confirmed = await confirmLogout(context);
                   if (!confirmed) return;
@@ -179,27 +256,49 @@ class SettingsTab extends StatelessWidget {
                   if (!context.mounted) return;
                   await context.read<SessionController>().logout();
                 },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_forever, color: Colors.red),
-                title: const Text('アカウント削除', style: TextStyle(color: Colors.red)),
-                onTap: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
-              ),
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('プライバシーポリシー'),
-                onTap: () => launchPrivacyPolicy(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'ログアウト',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: KosaiDangerButton(
+            label: 'アカウント削除',
+            onPressed: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
+          ),
+        ),
         if (store.syncPending)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('設定を反映中…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              '設定を反映中…',
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
           ),
       ],
     );
+  }
+
+  Future<void> _pickThemeMode(BuildContext context, ThemeModeStore store) async {
+    final picked = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      builder: (context) => _ThemeModePickerSheet(selected: store.themeMode),
+    );
+    if (picked != null && picked != store.themeMode) store.setThemeMode(picked);
   }
 }
 
@@ -211,29 +310,302 @@ extension on ThemeMode {
       };
 }
 
-/// 画面全体の配色(ライト/ダーク/システム追従)。
-class _ThemeModeTile extends StatelessWidget {
-  const _ThemeModeTile({required this.themeMode, required this.onSelected});
+// ── 行 ──────────────────────────────────────────────────────────────────────
 
-  final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onSelected;
+/// 「ラベル ─ 値 ›」の1行(comp `.switch-row`)。
+/// 数値設定は[accent]でc2の太字にし、選択肢はsub色にする。
+class _SettingValueRow extends StatelessWidget {
+  const _SettingValueRow({
+    required this.title,
+    this.subtitle,
+    this.value,
+    this.accent = false,
+    this.locked = false,
+    this.trailingIcon = Icons.chevron_right,
+    this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? value;
+
+  /// 値をアクセント色(c2)の太字にする。音量・速さ・しきい値などの数値設定。
+  final bool accent;
+
+  /// プラン制限で変更できない。錠アイコンを添えるが**押下は止めない**。
+  final bool locked;
+
+  final IconData? trailingIcon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: const Text('テーマ'),
-      subtitle: Text(themeMode.label),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => _pick(context),
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final subtitleText = subtitle;
+    final valueText = value;
+
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                    if (subtitleText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(subtitleText, style: TextStyle(fontSize: 11, color: sub)),
+                      ),
+                  ],
+                ),
+              ),
+              if (valueText != null)
+                Flexible(
+                  child: Text(
+                    valueText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: accent ? FontWeight.w700 : FontWeight.w400,
+                      color: accent ? KosaiPalette.c2 : sub,
+                    ),
+                  ),
+                ),
+              if (locked) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.lock_outline, size: 16, color: sub),
+              ],
+              if (trailingIcon != null) ...[
+                const SizedBox(width: 4),
+                Icon(trailingIcon, size: 18, color: sub),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「ラベル ─ スイッチ」の1行(comp `.switch-row`)。
+class _SettingSwitchRow extends StatelessWidget {
+  const _SettingSwitchRow({
+    required this.title,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+    this.subtitle,
+    this.onLockedTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  /// 無効なときにタップされたら呼ぶ(ロック理由の案内)。**押しても無反応にしない。**
+  final VoidCallback? onLockedTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final subtitleText = subtitle;
+
+    return InkWell(
+      onTap: enabled ? () => onChanged(!value) : onLockedTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                    if (subtitleText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(subtitleText, style: TextStyle(fontSize: 11, color: sub)),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Transform.scale(
+                scale: 0.85,
+                child: Switch(value: value, onChanged: enabled ? onChanged : null),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ランダムボイスがOFFのときに読み上げるボイス。
+///
+/// 選択肢は同梱 vvm の静的な一覧（[VoiceCatalog]）から出す。VOICEVOX が返す実際の
+/// 一覧は読み上げを開始しないと存在せず、停止中に開くのが普通のこの画面では使えない。
+class _VoiceRow extends StatelessWidget {
+  const _VoiceRow({
+    required this.styleId,
+    required this.randomVoice,
+    required this.enabled,
+    required this.canUseAllVoices,
+    required this.onSelected,
+  });
+
+  final int styleId;
+  final bool randomVoice;
+  final bool enabled;
+  final bool canUseAllVoices;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = VoiceCatalog.labelFor(styleId);
+    final canPick = enabled && !randomVoice;
+
+    return _SettingValueRow(
+      title: 'ボイス',
+      // ランダム中でも選択済みのボイスは出す。理由だけに差し替えると、OFFにしたとき
+      // 何の声になるのか確かめられない。
+      subtitle: randomVoice ? 'ランダムボイスをOFFにすると使えます' : null,
+      value: label,
+      onTap: canPick ? () => _pick(context) : null,
     );
   }
 
   Future<void> _pick(BuildContext context) async {
-    final picked = await showModalBottomSheet<ThemeMode>(
+    final picked = await showModalBottomSheet<int>(
       context: context,
-      builder: (context) => _ThemeModePickerSheet(selected: themeMode),
+      isScrollControlled: true,
+      builder: (context) => _VoicePickerSheet(selected: styleId, canUseAllVoices: canUseAllVoices),
     );
-    if (picked != null && picked != themeMode) onSelected(picked);
+    if (picked != null && picked != styleId) onSelected(picked);
+  }
+}
+
+// ── シート ───────────────────────────────────────────────────────────────────
+
+/// 数値設定のボトムシート(comp `settings-tab-kosai/comp-sheet.png`)。
+/// 一覧の行は「値 + ›」に留め、スライダーはこの中にだけ置く。
+///
+/// ドラッグ中は手元の値で追従させ、**指を離したときにだけ保存する**。
+/// `onChanged` ごとに永続化すると、1回のドラッグで数十回の書き込みと背景 Isolate への
+/// 送信が走る。逆に追従を省くと、`value` が設定値のままなのでつまみが指に付いてこない。
+Future<void> showKosaiValueSheet(
+  BuildContext context, {
+  required String title,
+  required int value,
+  required ValueChanged<int> onChanged,
+  int min = 0,
+  int max = 100,
+  int divisions = 20,
+  String suffix = '',
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _ValueSheet(
+      title: title,
+      value: value,
+      onChanged: onChanged,
+      min: min,
+      max: max,
+      divisions: divisions,
+      suffix: suffix,
+    ),
+  );
+}
+
+class _ValueSheet extends StatefulWidget {
+  const _ValueSheet({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.suffix,
+  });
+
+  final String title;
+  final int value;
+  final ValueChanged<int> onChanged;
+  final int min;
+  final int max;
+  final int divisions;
+  final String suffix;
+
+  @override
+  State<_ValueSheet> createState() => _ValueSheetState();
+}
+
+class _ValueSheetState extends State<_ValueSheet> {
+  late int _value = widget.value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: kosaiCardColor(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 18),
+              decoration: BoxDecoration(
+                color: kosaiTrackColor(context),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                GradientText(
+                  '$_value${widget.suffix}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  gradient: KosaiPalette.score,
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Slider(
+                value: _value.toDouble().clamp(widget.min.toDouble(), widget.max.toDouble()),
+                min: widget.min.toDouble(),
+                max: widget.max.toDouble(),
+                divisions: widget.divisions,
+                onChanged: (v) => setState(() => _value = v.round()),
+                onChangeEnd: (v) => widget.onChanged(v.round()),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -265,53 +637,6 @@ class _ThemeModePickerSheet extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// ランダムボイスがOFFのときに読み上げるボイス。
-///
-/// 選択肢は同梱 vvm の静的な一覧（[VoiceCatalog]）から出す。VOICEVOX が返す実際の
-/// 一覧は読み上げを開始しないと存在せず、停止中に開くのが普通のこの画面では使えない。
-class _VoiceTile extends StatelessWidget {
-  const _VoiceTile({
-    required this.styleId,
-    required this.randomVoice,
-    required this.enabled,
-    required this.canUseAllVoices,
-    required this.onSelected,
-  });
-
-  final int styleId;
-  final bool randomVoice;
-  final bool enabled;
-  final bool canUseAllVoices;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = VoiceCatalog.labelFor(styleId);
-    final canPick = enabled && !randomVoice;
-
-    return ListTile(
-      title: const Text('ボイス'),
-      // ランダム中でも選択済みのボイスは出す。理由だけに差し替えると、OFFにしたとき
-      // 何の声になるのか確かめられない。
-      subtitle: Text(
-        randomVoice ? '$label ・ ランダムボイスをOFFにすると使えます' : label,
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      enabled: canPick,
-      onTap: canPick ? () => _pick(context) : null,
-    );
-  }
-
-  Future<void> _pick(BuildContext context) async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => _VoicePickerSheet(selected: styleId, canUseAllVoices: canUseAllVoices),
-    );
-    if (picked != null && picked != styleId) onSelected(picked);
   }
 }
 
@@ -373,93 +698,6 @@ class _VoicePickerSheet extends StatelessWidget {
               ],
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 整数のつまみ。既定は 0-100 の音量で、読み上げ速度のように範囲が違うものは
-/// [min] / [max] / [divisions] を渡す。
-///
-/// ドラッグ中は手元の値で追従させ、**指を離したときにだけ保存する**。
-/// `onChanged` ごとに永続化すると、1回のドラッグで数十回の書き込みと背景 Isolate への
-/// 送信が走る。逆に追従を省くと、`value` が設定値のままなのでつまみが指に付いてこない。
-class _VolumeSlider extends StatefulWidget {
-  const _VolumeSlider({
-    required this.title,
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-    this.onLockedTap,
-    this.min = 0,
-    this.max = 100,
-    this.divisions = 20,
-    this.suffix = '',
-  });
-
-  final String title;
-  final int value;
-  final bool enabled;
-  final ValueChanged<int> onChanged;
-
-  /// [enabled] が false のとき、タップされたら呼ぶ(ロック中のアップグレード導線)。
-  final VoidCallback? onLockedTap;
-  final int min;
-  final int max;
-  final int divisions;
-
-  /// 数値の後ろに出す単位。音量は無単位、速度は「%」。
-  final String suffix;
-
-  @override
-  State<_VolumeSlider> createState() => _VolumeSliderState();
-}
-
-class _VolumeSliderState extends State<_VolumeSlider> {
-  /// ドラッグ中だけ持つ表示用の値。離したら null に戻して設定値へ従う。
-  int? _dragging;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = _dragging ?? widget.value;
-
-    return ListTile(
-      title: Text(widget.title),
-      onTap: widget.enabled ? null : widget.onLockedTap,
-      subtitle: Slider(
-        value: value.toDouble(),
-        min: widget.min.toDouble(),
-        max: widget.max.toDouble(),
-        divisions: widget.divisions,
-        label: '$value${widget.suffix}',
-        onChanged:
-            widget.enabled ? (v) => setState(() => _dragging = v.round()) : null,
-        onChangeEnd: (v) {
-          setState(() => _dragging = null);
-          widget.onChanged(v.round());
-        },
-      ),
-      trailing: Text('$value${widget.suffix}'),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
         ),
       ),
     );

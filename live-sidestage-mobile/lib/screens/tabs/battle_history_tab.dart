@@ -6,6 +6,7 @@ import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/battle_activity.dart';
+import '../../core/battle_filter_store.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
@@ -13,6 +14,7 @@ import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/gradient_kit.dart';
 import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
@@ -275,7 +277,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 
   static String _opponentLabel(BattleOpponent? opponent) {
     if (opponent == null) return '対戦相手不明';
-    if (opponent.count > 1) return '複数人バトル(${opponent.count + 1}人)';
     return opponent.tiktokId != null ? '@${opponent.tiktokId}' : '対戦相手不明';
   }
 
@@ -322,14 +323,30 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    final battles = result?.battles ?? const [];
+    final allBattles = result?.battles ?? const <BattleSummary>[];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final filter = context.watch<BattleFilterStore>();
+    final myTiktokId = context.watch<SessionController>().session?.streamer?.tiktokId;
+
+    final battles = filter.hideSmall
+        ? [
+            for (final b in allBattles)
+              if (!isSmallBattle(
+                selfScore: b.selfScore,
+                opponentScore: b.opponentScore,
+                threshold: filter.threshold,
+              ))
+                b,
+          ]
+        : allBattles;
+    final hiddenCount = allBattles.length - battles.length;
 
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          const KosaiSectionHeading('バトル履歴', top: 8),
           PeriodSelectorBar(
             selection: _selection,
             rangeLabel: _rangeLabel,
@@ -341,6 +358,37 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             onOpenCustomRangeFilter: _openCustomRangeFilter,
             onShiftCustomRange: _shiftOutOfCustomRange,
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'LIVE Sidestage登録後データ',
+              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+          // comp `.threshold-row`。しきい値そのものは設定タブで変えられる。
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
+            decoration: BoxDecoration(
+              color: kosaiCardColor(context),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${filter.threshold}コイン未満を非表示',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.85,
+                  child: Switch(value: filter.hideSmall, onChanged: filter.setHideSmall),
+                ),
+              ],
+            ),
+          ),
           if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
           if (_loading && result == null)
@@ -349,44 +397,26 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               child: Center(child: CircularProgressIndicator()),
             ),
           if (!_loading && result != null && battles.isEmpty)
-            const EmptyListNotice(message: 'この期間はバトルがありません'),
-          if (battles.isNotEmpty)
-            ListPanel(
-              children: [
-                for (final battle in battles)
-                  InkWell(
-                    onTap: () => _showContributors(battle),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        children: [
-                          _BattleAvatarsRow(battle: battle),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('vs ${_opponentLabel(battle.opponent)}'),
-                                Text(
-                                  '${_statusLabel(battle.status)} ・ ${_formatStartedAt(battle.startedAt)}',
-                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${_formatScore(battle.selfScore)} - ${_formatScore(battle.opponentScore)}',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+            EmptyListNotice(
+              message: hiddenCount > 0
+                  ? 'しきい値未満のバトルのみです($hiddenCount件を非表示中)'
+                  : 'この期間はバトルがありません',
+            ),
+          for (final battle in battles)
+            _BattleCard(
+              battle: battle,
+              myTiktokId: myTiktokId,
+              onTap: () => _showContributors(battle),
+            ),
+          if (battles.isNotEmpty && hiddenCount > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Center(
+                child: Text(
+                  '$hiddenCount件をしきい値で非表示中',
+                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ),
             ),
           if (result?.hasMore ?? false)
             Padding(
@@ -394,71 +424,258 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               child: Center(
                 child: Text(
                   '直近分のみ表示',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             ),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
 }
 
-/// リスト行のleading。「自分アイコン(束) vs 相手アイコン(束)」を横並びにする。
-/// チーム戦で複数人になる場合は[_BattleAvatarCluster]が重ねて表示する。
-class _BattleAvatarsRow extends StatelessWidget {
-  const _BattleAvatarsRow({required this.battle});
+/// バトル1件のカード(comp `.card.flat.battle-card`)。
+/// 見出し行 / スコア行 / フッター行の3段構造で、**カードの高さを揃える**。
+class _BattleCard extends StatelessWidget {
+  const _BattleCard({required this.battle, required this.myTiktokId, required this.onTap});
 
   final BattleSummary battle;
+  final String? myTiktokId;
+  final VoidCallback onTap;
+
+  /// comp `.battle-card` の `min-height:118px` 相当。
+  static const double _minHeight = 142;
 
   @override
   Widget build(BuildContext context) {
-    final selfUrls = battle.selfTeam?.map((p) => p.avatarUrl).toList() ?? const [null];
-    final opponentUrls = battle.opponentTeam?.map((p) => p.avatarUrl).toList() ?? [battle.opponent?.avatarUrl];
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final selfTeam = battle.selfTeam;
+    final opponentTeam = battle.opponentTeam;
+    final selfCount = selfTeam?.length ?? 1;
+    final opponentCount = opponentTeam?.length ?? battle.opponent?.count ?? 1;
+    // 3陣営以上は comp `.score-line.many` の縮小サイズで横に並べる。
+    final many = selfCount + opponentCount > 2;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _BattleAvatarCluster(avatarUrls: selfUrls),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text('vs', style: TextStyle(fontSize: 10, color: Theme.of(context).disabledColor)),
+    final self = BigInt.tryParse(battle.selfScore ?? '');
+    final opponent = BigInt.tryParse(battle.opponentScore ?? '');
+
+    final selfLabel = selfCount > 1
+        ? '@${myTiktokId ?? ''} 他${selfCount - 1}名'
+        : '@${myTiktokId ?? ''}';
+    final opponentBase = _BattleHistoryTabState._opponentLabel(battle.opponent);
+    final opponentLabel = opponentCount > 1 ? '$opponentBase 他${opponentCount - 1}名' : opponentBase;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      constraints: const BoxConstraints(minHeight: _minHeight),
+      decoration: BoxDecoration(
+        color: kosaiCardColor(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              // カードの高さを揃えるため、余った縦の空きはフッターとの間に逃がす
+              // (comp `.battle-foot { margin-top:auto }`)。
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$selfCount vs $opponentCount',
+                            style: TextStyle(fontSize: 11, color: sub),
+                          ),
+                        ),
+                        _OutcomeBadge(status: battle.status, self: self, opponent: opponent),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: _ScoreSegment(
+                            own: true,
+                            many: many,
+                            name: selfLabel,
+                            score: _BattleHistoryTabState._formatScore(battle.selfScore),
+                            winning: self != null && opponent != null && self > opponent,
+                            avatars: [
+                              for (final p in selfTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+                              if (selfTeam == null) null,
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '–',
+                            style: TextStyle(
+                              fontSize: many ? 11 : 13,
+                              fontWeight: FontWeight.w700,
+                              color: sub,
+                            ),
+                          ),
+                        ),
+                        Flexible(
+                          child: _ScoreSegment(
+                            own: false,
+                            many: many,
+                            name: opponentLabel,
+                            score: _BattleHistoryTabState._formatScore(battle.opponentScore),
+                            winning: self != null && opponent != null && opponent > self,
+                            avatars: [
+                              for (final p in opponentTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+                              if (opponentTeam == null) battle.opponent?.avatarUrl,
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
+                    '${_BattleHistoryTabState._statusLabel(battle.status)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: sub),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        _BattleAvatarCluster(avatarUrls: opponentUrls),
+      ),
+    );
+  }
+}
+
+/// 片方の陣営(comp `.score-seg`)。自陣は左(アイコン→スコア)、相手陣は右(スコア→アイコン)。
+class _ScoreSegment extends StatelessWidget {
+  const _ScoreSegment({
+    required this.own,
+    required this.many,
+    required this.name,
+    required this.score,
+    required this.winning,
+    required this.avatars,
+  });
+
+  final bool own;
+
+  /// 3陣営以上のときの縮小表示(comp `.score-line.many`)。
+  final bool many;
+  final String name;
+  final String score;
+  final bool winning;
+  final List<String?> avatars;
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final avatarSize = many ? 19.0 : 26.0;
+    final scoreSize = many ? 13.0 : 20.0;
+    final nameSize = many ? 8.0 : 10.0;
+    final maxWidth = many ? 50.0 : 104.0;
+
+    final stack = KosaiAvatarStack(
+      size: avatarSize,
+      borderColor: own ? KosaiPalette.c2 : null,
+      children: [for (final url in avatars) UserAvatar(url, size: avatarSize)],
+    );
+
+    // 勝っている側だけスコアをグラデーション文字にする(comp `.team-score.grad`)。
+    final scoreStyle = TextStyle(fontSize: scoreSize, fontWeight: FontWeight.w800);
+    final scoreWidget = winning
+        ? GradientText(score, style: scoreStyle, gradient: KosaiPalette.score)
+        : Text(score, style: scoreStyle);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: own
+              ? [stack, SizedBox(width: many ? 3 : 6), scoreWidget]
+              : [scoreWidget, SizedBox(width: many ? 3 : 6), stack],
+        ),
+        const SizedBox(height: 3),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: nameSize,
+              color: own ? KosaiPalette.c2 : sub,
+              fontWeight: own ? FontWeight.w700 : FontWeight.w400,
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-/// [avatarUrls]を円形アイコンで表示する。複数件なら少しずつ重ねて表示する
-/// (先頭3件まで。それ以上は先頭3件のみ)。
-class _BattleAvatarCluster extends StatelessWidget {
-  const _BattleAvatarCluster({required this.avatarUrls});
+/// 勝敗バッジ(comp `.win-badge`)。スコアが取れていない場合は何も出さない。
+class _OutcomeBadge extends StatelessWidget {
+  const _OutcomeBadge({required this.status, required this.self, required this.opponent});
 
-  final List<String?> avatarUrls;
-
-  static const double _size = 28;
-  static const int _maxShown = 3;
-  static const double _overlap = 0.55;
+  final BattleStatus status;
+  final BigInt? self;
+  final BigInt? opponent;
 
   @override
   Widget build(BuildContext context) {
-    final urls = avatarUrls.isEmpty ? const [null] : avatarUrls.take(_maxShown).toList();
-    if (urls.length == 1) return UserAvatar(urls.first, size: _size);
+    final scheme = Theme.of(context).colorScheme;
+    const textStyle = TextStyle(fontSize: 11, fontWeight: FontWeight.w800);
+    const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 4);
 
-    final step = _size * _overlap;
-    return SizedBox(
-      width: _size + step * (urls.length - 1),
-      height: _size,
-      child: Stack(
-        children: [
-          for (var i = 0; i < urls.length; i++)
-            Positioned(left: step * i, child: UserAvatar(urls[i], size: _size)),
-        ],
-      ),
-    );
+    Widget outlined(String label, Color color) => Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: kosaiCardColor(context),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color),
+          ),
+          child: Text(label, style: textStyle.copyWith(color: color)),
+        );
+
+    if (status == BattleStatus.live) return outlined('進行中', KosaiPalette.c2);
+    if (self == null || opponent == null) {
+      return status == BattleStatus.cutShort ? outlined('中断', scheme.onSurfaceVariant) : const SizedBox.shrink();
+    }
+    if (self! > opponent!) {
+      return Container(
+        padding: padding,
+        decoration: const BoxDecoration(
+          gradient: KosaiPalette.win,
+          borderRadius: BorderRadius.all(Radius.circular(999)),
+        ),
+        child: Text('WIN', style: textStyle.copyWith(color: Colors.white)),
+      );
+    }
+    if (self! < opponent!) return outlined('LOSE', scheme.error);
+    return outlined('DRAW', scheme.onSurfaceVariant);
   }
 }
 

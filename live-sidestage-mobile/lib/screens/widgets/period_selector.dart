@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics_period.dart';
 import '../../core/upgrade_notice.dart';
+import 'gradient_kit.dart';
 
-/// 貢献/ギフト履歴/バトル履歴タブ共通の期間選択バー(日/週/月 + ◀/▶)。
+/// 貢献/ギフト履歴/バトル履歴タブ共通の期間選択バー(日/週/月/年/カスタム + ◀/▶)。
+///
+/// 描画は光彩(Kosai)のchip row(`.impeccable/approved/_kosai-tokens.md` §5)。
+/// **API・状態遷移ロジックは光彩化前(SegmentedButton時代)から変えていない。**
+/// `SegmentedButton`ではpill形+選択中グラデーションを再現できないため描画だけ差し替えた。
 class PeriodSelectorBar extends StatelessWidget {
   const PeriodSelectorBar({
     super.key,
@@ -59,65 +64,60 @@ class PeriodSelectorBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final periodControlsEnabled = enabled && !customRangeActive;
     final canShiftCustomRange = enabled && customRangeActive && onShiftCustomRange != null;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Column(
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                SegmentedButton<AnalyticsPeriod>(
-                  segments: [
-                    for (final p in AnalyticsPeriod.values)
-                      ButtonSegment(
-                        value: p,
-                        label: !extendedRangeAllowed && _isExtendedPeriod(p)
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(p.label),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.lock_outline, size: 14),
-                                ],
-                              )
-                            : Text(p.label),
-                      ),
-                  ],
-                  selected: {selection.period},
-                  onSelectionChanged: periodControlsEnabled
-                      ? (selected) {
-                          final next = selected.first;
-                          if (!extendedRangeAllowed && _isExtendedPeriod(next)) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+          child: Row(
+            children: [
+              for (final p in AnalyticsPeriod.values) ...[
+                KosaiChip(
+                  label: p.label,
+                  selected: !customRangeActive && selection.period == p,
+                  locked: !extendedRangeAllowed && _isExtendedPeriod(p),
+                  dimmed: !enabled,
+                  // **押せなくしない。** 押されたら理由(ロック/カスタム適用中)を伝える。
+                  onTap: !enabled
+                      ? null
+                      : () {
+                          if (!extendedRangeAllowed && _isExtendedPeriod(p)) {
                             showUpgradeRequiredNotice(context, '月・年での表示はPRO/ULTRAプランで利用できます');
                             return;
                           }
-                          onChanged(selection.withPeriod(next));
-                        }
-                      : null,
+                          if (!periodControlsEnabled) {
+                            showTimedNotice(context, 'カスタム期間の適用中です。「カスタム」から解除してください');
+                            return;
+                          }
+                          onChanged(selection.withPeriod(p));
+                        },
                 ),
-                if (onOpenCustomRangeFilter != null)
-                  Positioned(
-                    right: 0,
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.tune,
-                        color: filterActive ? Theme.of(context).colorScheme.primary : null,
-                      ),
-                      tooltip: '詳細フィルタ',
-                      onPressed: enabled ? onOpenCustomRangeFilter : null,
-                    ),
-                  ),
+                const SizedBox(width: 6),
               ],
-            ),
+              if (onOpenCustomRangeFilter != null)
+                KosaiChip(
+                  label: 'カスタム',
+                  selected: filterActive,
+                  dashed: true,
+                  dimmed: !enabled,
+                  onTap: enabled ? onOpenCustomRangeFilter : null,
+                ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Row(
+        ),
+        // 期間の送り(◀/▶)と現在の範囲ラベル。**compには描かれていないが既存機能なので残す**
+        // (`_kosai-tokens.md` §5)。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          child: Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left),
+                icon: const Icon(Icons.chevron_left, size: 20),
+                color: sub,
+                tooltip: '前の期間',
                 onPressed: periodControlsEnabled
                     ? () => onChanged(selection.shiftPrevious())
                     : (canShiftCustomRange ? () => onShiftCustomRange!(false) : null),
@@ -127,19 +127,21 @@ class PeriodSelectorBar extends StatelessWidget {
                   rangeLabel,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right),
+                icon: const Icon(Icons.chevron_right, size: 20),
+                color: sub,
+                tooltip: '次の期間',
                 onPressed: periodControlsEnabled
                     ? () => onChanged(selection.shiftNext())
                     : (canShiftCustomRange ? () => onShiftCustomRange!(true) : null),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

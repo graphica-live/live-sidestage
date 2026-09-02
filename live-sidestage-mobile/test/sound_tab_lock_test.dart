@@ -13,6 +13,7 @@ import 'package:live_sidestage_mobile/core/feature_status.dart';
 import 'package:live_sidestage_mobile/models/app_config.dart';
 import 'package:live_sidestage_mobile/screens/home_screen.dart' show SoundState;
 import 'package:live_sidestage_mobile/screens/tabs/sound_tab.dart';
+import 'package:live_sidestage_mobile/screens/widgets/gradient_kit.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,21 +91,18 @@ void main() {
 
   Switch giftSwitch(WidgetTester tester) => tester.widget<Switch>(find.byType(Switch));
 
-  ActionChip addChip(WidgetTester tester) => tester.widget<ActionChip>(find.byType(ActionChip));
+  /// 「＋追加」は光彩デザインで `ActionChip` から [KosaiChip] へ変わった。
+  /// **押せる/押せないは `onTap` ではなく `dimmed` で示す**（押せば理由を伝えるため）。
+  KosaiChip addChip(WidgetTester tester) => tester.widget<KosaiChip>(
+        find.ancestor(of: find.text('＋追加'), matching: find.byType(KosaiChip)),
+      );
 
-  FloatingActionButton fab(WidgetTester tester) =>
-      tester.widget<FloatingActionButton>(find.byType(FloatingActionButton));
+  KosaiExtendedFab fab(WidgetTester tester) =>
+      tester.widget<KosaiExtendedFab>(find.byType(KosaiExtendedFab));
 
   /// 「音を追加」はロック中も押せる（押されたら停止を促す）ので、ロックは
   /// `onPressed` ではなく薄さで示している。
-  double fabOpacity(WidgetTester tester) => tester
-      .widget<Opacity>(find
-          .ancestor(
-            of: find.byType(FloatingActionButton),
-            matching: find.byType(Opacity),
-          )
-          .first)
-      .opacity;
+  double fabOpacity(WidgetTester tester) => fab(tester).dimmed ? 0.45 : 1;
 
   group('停止中は設定モード', () {
     testWidgets('「現在のセット」を出す', (tester) async {
@@ -127,7 +125,7 @@ void main() {
       await pumpTab(tester, await storeWithTwoSets(), started: false, busy: false);
 
       expect(find.byIcon(Icons.more_horiz), findsOneWidget);
-      expect(addChip(tester).onPressed, isNotNull);
+      expect(addChip(tester).dimmed, isFalse);
       expect(giftSwitch(tester).onChanged, isNotNull);
       expect(fab(tester).onPressed, isNotNull);
       expect(fabOpacity(tester), 1);
@@ -186,8 +184,8 @@ void main() {
 
       // 全項目が禁止なので、空のメニューを出す意味がない。
       expect(find.byIcon(Icons.more_horiz), findsNothing);
-      // 消すとタブ行の幅が変わって並びが飛ぶので、非表示ではなく disabled。
-      expect(addChip(tester).onPressed, isNull);
+      // 消すとタブ行の幅が変わって並びが飛ぶので、非表示ではなく薄くする。
+      expect(addChip(tester).dimmed, isTrue);
       expect(giftSwitch(tester).onChanged, isNull);
     });
 
@@ -206,7 +204,7 @@ void main() {
       expect(store.sound.selectedSetId, SoundSet.defaultId);
       expect(find.text('セットを変更するには停止してください'), findsOneWidget);
       expect(find.byIcon(Icons.more_horiz), findsNothing);
-      expect(addChip(tester).onPressed, isNull);
+      expect(addChip(tester).dimmed, isTrue);
       expect(giftSwitch(tester).onChanged, isNull);
       expect(fabOpacity(tester), lessThan(1));
       await tester.pump(const Duration(seconds: 3));
@@ -224,7 +222,7 @@ void main() {
   });
 
   group('セット数の上限', () {
-    testWidgets('上限に達したら「＋」を disabled にする', (tester) async {
+    testWidgets('上限に達したら「＋」を薄くする', (tester) async {
       final store = AppConfigStore();
       await store.load();
       await store.updateSound((c) {
@@ -238,7 +236,7 @@ void main() {
 
       await pumpTab(tester, store, started: false, busy: false);
 
-      expect(addChip(tester).onPressed, isNull);
+      expect(addChip(tester).dimmed, isTrue);
     });
   });
 }
