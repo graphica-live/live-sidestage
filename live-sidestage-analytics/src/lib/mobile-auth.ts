@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { markLastActive } from "@/lib/mark-last-active";
 
 export interface MobileTokenPayload {
   userId: string;
@@ -50,7 +51,15 @@ export function verifyMobileToken(token: string): MobileTokenPayload | null {
 function extractPayload(req: NextRequest): MobileTokenPayload | null {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
-  return verifyMobileToken(header.slice("Bearer ".length));
+  const payload = verifyMobileToken(header.slice("Bearer ".length));
+
+  // トークンは90日有効で、モバイルは再ログインなしに使われ続ける。ログイン時だけの
+  // 記録では日常利用を捕捉できないため、有効トークンでのリクエストのたびにここでも
+  // アクティブを記録する(スロットルはmarkLastActive内部で行うのでシグネチャは
+  // 変えずfire-and-forgetでよい)。
+  if (payload) void markLastActive(payload.userId);
+
+  return payload;
 }
 
 export function resolveStreamerByMobileToken(req: NextRequest): { id: string; userId: string } | null {

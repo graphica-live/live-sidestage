@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { mobileAuthResponseBody } from "@/lib/mobile-oauth";
+import { markLastActive } from "@/lib/mark-last-active";
 import { normalizeEmail, readPassword } from "@/lib/email-auth";
 import { isRateLimited, resetRateLimit } from "@/lib/rate-limit";
 
@@ -82,5 +83,6 @@ export async function POST(req: NextRequest) {
   }
 
   resetRateLimit(rateLimitKey);
+  await markLastActive(account.user.id);
   return NextResponse.json(mobileAuthResponseBody(account.user));
 }

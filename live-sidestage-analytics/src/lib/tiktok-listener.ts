@@ -2058,7 +2058,11 @@ type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 // nowは呼び出し側が1回だけ評価した時刻を渡す(複数クエリ間で基準時刻がずれないようにするため)。
 export function watchedRoomFilter(now: Date = new Date()): Prisma.TiktokRoomWhereInput {
   return {
-    OR: [{ streamers: { some: {} } }, { watches: { some: {} } }, { monitorUntil: { gt: now } }],
+    OR: [
+      { streamers: { some: {} }, monitoringSuspended: false },
+      { watches: { some: {} } },
+      { monitorUntil: { gt: now } },
+    ],
   };
 }
 

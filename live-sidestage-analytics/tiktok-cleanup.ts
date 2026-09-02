@@ -1,5 +1,6 @@
-// TikTok上に存在しなくなった(削除/改名された)アカウントに紐づくStreamerを検出・削除する
+// TikTok上に存在しなくなった(削除/改名された)可能性があるRoomの監視を一時停止する
 // 日次バッチ。専用エントリポイント。Railway Cron Job(1回実行して終了)として動かす想定。
+// データは削除しない(TiktokRoom.monitoringSuspendedを立てるだけ)。
 //
 // worker-guardian.ts等の常駐サービスと違い、判定周期は「日」単位で十分なため常駐させない。
 // Railwayのcronが多重起動防止(前回実行がActive中ならスキップ)を担保する一次防御、
@@ -9,6 +10,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { runCleanupCycle } from "@/lib/tiktok-room-cleanup";
+import { runLowValueCleanupCycle } from "@/lib/tiktok-low-value-cleanup";
 
 // セッションスコープのadvisory lock(pg_try_advisory_xact_lockではない)。トランザクションでは
 // なくプロセス全体を通してロックしたいため。Prismaのコネクションプールと相性が悪く、
@@ -26,6 +28,9 @@ requireEnv("DATABASE_URL");
 
 // 明示的に"false"にしない限りdry-run(デフォルト安全側)。
 const dryRun = process.env.TIKTOK_CLEANUP_DRY_RUN !== "false";
+// 低価値Room監視停止は判定基準が別物(データ削除はなく監視停止/復活のみ)なので
+// dry-runフラグも分離する。
+const lowValueDryRun = process.env.TIKTOK_LOW_VALUE_DRY_RUN !== "false";
 
 async function main() {
   const [{ locked }] = await prisma.$queryRaw<{ locked: boolean }[]>`
@@ -40,6 +45,10 @@ async function main() {
     console.log(`[tiktok-cleanup] 開始 (dryRun=${dryRun})`);
     const result = await runCleanupCycle({ dryRun });
     console.log("[tiktok-cleanup] 完了:", JSON.stringify(result));
+
+    console.log(`[tiktok-low-value-cleanup] 開始 (dryRun=${lowValueDryRun})`);
+    const lowValueResult = await runLowValueCleanupCycle({ dryRun: lowValueDryRun });
+    console.log("[tiktok-low-value-cleanup] 完了:", JSON.stringify(lowValueResult));
   } finally {
     await prisma.$queryRaw`SELECT pg_advisory_unlock(${CLEANUP_LOCK_KEY}::bigint)`.catch(() => {});
   }
